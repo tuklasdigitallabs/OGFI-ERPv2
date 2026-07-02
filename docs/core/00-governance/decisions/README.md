@@ -1,0 +1,52 @@
+# Confirmed Decision Records
+
+This folder stores material, confirmed decisions that affect OGFI ERP behavior, architecture, controls, data, deployment, or user adoption.
+
+## Rules
+
+- Use `DEC-####-short-kebab-title.md` naming.
+- Mithi creates or updates a decision record only after the parent agent or authorized human confirms the conclusion.
+- Do not create a decision record for an unresolved policy question. Use `OPEN_DECISIONS_AND_ASSUMPTIONS.md` instead.
+- Do not delete a superseded decision. Mark it `Superseded` and link to the new record.
+- Keep a decision record focused: decision, alternatives, failure modes, safeguards, and consequences.
+
+## Confirmed records
+
+- `DEC-0001-first-admin-mutation-user-scope-assignment.md`
+- `DEC-0002-constrained-user-role-assignment.md`
+- `DEC-0006-ERP-OFFICIAL-ACCOUNTING-SYSTEM-OF-RECORD.md`
+- `DEC-0007-SHARED-WORK-MANAGEMENT-ENGINE-WITH-SPECIALIZED-MODULES.md`
+- `DEC-0008-PO-ISSUE-SEND-STATUS-SEMANTICS.md`
+- `DEC-0009-QUANTITY-INVENTORY-LEDGER-FOUNDATION-FIRST.md`
+- `DEC-0010-TRANSFER-FOUNDATION-BEFORE-POSTING.md`
+- `DEC-0011-TRANSFER-DISPATCH-BEFORE-RECEIPT.md`
+- `DEC-0012-TRANSFER-EXACT-RECEIPT.md`
+- `DEC-0013-PHYSICAL-COUNT-FOUNDATION-BEFORE-VARIANCE-POSTING.md`
+- `DEC-0014-PO-CANCELLATION-BEFORE-RECEIVING.md`
+- `DEC-0015-WASTAGE-FOUNDATION-BEFORE-POSTING.md`
+- `DEC-0016-WASTAGE-APPROVAL-BEFORE-POSTING.md`
+- `DEC-0017-WASTAGE-SEPARATE-POSTING-ACTION.md`
+- `DEC-0018-WASTAGE-POSTED-REVERSAL.md`
+- `DEC-0019-STOCK-ADJUSTMENT-FOUNDATION-BEFORE-POSTING.md`
+- `DEC-0020-PO-REMAINING-BALANCE-CLOSURE.md`
+- `DEC-0021-WASTAGE-EVIDENCE-THRESHOLD-AND-REPEAT-LOSS-FLAGS.md`
+- `DEC-0022-NOTIFICATION-FANOUT-FOUNDATION.md`
+- `DEC-0023-STOCK-ADJUSTMENT-APPROVAL-POSTING-REVERSAL.md`
+- `DEC-0024-GOODS-RECEIPT-REVERSAL.md`
+- `DEC-0025-TRANSFER-RECEIPT-EVENTS.md`
+- `DEC-0026-STOCK-COUNT-VARIANCE-ADJUSTMENT-BRIDGE.md`
+- `DEC-0027-PROJECT-TRACKER-FOUNDATION.md`
+- `DEC-0028-PROJECT-TASK-FOUNDATION.md`
+- `DEC-0029-PROJECT-MILESTONE-CALENDAR-FOUNDATION.md`
+- `DEC-0030-PROJECT-RECORD-LINKS-SAFE-SUMMARY.md`
+- `DEC-0031-PROJECT-RECORD-LINKS-OPERATIONAL-ADAPTERS.md`
+- `DEC-0032-PROJECT-RISK-LIFECYCLE.md`
+- `DEC-0033-PROJECT-TASK-REGISTER-EXPORT.md`
+- `DEC-0034-PO-BOUNDED-PRE-RECEIVING-AMENDMENT.md`
+
+## Suggested future decision records
+
+- Warehouse-first replenishment
+- Phase I navigation scope
+- Configurable approval rules
+- Modern SaaS UI with operational context

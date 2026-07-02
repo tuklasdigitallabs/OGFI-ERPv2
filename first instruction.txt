@@ -1,0 +1,48 @@
+This repository currently contains the OGFI ERP documentation foundation and may not yet contain the runnable application code.
+
+Do not create, edit, delete, install, deploy, or scaffold anything yet.
+
+First, read only these documents:
+
+AGENTS.md
+README.md
+V5_FULL_UPDATED_DOCUMENTATION_INDEX.md
+docs/core/05-technical/TECH_STACK_DECISION.md
+docs/core/05-technical/REPOSITORY_BOOTSTRAP.md
+docs/core/05-technical/SYSTEM_ARCHITECTURE.md
+docs/core/03-data/DATABASE_SCHEMA.md
+docs/phases/phase-01-procurement-inventory/implementation/PHASE1_BUILD_BACKLOG_AND_ACCEPTANCE_CRITERIA.md
+docs/core/00-governance/SUBAGENT_DELIBERATION_PROTOCOL.md
+
+If a listed path differs, identify the closest matching document. Do not scan the full repository to find unrelated files.
+
+Use these read-only subagents for a structured decision council:
+
+Amihan: confirm Phase I scope, success criteria, and non-goals
+Dalisay: validate Company → Brand → Location structure, procurement workflow, warehouse-first replenishment, approval ownership, and operational exceptions
+Hiraya: validate the minimum architecture, database, API, Docker, and environment structure
+Diwata: validate the Modern SaaS application shell, location context, Phase I navigation, and mobile-first operational UX
+
+Run independent first-round analysis. Then follow the Subagent Deliberation Protocol for a targeted challenge round.
+
+The council must assess:
+
+What should be created first
+What can fail if the initial scaffold is wrong
+What must remain configurable
+What cannot be deferred because it affects security, inventory integrity, audit trails, approval controls, or future multi-tenant scaling
+The smallest safe Phase I technical foundation
+Whether any documented decision conflicts with another document
+
+Return one concise implementation-readiness report containing:
+
+Recommended initial repository structure
+Exact first build milestone
+Exact files and folders to create in the first scaffold
+Required local services
+Required environment variables, without secrets
+Material risks and safeguards
+Open decisions that require my confirmation
+A proposed first implementation prompt for Codex
+
+Do not change files yet.

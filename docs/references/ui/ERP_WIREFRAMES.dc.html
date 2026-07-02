@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#e8e6e3">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="160" y="150" width="880" height="500" rx="24" fill="#ffffff" stroke="#c9c7c4" stroke-width="6"/>
+    <rect x="160" y="150" width="220" height="500" rx="24" fill="#f5f3f1"/>
+    <rect x="160" y="150" width="880" height="70" fill="#fbfaf9"/>
+    <rect x="200" y="270" width="140" height="22" rx="11" fill="#6058FF"/>
+    <rect x="200" y="320" width="140" height="18" rx="9" fill="#dcdad7"/>
+    <rect x="200" y="360" width="140" height="18" rx="9" fill="#dcdad7"/>
+    <rect x="200" y="400" width="140" height="18" rx="9" fill="#dcdad7"/>
+    <rect x="200" y="440" width="140" height="18" rx="9" fill="#dcdad7"/>
+    <rect x="430" y="270" width="170" height="90" rx="14" fill="#ffffff" stroke="#e6e3e0" stroke-width="4"/>
+    <rect x="620" y="270" width="170" height="90" rx="14" fill="#ffffff" stroke="#e6e3e0" stroke-width="4"/>
+    <rect x="810" y="270" width="170" height="90" rx="14" fill="#ffffff" stroke="#e6e3e0" stroke-width="4"/>
+    <rect x="430" y="390" width="550" height="220" rx="14" fill="none" stroke="#cfccc8" stroke-width="4" stroke-dasharray="14 10"/>
+  </svg>
+</template>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  .wf-cap { font-family:'Caveat',cursive; }
+</style>
+</helmet>
+
+<!-- ============ TITLE ============ -->
+<div style="position:absolute;left:80px;top:24px;width:1000px">
+  <div class="wf-cap" style="font-size:42px;font-weight:700;color:#2c2722;line-height:1">ERP system — wireframe explorations</div>
+  <div style="font-size:13px;color:#6b6560;margin-top:8px;max-width:640px;line-height:1.5">Food &amp; beverage ERP · mixed roles · desktop + mobile · mid-fidelity. Boxes &amp; bars are placeholders for real content. One accent (indigo) marks active / primary states only.</div>
+  <div style="display:flex;gap:18px;margin-top:14px;font-size:12px;color:#8a847e;align-items:center">
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:24px;height:10px;background:#dcdad7;border-radius:3px;display:inline-block"></span>placeholder text</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;background:#ECEBFF;border:1px solid #b9b4f5;border-radius:3px;display:inline-block"></span>active state</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:14px;border:1.5px dashed #c9c7c4;border-radius:3px;display:inline-block"></span>image / chart</span>
+  </div>
+</div>
+
+<!-- ============ SECTION A — NAVIGATION / IA ============ -->
+<div class="wf-cap" style="position:absolute;left:80px;top:150px;font-size:30px;font-weight:700;color:#3a3531">A · Navigation &amp; information architecture</div>
+
+<!-- A1 : Sidebar + top bar (recommended) -->
+<div style="position:absolute;left:80px;top:210px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">A1 — Left sidebar + top bar <span style="color:#4a3fd6">· recommended</span></div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden">
+    <!-- top bar -->
+    <div style="height:38px;border-bottom:1.5px solid #e6e3e0;display:flex;align-items:center;gap:10px;padding:0 12px;background:#fbfaf9">
+      <div style="width:20px;height:20px;background:#2c2722;border-radius:5px"></div>
+      <div style="font:600 12px Inter;color:#2c2722">NorthBay F&amp;B</div>
+      <div style="flex:1;max-width:240px;height:22px;background:#f0eeec;border:1px solid #e0ddd9;border-radius:11px;margin-left:14px;display:flex;align-items:center;padding:0 10px;color:#a8a29c;font-size:10px">Search orders, items, recipes…</div>
+      <div style="flex:1"></div>
+      <div style="width:18px;height:18px;border:1.5px solid #cfccc8;border-radius:4px"></div>
+      <div style="width:22px;height:22px;background:#ECEBFF;border-radius:50%"></div>
+    </div>
+    <div style="display:flex;height:360px">
+      <!-- sidebar -->
+      <div style="width:158px;background:#f5f3f1;border-right:1.5px solid #e6e3e0;padding:10px 8px;display:flex;flex-direction:column;gap:2px">
+        <div style="font:600 9px Inter;letter-spacing:.08em;color:#a8a29c;padding:6px 8px 2px">OPERATE</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#ECEBFF;border-radius:6px"><span style="width:13px;height:13px;background:#6058FF;border-radius:3px"></span><span style="font:600 11px Inter;color:#4a3fd6">Dashboard</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Sales &amp; CRM</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Orders</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Procurement</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Inventory</span></div>
+        <div style="font:600 9px Inter;letter-spacing:.08em;color:#a8a29c;padding:8px 8px 2px">KITCHEN</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Menu &amp; recipes</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Costing</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Production</span></div>
+        <div style="font:600 9px Inter;letter-spacing:.08em;color:#a8a29c;padding:8px 8px 2px">BUSINESS</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Finance</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Projects</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">HR &amp; people</span></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px"><span style="width:13px;height:13px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="font:500 11px Inter;color:#5a544e">Reports</span></div>
+      </div>
+      <!-- main -->
+      <div style="flex:1;padding:14px 16px;background:#fff">
+        <div style="display:flex;align-items:center;margin-bottom:12px">
+          <div style="font:600 15px Inter;color:#2c2722">Dashboard</div>
+          <div style="flex:1"></div>
+          <div style="height:24px;width:88px;background:#2c2722;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font:600 10px Inter">+ New order</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+          <div style="border:1px solid #e6e3e0;border-radius:7px;padding:9px"><div style="font:500 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Revenue</div><div style="height:14px;width:70%;background:#dcdad7;border-radius:3px;margin-top:6px"></div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:7px;padding:9px"><div style="font:500 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Food cost %</div><div style="height:14px;width:55%;background:#dcdad7;border-radius:3px;margin-top:6px"></div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:7px;padding:9px"><div style="font:500 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Open POs</div><div style="height:14px;width:45%;background:#dcdad7;border-radius:3px;margin-top:6px"></div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:7px;padding:9px"><div style="font:500 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Covers</div><div style="height:14px;width:60%;background:#dcdad7;border-radius:3px;margin-top:6px"></div></div>
+        </div>
+        <div style="border:1.5px dashed #cfccc8;border-radius:7px;height:120px;display:flex;align-items:center;justify-content:center;color:#b5afa8;font:500 11px Inter;margin-bottom:10px">Revenue vs. food cost — chart</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="height:9px;width:100%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:88%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:94%;background:#e7e4e1;border-radius:3px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- A2 : Icon rail + contextual subnav -->
+<div style="position:absolute;left:820px;top:210px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">A2 — Icon rail + contextual subnav</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden">
+    <div style="height:38px;border-bottom:1.5px solid #e6e3e0;display:flex;align-items:center;gap:10px;padding:0 12px;background:#fbfaf9">
+      <div style="font:600 12px Inter;color:#2c2722">Inventory</div>
+      <div style="font:400 11px Inter;color:#b5afa8">/ Stock on hand</div>
+      <div style="flex:1"></div>
+      <div style="width:18px;height:18px;border:1.5px solid #cfccc8;border-radius:4px"></div>
+      <div style="width:22px;height:22px;background:#ECEBFF;border-radius:50%"></div>
+    </div>
+    <div style="display:flex;height:360px">
+      <!-- icon rail -->
+      <div style="width:48px;background:#2c2722;display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0">
+        <div style="width:22px;height:22px;background:#4a443e;border-radius:6px"></div>
+        <div style="width:22px;height:22px;background:#4a443e;border-radius:6px"></div>
+        <div style="width:22px;height:22px;background:#4a443e;border-radius:6px"></div>
+        <div style="width:22px;height:22px;background:#6058FF;border-radius:6px"></div>
+        <div style="width:22px;height:22px;background:#4a443e;border-radius:6px"></div>
+        <div style="width:22px;height:22px;background:#4a443e;border-radius:6px"></div>
+        <div style="width:22px;height:22px;background:#4a443e;border-radius:6px"></div>
+        <div style="flex:1"></div>
+        <div style="width:22px;height:22px;border:1.5px solid #5a544e;border-radius:50%"></div>
+      </div>
+      <!-- contextual subnav -->
+      <div style="width:150px;background:#f5f3f1;border-right:1.5px solid #e6e3e0;padding:14px 10px;display:flex;flex-direction:column;gap:3px">
+        <div style="font:600 12px Inter;color:#2c2722;margin-bottom:6px">Inventory</div>
+        <div style="padding:6px 8px;background:#ECEBFF;border-radius:6px;font:600 11px Inter;color:#4a3fd6">Stock on hand</div>
+        <div style="padding:6px 8px;font:500 11px Inter;color:#5a544e">Locations</div>
+        <div style="padding:6px 8px;font:500 11px Inter;color:#5a544e">Stock counts</div>
+        <div style="padding:6px 8px;font:500 11px Inter;color:#5a544e">Transfers</div>
+        <div style="padding:6px 8px;font:500 11px Inter;color:#5a544e">Wastage</div>
+        <div style="padding:6px 8px;font:500 11px Inter;color:#5a544e">Par levels</div>
+        <div style="padding:6px 8px;font:500 11px Inter;color:#5a544e">Suppliers</div>
+      </div>
+      <div style="flex:1;padding:14px 16px;background:#fff">
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div style="height:26px;background:#f5f3f1;border-radius:5px;border:1px solid #e6e3e0"></div>
+          <div style="height:9px;width:100%;background:#e7e4e1;border-radius:3px;margin-top:4px"></div>
+          <div style="height:9px;width:96%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:90%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:98%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:84%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:92%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:88%;background:#e7e4e1;border-radius:3px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;top:312px;left:14px;width:280px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(-1deg)">Scales best to mobile — the icon rail becomes a bottom bar, subnav becomes a top dropdown.</div>
+</div>
+
+<!-- A3 : Top primary nav + left filters -->
+<div style="position:absolute;left:1560px;top:210px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">A3 — Top module tabs + left filters</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden">
+    <div style="height:38px;border-bottom:1px solid #e6e3e0;display:flex;align-items:center;gap:10px;padding:0 12px;background:#2c2722">
+      <div style="width:18px;height:18px;background:#6058FF;border-radius:5px"></div>
+      <div style="font:600 11px Inter;color:#fff">NorthBay</div>
+      <div style="flex:1"></div>
+      <div style="width:18px;height:18px;border:1.5px solid #5a544e;border-radius:4px"></div>
+      <div style="width:22px;height:22px;background:#4a443e;border-radius:50%"></div>
+    </div>
+    <div style="height:32px;border-bottom:1.5px solid #e6e3e0;display:flex;align-items:center;gap:2px;padding:0 12px;background:#fbfaf9;overflow:hidden">
+      <div style="padding:5px 9px;font:600 10px Inter;color:#4a3fd6;border-bottom:2px solid #6058FF">Dashboard</div>
+      <div style="padding:5px 9px;font:500 10px Inter;color:#5a544e">Sales</div>
+      <div style="padding:5px 9px;font:500 10px Inter;color:#5a544e">Procurement</div>
+      <div style="padding:5px 9px;font:500 10px Inter;color:#5a544e">Inventory</div>
+      <div style="padding:5px 9px;font:500 10px Inter;color:#5a544e">Recipes</div>
+      <div style="padding:5px 9px;font:500 10px Inter;color:#5a544e">Finance</div>
+      <div style="padding:5px 9px;font:500 10px Inter;color:#a8a29c">More ▾</div>
+    </div>
+    <div style="display:flex;height:328px">
+      <div style="width:150px;background:#f5f3f1;border-right:1.5px solid #e6e3e0;padding:14px 12px">
+        <div style="font:600 9px Inter;letter-spacing:.06em;color:#a8a29c;text-transform:uppercase;margin-bottom:8px">Filters</div>
+        <div style="height:9px;width:60%;background:#dcdad7;border-radius:3px;margin-bottom:9px"></div>
+        <div style="height:22px;background:#fff;border:1px solid #e0ddd9;border-radius:5px;margin-bottom:9px"></div>
+        <div style="height:9px;width:50%;background:#dcdad7;border-radius:3px;margin-bottom:9px"></div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;gap:6px;align-items:center"><span style="width:12px;height:12px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="height:8px;width:60px;background:#e7e4e1;border-radius:3px"></span></div>
+          <div style="display:flex;gap:6px;align-items:center"><span style="width:12px;height:12px;background:#6058FF;border-radius:3px"></span><span style="height:8px;width:48px;background:#e7e4e1;border-radius:3px"></span></div>
+          <div style="display:flex;gap:6px;align-items:center"><span style="width:12px;height:12px;border:1.5px solid #c2bdb7;border-radius:3px"></span><span style="height:8px;width:54px;background:#e7e4e1;border-radius:3px"></span></div>
+        </div>
+      </div>
+      <div style="flex:1;padding:14px 16px;background:#fff">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">
+          <div style="border:1px solid #e6e3e0;border-radius:7px;height:48px"></div>
+          <div style="border:1px solid #e6e3e0;border-radius:7px;height:48px"></div>
+          <div style="border:1px solid #e6e3e0;border-radius:7px;height:48px"></div>
+        </div>
+        <div style="border:1.5px dashed #cfccc8;border-radius:7px;height:150px;display:flex;align-items:center;justify-content:center;color:#b5afa8;font:500 11px Inter">Overview chart</div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;top:380px;left:14px;width:300px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(.8deg)">Familiar for spreadsheet users, but 12+ modules crowd a top bar. Better with fewer top-level areas.</div>
+</div>
+
+
+<!-- ============ SECTION B — DASHBOARD LAYOUTS ============ -->
+<div class="wf-cap" style="position:absolute;left:80px;top:740px;font-size:30px;font-weight:700;color:#3a3531">B · Dashboard layouts</div>
+
+<!-- B1 : KPI band + charts -->
+<div style="position:absolute;left:80px;top:800px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">B1 — KPI band + trend charts</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;padding:16px">
+    <div style="display:flex;align-items:center;margin-bottom:14px"><div style="font:600 15px Inter;color:#2c2722">Good morning, Dana</div><div style="flex:1"></div><div style="font:500 11px Inter;color:#a8a29c">Today · all sites ▾</div></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:11px"><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Net sales</div><div style="font:600 19px Inter;color:#2c2722;margin-top:5px">$42.8k</div><div style="height:6px;width:60%;background:#ECEBFF;border-radius:3px;margin-top:6px"></div></div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:11px"><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Food cost</div><div style="font:600 19px Inter;color:#2c2722;margin-top:5px">28.4%</div><div style="height:6px;width:45%;background:#ECEBFF;border-radius:3px;margin-top:6px"></div></div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:11px"><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Covers</div><div style="font:600 19px Inter;color:#2c2722;margin-top:5px">612</div><div style="height:6px;width:70%;background:#ECEBFF;border-radius:3px;margin-top:6px"></div></div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:11px"><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Open POs</div><div style="font:600 19px Inter;color:#2c2722;margin-top:5px">7</div><div style="height:6px;width:35%;background:#ECEBFF;border-radius:3px;margin-top:6px"></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:10px">
+      <div style="border:1.5px dashed #cfccc8;border-radius:8px;height:150px;display:flex;align-items:flex-end;gap:6px;padding:14px">
+        <div style="flex:1;height:40%;background:#d6d3f5;border-radius:3px 3px 0 0"></div><div style="flex:1;height:65%;background:#d6d3f5;border-radius:3px 3px 0 0"></div><div style="flex:1;height:50%;background:#d6d3f5;border-radius:3px 3px 0 0"></div><div style="flex:1;height:80%;background:#6058FF;border-radius:3px 3px 0 0"></div><div style="flex:1;height:55%;background:#d6d3f5;border-radius:3px 3px 0 0"></div><div style="flex:1;height:72%;background:#d6d3f5;border-radius:3px 3px 0 0"></div><div style="flex:1;height:60%;background:#d6d3f5;border-radius:3px 3px 0 0"></div>
+      </div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:11px">
+        <div style="font:600 10px Inter;color:#5a544e;margin-bottom:8px">Needs attention</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div style="height:9px;width:90%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:78%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:84%;background:#e7e4e1;border-radius:3px"></div>
+          <div style="height:9px;width:70%;background:#e7e4e1;border-radius:3px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;top:300px;left:14px;width:260px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(-1deg)">Best default for execs — value at a glance, trends below.</div>
+</div>
+
+<!-- B2 : Role-based bento -->
+<div style="position:absolute;left:820px;top:800px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">B2 — Role-based widget bento</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;padding:16px">
+    <div style="display:flex;align-items:center;margin-bottom:14px"><div style="font:600 15px Inter;color:#2c2722">My workspace</div><div style="flex:1"></div><div style="height:22px;width:96px;border:1px solid #d6d3f5;color:#4a3fd6;border-radius:6px;font:600 10px Inter;display:flex;align-items:center;justify-content:center">Customize ▾</div></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:84px;gap:10px">
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:10px;grid-row:span 2;background:#f9f8f7"><div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Approvals</div><div style="font:600 22px Inter;color:#6058FF;margin-top:6px">5</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:10px"><div style="height:8px;width:90%;background:#e7e4e1;border-radius:3px"></div><div style="height:8px;width:80%;background:#e7e4e1;border-radius:3px"></div><div style="height:8px;width:86%;background:#e7e4e1;border-radius:3px"></div></div></div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:10px"><div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Low stock</div><div style="font:600 18px Inter;color:#2c2722;margin-top:4px">12 items</div></div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:10px"><div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Prep today</div><div style="font:600 18px Inter;color:#2c2722;margin-top:4px">34 tasks</div></div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:10px;grid-column:span 2"><div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Deliveries due</div><div style="display:flex;gap:6px;margin-top:8px"><div style="flex:1;height:9px;background:#e7e4e1;border-radius:3px"></div><div style="flex:1;height:9px;background:#e7e4e1;border-radius:3px"></div></div><div style="height:9px;width:60%;background:#e7e4e1;border-radius:3px;margin-top:6px"></div></div>
+      <div style="border:1.5px dashed #cfccc8;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#b5afa8;font:500 10px Inter">mini chart</div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;padding:10px;grid-column:span 2"><div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Recent activity</div><div style="display:flex;flex-direction:column;gap:6px;margin-top:8px"><div style="height:8px;width:92%;background:#e7e4e1;border-radius:3px"></div><div style="height:8px;width:80%;background:#e7e4e1;border-radius:3px"></div></div></div>
+    </div>
+  </div>
+  <div style="position:absolute;top:310px;left:14px;width:280px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(.9deg)">Each role (chef, buyer, GM, finance) gets a different default widget mix. Drag to rearrange.</div>
+</div>
+
+<!-- B3 : Ops feed -->
+<div style="position:absolute;left:1560px;top:800px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">B3 — Operations feed (action-first)</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;padding:16px">
+    <div style="display:flex;align-items:center;margin-bottom:14px"><div style="font:600 15px Inter;color:#2c2722">Today at Harbour St.</div><div style="flex:1"></div><div style="font:500 11px Inter;color:#a8a29c">Live</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Action queue</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="border:1px solid #e6e3e0;border-radius:7px;padding:9px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#6058FF"></span><div style="flex:1"><div style="height:8px;width:80%;background:#dcdad7;border-radius:3px"></div><div style="height:7px;width:50%;background:#ECEBFF;border-radius:3px;margin-top:5px"></div></div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:7px;padding:9px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#6058FF"></span><div style="flex:1"><div style="height:8px;width:70%;background:#dcdad7;border-radius:3px"></div><div style="height:7px;width:45%;background:#ECEBFF;border-radius:3px;margin-top:5px"></div></div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:7px;padding:9px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#cfccc8"></span><div style="flex:1"><div style="height:8px;width:85%;background:#dcdad7;border-radius:3px"></div><div style="height:7px;width:40%;background:#e7e4e1;border-radius:3px;margin-top:5px"></div></div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:7px;padding:9px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#cfccc8"></span><div style="flex:1"><div style="height:8px;width:75%;background:#dcdad7;border-radius:3px"></div><div style="height:7px;width:48%;background:#e7e4e1;border-radius:3px;margin-top:5px"></div></div></div>
+        </div>
+      </div>
+      <div>
+        <div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Pulse</div>
+        <div style="border:1px solid #e6e3e0;border-radius:7px;padding:11px;margin-bottom:8px"><div style="font:600 16px Inter;color:#2c2722">$8,240</div><div style="height:6px;width:55%;background:#ECEBFF;border-radius:3px;margin-top:6px"></div></div>
+        <div style="border:1px solid #e6e3e0;border-radius:7px;padding:11px;margin-bottom:8px"><div style="font:600 16px Inter;color:#2c2722">184 covers</div><div style="height:6px;width:65%;background:#ECEBFF;border-radius:3px;margin-top:6px"></div></div>
+        <div style="border:1.5px dashed #cfccc8;border-radius:7px;height:64px;display:flex;align-items:center;justify-content:center;color:#b5afa8;font:500 10px Inter">sales by hour</div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;top:300px;left:14px;width:280px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(-.7deg)">For floor / kitchen managers — what needs doing now, not month-end reporting.</div>
+</div>
+
+<!-- ============ SECTION C — TABLE DENSITY ============ -->
+<div class="wf-cap" style="position:absolute;left:80px;top:1320px;font-size:30px;font-weight:700;color:#3a3531">C · Data table density — inventory list</div>
+
+<!-- C1 dense -->
+<div style="position:absolute;left:80px;top:1380px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">C1 — Dense (power users)</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden">
+    <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;font:600 9px Inter;color:#8a847e;text-transform:uppercase;letter-spacing:.04em;padding:7px 12px;background:#f5f3f1;border-bottom:1.5px solid #e6e3e0"><div>SKU</div><div>Item</div><div>Category</div><div>On hand</div><div>Par</div><div>Status</div></div>
+    <div style="font:500 11px Inter;color:#5a544e">
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">F-101</div><div style="color:#2c2722">Roma tomatoes</div><div>Produce</div><div>24 kg</div><div>30</div><div style="color:#c4622d">Low</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">F-102</div><div style="color:#2c2722">Mozzarella fior di latte</div><div>Dairy</div><div>48 kg</div><div>20</div><div style="color:#4a3fd6">OK</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">F-118</div><div style="color:#2c2722">00 flour</div><div>Dry goods</div><div>110 kg</div><div>80</div><div style="color:#4a3fd6">OK</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">F-140</div><div style="color:#2c2722">Extra virgin olive oil</div><div>Oils</div><div>6 L</div><div>15</div><div style="color:#c4622d">Low</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">F-155</div><div style="color:#2c2722">Fresh basil</div><div>Produce</div><div>3 kg</div><div>4</div><div style="color:#c4622d">Low</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">B-201</div><div style="color:#2c2722">Pinot grigio (case)</div><div>Beverage</div><div>14 cs</div><div>10</div><div style="color:#4a3fd6">OK</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">B-210</div><div style="color:#2c2722">Cold brew concentrate</div><div>Beverage</div><div>9 L</div><div>12</div><div style="color:#c4622d">Low</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">D-300</div><div style="color:#2c2722">Vanilla bean paste</div><div>Pastry</div><div>2 kg</div><div>3</div><div style="color:#c4622d">Low</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px;border-bottom:1px solid #f0eeec"><div style="color:#a8a29c">D-312</div><div style="color:#2c2722">Dark chocolate 70%</div><div>Pastry</div><div>18 kg</div><div>12</div><div style="color:#4a3fd6">OK</div></div>
+      <div style="display:grid;grid-template-columns:54px 1.6fr 1fr .8fr .8fr .9fr;padding:6px 12px"><div style="color:#a8a29c">M-400</div><div style="color:#2c2722">Beef short rib</div><div>Meat</div><div>22 kg</div><div>18</div><div style="color:#4a3fd6">OK</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- C2 balanced -->
+<div style="position:absolute;left:820px;top:1380px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">C2 — Balanced + status pills <span style="color:#4a3fd6">· recommended</span></div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden">
+    <div style="display:grid;grid-template-columns:40px 2fr 1fr 1fr 1.1fr;font:600 9px Inter;color:#8a847e;text-transform:uppercase;letter-spacing:.04em;padding:10px 14px;background:#f5f3f1;border-bottom:1.5px solid #e6e3e0"><div></div><div>Item</div><div>On hand</div><div>Par</div><div>Status</div></div>
+    <div style="font:500 12px Inter;color:#5a544e">
+      <div style="display:grid;grid-template-columns:40px 2fr 1fr 1fr 1.1fr;align-items:center;padding:11px 14px;border-bottom:1px solid #f0eeec"><div style="width:24px;height:24px;background:#f0eeec;border-radius:6px;border:1px dashed #d2cfca"></div><div style="color:#2c2722">Roma tomatoes</div><div>24 kg</div><div>30 kg</div><div><span style="background:#fbe9dd;color:#c4622d;font:600 10px Inter;padding:3px 9px;border-radius:99px">Low</span></div></div>
+      <div style="display:grid;grid-template-columns:40px 2fr 1fr 1fr 1.1fr;align-items:center;padding:11px 14px;border-bottom:1px solid #f0eeec"><div style="width:24px;height:24px;background:#f0eeec;border-radius:6px;border:1px dashed #d2cfca"></div><div style="color:#2c2722">Mozzarella fior di latte</div><div>48 kg</div><div>20 kg</div><div><span style="background:#ECEBFF;color:#4a3fd6;font:600 10px Inter;padding:3px 9px;border-radius:99px">In stock</span></div></div>
+      <div style="display:grid;grid-template-columns:40px 2fr 1fr 1fr 1.1fr;align-items:center;padding:11px 14px;border-bottom:1px solid #f0eeec"><div style="width:24px;height:24px;background:#f0eeec;border-radius:6px;border:1px dashed #d2cfca"></div><div style="color:#2c2722">Extra virgin olive oil</div><div>6 L</div><div>15 L</div><div><span style="background:#fbe9dd;color:#c4622d;font:600 10px Inter;padding:3px 9px;border-radius:99px">Low</span></div></div>
+      <div style="display:grid;grid-template-columns:40px 2fr 1fr 1fr 1.1fr;align-items:center;padding:11px 14px;border-bottom:1px solid #f0eeec"><div style="width:24px;height:24px;background:#f0eeec;border-radius:6px;border:1px dashed #d2cfca"></div><div style="color:#2c2722">00 flour</div><div>110 kg</div><div>80 kg</div><div><span style="background:#ECEBFF;color:#4a3fd6;font:600 10px Inter;padding:3px 9px;border-radius:99px">In stock</span></div></div>
+      <div style="display:grid;grid-template-columns:40px 2fr 1fr 1fr 1.1fr;align-items:center;padding:11px 14px;border-bottom:1px solid #f0eeec"><div style="width:24px;height:24px;background:#f0eeec;border-radius:6px;border:1px dashed #d2cfca"></div><div style="color:#2c2722">Cold brew concentrate</div><div>9 L</div><div>12 L</div><div><span style="background:#fbe9dd;color:#c4622d;font:600 10px Inter;padding:3px 9px;border-radius:99px">Low</span></div></div>
+      <div style="display:grid;grid-template-columns:40px 2fr 1fr 1fr 1.1fr;align-items:center;padding:11px 14px"><div style="width:24px;height:24px;background:#f0eeec;border-radius:6px;border:1px dashed #d2cfca"></div><div style="color:#2c2722">Beef short rib</div><div>22 kg</div><div>18 kg</div><div><span style="background:#ECEBFF;color:#4a3fd6;font:600 10px Inter;padding:3px 9px;border-radius:99px">In stock</span></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- C3 spacious cards -->
+<div style="position:absolute;left:1560px;top:1380px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">C3 — Spacious cards (touch / mobile)</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;padding:14px;display:flex;flex-direction:column;gap:10px">
+    <div style="border:1px solid #e6e3e0;border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;background:#f0eeec;border-radius:9px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 13px Inter;color:#2c2722">Roma tomatoes</div><div style="font:500 11px Inter;color:#a8a29c;margin-top:3px">Produce · 24 kg on hand · par 30</div></div><span style="background:#fbe9dd;color:#c4622d;font:600 10px Inter;padding:4px 10px;border-radius:99px">Low</span></div>
+    <div style="border:1px solid #e6e3e0;border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;background:#f0eeec;border-radius:9px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 13px Inter;color:#2c2722">Mozzarella fior di latte</div><div style="font:500 11px Inter;color:#a8a29c;margin-top:3px">Dairy · 48 kg on hand · par 20</div></div><span style="background:#ECEBFF;color:#4a3fd6;font:600 10px Inter;padding:4px 10px;border-radius:99px">In stock</span></div>
+    <div style="border:1px solid #e6e3e0;border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;background:#f0eeec;border-radius:9px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 13px Inter;color:#2c2722">Extra virgin olive oil</div><div style="font:500 11px Inter;color:#a8a29c;margin-top:3px">Oils · 6 L on hand · par 15</div></div><span style="background:#fbe9dd;color:#c4622d;font:600 10px Inter;padding:4px 10px;border-radius:99px">Low</span></div>
+    <div style="border:1px solid #e6e3e0;border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;background:#f0eeec;border-radius:9px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 13px Inter;color:#2c2722">00 flour</div><div style="font:500 11px Inter;color:#a8a29c;margin-top:3px">Dry goods · 110 kg on hand · par 80</div></div><span style="background:#ECEBFF;color:#4a3fd6;font:600 10px Inter;padding:4px 10px;border-radius:99px">In stock</span></div>
+    <div style="border:1px solid #e6e3e0;border-radius:10px;padding:13px;display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;background:#f0eeec;border-radius:9px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 13px Inter;color:#2c2722">Cold brew concentrate</div><div style="font:500 11px Inter;color:#a8a29c;margin-top:3px">Beverage · 9 L on hand · par 12</div></div><span style="background:#fbe9dd;color:#c4622d;font:600 10px Inter;padding:4px 10px;border-radius:99px">Low</span></div>
+  </div>
+  <div style="position:absolute;top:312px;left:14px;width:280px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(.8deg)">Same list responsively collapses: dense table on desktop → cards on tablet/phone.</div>
+</div>
+
+<!-- ============ SECTION D — DETAIL / RECORD VIEWS ============ -->
+<div class="wf-cap" style="position:absolute;left:80px;top:1900px;font-size:30px;font-weight:700;color:#3a3531">D · Detail &amp; record views</div>
+
+<!-- D1 recipe + costing -->
+<div style="position:absolute;left:80px;top:1960px;width:700px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">D1 — Recipe card with live costing</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1.5px solid #e6e3e0">
+      <div style="font:500 11px Inter;color:#a8a29c">Menu &amp; recipes ›</div>
+      <div style="font:600 15px Inter;color:#2c2722">Margherita pizza</div>
+      <div style="flex:1"></div>
+      <div style="height:24px;width:64px;border:1px solid #d6d3f5;color:#4a3fd6;border-radius:6px;font:600 10px Inter;display:flex;align-items:center;justify-content:center">Edit</div>
+      <div style="height:24px;width:78px;background:#2c2722;color:#fff;border-radius:6px;font:600 10px Inter;display:flex;align-items:center;justify-content:center">Publish</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:0">
+      <div style="padding:16px;border-right:1.5px solid #e6e3e0">
+        <div style="display:flex;gap:12px;margin-bottom:14px">
+          <div style="width:90px;height:90px;background:#f0eeec;border-radius:9px;border:1.5px dashed #d2cfca"></div>
+          <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:7px">
+            <div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase">Yield 1 pizza · 12"</div>
+            <div style="height:9px;width:80%;background:#e7e4e1;border-radius:3px"></div>
+            <div style="height:9px;width:60%;background:#e7e4e1;border-radius:3px"></div>
+          </div>
+        </div>
+        <div style="font:600 10px Inter;color:#5a544e;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Ingredients</div>
+        <div style="font:500 11px Inter;color:#5a544e">
+          <div style="display:grid;grid-template-columns:1.8fr .7fr .7fr;padding:6px 0;border-bottom:1px solid #f0eeec"><div style="color:#2c2722">00 flour</div><div>220 g</div><div style="text-align:right;color:#a8a29c">$0.18</div></div>
+          <div style="display:grid;grid-template-columns:1.8fr .7fr .7fr;padding:6px 0;border-bottom:1px solid #f0eeec"><div style="color:#2c2722">San Marzano sauce</div><div>90 g</div><div style="text-align:right;color:#a8a29c">$0.42</div></div>
+          <div style="display:grid;grid-template-columns:1.8fr .7fr .7fr;padding:6px 0;border-bottom:1px solid #f0eeec"><div style="color:#2c2722">Fior di latte</div><div>80 g</div><div style="text-align:right;color:#a8a29c">$0.96</div></div>
+          <div style="display:grid;grid-template-columns:1.8fr .7fr .7fr;padding:6px 0;border-bottom:1px solid #f0eeec"><div style="color:#2c2722">Fresh basil</div><div>4 g</div><div style="text-align:right;color:#a8a29c">$0.11</div></div>
+          <div style="display:grid;grid-template-columns:1.8fr .7fr .7fr;padding:6px 0"><div style="color:#2c2722">Olive oil</div><div>8 ml</div><div style="text-align:right;color:#a8a29c">$0.07</div></div>
+        </div>
+      </div>
+      <div style="padding:16px;background:#f9f8f7">
+        <div style="font:600 10px Inter;color:#5a544e;margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em">Costing</div>
+        <div style="display:flex;justify-content:space-between;font:500 11px Inter;color:#5a544e;padding:6px 0;border-bottom:1px solid #ece9e6"><span>Plate cost</span><span style="color:#2c2722;font-weight:600">$1.74</span></div>
+        <div style="display:flex;justify-content:space-between;font:500 11px Inter;color:#5a544e;padding:6px 0;border-bottom:1px solid #ece9e6"><span>Menu price</span><span style="color:#2c2722;font-weight:600">$14.00</span></div>
+        <div style="display:flex;justify-content:space-between;font:500 11px Inter;color:#5a544e;padding:6px 0;border-bottom:1px solid #ece9e6"><span>Food cost %</span><span style="color:#4a3fd6;font-weight:700">12.4%</span></div>
+        <div style="display:flex;justify-content:space-between;font:500 11px Inter;color:#5a544e;padding:6px 0"><span>Gross margin</span><span style="color:#2c2722;font-weight:600">$12.26</span></div>
+        <div style="border:1.5px dashed #cfccc8;border-radius:8px;height:60px;display:flex;align-items:center;justify-content:center;color:#b5afa8;font:500 10px Inter;margin-top:12px">cost trend</div>
+        <div style="background:#ECEBFF;border-radius:8px;padding:9px 11px;margin-top:10px;font:500 10px/1.35 Inter;color:#4a3fd6">Olive oil up 14% — margin down $0.09 this week.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- D2 PO + approval -->
+<div style="position:absolute;left:840px;top:1960px;width:640px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">D2 — Purchase order + approval</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden">
+    <div style="padding:14px 16px;border-bottom:1.5px solid #e6e3e0;display:flex;align-items:center;gap:10px">
+      <div><div style="font:600 15px Inter;color:#2c2722">PO-2041</div><div style="font:500 10px Inter;color:#a8a29c;margin-top:2px">Bayside Produce Co.</div></div>
+      <div style="flex:1"></div>
+      <span style="background:#fff6e6;color:#b07d1a;font:600 10px Inter;padding:4px 11px;border-radius:99px;border:1px solid #f0e2c0">Pending approval</span>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+        <div><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Deliver to</div><div style="font:500 11px Inter;color:#2c2722;margin-top:4px">Harbour St.</div></div>
+        <div><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Expected</div><div style="font:500 11px Inter;color:#2c2722;margin-top:4px">Jun 26</div></div>
+        <div><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em">Raised by</div><div style="font:500 11px Inter;color:#2c2722;margin-top:4px">M. Okafor</div></div>
+      </div>
+      <div style="border:1px solid #e6e3e0;border-radius:8px;overflow:hidden;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:2fr .8fr .8fr .9fr;font:600 8px Inter;color:#8a847e;text-transform:uppercase;letter-spacing:.04em;padding:8px 12px;background:#f5f3f1">  <div>Item</div><div>Qty</div><div>Unit</div><div style="text-align:right">Total</div></div>
+        <div style="font:500 11px Inter;color:#5a544e">
+          <div style="display:grid;grid-template-columns:2fr .8fr .8fr .9fr;padding:8px 12px;border-top:1px solid #f0eeec"><div style="color:#2c2722">Roma tomatoes</div><div>30 kg</div><div>$2.10</div><div style="text-align:right">$63.00</div></div>
+          <div style="display:grid;grid-template-columns:2fr .8fr .8fr .9fr;padding:8px 12px;border-top:1px solid #f0eeec"><div style="color:#2c2722">Fresh basil</div><div>2 kg</div><div>$18.0</div><div style="text-align:right">$36.00</div></div>
+          <div style="display:grid;grid-template-columns:2fr .8fr .8fr .9fr;padding:8px 12px;border-top:1px solid #f0eeec"><div style="color:#2c2722">Mixed leaves</div><div>8 kg</div><div>$6.40</div><div style="text-align:right">$51.20</div></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:24px;font:500 11px Inter;color:#5a544e;margin-bottom:16px"><span>Subtotal $150.20</span><span style="color:#2c2722;font-weight:700">Total $165.22</span></div>
+      <div style="display:flex;gap:10px;border-top:1.5px solid #e6e3e0;padding-top:14px">
+        <div style="flex:1;height:34px;border:1px solid #d2cfca;border-radius:7px;display:flex;align-items:center;justify-content:center;font:600 11px Inter;color:#5a544e">Request changes</div>
+        <div style="flex:1;height:34px;background:#6058FF;border-radius:7px;display:flex;align-items:center;justify-content:center;font:600 11px Inter;color:#fff">Approve &amp; send</div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;top:368px;left:14px;width:280px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(-.8deg)">Approval bar is persistent + thumb-reachable on mobile — same record, responsive.</div>
+</div>
+
+<!-- ============ SECTION E — MOBILE ============ -->
+<div class="wf-cap" style="position:absolute;left:80px;top:2540px;font-size:30px;font-weight:700;color:#3a3531">E · Mobile (responsive)</div>
+
+<!-- E1 mobile dashboard -->
+<div style="position:absolute;left:80px;top:2600px;width:280px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">E1 — Dashboard</div>
+  <div style="background:#2c2722;border-radius:28px;padding:8px;box-shadow:0 4px 16px rgba(0,0,0,.16)">
+    <div style="background:#fff;border-radius:22px;overflow:hidden;height:520px;display:flex;flex-direction:column">
+      <div style="height:26px;background:#fbfaf9;display:flex;align-items:center;justify-content:center"><div style="width:70px;height:5px;background:#dcdad7;border-radius:3px"></div></div>
+      <div style="padding:14px;flex:1;overflow:hidden">
+        <div style="display:flex;align-items:center;margin-bottom:14px"><div style="font:600 15px Inter;color:#2c2722">Today</div><div style="flex:1"></div><div style="width:26px;height:26px;background:#ECEBFF;border-radius:50%"></div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px">
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:10px"><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase">Sales</div><div style="font:600 17px Inter;color:#2c2722;margin-top:4px">$8.2k</div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:10px"><div style="font:600 8px Inter;color:#a8a29c;text-transform:uppercase">Covers</div><div style="font:600 17px Inter;color:#2c2722;margin-top:4px">184</div></div>
+        </div>
+        <div style="font:600 9px Inter;color:#a8a29c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Needs you</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:10px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#6058FF"></span><div style="flex:1;height:8px;background:#dcdad7;border-radius:3px"></div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:10px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#6058FF"></span><div style="flex:1;height:8px;background:#dcdad7;border-radius:3px"></div></div>
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:10px;display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#cfccc8"></span><div style="flex:1;height:8px;background:#dcdad7;border-radius:3px"></div></div>
+        </div>
+      </div>
+      <div style="height:50px;border-top:1.5px solid #e6e3e0;display:flex;align-items:center;justify-content:space-around;padding:0 8px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:18px;height:18px;background:#6058FF;border-radius:5px"></div><div style="width:22px;height:5px;background:#ECEBFF;border-radius:2px"></div></div>
+        <div style="width:18px;height:18px;border:1.5px solid #cfccc8;border-radius:5px"></div>
+        <div style="width:18px;height:18px;border:1.5px solid #cfccc8;border-radius:5px"></div>
+        <div style="width:18px;height:18px;border:1.5px solid #cfccc8;border-radius:5px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- E2 mobile inventory -->
+<div style="position:absolute;left:420px;top:2600px;width:280px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px Inter;color:#6b6560">E2 — Inventory + scan</div>
+  <div style="background:#2c2722;border-radius:28px;padding:8px;box-shadow:0 4px 16px rgba(0,0,0,.16)">
+    <div style="background:#fff;border-radius:22px;overflow:hidden;height:520px;display:flex;flex-direction:column;position:relative">
+      <div style="height:26px;background:#fbfaf9;display:flex;align-items:center;justify-content:center"><div style="width:70px;height:5px;background:#dcdad7;border-radius:3px"></div></div>
+      <div style="padding:14px 14px 0;flex:1;overflow:hidden">
+        <div style="font:600 15px Inter;color:#2c2722;margin-bottom:10px">Inventory</div>
+        <div style="height:32px;background:#f0eeec;border:1px solid #e0ddd9;border-radius:9px;display:flex;align-items:center;padding:0 12px;font:500 11px Inter;color:#a8a29c;margin-bottom:12px">Search items…</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:11px;display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;background:#f0eeec;border-radius:7px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 11px Inter;color:#2c2722">Roma tomatoes</div><div style="height:6px;width:50%;background:#e7e4e1;border-radius:3px;margin-top:5px"></div></div><span style="background:#fbe9dd;color:#c4622d;font:600 9px Inter;padding:3px 7px;border-radius:99px">Low</span></div>
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:11px;display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;background:#f0eeec;border-radius:7px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 11px Inter;color:#2c2722">Fior di latte</div><div style="height:6px;width:60%;background:#e7e4e1;border-radius:3px;margin-top:5px"></div></div><span style="background:#ECEBFF;color:#4a3fd6;font:600 9px Inter;padding:3px 7px;border-radius:99px">OK</span></div>
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:11px;display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;background:#f0eeec;border-radius:7px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 11px Inter;color:#2c2722">Olive oil</div><div style="height:6px;width:45%;background:#e7e4e1;border-radius:3px;margin-top:5px"></div></div><span style="background:#fbe9dd;color:#c4622d;font:600 9px Inter;padding:3px 7px;border-radius:99px">Low</span></div>
+          <div style="border:1px solid #e6e3e0;border-radius:9px;padding:11px;display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;background:#f0eeec;border-radius:7px;border:1px dashed #d2cfca"></div><div style="flex:1"><div style="font:600 11px Inter;color:#2c2722">00 flour</div><div style="height:6px;width:55%;background:#e7e4e1;border-radius:3px;margin-top:5px"></div></div><span style="background:#ECEBFF;color:#4a3fd6;font:600 9px Inter;padding:3px 7px;border-radius:99px">OK</span></div>
+        </div>
+      </div>
+      <div style="position:absolute;right:16px;bottom:64px;width:48px;height:48px;background:#6058FF;border-radius:50%;box-shadow:0 4px 12px rgba(96,88,255,.4);display:flex;align-items:center;justify-content:center;color:#fff;font:600 18px Inter">＋</div>
+      <div style="height:50px;border-top:1.5px solid #e6e3e0;display:flex;align-items:center;justify-content:space-around;padding:0 8px">
+        <div style="width:18px;height:18px;border:1.5px solid #cfccc8;border-radius:5px"></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:18px;height:18px;background:#6058FF;border-radius:5px"></div><div style="width:22px;height:5px;background:#ECEBFF;border-radius:2px"></div></div>
+        <div style="width:18px;height:18px;border:1.5px solid #cfccc8;border-radius:5px"></div>
+        <div style="width:18px;height:18px;border:1.5px solid #cfccc8;border-radius:5px"></div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;top:300px;left:300px;width:230px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(1deg)">FAB = scan / quick stock count. Critical for warehouse staff on the move.</div>
+</div>
+
+<!-- ============ SECTION F — WORKFLOW STORYBOARD ============ -->
+<div class="wf-cap" style="position:absolute;left:80px;top:3180px;font-size:30px;font-weight:700;color:#3a3531">F · Flow — low stock to goods receipt</div>
+
+<div style="position:absolute;left:80px;top:3250px;width:300px">
+  <div data-drags-parent="1" style="position:absolute;top:-22px;font:600 11px Inter;color:#6b6560">1 · Low-stock alert</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:13px;height:200px">
+    <div style="font:600 12px Inter;color:#2c2722;margin-bottom:10px">Reorder suggestions</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;border:1px solid #e6e3e0;border-radius:7px;padding:8px"><span style="width:8px;height:8px;border-radius:50%;background:#c4622d"></span><div style="flex:1;font:500 10px Inter;color:#2c2722">Roma tomatoes</div><span style="font:600 9px Inter;color:#a8a29c">30 kg</span></div>
+      <div style="display:flex;align-items:center;gap:8px;border:1px solid #e6e3e0;border-radius:7px;padding:8px"><span style="width:8px;height:8px;border-radius:50%;background:#c4622d"></span><div style="flex:1;font:500 10px Inter;color:#2c2722">Olive oil</div><span style="font:600 9px Inter;color:#a8a29c">12 L</span></div>
+      <div style="display:flex;align-items:center;gap:8px;border:1px solid #e6e3e0;border-radius:7px;padding:8px"><span style="width:8px;height:8px;border-radius:50%;background:#c4622d"></span><div style="flex:1;font:500 10px Inter;color:#2c2722">Fresh basil</div><span style="font:600 9px Inter;color:#a8a29c">2 kg</span></div>
+    </div>
+    <div style="height:28px;background:#2c2722;border-radius:7px;display:flex;align-items:center;justify-content:center;font:600 10px Inter;color:#fff;margin-top:12px">Create PO →</div>
+  </div>
+</div>
+<div style="position:absolute;left:392px;top:3340px;font:600 22px Inter;color:#b5afa8">→</div>
+
+<div style="position:absolute;left:420px;top:3250px;width:300px">
+  <div data-drags-parent="1" style="position:absolute;top:-22px;font:600 11px Inter;color:#6b6560">2 · Draft PO</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:13px;height:200px">
+    <div style="display:flex;align-items:center;margin-bottom:10px"><div style="font:600 12px Inter;color:#2c2722">PO-2041 · draft</div></div>
+    <div style="font:500 9px Inter;color:#a8a29c;text-transform:uppercase;margin-bottom:7px">Bayside Produce Co.</div>
+    <div style="display:flex;flex-direction:column;gap:6px;font:500 10px Inter;color:#5a544e">
+      <div style="display:flex;justify-content:space-between;border-bottom:1px solid #f0eeec;padding-bottom:5px"><span>Roma tomatoes</span><span>$63.00</span></div>
+      <div style="display:flex;justify-content:space-between;border-bottom:1px solid #f0eeec;padding-bottom:5px"><span>Fresh basil</span><span>$36.00</span></div>
+      <div style="display:flex;justify-content:space-between;border-bottom:1px solid #f0eeec;padding-bottom:5px"><span>Mixed leaves</span><span>$51.20</span></div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;color:#2c2722;padding-top:3px"><span>Total</span><span>$165.22</span></div>
+    </div>
+    <div style="height:28px;background:#6058FF;border-radius:7px;display:flex;align-items:center;justify-content:center;font:600 10px Inter;color:#fff;margin-top:14px">Submit for approval</div>
+  </div>
+</div>
+<div style="position:absolute;left:732px;top:3340px;font:600 22px Inter;color:#b5afa8">→</div>
+
+<div style="position:absolute;left:760px;top:3250px;width:300px">
+  <div data-drags-parent="1" style="position:absolute;top:-22px;font:600 11px Inter;color:#6b6560">3 · Approval</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:13px;height:200px">
+    <span style="background:#fff6e6;color:#b07d1a;font:600 9px Inter;padding:3px 9px;border-radius:99px;border:1px solid #f0e2c0">Pending · GM</span>
+    <div style="font:600 12px Inter;color:#2c2722;margin:12px 0 8px">PO-2041 — $165.22</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+      <div style="height:8px;width:90%;background:#e7e4e1;border-radius:3px"></div>
+      <div style="height:8px;width:70%;background:#e7e4e1;border-radius:3px"></div>
+      <div style="height:8px;width:80%;background:#e7e4e1;border-radius:3px"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <div style="flex:1;height:30px;border:1px solid #d2cfca;border-radius:7px;display:flex;align-items:center;justify-content:center;font:600 10px Inter;color:#5a544e">Decline</div>
+      <div style="flex:1;height:30px;background:#6058FF;border-radius:7px;display:flex;align-items:center;justify-content:center;font:600 10px Inter;color:#fff">Approve</div>
+    </div>
+  </div>
+</div>
+<div style="position:absolute;left:1072px;top:3340px;font:600 22px Inter;color:#b5afa8">→</div>
+
+<div style="position:absolute;left:1100px;top:3250px;width:300px">
+  <div data-drags-parent="1" style="position:absolute;top:-22px;font:600 11px Inter;color:#6b6560">4 · Goods receipt</div>
+  <div style="background:#fff;border:1.5px solid #c9c7c4;border-radius:5px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:13px;height:200px">
+    <span style="background:#ECEBFF;color:#4a3fd6;font:600 9px Inter;padding:3px 9px;border-radius:99px">Delivered</span>
+    <div style="font:600 12px Inter;color:#2c2722;margin:12px 0 8px">Check in delivery</div>
+    <div style="display:flex;flex-direction:column;gap:7px;font:500 10px Inter;color:#5a544e">
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;background:#6058FF;border-radius:4px"></span>Roma tomatoes · 30 kg</div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;background:#6058FF;border-radius:4px"></span>Fresh basil · 2 kg</div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border:1.5px solid #c2bdb7;border-radius:4px"></span>Mixed leaves · short 1 kg</div>
+    </div>
+    <div style="height:28px;background:#2c2722;border-radius:7px;display:flex;align-items:center;justify-content:center;font:600 10px Inter;color:#fff;margin-top:16px">Receive &amp; update stock</div>
+  </div>
+</div>
+<div style="position:absolute;left:1100px;top:3480px;width:300px;background:#fef4a8;padding:9px 11px;font:13px/1.35 Caveat;color:#5a4a14;box-shadow:0 1px 3px rgba(0,0,0,.12);transform:rotate(-1deg)">Receiving writes back to inventory → closes the loop that started with the low-stock alert.</div>
+</x-dc>
+</body>
+</html>

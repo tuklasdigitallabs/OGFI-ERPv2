@@ -1,0 +1,110 @@
+# OGFI ERP — Receiving UI Specification
+
+**Phase:** I  
+**Primary users:** Warehouse receiver, branch storekeeper, Branch Manager, Purchasing, Finance reviewers  
+**Purpose:** Receive supplier deliveries accurately, handle partial/rejected items, attach evidence, and post inventory exactly once.
+
+---
+
+## 1. Screen inventory
+
+| ID | Screen | Purpose |
+|---|---|---|
+| REC-01 | Receiving Queue | Show expected, overdue, and partially received POs by location |
+| REC-02 | Receive Delivery | Create/continue receiving report against PO |
+| REC-03 | Receiving Report Detail | Review receipt, discrepancies, attachments, inventory posting, audit history |
+| REC-04 | Discrepancy Queue | Resolve shortages, damage, rejections, and supplier follow-up |
+
+## 2. Receiving Queue
+
+### Required fields
+
+- PO number
+- Supplier
+- Delivery location
+- Expected delivery date/time
+- Ordered value/quantity summary
+- Receipt status: not received, partial, complete, discrepancy
+- Overdue age
+- Assigned receiver / last activity
+
+### Actions
+
+- Start receiving
+- Continue partial receipt
+- View PO
+- View discrepancy
+
+## 3. Receive Delivery screen
+
+### Header context
+
+- PO number/status
+- Supplier
+- Company/brand/location
+- Delivery date/time
+- Delivery Receipt number field
+- Receiver identity and timestamp
+- PO expected delivery date
+- Delivery aging indicator for issued or partially received POs
+
+Implemented list/detail/export note: Receiving Report lists, detail pages, and CSV export show source PO status and expected delivery date so receipts can be reconciled against the issued-PO delivery schedule.
+
+Implemented audit note: Receiving Report detail shows append-only audit events with actor names when available.
+
+Implemented cache/update note: Posting a Receiving Report refreshes the receiving list/detail, Purchase Order list, and affected Purchase Order detail so PO status and receiving progress stay current.
+
+### Line-level controls
+
+For each PO line show:
+
+- Item code/name, ordered quantity/UOM
+- Previously accepted quantity
+- Quantity delivered today
+- Quantity accepted today
+- Rejected / damaged / short quantity
+- Unit cost and value where user is allowed to see it
+- Lot/batch and expiry fields when item configuration requires them
+- Reason/evidence control for discrepancy
+
+### Validation
+
+- Accepted + rejected + shortage logic must reconcile to delivered/ordered context.
+- Cannot receive into a location outside user scope.
+- Cannot post duplicate receipt for same delivery/line without explicit controlled action.
+- Lot/expiry required fields block posting where configured.
+- Damage/rejection requires reason and evidence when policy requires it.
+- Current implementation requires a discrepancy evidence reference whenever a line has rejected, damaged, or short quantity. Binary photo/file upload remains a later attachment-service slice.
+
+## 4. Receiving status and posting
+
+```text
+Draft → In Progress → Submitted / Posted
+                    ↘ Discrepancy Open → Resolved / Closed
+```
+
+- Posting creates inventory movement only for accepted quantity.
+- Partial receipt leaves PO outstanding.
+- Rejected/short quantities do not increase stock.
+- Reversal is a permissioned full-document action: it requires a reason, writes linked reversing movements for accepted quantities, restores PO received quantities/status, and never edits posted quantities silently.
+
+## 5. Discrepancy handling
+
+Show ordered, delivered, accepted, rejected, outstanding, reason, evidence, assigned owner, supplier follow-up status, and resolution outcome.
+
+Notify Purchasing and relevant manager when configured thresholds are met.
+
+## 6. Mobile behavior
+
+- Large line-item touch controls and barcode/search support where available.
+- Camera attachment for delivery receipt and damage evidence.
+- Persistent `Review & Post Receipt` action.
+- Do not rely on horizontal tables; use expandable item cards.
+
+## 7. Acceptance criteria
+
+- Full, partial, damaged, and rejected delivery cases are supported.
+- Inventory increases exactly once for accepted quantities.
+- Outstanding PO quantity/status are recalculated accurately.
+- Audit trail contains receiver, timestamps, quantities, evidence, and posting result.
+- Receiver cannot post inventory to wrong location.

@@ -1,0 +1,46 @@
+Proceed with the approved Phase I Core Administration scaffold.
+
+Create only the minimum runnable foundation required for the first milestone:
+
+A user can sign in, have a role and scope assignment, select an authorized Company → Brand → Location context, create a draft Purchase Request, submit it for approval, and view its audit history.
+
+Use the approved technical stack:
+
+pnpm workspace / monorepo
+Next.js + TypeScript for the web application
+PostgreSQL
+Prisma
+Redis and BullMQ worker foundation
+Docker Compose
+Caddy or Nginx-ready reverse-proxy configuration
+Tailwind CSS and the documented Modern SaaS UI standards
+Vitest and Playwright foundations
+
+Create:
+
+apps/web
+apps/worker
+packages/database
+packages/ui
+infra/caddy
+Docker Compose configuration
+.env.example with placeholder values only
+Prisma schema and initial migration structure
+health-check endpoint
+local development README updates
+basic CI-friendly lint, type-check, and test commands
+
+Do not build Purchase Orders, receiving, inventory posting, transfers, wastage, dashboards, reports, or external integrations yet.
+
+Do not deploy to the VPS.
+Do not use production credentials.
+Do not create hardcoded approval thresholds, branch names, brands, roles, or tenant rules.
+
+Before editing, state the files you will create or modify.
+After implementation, run the relevant checks and report only:
+
+Files created or changed
+Commands run and results
+What is working
+What is intentionally deferred
+Any blockers or unresolved decisions
