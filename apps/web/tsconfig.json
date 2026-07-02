@@ -1,0 +1,36 @@
+{
+  "extends": "../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "jsx": "preserve",
+    "noEmit": true,
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "isolatedModules": true
+  },
+  "include": [
+    ".next-build-check/types/**/*.ts",
+    ".next-e2e/types/**/*.ts",
+    ".next-ogfi/types/**/*.ts",
+    ".next-ui01-build/types/**/*.ts",
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next-ogfi-devrun/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next-ogfi",
+    ".next-e2e",
+    ".next-build-check"
+  ]
+}

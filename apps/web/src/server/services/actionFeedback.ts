@@ -1,0 +1,660 @@
+export type ActionFeedback = {
+  code: string;
+  message: string;
+  title: string;
+};
+
+const actionFeedbackMessages: Record<string, string> = {
+  GOODS_RECEIPT_LINE_REQUIRED:
+    "A receiving report needs at least one receivable line.",
+  GOODS_RECEIPT_NOT_DRAFT_FOR_POSTING:
+    "Only draft receiving reports can be posted.",
+  GOODS_RECEIPT_NOT_POSTED_FOR_REVERSAL:
+    "Only posted receiving reports can be reversed.",
+  GOODS_RECEIPT_ALREADY_REVERSED:
+    "This receiving report has already been reversed.",
+  GOODS_RECEIPT_NOT_FOUND: "This receiving report is no longer available.",
+  GOODS_RECEIPT_SELF_REVERSAL_NOT_ALLOWED:
+    "The original receiver cannot reverse their own receiving report.",
+  GOODS_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_REQUIRED:
+    "This receiving report is missing its posted inventory movement link.",
+  GOODS_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_INVALID:
+    "This receiving report is linked to an invalid original inventory movement.",
+  GOODS_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH:
+    "This receiving report movement link does not match the original receipt line.",
+  GOODS_RECEIPT_REVERSAL_PO_CLOSED:
+    "Receiving reversal is blocked because the Purchase Order is closed or cancelled.",
+  GOODS_RECEIPT_REVERSAL_PO_CLOSURE_ACTIVE:
+    "Receiving reversal is blocked while a remaining-balance closure is active.",
+  GOODS_RECEIPT_REVERSAL_OPEN_RECEIPT_EXISTS:
+    "Post or resolve other open receiving reports for this Purchase Order before reversal.",
+  GOODS_RECEIPT_REVERSAL_PO_RECEIVED_QTY_INVALID:
+    "The Purchase Order received quantity no longer matches this receipt.",
+  GOODS_RECEIPT_REVERSAL_STATE_CONFLICT:
+    "This receiving report changed while reversal was being processed. Refresh and try again.",
+  INVENTORY_LOCATION_NOT_FOUND:
+    "The receiving inventory location is no longer available.",
+  INVENTORY_LOCATION_SCOPE_DENIED:
+    "That inventory location is outside your authorized scope.",
+  INVENTORY_BALANCE_NEGATIVE_NOT_ALLOWED:
+    "This action would make stock negative, so it was blocked.",
+  INVENTORY_EXPIRY_REQUIRED:
+    "The selected item requires an expiry date before this stock movement can be posted.",
+  INVENTORY_ITEM_NOT_FOUND:
+    "The selected inventory item is no longer available.",
+  INVENTORY_LOT_REQUIRED:
+    "The selected item requires a lot number before this stock movement can be posted.",
+  INVENTORY_MOVEMENT_FROZEN_BY_STOCK_COUNT:
+    "Stock movement is frozen while an active count session is locking this inventory location.",
+  INVENTORY_SEARCH_QUERY_TOO_LONG:
+    "Shorten the inventory search text and try again.",
+  INVENTORY_MOVEMENT_BASE_QUANTITY_INVALID:
+    "The stock movement base quantity must be greater than zero.",
+  INVENTORY_MOVEMENT_ENTERED_QUANTITY_INVALID:
+    "The stock movement entered quantity must be greater than zero.",
+  INVENTORY_UOM_CONVERSION_REQUIRED:
+    "A unit conversion is required before this inventory movement can be posted.",
+  ITEM_NOT_TRACKED_FOR_INVENTORY:
+    "The selected item is not configured for inventory tracking.",
+  TRANSFER_RECEIPT_QUANTITY_INVALID:
+    "Transfer receipt quantities must be zero or greater.",
+  TRANSFER_RECEIPT_EXCEEDS_DISPATCHED:
+    "The receipt quantities exceed the remaining dispatched quantity.",
+  TRANSFER_RECEIPT_DISCREPANCY_REASON_REQUIRED:
+    "Provide a reason for rejected, damaged, or short transfer quantities.",
+  TRANSFER_RECEIPT_DISCREPANCY_EVIDENCE_REQUIRED:
+    "Provide an evidence reference for rejected, damaged, or short transfer quantities.",
+  TRANSFER_RECEIPT_QUANTITY_REQUIRED:
+    "Enter at least one accepted, rejected, damaged, or short quantity.",
+  TRANSFER_RECEIPT_STATE_CONFLICT:
+    "This transfer changed while the receipt was being posted. Refresh and try again.",
+  TRANSFER_RECEIPT_NOT_FOUND: "This transfer receipt is no longer available.",
+  TRANSFER_RECEIPT_NOT_POSTED_FOR_REVERSAL:
+    "Only posted transfer receipts can be reversed.",
+  TRANSFER_RECEIPT_ALREADY_REVERSED:
+    "This transfer receipt has already been reversed.",
+  TRANSFER_RECEIPT_SELF_REVERSAL_NOT_ALLOWED:
+    "The original receiver cannot reverse their own transfer receipt.",
+  TRANSFER_RECEIPT_DISPATCHER_REVERSAL_NOT_ALLOWED:
+    "The dispatcher cannot reverse the destination receipt for the same transfer.",
+  TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_REQUIRED:
+    "This transfer receipt is missing its posted stock movement link.",
+  TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_INVALID:
+    "This transfer receipt is linked to an invalid original stock movement.",
+  TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH:
+    "This transfer receipt movement link does not match the original receipt line.",
+  TRANSFER_RECEIPT_LINE_ALREADY_REVERSED:
+    "This transfer receipt line has already been reversed.",
+  TRANSFER_RECEIPT_REVERSAL_ROLLUP_INVALID:
+    "Transfer receipt reversal is blocked because the transfer rollups no longer match this receipt.",
+  TRANSFER_RECEIPT_REVERSAL_STATE_CONFLICT:
+    "This transfer receipt changed while reversal was being processed. Refresh and try again.",
+  GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED:
+    "The receiving reference could not be allocated. Try again.",
+  PURCHASE_ORDER_NOT_FOUND:
+    "The selected Purchase Order is no longer available.",
+  PERMISSION_DENIED: "You do not have permission to perform this action.",
+  SCOPE_DENIED: "This record is outside your authorized scope.",
+  AUTH_REQUIRED: "Sign in again before continuing this action.",
+  VALIDATION_FAILED:
+    "Review the required fields and field lengths, then try again.",
+  LOGIN_ACCOUNT_NOT_FOUND:
+    "That account is inactive or not configured for this local demo.",
+  CORE_ADMIN_USER_DUPLICATE:
+    "A user with that email already exists in this tenant.",
+  CORE_ADMIN_ROLE_DUPLICATE:
+    "A role with that code already exists in this tenant.",
+  CORE_ADMIN_ROLE_CODE_INVALID:
+    "Enter a valid role code using letters, numbers, dashes, underscores, or periods.",
+  CORE_ADMIN_COMPANY_DUPLICATE:
+    "A company with that code already exists in this tenant.",
+  CORE_ADMIN_COMPANY_CODE_INVALID:
+    "Enter a valid company code using letters, numbers, dashes, underscores, or periods.",
+  CORE_ADMIN_BRAND_DUPLICATE:
+    "A brand with that code already exists for the selected company.",
+  CORE_ADMIN_BRAND_CODE_INVALID:
+    "Enter a valid brand code using letters, numbers, dashes, underscores, or periods.",
+  CORE_ADMIN_LOCATION_DUPLICATE:
+    "A location with that code already exists for the selected company.",
+  CORE_ADMIN_LOCATION_CODE_INVALID:
+    "Enter a valid location code using letters, numbers, dashes, underscores, or periods.",
+  BRANCH_BRAND_REQUIRED:
+    "Select a brand before creating a branch location.",
+  BRAND_NOT_FOUND:
+    "The selected brand is inactive, missing, or outside the selected company.",
+  OPERATIONAL_REASON_CODE_INVALID:
+    "Select an active reason code configured for this workflow and type.",
+  OPERATIONAL_REASON_CODE_NOT_ACTIVE:
+    "This reason code is already inactive.",
+  OPERATIONAL_REASON_CODE_NOT_FOUND:
+    "This reason code is no longer available.",
+  OPERATIONAL_REASON_CODE_DUPLICATE:
+    "A reason code with this workflow and code already exists for this company.",
+  PURCHASE_ORDER_NOT_ISSUED_FOR_RECEIVING:
+    "Only issued or partially received Purchase Orders can be received.",
+  PURCHASE_ORDER_NOT_RECEIVABLE: "This Purchase Order is no longer receivable.",
+  ACTIVE_QUOTATION_RECOMMENDATION_EXISTS:
+    "This quotation request already has an active recommendation.",
+  APPROVAL_ASSIGNMENT_DENIED:
+    "This approval step is not assigned to your role or user.",
+  APPROVAL_DOCUMENT_NOT_FOUND:
+    "The source document for this approval is no longer available.",
+  APPROVAL_NOT_ACTIONABLE:
+    "This approval is no longer actionable. Refresh the inbox and review the latest status.",
+  APPROVAL_RULE_NOT_CONFIGURED:
+    "No approval rule is configured for this action yet.",
+  APPROVAL_RULE_STEP_NOT_CONFIGURED:
+    "The approval rule does not have an active first step configured.",
+  APPROVAL_SCOPE_DENIED:
+    "This approval is outside your authorized company, brand, or location scope.",
+  ADMIN_SCOPE_DENIED:
+    "Your admin scope does not allow this user access change.",
+  ADMIN_ROLE_CORE_PERMISSION_REQUIRED:
+    "The configured admin role must retain core administration permission.",
+  COMPANY_NOT_FOUND: "The selected company scope is no longer available.",
+  BASE_UOM_NOT_FOUND: "The selected base UOM is no longer available.",
+  DUPLICATE_ITEM_CATEGORY_CODE:
+    "An item category with this code already exists.",
+  DUPLICATE_ITEM_CODE: "An item with this code already exists.",
+  DUPLICATE_ACTIVE_ROLE_ASSIGNMENT:
+    "This user already has that active role assignment.",
+  DUPLICATE_ACTIVE_SCOPE_ASSIGNMENT:
+    "This user already has that active scope assignment.",
+  DUPLICATE_SUPPLIER_CODE: "A supplier with this code already exists.",
+  DUPLICATE_SUPPLIER_ITEM_LINK:
+    "This supplier is already linked to the selected item and UOM.",
+  DUPLICATE_UOM_CODE: "A UOM with this code already exists.",
+  INVALID_UOM_CONVERSION:
+    "The UOM conversion must use different units and a valid positive factor.",
+  INVALID_STATUS_TRANSITION:
+    "That status change is no longer valid. Refresh and review the latest state.",
+  ITEM_NOT_FOUND: "The selected item is no longer available.",
+  ITEM_CATEGORY_NOT_FOUND: "The selected item category is no longer available.",
+  ITEM_CATEGORY_HAS_ACTIVE_ITEMS:
+    "This category is still used by active items. Move or deactivate those items before deactivating the category.",
+  MIXED_CURRENCY_QUOTES_UNSUPPORTED:
+    "Mixed-currency quotation comparison is blocked until an evaluated FX policy is configured.",
+  NON_LOWEST_JUSTIFICATION_REQUIRED:
+    "A non-lowest supplier recommendation requires a justification.",
+  NO_SUPPLIER_QUOTES_FOR_RECOMMENDATION:
+    "Record at least one supplier quote before creating a recommendation.",
+  PR_LINE_ITEM_NOT_FOUND:
+    "The selected Purchase Request item is no longer available.",
+  PR_LINE_UOM_NOT_FOUND:
+    "The selected Purchase Request unit is no longer available.",
+  PR_LINE_UOM_REQUIRED: "Select a catalog unit or enter a free-text UOM.",
+  PURCHASE_ORDER_ALREADY_EXISTS_FOR_RECOMMENDATION:
+    "A Purchase Order already exists for this approved supplier recommendation.",
+  PURCHASE_ORDER_ALREADY_SUBMITTED:
+    "This Purchase Order has already been submitted for approval.",
+  PURCHASE_ORDER_CLOSURE_ALREADY_PENDING:
+    "A remaining-balance closure request is already pending approval.",
+  PURCHASE_ORDER_AMENDMENT_ALREADY_PENDING:
+    "A Purchase Order amendment is already pending approval.",
+  PURCHASE_ORDER_AMENDMENT_LINES_INVALID:
+    "Review the amendment line quantities and prices, then try again.",
+  PURCHASE_ORDER_AMENDMENT_LINE_SET_MISMATCH:
+    "The amendment must include every current Purchase Order line without adding or removing lines.",
+  PURCHASE_ORDER_AMENDMENT_NOT_PENDING_APPROVAL:
+    "This Purchase Order amendment is no longer pending approval.",
+  PURCHASE_ORDER_AMENDMENT_PROPOSAL_INVALID:
+    "This Purchase Order amendment proposal is incomplete. Return it for correction.",
+  PURCHASE_ORDER_CLOSURE_SUPPLIER_NOTICE_REQUIRED:
+    "Provide a supplier notice reference or explain why supplier notice is unavailable.",
+  PURCHASE_ORDER_CLOSURE_BLOCKS_AMENDMENT:
+    "Resolve the pending balance-closure request before amending this Purchase Order.",
+  PURCHASE_ORDER_DELIVERY_LOCATION_INACTIVE:
+    "The Purchase Order delivery location is no longer active.",
+  PURCHASE_ORDER_LINE_ACTIVITY_BLOCKS_AMENDMENT:
+    "This Purchase Order line has receiving or cancellation activity and can no longer be amended.",
+  PURCHASE_ORDER_LINE_AMOUNT_INVALID:
+    "Purchase Order line amounts must be valid positive values.",
+  PURCHASE_ORDER_LINE_QUANTITY_INVALID:
+    "Purchase Order line quantities must be greater than zero.",
+  PURCHASE_ORDER_LINE_NOT_FOUND: "This Purchase Order has no amendable lines.",
+  PURCHASE_ORDER_NO_REMAINING_BALANCE_TO_CLOSE:
+    "There is no remaining balance available to close.",
+  PURCHASE_ORDER_NOT_APPROVED_FOR_ISSUE:
+    "Only approved Purchase Orders can be issued to suppliers.",
+  PURCHASE_ORDER_NOT_CANCELLABLE:
+    "This Purchase Order can no longer be cancelled.",
+  PURCHASE_ORDER_NOT_DRAFT_FOR_APPROVAL:
+    "Only draft Purchase Orders can be submitted for approval.",
+  PURCHASE_ORDER_NOT_ISSUED_FOR_RESEND:
+    "Only issued Purchase Orders can be resent to suppliers.",
+  PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT:
+    "Only issued, unreceived Purchase Orders can be amended.",
+  PURCHASE_ORDER_NOT_PARTIALLY_RECEIVED_FOR_CLOSURE:
+    "Only partially received Purchase Orders can request remaining-balance closure.",
+  PURCHASE_ORDER_NOT_PENDING_AMENDMENT:
+    "This Purchase Order is no longer pending amendment approval.",
+  PURCHASE_ORDER_CLOSURE_NOT_PENDING_APPROVAL:
+    "This balance-closure request is no longer pending approval.",
+  PURCHASE_ORDER_NOT_PENDING_APPROVAL:
+    "This Purchase Order is no longer pending approval.",
+  PURCHASE_ORDER_OPEN_RECEIPT_BLOCKS_CLOSURE:
+    "Post or clear draft receiving reports before requesting balance closure.",
+  PURCHASE_ORDER_RECEIVED_QUANTITY_BLOCKS_CANCELLATION:
+    "Purchase Orders with received quantities cannot be cancelled.",
+  PURCHASE_ORDER_RECEIVED_QUANTITY_BLOCKS_AMENDMENT:
+    "Purchase Orders with received quantities cannot be amended.",
+  PURCHASE_ORDER_RECEIVING_REPORT_BLOCKS_CANCELLATION:
+    "Purchase Orders with receiving reports cannot be cancelled.",
+  PURCHASE_ORDER_RECEIVING_REPORT_BLOCKS_AMENDMENT:
+    "Purchase Orders with receiving reports cannot be amended.",
+  PURCHASE_ORDER_SUPPLIER_CANCELLATION_NOTICE_REQUIRED:
+    "Provide a supplier cancellation notice reference or explain why it is unavailable.",
+  PURCHASE_ORDER_SUPPLIER_COPY_NOT_AVAILABLE:
+    "The supplier copy is available only after approval.",
+  PURCHASE_ORDER_ISSUE_METHOD_NOT_ALLOWED:
+    "Choose one of the configured Purchase Order issue methods.",
+  PURCHASE_UOM_NOT_FOUND: "The selected purchase UOM is no longer available.",
+  ISSUE_UOM_NOT_FOUND: "The selected issue UOM is no longer available.",
+  NO_ROLE_PERMISSION_CHANGES:
+    "No role permission changes were detected. Change at least one toggle before saving.",
+  ROLE_NOT_FOUND: "The selected role is no longer available.",
+  ROLE_RECOMMENDATION_NOT_CONFIGURED:
+    "This role does not have a system recommended permission set yet.",
+  UNKNOWN_PERMISSION_CODE:
+    "One of the selected permissions is not available in the controlled permission catalog.",
+  PURCHASE_REQUEST_LINE_NOT_FOUND:
+    "The Purchase Request line is no longer available.",
+  PURCHASE_REQUEST_LINES_LIMIT_EXCEEDED:
+    "A single Purchase Request can include up to 100 lines. Split larger requests by supplier, category, or delivery date.",
+  PURCHASE_REQUEST_NOT_APPROVED_FOR_PO:
+    "Only approved Purchase Requests can be converted into Purchase Orders.",
+  PURCHASE_REQUEST_NOT_APPROVED_FOR_QUOTE:
+    "Only approved Purchase Requests can receive supplier quotes.",
+  PURCHASE_REQUEST_NOT_FOUND: "This Purchase Request is no longer available.",
+  PURCHASE_REQUEST_NOT_FOUND_AFTER_CANCEL:
+    "The Purchase Request was cancelled but could not be reloaded.",
+  PURCHASE_REQUEST_NOT_FOUND_AFTER_COMMENT:
+    "The comment was saved but the Purchase Request could not be reloaded.",
+  PURCHASE_REQUEST_NOT_FOUND_AFTER_CREATE:
+    "The draft was created but could not be reloaded.",
+  PURCHASE_REQUEST_NOT_FOUND_AFTER_REOPEN:
+    "The Purchase Request was reopened but could not be reloaded.",
+  PURCHASE_REQUEST_NOT_FOUND_AFTER_SUBMIT:
+    "The Purchase Request was submitted but could not be reloaded.",
+  PROJECT_TASK_ASSIGNEE_NOT_PROJECT_MEMBER:
+    "Select an active member of this project as the task owner.",
+  PROJECT_TASK_BLOCKER_REASON_REQUIRED:
+    "Provide a blocker reason before marking this task blocked.",
+  PROJECT_TASK_CANCEL_REASON_REQUIRED:
+    "Provide a cancellation reason before cancelling this task.",
+  PROJECT_TASK_INITIAL_STATUS_NOT_ENABLED:
+    "The selected starting status is not enabled for this project.",
+  PROJECT_TASK_NOT_FOUND: "This project task is no longer available.",
+  PROJECT_TASK_PERMISSION_DENIED:
+    "You do not have permission to change this project task.",
+  PROJECT_TASK_REASSIGNMENT_REASON_REQUIRED:
+    "Provide a reassignment reason for blocked, overdue, waiting, high-priority, or critical tasks.",
+  PROJECT_TASK_REASSIGNMENT_TERMINAL_STATUS:
+    "Completed or cancelled tasks cannot be reassigned.",
+  PROJECT_TASK_REOPEN_REASON_REQUIRED:
+    "Provide a reopen reason before reopening this task.",
+  PROJECT_TASK_REQUIRED_CHECKLIST_INCOMPLETE:
+    "Complete all required checklist items before marking this task complete.",
+  PROJECT_TASK_STALE_VERSION:
+    "This project task changed while you were working. Refresh and try again.",
+  PROJECT_TASK_STATUS_NOT_ENABLED:
+    "That task status is not enabled for this project.",
+  PROJECT_TASK_TERMINAL_STATUS:
+    "Completed or cancelled tasks cannot move to that status.",
+  PROJECT_ATTACHMENT_NOT_FOUND:
+    "This project attachment is no longer available or is not linked to this project.",
+  PROJECT_BLOCKER_NOT_FOUND: "This project blocker is no longer available.",
+  PROJECT_BLOCKER_NOT_OPEN: "Only open blockers can be resolved or cancelled.",
+  PROJECT_CHECKLIST_ITEM_NOT_FOUND:
+    "This checklist item is no longer available.",
+  PROJECT_EXPORT_RATE_LIMITED:
+    "Project export was rate-limited. Wait a moment and try again.",
+  PROJECT_LIFECYCLE_ACTIVE_TASKS_BLOCKED:
+    "Finish, cancel, or archive all active project tasks before closing or cancelling this project.",
+  PROJECT_LIFECYCLE_INVALID_TRANSITION:
+    "That project lifecycle change is not allowed from the current status.",
+  PROJECT_LIFECYCLE_OPEN_BLOCKERS_BLOCKED:
+    "Resolve or cancel open project blockers before closing or cancelling this project.",
+  PROJECT_LIFECYCLE_OPEN_RISKS_BLOCKED:
+    "Resolve, mitigate, accept, or close open project risks before closing or cancelling this project.",
+  PROJECT_LIFECYCLE_PERMISSION_DENIED:
+    "You do not have permission to change this project's lifecycle.",
+  PROJECT_LIFECYCLE_REASON_REQUIRED:
+    "Provide a reason for holding, cancelling, or archiving this project.",
+  PROJECT_LIFECYCLE_STALE_VERSION:
+    "This project changed while you were working. Refresh and try again.",
+  PROJECT_LINK_CONTEXT_INVALID:
+    "Choose either a task or a milestone context for this project link, not both.",
+  PROJECT_LINK_NOT_FOUND: "This project link is no longer available.",
+  PROJECT_LINK_PERMISSION_DENIED:
+    "You do not have permission to change links for this project.",
+  PROJECT_LINK_REDACTION_LABEL_INVALID:
+    "Use a safe redaction label for restricted linked records.",
+  PROJECT_LINK_REDACTION_LEAK:
+    "Restricted linked-record details cannot be exposed here.",
+  PROJECT_LINK_SOURCE_DENIED:
+    "You can link only source records you are allowed to view.",
+  PROJECT_MEMBER_NOT_FOUND: "This project member is no longer available.",
+  PROJECT_MEMBER_PERMISSION_DENIED:
+    "You do not have permission to manage members for this project.",
+  PROJECT_MEMBER_SELF_REMOVE_BLOCKED:
+    "You cannot remove yourself from this project from this screen.",
+  PROJECT_MEMBER_USER_NOT_FOUND: "The selected user is no longer available.",
+  PROJECT_RISK_STALE_VERSION:
+    "This project risk changed while you were working. Refresh and try again.",
+  PROJECT_NOT_FOUND:
+    "This project is no longer available or is outside your scope.",
+  PROJECT_RISK_CONTEXT_INVALID:
+    "Choose either a task or milestone context for this risk, not both.",
+  PROJECT_RISK_NOT_FOUND: "This project risk is no longer available.",
+  PROJECT_RISK_PERMISSION_DENIED:
+    "You do not have permission to change this project risk.",
+  PROJECT_RISK_REOPEN_REASON_REQUIRED:
+    "Provide a reopen reason before reopening this risk.",
+  PROJECT_RISK_RESOLUTION_NOTE_REQUIRED:
+    "Provide a resolution note before closing or cancelling this risk.",
+  PROJECT_RISK_RESOLVE_PERMISSION_DENIED:
+    "You do not have permission to resolve this project risk.",
+  PROJECT_RISK_TARGET_DATE_REQUIRED: "Mitigating risks require a target date.",
+  PROJECT_RISK_TERMINAL_STATUS:
+    "Closed or cancelled risks cannot move to that status.",
+  PROJECT_SCOPE_DENIED:
+    "The selected project scope is outside your authorized access.",
+  PROJECT_SCOPE_REQUIRED: "Select a valid scope before creating this project.",
+  PROJECT_MILESTONE_STALE_VERSION:
+    "This project milestone changed while you were working. Refresh and try again.",
+  PROJECT_MILESTONE_AT_RISK_REASON_REQUIRED:
+    "Provide an at-risk reason before saving this milestone.",
+  PROJECT_MILESTONE_CANCEL_REASON_REQUIRED:
+    "Provide a cancellation reason before cancelling this milestone.",
+  PROJECT_MILESTONE_NOT_FOUND: "This project milestone is no longer available.",
+  PROJECT_MILESTONE_PERMISSION_DENIED:
+    "You do not have permission to change milestones for this project.",
+  PROJECT_TEMPLATE_CODE_DUPLICATE:
+    "A project template with this code already exists for this company.",
+  PROJECT_TEMPLATE_NOT_DRAFT: "Only draft project templates can be published.",
+  PROJECT_TEMPLATE_NOT_FOUND: "This project template is no longer available.",
+  PROJECT_TEMPLATE_PERMISSION_DENIED:
+    "You do not have permission to configure project templates.",
+  PROJECT_TEMPLATE_STATUS_SET_INCOMPLETE:
+    "Project templates must include in-progress, completed, and cancelled task outcomes before publishing.",
+  PROJECT_TEMPLATE_TASK_CODE_DUPLICATE:
+    "Project template task codes must be unique.",
+  PROJECT_TEMPLATE_TASK_STATUS_DISABLED:
+    "A project template task uses a status that is not enabled for this template.",
+  PROJECT_TEMPLATE_CHECKLIST_DUPLICATE:
+    "Checklist item titles must be unique within each template task.",
+  PROJECT_TEMPLATE_CONFIG_INVALID:
+    "This project template configuration is invalid and cannot be applied.",
+  PROJECT_TEMPLATE_NOT_PUBLISHED:
+    "Only published project templates can be used to create projects.",
+  QUOTATION_RECOMMENDATION_ALREADY_SUBMITTED:
+    "This supplier recommendation has already been submitted.",
+  QUOTATION_RECOMMENDATION_NOT_APPROVED_FOR_PO:
+    "Only approved supplier recommendations can create Purchase Orders.",
+  QUOTATION_RECOMMENDATION_NOT_FOUND:
+    "This supplier recommendation is no longer available.",
+  QUOTATION_RECOMMENDATION_NOT_SUBMITTABLE:
+    "Only draft supplier recommendations can be submitted.",
+  QUOTATION_REQUEST_NOT_FOUND: "This quotation request is no longer available.",
+  RECEIVING_DISCREPANCY_REASON_REQUIRED:
+    "Rejected, damaged, or short quantities require a discrepancy reason.",
+  RECEIVING_DISCREPANCY_EVIDENCE_REQUIRED:
+    "Rejected, damaged, or short quantities require evidence when configured by policy.",
+  RECEIVING_LINE_EXCEEDS_OUTSTANDING:
+    "Received quantities cannot exceed the outstanding Purchase Order quantity.",
+  RECEIVING_LINE_OUTCOME_EXCEEDS_DELIVERED:
+    "Accepted, rejected, and damaged quantities cannot exceed the delivered quantity.",
+  RECEIVING_QUANTITY_INVALID:
+    "Receiving quantities must be zero or greater, with at least one quantity entered.",
+  REQUESTER_ONLY_ACTION: "Only the original requester can perform this action.",
+  ROLE_ASSIGNMENT_NOT_FOUND: "This role assignment is no longer available.",
+  SELECTED_SUPPLIER_QUOTE_NOT_FOUND:
+    "The selected supplier quote is no longer available.",
+  SUPPLIER_QUOTE_LINE_DUPLICATE:
+    "Each Purchase Request line can be quoted only once per supplier quote.",
+  SUPPLIER_QUOTE_LINES_INCOMPLETE:
+    "Supplier quotes must include every approved Purchase Request line.",
+  SUPPLIER_QUOTE_LINES_LIMIT_EXCEEDED:
+    "A supplier quote can include up to 100 Purchase Request lines.",
+  SUPPLIER_QUOTE_LINES_REQUIRED:
+    "Record at least one supplier quote line.",
+  SUPPLIER_QUOTE_LINE_NOT_FOUND:
+    "One of the selected supplier quote lines is no longer available.",
+  SELF_APPROVAL_BLOCKED:
+    "You cannot approve, return, or reject your own request.",
+  SELF_ROLE_MUTATION_BLOCKED:
+    "You cannot change your own role assignments from this page.",
+  SELF_SCOPE_MUTATION_BLOCKED:
+    "You cannot change your own scope assignments from this page.",
+  SENSITIVE_ROLE_ASSIGNMENT_BLOCKED:
+    "Sensitive roles cannot be assigned from this screen.",
+  SINGLE_SOURCE_JUSTIFICATION_REQUIRED:
+    "A single-source recommendation requires a justification.",
+  SUPPLIER_ITEM_LINK_NOT_FOUND:
+    "This supplier item link is no longer available.",
+  SUPPLIER_NOT_ACTIVE_FOR_PO:
+    "The selected supplier must be active before creating a Purchase Order.",
+  SUPPLIER_NOT_ACTIVE_FOR_PO_ISSUE:
+    "The selected supplier must be active before issuing the Purchase Order.",
+  SUPPLIER_NOT_FOUND: "The selected supplier is no longer available.",
+  TARGET_LOCATION_NOT_FOUND:
+    "The selected target location is no longer available.",
+  TARGET_ROLE_NOT_FOUND: "The selected target role is no longer available.",
+  TARGET_USER_NOT_FOUND: "The selected target user is no longer available.",
+  UOM_CONVERSION_NOT_FOUND:
+    "The selected unit conversion is no longer available.",
+  UOM_HAS_ACTIVE_ITEMS:
+    "This UOM is still used by active items. Move those items to another UOM before deactivating it.",
+  OPENING_BALANCE_ALREADY_EXISTS:
+    "An active opening balance already exists for this location, item, and lot. Use reversal or a controlled stock adjustment for corrections.",
+  OPENING_BALANCE_EVIDENCE_REQUIRED:
+    "Opening balances require a signed count sheet, import file, or cutover evidence reference.",
+  OPENING_BALANCE_EXISTING_STOCK_ACTIVITY:
+    "Opening balances can only be posted before stock exists for this location, item, and lot.",
+  STOCK_ADJUSTMENT_EXPIRY_REQUIRED:
+    "The selected item requires an expiry date before an adjustment can be saved.",
+  STOCK_ADJUSTMENT_INVENTORY_LOCATION_NOT_FOUND:
+    "The selected inventory location is no longer available for your current scope.",
+  STOCK_ADJUSTMENT_ITEM_NOT_FOUND:
+    "The selected item is no longer available for stock adjustment.",
+  STOCK_ADJUSTMENT_HAS_NO_LINES:
+    "This stock adjustment needs at least one line before it can be submitted.",
+  STOCK_ADJUSTMENT_LINE_REQUIRED:
+    "Each adjustment line needs an item and quantity before the request can be saved.",
+  STOCK_ADJUSTMENT_TOO_MANY_LINES:
+    "A stock adjustment can include up to 100 lines. Split larger cutover files into separate requests.",
+  STOCK_ADJUSTMENT_ALREADY_POSTED:
+    "This stock adjustment has already been posted.",
+  STOCK_ADJUSTMENT_ALREADY_REVERSED:
+    "This stock adjustment has already been reversed.",
+  STOCK_ADJUSTMENT_APPROVAL_ALREADY_SUBMITTED:
+    "This stock adjustment has already been submitted for approval.",
+  STOCK_ADJUSTMENT_NOT_CANCELLABLE:
+    "This stock adjustment can no longer be cancelled.",
+  STOCK_ADJUSTMENT_NOT_FOUND: "This stock adjustment is no longer available.",
+  STOCK_ADJUSTMENT_NOT_APPROVED_FOR_POSTING:
+    "Only approved stock adjustments can be posted.",
+  STOCK_ADJUSTMENT_NOT_OPEN_FOR_SUBMIT:
+    "Only open stock adjustment drafts can be submitted.",
+  STOCK_ADJUSTMENT_NOT_POSTED_FOR_REVERSAL:
+    "Only posted stock adjustments can be reversed.",
+  STOCK_ADJUSTMENT_LOT_REQUIRED:
+    "The selected item requires a lot number before an adjustment can be saved.",
+  STOCK_ADJUSTMENT_LINE_ALREADY_REVERSED:
+    "One of this adjustment's stock movements has already been reversed.",
+  STOCK_ADJUSTMENT_LINE_POSTED_MOVEMENT_REQUIRED:
+    "This adjustment cannot be reversed because a posted movement reference is missing.",
+  STOCK_ADJUSTMENT_POSTING_STATE_CONFLICT:
+    "This adjustment changed while posting. Refresh and review its latest status.",
+  STOCK_ADJUSTMENT_QUANTITY_INVALID:
+    "Enter an adjustment quantity greater than zero.",
+  STOCK_ADJUSTMENT_REFERENCE_ALLOCATION_FAILED:
+    "The stock adjustment reference could not be allocated. Try again.",
+  STOCK_ADJUSTMENT_REVERSAL_ORIGINAL_MOVEMENT_INVALID:
+    "This adjustment cannot be reversed because an original movement is invalid.",
+  STOCK_ADJUSTMENT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH:
+    "This adjustment cannot be reversed because movement details no longer match.",
+  STOCK_ADJUSTMENT_REVERSAL_STATE_CONFLICT:
+    "This adjustment changed while reversing. Refresh and review its latest status.",
+  STOCK_COUNT_HAS_NO_LINES:
+    "Start the count and confirm it has snapshot lines before submitting.",
+  STOCK_COUNT_HAS_UNCOUNTED_LINES:
+    "All count lines need a counted quantity before submission.",
+  STOCK_COUNT_INVENTORY_LOCATION_NOT_FOUND:
+    "The selected inventory location is no longer available for your current scope.",
+  STOCK_COUNT_LINE_NOT_FOUND: "One of the count lines is no longer available.",
+  STOCK_COUNT_NOT_CANCELLABLE: "This count can no longer be cancelled.",
+  STOCK_COUNT_NOT_DRAFT_FOR_START: "Only draft counts can be started.",
+  STOCK_COUNT_NOT_FOUND: "This count is no longer available.",
+  STOCK_COUNT_NOT_REVIEWED_FOR_ADJUSTMENT:
+    "Only reviewed counts can generate a variance adjustment.",
+  STOCK_COUNT_HAS_NO_VARIANCE_LINES:
+    "This reviewed count has no variance lines to adjust.",
+  STOCK_COUNT_NOT_OPEN_FOR_ENTRY:
+    "Count entries can only be saved while the count is in progress or recount.",
+  STOCK_COUNT_NOT_OPEN_FOR_SUBMIT:
+    "Only in-progress or recount sessions can be submitted.",
+  STOCK_COUNT_NOT_SUBMITTED_FOR_REVIEW:
+    "Only submitted counts can be reviewed.",
+  STOCK_COUNT_QUANTITY_INVALID: "Counted quantities must be zero or greater.",
+  STOCK_COUNT_REFERENCE_ALLOCATION_FAILED:
+    "The stock count reference could not be allocated. Try again.",
+  STOCK_COUNT_SELF_REVIEW_BLOCKED:
+    "A different authorized reviewer must review this count.",
+  TRANSFER_LINE_ALREADY_DISPATCHED:
+    "This transfer line has already been dispatched.",
+  TRANSFER_LINE_ALREADY_RECEIVED:
+    "This transfer line has already been received.",
+  TRANSFER_LINE_REQUIRED:
+    "Each transfer line needs an item and quantity before the request can be saved.",
+  TRANSFER_HAS_NO_LINES:
+    "This transfer request needs at least one line before the action can continue.",
+  TRANSFER_TOO_MANY_LINES:
+    "A transfer request can include up to 100 lines. Split larger transfers into separate requests.",
+  TRANSFER_DESTINATION_INVENTORY_LOCATION_NOT_FOUND:
+    "Your destination inventory location is no longer available.",
+  TRANSFER_ITEM_NOT_FOUND:
+    "The selected item is no longer available for transfer.",
+  TRANSFER_NOT_CANCELLABLE: "This transfer can no longer be cancelled.",
+  TRANSFER_NOT_DISPATCHED_FOR_RECEIPT:
+    "Only dispatched, partially received, or disputed transfers can be received.",
+  TRANSFER_NOT_DRAFT_FOR_SUBMIT: "Only draft transfers can be submitted.",
+  TRANSFER_NOT_FOUND: "This transfer is no longer available.",
+  TRANSFER_NOT_REQUESTED_FOR_DISPATCH:
+    "Only requested transfers can be dispatched.",
+  TRANSFER_QUANTITY_INVALID: "Enter a transfer quantity greater than zero.",
+  TRANSFER_REFERENCE_ALLOCATION_FAILED:
+    "The transfer reference could not be allocated. Try again.",
+  TRANSFER_RECEIVER_MUST_DIFFER_FROM_DISPATCHER:
+    "The user who dispatched a transfer cannot receive the same transfer.",
+  TRANSFER_DISCREPANCY_NOT_SETTLEABLE:
+    "Only disputed transfers can be settled.",
+  TRANSFER_DISCREPANCY_NOT_FOUND:
+    "This transfer has no recorded discrepancy to settle.",
+  TRANSFER_DISCREPANCY_SELF_SETTLEMENT_NOT_ALLOWED:
+    "The original requester cannot settle this transfer discrepancy.",
+  TRANSFER_DISCREPANCY_DISPATCHER_SETTLEMENT_NOT_ALLOWED:
+    "The dispatcher cannot settle this transfer discrepancy.",
+  TRANSFER_DISCREPANCY_RECEIVER_SETTLEMENT_NOT_ALLOWED:
+    "A receiver on the disputed transfer cannot settle the same discrepancy.",
+  TRANSFER_DISCREPANCY_SETTLEMENT_STATE_CONFLICT:
+    "This transfer changed while the discrepancy was being settled. Refresh and try again.",
+  TRANSFER_SOURCE_DESTINATION_MUST_DIFFER:
+    "Select a source inventory location different from the destination.",
+  TRANSFER_SOURCE_INVENTORY_LOCATION_NOT_FOUND:
+    "The selected source inventory location is no longer available.",
+  UOM_NOT_FOUND: "The selected UOM is no longer available.",
+  ONLY_LOCATION_SCOPE_MUTATION_SUPPORTED:
+    "Only location scope assignments can be changed from this screen.",
+  SCOPE_ASSIGNMENT_NOT_FOUND: "This scope assignment is no longer available.",
+  APPROVAL_ROLE_MUTATION_BLOCKED:
+    "Approval-sensitive role assignments cannot be changed from this screen.",
+  WASTAGE_ALREADY_POSTED: "This wastage report has already been posted.",
+  WASTAGE_ALREADY_REVERSED: "This wastage report has already been reversed.",
+  WASTAGE_APPROVAL_ALREADY_SUBMITTED:
+    "This wastage report has already been submitted for approval.",
+  WASTAGE_EVIDENCE_REFERENCE_REQUIRED:
+    "Evidence is required for this wastage type or policy flag.",
+  WASTAGE_EXPIRY_REQUIRED:
+    "The selected item requires an expiry date before wastage can be logged.",
+  WASTAGE_INVENTORY_LOCATION_NOT_FOUND:
+    "The selected inventory location is no longer available for your current scope.",
+  WASTAGE_ITEM_NOT_FOUND:
+    "The selected item is no longer available for wastage.",
+  WASTAGE_LINE_REQUIRED:
+    "Each wastage line needs an item and quantity before the report can be saved.",
+  WASTAGE_LINE_ALREADY_REVERSED:
+    "One of this report's wastage movements has already been reversed.",
+  WASTAGE_LINE_POSTED_MOVEMENT_REQUIRED:
+    "This report cannot be reversed because a posted movement reference is missing.",
+  WASTAGE_LOT_REQUIRED:
+    "The selected item requires a lot number before wastage can be logged.",
+  WASTAGE_NOT_APPROVED_FOR_POSTING:
+    "Only approved wastage reports can be posted.",
+  WASTAGE_NOT_CANCELLABLE: "This wastage report can no longer be cancelled.",
+  WASTAGE_NOT_OPEN_FOR_SUBMIT:
+    "Only draft or returned wastage reports can be submitted.",
+  WASTAGE_NOT_POSTED_FOR_REVERSAL:
+    "Only posted wastage reports can be reversed.",
+  WASTAGE_NOT_SUBMITTED_FOR_REVIEW:
+    "Only submitted wastage reports can be reviewed.",
+  WASTAGE_NOT_PENDING_APPROVAL:
+    "This wastage report is no longer pending approval.",
+  WASTAGE_POSTING_STATE_CONFLICT:
+    "This report was changed while posting. Refresh and review its latest status.",
+  WASTAGE_QUANTITY_INVALID: "Enter a wastage quantity greater than zero.",
+  WASTAGE_REFERENCE_ALLOCATION_FAILED:
+    "The wastage reference could not be allocated. Try again.",
+  WASTAGE_REPORT_HAS_NO_LINES:
+    "This wastage report needs at least one line before the action can continue.",
+  WASTAGE_REPORT_NOT_FOUND: "This wastage report is no longer available.",
+  WASTAGE_TOO_MANY_LINES:
+    "A wastage report can include up to 100 lines. Split larger entries into separate reports.",
+  WASTAGE_REVERSAL_ORIGINAL_MOVEMENT_INVALID:
+    "This report cannot be reversed because an original movement is invalid.",
+  WASTAGE_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH:
+    "This report cannot be reversed because movement details no longer match.",
+  WASTAGE_REVERSAL_STATE_CONFLICT:
+    "This report was changed while reversing. Refresh and review its latest status.",
+  WASTAGE_SELF_REVIEW_DENIED:
+    "The reporter cannot review their own wastage report.",
+};
+
+const safeActionCodePattern = /^[A-Z0-9_]+$/;
+
+export function getActionErrorCode(error: unknown) {
+  if (error instanceof Error && safeActionCodePattern.test(error.message)) {
+    return error.message;
+  }
+  if (error instanceof Error && error.name === "ZodError") {
+    return "VALIDATION_FAILED";
+  }
+  return "ACTION_FAILED";
+}
+
+export function actionErrorRedirectPath(pathname: string, error: unknown) {
+  const params = new URLSearchParams({
+    error: getActionErrorCode(error),
+  });
+  const separator = pathname.includes("?") ? "&" : "?";
+  return `${pathname}${separator}${params.toString()}`;
+}
+
+export function getActionFeedback(
+  searchParams: Record<string, string | string[] | undefined>,
+): ActionFeedback | null {
+  const rawCode = searchParams.error;
+  const code = Array.isArray(rawCode) ? rawCode[0] : rawCode;
+  if (!code || !safeActionCodePattern.test(code)) {
+    return null;
+  }
+
+  return {
+    code,
+    message:
+      actionFeedbackMessages[code] ??
+      "The action could not be completed. Review the form and try again.",
+    title: "Action not completed",
+  };
+}
