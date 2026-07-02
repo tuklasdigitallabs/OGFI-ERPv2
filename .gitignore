@@ -1,0 +1,46 @@
+# Dependencies and build output
+node_modules/
+.next/
+.next-ogfi/
+.next-e2e/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.staging.example
+!.env.production.example
+*.pem
+*.key
+*.p12
+
+# Local data and backups
+*.sqlite
+*.sql.gz
+*.dump
+backups/
+release-evidence/
+volumes/
+minio-data/
+postgres-data/
+redis-data/
+
+# Logs
+*.log
+logs/
+.next-dev-*.err
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/*.local.json
+apps/web/.next-build-check/
+
+# Local Next build checks
+apps/web/.next-build-check/
+.next-dev-*.err

@@ -4,7 +4,7 @@
 **Primary operating company:** One Gourmet Foods Inc. (OGFI)
 **Current build focus:** Phase I — Procurement, Inventory, Approvals, Receiving, Transfers, Stock Counts, and Wastage Controls
 **Architecture direction:** Tenant-ready for future sale to other restaurant groups
-**Infrastructure direction:** Hostinger VPS using Docker Compose, Next.js + TypeScript, PostgreSQL + Prisma, Redis/BullMQ worker, S3-compatible attachments, and Caddy/Nginx reverse proxy
+**Infrastructure direction:** Hostinger VPS using Docker Compose, Next.js + TypeScript, PostgreSQL + Prisma, S3-compatible attachments, and Caddy/Nginx reverse proxy. Redis/BullMQ worker capability is deferred and not part of the current Phase I / Phase 1.5 no-queueing release scope.
 **Last updated:** June 25, 2026
 **Current consolidated release:** V5 — full documentation package with Projects & Implementation Tracker, structured subagent deliberation, Dunong knowledge-base system, and token-efficient agent working style
 
