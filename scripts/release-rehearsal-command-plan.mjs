@@ -1,0 +1,162 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import {
+  databaseUrlFingerprint,
+  evidenceRunId,
+} from "./release-evidence-metadata.mjs";
+
+const timestamp = new Date()
+  .toISOString()
+  .replace(/[-:]/g, "")
+  .replace(/\.\d{3}Z$/, "Z");
+const evidenceRoot = process.env.RELEASE_EVIDENCE_ROOT ?? "release-evidence";
+const runId = evidenceRunId(process.env, timestamp);
+const outputFile =
+  process.env.RELEASE_REHEARSAL_PLAN_OUTPUT_FILE ??
+  join(
+    evidenceRoot,
+    "rehearsal-command-plan",
+    `rehearsal-command-plan-${timestamp}.txt`,
+  );
+
+const lines = [
+  "OGFI ERP Phase I / Phase 1.5 external evidence rehearsal command plan",
+  `Generated UTC: ${timestamp}`,
+  `Evidence run ID: ${runId}`,
+  `Evidence root: ${evidenceRoot}`,
+  "",
+  "This command plan is advisory. It does not create source evidence, apply migrations, deploy, restore databases, execute UAT, sign documents, or approve release.",
+  "Use one approved evidence run ID across all commands and signed documents. Do not paste secrets or raw database URLs into evidence artifacts.",
+  "",
+  "Environment Check",
+  envStatus("RELEASE_EVIDENCE_RUN_ID", process.env.RELEASE_EVIDENCE_RUN_ID),
+  envStatus("RELEASE_VERSION", process.env.RELEASE_VERSION),
+  envStatus("GITHUB_RUN_ID", process.env.GITHUB_RUN_ID),
+  envStatus("GITHUB_SHA", process.env.GITHUB_SHA),
+  envStatus("DATABASE_URL", process.env.DATABASE_URL, {
+    detail: `fingerprint=${databaseUrlFingerprint(process.env.DATABASE_URL)}`,
+  }),
+  envStatus("RESTORE_DATABASE_URL", process.env.RESTORE_DATABASE_URL, {
+    detail: `fingerprint=${databaseUrlFingerprint(process.env.RESTORE_DATABASE_URL)}`,
+  }),
+  envStatus("RESTORE_DATABASE", process.env.RESTORE_DATABASE),
+  envStatus("BACKUP_FILE", process.env.BACKUP_FILE),
+  envStatus("SMOKE_BASE_URL", process.env.SMOKE_BASE_URL),
+  envStatus("PSQL_BIN", process.env.PSQL_BIN),
+  envStatus("PG_DUMP_BIN", process.env.PG_DUMP_BIN),
+  envStatus("PG_RESTORE_BIN", process.env.PG_RESTORE_BIN),
+  "",
+  "Shared Session Setup",
+  "STEP | 01 | Release Manager | Choose one RELEASE_EVIDENCE_RUN_ID and approved RELEASE_VERSION for this evidence session.",
+  "COMMAND | pnpm release:metadata-env-template",
+  "COMMAND | pnpm release:metadata-session-lock",
+  "ARTIFACT | release-evidence/release-metadata/release-env-template-*.txt",
+  "ARTIFACT | release-evidence/release-metadata/release-session-lock-*.txt",
+  "",
+  "Migration And Data Snapshot Rehearsal",
+  "STEP | 02 | DBA / Platform Engineering | Verify PostgreSQL tools and scoped database access before touching data.",
+  "COMMAND | pnpm release:data-snapshot-checklist",
+  "ARTIFACT | release-evidence/data-snapshot-checklist/data-snapshot-checklist-*.txt",
+  "COMMAND | pnpm release:data-snapshot-preflight",
+  "ARTIFACT | release-evidence/data-snapshots/data-snapshot-preflight-*.txt",
+  "STEP | 03 | DBA / Platform Engineering | Capture the before snapshot from the approved rehearsal database.",
+  "COMMAND | RELEASE_DATA_SNAPSHOT_LABEL=pre-migration-rehearsal pnpm release:data-snapshot",
+  "ARTIFACT | release-evidence/data-snapshots/data-pre-migration-rehearsal-*.txt",
+  "STEP | 04 | Release Manager / Platform Engineering | Apply only the reviewed migration or release candidate in the approved rehearsal environment.",
+  "EXTERNAL | Migration execution is not run by this plan. Attach deployment logs or approved change record separately.",
+  "STEP | 05 | DBA / Platform Engineering | Capture the after snapshot from the same rehearsal database.",
+  "COMMAND | RELEASE_DATA_SNAPSHOT_LABEL=post-migration-rehearsal pnpm release:data-snapshot",
+  "ARTIFACT | release-evidence/data-snapshots/data-post-migration-rehearsal-*.txt",
+  "STEP | 06 | DBA / Platform Engineering | Compare the latest pre/post snapshots and record destructive or unexpected deltas.",
+  "COMMAND | pnpm release:data-snapshot:compare-latest",
+  "ARTIFACT | release-evidence/data-snapshots/data-snapshot-delta-*.txt",
+  "STEP | 07 | Release Manager | Summarize data snapshot readiness.",
+  "COMMAND | pnpm release:data-snapshot-status",
+  "ARTIFACT | release-evidence/data-snapshot-status/data-snapshot-status-*.txt",
+  "",
+  "Backup, Restore, Rollback, And Smoke Rehearsal",
+  "STEP | 08 | DevOps Owner | Confirm backup and isolated restore prerequisites.",
+  "COMMAND | pnpm release:backup-restore-preflight",
+  "ARTIFACT | release-evidence/backups/backup-restore-preflight-*.txt",
+  "STEP | 09 | DevOps Owner | Create a real backup dump and checksum from the approved source database.",
+  "COMMAND | BACKUP_DIR=release-evidence/backups pnpm db:backup",
+  "ARTIFACT | release-evidence/backups/ogfi-erp-*.dump",
+  "ARTIFACT | release-evidence/backups/ogfi-erp-*.dump.sha256",
+  "STEP | 10 | DevOps Owner | Summarize the backup artifact without exposing secrets.",
+  "COMMAND | BACKUP_FILE=<release-evidence/backups/ogfi-erp-*.dump> pnpm release:backup-summary",
+  "ARTIFACT | release-evidence/backups/backup-summary.txt",
+  "STEP | 11 | DevOps Owner | Restore into an isolated non-production database only.",
+  "COMMAND | BACKUP_FILE=<release-evidence/backups/ogfi-erp-*.dump> pnpm db:restore-check",
+  "EXTERNAL | RESTORE_DATABASE_URL must point to an isolated non-production database.",
+  "STEP | 12 | DevOps Owner | Summarize restore proof and hash-match it to the backup.",
+  "COMMAND | BACKUP_FILE=<release-evidence/backups/ogfi-erp-*.dump> pnpm release:restore-summary",
+  "NOTE | RESTORE_DATABASE is optional when RESTORE_DATABASE_URL contains the restore database name; set it only when the URL path is not the intended display name.",
+  "ARTIFACT | release-evidence/backups/restore-check-summary.txt",
+  "STEP | 13 | Release Manager / DevOps Owner | Capture rollback metadata after an approved rollback rehearsal.",
+  "COMMAND | ROLLBACK_RELEASE_VERSION=<version> GITHUB_RUN_ID=<run-id> GITHUB_SHA=<sha> pnpm release:rollback-summary",
+  "ARTIFACT | release-evidence/staging-rollback/rollback-summary.txt",
+  "STEP | 14 | QA Lead / Release Manager | Run post-rollback smoke against the restored or rolled-back staging URL.",
+  "COMMAND | SMOKE_OUTPUT_DIR=release-evidence/staging-rollback/smoke pnpm release:smoke",
+  "ARTIFACT | release-evidence/staging-rollback/smoke/smoke-*.txt",
+  "STEP | 15 | Release Manager | Summarize recovery readiness.",
+  "COMMAND | pnpm release:recovery-checklist",
+  "COMMAND | pnpm release:backup-restore-status",
+  "COMMAND | pnpm release:deployment-checklist",
+  "ARTIFACT | release-evidence/recovery-checklist/recovery-evidence-checklist-*.txt",
+  "COMMAND | pnpm release:deployment-status",
+  "ARTIFACT | release-evidence/backup-restore-status/backup-restore-status-*.txt",
+  "ARTIFACT | release-evidence/deployment-checklist/deployment-evidence-checklist-*.txt",
+  "ARTIFACT | release-evidence/deployment-status/deployment-status-*.txt",
+  "",
+  "UAT, Enablement, And Signoff",
+  "STEP | 16 | QA Lead / Operations Lead | Execute UAT with named testers and source record IDs; do not use status scripts as proof of testing.",
+  "COMMAND | pnpm release:signed-evidence-templates",
+  "COMMAND | pnpm release:uat-checklist",
+  "COMMAND | pnpm release:uat-status",
+  "COMMAND | pnpm release:pilot-uat-status",
+  "COMMAND | pnpm release:enablement-checklist",
+  "COMMAND | pnpm release:enablement-status",
+  "COMMAND | pnpm release:signed-evidence-checklist",
+  "COMMAND | pnpm release:signed-evidence-status",
+  "ARTIFACT | release-evidence/uat-checklist/uat-execution-checklist-*.txt",
+  "ARTIFACT | release-evidence/enablement-checklist/enablement-checklist-*.txt",
+  "ARTIFACT | release-evidence/signed-evidence-checklist/signed-evidence-checklist-*.txt",
+  "ARTIFACT | release-evidence/signed-documents/uat-evidence-pack.md",
+  "ARTIFACT | release-evidence/signed-documents/deployment-rollback-evidence.md",
+  "ARTIFACT | release-evidence/signed-documents/training-impact-assessment.md",
+  "",
+  "Final Advisory Refresh",
+  "STEP | 17 | Release Manager | Refresh advisory reports after external proof is copied in.",
+  "COMMAND | pnpm release:status-suite",
+  "COMMAND | pnpm release:blocker-digest",
+  "COMMAND | pnpm release:milestones",
+  "ARTIFACT | release-evidence/status-suite/status-suite-*.txt",
+  "ARTIFACT | release-evidence/blocker-digest/blocker-digest-*.txt",
+  "ARTIFACT | release-evidence/milestones/milestone-status-*.txt",
+  "STEP | 18 | Release Manager / Product Owner | Generate final manifest only after source evidence and signed documents are complete, then run final gates.",
+  "COMMAND | pnpm release:evidence:manifest",
+  "COMMAND | pnpm release:final-review-status",
+  "COMMAND | pnpm release:go-no-go",
+  "COMMAND | pnpm release:status-suite:strict",
+  "",
+  "Safeguards",
+  "SAFEGUARD | Never restore into production unless an explicit emergency rollback procedure authorizes it.",
+  "SAFEGUARD | Never edit source data manually to make snapshot deltas pass.",
+  "SAFEGUARD | Never treat templates, guides, or this plan as signed evidence.",
+  "SAFEGUARD | A task status, checklist, or project tracker item must not mutate purchasing, receiving, inventory, approval, or finance source records.",
+  "SAFEGUARD | Rerun focused status commands after evidence changes; rerun the final manifest only after the final evidence bundle is complete.",
+  "",
+  "RESULT | PASS | Rehearsal command plan generated.",
+];
+
+mkdirSync(dirname(outputFile), { recursive: true });
+writeFileSync(outputFile, `${lines.join("\n")}\n`);
+
+console.log(lines.join("\n"));
+console.log(`Rehearsal command plan written: ${outputFile}`);
+
+function envStatus(name, value, options = {}) {
+  const state = value ? "configured" : "missing";
+  const detail = options.detail ? ` | ${options.detail}` : "";
+  return `ENV | ${name} | ${state}${detail}`;
+}

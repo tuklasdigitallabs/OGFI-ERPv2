@@ -1,0 +1,193 @@
+name: Staging Release Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Release version or candidate label.
+        required: true
+        type: string
+      deploy_to_staging:
+        description: Run guarded staging deploy after checks pass.
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ogfi_release
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d ogfi_release"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-start-period=10s
+          --health-retries=20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_release?schema=public
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_release?schema=public
+      MINIO_IMAGE: minio/minio:RELEASE.2025-04-22T22-12-26Z
+      MINIO_ROOT_USER: local-minio-admin
+      MINIO_ROOT_PASSWORD: release-rehearsal-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm release:secret-review
+      - run: pnpm release:tools:test
+      - run: pnpm db:generate
+      - name: Check data snapshot prerequisites
+        env:
+          RELEASE_DATA_SNAPSHOT_LABEL: pre-migration-rehearsal
+          RELEASE_DATA_SNAPSHOT_OUTPUT_DIR: release-evidence/data-snapshots
+          RELEASE_DATA_SNAPSHOT_ALLOW_MISSING_TABLES: "yes"
+        run: pnpm release:data-snapshot-preflight
+      - name: Capture pre-migration data snapshot
+        env:
+          RELEASE_DATA_SNAPSHOT_LABEL: pre-migration-rehearsal
+          RELEASE_DATA_SNAPSHOT_OUTPUT_DIR: release-evidence/data-snapshots
+          RELEASE_DATA_SNAPSHOT_ALLOW_MISSING_TABLES: "yes"
+        run: pnpm release:data-snapshot
+      - run: pnpm db:migrate:deploy
+      - name: Capture post-migration data snapshot
+        env:
+          RELEASE_DATA_SNAPSHOT_LABEL: post-migration-rehearsal
+          RELEASE_DATA_SNAPSHOT_OUTPUT_DIR: release-evidence/data-snapshots
+        run: pnpm release:data-snapshot
+      - name: Compare migration data snapshots
+        run: pnpm release:data-snapshot:compare-latest
+      - name: Check backup and restore prerequisites
+        env:
+          BACKUP_FILE: release-evidence/backups/preflight-placeholder.dump
+          BACKUP_DIR: release-evidence/backups
+          RESTORE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_restore_rehearsal?schema=public
+        run: pnpm release:backup-restore-preflight
+      - name: Backup and restore rehearsal database
+        env:
+          BACKUP_DIR: release-evidence/backups
+          RESTORE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_restore_rehearsal?schema=public
+        run: |
+          pnpm db:backup
+          backup_file="$(ls release-evidence/backups/ogfi-erp-*.dump | tail -n 1)"
+          BACKUP_FILE="$backup_file" \
+          RELEASE_ENVIRONMENT=staging-rehearsal \
+          GITHUB_RUN_ID="${{ github.run_id }}" \
+          GITHUB_SHA="${{ github.sha }}" \
+          pnpm release:backup-summary
+          psql "$DIRECT_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'drop database if exists ogfi_restore_rehearsal;'
+          psql "$DIRECT_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'create database ogfi_restore_rehearsal;'
+          BACKUP_FILE="$backup_file" pnpm db:restore-check
+          BACKUP_FILE="$backup_file" \
+          RESTORE_DATABASE=ogfi_restore_rehearsal \
+          RELEASE_ENVIRONMENT=staging-rehearsal \
+          GITHUB_RUN_ID="${{ github.run_id }}" \
+          GITHUB_SHA="${{ github.sha }}" \
+          pnpm release:restore-summary
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm release:build-check
+      - run: pnpm --filter @ogfi/database test
+      - run: pnpm --filter @ogfi/worker test
+      - run: pnpm --filter @ogfi/ui test
+      - run: pnpm --filter @ogfi/web test -- --exclude tests/accessControl.integration.test.ts
+      - run: pnpm test:access-control
+      - run: pnpm --dir apps/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: docker compose config > release-compose-default.yml
+      - run: docker compose --profile future-worker config > release-compose-future-worker.yml
+      - name: Check release summary metadata
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          DEPLOY_TO_STAGING: ${{ inputs.deploy_to_staging }}
+          RELEASE_ENVIRONMENT: staging-rehearsal
+        run: pnpm release:summary-preflight
+      - name: Write release evidence summary
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          DEPLOY_TO_STAGING: ${{ inputs.deploy_to_staging }}
+          RELEASE_ENVIRONMENT: staging-rehearsal
+        run: pnpm release:summary
+      - run: cp release-compose-default.yml release-compose-future-worker.yml release-evidence/
+      - run: pnpm release:evidence:manifest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ogfi-release-evidence-${{ inputs.release_version }}
+          path: release-evidence
+          if-no-files-found: error
+
+  deploy:
+    needs: rehearse
+    if: ${{ inputs.deploy_to_staging }}
+    runs-on: ubuntu-latest
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
+      STAGING_USER: ${{ secrets.STAGING_USER }}
+      STAGING_APP_DIR: ${{ secrets.STAGING_APP_DIR }}
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      CONFIRM_STAGING_DEPLOY: "yes"
+      STAGING_CAPTURE_DATA_SNAPSHOTS: "yes"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Verify staging secrets
+        run: |
+          test -n "$STAGING_HOST"
+          test -n "$STAGING_USER"
+          test -n "$STAGING_APP_DIR"
+          test -n "${{ secrets.STAGING_BASE_URL }}"
+      - name: Install SSH key
+        env:
+          STAGING_SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$STAGING_SSH_PRIVATE_KEY"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$STAGING_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts
+      - run: pnpm release:staging:deploy
+      - name: Collect staging deploy data snapshots
+        run: |
+          mkdir -p release-evidence/staging-deploy
+          scp -r "$STAGING_USER@$STAGING_HOST:$STAGING_APP_DIR/releases/$RELEASE_VERSION/release-evidence/staging-deploy/." release-evidence/staging-deploy/ || true
+      - name: Run staging smoke checks
+        env:
+          SMOKE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          SMOKE_OUTPUT_DIR: release-evidence/smoke
+        run: pnpm release:smoke
+      - run: pnpm release:evidence:manifest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ogfi-staging-deploy-evidence-${{ inputs.release_version }}
+          path: |
+            release-evidence/smoke
+            release-evidence/staging-deploy
+            release-evidence/manifests
+          if-no-files-found: error

@@ -1,0 +1,33 @@
+{$OGFI_SITE_ADDRESS::80} {
+  encode gzip zstd
+
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  }
+
+  request_body {
+    max_size {$MAX_REQUEST_BODY_SIZE:25MB}
+  }
+
+  handle /health {
+    rewrite * /api/health
+    reverse_proxy web:3000
+  }
+
+  handle /readiness {
+    rewrite * /api/readiness
+    reverse_proxy web:3000
+  }
+
+  reverse_proxy web:3000 {
+    header_up X-Forwarded-Proto {scheme}
+    transport http {
+      dial_timeout 10s
+      response_header_timeout 60s
+    }
+  }
+}

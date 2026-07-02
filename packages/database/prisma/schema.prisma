@@ -1,0 +1,2311 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum LocationType {
+  BRANCH
+  WAREHOUSE
+  COMMISSARY
+  CENTRAL_KITCHEN
+  HEAD_OFFICE
+  PROJECT_SITE
+  TEMPORARY_SITE
+}
+
+enum ScopeType {
+  COMPANY
+  BRAND
+  LOCATION
+  DEPARTMENT
+  PROJECT
+}
+
+enum AccessLevel {
+  VIEW
+  OPERATE
+  APPROVE
+  MANAGE
+}
+
+enum PurchaseRequestStatus {
+  DRAFT
+  SUBMITTED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  RETURNED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RETURNED
+  CANCELLED
+}
+
+enum ApprovalStepStatus {
+  WAITING
+  PENDING
+  APPROVED
+  REJECTED
+  RETURNED
+  SKIPPED
+}
+
+enum InventoryMovementType {
+  RECEIPT_IN
+  TRANSFER_OUT
+  TRANSFER_IN
+  WASTAGE_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  OPENING_BALANCE_IN
+  COUNT_VARIANCE_IN
+  COUNT_VARIANCE_OUT
+  REVERSAL
+}
+
+enum ProjectTemplateStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum ProjectMemberRole {
+  SPONSOR
+  MANAGER
+  CONTRIBUTOR
+  VIEWER
+  ADMINISTRATOR
+}
+
+enum ProjectTaskStatus {
+  BACKLOG
+  PLANNED
+  IN_PROGRESS
+  WAITING_FOR_APPROVAL
+  BLOCKED
+  FOR_REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectTaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum ProjectBlockerStatus {
+  OPEN
+  RESOLVED
+  ACCEPTED
+  CANCELLED
+}
+
+enum ProjectBlockerSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProjectRiskStatus {
+  OPEN
+  MITIGATING
+  MITIGATED
+  ACCEPTED
+  REALIZED
+  CLOSED
+  CANCELLED
+}
+
+enum ProjectRiskRating {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProjectCalendarDateKind {
+  DATE_ONLY
+  SCHEDULED_DATETIME
+}
+
+enum ProjectMilestoneStatus {
+  PLANNED
+  ACHIEVED
+  CANCELLED
+}
+
+model Tenant {
+  id                            String                         @id @default(uuid()) @db.Uuid
+  name                          String
+  status                        RecordStatus                   @default(ACTIVE)
+  defaultTimezone               String                         @default("Asia/Manila")
+  themeConfig                   Json?
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+  companies                     Company[]
+  brands                        Brand[]
+  locations                     Location[]
+  departments                   Department[]
+  costCenters                   CostCenter[]
+  users                         User[]
+  roles                         Role[]
+  permissions                   Permission[]
+  suppliers                     Supplier[]
+  supplierItemLinks             SupplierItemLink[]
+  supplierPriceHistory          SupplierPriceHistory[]
+  itemCategories                ItemCategory[]
+  uoms                          Uom[]
+  items                         Item[]
+  approvalRules                 ApprovalRule[]
+  approvalInstances             ApprovalInstance[]
+  purchaseRequests              PurchaseRequest[]
+  purchaseRequestComments       PurchaseRequestComment[]
+  quotationRequests             QuotationRequest[]
+  supplierQuotations            SupplierQuotation[]
+  quotationRecommendations      QuotationRecommendation[]
+  purchaseOrders                PurchaseOrder[]
+  purchaseOrderLines            PurchaseOrderLine[]
+  purchaseOrderAmendments       PurchaseOrderAmendment[]
+  purchaseOrderBalanceClosures  PurchaseOrderBalanceClosure[]
+  inventoryLocations            InventoryLocation[]
+  inventoryMovements            InventoryMovement[]
+  inventoryBalances             InventoryBalance[]
+  goodsReceipts                 GoodsReceipt[]
+  goodsReceiptLines             GoodsReceiptLine[]
+  inventoryTransfers            InventoryTransfer[]
+  inventoryTransferLines        InventoryTransferLine[]
+  inventoryTransferReceipts     InventoryTransferReceipt[]
+  inventoryTransferReceiptLines InventoryTransferReceiptLine[]
+  notifications                 Notification[]
+  auditEvents                   AuditEvent[]
+  attachments                   Attachment[]
+  stockCountSessions            StockCountSession[]
+  stockCountLines               StockCountLine[]
+  wastageReports                WastageReport[]
+  wastageLines                  WastageLine[]
+  wastagePolicies               WastagePolicy[]
+  operationalReasonCodes        OperationalReasonCode[]
+  stockAdjustments              StockAdjustment[]
+  stockAdjustmentLines          StockAdjustmentLine[]
+  projectTemplates              ProjectTemplate[]
+  projects                      Project[]
+  projectMembers                ProjectMember[]
+  projectActivityEvents         ProjectActivityEvent[]
+  projectTasks                  ProjectTask[]
+  projectTaskAssignees          ProjectTaskAssignee[]
+  projectTaskChecklistItems     ProjectTaskChecklistItem[]
+  projectComments               ProjectComment[]
+  projectBlockers               ProjectBlocker[]
+  projectRisks                  ProjectRisk[]
+  projectMilestones             ProjectMilestone[]
+  projectRecordLinks            ProjectRecordLink[]
+  projectAttachments            ProjectAttachment[]
+}
+
+model Company {
+  id                            String                         @id @default(uuid()) @db.Uuid
+  tenantId                      String                         @db.Uuid
+  code                          String
+  legalName                     String
+  tradingName                   String?
+  taxIdentifier                 String?
+  currencyCode                  String
+  timezone                      String                         @default("Asia/Manila")
+  status                        RecordStatus                   @default(ACTIVE)
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+  tenant                        Tenant                         @relation(fields: [tenantId], references: [id])
+  brands                        Brand[]
+  locations                     Location[]
+  departments                   Department[]
+  costCenters                   CostCenter[]
+  suppliers                     Supplier[]
+  supplierItemLinks             SupplierItemLink[]
+  supplierPriceHistory          SupplierPriceHistory[]
+  itemCategories                ItemCategory[]
+  uoms                          Uom[]
+  items                         Item[]
+  approvalRules                 ApprovalRule[]
+  approvalInstances             ApprovalInstance[]
+  purchaseRequests              PurchaseRequest[]
+  purchaseRequestComments       PurchaseRequestComment[]
+  quotationRequests             QuotationRequest[]
+  supplierQuotations            SupplierQuotation[]
+  quotationRecommendations      QuotationRecommendation[]
+  purchaseOrders                PurchaseOrder[]
+  purchaseOrderLines            PurchaseOrderLine[]
+  purchaseOrderAmendments       PurchaseOrderAmendment[]
+  purchaseOrderBalanceClosures  PurchaseOrderBalanceClosure[]
+  inventoryLocations            InventoryLocation[]
+  inventoryMovements            InventoryMovement[]
+  inventoryBalances             InventoryBalance[]
+  goodsReceipts                 GoodsReceipt[]
+  goodsReceiptLines             GoodsReceiptLine[]
+  inventoryTransfers            InventoryTransfer[]
+  inventoryTransferLines        InventoryTransferLine[]
+  inventoryTransferReceipts     InventoryTransferReceipt[]
+  inventoryTransferReceiptLines InventoryTransferReceiptLine[]
+  notifications                 Notification[]
+  auditEvents                   AuditEvent[]
+  stockCountSessions            StockCountSession[]
+  stockCountLines               StockCountLine[]
+  wastageReports                WastageReport[]
+  wastageLines                  WastageLine[]
+  wastagePolicies               WastagePolicy[]
+  operationalReasonCodes        OperationalReasonCode[]
+  stockAdjustments              StockAdjustment[]
+  stockAdjustmentLines          StockAdjustmentLine[]
+  projectTemplates              ProjectTemplate[]
+  projects                      Project[]
+  projectMembers                ProjectMember[]
+  projectActivityEvents         ProjectActivityEvent[]
+  projectTasks                  ProjectTask[]
+  projectTaskAssignees          ProjectTaskAssignee[]
+  projectTaskChecklistItems     ProjectTaskChecklistItem[]
+  projectComments               ProjectComment[]
+  projectBlockers               ProjectBlocker[]
+  projectRisks                  ProjectRisk[]
+  projectMilestones             ProjectMilestone[]
+  projectRecordLinks            ProjectRecordLink[]
+  projectAttachments            ProjectAttachment[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+}
+
+model Brand {
+  id               String            @id @default(uuid()) @db.Uuid
+  tenantId         String            @db.Uuid
+  companyId        String            @db.Uuid
+  name             String
+  code             String
+  status           RecordStatus      @default(ACTIVE)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  company          Company           @relation(fields: [companyId], references: [id])
+  locations        Location[]
+  purchaseRequests PurchaseRequest[]
+  purchaseOrders   PurchaseOrder[]
+  projects         Project[]
+
+  @@unique([companyId, code])
+  @@unique([id, tenantId, companyId])
+  @@index([tenantId, companyId, status])
+}
+
+model Location {
+  id                            String              @id @default(uuid()) @db.Uuid
+  tenantId                      String              @db.Uuid
+  companyId                     String              @db.Uuid
+  brandId                       String?             @db.Uuid
+  locationType                  LocationType
+  code                          String
+  name                          String
+  address                       String?
+  timezone                      String              @default("Asia/Manila")
+  status                        RecordStatus        @default(ACTIVE)
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime            @updatedAt
+  tenant                        Tenant              @relation(fields: [tenantId], references: [id])
+  company                       Company             @relation(fields: [companyId], references: [id])
+  brand                         Brand?              @relation(fields: [brandId], references: [id])
+  purchaseRequests              PurchaseRequest[]
+  purchaseOrders                PurchaseOrder[]     @relation("PurchaseOrderDeliveryLocation")
+  inventoryLocations            InventoryLocation[]
+  goodsReceipts                 GoodsReceipt[]      @relation("GoodsReceiptReceivingLocation")
+  sourceInventoryTransfers      InventoryTransfer[] @relation("InventoryTransferSourceLocation")
+  destinationInventoryTransfers InventoryTransfer[] @relation("InventoryTransferDestinationLocation")
+  notifications                 Notification[]
+  projects                      Project[]
+
+  @@unique([companyId, code])
+  @@unique([id, tenantId, companyId])
+  @@index([tenantId, companyId, status])
+}
+
+model Department {
+  id               String            @id @default(uuid()) @db.Uuid
+  tenantId         String            @db.Uuid
+  companyId        String            @db.Uuid
+  name             String
+  code             String
+  status           RecordStatus      @default(ACTIVE)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  company          Company           @relation(fields: [companyId], references: [id])
+  costCenters      CostCenter[]
+  purchaseRequests PurchaseRequest[]
+  purchaseOrders   PurchaseOrder[]
+  projects         Project[]
+
+  @@unique([companyId, code])
+  @@unique([id, tenantId, companyId])
+}
+
+model CostCenter {
+  id               String            @id @default(uuid()) @db.Uuid
+  tenantId         String            @db.Uuid
+  companyId        String            @db.Uuid
+  departmentId     String?           @db.Uuid
+  code             String
+  name             String
+  status           RecordStatus      @default(ACTIVE)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  company          Company           @relation(fields: [companyId], references: [id])
+  department       Department?       @relation(fields: [departmentId], references: [id])
+  purchaseRequests PurchaseRequest[]
+  purchaseOrders   PurchaseOrder[]
+  projects         Project[]
+
+  @@unique([companyId, code])
+  @@unique([id, tenantId, companyId])
+}
+
+model User {
+  id                                String                        @id @default(uuid()) @db.Uuid
+  tenantId                          String                        @db.Uuid
+  email                             String
+  displayName                       String
+  status                            RecordStatus                  @default(ACTIVE)
+  lastLoginAt                       DateTime?
+  createdAt                         DateTime                      @default(now())
+  updatedAt                         DateTime                      @updatedAt
+  tenant                            Tenant                        @relation(fields: [tenantId], references: [id])
+  roleAssignments                   UserRoleAssignment[]
+  scopeAssignments                  UserScopeAssignment[]
+  requestedPurchaseRequests         PurchaseRequest[]             @relation("PurchaseRequestRequester")
+  purchaseRequestComments           PurchaseRequestComment[]
+  createdQuotationRequests          QuotationRequest[]
+  preparedQuoteRecommendations      QuotationRecommendation[]
+  createdPurchaseOrders             PurchaseOrder[]
+  requestedPurchaseOrderAmendments  PurchaseOrderAmendment[]    @relation("PurchaseOrderAmendmentRequester")
+  approvedPurchaseOrderAmendments   PurchaseOrderAmendment[]    @relation("PurchaseOrderAmendmentApprover")
+  requestedPurchaseOrderClosures    PurchaseOrderBalanceClosure[] @relation("PurchaseOrderBalanceClosureRequester")
+  approvedPurchaseOrderClosures     PurchaseOrderBalanceClosure[] @relation("PurchaseOrderBalanceClosureApprover")
+  receivedGoodsReceipts             GoodsReceipt[]                @relation("GoodsReceiptReceiver")
+  reversedGoodsReceipts             GoodsReceipt[]                @relation("GoodsReceiptReverser")
+  requestedInventoryTransfers       InventoryTransfer[]           @relation("InventoryTransferRequester")
+  dispatchedInventoryTransfers      InventoryTransfer[]           @relation("InventoryTransferDispatcher")
+  receivedInventoryTransfers        InventoryTransfer[]           @relation("InventoryTransferReceiver")
+  receivedInventoryTransferReceipts InventoryTransferReceipt[]    @relation("InventoryTransferReceiptReceiver")
+  reversedInventoryTransferReceipts InventoryTransferReceipt[]    @relation("InventoryTransferReceiptReverser")
+  createdStockCountSessions         StockCountSession[]           @relation("StockCountCreator")
+  assignedStockCountSessions        StockCountSession[]           @relation("StockCountAssignee")
+  reviewedStockCountSessions        StockCountSession[]           @relation("StockCountReviewer")
+  countedStockCountLines            StockCountLine[]              @relation("StockCountLineCounter")
+  reportedWastageReports            WastageReport[]               @relation("WastageReportReporter")
+  reviewedWastageReports            WastageReport[]               @relation("WastageReportReviewer")
+  postedWastageReports              WastageReport[]               @relation("WastageReportPoster")
+  reversedWastageReports            WastageReport[]               @relation("WastageReportReverser")
+  requestedStockAdjustments         StockAdjustment[]             @relation("StockAdjustmentRequester")
+  cancelledStockAdjustments         StockAdjustment[]             @relation("StockAdjustmentCanceller")
+  postedStockAdjustments            StockAdjustment[]             @relation("StockAdjustmentPoster")
+  reversedStockAdjustments          StockAdjustment[]             @relation("StockAdjustmentReverser")
+  createdProjectTemplates           ProjectTemplate[]             @relation("ProjectTemplateCreator")
+  updatedProjectTemplates           ProjectTemplate[]             @relation("ProjectTemplateUpdater")
+  sponsoredProjects                 Project[]                     @relation("ProjectSponsor")
+  managedProjects                   Project[]                     @relation("ProjectManager")
+  createdProjects                   Project[]                     @relation("ProjectCreator")
+  updatedProjects                   Project[]                     @relation("ProjectUpdater")
+  archivedProjects                  Project[]                     @relation("ProjectArchiver")
+  projectMemberships                ProjectMember[]               @relation("ProjectMemberUser")
+  addedProjectMembers               ProjectMember[]               @relation("ProjectMemberAdder")
+  removedProjectMembers             ProjectMember[]               @relation("ProjectMemberRemover")
+  projectActivityEvents             ProjectActivityEvent[]        @relation("ProjectActivityActor")
+  ownedProjectTasks                 ProjectTask[]                 @relation("ProjectTaskOwner")
+  completedProjectTasks             ProjectTask[]                 @relation("ProjectTaskCompleter")
+  blockedProjectTasks               ProjectTask[]                 @relation("ProjectTaskBlocker")
+  cancelledProjectTasks             ProjectTask[]                 @relation("ProjectTaskCanceller")
+  reopenedProjectTasks              ProjectTask[]                 @relation("ProjectTaskReopener")
+  createdProjectTasks               ProjectTask[]                 @relation("ProjectTaskCreator")
+  updatedProjectTasks               ProjectTask[]                 @relation("ProjectTaskUpdater")
+  projectTaskAssignments            ProjectTaskAssignee[]         @relation("ProjectTaskAssigneeUser")
+  assignedProjectTasks              ProjectTaskAssignee[]         @relation("ProjectTaskAssigner")
+  removedProjectTaskAssignments     ProjectTaskAssignee[]         @relation("ProjectTaskAssignmentRemover")
+  completedProjectChecklistItems    ProjectTaskChecklistItem[]    @relation("ProjectChecklistCompleter")
+  createdProjectChecklistItems      ProjectTaskChecklistItem[]    @relation("ProjectChecklistCreator")
+  updatedProjectChecklistItems      ProjectTaskChecklistItem[]    @relation("ProjectChecklistUpdater")
+  authoredProjectComments           ProjectComment[]              @relation("ProjectCommentAuthor")
+  editedProjectComments             ProjectComment[]              @relation("ProjectCommentEditor")
+  archivedProjectComments           ProjectComment[]              @relation("ProjectCommentArchiver")
+  ownedProjectBlockers              ProjectBlocker[]              @relation("ProjectBlockerOwner")
+  reportedProjectBlockers           ProjectBlocker[]              @relation("ProjectBlockerReporter")
+  resolvedProjectBlockers           ProjectBlocker[]              @relation("ProjectBlockerResolver")
+  ownedProjectRisks                 ProjectRisk[]                 @relation("ProjectRiskOwner")
+  resolvedProjectRisks              ProjectRisk[]                 @relation("ProjectRiskResolver")
+  createdProjectRisks               ProjectRisk[]                 @relation("ProjectRiskCreator")
+  updatedProjectRisks               ProjectRisk[]                 @relation("ProjectRiskUpdater")
+  ownedProjectMilestones            ProjectMilestone[]            @relation("ProjectMilestoneOwner")
+  achievedProjectMilestones         ProjectMilestone[]            @relation("ProjectMilestoneAchiever")
+  cancelledProjectMilestones        ProjectMilestone[]            @relation("ProjectMilestoneCanceller")
+  createdProjectMilestones          ProjectMilestone[]            @relation("ProjectMilestoneCreator")
+  updatedProjectMilestones          ProjectMilestone[]            @relation("ProjectMilestoneUpdater")
+  createdProjectRecordLinks         ProjectRecordLink[]           @relation("ProjectRecordLinkCreator")
+  updatedProjectRecordLinks         ProjectRecordLink[]           @relation("ProjectRecordLinkUpdater")
+  archivedProjectRecordLinks        ProjectRecordLink[]           @relation("ProjectRecordLinkArchiver")
+  createdProjectAttachments         ProjectAttachment[]           @relation("ProjectAttachmentCreator")
+  archivedProjectAttachments        ProjectAttachment[]           @relation("ProjectAttachmentArchiver")
+  notifications                     Notification[]
+  auditEvents                       AuditEvent[]
+
+  @@unique([tenantId, email])
+}
+
+model Role {
+  id          String               @id @default(uuid()) @db.Uuid
+  tenantId    String?              @db.Uuid
+  code        String
+  name        String
+  systemRole  Boolean              @default(false)
+  status      RecordStatus         @default(ACTIVE)
+  tenant      Tenant?              @relation(fields: [tenantId], references: [id])
+  permissions RolePermission[]
+  assignments UserRoleAssignment[]
+
+  @@unique([tenantId, code])
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String?          @db.Uuid
+  code        String           @unique
+  module      String
+  action      String
+  description String?
+  tenant      Tenant?          @relation(fields: [tenantId], references: [id])
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
+
+model UserRoleAssignment {
+  id       String       @id @default(uuid()) @db.Uuid
+  userId   String       @db.Uuid
+  roleId   String       @db.Uuid
+  startsAt DateTime     @default(now())
+  endsAt   DateTime?
+  status   RecordStatus @default(ACTIVE)
+  user     User         @relation(fields: [userId], references: [id])
+  role     Role         @relation(fields: [roleId], references: [id])
+}
+
+model UserScopeAssignment {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String       @db.Uuid
+  scopeType   ScopeType
+  scopeId     String       @db.Uuid
+  accessLevel AccessLevel
+  startsAt    DateTime     @default(now())
+  endsAt      DateTime?
+  status      RecordStatus @default(ACTIVE)
+  user        User         @relation(fields: [userId], references: [id])
+
+  @@index([userId, scopeType, scopeId, status])
+}
+
+model ProjectTemplate {
+  id                  String                @id @default(uuid()) @db.Uuid
+  tenantId            String                @db.Uuid
+  companyId           String                @db.Uuid
+  code                String
+  name                String
+  projectType         String
+  status              ProjectTemplateStatus @default(DRAFT)
+  isRestrictedDefault Boolean               @default(false)
+  configJson          Json
+  createdByUserId     String                @db.Uuid
+  updatedByUserId     String                @db.Uuid
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  tenant              Tenant                @relation(fields: [tenantId], references: [id])
+  company             Company               @relation(fields: [companyId], references: [id])
+  createdBy           User                  @relation("ProjectTemplateCreator", fields: [createdByUserId], references: [id])
+  updatedBy           User                  @relation("ProjectTemplateUpdater", fields: [updatedByUserId], references: [id])
+  projects            Project[]
+
+  @@unique([companyId, code])
+  @@index([tenantId, companyId, status])
+}
+
+model Project {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  tenantId             String                 @db.Uuid
+  companyId            String                 @db.Uuid
+  templateId           String?                @db.Uuid
+  code                 String
+  name                 String
+  status               ProjectStatus          @default(DRAFT)
+  projectType          String
+  brandId              String?                @db.Uuid
+  locationId           String?                @db.Uuid
+  departmentId         String?                @db.Uuid
+  costCenterId         String?                @db.Uuid
+  sponsorUserId        String                 @db.Uuid
+  managerUserId        String                 @db.Uuid
+  isRestricted         Boolean                @default(false)
+  startAt              DateTime?
+  targetEndAt          DateTime?
+  actualEndAt          DateTime?
+  startDate            DateTime?              @db.Date
+  targetEndDate        DateTime?              @db.Date
+  actualEndDate        DateTime?              @db.Date
+  description          String?
+  templateSnapshotJson Json?
+  projectConfigJson    Json?
+  archivedAt           DateTime?
+  archivedByUserId     String?                @db.Uuid
+  archiveReason        String?
+  version              Int                    @default(1)
+  createdByUserId      String                 @db.Uuid
+  updatedByUserId      String                 @db.Uuid
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  tenant               Tenant                 @relation(fields: [tenantId], references: [id])
+  company              Company                @relation(fields: [companyId], references: [id])
+  template             ProjectTemplate?       @relation(fields: [templateId], references: [id])
+  brand                Brand?                 @relation(fields: [brandId, tenantId, companyId], references: [id, tenantId, companyId])
+  location             Location?              @relation(fields: [locationId, tenantId, companyId], references: [id, tenantId, companyId])
+  department           Department?            @relation(fields: [departmentId, tenantId, companyId], references: [id, tenantId, companyId])
+  costCenter           CostCenter?            @relation(fields: [costCenterId, tenantId, companyId], references: [id, tenantId, companyId])
+  sponsor              User                   @relation("ProjectSponsor", fields: [sponsorUserId], references: [id])
+  manager              User                   @relation("ProjectManager", fields: [managerUserId], references: [id])
+  archivedBy           User?                  @relation("ProjectArchiver", fields: [archivedByUserId], references: [id])
+  createdBy            User                   @relation("ProjectCreator", fields: [createdByUserId], references: [id])
+  updatedBy            User                   @relation("ProjectUpdater", fields: [updatedByUserId], references: [id])
+  members              ProjectMember[]
+  activityEvents       ProjectActivityEvent[]
+  tasks                ProjectTask[]
+  taskAssignees        ProjectTaskAssignee[]
+  checklistItems       ProjectTaskChecklistItem[]
+  comments             ProjectComment[]
+  blockers             ProjectBlocker[]
+  risks                ProjectRisk[]
+  milestones           ProjectMilestone[]
+  recordLinks          ProjectRecordLink[]
+  attachments          ProjectAttachment[]
+
+  @@unique([companyId, code])
+  @@unique([id, tenantId, companyId])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, companyId, isRestricted])
+  @@index([tenantId, companyId, brandId, status])
+  @@index([tenantId, companyId, locationId, status])
+  @@index([tenantId, companyId, departmentId, status])
+  @@index([tenantId, companyId, costCenterId, status])
+  @@index([managerUserId, status])
+  @@index([sponsorUserId, status])
+}
+
+model ProjectMember {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @db.Uuid
+  companyId       String            @db.Uuid
+  projectId       String            @db.Uuid
+  userId          String            @db.Uuid
+  projectRole     ProjectMemberRole
+  status          RecordStatus      @default(ACTIVE)
+  addedByUserId   String            @db.Uuid
+  removedAt       DateTime?
+  removedByUserId String?           @db.Uuid
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  company         Company           @relation(fields: [companyId], references: [id])
+  project         Project           @relation(fields: [projectId], references: [id])
+  user            User              @relation("ProjectMemberUser", fields: [userId], references: [id])
+  addedBy         User              @relation("ProjectMemberAdder", fields: [addedByUserId], references: [id])
+  removedBy       User?             @relation("ProjectMemberRemover", fields: [removedByUserId], references: [id])
+
+  @@unique([projectId, userId])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, companyId, userId, status])
+  @@index([projectId, projectRole, status])
+}
+
+model ProjectActivityEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  companyId     String   @db.Uuid
+  projectId     String   @db.Uuid
+  actorUserId   String   @db.Uuid
+  eventType     String
+  entityType    String
+  entityId      String   @db.Uuid
+  occurredAt    DateTime @default(now())
+  requestId     String?
+  correlationId String?
+  reason        String?
+  beforeData    Json?
+  afterData     Json?
+  metadata      Json?
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  company       Company  @relation(fields: [companyId], references: [id])
+  project       Project  @relation(fields: [projectId], references: [id])
+  actor         User     @relation("ProjectActivityActor", fields: [actorUserId], references: [id])
+
+  @@index([tenantId, companyId, projectId, occurredAt])
+  @@index([tenantId, entityType, entityId, occurredAt])
+  @@index([actorUserId, occurredAt])
+}
+
+model ProjectTask {
+  id                     String                     @id @default(uuid()) @db.Uuid
+  tenantId               String                     @db.Uuid
+  companyId              String                     @db.Uuid
+  projectId              String                     @db.Uuid
+  taskKey                String
+  title                  String
+  description            String?
+  status                 ProjectTaskStatus          @default(BACKLOG)
+  priority               ProjectTaskPriority        @default(NORMAL)
+  ownerUserId            String                     @db.Uuid
+  startAt                DateTime?
+  dueAt                  DateTime?
+  startDate              DateTime?                  @db.Date
+  dueDate                DateTime?                  @db.Date
+  isBlocked              Boolean                    @default(false)
+  blockedReason          String?
+  blockedAt              DateTime?
+  blockedByUserId        String?                    @db.Uuid
+  completedAt            DateTime?
+  completedByUserId      String?                    @db.Uuid
+  completionNote         String?
+  cancelledAt            DateTime?
+  cancelledByUserId      String?                    @db.Uuid
+  cancelReason           String?
+  lastReopenedAt         DateTime?
+  lastReopenedByUserId   String?                    @db.Uuid
+  lastReopenReason       String?
+  version                Int                        @default(1)
+  archivedAt             DateTime?
+  createdByUserId        String                     @db.Uuid
+  updatedByUserId        String                     @db.Uuid
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  tenant                 Tenant                     @relation(fields: [tenantId], references: [id])
+  company                Company                    @relation(fields: [companyId], references: [id])
+  project                Project                    @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  owner                  User                       @relation("ProjectTaskOwner", fields: [ownerUserId], references: [id])
+  blockedBy              User?                      @relation("ProjectTaskBlocker", fields: [blockedByUserId], references: [id])
+  completedBy            User?                      @relation("ProjectTaskCompleter", fields: [completedByUserId], references: [id])
+  cancelledBy            User?                      @relation("ProjectTaskCanceller", fields: [cancelledByUserId], references: [id])
+  lastReopenedBy         User?                      @relation("ProjectTaskReopener", fields: [lastReopenedByUserId], references: [id])
+  createdBy              User                       @relation("ProjectTaskCreator", fields: [createdByUserId], references: [id])
+  updatedBy              User                       @relation("ProjectTaskUpdater", fields: [updatedByUserId], references: [id])
+  assignees              ProjectTaskAssignee[]
+  checklistItems         ProjectTaskChecklistItem[]
+  comments               ProjectComment[]
+  blockers               ProjectBlocker[]
+  risks                  ProjectRisk[]
+  recordLinks            ProjectRecordLink[]
+  attachments            ProjectAttachment[]
+
+  @@unique([projectId, taskKey])
+  @@unique([id, tenantId, companyId, projectId])
+  @@index([tenantId, companyId, projectId, status])
+  @@index([tenantId, companyId, ownerUserId, status])
+  @@index([tenantId, companyId, dueAt, status])
+  @@index([projectId, priority, status])
+}
+
+model ProjectTaskAssignee {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @db.Uuid
+  companyId       String       @db.Uuid
+  projectId       String       @db.Uuid
+  taskId          String       @db.Uuid
+  userId          String       @db.Uuid
+  status          RecordStatus @default(ACTIVE)
+  assignedByUserId String      @db.Uuid
+  removedAt       DateTime?
+  removedByUserId String?      @db.Uuid
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  tenant          Tenant       @relation(fields: [tenantId], references: [id])
+  company         Company      @relation(fields: [companyId], references: [id])
+  project         Project      @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task            ProjectTask  @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  user            User         @relation("ProjectTaskAssigneeUser", fields: [userId], references: [id])
+  assignedBy      User         @relation("ProjectTaskAssigner", fields: [assignedByUserId], references: [id])
+  removedBy       User?        @relation("ProjectTaskAssignmentRemover", fields: [removedByUserId], references: [id])
+
+  @@unique([taskId, userId])
+  @@index([tenantId, companyId, userId, status])
+  @@index([tenantId, companyId, projectId, status])
+  @@index([taskId, status])
+}
+
+model ProjectTaskChecklistItem {
+  id                String      @id @default(uuid()) @db.Uuid
+  tenantId          String      @db.Uuid
+  companyId         String      @db.Uuid
+  projectId         String      @db.Uuid
+  taskId            String      @db.Uuid
+  title             String
+  position          Int
+  isRequired        Boolean     @default(false)
+  isCompleted       Boolean     @default(false)
+  completedAt       DateTime?
+  completedByUserId String?     @db.Uuid
+  archivedAt        DateTime?
+  createdByUserId   String      @db.Uuid
+  updatedByUserId   String      @db.Uuid
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id])
+  company           Company     @relation(fields: [companyId], references: [id])
+  project           Project     @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task              ProjectTask @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  completedBy       User?       @relation("ProjectChecklistCompleter", fields: [completedByUserId], references: [id])
+  createdBy         User        @relation("ProjectChecklistCreator", fields: [createdByUserId], references: [id])
+  updatedBy         User        @relation("ProjectChecklistUpdater", fields: [updatedByUserId], references: [id])
+
+  @@unique([taskId, position])
+  @@index([tenantId, companyId, projectId, taskId])
+}
+
+model ProjectComment {
+  id               String       @id @default(uuid()) @db.Uuid
+  tenantId         String       @db.Uuid
+  companyId        String       @db.Uuid
+  projectId        String       @db.Uuid
+  taskId           String       @db.Uuid
+  authorUserId     String       @db.Uuid
+  body             String
+  status           RecordStatus @default(ACTIVE)
+  editedAt         DateTime?
+  editedByUserId   String?      @db.Uuid
+  archivedAt       DateTime?
+  archivedByUserId String?      @db.Uuid
+  archiveReason    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  tenant           Tenant       @relation(fields: [tenantId], references: [id])
+  company          Company      @relation(fields: [companyId], references: [id])
+  project          Project      @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task             ProjectTask  @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  author           User         @relation("ProjectCommentAuthor", fields: [authorUserId], references: [id])
+  editedBy         User?        @relation("ProjectCommentEditor", fields: [editedByUserId], references: [id])
+  archivedBy       User?        @relation("ProjectCommentArchiver", fields: [archivedByUserId], references: [id])
+  attachments      ProjectAttachment[]
+
+  @@index([tenantId, companyId, projectId, taskId, createdAt])
+  @@index([authorUserId, createdAt])
+}
+
+model ProjectAttachment {
+  id               String          @id @default(uuid()) @db.Uuid
+  tenantId         String          @db.Uuid
+  companyId        String          @db.Uuid
+  projectId        String          @db.Uuid
+  taskId           String?         @db.Uuid
+  commentId        String?         @db.Uuid
+  attachmentId     String          @db.Uuid
+  purpose          String
+  caption          String?
+  status           RecordStatus    @default(ACTIVE)
+  archivedAt       DateTime?
+  archivedByUserId String?         @db.Uuid
+  archiveReason    String?
+  createdByUserId  String          @db.Uuid
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  tenant           Tenant          @relation(fields: [tenantId], references: [id])
+  company          Company         @relation(fields: [companyId], references: [id])
+  project          Project         @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task             ProjectTask?    @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  comment          ProjectComment? @relation(fields: [commentId], references: [id])
+  attachment       Attachment      @relation(fields: [attachmentId], references: [id])
+  createdBy        User            @relation("ProjectAttachmentCreator", fields: [createdByUserId], references: [id])
+  archivedBy       User?           @relation("ProjectAttachmentArchiver", fields: [archivedByUserId], references: [id])
+
+  @@index([tenantId, companyId, projectId, status])
+  @@index([tenantId, companyId, taskId, status])
+  @@index([tenantId, companyId, commentId, status])
+  @@index([attachmentId, status])
+}
+
+model ProjectBlocker {
+  id               String                 @id @default(uuid()) @db.Uuid
+  tenantId         String                 @db.Uuid
+  companyId        String                 @db.Uuid
+  projectId        String                 @db.Uuid
+  taskId           String                 @db.Uuid
+  reason           String
+  blockerType      String
+  severity         ProjectBlockerSeverity @default(MEDIUM)
+  ownerUserId      String                 @db.Uuid
+  reportedAt       DateTime               @default(now())
+  reportedByUserId String                 @db.Uuid
+  nextReviewAt     DateTime?
+  status           ProjectBlockerStatus   @default(OPEN)
+  resolvedAt       DateTime?
+  resolvedByUserId String?                @db.Uuid
+  resolutionNote   String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id])
+  company          Company                @relation(fields: [companyId], references: [id])
+  project          Project                @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task             ProjectTask            @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  owner            User                   @relation("ProjectBlockerOwner", fields: [ownerUserId], references: [id])
+  reportedBy       User                   @relation("ProjectBlockerReporter", fields: [reportedByUserId], references: [id])
+  resolvedBy       User?                  @relation("ProjectBlockerResolver", fields: [resolvedByUserId], references: [id])
+
+  @@index([tenantId, companyId, projectId, status])
+  @@index([taskId, status])
+  @@index([ownerUserId, status])
+}
+
+model ProjectMilestone {
+  id                String                  @id @default(uuid()) @db.Uuid
+  tenantId          String                  @db.Uuid
+  companyId         String                  @db.Uuid
+  projectId         String                  @db.Uuid
+  title             String
+  description       String?
+  status            ProjectMilestoneStatus  @default(PLANNED)
+  dateKind          ProjectCalendarDateKind @default(DATE_ONLY)
+  targetDate        DateTime?               @db.Date
+  targetAt          DateTime?
+  ownerUserId       String                  @db.Uuid
+  isAtRisk          Boolean                 @default(false)
+  atRiskReason      String?
+  achievedAt        DateTime?
+  achievedByUserId  String?                 @db.Uuid
+  cancelledAt       DateTime?
+  cancelledByUserId String?                 @db.Uuid
+  cancelReason      String?
+  version           Int                     @default(1)
+  archivedAt        DateTime?
+  createdByUserId   String                  @db.Uuid
+  updatedByUserId   String                  @db.Uuid
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id])
+  company           Company                 @relation(fields: [companyId], references: [id])
+  project           Project                 @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  owner             User                    @relation("ProjectMilestoneOwner", fields: [ownerUserId], references: [id])
+  achievedBy        User?                   @relation("ProjectMilestoneAchiever", fields: [achievedByUserId], references: [id])
+  cancelledBy       User?                   @relation("ProjectMilestoneCanceller", fields: [cancelledByUserId], references: [id])
+  createdBy         User                    @relation("ProjectMilestoneCreator", fields: [createdByUserId], references: [id])
+  updatedBy         User                    @relation("ProjectMilestoneUpdater", fields: [updatedByUserId], references: [id])
+  risks             ProjectRisk[]
+  recordLinks       ProjectRecordLink[]
+
+  @@unique([id, tenantId, companyId, projectId])
+  @@index([tenantId, companyId, projectId, status])
+  @@index([tenantId, companyId, targetDate, status])
+  @@index([tenantId, companyId, targetAt, status])
+  @@index([ownerUserId, status])
+}
+
+model ProjectRisk {
+  id                   String            @id @default(uuid()) @db.Uuid
+  tenantId             String            @db.Uuid
+  companyId            String            @db.Uuid
+  projectId            String            @db.Uuid
+  taskId               String?           @db.Uuid
+  milestoneId          String?           @db.Uuid
+  title                String
+  description          String?
+  category             String
+  likelihood           ProjectRiskRating
+  impact               ProjectRiskRating
+  severity             ProjectRiskRating
+  status               ProjectRiskStatus @default(OPEN)
+  ownerUserId          String            @db.Uuid
+  targetMitigationDate DateTime?         @db.Date
+  mitigationPlan       String?
+  resolvedAt           DateTime?
+  resolvedByUserId     String?           @db.Uuid
+  resolutionNote       String?
+  evidenceReference    String?
+  lastReopenedAt       DateTime?
+  lastReopenReason     String?
+  version              Int               @default(1)
+  archivedAt           DateTime?
+  createdByUserId      String            @db.Uuid
+  updatedByUserId      String            @db.Uuid
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  tenant               Tenant            @relation(fields: [tenantId], references: [id])
+  company              Company           @relation(fields: [companyId], references: [id])
+  project              Project           @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task                 ProjectTask?      @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  milestone            ProjectMilestone? @relation(fields: [milestoneId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  owner                User              @relation("ProjectRiskOwner", fields: [ownerUserId], references: [id])
+  resolvedBy           User?             @relation("ProjectRiskResolver", fields: [resolvedByUserId], references: [id])
+  createdBy            User              @relation("ProjectRiskCreator", fields: [createdByUserId], references: [id])
+  updatedBy            User              @relation("ProjectRiskUpdater", fields: [updatedByUserId], references: [id])
+
+  @@unique([id, tenantId, companyId, projectId])
+  @@index([tenantId, companyId, projectId, status])
+  @@index([tenantId, companyId, projectId, taskId])
+  @@index([tenantId, companyId, projectId, milestoneId])
+  @@index([tenantId, companyId, ownerUserId, status])
+  @@index([tenantId, companyId, severity, status])
+  @@index([tenantId, companyId, targetMitigationDate, status])
+}
+
+model ProjectRecordLink {
+  id               String            @id @default(uuid()) @db.Uuid
+  tenantId         String            @db.Uuid
+  companyId        String            @db.Uuid
+  projectId        String            @db.Uuid
+  taskId           String?           @db.Uuid
+  milestoneId      String?           @db.Uuid
+  sourceRecordType String
+  sourceRecordId   String            @db.Uuid
+  relationType     String            @default("RELATED")
+  linkLabel        String
+  createdByUserId  String            @db.Uuid
+  updatedByUserId  String            @db.Uuid
+  archivedAt       DateTime?
+  archivedByUserId String?           @db.Uuid
+  archiveReason    String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  company          Company           @relation(fields: [companyId], references: [id])
+  project          Project           @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task             ProjectTask?      @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  milestone        ProjectMilestone? @relation(fields: [milestoneId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  createdBy        User              @relation("ProjectRecordLinkCreator", fields: [createdByUserId], references: [id])
+  updatedBy        User              @relation("ProjectRecordLinkUpdater", fields: [updatedByUserId], references: [id])
+  archivedBy       User?             @relation("ProjectRecordLinkArchiver", fields: [archivedByUserId], references: [id])
+
+  @@unique([id, tenantId, companyId, projectId])
+  @@index([tenantId, companyId, projectId, archivedAt])
+  @@index([tenantId, companyId, projectId, taskId, archivedAt])
+  @@index([tenantId, companyId, projectId, milestoneId, archivedAt])
+  @@index([tenantId, companyId, sourceRecordType, sourceRecordId])
+  @@index([createdByUserId, createdAt])
+}
+
+model Supplier {
+  id             String                 @id @default(uuid()) @db.Uuid
+  tenantId       String                 @db.Uuid
+  companyId      String                 @db.Uuid
+  supplierCode   String
+  legalName      String
+  tradingName    String?
+  taxIdentifier  String?
+  status         RecordStatus           @default(ACTIVE)
+  paymentTerms   String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  tenant         Tenant                 @relation(fields: [tenantId], references: [id])
+  company        Company                @relation(fields: [companyId], references: [id])
+  contacts       SupplierContact[]
+  itemLinks      SupplierItemLink[]
+  priceHistory   SupplierPriceHistory[]
+  quotations     SupplierQuotation[]
+  purchaseOrders PurchaseOrder[]
+  goodsReceipts  GoodsReceipt[]
+
+  @@unique([companyId, supplierCode])
+  @@index([tenantId, companyId, status])
+}
+
+model SupplierContact {
+  id         String   @id @default(uuid()) @db.Uuid
+  supplierId String   @db.Uuid
+  name       String
+  role       String?
+  email      String?
+  phone      String?
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([supplierId, isPrimary])
+}
+
+model ItemCategory {
+  id                          String         @id @default(uuid()) @db.Uuid
+  tenantId                    String         @db.Uuid
+  companyId                   String         @db.Uuid
+  parentId                    String?        @db.Uuid
+  categoryCode                String
+  categoryName                String
+  inventoryClass              String
+  requiresExpiryTracking      Boolean        @default(false)
+  requiresLotTracking         Boolean        @default(false)
+  defaultWastageRequiresPhoto Boolean        @default(false)
+  status                      RecordStatus   @default(ACTIVE)
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
+  tenant                      Tenant         @relation(fields: [tenantId], references: [id])
+  company                     Company        @relation(fields: [companyId], references: [id])
+  parent                      ItemCategory?  @relation("ItemCategoryHierarchy", fields: [parentId], references: [id])
+  children                    ItemCategory[] @relation("ItemCategoryHierarchy")
+  items                       Item[]
+
+  @@unique([companyId, categoryCode])
+  @@index([tenantId, companyId, status])
+}
+
+model Uom {
+  id                            String                         @id @default(uuid()) @db.Uuid
+  tenantId                      String                         @db.Uuid
+  companyId                     String                         @db.Uuid
+  uomCode                       String
+  uomName                       String
+  uomType                       String
+  decimalPrecision              Int                            @default(0)
+  status                        RecordStatus                   @default(ACTIVE)
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+  tenant                        Tenant                         @relation(fields: [tenantId], references: [id])
+  company                       Company                        @relation(fields: [companyId], references: [id])
+  baseItems                     Item[]                         @relation("BaseUom")
+  purchaseItems                 Item[]                         @relation("PurchaseUom")
+  issueItems                    Item[]                         @relation("IssueUom")
+  conversionsFrom               ItemUomConversion[]            @relation("ConversionFromUom")
+  conversionsTo                 ItemUomConversion[]            @relation("ConversionToUom")
+  purchaseRequestLines          PurchaseRequestLine[]
+  supplierItemLinks             SupplierItemLink[]
+  supplierPriceHistory          SupplierPriceHistory[]
+  supplierQuoteLines            SupplierQuotationLine[]
+  purchaseOrderLines            PurchaseOrderLine[]
+  enteredInventoryMovements     InventoryMovement[]            @relation("InventoryMovementEnteredUom")
+  baseInventoryMovements        InventoryMovement[]            @relation("InventoryMovementBaseUom")
+  inventoryBalances             InventoryBalance[]             @relation("InventoryBalanceBaseUom")
+  goodsReceiptLines             GoodsReceiptLine[]
+  inventoryTransferLines        InventoryTransferLine[]
+  inventoryTransferReceiptLines InventoryTransferReceiptLine[]
+  stockCountLines               StockCountLine[]
+  wastageLines                  WastageLine[]
+  stockAdjustmentLines          StockAdjustmentLine[]
+
+  @@unique([companyId, uomCode])
+  @@index([tenantId, companyId, status])
+}
+
+model Item {
+  id                            String                         @id @default(uuid()) @db.Uuid
+  tenantId                      String                         @db.Uuid
+  companyId                     String                         @db.Uuid
+  itemCode                      String
+  itemName                      String
+  itemCategoryId                String                         @db.Uuid
+  itemType                      String
+  baseUomId                     String                         @db.Uuid
+  purchaseUomId                 String?                        @db.Uuid
+  issueUomId                    String?                        @db.Uuid
+  trackInventory                Boolean                        @default(true)
+  trackExpiry                   Boolean                        @default(false)
+  trackLot                      Boolean                        @default(false)
+  requiresReceivingInspection   Boolean                        @default(false)
+  status                        RecordStatus                   @default(ACTIVE)
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+  tenant                        Tenant                         @relation(fields: [tenantId], references: [id])
+  company                       Company                        @relation(fields: [companyId], references: [id])
+  category                      ItemCategory                   @relation(fields: [itemCategoryId], references: [id])
+  baseUom                       Uom                            @relation("BaseUom", fields: [baseUomId], references: [id])
+  purchaseUom                   Uom?                           @relation("PurchaseUom", fields: [purchaseUomId], references: [id])
+  issueUom                      Uom?                           @relation("IssueUom", fields: [issueUomId], references: [id])
+  uomConversions                ItemUomConversion[]
+  purchaseRequestLines          PurchaseRequestLine[]
+  supplierItemLinks             SupplierItemLink[]
+  supplierPriceHistory          SupplierPriceHistory[]
+  supplierQuoteLines            SupplierQuotationLine[]
+  purchaseOrderLines            PurchaseOrderLine[]
+  inventoryMovements            InventoryMovement[]
+  inventoryBalances             InventoryBalance[]
+  goodsReceiptLines             GoodsReceiptLine[]
+  inventoryTransferLines        InventoryTransferLine[]
+  inventoryTransferReceiptLines InventoryTransferReceiptLine[]
+  stockCountLines               StockCountLine[]
+  wastageLines                  WastageLine[]
+  stockAdjustmentLines          StockAdjustmentLine[]
+
+  @@unique([companyId, itemCode])
+  @@index([tenantId, companyId, status])
+}
+
+model ItemUomConversion {
+  id               String   @id @default(uuid()) @db.Uuid
+  itemId           String   @db.Uuid
+  fromUomId        String   @db.Uuid
+  toUomId          String   @db.Uuid
+  conversionFactor Decimal  @db.Decimal(18, 6)
+  roundingRule     String
+  createdAt        DateTime @default(now())
+  item             Item     @relation(fields: [itemId], references: [id])
+  fromUom          Uom      @relation("ConversionFromUom", fields: [fromUomId], references: [id])
+  toUom            Uom      @relation("ConversionToUom", fields: [toUomId], references: [id])
+
+  @@unique([itemId, fromUomId, toUomId])
+  @@index([itemId])
+}
+
+model SupplierItemLink {
+  id               String                 @id @default(uuid()) @db.Uuid
+  tenantId         String                 @db.Uuid
+  companyId        String                 @db.Uuid
+  supplierId       String                 @db.Uuid
+  itemId           String                 @db.Uuid
+  purchaseUomId    String                 @db.Uuid
+  supplierSku      String?
+  supplierItemName String?
+  leadTimeDays     Int?
+  minOrderQty      Decimal?               @db.Decimal(18, 6)
+  preferredRank    Int?
+  status           RecordStatus           @default(ACTIVE)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id])
+  company          Company                @relation(fields: [companyId], references: [id])
+  supplier         Supplier               @relation(fields: [supplierId], references: [id])
+  item             Item                   @relation(fields: [itemId], references: [id])
+  purchaseUom      Uom                    @relation(fields: [purchaseUomId], references: [id])
+  priceHistory     SupplierPriceHistory[]
+
+  @@unique([supplierId, itemId, purchaseUomId])
+  @@index([tenantId, companyId, status])
+  @@index([itemId, status])
+}
+
+model SupplierPriceHistory {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenantId           String            @db.Uuid
+  companyId          String            @db.Uuid
+  supplierId         String            @db.Uuid
+  itemId             String            @db.Uuid
+  supplierItemLinkId String?           @db.Uuid
+  uomId              String            @db.Uuid
+  currencyCode       String
+  unitPrice          Decimal           @db.Decimal(18, 6)
+  effectiveFrom      DateTime
+  effectiveTo        DateTime?
+  sourceDocumentId   String?           @db.Uuid
+  createdAt          DateTime          @default(now())
+  tenant             Tenant            @relation(fields: [tenantId], references: [id])
+  company            Company           @relation(fields: [companyId], references: [id])
+  supplier           Supplier          @relation(fields: [supplierId], references: [id])
+  item               Item              @relation(fields: [itemId], references: [id])
+  supplierItemLink   SupplierItemLink? @relation(fields: [supplierItemLinkId], references: [id])
+  uom                Uom               @relation(fields: [uomId], references: [id])
+
+  @@index([tenantId, companyId, supplierId, itemId, effectiveFrom])
+  @@index([supplierItemLinkId, effectiveFrom])
+}
+
+model PurchaseRequest {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  publicReference     String
+  tenantId            String                   @db.Uuid
+  companyId           String                   @db.Uuid
+  brandId             String?                  @db.Uuid
+  requestLocationId   String                   @db.Uuid
+  requesterUserId     String                   @db.Uuid
+  departmentId        String?                  @db.Uuid
+  costCenterId        String?                  @db.Uuid
+  requiredDate        DateTime
+  urgency             String
+  justification       String
+  status              PurchaseRequestStatus    @default(DRAFT)
+  currentApprovalStep Int?
+  version             Int                      @default(1)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id])
+  company             Company                  @relation(fields: [companyId], references: [id])
+  brand               Brand?                   @relation(fields: [brandId], references: [id])
+  requestLocation     Location                 @relation(fields: [requestLocationId], references: [id])
+  requester           User                     @relation("PurchaseRequestRequester", fields: [requesterUserId], references: [id])
+  department          Department?              @relation(fields: [departmentId], references: [id])
+  costCenter          CostCenter?              @relation(fields: [costCenterId], references: [id])
+  lines               PurchaseRequestLine[]
+  comments            PurchaseRequestComment[]
+  quotationRequests   QuotationRequest[]
+  purchaseOrders      PurchaseOrder[]
+
+  @@unique([companyId, publicReference])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, requestLocationId, status])
+}
+
+model PurchaseRequestComment {
+  id                String          @id @default(uuid()) @db.Uuid
+  purchaseRequestId String          @db.Uuid
+  tenantId          String          @db.Uuid
+  companyId         String          @db.Uuid
+  authorUserId      String          @db.Uuid
+  body              String
+  createdAt         DateTime        @default(now())
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  company           Company         @relation(fields: [companyId], references: [id])
+  purchaseRequest   PurchaseRequest @relation(fields: [purchaseRequestId], references: [id])
+  author            User            @relation(fields: [authorUserId], references: [id])
+
+  @@index([tenantId, companyId, purchaseRequestId, createdAt])
+}
+
+model PurchaseRequestLine {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  purchaseRequestId  String                  @db.Uuid
+  itemId             String?                 @db.Uuid
+  uomId              String?                 @db.Uuid
+  lineNumber         Int
+  description        String
+  requestedQty       Decimal                 @db.Decimal(18, 6)
+  uomCode            String
+  purpose            String
+  notes              String?
+  purchaseRequest    PurchaseRequest         @relation(fields: [purchaseRequestId], references: [id])
+  item               Item?                   @relation(fields: [itemId], references: [id])
+  uom                Uom?                    @relation(fields: [uomId], references: [id])
+  supplierQuoteLines SupplierQuotationLine[]
+  purchaseOrderLines PurchaseOrderLine[]
+
+  @@unique([purchaseRequestId, lineNumber])
+  @@index([itemId])
+  @@index([uomId])
+}
+
+model QuotationRequest {
+  id                String                    @id @default(uuid()) @db.Uuid
+  tenantId          String                    @db.Uuid
+  companyId         String                    @db.Uuid
+  publicReference   String
+  purchaseRequestId String                    @db.Uuid
+  status            String                    @default("OPEN")
+  requiredDate      DateTime
+  createdByUserId   String                    @db.Uuid
+  createdAt         DateTime                  @default(now())
+  tenant            Tenant                    @relation(fields: [tenantId], references: [id])
+  company           Company                   @relation(fields: [companyId], references: [id])
+  purchaseRequest   PurchaseRequest           @relation(fields: [purchaseRequestId], references: [id])
+  createdBy         User                      @relation(fields: [createdByUserId], references: [id])
+  supplierQuotes    SupplierQuotation[]
+  recommendations   QuotationRecommendation[]
+  purchaseOrders    PurchaseOrder[]
+
+  @@unique([companyId, publicReference])
+  @@unique([purchaseRequestId])
+  @@unique([id, tenantId, companyId])
+  @@index([tenantId, companyId, status])
+}
+
+model SupplierQuotation {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  quotationRequestId String                    @db.Uuid
+  tenantId           String                    @db.Uuid
+  companyId          String                    @db.Uuid
+  supplierId         String                    @db.Uuid
+  quoteReference     String
+  quoteDate          DateTime
+  currencyCode       String
+  totalAmount        Decimal                   @db.Decimal(18, 6)
+  validityDate       DateTime?
+  terms              String?
+  status             String                    @default("RECORDED")
+  createdAt          DateTime                  @default(now())
+  tenant             Tenant                    @relation(fields: [tenantId], references: [id])
+  company            Company                   @relation(fields: [companyId], references: [id])
+  quotationRequest   QuotationRequest          @relation(fields: [quotationRequestId], references: [id])
+  supplier           Supplier                  @relation(fields: [supplierId], references: [id])
+  lines              SupplierQuotationLine[]
+  recommendations    QuotationRecommendation[]
+  purchaseOrders     PurchaseOrder[]
+
+  @@unique([id, quotationRequestId])
+  @@index([tenantId, companyId, supplierId])
+  @@index([quotationRequestId])
+}
+
+model QuotationRecommendation {
+  id                          String            @id @default(uuid()) @db.Uuid
+  tenantId                    String            @db.Uuid
+  companyId                   String            @db.Uuid
+  quotationRequestId          String            @db.Uuid
+  selectedSupplierQuotationId String            @db.Uuid
+  preparedByUserId            String            @db.Uuid
+  status                      String            @default("DRAFT")
+  currencyCode                String
+  selectedEvaluatedTotal      Decimal           @db.Decimal(18, 6)
+  lowestEvaluatedTotal        Decimal           @db.Decimal(18, 6)
+  quoteCount                  Int
+  isLowestEvaluatedCost       Boolean
+  selectionReason             String
+  nonLowestJustification      String?
+  singleSourceJustification   String?
+  evaluationSnapshot          Json
+  version                     Int               @default(1)
+  submittedAt                 DateTime?
+  approvedAt                  DateTime?
+  createdAt                   DateTime          @default(now())
+  updatedAt                   DateTime          @updatedAt
+  tenant                      Tenant            @relation(fields: [tenantId], references: [id])
+  company                     Company           @relation(fields: [companyId], references: [id])
+  quotationRequest            QuotationRequest  @relation(fields: [quotationRequestId, tenantId, companyId], references: [id, tenantId, companyId])
+  selectedSupplierQuotation   SupplierQuotation @relation(fields: [selectedSupplierQuotationId, quotationRequestId], references: [id, quotationRequestId])
+  preparedBy                  User              @relation(fields: [preparedByUserId], references: [id])
+  purchaseOrder               PurchaseOrder?
+
+  @@unique([quotationRequestId, version])
+  @@index([tenantId, companyId, status])
+  @@index([quotationRequestId, status])
+  @@index([selectedSupplierQuotationId])
+}
+
+model SupplierQuotationLine {
+  id                  String               @id @default(uuid()) @db.Uuid
+  supplierQuotationId String               @db.Uuid
+  sourcePrLineId      String?              @db.Uuid
+  itemId              String?              @db.Uuid
+  quantity            Decimal              @db.Decimal(18, 6)
+  uomId               String               @db.Uuid
+  unitPrice           Decimal              @db.Decimal(18, 6)
+  lineTotal           Decimal              @db.Decimal(18, 6)
+  availabilityStatus  String
+  leadTimeDays        Int?
+  notes               String?
+  supplierQuotation   SupplierQuotation    @relation(fields: [supplierQuotationId], references: [id])
+  sourcePrLine        PurchaseRequestLine? @relation(fields: [sourcePrLineId], references: [id])
+  item                Item?                @relation(fields: [itemId], references: [id])
+  uom                 Uom                  @relation(fields: [uomId], references: [id])
+  purchaseOrderLines  PurchaseOrderLine[]
+
+  @@index([supplierQuotationId])
+  @@index([sourcePrLineId])
+}
+
+model PurchaseOrder {
+  id                          String                        @id @default(uuid()) @db.Uuid
+  tenantId                    String                        @db.Uuid
+  companyId                   String                        @db.Uuid
+  brandId                     String?                       @db.Uuid
+  publicReference             String
+  purchaseRequestId           String                        @db.Uuid
+  quotationRequestId          String                        @db.Uuid
+  quotationRecommendationId   String                        @unique @db.Uuid
+  selectedSupplierQuotationId String                        @db.Uuid
+  supplierId                  String                        @db.Uuid
+  deliveryLocationId          String                        @db.Uuid
+  departmentId                String?                       @db.Uuid
+  costCenterId                String?                       @db.Uuid
+  currencyCode                String
+  subtotalAmount              Decimal                       @default(0) @db.Decimal(18, 6)
+  taxAmount                   Decimal                       @default(0) @db.Decimal(18, 6)
+  discountAmount              Decimal                       @default(0) @db.Decimal(18, 6)
+  totalAmount                 Decimal                       @db.Decimal(18, 6)
+  expectedDeliveryDate        DateTime
+  status                      String                        @default("DRAFT")
+  sourceSnapshot              Json
+  createdByUserId             String                        @db.Uuid
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
+  tenant                      Tenant                        @relation(fields: [tenantId], references: [id])
+  company                     Company                       @relation(fields: [companyId], references: [id])
+  brand                       Brand?                        @relation(fields: [brandId], references: [id])
+  purchaseRequest             PurchaseRequest               @relation(fields: [purchaseRequestId], references: [id])
+  quotationRequest            QuotationRequest              @relation(fields: [quotationRequestId, tenantId, companyId], references: [id, tenantId, companyId])
+  quotationRecommendation     QuotationRecommendation       @relation(fields: [quotationRecommendationId], references: [id])
+  selectedSupplierQuotation   SupplierQuotation             @relation(fields: [selectedSupplierQuotationId, quotationRequestId], references: [id, quotationRequestId])
+  supplier                    Supplier                      @relation(fields: [supplierId], references: [id])
+  deliveryLocation            Location                      @relation("PurchaseOrderDeliveryLocation", fields: [deliveryLocationId], references: [id])
+  department                  Department?                   @relation(fields: [departmentId], references: [id])
+  costCenter                  CostCenter?                   @relation(fields: [costCenterId], references: [id])
+  createdBy                   User                          @relation(fields: [createdByUserId], references: [id])
+  lines                       PurchaseOrderLine[]
+  goodsReceipts               GoodsReceipt[]
+  amendments                  PurchaseOrderAmendment[]
+  balanceClosures             PurchaseOrderBalanceClosure[]
+
+  @@unique([companyId, publicReference])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, deliveryLocationId, status])
+  @@index([purchaseRequestId])
+  @@index([quotationRequestId])
+  @@index([selectedSupplierQuotationId])
+  @@index([supplierId])
+}
+
+model PurchaseOrderLine {
+  id                        String                 @id @default(uuid()) @db.Uuid
+  purchaseOrderId           String                 @db.Uuid
+  tenantId                  String                 @db.Uuid
+  companyId                 String                 @db.Uuid
+  sourcePrLineId            String?                @db.Uuid
+  sourceSupplierQuoteLineId String?                @db.Uuid
+  itemId                    String?                @db.Uuid
+  uomId                     String                 @db.Uuid
+  lineNumber                Int
+  description               String
+  orderedQty                Decimal                @db.Decimal(18, 6)
+  receivedQty               Decimal                @default(0) @db.Decimal(18, 6)
+  cancelledQty              Decimal                @default(0) @db.Decimal(18, 6)
+  unitPrice                 Decimal                @db.Decimal(18, 6)
+  taxAmount                 Decimal                @default(0) @db.Decimal(18, 6)
+  discountAmount            Decimal                @default(0) @db.Decimal(18, 6)
+  lineTotal                 Decimal                @db.Decimal(18, 6)
+  availabilityStatus        String?
+  leadTimeDays              Int?
+  notes                     String?
+  purchaseOrder             PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
+  tenant                    Tenant                 @relation(fields: [tenantId], references: [id])
+  company                   Company                @relation(fields: [companyId], references: [id])
+  sourcePrLine              PurchaseRequestLine?   @relation(fields: [sourcePrLineId], references: [id])
+  sourceSupplierQuoteLine   SupplierQuotationLine? @relation(fields: [sourceSupplierQuoteLineId], references: [id])
+  item                      Item?                  @relation(fields: [itemId], references: [id])
+  uom                       Uom                    @relation(fields: [uomId], references: [id])
+  goodsReceiptLines         GoodsReceiptLine[]
+
+  @@unique([purchaseOrderId, lineNumber])
+  @@index([tenantId, companyId])
+  @@index([sourcePrLineId])
+  @@index([sourceSupplierQuoteLineId])
+  @@index([itemId])
+}
+
+model InventoryLocation {
+  id                                String                  @id @default(uuid()) @db.Uuid
+  tenantId                          String                  @db.Uuid
+  companyId                         String                  @db.Uuid
+  locationId                        String                  @db.Uuid
+  code                              String
+  name                              String
+  storageType                       String?
+  status                            RecordStatus            @default(ACTIVE)
+  createdAt                         DateTime                @default(now())
+  updatedAt                         DateTime                @updatedAt
+  tenant                            Tenant                  @relation(fields: [tenantId], references: [id])
+  company                           Company                 @relation(fields: [companyId], references: [id])
+  location                          Location                @relation(fields: [locationId], references: [id])
+  movements                         InventoryMovement[]
+  relatedMovements                  InventoryMovement[]     @relation("InventoryMovementRelatedInventoryLocation")
+  balances                          InventoryBalance[]
+  goodsReceiptLines                 GoodsReceiptLine[]
+  sourceInventoryTransferLines      InventoryTransferLine[] @relation("InventoryTransferLineSourceInventoryLocation")
+  destinationInventoryTransferLines InventoryTransferLine[] @relation("InventoryTransferLineDestinationInventoryLocation")
+  stockCountSessions                StockCountSession[]
+  stockCountLines                   StockCountLine[]
+  wastageReports                    WastageReport[]
+  wastageLines                      WastageLine[]
+  wastagePolicies                   WastagePolicy[]
+  stockAdjustments                  StockAdjustment[]
+  stockAdjustmentLines              StockAdjustmentLine[]
+
+  @@unique([companyId, code])
+  @@index([tenantId, companyId, locationId, status])
+}
+
+model PurchaseOrderBalanceClosure {
+  id                              String        @id @default(uuid()) @db.Uuid
+  tenantId                        String        @db.Uuid
+  companyId                       String        @db.Uuid
+  purchaseOrderId                 String        @db.Uuid
+  requestedByUserId               String        @db.Uuid
+  approvedByUserId                String?       @db.Uuid
+  status                          String        @default("PENDING_APPROVAL")
+  reason                          String
+  supplierNoticeReference         String?
+  supplierNoticeUnavailableReason String?
+  notes                           String?
+  lineSnapshot                    Json
+  totalClosedQuantity             Decimal       @default(0) @db.Decimal(18, 6)
+  totalClosedValue                Decimal       @default(0) @db.Decimal(18, 6)
+  requestedAt                     DateTime      @default(now())
+  approvedAt                      DateTime?
+  rejectedAt                      DateTime?
+  rejectionReason                 String?
+  createdAt                       DateTime      @default(now())
+  updatedAt                       DateTime      @updatedAt
+  tenant                          Tenant        @relation(fields: [tenantId], references: [id])
+  company                         Company       @relation(fields: [companyId], references: [id])
+  purchaseOrder                   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  requestedBy                     User          @relation("PurchaseOrderBalanceClosureRequester", fields: [requestedByUserId], references: [id])
+  approvedBy                      User?         @relation("PurchaseOrderBalanceClosureApprover", fields: [approvedByUserId], references: [id])
+
+  @@index([tenantId, companyId, status, requestedAt])
+  @@index([purchaseOrderId, status])
+  @@index([requestedByUserId])
+  @@index([approvedByUserId])
+}
+
+model PurchaseOrderAmendment {
+  id                              String        @id @default(uuid()) @db.Uuid
+  tenantId                        String        @db.Uuid
+  companyId                       String        @db.Uuid
+  purchaseOrderId                 String        @db.Uuid
+  requestedByUserId               String        @db.Uuid
+  approvedByUserId                String?       @db.Uuid
+  status                          String        @default("PENDING_APPROVAL")
+  reason                          String
+  supplierNoticeReference         String?
+  supplierNoticeUnavailableReason String?
+  beforeSnapshot                  Json
+  proposedSnapshot                Json
+  requestedAt                     DateTime      @default(now())
+  approvedAt                      DateTime?
+  rejectedAt                      DateTime?
+  rejectionReason                 String?
+  appliedAt                       DateTime?
+  createdAt                       DateTime      @default(now())
+  updatedAt                       DateTime      @updatedAt
+  tenant                          Tenant        @relation(fields: [tenantId], references: [id])
+  company                         Company       @relation(fields: [companyId], references: [id])
+  purchaseOrder                   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  requestedBy                     User          @relation("PurchaseOrderAmendmentRequester", fields: [requestedByUserId], references: [id])
+  approvedBy                      User?         @relation("PurchaseOrderAmendmentApprover", fields: [approvedByUserId], references: [id])
+
+  @@index([tenantId, companyId, status, requestedAt])
+  @@index([purchaseOrderId, status])
+  @@index([requestedByUserId])
+  @@index([approvedByUserId])
+}
+
+model StockCountSession {
+  id                  String            @id @default(uuid()) @db.Uuid
+  tenantId            String            @db.Uuid
+  companyId           String            @db.Uuid
+  inventoryLocationId String            @db.Uuid
+  publicReference     String
+  countType           String
+  scopeType           String            @default("ALL_ITEMS")
+  status              String            @default("DRAFT")
+  blindCount          Boolean           @default(true)
+  freezeMovements     Boolean           @default(false)
+  scheduledDate       DateTime?
+  cutoffAt            DateTime?
+  startedAt           DateTime?
+  submittedAt         DateTime?
+  reviewedAt          DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  reviewNotes         String?
+  createdByUserId     String            @db.Uuid
+  assignedToUserId    String?           @db.Uuid
+  reviewedByUserId    String?           @db.Uuid
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  tenant              Tenant            @relation(fields: [tenantId], references: [id])
+  company             Company           @relation(fields: [companyId], references: [id])
+  inventoryLocation   InventoryLocation @relation(fields: [inventoryLocationId], references: [id])
+  createdBy           User              @relation("StockCountCreator", fields: [createdByUserId], references: [id])
+  assignedTo          User?             @relation("StockCountAssignee", fields: [assignedToUserId], references: [id])
+  reviewedBy          User?             @relation("StockCountReviewer", fields: [reviewedByUserId], references: [id])
+  lines               StockCountLine[]
+  stockAdjustments    StockAdjustment[]
+
+  @@unique([companyId, publicReference])
+  @@index([tenantId, companyId, status, scheduledDate])
+  @@index([tenantId, companyId, inventoryLocationId, status])
+}
+
+model StockCountLine {
+  id                      String                @id @default(uuid()) @db.Uuid
+  stockCountSessionId     String                @db.Uuid
+  tenantId                String                @db.Uuid
+  companyId               String                @db.Uuid
+  inventoryLocationId     String                @db.Uuid
+  itemId                  String                @db.Uuid
+  uomId                   String                @db.Uuid
+  lineNumber              Int
+  lotKey                  String                @default("NOLOT|NOEXP")
+  lotNumber               String?
+  expiryDate              DateTime?
+  systemQuantityBaseUom   Decimal               @default(0) @db.Decimal(18, 6)
+  countedQuantityBaseUom  Decimal?              @db.Decimal(18, 6)
+  varianceQuantityBaseUom Decimal?              @db.Decimal(18, 6)
+  notes                   String?
+  countedByUserId         String?               @db.Uuid
+  countedAt               DateTime?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  stockCountSession       StockCountSession     @relation(fields: [stockCountSessionId], references: [id])
+  tenant                  Tenant                @relation(fields: [tenantId], references: [id])
+  company                 Company               @relation(fields: [companyId], references: [id])
+  inventoryLocation       InventoryLocation     @relation(fields: [inventoryLocationId], references: [id])
+  item                    Item                  @relation(fields: [itemId], references: [id])
+  uom                     Uom                   @relation(fields: [uomId], references: [id])
+  countedBy               User?                 @relation("StockCountLineCounter", fields: [countedByUserId], references: [id])
+  stockAdjustmentLines    StockAdjustmentLine[]
+
+  @@unique([stockCountSessionId, itemId, lotKey])
+  @@unique([stockCountSessionId, lineNumber])
+  @@index([tenantId, companyId, stockCountSessionId, itemId])
+  @@index([inventoryLocationId, itemId, lotKey])
+}
+
+model WastagePolicy {
+  id                      String             @id @default(uuid()) @db.Uuid
+  tenantId                String             @db.Uuid
+  companyId               String             @db.Uuid
+  name                    String
+  policyVersion           String             @default("v1")
+  priority                Int                @default(100)
+  isActive                Boolean            @default(true)
+  inventoryLocationId     String?            @db.Uuid
+  wastageType             String?
+  reasonCode              String?
+  minimumEstimatedCost    Decimal?           @db.Decimal(18, 6)
+  requiresEvidence        Boolean            @default(false)
+  repeatLookbackDays      Int                @default(30)
+  repeatItemLocationCount Int                @default(3)
+  repeatReporterCount     Int                @default(5)
+  notes                   String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  tenant                  Tenant             @relation(fields: [tenantId], references: [id])
+  company                 Company            @relation(fields: [companyId], references: [id])
+  inventoryLocation       InventoryLocation? @relation(fields: [inventoryLocationId], references: [id])
+
+  @@index([tenantId, companyId, isActive, priority])
+  @@index([tenantId, companyId, inventoryLocationId, wastageType, reasonCode])
+}
+
+model OperationalReasonCode {
+  id               String       @id @default(uuid()) @db.Uuid
+  tenantId         String       @db.Uuid
+  companyId        String       @db.Uuid
+  workflow         String
+  code             String
+  label            String
+  appliesTo        String?
+  requiresEvidence Boolean      @default(false)
+  status           RecordStatus @default(ACTIVE)
+  sortOrder        Int          @default(100)
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  tenant           Tenant       @relation(fields: [tenantId], references: [id])
+  company          Company      @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, workflow, code])
+  @@index([tenantId, companyId, workflow, status, sortOrder])
+  @@index([tenantId, companyId, workflow, appliesTo, status])
+}
+
+model WastageReport {
+  id                  String            @id @default(uuid()) @db.Uuid
+  tenantId            String            @db.Uuid
+  companyId           String            @db.Uuid
+  inventoryLocationId String            @db.Uuid
+  publicReference     String
+  reportedByUserId    String            @db.Uuid
+  reviewedByUserId    String?           @db.Uuid
+  postedByUserId      String?           @db.Uuid
+  reversedByUserId    String?           @db.Uuid
+  status              String            @default("DRAFT")
+  wastageType         String
+  reasonCode          String
+  evidenceReference   String?
+  notes               String?
+  totalEstimatedCost  Decimal           @default(0) @db.Decimal(18, 6)
+  policyFlags         Json?
+  policySnapshot      Json?
+  evidenceRequired    Boolean           @default(false)
+  evidenceSatisfied   Boolean           @default(true)
+  submittedAt         DateTime?
+  reviewedAt          DateTime?
+  postedAt            DateTime?
+  reversedAt          DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  reviewNotes         String?
+  reversalReason      String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  tenant              Tenant            @relation(fields: [tenantId], references: [id])
+  company             Company           @relation(fields: [companyId], references: [id])
+  inventoryLocation   InventoryLocation @relation(fields: [inventoryLocationId], references: [id])
+  reportedBy          User              @relation("WastageReportReporter", fields: [reportedByUserId], references: [id])
+  reviewedBy          User?             @relation("WastageReportReviewer", fields: [reviewedByUserId], references: [id])
+  postedBy            User?             @relation("WastageReportPoster", fields: [postedByUserId], references: [id])
+  reversedBy          User?             @relation("WastageReportReverser", fields: [reversedByUserId], references: [id])
+  lines               WastageLine[]
+
+  @@unique([companyId, publicReference])
+  @@index([tenantId, companyId, status, createdAt])
+  @@index([tenantId, companyId, status, postedAt])
+  @@index([tenantId, companyId, status, reversedAt])
+  @@index([tenantId, companyId, inventoryLocationId, status])
+  @@index([reportedByUserId])
+  @@index([postedByUserId])
+  @@index([reversedByUserId])
+}
+
+model WastageLine {
+  id                  String             @id @default(uuid()) @db.Uuid
+  wastageReportId     String             @db.Uuid
+  tenantId            String             @db.Uuid
+  companyId           String             @db.Uuid
+  inventoryLocationId String             @db.Uuid
+  itemId              String             @db.Uuid
+  uomId               String             @db.Uuid
+  lineNumber          Int
+  description         String
+  quantity            Decimal            @db.Decimal(18, 6)
+  quantityBaseUom     Decimal            @db.Decimal(18, 6)
+  estimatedUnitCost   Decimal            @default(0) @db.Decimal(18, 6)
+  estimatedTotalCost  Decimal            @default(0) @db.Decimal(18, 6)
+  reasonCode          String
+  evidenceReference   String?
+  photoRequired       Boolean            @default(false)
+  postedMovementId    String?            @unique @db.Uuid
+  lotNumber           String?
+  expiryDate          DateTime?
+  notes               String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  wastageReport       WastageReport      @relation(fields: [wastageReportId], references: [id])
+  tenant              Tenant             @relation(fields: [tenantId], references: [id])
+  company             Company            @relation(fields: [companyId], references: [id])
+  inventoryLocation   InventoryLocation  @relation(fields: [inventoryLocationId], references: [id])
+  item                Item               @relation(fields: [itemId], references: [id])
+  uom                 Uom                @relation(fields: [uomId], references: [id])
+  postedMovement      InventoryMovement? @relation("WastageLinePostedMovement", fields: [postedMovementId], references: [id])
+
+  @@unique([wastageReportId, lineNumber])
+  @@index([tenantId, companyId, wastageReportId, itemId])
+  @@index([inventoryLocationId, itemId])
+}
+
+model StockAdjustment {
+  id                        String                @id @default(uuid()) @db.Uuid
+  tenantId                  String                @db.Uuid
+  companyId                 String                @db.Uuid
+  inventoryLocationId       String                @db.Uuid
+  publicReference           String
+  requestedByUserId         String                @db.Uuid
+  cancelledByUserId         String?               @db.Uuid
+  postedByUserId            String?               @db.Uuid
+  reversedByUserId          String?               @db.Uuid
+  status                    String                @default("DRAFT")
+  adjustmentType            String
+  reasonCode                String
+  reasonDescription         String
+  evidenceReference         String?
+  sourceDocumentType        String?
+  sourceDocumentId          String?               @db.Uuid
+  sourceStockCountSessionId String?               @db.Uuid
+  totalEstimatedValueImpact Decimal               @default(0) @db.Decimal(18, 6)
+  submittedAt               DateTime?
+  postedAt                  DateTime?
+  reversedAt                DateTime?
+  cancelledAt               DateTime?
+  cancellationReason        String?
+  reversalReason            String?
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+  tenant                    Tenant                @relation(fields: [tenantId], references: [id])
+  company                   Company               @relation(fields: [companyId], references: [id])
+  inventoryLocation         InventoryLocation     @relation(fields: [inventoryLocationId], references: [id])
+  requestedBy               User                  @relation("StockAdjustmentRequester", fields: [requestedByUserId], references: [id])
+  cancelledBy               User?                 @relation("StockAdjustmentCanceller", fields: [cancelledByUserId], references: [id])
+  postedBy                  User?                 @relation("StockAdjustmentPoster", fields: [postedByUserId], references: [id])
+  reversedBy                User?                 @relation("StockAdjustmentReverser", fields: [reversedByUserId], references: [id])
+  sourceStockCountSession   StockCountSession?    @relation(fields: [sourceStockCountSessionId], references: [id])
+  lines                     StockAdjustmentLine[]
+
+  @@unique([companyId, publicReference])
+  @@index([tenantId, companyId, status, createdAt])
+  @@index([tenantId, companyId, inventoryLocationId, status])
+  @@index([requestedByUserId])
+  @@index([cancelledByUserId])
+  @@index([postedByUserId])
+  @@index([reversedByUserId])
+}
+
+model StockAdjustmentLine {
+  id                     String             @id @default(uuid()) @db.Uuid
+  stockAdjustmentId      String             @db.Uuid
+  tenantId               String             @db.Uuid
+  companyId              String             @db.Uuid
+  inventoryLocationId    String             @db.Uuid
+  itemId                 String             @db.Uuid
+  uomId                  String             @db.Uuid
+  lineNumber             Int
+  lotKey                 String             @default("NOLOT|NOEXP")
+  lotNumber              String?
+  expiryDate             DateTime?
+  systemQuantityBaseUom  Decimal            @default(0) @db.Decimal(18, 6)
+  quantityDeltaBaseUom   Decimal            @db.Decimal(18, 6)
+  unitCost               Decimal            @default(0) @db.Decimal(18, 6)
+  estimatedValueImpact   Decimal            @default(0) @db.Decimal(18, 6)
+  reasonCode             String
+  notes                  String?
+  evidenceReference      String?
+  postedMovementId       String?            @unique @db.Uuid
+  sourceStockCountLineId String?            @db.Uuid
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  stockAdjustment        StockAdjustment    @relation(fields: [stockAdjustmentId], references: [id])
+  tenant                 Tenant             @relation(fields: [tenantId], references: [id])
+  company                Company            @relation(fields: [companyId], references: [id])
+  inventoryLocation      InventoryLocation  @relation(fields: [inventoryLocationId], references: [id])
+  item                   Item               @relation(fields: [itemId], references: [id])
+  uom                    Uom                @relation(fields: [uomId], references: [id])
+  postedMovement         InventoryMovement? @relation("StockAdjustmentLinePostedMovement", fields: [postedMovementId], references: [id])
+  sourceStockCountLine   StockCountLine?    @relation(fields: [sourceStockCountLineId], references: [id])
+
+  @@unique([stockAdjustmentId, lineNumber])
+  @@index([tenantId, companyId, stockAdjustmentId, itemId])
+  @@index([inventoryLocationId, itemId, lotKey])
+}
+
+model InventoryMovement {
+  id                                 String                        @id @default(uuid()) @db.Uuid
+  tenantId                           String                        @db.Uuid
+  companyId                          String                        @db.Uuid
+  inventoryLocationId                String                        @db.Uuid
+  relatedInventoryLocationId         String?                       @db.Uuid
+  itemId                             String                        @db.Uuid
+  movementType                       InventoryMovementType
+  occurredAt                         DateTime
+  enteredQuantity                    Decimal                       @db.Decimal(18, 6)
+  enteredUomId                       String                        @db.Uuid
+  quantityDeltaBaseUom               Decimal                       @db.Decimal(18, 6)
+  baseUomId                          String                        @db.Uuid
+  lotNumber                          String?
+  expiryDate                         DateTime?
+  unitCost                           Decimal?                      @db.Decimal(18, 6)
+  totalCost                          Decimal?                      @db.Decimal(18, 6)
+  sourceDocumentType                 String
+  sourceDocumentId                   String                        @db.Uuid
+  sourceDocumentLineId               String?                       @db.Uuid
+  sourceEventKey                     String
+  reasonCode                         String?
+  notes                              String?
+  reversalOfMovementId               String?                       @db.Uuid
+  postedByUserId                     String                        @db.Uuid
+  createdAt                          DateTime                      @default(now())
+  tenant                             Tenant                        @relation(fields: [tenantId], references: [id])
+  company                            Company                       @relation(fields: [companyId], references: [id])
+  inventoryLocation                  InventoryLocation             @relation(fields: [inventoryLocationId], references: [id])
+  relatedInventoryLocation           InventoryLocation?            @relation("InventoryMovementRelatedInventoryLocation", fields: [relatedInventoryLocationId], references: [id])
+  item                               Item                          @relation(fields: [itemId], references: [id])
+  enteredUom                         Uom                           @relation("InventoryMovementEnteredUom", fields: [enteredUomId], references: [id])
+  baseUom                            Uom                           @relation("InventoryMovementBaseUom", fields: [baseUomId], references: [id])
+  reversalOfMovement                 InventoryMovement?            @relation("InventoryMovementReversal", fields: [reversalOfMovementId], references: [id])
+  reversalMovements                  InventoryMovement[]           @relation("InventoryMovementReversal")
+  postedWastageLines                 WastageLine[]                 @relation("WastageLinePostedMovement")
+  postedStockAdjustmentLines         StockAdjustmentLine[]         @relation("StockAdjustmentLinePostedMovement")
+  postedGoodsReceiptLine             GoodsReceiptLine?             @relation("GoodsReceiptLinePostedMovement")
+  postedInventoryTransferReceiptLine InventoryTransferReceiptLine? @relation("InventoryTransferReceiptLinePostedMovement")
+
+  @@unique([tenantId, companyId, sourceDocumentType, sourceDocumentId, sourceEventKey])
+  @@index([tenantId, companyId, inventoryLocationId, itemId, occurredAt])
+  @@index([relatedInventoryLocationId])
+  @@index([sourceDocumentType, sourceDocumentId])
+  @@index([reversalOfMovementId])
+}
+
+model InventoryBalance {
+  id                  String            @id @default(uuid()) @db.Uuid
+  tenantId            String            @db.Uuid
+  companyId           String            @db.Uuid
+  inventoryLocationId String            @db.Uuid
+  itemId              String            @db.Uuid
+  lotKey              String            @default("UNTRACKED")
+  lotNumber           String?
+  expiryDate          DateTime?
+  baseUomId           String            @db.Uuid
+  qtyOnHand           Decimal           @default(0) @db.Decimal(18, 6)
+  version             Int               @default(1)
+  updatedAt           DateTime          @updatedAt
+  tenant              Tenant            @relation(fields: [tenantId], references: [id])
+  company             Company           @relation(fields: [companyId], references: [id])
+  inventoryLocation   InventoryLocation @relation(fields: [inventoryLocationId], references: [id])
+  item                Item              @relation(fields: [itemId], references: [id])
+  baseUom             Uom               @relation("InventoryBalanceBaseUom", fields: [baseUomId], references: [id])
+
+  @@unique([inventoryLocationId, itemId, lotKey])
+  @@index([tenantId, companyId, inventoryLocationId])
+  @@index([tenantId, companyId, itemId])
+}
+
+model InventoryTransfer {
+  id                    String                         @id @default(uuid()) @db.Uuid
+  tenantId              String                         @db.Uuid
+  companyId             String                         @db.Uuid
+  publicReference       String
+  sourceLocationId      String                         @db.Uuid
+  destinationLocationId String                         @db.Uuid
+  requestedByUserId     String                         @db.Uuid
+  transferType          String
+  purpose               String
+  requiredByDate        DateTime?
+  status                String                         @default("DRAFT")
+  submittedAt           DateTime?
+  dispatchedAt          DateTime?
+  receivedAt            DateTime?
+  cancelledAt           DateTime?
+  cancellationReason    String?
+  dispatchedByUserId    String?                        @db.Uuid
+  receivedByUserId      String?                        @db.Uuid
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
+  tenant                Tenant                         @relation(fields: [tenantId], references: [id])
+  company               Company                        @relation(fields: [companyId], references: [id])
+  sourceLocation        Location                       @relation("InventoryTransferSourceLocation", fields: [sourceLocationId], references: [id])
+  destinationLocation   Location                       @relation("InventoryTransferDestinationLocation", fields: [destinationLocationId], references: [id])
+  requestedBy           User                           @relation("InventoryTransferRequester", fields: [requestedByUserId], references: [id])
+  dispatchedBy          User?                          @relation("InventoryTransferDispatcher", fields: [dispatchedByUserId], references: [id])
+  receivedBy            User?                          @relation("InventoryTransferReceiver", fields: [receivedByUserId], references: [id])
+  lines                 InventoryTransferLine[]
+  receipts              InventoryTransferReceipt[]
+  receiptLines          InventoryTransferReceiptLine[]
+
+  @@unique([companyId, publicReference])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, companyId, sourceLocationId, status])
+  @@index([tenantId, companyId, destinationLocationId, status])
+  @@index([requiredByDate])
+}
+
+model InventoryTransferLine {
+  id                             String                         @id @default(uuid()) @db.Uuid
+  inventoryTransferId            String                         @db.Uuid
+  tenantId                       String                         @db.Uuid
+  companyId                      String                         @db.Uuid
+  sourceInventoryLocationId      String                         @db.Uuid
+  destinationInventoryLocationId String                         @db.Uuid
+  itemId                         String                         @db.Uuid
+  uomId                          String                         @db.Uuid
+  lineNumber                     Int
+  description                    String
+  requestedQty                   Decimal                        @db.Decimal(18, 6)
+  approvedQty                    Decimal                        @default(0) @db.Decimal(18, 6)
+  preparedQty                    Decimal                        @default(0) @db.Decimal(18, 6)
+  dispatchedQty                  Decimal                        @default(0) @db.Decimal(18, 6)
+  receivedQty                    Decimal                        @default(0) @db.Decimal(18, 6)
+  rejectedQty                    Decimal                        @default(0) @db.Decimal(18, 6)
+  damagedQty                     Decimal                        @default(0) @db.Decimal(18, 6)
+  discrepancyQty                 Decimal                        @default(0) @db.Decimal(18, 6)
+  lotNumber                      String?
+  expiryDate                     DateTime?
+  notes                          String?
+  inventoryTransfer              InventoryTransfer              @relation(fields: [inventoryTransferId], references: [id])
+  tenant                         Tenant                         @relation(fields: [tenantId], references: [id])
+  company                        Company                        @relation(fields: [companyId], references: [id])
+  sourceInventoryLocation        InventoryLocation              @relation("InventoryTransferLineSourceInventoryLocation", fields: [sourceInventoryLocationId], references: [id])
+  destinationInventoryLocation   InventoryLocation              @relation("InventoryTransferLineDestinationInventoryLocation", fields: [destinationInventoryLocationId], references: [id])
+  item                           Item                           @relation(fields: [itemId], references: [id])
+  uom                            Uom                            @relation(fields: [uomId], references: [id])
+  receiptLines                   InventoryTransferReceiptLine[]
+
+  @@unique([inventoryTransferId, lineNumber])
+  @@index([tenantId, companyId])
+  @@index([sourceInventoryLocationId])
+  @@index([destinationInventoryLocationId])
+  @@index([itemId])
+}
+
+model InventoryTransferReceipt {
+  id                  String                         @id @default(uuid()) @db.Uuid
+  tenantId            String                         @db.Uuid
+  companyId           String                         @db.Uuid
+  inventoryTransferId String                         @db.Uuid
+  receivedByUserId    String                         @db.Uuid
+  reversedByUserId    String?                        @db.Uuid
+  status              String                         @default("DRAFT")
+  receivedAt          DateTime                       @default(now())
+  postedAt            DateTime?
+  reversedAt          DateTime?
+  reversalReason      String?
+  discrepancyFlag     Boolean                        @default(false)
+  discrepancySummary  String?
+  notes               String?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+  tenant              Tenant                         @relation(fields: [tenantId], references: [id])
+  company             Company                        @relation(fields: [companyId], references: [id])
+  inventoryTransfer   InventoryTransfer              @relation(fields: [inventoryTransferId], references: [id])
+  receivedBy          User                           @relation("InventoryTransferReceiptReceiver", fields: [receivedByUserId], references: [id])
+  reversedBy          User?                          @relation("InventoryTransferReceiptReverser", fields: [reversedByUserId], references: [id])
+  lines               InventoryTransferReceiptLine[]
+
+  @@index([tenantId, companyId, status])
+  @@index([inventoryTransferId, status])
+  @@index([receivedByUserId])
+  @@index([reversedByUserId])
+}
+
+model InventoryTransferReceiptLine {
+  id                      String                   @id @default(uuid()) @db.Uuid
+  transferReceiptId       String                   @db.Uuid
+  inventoryTransferId     String                   @db.Uuid
+  inventoryTransferLineId String                   @db.Uuid
+  tenantId                String                   @db.Uuid
+  companyId               String                   @db.Uuid
+  itemId                  String                   @db.Uuid
+  uomId                   String                   @db.Uuid
+  lineNumber              Int
+  dispatchedQtySnapshot   Decimal                  @db.Decimal(18, 6)
+  acceptedQty             Decimal                  @default(0) @db.Decimal(18, 6)
+  rejectedQty             Decimal                  @default(0) @db.Decimal(18, 6)
+  damagedQty              Decimal                  @default(0) @db.Decimal(18, 6)
+  discrepancyQty          Decimal                  @default(0) @db.Decimal(18, 6)
+  outstandingQty          Decimal                  @default(0) @db.Decimal(18, 6)
+  discrepancyType         String?
+  discrepancyReason       String?
+  evidenceReference       String?
+  postedMovementId        String?                  @unique @db.Uuid
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  transferReceipt         InventoryTransferReceipt @relation(fields: [transferReceiptId], references: [id])
+  inventoryTransfer       InventoryTransfer        @relation(fields: [inventoryTransferId], references: [id])
+  inventoryTransferLine   InventoryTransferLine    @relation(fields: [inventoryTransferLineId], references: [id])
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id])
+  company                 Company                  @relation(fields: [companyId], references: [id])
+  item                    Item                     @relation(fields: [itemId], references: [id])
+  uom                     Uom                      @relation(fields: [uomId], references: [id])
+  postedMovement          InventoryMovement?       @relation("InventoryTransferReceiptLinePostedMovement", fields: [postedMovementId], references: [id])
+
+  @@unique([transferReceiptId, lineNumber])
+  @@index([tenantId, companyId])
+  @@index([inventoryTransferId])
+  @@index([inventoryTransferLineId])
+}
+
+model GoodsReceipt {
+  id                            String             @id @default(uuid()) @db.Uuid
+  tenantId                      String             @db.Uuid
+  companyId                     String             @db.Uuid
+  publicReference               String
+  purchaseOrderId               String             @db.Uuid
+  supplierId                    String             @db.Uuid
+  receivingLocationId           String             @db.Uuid
+  receivedByUserId              String             @db.Uuid
+  receivedAt                    DateTime
+  status                        String             @default("DRAFT")
+  supplierDeliveryReceiptNumber String?
+  discrepancyFlag               Boolean            @default(false)
+  discrepancySummary            String?
+  notes                         String?
+  postedAt                      DateTime?
+  reversedByUserId              String?            @db.Uuid
+  reversedAt                    DateTime?
+  reversalReason                String?
+  createdAt                     DateTime           @default(now())
+  updatedAt                     DateTime           @updatedAt
+  tenant                        Tenant             @relation(fields: [tenantId], references: [id])
+  company                       Company            @relation(fields: [companyId], references: [id])
+  purchaseOrder                 PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  supplier                      Supplier           @relation(fields: [supplierId], references: [id])
+  receivingLocation             Location           @relation("GoodsReceiptReceivingLocation", fields: [receivingLocationId], references: [id])
+  receivedBy                    User               @relation("GoodsReceiptReceiver", fields: [receivedByUserId], references: [id])
+  reversedBy                    User?              @relation("GoodsReceiptReverser", fields: [reversedByUserId], references: [id])
+  lines                         GoodsReceiptLine[]
+
+  @@unique([companyId, publicReference])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, companyId, status, reversedAt])
+  @@index([reversedByUserId])
+  @@index([purchaseOrderId])
+  @@index([receivingLocationId, status])
+}
+
+model GoodsReceiptLine {
+  id                             String             @id @default(uuid()) @db.Uuid
+  goodsReceiptId                 String             @db.Uuid
+  tenantId                       String             @db.Uuid
+  companyId                      String             @db.Uuid
+  purchaseOrderLineId            String             @db.Uuid
+  inventoryDestinationLocationId String             @db.Uuid
+  itemId                         String             @db.Uuid
+  uomId                          String             @db.Uuid
+  lineNumber                     Int
+  description                    String
+  orderedQty                     Decimal            @db.Decimal(18, 6)
+  deliveredQty                   Decimal            @db.Decimal(18, 6)
+  acceptedQty                    Decimal            @default(0) @db.Decimal(18, 6)
+  rejectedQty                    Decimal            @default(0) @db.Decimal(18, 6)
+  damagedQty                     Decimal            @default(0) @db.Decimal(18, 6)
+  shortQty                       Decimal            @default(0) @db.Decimal(18, 6)
+  unitCost                       Decimal?           @db.Decimal(18, 6)
+  conditionStatus                String             @default("ACCEPTED")
+  discrepancyType                String?
+  discrepancyReason              String?
+  evidenceReference              String?
+  lotNumber                      String?
+  expiryDate                     DateTime?
+  postedMovementId               String?            @unique @db.Uuid
+  notes                          String?
+  goodsReceipt                   GoodsReceipt       @relation(fields: [goodsReceiptId], references: [id])
+  tenant                         Tenant             @relation(fields: [tenantId], references: [id])
+  company                        Company            @relation(fields: [companyId], references: [id])
+  purchaseOrderLine              PurchaseOrderLine  @relation(fields: [purchaseOrderLineId], references: [id])
+  inventoryDestinationLocation   InventoryLocation  @relation(fields: [inventoryDestinationLocationId], references: [id])
+  item                           Item               @relation(fields: [itemId], references: [id])
+  uom                            Uom                @relation(fields: [uomId], references: [id])
+  postedMovement                 InventoryMovement? @relation("GoodsReceiptLinePostedMovement", fields: [postedMovementId], references: [id])
+
+  @@unique([goodsReceiptId, lineNumber])
+  @@index([tenantId, companyId])
+  @@index([purchaseOrderLineId])
+  @@index([inventoryDestinationLocationId])
+}
+
+model ApprovalRule {
+  id              String             @id @default(uuid()) @db.Uuid
+  tenantId        String             @db.Uuid
+  companyId       String?            @db.Uuid
+  transactionType String
+  scopeFilters    Json?
+  priority        Int                @default(100)
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  tenant          Tenant             @relation(fields: [tenantId], references: [id])
+  company         Company?           @relation(fields: [companyId], references: [id])
+  steps           ApprovalRuleStep[]
+  instances       ApprovalInstance[]
+}
+
+model ApprovalRuleStep {
+  id              String       @id @default(uuid()) @db.Uuid
+  approvalRuleId  String       @db.Uuid
+  stepOrder       Int
+  approverType    String
+  roleId          String?      @db.Uuid
+  userId          String?      @db.Uuid
+  required        Boolean      @default(true)
+  escalationHours Int?
+  approvalRule    ApprovalRule @relation(fields: [approvalRuleId], references: [id])
+
+  @@unique([approvalRuleId, stepOrder])
+}
+
+model ApprovalInstance {
+  id               String                 @id @default(uuid()) @db.Uuid
+  tenantId         String                 @db.Uuid
+  companyId        String                 @db.Uuid
+  documentType     String
+  documentId       String                 @db.Uuid
+  approvalRuleId   String                 @db.Uuid
+  status           ApprovalStatus         @default(PENDING)
+  currentStepOrder Int?
+  createdAt        DateTime               @default(now())
+  tenant           Tenant                 @relation(fields: [tenantId], references: [id])
+  company          Company                @relation(fields: [companyId], references: [id])
+  approvalRule     ApprovalRule           @relation(fields: [approvalRuleId], references: [id])
+  steps            ApprovalInstanceStep[]
+
+  @@index([tenantId, documentType, documentId])
+}
+
+model ApprovalInstanceStep {
+  id                  String             @id @default(uuid()) @db.Uuid
+  approvalInstanceId  String             @db.Uuid
+  stepOrder           Int
+  assignedUserId      String?            @db.Uuid
+  assignedRoleId      String?            @db.Uuid
+  status              ApprovalStepStatus @default(WAITING)
+  actedAt             DateTime?
+  actedByUserId       String?            @db.Uuid
+  remarks             String?
+  delegatedFromUserId String?            @db.Uuid
+  approvalInstance    ApprovalInstance   @relation(fields: [approvalInstanceId], references: [id])
+
+  @@unique([approvalInstanceId, stepOrder])
+}
+
+model Attachment {
+  id               String       @id @default(uuid()) @db.Uuid
+  tenantId         String       @db.Uuid
+  storageProvider  String
+  objectKey        String
+  originalFilename String
+  mimeType         String
+  sizeBytes        Int
+  checksum         String?
+  uploadedByUserId String?      @db.Uuid
+  status           RecordStatus @default(ACTIVE)
+  createdAt        DateTime     @default(now())
+  tenant           Tenant       @relation(fields: [tenantId], references: [id])
+  projectLinks     ProjectAttachment[]
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  companyId   String?  @db.Uuid
+  actorUserId String?  @db.Uuid
+  eventType   String
+  entityType  String
+  entityId    String   @db.Uuid
+  occurredAt  DateTime @default(now())
+  requestId   String?
+  ipAddress   String?
+  beforeData  Json?
+  afterData   Json?
+  metadata    Json?
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  company     Company? @relation(fields: [companyId], references: [id])
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+
+  @@index([tenantId, entityType, entityId, occurredAt])
+}
+
+model Notification {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  companyId        String?   @db.Uuid
+  locationId       String?   @db.Uuid
+  recipientUserId  String    @db.Uuid
+  notificationType String
+  priority         String    @default("NORMAL")
+  channel          String    @default("IN_APP")
+  title            String
+  body             String
+  deepLink         String
+  entityType       String
+  entityId         String?   @db.Uuid
+  sourceEventKey   String
+  recipientBasis   String?
+  status           String    @default("UNREAD")
+  generatedAt      DateTime  @default(now())
+  readAt           DateTime?
+  archivedAt       DateTime?
+  metadata         Json?
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
+  company          Company?  @relation(fields: [companyId], references: [id])
+  location         Location? @relation(fields: [locationId], references: [id])
+  recipient        User      @relation(fields: [recipientUserId], references: [id])
+
+  @@unique([tenantId, recipientUserId, sourceEventKey])
+  @@index([tenantId, recipientUserId, status, generatedAt])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, companyId, locationId])
+}
