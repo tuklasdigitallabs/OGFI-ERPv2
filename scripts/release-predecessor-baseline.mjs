@@ -162,6 +162,39 @@ INSERT INTO "ProjectRecordLink" (
   '00000000-0000-4000-8000-000000000014'::uuid, now()
 ) ON CONFLICT ("id") DO NOTHING;
 
+INSERT INTO "ApprovalInstance" (
+  "id", "tenantId", "companyId", "documentType", "documentId",
+  "approvalRuleId", "status", "currentStepOrder"
+)
+SELECT
+  '10000000-0000-4000-8000-000000009008'::uuid,
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  '00000000-0000-4000-8000-000000000002'::uuid,
+  'PROJECT_REQUIREMENT',
+  '10000000-0000-4000-8000-000000009003'::uuid,
+  "id", 'PENDING', 1
+FROM "ApprovalRule"
+WHERE "tenantId" = '00000000-0000-4000-8000-000000000001'::uuid
+  AND "companyId" = '00000000-0000-4000-8000-000000000002'::uuid
+ORDER BY "id"
+LIMIT 1
+ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "AuditEvent" (
+  "id", "tenantId", "companyId", "actorUserId", "eventType",
+  "entityType", "entityId", "requestId", "afterData", "metadata"
+) VALUES (
+  '10000000-0000-4000-8000-000000009009'::uuid,
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  '00000000-0000-4000-8000-000000000002'::uuid,
+  '00000000-0000-4000-8000-000000000014'::uuid,
+  'MIGRATION_REHEARSAL_FIXTURE_CREATED', 'ProjectRequirement',
+  '10000000-0000-4000-8000-000000009003'::uuid,
+  'spf002-predecessor-baseline',
+  '{"status":"SUBMITTED"}'::jsonb,
+  '{"fixture":"synthetic","productionData":false}'::jsonb
+) ON CONFLICT ("id") DO NOTHING;
+
 COMMIT;
 `;
 
