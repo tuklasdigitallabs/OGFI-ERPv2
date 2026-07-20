@@ -39,6 +39,7 @@ The ERP must not be represented as production release-ready until these deferred
 | DGB-009 | External security proof | MFA provider proof, IdP session invalidation proof, evidence storage/vault index, break-glass review/revocation proof | Security Owner / IT Owner | Proof files under `release-evidence/external-security/` with matching evidence run ID and PASS marker | Deferred to security review |
 | DGB-010 | Training and hypercare | Training attendance, known-limit acknowledgement, support owners, hypercare cadence, daily review evidence | Enablement Owner / Operations Owner | Completed training impact assessment, hypercare/runbook evidence, passing enablement status | Deferred to user rollout preparation |
 | DGB-011 | Final manifest and consistency | Final evidence manifest missing required final evidence and shared evidence-run consistency | Release Manager / Product Owner | Fresh manifest after all final evidence exists, passing final review and GO / NO-GO | Deferred until all other deferred blockers are closed |
+| DGB-012 | Controlled evidence uploads and storage segregation | Complete the shared hybrid evidence model: retain structured notes/external references, add private uploads where policy requires evidence, use environment-separated S3-compatible storage with opaque tenant/company object keys, enforce source-record and restricted-project authorization, quarantine and malware scanning, checksum verification, audited downloads, archival/retention, and backup/restore proof. Text alone must not satisfy high-risk evidence requirements unless policy explicitly permits a verified external reference. | Product Owner / IT-Security Owner / DevOps Owner / Data-Privacy Owner | Approved storage provider and bucket/prefix design, cross-tenant/company/location/project denial tests, upload/scan/download/archive audit evidence, retention policy, backup/restore proof, and workspace attachment requirement matrix | Shared production-foundation blocker before workspace production certification |
 
 ## Review Trigger
 
@@ -62,6 +63,7 @@ During actual UAT and release rehearsal:
 6. Regenerate the final evidence manifest after all source evidence is collected.
 7. Run final review and GO / NO-GO.
 8. Record the final release board decision in ERP Admin > Release Readiness.
+9. Close `DGB-012` before certifying any workspace whose controlled action requires uploaded evidence.
 
 ## Non-Waiver Statement
 
@@ -76,4 +78,3 @@ Any waiver during UAT must include:
 - expiration or follow-up date
 - explicit approval decision
 - evidence reference
-

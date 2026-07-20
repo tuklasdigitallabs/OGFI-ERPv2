@@ -77,6 +77,7 @@ The baseline policy is confirmed by `DEC-0036`. The exact configured values belo
 7. Supplier accreditation rules and blocked-supplier policy.
 8. Data retention, privacy, and backup ownership.
 9. UAT signatories and authority to approve production go-live. The default Release Board model is confirmed by `DEC-0036`.
+10. Production evidence-storage provider and environment isolation, tenant/company object-key segregation, source-record authorization rules, malware scanning or approved quarantine flow, retention/legal-hold behavior, storage quotas, and attachment backup/restore ownership. Evidence capture remains hybrid: structured notes or verified external references plus private uploads where policy requires files; text alone does not satisfy high-risk evidence unless explicitly allowed by policy.
 
 ## 6. Change request format
 
