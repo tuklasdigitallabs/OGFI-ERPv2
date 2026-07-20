@@ -257,6 +257,7 @@ jobs:
       - name: Record restore summary
         env:
           RESTORE_DATABASE: ogfi_restore_rehearsal
+          RESTORE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_restore_rehearsal?schema=public
         run: pnpm release:restore-summary
       - name: Prove restored row-content equivalence
         env:
