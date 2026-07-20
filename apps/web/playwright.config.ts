@@ -12,18 +12,18 @@ export default defineConfig({
     ? [
         ["line"],
         ["html", { open: "never" }],
-        ["junit", { outputFile: "test-results/e2e-junit.xml" }]
+        ["junit", { outputFile: "test-results/e2e-junit.xml" }],
       ]
     : "list",
   use: {
     baseURL: "http://127.0.0.1:3100",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    video: "retain-on-failure"
+    video: "retain-on-failure",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] } }
+    { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
     command: isCi
@@ -32,9 +32,11 @@ export default defineConfig({
     env: {
       ...process.env,
       NODE_ENV: isCi ? "production" : process.env.NODE_ENV,
-      NEXT_DIST_DIR: isCi ? ".next-ogfi" : ".next-e2e"
+      NEXT_DIST_DIR: isCi
+        ? (process.env.NEXT_DIST_DIR ?? ".next-ogfi")
+        : ".next-e2e",
     },
     url: "http://127.0.0.1:3100",
-    reuseExistingServer: false
-  }
+    reuseExistingServer: false,
+  },
 });

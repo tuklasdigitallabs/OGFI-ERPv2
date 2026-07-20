@@ -279,6 +279,8 @@ jobs:
       - run: pnpm test:access-control
       - run: pnpm --dir apps/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+        env:
+          NEXT_DIST_DIR: .next-build-check
       - run: docker compose config > release-compose-default.yml
       - run: docker compose --profile future-worker config > release-compose-future-worker.yml
       - name: Check release summary metadata
