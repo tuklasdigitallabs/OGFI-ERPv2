@@ -10,8 +10,10 @@ const postgresToolEnvNames = {
 export function resolvePostgresTool(command) {
   for (const envName of postgresToolEnvNames[command] ?? []) {
     const candidate = process.env[envName];
-    if (candidate && isExpectedTool(command, candidate) && canRun(candidate)) {
-      return candidate;
+    if (candidate) {
+      return isExpectedTool(command, candidate) && canRun(candidate)
+        ? candidate
+        : null;
     }
   }
 
@@ -40,7 +42,11 @@ export function requirePostgresTool(command, context) {
 function isExpectedTool(command, candidate) {
   const normalized = candidate.replaceAll("\\", "/");
   const name = basename(normalized).toLowerCase();
-  return name === command || name === `${command}.exe`;
+  return (
+    name === command ||
+    name === `${command}.exe` ||
+    name === `${command}.cmd`
+  );
 }
 
 function canRun(command) {
