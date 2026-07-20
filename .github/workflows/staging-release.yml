@@ -78,7 +78,27 @@ jobs:
           sudo apt-get install -y postgresql-client
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:secret-review
-      - run: pnpm release:tools:test
+      - name: Run release tool self-tests in an isolated environment
+        run: >-
+          env
+          -u NODE_ENV
+          -u DATABASE_URL
+          -u DIRECT_DATABASE_URL
+          -u BACKUP_FILE
+          -u RELEASE_EVIDENCE_RUN_ID
+          -u RELEASE_VERSION
+          -u RELEASE_CANDIDATE_SHA
+          -u RELEASE_PREDECESSOR_SHA
+          -u RELEASE_PREDECESSOR_REF
+          -u GITHUB_RUN_ID
+          -u GITHUB_SHA
+          -u DEPLOY_TO_STAGING
+          -u RELEASE_ENVIRONMENT
+          -u RELEASE_MIGRATION_MODE
+          -u MINIO_IMAGE
+          -u MINIO_ROOT_USER
+          -u MINIO_ROOT_PASSWORD
+          pnpm release:tools:test
       - run: pnpm db:generate
       - name: Verify exact predecessor release
         env:
