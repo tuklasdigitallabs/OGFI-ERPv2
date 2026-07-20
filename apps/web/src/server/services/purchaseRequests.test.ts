@@ -12,7 +12,7 @@ import {
 } from "./purchaseRequests";
 
 describe("purchase request workflow controls", () => {
-  test("purchase request creation uses modal multi-line entry with bounded line count", () => {
+  test("purchase request creation uses a task sheet with bounded multi-line entry", () => {
     const pageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/purchase-requests/page.tsx"),
       "utf8"
@@ -26,11 +26,13 @@ describe("purchase request workflow controls", () => {
       "utf8"
     );
 
-    expect(pageSource).toContain("<EntryModal title=\"Create Draft PR\"");
+    expect(pageSource).toContain("<TaskSheet title=\"Create Draft PR\"");
+    expect(pageSource).toContain('size="workspace" bodyScroll="contained"');
     expect(pageSource).toContain("<PurchaseRequestLinesEditor");
     expect(editorSource).toContain("PURCHASE_REQUEST_MAX_LINES");
-    expect(editorSource).toContain("Add Line");
-    expect(editorSource).toContain("max-h-[62vh] overflow-auto");
+    expect(editorSource).toContain("Add line");
+    expect(editorSource).toContain("overflow-y-auto");
+    expect(editorSource).toContain("Editing line");
     expect(editorSource).toContain('name="lineDescription"');
     expect(editorSource).toContain('name="lineRequestedQty"');
     expect(editorSource).toContain('name="lineEstimatedUnitCost"');

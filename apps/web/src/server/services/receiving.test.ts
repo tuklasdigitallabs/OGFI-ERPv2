@@ -184,6 +184,10 @@ describe("receiving foundation rules", () => {
       path.resolve(__dirname, "../../app/(app)/receiving/page.tsx"),
       "utf8"
     );
+    const editor = readFileSync(
+      path.resolve(__dirname, "../../components/GoodsReceiptLinesEditor.tsx"),
+      "utf8"
+    );
     const detailPage = readFileSync(
       path.resolve(__dirname, "../../app/(app)/receiving/[id]/page.tsx"),
       "utf8"
@@ -198,7 +202,8 @@ describe("receiving foundation rules", () => {
 
     expect(service).toContain("RECEIVING_DISCREPANCY_EVIDENCE_REQUIRED");
     expect(service).toContain("evidenceReference");
-    expect(page).toContain("Discrepancy evidence reference");
+    expect(page).toContain("<GoodsReceiptLinesEditor");
+    expect(editor).toContain("Discrepancy evidence reference");
     expect(detailPage).toContain("Evidence:");
     expect(migration).toContain('ADD COLUMN "evidenceReference" TEXT');
   });

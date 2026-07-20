@@ -223,7 +223,7 @@ describe("purchase request service scaffold", () => {
     ).toBeNull();
   });
 
-  it("uses a compact capped line-entry matrix for large purchase requests", () => {
+  it("uses a compact capped selected-line editor for large purchase requests", () => {
     const serviceSource = readFileSync(
       path.resolve(__dirname, "../src/server/services/purchaseRequests.ts"),
       "utf8",
@@ -238,9 +238,12 @@ describe("purchase request service scaffold", () => {
 
     expect(PURCHASE_REQUEST_MAX_LINES).toBe(100);
     expect(serviceSource).toContain("PURCHASE_REQUEST_LINES_LIMIT_EXCEEDED");
-    expect(editorSource).toContain("max-h-[62vh]");
-    expect(editorSource).toContain("<table");
-    expect(editorSource).toContain("disabled={!canAddLine}");
+    expect(editorSource).toContain("overflow-y-auto");
+    expect(editorSource).toContain("Request lines");
+    expect(editorSource).toContain("Editing line");
+    expect(editorSource).toContain(
+      "disabled={lines.length >= PURCHASE_REQUEST_MAX_LINES}",
+    );
   });
 
   it("reopens only returned purchase requests", () => {

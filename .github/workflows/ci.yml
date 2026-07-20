@@ -9,9 +9,12 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -25,9 +28,12 @@ jobs:
           --health-start-period=10s
           --health-retries=20
     env:
-      NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_ci?schema=public
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_ci?schema=public
+      DEMO_USER_EMAIL: user@example.test
+      DEMO_APPROVER_EMAIL: approver@example.test
+      DEMO_ADMIN_EMAIL: admin@example.test
+      DEMO_SUPER_USER_EMAIL: super.admin@ogfi.example
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -42,9 +48,13 @@ jobs:
       - run: pnpm release:tools:test
       - run: pnpm db:generate
       - run: pnpm db:migrate:deploy
+      - run: pnpm db:seed
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm typecheck:e2e
       - run: pnpm --filter @ogfi/web build
+        env:
+          NODE_ENV: production
       - run: pnpm --filter @ogfi/database test
       - run: pnpm --filter @ogfi/worker test
       - run: pnpm --filter @ogfi/ui test
@@ -52,3 +62,14 @@ jobs:
       - run: pnpm test:access-control
       - run: pnpm --dir apps/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+      - name: Upload CI verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-verification-${{ github.run_id }}-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            release-evidence/
+            apps/web/playwright-report/
+            apps/web/test-results/

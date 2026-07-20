@@ -159,7 +159,8 @@ export function ExpansionEntrySheet({
     };
   }, [isOpen, requestClose]);
 
-  const onlyChild = Children.only(children);
+  const childElements = Children.toArray(children);
+  const onlyChild = childElements.length === 1 ? childElements[0] : null;
   if (!isValidElement<FormHTMLAttributes<HTMLFormElement>>(onlyChild)) {
     return null;
   }

@@ -48,8 +48,11 @@ test("Expansion lifecycle navigation exposes all working stages", async ({ page 
 
   const lifecycleNav = page.getByRole("navigation", { name: "Expansion lifecycle" });
   const mobileDisclosure = lifecycleNav.locator("details");
-  if (await mobileDisclosure.isVisible()) {
-    await mobileDisclosure.locator("summary").click();
+  if ((page.viewportSize()?.width ?? 0) < 640) {
+    const mobileSummary = mobileDisclosure.locator("summary");
+    await expect(mobileSummary).toBeVisible();
+    await mobileSummary.click();
+    await expect(mobileDisclosure).toHaveAttribute("open", "");
   }
   for (const label of [
     "Dashboard",

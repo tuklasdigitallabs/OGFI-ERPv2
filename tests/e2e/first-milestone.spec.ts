@@ -3,6 +3,10 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 const approverEmail = process.env.DEMO_APPROVER_EMAIL ?? "approver@example.test";
 const adminEmail = process.env.DEMO_ADMIN_EMAIL ?? "admin@example.test";
 const requesterEmail = process.env.DEMO_USER_EMAIL ?? "user@example.test";
+const seededSupplierCode = "OGF-BEEF-PRIME";
+const seededSupplierName = "Prime Cut Foods Corporation";
+const seededSupplierDisplayName = "Prime Cut Beef";
+const seededItemCode = "BEEF-HARAMI-SKIRT-KG";
 
 async function expectDemoSession(page: Page, email: string) {
   await expect
@@ -34,6 +38,24 @@ async function createDraftPurchaseRequest(page: Page) {
     .click({ force: true });
 }
 
+async function openPurchaseRequestComposer(page: Page) {
+  await page.getByRole("button", { name: "Create Purchase Request" }).click();
+  await expect(page.getByRole("dialog", { name: "Create Draft PR" })).toBeVisible();
+}
+
+async function getCurrentPurchaseRequestReference(page: Page) {
+  const referenceHeading = page.getByRole("heading", { level: 2, name: /^PR-/ });
+  await expect(referenceHeading).toBeVisible();
+  return (await referenceHeading.textContent())?.trim() ?? "";
+}
+
+async function openEntryDialog(page: Page, name: string) {
+  await page.getByRole("button", { name, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
 async function gotoRowView(page: Page, row: Locator) {
   const href = await row.getByRole("link", { name: "View" }).getAttribute("href");
   expect(href).toBeTruthy();
@@ -41,6 +63,8 @@ async function gotoRowView(page: Page, row: Locator) {
 }
 
 async function gotoAuditEvent(page: Page, eventType: string) {
+  await page.goto("/admin?tab=audit");
+  await expect(page.getByRole("heading", { name: "Audit Trail", level: 2 })).toBeVisible();
   const href = await page
     .getByTestId("admin-audit-row")
     .filter({ hasText: eventType })
@@ -69,23 +93,23 @@ test("non-admin users cannot open core administration", async ({ page }) => {
   );
 
   await page.goto("/admin");
-  await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Core Administration" })).not.toBeVisible();
 
   await page.goto("/admin/users/00000000-0000-4000-8000-000000000006");
-  await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "User Access" })).not.toBeVisible();
 
   await page.goto("/suppliers");
-  await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Suppliers" })).not.toBeVisible();
 
   await page.goto("/items");
-  await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Item Master" })).not.toBeVisible();
 
   await page.goto("/quotes");
-  await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Supplier Quotes" })).not.toBeVisible();
 });
 
@@ -104,27 +128,28 @@ test("returned purchase requests can be reopened as draft", async ({
   const marker = `Returned PR ${testInfo.project.name} ${Date.now()} ${Math.random()
     .toString(16)
     .slice(2, 8)}`;
+  await openPurchaseRequestComposer(page);
   await page.getByLabel("Required date").fill("2026-07-18");
-  await page.getByLabel("Urgency").fill("Normal");
+  await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Return/reopen validation for ${marker}`);
-  await page.getByLabel("Line description").fill(marker);
+  await page.getByLabel("Catalog item").selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("1");
-  await page.getByLabel("UOM", { exact: true }).fill("kg");
-  await page.getByLabel("Purpose").fill("Branch operating requirement");
+  await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
-  await expect(page.getByRole("heading", { name: marker })).toBeVisible();
+  await expect(page.getByText(marker, { exact: true })).toBeVisible();
+  const requestReference = await getCurrentPurchaseRequestReference(page);
 
   await page.getByRole("button", { name: "Submit for Approval" }).click();
   await expect(page.getByText("PENDING APPROVAL")).toBeVisible();
 
   await signInAs(page, approverEmail, "/approvals", "Approval Inbox");
-  const approvalRow = page.getByTestId("approval-row").filter({ hasText: marker });
+  const approvalRow = page.getByTestId("approval-row").filter({ hasText: requestReference });
   await approvalRow.getByRole("link", { name: "Review" }).click();
   const approverComment = `Approver comment ${marker}`;
   await page.getByLabel("Add comment").fill(approverComment);
   await page.getByRole("button", { name: "Add Comment" }).click();
   await expect(page.getByTestId("approval-comment").filter({ hasText: approverComment })).toBeVisible();
-  await page.getByLabel("Return remarks").fill(`Return for revision ${marker}`);
+  await page.getByLabel("Decision remarks").fill(`Return for revision ${marker}`);
   await page.getByRole("button", { name: "Return for Revision" }).click();
   await expect(page.getByRole("heading", { name: "Approval Inbox" })).toBeVisible();
 
@@ -134,7 +159,7 @@ test("returned purchase requests can be reopened as draft", async ({
     "/purchase-requests",
     "Purchase Requests"
   );
-  const requestRow = page.getByTestId("purchase-request-row").filter({ hasText: marker });
+  const requestRow = page.getByTestId("purchase-request-row").filter({ hasText: requestReference });
   await expect(requestRow.getByText("RETURNED", { exact: true })).toBeVisible();
   await gotoRowView(page, requestRow);
   await expect(page.getByTestId("purchase-request-comment").filter({ hasText: approverComment })).toBeVisible();
@@ -158,15 +183,15 @@ test("draft purchase requests can be cancelled with audit history", async ({
   const marker = `Cancelled PR ${testInfo.project.name} ${Date.now()} ${Math.random()
     .toString(16)
     .slice(2, 8)}`;
+  await openPurchaseRequestComposer(page);
   await page.getByLabel("Required date").fill("2026-07-19");
-  await page.getByLabel("Urgency").fill("Normal");
+  await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Cancellation validation for ${marker}`);
-  await page.getByLabel("Line description").fill(marker);
+  await page.getByLabel("Catalog item").selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("1");
-  await page.getByLabel("UOM", { exact: true }).fill("kg");
-  await page.getByLabel("Purpose").fill("Branch operating requirement");
+  await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
-  await expect(page.getByRole("heading", { name: marker })).toBeVisible();
+  await expect(page.getByText(marker, { exact: true })).toBeVisible();
   const comment = `Draft comment ${marker}`;
   await page.getByLabel("Add comment").fill(comment);
   await page.getByRole("button", { name: "Add Comment" }).click();
@@ -194,26 +219,27 @@ test("purchase requests can be rejected with remarks and action history", async 
   const marker = `Rejected PR ${testInfo.project.name} ${Date.now()} ${Math.random()
     .toString(16)
     .slice(2, 8)}`;
+  await openPurchaseRequestComposer(page);
   await page.getByLabel("Required date").fill("2026-07-20");
-  await page.getByLabel("Urgency").fill("Normal");
+  await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Rejection validation for ${marker}`);
-  await page.getByLabel("Line description").fill(marker);
+  await page.getByLabel("Catalog item").selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("1");
-  await page.getByLabel("UOM", { exact: true }).fill("kg");
-  await page.getByLabel("Purpose").fill("Branch operating requirement");
+  await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
-  await expect(page.getByRole("heading", { name: marker })).toBeVisible();
+  await expect(page.getByText(marker, { exact: true })).toBeVisible();
+  const requestReference = await getCurrentPurchaseRequestReference(page);
   await page.getByRole("button", { name: "Submit for Approval" }).click();
   await expect(page.getByText("PENDING APPROVAL")).toBeVisible();
 
   await signInAs(page, approverEmail, "/approvals", "Approval Inbox");
   await page
     .getByTestId("approval-row")
-    .filter({ hasText: marker })
+    .filter({ hasText: requestReference })
     .getByRole("link", { name: "Review" })
     .click();
   const rejectRemarks = `Reject validation ${marker}`;
-  await page.getByLabel("Reject remarks").fill(rejectRemarks);
+  await page.getByLabel("Decision remarks").fill(rejectRemarks);
   await page.getByRole("button", { name: "Reject Purchase Request" }).click();
   await expect(page.getByRole("heading", { name: "Approval Inbox" })).toBeVisible();
 
@@ -223,7 +249,7 @@ test("purchase requests can be rejected with remarks and action history", async 
     "/purchase-requests",
     "Purchase Requests"
   );
-  const rejectedRow = page.getByTestId("purchase-request-row").filter({ hasText: marker });
+  const rejectedRow = page.getByTestId("purchase-request-row").filter({ hasText: requestReference });
   await expect(rejectedRow.getByText("REJECTED", { exact: true })).toBeVisible();
   await gotoRowView(page, rejectedRow);
   await expect(page.getByText("purchase_request.rejected")).toBeVisible();
@@ -231,7 +257,7 @@ test("purchase requests can be rejected with remarks and action history", async 
     page
       .getByTestId("purchase-request-approval-action")
       .filter({ hasText: "REJECTED" })
-      .filter({ hasText: "Configured Approver" })
+      .filter({ hasText: "Alyssa Tan" })
       .filter({ hasText: rejectRemarks })
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit for Approval" })).not.toBeVisible();
@@ -241,6 +267,7 @@ test("first milestone purchase request path works end to end", async ({
   page
 }, testInfo) => {
   test.setTimeout(240_000);
+  page.setDefaultTimeout(10_000);
 
   await signInAs(
     page,
@@ -252,16 +279,19 @@ test("first milestone purchase request path works end to end", async ({
   const marker = `Test PR ${testInfo.project.name} ${Date.now()} ${Math.random()
     .toString(16)
     .slice(2, 8)}`;
+  const scopeCandidateName =
+    testInfo.project.name === "mobile" ? "Lia Mendoza" : "Paolo Cruz";
+  await openPurchaseRequestComposer(page);
   await page.getByLabel("Required date").fill("2026-07-15");
-  await page.getByLabel("Urgency").fill("Normal");
+  await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Local milestone validation for ${marker}`);
-  await page.getByLabel("Line description").fill(marker);
+  await page.getByLabel("Catalog item").selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("3");
-  await page.getByLabel("UOM", { exact: true }).fill("kg");
-  await page.getByLabel("Purpose").fill("Branch operating requirement");
+  await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
 
-  await expect(page.getByRole("heading", { name: marker })).toBeVisible();
+  await expect(page.getByText(marker, { exact: true })).toBeVisible();
+  const requestReference = await getCurrentPurchaseRequestReference(page);
   await expect(page.getByText("purchase_request.created")).toBeVisible();
 
   await page.getByRole("button", { name: "Submit for Approval" }).click();
@@ -269,11 +299,11 @@ test("first milestone purchase request path works end to end", async ({
   await expect(page.getByText("purchase_request.submitted")).toBeVisible();
 
   await page.goto("/approvals");
-  await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Approval Inbox" })).not.toBeVisible();
 
   await signInAs(page, approverEmail, "/approvals", "Approval Inbox");
-  const approvalRow = page.getByTestId("approval-row").filter({ hasText: marker });
+  const approvalRow = page.getByTestId("approval-row").filter({ hasText: requestReference });
   await approvalRow.getByRole("link", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: "Approval Review" })).toBeVisible();
   await page.getByRole("button", { name: "Approve Purchase Request" }).click();
@@ -294,46 +324,48 @@ test("first milestone purchase request path works end to end", async ({
   expect(exportCsv).toContain("APPROVED");
   await approvedRequestRow.getByRole("link", { name: "View" }).click();
   await expect(
-    page.getByTestId("purchase-request-approval-action").filter({ hasText: "APPROVED" }).filter({ hasText: "Configured Approver" })
+    page.getByTestId("purchase-request-approval-action").filter({ hasText: "APPROVED" }).filter({ hasText: "Alyssa Tan" })
   ).toBeVisible();
 
   await signInAs(page, adminEmail, "/admin", "Core Administration");
   await page.goto("/quotes");
   await expect(page.getByRole("heading", { name: "Supplier Quotes" })).toBeVisible();
-  const quoteRequestSelect = page.locator('select[name="purchaseRequestId"]');
-  await expect(quoteRequestSelect).toContainText(marker);
+  await page.getByRole("button", { name: "Record Supplier Quote" }).click();
+  const quoteDialog = page.getByRole("dialog", { name: "Record Supplier Quote" });
+  await expect(quoteDialog).toBeVisible();
+  const quoteRequestSelect = quoteDialog.locator('select[name="purchaseRequestId"]');
+  await expect(quoteRequestSelect).toContainText(requestReference);
   const quoteRequestOptionValue = await quoteRequestSelect
-    .locator("option", { hasText: marker })
+    .locator("option", { hasText: requestReference })
     .first()
     .getAttribute("value");
   expect(quoteRequestOptionValue).toBeTruthy();
   await quoteRequestSelect.selectOption(quoteRequestOptionValue ?? "");
   await page
     .locator('select[name="supplierId"]')
-    .selectOption({ label: "CONFIGURED-SUPPLIER / Configured Supplier" });
+    .selectOption({ label: `${seededSupplierCode} / ${seededSupplierName}` });
   const quoteReference = `QUOTE-${testInfo.project.name.toUpperCase()}-${Date.now()}`;
   await page.getByLabel("Quote reference").fill(quoteReference);
   await page.getByLabel("Quote date").fill("2026-07-02");
   await page.getByLabel("Valid until").fill("2026-07-31");
-  await page.getByLabel("Quantity").fill("3");
-  await page.locator('select[name="uomId"]').selectOption({ label: "KG" });
-  await page.getByLabel("Unit price").fill("42.5");
-  await page.getByLabel("Lead days").fill("2");
-  await page.getByLabel("Availability").fill("Available");
-  await page.getByLabel("Terms").fill("Net 15");
-  await page.getByLabel("Notes").fill(`E2E quote note for ${marker}`);
-  await page.getByLabel("Recording reason").fill(`E2E quote capture for ${marker}`);
-  await page.getByRole("button", { name: "Record Supplier Quote" }).click({ force: true });
-  const currentQuoteRequestRow = page.getByTestId("quote-request-row").filter({ hasText: marker });
+  await quoteDialog.getByLabel("Quoted quantity").fill("3");
+  await quoteDialog.getByLabel("Unit price").fill("42.5");
+  await quoteDialog.getByLabel("Lead days").fill("2");
+  await quoteDialog.getByLabel("Availability").fill("Available");
+  await quoteDialog.getByLabel("Terms").fill("Net 15");
+  await quoteDialog.getByLabel("Notes").fill(`E2E quote note for ${marker}`);
+  await quoteDialog.getByLabel("Recording reason").fill(`E2E quote capture for ${marker}`);
+  await quoteDialog.getByRole("button", { name: "Record Supplier Quote", exact: true }).click();
+  const currentQuoteRequestRow = page.getByTestId("quote-request-row").filter({ hasText: requestReference });
   const supplierQuoteRow = currentQuoteRequestRow
     .getByTestId("supplier-quote-row")
     .filter({ hasText: quoteReference });
-  await expect(supplierQuoteRow.filter({ hasText: "Configured Supplier" })).toBeVisible();
+  await expect(supplierQuoteRow.filter({ hasText: seededSupplierDisplayName })).toBeVisible();
   await expect(supplierQuoteRow.filter({ hasText: "PHP 127.50" })).toBeVisible();
   await expect(supplierQuoteRow.filter({ hasText: "Lowest recorded cost" })).toBeVisible();
   await currentQuoteRequestRow
     .locator('select[name="selectedSupplierQuotationId"]')
-    .selectOption({ label: `Configured Supplier / ${quoteReference} / PHP 127.50` });
+    .selectOption({ label: `${seededSupplierDisplayName} / ${quoteReference} / PHP 127.50` });
   await currentQuoteRequestRow
     .getByLabel("Selection reason")
     .fill(`Recommended supplier for ${marker}`);
@@ -342,17 +374,19 @@ test("first milestone purchase request path works end to end", async ({
     .fill(`Only recorded quote for ${marker}`);
   await currentQuoteRequestRow
     .getByRole("button", { name: "Record Recommendation" })
-    .click({ force: true });
+    .click();
   const recommendation = currentQuoteRequestRow
     .getByTestId("quotation-recommendation")
     .filter({ hasText: quoteReference });
-  await expect(recommendation.filter({ hasText: "Configured Supplier" })).toBeVisible();
+  await expect(recommendation.filter({ hasText: seededSupplierDisplayName })).toBeVisible();
   await expect(recommendation.filter({ hasText: `Recommended supplier for ${marker}` })).toBeVisible();
   await expect(recommendation.filter({ hasText: `Only recorded quote for ${marker}` })).toBeVisible();
   await currentQuoteRequestRow
     .getByRole("button", { name: "Submit Recommendation" })
-    .click({ force: true });
-  await expect(currentQuoteRequestRow.getByText("PENDING APPROVAL")).toBeVisible();
+    .click();
+  await expect(currentQuoteRequestRow.getByText("PENDING APPROVAL")).toBeVisible({
+    timeout: 15_000
+  });
 
   await signInAs(page, approverEmail, "/approvals", "Approval Inbox");
   const recommendationApprovalRow = page
@@ -362,7 +396,7 @@ test("first milestone purchase request path works end to end", async ({
   await recommendationApprovalRow.getByRole("link", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: "Approval Review" })).toBeVisible();
   await expect(page.getByText("Quotation Recommendation Approval")).toBeVisible();
-  await expect(page.getByText("Configured Supplier", { exact: true })).toBeVisible();
+  await expect(page.getByText(seededSupplierDisplayName, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Approve Recommendation" }).click();
   await expect(page.getByRole("heading", { name: "Approval Inbox" })).toBeVisible();
 
@@ -370,15 +404,15 @@ test("first milestone purchase request path works end to end", async ({
   await expect(
     page
       .getByTestId("quote-request-row")
-      .filter({ hasText: marker })
+      .filter({ hasText: requestReference })
       .getByTestId("quotation-recommendation")
       .filter({ hasText: quoteReference })
-      .filter({ hasText: "Configured Supplier" })
+      .filter({ hasText: seededSupplierDisplayName })
   ).toBeVisible();
   await expect(
     page
       .getByTestId("quote-request-row")
-      .filter({ hasText: marker })
+      .filter({ hasText: requestReference })
       .getByTestId("quotation-recommendation-status")
       .getByText("APPROVED")
   ).toBeVisible();
@@ -386,7 +420,7 @@ test("first milestone purchase request path works end to end", async ({
   expect(quoteExportResponse.ok()).toBe(true);
   const quoteExportCsv = await quoteExportResponse.text();
   expect(quoteExportCsv).toContain(quoteReference);
-  expect(quoteExportCsv).toContain("Configured Supplier");
+  expect(quoteExportCsv).toContain(seededSupplierDisplayName);
   expect(quoteExportCsv).toContain("true");
   await signInAs(
     page,
@@ -405,7 +439,7 @@ test("first milestone purchase request path works end to end", async ({
   expect(approvedRequestHref).toBeTruthy();
   await page.goto(approvedRequestHref ?? "/purchase-requests");
   const requestQuoteRow = page.getByTestId("purchase-request-quote-row").filter({ hasText: quoteReference });
-  await expect(requestQuoteRow.filter({ hasText: "Configured Supplier" })).toBeVisible();
+  await expect(requestQuoteRow.filter({ hasText: seededSupplierDisplayName })).toBeVisible();
   await expect(requestQuoteRow.filter({ hasText: "PHP 127.50" })).toBeVisible();
 
   await signInAs(page, adminEmail, "/admin", "Core Administration");
@@ -413,18 +447,19 @@ test("first milestone purchase request path works end to end", async ({
   await expect(page.getByLabel("Location context")).toHaveValue(
     "00000000-0000-4000-8000-000000000004"
   );
-  await expect(page.getByLabel("Location context")).toContainText("Configured Location");
+  await expect(page.getByLabel("Location context")).toContainText("Yakiniku Like SM North Edsa");
   await page.getByRole("button", { name: "Switch" }).click();
   await expect(page.getByRole("heading", { name: "Core Administration" })).toBeVisible();
   await expect(
-    page.getByTestId("admin-user-row").filter({ hasText: "Configured Admin" })
+    page.getByTestId("admin-user-row").filter({ hasText: "Nico Valdez" })
   ).toBeVisible();
   await page.goto("/suppliers");
   await expect(page.getByRole("heading", { name: "Suppliers" })).toBeVisible();
   await expect(
-    page.getByTestId("supplier-row").filter({ hasText: "CONFIGURED-SUPPLIER" })
+    page.getByTestId("supplier-row").filter({ hasText: seededSupplierCode })
   ).toBeVisible();
   const supplierCode = `E2E-${testInfo.project.name.toUpperCase()}-${Date.now()}`;
+  const supplierDialog = await openEntryDialog(page, "Create Supplier");
   await page.getByLabel("Supplier code").fill(supplierCode);
   await page.getByLabel("Legal name").fill(`${marker} Supplier Legal`);
   await page.getByLabel("Trading name").fill(`${marker} Supplier`);
@@ -433,60 +468,71 @@ test("first milestone purchase request path works end to end", async ({
   await page.getByLabel("Contact role").fill("Sales");
   await page.getByLabel("Contact email").fill("e2e-supplier@example.test");
   await page.getByLabel("Creation reason").fill(`E2E supplier setup for ${marker}`);
-  await page.getByRole("button", { name: "Create Supplier" }).click({ force: true });
+  await supplierDialog.getByRole("button", { name: "Create Supplier", exact: true }).click();
   const supplierRow = page.getByTestId("supplier-row").filter({ hasText: supplierCode });
   await expect(supplierRow).toBeVisible();
-  await supplierRow.getByLabel("Deactivation reason").fill(`E2E supplier deactivation for ${marker}`);
-  await supplierRow.getByRole("button", { name: "Deactivate Supplier" }).click({ force: true });
+  await supplierRow.getByRole("button", { name: "Deactivate", exact: true }).click();
+  const supplierDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Supplier" });
+  await supplierDeactivationDialog
+    .getByLabel("Deactivation reason")
+    .fill(`E2E supplier deactivation for ${marker}`);
+  await supplierDeactivationDialog
+    .getByRole("button", { name: "Deactivate Supplier", exact: true })
+    .click();
   await expect(page.getByTestId("supplier-row").filter({ hasText: supplierCode }).getByText("INACTIVE")).toBeVisible();
   await page.goto("/items");
   await expect(page.getByRole("heading", { name: "Item Master" })).toBeVisible();
   await expect(
-    page.getByTestId("item-row").filter({ hasText: "CONFIGURED-ITEM" })
+    page.getByTestId("item-row").filter({ hasText: seededItemCode })
   ).toBeVisible();
   const itemStamp = `${testInfo.project.name.toUpperCase()}-${Date.now()}`;
   const categoryCode = `CAT-${itemStamp}`;
   const uomCode = `UOM-${itemStamp}`;
   const itemCode = `ITEM-${itemStamp}`;
   const itemName = `${marker} Item`;
+  await page.locator('a[href="/items?tab=categories"]').click();
+  const categoryDialog = await openEntryDialog(page, "Create Category");
   await page.getByLabel("Category code").fill(categoryCode);
   await page.getByLabel("Category name").fill(`${marker} Category`);
-  await page.getByLabel("Inventory class").fill("food");
+  await page.getByLabel("Inventory class").selectOption("RAW_MATERIAL");
   await page.getByLabel("Category creation reason").fill(`E2E category setup for ${marker}`);
-  await page.getByRole("button", { name: "Create Category" }).click({ force: true });
+  await categoryDialog.getByRole("button", { name: "Create Category", exact: true }).click();
   await expect(page.getByTestId("item-category-row").filter({ hasText: categoryCode })).toBeVisible();
+  await page.locator('a[href="/items?tab=uoms"]').click();
+  const uomDialog = await openEntryDialog(page, "Create UOM");
   await page.getByLabel("UOM code").fill(uomCode);
   await page.getByLabel("UOM name").fill(`${marker} Unit`);
-  await page.getByLabel("UOM type").fill("unit");
+  await page.getByLabel("UOM type").selectOption("count");
   await page.getByLabel("UOM creation reason").fill(`E2E UOM setup for ${marker}`);
-  await page.getByRole("button", { name: "Create UOM" }).click({ force: true });
+  await uomDialog.getByRole("button", { name: "Create UOM", exact: true }).click();
   await expect(page.getByTestId("uom-row").filter({ hasText: uomCode })).toBeVisible();
+  await page.locator('a[href="/items?tab=items"]').click();
+  const itemDialog = await openEntryDialog(page, "Create Item");
   await page.getByLabel("Item code").fill(itemCode);
   await page.getByLabel("Item name").fill(itemName);
   await page.locator('select[name="itemCategoryId"]').selectOption({ label: `${marker} Category` });
   await page.locator('select[name="baseUomId"]').selectOption({ label: uomCode });
   await page.getByLabel("Creation reason").first().fill(`E2E item setup for ${marker}`);
-  await page.getByRole("button", { name: "Create Item" }).click({ force: true });
+  await itemDialog.getByRole("button", { name: "Create Item", exact: true }).click();
   await expect(page.getByTestId("item-row").filter({ hasText: itemCode })).toBeVisible();
+  await page.locator('a[href="/items?tab=conversions"]').click();
+  const conversionDialog = await openEntryDialog(page, "Create Conversion");
   await page.locator('select[name="itemId"]').selectOption({ label: itemName });
   await page.locator('select[name="fromUomId"]').selectOption({ label: `From ${uomCode}` });
   await page.locator('select[name="toUomId"]').selectOption({ label: "To KG" });
   await page.getByLabel("Conversion factor").fill("1");
   await page.getByLabel("Conversion creation reason").fill(`E2E conversion setup for ${marker}`);
-  await expect(page.getByRole("heading", { name: "Item Master" })).toBeVisible();
-  await page
-    .getByLabel("Conversion creation reason")
-    .locator("xpath=ancestor::form[1]")
-    .evaluate((form) => (form as HTMLFormElement).requestSubmit());
+  await conversionDialog.getByRole("button", { name: "Create Conversion", exact: true }).click();
   await expect(page.getByTestId("conversion-row").filter({ hasText: itemName })).toBeVisible({
     timeout: 15000
   });
 
   await page.goto("/suppliers");
   await expect(page.getByRole("heading", { name: "Suppliers" })).toBeVisible();
+  const linkDialog = await openEntryDialog(page, "Link Supplier Item");
   await page
     .locator('select[name="supplierId"]')
-    .selectOption({ label: "CONFIGURED-SUPPLIER / Configured Supplier" });
+    .selectOption({ label: `${seededSupplierCode} / ${seededSupplierName}` });
   await page.locator('select[name="itemId"]').selectOption({ label: `${itemName} / ${itemCode}` });
   await page.locator('select[name="purchaseUomId"]').selectOption({ label: `${uomCode} / ${marker} Unit` });
   const supplierSku = `SKU-${itemCode}`;
@@ -498,22 +544,33 @@ test("first milestone purchase request path works end to end", async ({
   await page.getByLabel("Reference price").fill("12.5");
   await page.getByLabel("Price effective from").fill("2026-07-01");
   await page.getByLabel("Link reason").fill(`E2E supplier item link for ${marker}`);
-  await page.getByRole("button", { name: "Link Supplier Item" }).click({ force: true });
-  const supplierItemLinkRow = page
+  await linkDialog.getByRole("button", { name: "Link Supplier Item", exact: true }).click();
+  await page
     .getByTestId("supplier-row")
-    .filter({ hasText: "CONFIGURED-SUPPLIER" })
-    .getByTestId("supplier-item-link-row")
+    .filter({ hasText: seededSupplierCode })
+    .getByRole("link", { name: "View catalog" })
+    .click();
+  await page.getByLabel("Search catalog").fill(supplierSku);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  const supplierItemLinkRow = page
+    .getByRole("row")
     .filter({ hasText: supplierSku });
   await expect(supplierItemLinkRow).toBeVisible();
-  await supplierItemLinkRow
-    .getByLabel("Link deactivation reason")
+  await supplierItemLinkRow.getByRole("button", { name: "Deactivate", exact: true }).click();
+  const linkDeactivationDialog = page.getByRole("dialog", {
+    name: "Deactivate Supplier Item Link"
+  });
+  await linkDeactivationDialog
+    .getByLabel("Deactivation reason")
     .fill(`E2E supplier item link deactivation for ${marker}`);
-  await supplierItemLinkRow.getByRole("button", { name: "Deactivate Link" }).click({ force: true });
+  await linkDeactivationDialog
+    .getByRole("button", { name: "Deactivate Link", exact: true })
+    .click();
+  await page.getByLabel("Search catalog").fill(supplierSku);
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(
     page
-      .getByTestId("supplier-row")
-      .filter({ hasText: "CONFIGURED-SUPPLIER" })
-      .getByTestId("supplier-item-link-row")
+      .getByRole("row")
       .filter({ hasText: supplierSku })
       .getByText("INACTIVE")
   ).toBeVisible();
@@ -525,14 +582,13 @@ test("first milestone purchase request path works end to end", async ({
     "Purchase Requests"
   );
   const catalogMarker = `${marker} Catalog PR`;
+  await openPurchaseRequestComposer(page);
   await page.getByLabel("Required date").fill("2026-07-16");
-  await page.getByLabel("Urgency").fill("Normal");
+  await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Catalog item validation for ${marker}`);
-  await page.getByLabel("Line description").fill(catalogMarker);
   await page.getByLabel("Catalog item").selectOption({ label: `${itemName} / ${itemCode}` });
   await page.getByLabel("Quantity").fill("2");
-  await page.getByLabel("Catalog unit").selectOption({ label: `${uomCode} / ${marker} Unit` });
-  await page.getByLabel("Purpose").fill("Branch operating requirement");
+  await page.getByLabel("Purpose / notes").fill(catalogMarker);
   await createDraftPurchaseRequest(page);
   await expect(page.getByRole("heading", { name: itemName })).toBeVisible();
   await expect(page.getByText(catalogMarker)).toBeVisible();
@@ -541,114 +597,161 @@ test("first milestone purchase request path works end to end", async ({
   await signInAs(page, adminEmail, "/items", "Item Master");
   await expect(page.getByRole("heading", { name: "Item Master" })).toBeVisible();
   const itemRow = page.getByTestId("item-row").filter({ hasText: itemCode });
-  await itemRow.getByLabel("Item deactivation reason").fill(`E2E item deactivation for ${marker}`);
-  await itemRow.getByRole("button", { name: "Deactivate Item" }).click({ force: true });
+  await itemRow.locator("summary").click();
+  await itemRow.getByRole("button", { name: "Deactivate", exact: true }).click();
+  const itemDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Item" });
+  await itemDeactivationDialog
+    .getByLabel("Item deactivation reason")
+    .fill(`E2E item deactivation for ${marker}`);
+  await itemDeactivationDialog
+    .getByRole("button", { name: "Deactivate Item", exact: true })
+    .click();
   await expect(page.getByTestId("item-row").filter({ hasText: itemCode }).getByText("INACTIVE")).toBeVisible();
+  await page.locator('a[href="/items?tab=categories"]').click();
   const categoryRow = page.getByTestId("item-category-row").filter({ hasText: categoryCode });
-  await categoryRow.getByLabel("Category deactivation reason").fill(`E2E category deactivation for ${marker}`);
-  await categoryRow.getByRole("button", { name: "Deactivate Category" }).click({ force: true });
+  await categoryRow.locator("summary").click();
+  await categoryRow.getByRole("button", { name: "Deactivate", exact: true }).click();
+  const categoryDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Category" });
+  await categoryDeactivationDialog
+    .getByLabel("Category deactivation reason")
+    .fill(`E2E category deactivation for ${marker}`);
+  await categoryDeactivationDialog
+    .getByRole("button", { name: "Deactivate Category", exact: true })
+    .click();
   await expect(
     page.getByTestId("item-category-row").filter({ hasText: categoryCode }).getByText("INACTIVE")
   ).toBeVisible();
+  await page.locator('a[href="/items?tab=uoms"]').click();
   const uomRow = page.getByTestId("uom-row").filter({ hasText: uomCode });
-  await uomRow.getByLabel("UOM deactivation reason").fill(`E2E UOM deactivation for ${marker}`);
-  await uomRow.getByRole("button", { name: "Deactivate UOM" }).click({ force: true });
+  await uomRow.locator("summary").click();
+  await uomRow.getByRole("button", { name: "Deactivate", exact: true }).click();
+  const uomDeactivationDialog = page.getByRole("dialog", { name: "Deactivate UOM" });
+  await uomDeactivationDialog
+    .getByLabel("UOM deactivation reason")
+    .fill(`E2E UOM deactivation for ${marker}`);
+  await uomDeactivationDialog
+    .getByRole("button", { name: "Deactivate UOM", exact: true })
+    .click();
   await expect(page.getByTestId("uom-row").filter({ hasText: uomCode }).getByText("INACTIVE")).toBeVisible();
   await page.goto("/admin");
   await page
     .getByTestId("admin-user-row")
-    .filter({ hasText: "Configured Admin" })
-    .getByRole("link", { name: "View Access" })
+    .filter({ hasText: "Nico Valdez" })
+    .getByRole("link", { name: "Manage Access" })
     .click();
   await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
-  await expect(page.getByText("Configured Admin / admin@example.test")).toBeVisible();
-  await expect(page.getByText("CONFIGURED_ADMIN")).toBeVisible();
-  await expect(page.getByText("Self protected").first()).toBeVisible();
+  await expect(page.getByText(/^Nico Valdez \/ /)).toBeVisible();
+  await expect(page.getByRole("main").getByText("ERP Administrator", { exact: true })).toBeVisible();
+  await expect(page.getByRole("main").getByText("Self protected").first()).toBeVisible();
   await gotoCoreAdmin(page);
   await page
     .getByTestId("admin-user-row")
-    .filter({ hasText: "Configured User" })
-    .getByRole("link", { name: "View Access" })
+    .filter({ hasText: "Bianca Reyes" })
+    .getByRole("link", { name: "Manage Access" })
     .click();
   await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
-  await expect(page.getByText("Configured User / user@example.test")).toBeVisible();
+  await expect(page.getByText(/^Bianca Reyes \/ /)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Assign Location Scope" })).toBeVisible();
   await gotoCoreAdmin(page);
   await page
     .getByTestId("admin-user-row")
-    .filter({ hasText: `Configured Scope Candidate ${testInfo.project.name}` })
-    .getByRole("link", { name: "View Access" })
+    .filter({ hasText: scopeCandidateName })
+    .getByRole("link", { name: "Manage Access" })
     .click();
   await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
   await expect(page.getByText("No active roles are assigned.")).toBeVisible();
   await expect(page.getByText("No effective permissions from active roles.")).toBeVisible();
   await expect(page.getByText("No active scopes are assigned.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Assign Role" })).toBeVisible();
-  await page.getByLabel("Role assignment reason").fill(`E2E role assignment for ${marker}`);
-  await page
+  const roleAssignmentDialog = await openEntryDialog(page, "Assign Role");
+  await roleAssignmentDialog
     .getByLabel("Role assignment reason")
-    .locator("xpath=ancestor::form[1]")
-    .evaluate((form) => (form as HTMLFormElement).requestSubmit());
-  await expect(
-    page.getByTestId("admin-user-role-row").filter({ hasText: "Configured Requester" })
-  ).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText("purchasing.purchase_request.create")).toBeVisible();
-  await page.getByLabel("Role deactivation reason").fill(`E2E role deactivation for ${marker}`);
-  await page
+    .fill(`E2E role assignment for ${marker}`);
+  await roleAssignmentDialog
+    .getByRole("button", { name: "Assign Role", exact: true })
+    .click();
+  const assignedRoleRow = page
+    .getByTestId("admin-user-role-row")
+    .filter({ hasText: "Branch Storekeeper" });
+  await expect(assignedRoleRow).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText("Create purchase requests", { exact: true })).toBeVisible();
+  await assignedRoleRow.getByRole("button", { name: "Deactivate Role", exact: true }).click();
+  const roleDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Role" });
+  await roleDeactivationDialog
     .getByLabel("Role deactivation reason")
-    .locator("xpath=ancestor::form[1]")
-    .evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    .fill(`E2E role deactivation for ${marker}`);
+  await roleDeactivationDialog
+    .getByRole("button", { name: "Deactivate Role", exact: true })
+    .click();
   await expect(page.getByText("No active roles are assigned.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Assign Role" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Assign Location Scope" })).toBeVisible();
   const assignScopeButton = page.getByRole("button", { name: "Assign Scope" });
   if ((await assignScopeButton.count()) > 0) {
-    await page.getByLabel("Scope assignment reason").fill(`E2E scope assignment for ${marker}`);
-    await page
+    await assignScopeButton.click();
+    const scopeAssignmentDialog = page.getByRole("dialog", {
+      name: "Assign Location Scope"
+    });
+    await expect(scopeAssignmentDialog).toBeVisible();
+    await scopeAssignmentDialog
       .getByLabel("Scope assignment reason")
-      .locator("xpath=ancestor::form[1]")
-      .evaluate((form) => (form as HTMLFormElement).requestSubmit());
+      .fill(`E2E scope assignment for ${marker}`);
+    await scopeAssignmentDialog
+      .getByRole("button", { name: "Assign Scope", exact: true })
+      .click();
   }
-  await expect(
-    page.getByTestId("admin-user-scope-row").filter({ hasText: "LOCATION" }).filter({ hasText: "VIEW" })
-  ).toBeVisible();
-  await page.getByLabel("Deactivation reason").fill(`E2E scope deactivation for ${marker}`);
-  await page
+  const assignedScopeRow = page
+    .getByTestId("admin-user-scope-row")
+    .filter({ hasText: "LOCATION" })
+    .filter({ hasText: "VIEW" });
+  await expect(assignedScopeRow).toBeVisible();
+  await assignedScopeRow.getByRole("button", { name: "Deactivate Scope", exact: true }).click();
+  const scopeDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Scope" });
+  await scopeDeactivationDialog
     .getByLabel("Deactivation reason")
-    .locator("xpath=ancestor::form[1]")
-    .evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    .fill(`E2E scope deactivation for ${marker}`);
+  await scopeDeactivationDialog
+    .getByRole("button", { name: "Deactivate Scope", exact: true })
+    .click();
   await expect(page.getByRole("button", { name: "Assign Scope" })).toBeVisible();
   await gotoCoreAdmin(page);
-  await expect(page.getByText("core.administer")).toBeVisible();
+  await page.locator('a[href="/admin?tab=roles"]').click();
   const roleAccessHref = await page
     .getByTestId("admin-role-row")
-    .filter({ hasText: "Configured Admin" })
-    .getByRole("link", { name: "View Role" })
+    .filter({ hasText: "ERP Administrator" })
+    .getByRole("link", { name: "Configure Role" })
     .getAttribute("href");
   expect(roleAccessHref).toBeTruthy();
   await page.goto(roleAccessHref ?? "/admin");
   await expect(page.getByRole("heading", { name: "Role Access" })).toBeVisible();
-  await expect(page.getByText("Configured Admin / CONFIGURED_ADMIN")).toBeVisible();
-  await expect(page.getByTestId("admin-role-permission-row").filter({ hasText: "core.administer" })).toBeVisible();
+  await expect(page.getByText("ERP Administrator / CONFIGURED_ADMIN")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("admin-role-permission-toggle")
+      .filter({ hasText: "Administer core setup" })
+  ).toBeVisible();
   await gotoCoreAdmin(page);
   await page.goto("/admin/permissions/00000000-0000-4000-8000-000000000016");
   await expect(page.getByRole("heading", { name: "Permission Access" })).toBeVisible();
-  await expect(page.getByTestId("admin-permission-role-row").filter({ hasText: "Configured Admin" })).toBeVisible();
+  await expect(page.getByTestId("admin-permission-role-row").filter({ hasText: "ERP Administrator" })).toBeVisible();
   await gotoCoreAdmin(page);
   await page.goto("/admin/companies/00000000-0000-4000-8000-000000000002");
   await expect(page.getByRole("heading", { name: "Company Context" })).toBeVisible();
-  await expect(page.getByTestId("admin-company-user-row").filter({ hasText: "Configured Admin" })).toBeVisible();
-  await expect(page.getByTestId("admin-company-location-row").filter({ hasText: "Configured Location" })).toBeVisible();
+  await expect(page.getByTestId("admin-company-user-row").filter({ hasText: "Nico Valdez" })).toBeVisible();
+  await expect(page.getByTestId("admin-company-location-row").filter({ hasText: "Yakiniku Like SM North Edsa" })).toBeVisible();
   await gotoCoreAdmin(page);
   await page.goto("/admin/approval-rules/00000000-0000-4000-8000-000000000010");
   await expect(page.getByRole("heading", { name: "Approval Rule" })).toBeVisible();
-  await expect(page.getByTestId("admin-rule-step-row").filter({ hasText: "Configured Approver" })).toBeVisible();
+  await expect(
+    page.getByTestId("admin-rule-step-row").filter({ hasText: "Operations Approver" })
+  ).toBeVisible();
   await gotoCoreAdmin(page);
   await page.goto("/admin/locations/00000000-0000-4000-8000-000000000004");
   await expect(page.getByRole("heading", { name: "Location Context" })).toBeVisible();
-  await expect(page.getByText("Configured Company / Configured Brand / Configured Location")).toBeVisible();
-  await expect(page.getByTestId("admin-location-user-row").filter({ hasText: "Configured Admin" })).toBeVisible();
+  await expect(page.getByText("One Gourmet Foods Inc. / Yakiniku Like / Yakiniku Like SM North Edsa")).toBeVisible();
+  await expect(page.getByTestId("admin-location-user-row").filter({ hasText: "Nico Valdez" })).toBeVisible();
   await gotoCoreAdmin(page);
+  await page.locator('a[href="/admin?tab=audit"]').click();
   await expect(
     page.getByTestId("admin-audit-row").filter({ hasText: "purchase_request.approved" }).first()
   ).toBeVisible();

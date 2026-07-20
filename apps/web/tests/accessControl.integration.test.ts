@@ -7,7 +7,9 @@ import type { getConfiguredContext as getConfiguredContextType } from "../src/se
 import type { requirePermission as requirePermissionType } from "../src/server/services/authorization";
 
 function isSupportedIntegrationDatabaseUrl(databaseUrl: string) {
-  return databaseUrl.startsWith("prisma://") || databaseUrl.startsWith("prisma+postgres://");
+  return ["postgresql://", "postgres://", "prisma://", "prisma+postgres://"].some(
+    (protocol) => databaseUrl.startsWith(protocol)
+  );
 }
 
 function loadDatabaseUrl() {
@@ -42,9 +44,13 @@ function loadDatabaseUrl() {
 }
 
 const hasDatabaseUrl = loadDatabaseUrl();
-const describeDb = hasDatabaseUrl ? describe : describe.skip;
+if (!hasDatabaseUrl) {
+  throw new Error(
+    "ACCESS_CONTROL_DATABASE_REQUIRED: configure a PostgreSQL DATABASE_URL before running the database-backed access-control suite"
+  );
+}
 
-describeDb("database-backed access control", () => {
+describe("database-backed access control", () => {
   const suffix = randomUUID().slice(0, 8);
   const ids = {
     tenantId: randomUUID(),

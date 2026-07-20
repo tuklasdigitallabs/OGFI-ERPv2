@@ -8,6 +8,7 @@
     "build": "pnpm --filter @ogfi/database generate && pnpm -r --if-present build",
     "lint": "pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck",
+    "typecheck:e2e": "tsc -p tests/e2e/tsconfig.json --noEmit",
     "test": "pnpm -r --if-present test",
     "test:access-control": "pnpm --filter @ogfi/web test:access-control",
     "test:e2e": "pnpm --filter @ogfi/web test:e2e",
