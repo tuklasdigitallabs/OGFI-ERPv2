@@ -97,19 +97,6 @@ async function postReceiptAction(formData: FormData) {
   redirect("/receiving");
 }
 
-function deliveryAgingText(status: string, daysOverdue: number) {
-  if (status === "OVERDUE") {
-    return `Overdue by ${daysOverdue} day${daysOverdue === 1 ? "" : "s"}`;
-  }
-  if (status === "DUE_TODAY") {
-    return "Delivery due today";
-  }
-  if (status === "UPCOMING") {
-    return "Delivery upcoming";
-  }
-  return null;
-}
-
 export default async function ReceivingPage({ searchParams }: ReceivingPageProps) {
   const session = await getSessionContext();
   if (!session) {

@@ -872,6 +872,7 @@ export async function correctOperationalIncident(formData: FormData) {
         resolvedAt: null
       },
       data: {
+        status: transition.toStatus,
         incidentDate,
         category: values.category,
         severity: values.severity,
