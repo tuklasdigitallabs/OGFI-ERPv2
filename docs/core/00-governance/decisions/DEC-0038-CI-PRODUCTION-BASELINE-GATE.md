@@ -82,8 +82,8 @@ The existing verification path did not provide sufficient production-baseline pr
 
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
-| Verify all augmented checks execute against the intended hosted PostgreSQL and built production artifact | Engineering / QA | Next hosted release-candidate run | Pending |
-| Capture a successful hosted CI run for the exact release-candidate SHA, including artifact references | Release Manager | Before SPF-001 closure | Pending |
+| Verify all augmented checks execute against the intended hosted PostgreSQL and built production artifact | Engineering / QA | Next hosted release-candidate run | Complete — run `29774246308` |
+| Capture a successful hosted CI run for the exact release-candidate SHA, including artifact references | Release Manager | Before SPF-001 closure | Complete — SHA `c5e3969b176e271470ca66d3bef607803cb76c3e` |
 | Capture branch-protection evidence showing the CI gate is mandatory | Repository administrator / Security | Before SPF-001 closure | Pending |
 | Update SPF-001 to complete only after both hosted-run and branch-protection evidence are accepted | Decision Chair / Release Manager | Evidence acceptance | Pending |
 
@@ -91,10 +91,12 @@ The existing verification path did not provide sufficient production-baseline pr
 
 - Parent Decision Chair confirmed **AUGMENT** on 2026-07-21 after independent review by Tala, Lualhati, Mayumi, and Luningning.
 - Review findings: the access-control suite skipped normal PostgreSQL URLs; E2E ran a development server rather than the built artifact; CI lacked deterministic seed execution, E2E typechecking, and failure artifacts; and the PostgreSQL version had drifted.
+- Hosted CI run [`29774246308`](https://github.com/tuklasdigitallabs/OGFI-ERPv2/actions/runs/29774246308) completed successfully for exact implementation SHA `c5e3969b176e271470ca66d3bef607803cb76c3e`; every required check and the evidence-upload step passed.
+- Repository-admin API verification on 2026-07-21 found no classic branch protection and no repository rulesets for `main`; enforcement evidence therefore remains unavailable.
 - `.github/workflows/ci.yml`
 - `docs/core/07-quality/CURRENT_PENDING_IMPLEMENTATION_PLAN.md` (`SPF-001`)
 - `docs/core/07-quality/PHASE1_PHASE1_5_ACCEPTANCE_TRACEABILITY_MATRIX.md`
-- Successful hosted exact-SHA CI and required branch-protection evidence remain pending and are prerequisites to SPF-001 closure.
+- Required branch-protection evidence remains pending and is the outstanding prerequisite to SPF-001 closure.
 
 ## Supersession
 

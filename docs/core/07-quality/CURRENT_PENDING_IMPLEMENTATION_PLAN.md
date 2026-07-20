@@ -23,7 +23,7 @@ These items must be completed once at platform level. A workspace must not be ce
 
 | ID | Pending implementation | Required outcome | Status |
 |---|---|---|---|
-| SPF-001 | CI and verification baseline | Secret review, release-tool self-tests, lint, typecheck, production build, unit/integration tests, access-control tests, and desktop/mobile E2E pass against the same release candidate | In progress; augmented gate passes locally, pending hosted exact-SHA run and required branch-protection evidence |
+| SPF-001 | CI and verification baseline | Secret review, release-tool self-tests, lint, typecheck, production build, unit/integration tests, access-control tests, and desktop/mobile E2E pass against the same release candidate | In progress; augmented local and hosted gates pass, but required `main` branch protection is not configured |
 | SPF-002 | Migration and data-safety verification | Review all pending migrations, deploy them to a disposable environment, compare pre/post snapshots, and verify rollback considerations | Pending |
 | SPF-003 | Authentication and privileged access | Confirm production identity provider or login path, privileged MFA enforcement, session invalidation, and break-glass runtime behavior | Pending external integration and production hardening |
 | SPF-004 | Authorization regression gate | Verify tenant, company, brand, location, department, project membership, restricted-project, and direct-route/API enforcement | Pending full regression evidence |
@@ -39,7 +39,8 @@ These items must be completed once at platform level. A workspace must not be ce
 - Confirmed `DEC-0038`: augment the baseline and keep SPF-001 open until hosted exact-SHA and branch-protection evidence are accepted.
 - CI now provisions PostgreSQL 17, migrates and deterministically seeds the isolated database, typechecks E2E, builds the production artifact, runs database-backed authorization tests without skip fallback, executes desktop/mobile E2E against `next start`, and retains Playwright/release evidence on failure or success.
 - Local candidate verification passed: secret review, release-tool self-test, lint, application typecheck, E2E typecheck, production build, 628 web tests across 64 files plus database/worker tests, two executed access-control integration tests, and all 14 desktop/mobile E2E tests.
-- Remaining closure evidence: successful hosted CI run for the pushed candidate SHA and repository branch protection proving the CI gate is required.
+- Hosted run [`29774246308`](https://github.com/tuklasdigitallabs/OGFI-ERPv2/actions/runs/29774246308) passed for exact implementation SHA `c5e3969b176e271470ca66d3bef607803cb76c3e`, including the `checks` job and CI verification artifact upload.
+- Remaining closure blocker: the authenticated repository-admin check returned no classic branch protection and no repository rulesets for `main`; configure protection that requires the `CI / checks` gate before SPF-001 is marked complete.
 - Knowledge-base and glossary assessment: no update required for this slice because it changes internal engineering verification only and introduces no end-user term or workflow behavior.
 
 ## 3. Controlled Evidence Upload and Storage
