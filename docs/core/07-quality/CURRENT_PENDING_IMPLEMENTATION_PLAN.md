@@ -24,7 +24,7 @@ These items must be completed once at platform level. A workspace must not be ce
 | ID | Pending implementation | Required outcome | Status |
 |---|---|---|---|
 | SPF-001 | CI and verification baseline | Secret review, release-tool self-tests, lint, typecheck, production build, unit/integration tests, access-control tests, and desktop/mobile E2E pass against the same release candidate | In progress; augmented local and hosted gates pass, but required `main` branch protection is not configured |
-| SPF-002 | Migration and data-safety verification | Review all pending migrations, deploy them to a disposable environment, compare pre/post snapshots, and verify rollback considerations | Pending |
+| SPF-002 | Migration and data-safety verification | Review all pending migrations, deploy them to a disposable environment, compare pre/post snapshots, and verify rollback considerations | Complete; exact-SHA PostgreSQL 17 rehearsal and checksum-backed evidence accepted under `DEC-0039` |
 | SPF-003 | Authentication and privileged access | Confirm production identity provider or login path, privileged MFA enforcement, session invalidation, and break-glass runtime behavior | Pending external integration and production hardening |
 | SPF-004 | Authorization regression gate | Verify tenant, company, brand, location, department, project membership, restricted-project, and direct-route/API enforcement | Pending full regression evidence |
 | SPF-005 | Controlled evidence uploads | Complete the hybrid evidence model described in Section 3 | Pending; production blocker `DGB-012` |
@@ -42,6 +42,18 @@ These items must be completed once at platform level. A workspace must not be ce
 - Hosted run [`29774246308`](https://github.com/tuklasdigitallabs/OGFI-ERPv2/actions/runs/29774246308) passed for exact implementation SHA `c5e3969b176e271470ca66d3bef607803cb76c3e`, including the `checks` job and CI verification artifact upload.
 - Remaining closure blocker: the authenticated repository-admin check returned no classic branch protection and no repository rulesets for `main`; configure protection that requires the `CI / checks` gate before SPF-001 is marked complete.
 - Knowledge-base and glossary assessment: no update required for this slice because it changes internal engineering verification only and introduces no end-user term or workflow behavior.
+
+### SPF-002 implementation evidence — July 21, 2026
+
+- Confirmed `DEC-0039`: SPF-002 requires an exact-SHA populated predecessor upgrade rehearsal on disposable PostgreSQL 17 databases, with complete migration review, data preservation, recovery, idempotency, and schema-drift evidence.
+- Reconciled the Prisma schema and migration history through reviewed migration `20260721120000_reconcile_schema_drift`; the hosted datasource-to-schema comparison reports zero drift.
+- Inventoried all 108 migrations. Fifty-five migrations requiring explicit review are bound to exact SHA-256 hashes and marked `APPROVED_FOR_REHEARSAL`; none remain pending. The migration safety register records transaction behavior, failure point, reversibility, recovery trigger, owner, verification, and expected recovery time.
+- Hosted run [`29784132306`](https://github.com/tuklasdigitallabs/OGFI-ERPv2/actions/runs/29784132306) passed for exact candidate SHA `623927ac36949362822edf9e0737454087543c59`, using successful predecessor CI run `29774246308` at SHA `c5e3969b176e271470ca66d3bef607803cb76c3e` and `deploy_to_staging=false`.
+- Evidence run `gh-29784132306-1` proves: a populated predecessor baseline; pre-migration checksummed backup; atomic rollback on an intentional cross-company scope violation; successful first deploy; no-pending idempotent second deploy with identical migration journals and zero data delta; zero schema drift; 14 business/scope invariants before, after, and after restore; and exact row-count/content-digest equivalence across all 158 Prisma application tables after isolated restore.
+- Artifact `ogfi-release-evidence-spf002-rehearsal-623927a` (`8477937081`) contains 31 checksum-indexed evidence files. The backup checksum and final manifest checksum were independently reverified after download.
+- The same hosted candidate also passed secret review, release-tool self-tests, lint, application and E2E typechecks, production build, database/worker/UI tests, 626 web tests, access-control integration tests, and desktop/mobile Playwright E2E.
+- Boundary retained: SPF-002 closure does not close SPF-009; staging deployment, application rollback, smoke checks, monitoring, and hypercare remain pending.
+- Knowledge-base and glossary assessment: no update required because this phase changes internal engineering, migration, and recovery controls only; it introduces no end-user workflow, navigation, permission, or product term.
 
 ## 3. Controlled Evidence Upload and Storage
 

@@ -89,12 +89,12 @@ These limitations prevent the existing evidence from satisfying the recovery and
 
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
-| Resolve the datasource/schema diff and freeze the reviewed migration inventory with hashes | Database Engineering | Before the SPF-002 rehearsal | Pending |
-| Identify and prepare a representative populated predecessor baseline on PostgreSQL 17 | Database Engineering / Platform Engineering | Before the SPF-002 rehearsal | Pending |
-| Harden hosted evidence tooling for full-model counts, content/invariant checks, shared run ID, pre-migration backup, isolated restore equivalence, and idempotent redeployment | Engineering / Platform Engineering / QA | Before the SPF-002 rehearsal | Pending |
-| Complete and review the per-migration forward-fix/rollback matrix | Database Engineering / Release Manager | Before rehearsal acceptance | Pending |
-| Run the exact-SHA disposable upgrade rehearsal and retain the final checksum manifest | Platform Engineering / QA | Release-candidate verification | Pending |
-| Accept or reject the SPF-002 evidence packet; close SPF-002 only on full acceptance | Decision Chair / Release Manager | After successful rehearsal review | Pending |
+| Resolve the datasource/schema diff and freeze the reviewed migration inventory with hashes | Database Engineering | Before the SPF-002 rehearsal | Complete — zero drift and 108 exact-hash migrations in run `29784132306` |
+| Identify and prepare a representative populated predecessor baseline on PostgreSQL 17 | Database Engineering / Platform Engineering | Before the SPF-002 rehearsal | Complete — predecessor SHA `c5e3969b176e271470ca66d3bef607803cb76c3e` |
+| Harden hosted evidence tooling for full-model counts, content/invariant checks, shared run ID, pre-migration backup, isolated restore equivalence, and idempotent redeployment | Engineering / Platform Engineering / QA | Before the SPF-002 rehearsal | Complete — evidence run `gh-29784132306-1` |
+| Complete and review the per-migration forward-fix/rollback matrix | Database Engineering / Release Manager | Before rehearsal acceptance | Complete — 55 exact-hash reviewed dispositions, zero pending |
+| Run the exact-SHA disposable upgrade rehearsal and retain the final checksum manifest | Platform Engineering / QA | Release-candidate verification | Complete — hosted run `29784132306`, artifact `8477937081` |
+| Accept or reject the SPF-002 evidence packet; close SPF-002 only on full acceptance | Decision Chair / Release Manager | After successful rehearsal review | Complete — accepted July 21, 2026 |
 | Complete staging SSH/deployment, application rollback, smoke, monitoring, and hypercare evidence under SPF-009 | Platform Engineering / Release Manager | Before production release | Pending — outside SPF-002 closure |
 
 ## Evidence
@@ -111,7 +111,10 @@ These limitations prevent the existing evidence from satisfying the recovery and
 - `scripts/release-data-snapshot-checklist.mjs`
 - `scripts/release-backup-summary.mjs`
 - `scripts/release-backup-restore-preflight.mjs`
-- Successful Option B rehearsal evidence does not yet exist. All implementation and execution follow-ups above remain pending.
+- Hosted run [`29784132306`](https://github.com/tuklasdigitallabs/OGFI-ERPv2/actions/runs/29784132306) completed successfully for exact candidate SHA `623927ac36949362822edf9e0737454087543c59` with `deploy_to_staging=false`, PostgreSQL 17 server/client tooling, and evidence run ID `gh-29784132306-1`.
+- The retained artifact `ogfi-release-evidence-spf002-rehearsal-623927a` (artifact ID `8477937081`) contains 31 manifest-indexed files. Its manifest checksum and pre-migration backup checksum were independently reverified after download.
+- The accepted packet records 108 migration hashes, 55 explicit `APPROVED_FOR_REHEARSAL` dispositions, zero pending reviews, a populated exact-SHA predecessor, atomic negative rollback, matching first/second migration journals, zero idempotency data delta, zero schema drift, 14 pre/post/restored invariants, and restored row-count/content-digest equivalence across all 158 application tables.
+- The hosted run also passed the production build and complete automated verification suite. Independent database review approved the rehearsal design, and an independent QA review approved the completed evidence packet with high confidence. This acceptance does not authorize staging or production deployment and does not close SPF-009.
 
 ## Supersession
 
