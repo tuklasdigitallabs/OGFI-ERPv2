@@ -58,6 +58,9 @@ jobs:
       DEPLOY_TO_STAGING: ${{ inputs.deploy_to_staging }}
       RELEASE_ENVIRONMENT: staging-rehearsal
       RELEASE_MIGRATION_MODE: prisma-deploy
+      PSQL_BIN: /usr/lib/postgresql/17/bin/psql
+      PG_DUMP_BIN: /usr/lib/postgresql/17/bin/pg_dump
+      PG_RESTORE_BIN: /usr/lib/postgresql/17/bin/pg_restore
       MINIO_IMAGE: minio/minio:RELEASE.2025-04-22T22-12-26Z
       MINIO_ROOT_USER: local-minio-admin
       MINIO_ROOT_PASSWORD: release-rehearsal-only
@@ -79,7 +82,9 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
-          pg_dump --version | grep -E '^pg_dump \(PostgreSQL\) 17\.'
+          "$PSQL_BIN" --version | grep -E '^psql \(PostgreSQL\) 17\.'
+          "$PG_DUMP_BIN" --version | grep -E '^pg_dump \(PostgreSQL\) 17\.'
+          "$PG_RESTORE_BIN" --version | grep -E '^pg_restore \(PostgreSQL\) 17\.'
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:secret-review
       - name: Run release tool self-tests in an isolated environment
@@ -158,8 +163,8 @@ jobs:
         env:
           RESTORE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_negative_rehearsal?schema=public
         run: |
-          psql "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'drop database if exists ogfi_negative_rehearsal;'
-          psql "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'create database ogfi_negative_rehearsal;'
+          "$PSQL_BIN" "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'drop database if exists ogfi_negative_rehearsal;'
+          "$PSQL_BIN" "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'create database ogfi_negative_rehearsal;'
           pnpm db:restore-check
       - name: Prove cross-scope predecessor data blocks atomically
         env:
@@ -167,7 +172,7 @@ jobs:
           DIRECT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_negative_rehearsal?schema=public
         run: |
           mkdir -p release-evidence/migration-execution
-          psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 <<'SQL'
+          "$PSQL_BIN" "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 <<'SQL'
           INSERT INTO "Company" ("id", "tenantId", "code", "legalName", "currencyCode", "timezone", "status", "createdAt", "updatedAt")
           VALUES ('10000000-0000-4000-8000-000000009099'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'MIG-NEG', 'Migration Negative Fixture', 'PHP', 'Asia/Manila', 'ACTIVE', now(), now());
           INSERT INTO "ProjectRequirement" (
@@ -181,21 +186,21 @@ jobs:
             "ownerUserId", 'PENDING', "createdByUserId", "updatedByUserId", now(), now()
           FROM "ProjectRequirement" WHERE "id" = '10000000-0000-4000-8000-000000009003'::uuid;
           SQL
-          test "$(psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from \"ProjectRequirement\" where id = '10000000-0000-4000-8000-000000009098'::uuid and \"companyId\" = '10000000-0000-4000-8000-000000009099'::uuid")" = "1"
+          test "$("$PSQL_BIN" "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from \"ProjectRequirement\" where id = '10000000-0000-4000-8000-000000009098'::uuid and \"companyId\" = '10000000-0000-4000-8000-000000009099'::uuid")" = "1"
           if pnpm db:migrate:deploy; then
             echo "Cross-scope migration unexpectedly succeeded." >&2
             exit 1
           fi
-          test "$(psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from pg_constraint where conname in ('ProjectRequirement_projectId_fkey','ProjectRequirement_taskId_fkey')")" = "2"
-          test "$(psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from pg_constraint where conname like 'spf002_%'")" = "0"
-          test "$(psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from pg_indexes where indexname in ('ProjectRequirement_tenantId_companyId_ownerUserId_status_idx','ProjectRequirement_tenantId_companyId_reviewerUserId_status_idx')")" = "0"
-          test "$(psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from \"_prisma_migrations\" where migration_name = '20260721120000_reconcile_schema_drift' and finished_at is not null")" = "0"
+          test "$("$PSQL_BIN" "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from pg_constraint where conname in ('ProjectRequirement_projectId_fkey','ProjectRequirement_taskId_fkey')")" = "2"
+          test "$("$PSQL_BIN" "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from pg_constraint where conname like 'spf002_%'")" = "0"
+          test "$("$PSQL_BIN" "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from pg_indexes where indexname in ('ProjectRequirement_tenantId_companyId_ownerUserId_status_idx','ProjectRequirement_tenantId_companyId_reviewerUserId_status_idx')")" = "0"
+          test "$("$PSQL_BIN" "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select count(*) from \"_prisma_migrations\" where migration_name = '20260721120000_reconcile_schema_drift' and finished_at is not null")" = "0"
           { echo "Evidence run ID: $RELEASE_EVIDENCE_RUN_ID"; echo "Candidate SHA: $GITHUB_SHA"; echo "RESULT | PASS | Cross-scope fixture blocked and the migration transaction rolled back."; } > release-evidence/migration-execution/negative-scope-rollback.txt
       - name: Apply reviewed candidate migrations
         run: |
           mkdir -p release-evidence/migration-execution
           { echo "Evidence run ID: $RELEASE_EVIDENCE_RUN_ID"; echo "Candidate SHA: $GITHUB_SHA"; pnpm db:migrate:deploy; echo "RESULT | PASS | Reviewed candidate migrations applied."; } | tee release-evidence/migration-execution/first-deploy.txt
-          { echo "Evidence run ID: $RELEASE_EVIDENCE_RUN_ID"; psql "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select migration_name || '|' || checksum || '|' || coalesce(finished_at::text, '') || '|' || coalesce(rolled_back_at::text, '') from \"_prisma_migrations\" order by started_at, migration_name"; } > release-evidence/migration-execution/journal-after-first-deploy.txt
+          { echo "Evidence run ID: $RELEASE_EVIDENCE_RUN_ID"; "$PSQL_BIN" "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select migration_name || '|' || checksum || '|' || coalesce(finished_at::text, '') || '|' || coalesce(rolled_back_at::text, '') from \"_prisma_migrations\" order by started_at, migration_name"; } > release-evidence/migration-execution/journal-after-first-deploy.txt
       - name: Capture first-deploy idempotency baseline
         env:
           RELEASE_DATA_SNAPSHOT_LABEL: post-first-deploy
@@ -205,7 +210,7 @@ jobs:
         run: |
           { echo "Evidence run ID: $RELEASE_EVIDENCE_RUN_ID"; echo "Candidate SHA: $GITHUB_SHA"; pnpm db:migrate:deploy; echo "RESULT | PASS | Idempotent migration deployment verified."; } | tee release-evidence/migration-execution/second-deploy.txt
           grep -F "No pending migrations to apply." release-evidence/migration-execution/second-deploy.txt
-          { echo "Evidence run ID: $RELEASE_EVIDENCE_RUN_ID"; psql "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select migration_name || '|' || checksum || '|' || coalesce(finished_at::text, '') || '|' || coalesce(rolled_back_at::text, '') from \"_prisma_migrations\" order by started_at, migration_name"; } > release-evidence/migration-execution/journal-after-second-deploy.txt
+          { echo "Evidence run ID: $RELEASE_EVIDENCE_RUN_ID"; "$PSQL_BIN" "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -At -c "select migration_name || '|' || checksum || '|' || coalesce(finished_at::text, '') || '|' || coalesce(rolled_back_at::text, '') from \"_prisma_migrations\" order by started_at, migration_name"; } > release-evidence/migration-execution/journal-after-second-deploy.txt
           cmp release-evidence/migration-execution/journal-after-first-deploy.txt release-evidence/migration-execution/journal-after-second-deploy.txt
       - name: Prove idempotent deploy preserved all table counts
         env:
@@ -246,8 +251,8 @@ jobs:
           BACKUP_DIR: release-evidence/backups
           RESTORE_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_restore_rehearsal?schema=public
         run: |
-          psql "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'drop database if exists ogfi_restore_rehearsal;'
-          psql "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'create database ogfi_restore_rehearsal;'
+          "$PSQL_BIN" "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'drop database if exists ogfi_restore_rehearsal;'
+          "$PSQL_BIN" "${DIRECT_DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'create database ogfi_restore_rehearsal;'
           pnpm db:restore-check
       - name: Record restore summary
         env:
