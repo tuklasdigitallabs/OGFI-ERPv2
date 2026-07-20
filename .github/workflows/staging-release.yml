@@ -127,7 +127,7 @@ jobs:
           pnpm --filter @ogfi/database exec prisma migrate deploy --schema "$GITHUB_WORKSPACE/predecessor-release/packages/database/prisma/schema.prisma"
           ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/predecessor-release/node_modules"
           ln -s "$GITHUB_WORKSPACE/packages/database/node_modules" "$GITHUB_WORKSPACE/predecessor-release/packages/database/node_modules"
-          pnpm exec tsx "$GITHUB_WORKSPACE/predecessor-release/packages/database/src/seed.ts"
+          pnpm --filter @ogfi/database exec tsx "$GITHUB_WORKSPACE/predecessor-release/packages/database/src/seed.ts"
           pnpm release:predecessor-baseline
       - name: Verify predecessor business and scope invariants
         env:
