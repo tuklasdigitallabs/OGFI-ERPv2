@@ -184,7 +184,7 @@ describe("expense request foundation", () => {
     expect(serviceSource).toContain("EXPENSE_REQUEST_AP_HANDOFF_DUPLICATE_INVOICE");
     expect(serviceSource).toContain("expense_ap_invoice_handoff_v1");
     expect(prismaSchemaSource).toContain(
-      "@@unique([tenantId, companyId, expenseRequestId, sourceEventKey])"
+      '@@unique([tenantId, companyId, expenseRequestId, sourceEventKey], map: "ExpenseRequestSourceLink_tenant_company_request_event_key")',
     );
     expect(serviceSource).toContain("expense_request.payment_handoff_ready");
     expect(serviceSource).toContain("expense_request.ap_invoice_draft_created");
