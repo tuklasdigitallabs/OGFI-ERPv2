@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "@ogfi/ui";
 
@@ -8,6 +8,8 @@ type EntryModalProps = {
   title: string;
   triggerLabel: string;
   triggerClassName?: string;
+  disabled?: boolean;
+  disabledReason?: string;
   children: ReactNode;
 };
 
@@ -15,10 +17,15 @@ export function EntryModal({
   title,
   triggerLabel,
   triggerClassName,
+  disabled = false,
+  disabledReason,
   children
 }: EntryModalProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const titleId = useId();
+  const disabledReasonId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
   const triggerHasCustomBackground = /\bbg-/.test(triggerClassName ?? "");
@@ -27,12 +34,20 @@ export function EntryModal({
       triggerClassName ?? ""
     );
 
-  function closeModal() {
+  const closeModal = useCallback(() => {
+    if (isSubmitting) {
+      return;
+    }
+    if (isDirty && !window.confirm("Discard the information entered in this form?")) {
+      return;
+    }
+    setIsDirty(false);
+    setIsSubmitting(false);
     setIsOpen(false);
     window.setTimeout(() => {
       triggerRef.current?.focus();
     }, 0);
-  }
+  }, [isDirty, isSubmitting]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -82,23 +97,29 @@ export function EntryModal({
       document.body.style.overflow = "";
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen]);
+  }, [isOpen, closeModal]);
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        className={cn(
-          "inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
-          !triggerHasCustomBackground && "bg-blue-600 hover:bg-blue-700",
-          !triggerHasCustomTextColor && "text-white",
-          triggerClassName
-        )}
-        type="button"
-        onClick={() => setIsOpen(true)}
-      >
-        {triggerLabel}
-      </button>
+      <div className="grid gap-1">
+        <button
+          ref={triggerRef}
+          aria-describedby={disabled && disabledReason ? disabledReasonId : undefined}
+          className={cn(
+            "inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
+            !triggerHasCustomBackground && "bg-blue-600 hover:bg-blue-700",
+            !triggerHasCustomTextColor && "text-white",
+            disabled && "cursor-not-allowed opacity-50 hover:bg-blue-600",
+            triggerClassName
+          )}
+          type="button"
+          disabled={disabled}
+          onClick={() => setIsOpen(true)}
+        >
+          {triggerLabel}
+        </button>
+        {disabled && disabledReason ? <p id={disabledReasonId} className="max-w-72 text-xs leading-5 text-slate-500">{disabledReason}</p> : null}
+      </div>
       {isOpen ? (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-sm"
@@ -126,15 +147,26 @@ export function EntryModal({
                 </h2>
               </div>
               <button
-                className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
                 type="button"
                 aria-label="Close modal"
+                disabled={isSubmitting}
                 onClick={closeModal}
               >
                 <X aria-hidden="true" className="h-4 w-4" />
               </button>
             </div>
-            <div data-modal-body className="min-h-0 overflow-y-auto bg-white px-4 pb-5 sm:px-6 sm:pb-6">
+            <div
+              data-modal-body
+              aria-busy={isSubmitting}
+              className="min-h-0 overflow-y-auto bg-white px-4 pb-5 sm:px-6 sm:pb-6"
+              onInputCapture={() => setIsDirty(true)}
+              onChangeCapture={() => setIsDirty(true)}
+              onSubmitCapture={() => {
+                setIsSubmitting(true);
+                setIsDirty(false);
+              }}
+            >
               {children}
             </div>
           </section>

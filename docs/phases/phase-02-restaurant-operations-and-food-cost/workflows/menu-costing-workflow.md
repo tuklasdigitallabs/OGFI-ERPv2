@@ -1,6 +1,6 @@
 # OGFI ERP — Phase II Workflow: Menu Costing
 
-**Status:** Planned detailed-specification framework  
+**Status:** Implemented for recipe/menu costing visibility and controlled menu-price decisions
 **Purpose:** Calculate latest ingredient cost, plate cost, target food cost and margin impact.
 
 ## Business Outcome
@@ -15,25 +15,29 @@ Define a controlled, role-aware, auditable workflow that follows OGFI core scope
 - Finance / compliance / quality reviewer where applicable
 - Administrator or auditor with read-only oversight
 
-## Standard Lifecycle
+## Current Implementation Boundary
+
+Menu costing views may:
+
+- calculate plate cost from selected recipe versions, ingredient lines, supplier price history, and UOM conversion evidence;
+- show target food-cost percentage, estimated serving cost, estimated selling-price basis, and margin context;
+- expose missing supplier price or UOM conversion evidence as pending cost instead of assuming equivalence;
+- create and progress separate menu-price decision records;
+- apply an approved menu-price decision by inserting a new effective-dated `MenuPrice` row.
+
+Menu costing views must not:
+
+- edit published recipe versions in place;
+- automatically change menu prices when recipe cost changes;
+- post inventory, finance, POS sales, wastage, or approval-source records;
+- allocate actual inventory cost to menu items by assumption.
+
+## Controlled Menu-Price Lifecycle
 
 ```text
-Draft → Submitted → Under Review / Approved / Returned → In Progress → Completed / Closed
-                          ↘ Rejected / Cancelled / Reversed where policy allows
+Draft → Submitted → Under Review → Approved → Applied
+                    ↘ Returned / Rejected / Cancelled
 ```
-
-## Required Workflow Sections to Finalize
-
-1. Trigger and eligibility
-2. Required fields and attachments
-3. Scope: company, brand, branch, warehouse, project and department
-4. Approval route and delegated authority
-5. Exception, rejection, cancellation and reversal paths
-6. Notification and escalation events
-7. Data and audit records created
-8. Downstream inventory, financial, workforce, project or integration impact
-9. Desktop, tablet and mobile actions
-10. Reports and UAT scenarios
 
 ## Non-Negotiable Controls
 
@@ -45,4 +49,4 @@ Draft → Submitted → Under Review / Approved / Returned → In Progress → C
 
 ## Open Decisions
 
-Use `../implementation/PHASE2_DECISION_REGISTER.md` to record phase-specific policy decisions before this workflow is marked build-ready.
+`II-008` is confirmed by `DEC-0035`. Future recursive sub-recipe cost flattening, POS integration, and bulk maintenance must be recorded as new approved decisions before implementation.

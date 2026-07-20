@@ -19,11 +19,13 @@ import {
   buildPurchaseOrderLineSnapshots,
   calculatePurchaseOrderTotals,
   classifyPurchaseOrderDeliveryAging,
+  derivePurchaseOrderCancellationSubtype,
   normalizePurchaseOrderFilters,
   parsePurchaseOrderAmendmentLines,
   summarizePurchaseOrderFulfillment
 } from "./purchaseOrders";
 import { canReadPurchaseOrders } from "./authorization";
+import { assertSupplierStatusAllowedForPurchaseOrder } from "./policySettings";
 
 describe("purchase order lifecycle rules", () => {
   test("app shell navigation uses the shared PO read helper", () => {
@@ -164,6 +166,39 @@ describe("purchase order lifecycle rules", () => {
     );
   });
 
+  test("supplier PO eligibility reads the configurable DEC-0036 status policy", () => {
+    expect(() =>
+      assertSupplierStatusAllowedForPurchaseOrder("APPROVED", {
+        poAllowedStatuses: ["APPROVED"]
+      })
+    ).not.toThrow();
+    expect(() =>
+      assertSupplierStatusAllowedForPurchaseOrder("PENDING_REVIEW", {
+        poAllowedStatuses: ["APPROVED"]
+      })
+    ).toThrow("SUPPLIER_NOT_ACTIVE_FOR_PO");
+    expect(() =>
+      assertSupplierStatusAllowedForPurchaseOrder(
+        "BLOCKED",
+        { poAllowedStatuses: ["APPROVED"] },
+        "SUPPLIER_NOT_ACTIVE_FOR_PO_ISSUE"
+      )
+    ).toThrow("SUPPLIER_NOT_ACTIVE_FOR_PO_ISSUE");
+
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+    const policySource = readFileSync(
+      path.resolve(__dirname, "policySettings.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("getPurchasingSupplierPolicy");
+    expect(source).toContain("assertSupplierStatusAllowedForPurchaseOrder");
+    expect(source).toContain("supplier.accreditationStatus");
+    expect(source).not.toContain("supplier.status !== \"ACTIVE\"");
+    expect(policySource).toContain("purchasing.supplier.po_allowed_statuses");
+    expect(policySource).toContain("poAllowedStatuses");
+  });
+
   test("allows supplier copy only after PO approval and through receiving closure", () => {
     for (const status of [
       "APPROVED",
@@ -225,6 +260,47 @@ describe("purchase order lifecycle rules", () => {
         receiptCount: 1
       })
     ).toThrow("PURCHASE_ORDER_RECEIVING_REPORT_BLOCKS_CANCELLATION");
+  });
+
+  test("PO cancellation reverses budget source projections without inventory or journal posting", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+
+    expect(source).toContain("reverseBudgetCommitmentFromApprovedSourceEvent");
+    expect(source).toContain('sourceType: "PURCHASE_ORDER"');
+    expect(source).toContain("purchase_order.approved:${line.id}");
+    expect(source).toContain("purchase_order.cancelled:${line.id}");
+    expect(source).toContain("purchase_order.cancelled");
+    expect(source).not.toContain("financeJournal.create");
+  });
+
+  test("derives auditable PO cancellation subtypes for reporting", () => {
+    expect(
+      derivePurchaseOrderCancellationSubtype({
+        status: "CANCELLED",
+        cancellationSubtype: "approval_rejected",
+        receivedQty: 0
+      })
+    ).toBe("approval_rejected");
+    expect(
+      derivePurchaseOrderCancellationSubtype({
+        status: "CLOSED",
+        receivedQty: 8,
+        balanceClosureCount: 1
+      })
+    ).toBe("remaining_balance_closure");
+    expect(
+      derivePurchaseOrderCancellationSubtype({
+        status: "CANCELLED",
+        receivedQty: 0
+      })
+    ).toBe("pre_receiving_cancellation");
+    expect(
+      derivePurchaseOrderCancellationSubtype({
+        status: "CANCELLED",
+        cancellationSubtype: "legacy_value",
+        receivedQty: 4
+      })
+    ).toBe("unknown_unclassified");
   });
 
   test("requires supplier notice evidence before PO balance closure request", () => {
@@ -565,7 +641,7 @@ describe("purchase order lifecycle rules", () => {
       normalizePurchaseOrderFilters({
         query: "   ",
         status: "SENT",
-        expectedFrom: "",
+        expectedFrom: "not-a-date",
         expectedTo: "",
         minAmount: "-1",
         maxAmount: "not-a-number",
@@ -599,7 +675,8 @@ describe("purchase order lifecycle rules", () => {
           lineNumber: 7,
           description: "Chicken thigh",
           purpose: "Branch replenishment",
-          notes: "Keep chilled"
+          notes: "Keep chilled",
+          budgetLineId: "budget-line-food"
         },
         item: { itemName: "Chicken Thigh" },
         uom: { uomCode: "KG" }
@@ -610,6 +687,7 @@ describe("purchase order lifecycle rules", () => {
       expect.objectContaining({
         sourceSupplierQuoteLineId: "quote-line-1",
         sourcePrLineId: "pr-line-1",
+        budgetLineId: "budget-line-food",
         itemId: "item-1",
         lineNumber: 7,
         description: "Chicken Thigh",

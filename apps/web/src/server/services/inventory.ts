@@ -1,6 +1,10 @@
 import { prisma, type TransactionClient } from "@ogfi/database";
 import { permissions, requirePermission } from "./authorization";
 import type { SessionContext } from "./context";
+import {
+  getInventoryLotExpiryPolicy,
+  inventoryItemLotExpiryRequirements
+} from "./policySettings";
 
 export type InventoryMovementType =
   | "RECEIPT_IN"
@@ -231,7 +235,8 @@ export async function postInventoryMovementInTransaction(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "ACTIVE"
-      }
+      },
+      include: { category: true }
     })
   ]);
 
@@ -259,10 +264,15 @@ export async function postInventoryMovementInTransaction(
       throw new Error("INVENTORY_UOM_CONVERSION_REQUIRED");
     }
   }
-  if (item.trackLot && !input.lotNumber?.trim()) {
+  const lotExpiryPolicy = await getInventoryLotExpiryPolicy(session);
+  const lotExpiryRequirements = inventoryItemLotExpiryRequirements(
+    item,
+    lotExpiryPolicy
+  );
+  if (lotExpiryRequirements.requiresLot && !input.lotNumber?.trim()) {
     throw new Error("INVENTORY_LOT_REQUIRED");
   }
-  if (item.trackExpiry && !input.expiryDate) {
+  if (lotExpiryRequirements.requiresExpiry && !input.expiryDate) {
     throw new Error("INVENTORY_EXPIRY_REQUIRED");
   }
   const activeFrozenCount = await tx.stockCountSession.findFirst({

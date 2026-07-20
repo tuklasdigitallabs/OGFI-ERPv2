@@ -101,6 +101,13 @@ export default async function CountsPage({ searchParams }: CountsPageProps) {
           generate controlled Stock Adjustments for approval and separate ledger
           posting.
         </p>
+        {formOptions ? (
+          <p className="mt-2 text-xs text-blue-900/75">
+            Current count cadence policy: standard items every{" "}
+            {formOptions.cadencePolicy.standardFrequencyDays} days; high-risk items
+            every {formOptions.cadencePolicy.highRiskFrequencyDays} days.
+          </p>
+        ) : null}
       </div>
       <div className="space-y-4">
         {canCreateCounts ? (
@@ -141,11 +148,11 @@ export default async function CountsPage({ searchParams }: CountsPageProps) {
                         name="countType"
                         required
                       >
-                        <option value="FULL">Full</option>
-                        <option value="CYCLE">Cycle</option>
-                        <option value="SPOT">Spot</option>
-                        <option value="HIGH_VALUE">High value</option>
-                        <option value="OPENING">Opening</option>
+                        {formOptions?.countTypes.map((countType) => (
+                          <option key={countType.value} value={countType.value}>
+                            {countType.label} / every {countType.recommendedCadenceDays}d
+                          </option>
+                        ))}
                       </select>
                     </label>
                   </div>
@@ -230,6 +237,8 @@ export default async function CountsPage({ searchParams }: CountsPageProps) {
                     <span>Created by {count.createdByName}</span>
                     <span>/</span>
                     <span>Scheduled {count.scheduledDate ?? "not set"}</span>
+                    <span>/</span>
+                    <span>Cadence {count.recommendedCadenceDays}d</span>
                     <span>/</span>
                     <span>Submitted {count.submittedAt ? "yes" : "no"}</span>
                   </div>

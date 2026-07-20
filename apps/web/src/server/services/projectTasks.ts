@@ -1,6 +1,6 @@
 import { prisma } from "@ogfi/database";
 import { z } from "zod";
-import { permissions } from "./authorization";
+import { canViewExpansionFinancialEstimates, permissions } from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
 import { projectTaskDueState } from "./projectDates";
 import {
@@ -13,6 +13,11 @@ import {
   hasCompanyManageScope,
   listAuthorizedProjectAccess
 } from "./projects";
+import { getProjectTaskPolicy } from "./policySettings";
+import {
+  assertExpansionSpecializedTaskTransition,
+  hasExpansionStructuredEvidence
+} from "./expansionTaskControls";
 
 const taskStatuses = [
   "BACKLOG",
@@ -208,6 +213,7 @@ export function assertTaskTransition(input: {
   nextStatus: ProjectTaskStatus;
   canMutate: boolean;
   reason?: string;
+  blockerReasonRequired?: boolean;
 }) {
   if (!input.canMutate) {
     throw new Error("PROJECT_TASK_PERMISSION_DENIED");
@@ -221,7 +227,11 @@ export function assertTaskTransition(input: {
       throw new Error("PROJECT_TASK_REOPEN_REASON_REQUIRED");
     }
   }
-  if (input.nextStatus === "BLOCKED" && (!input.reason || input.reason.trim().length < 5)) {
+  if (
+    input.nextStatus === "BLOCKED" &&
+    input.blockerReasonRequired !== false &&
+    (!input.reason || input.reason.trim().length < 5)
+  ) {
     throw new Error("PROJECT_TASK_BLOCKER_REASON_REQUIRED");
   }
   if (input.nextStatus === "CANCELLED" && (!input.reason || input.reason.trim().length < 5)) {
@@ -352,6 +362,9 @@ function mapTask(task: {
   }[];
   canMutate?: boolean;
 }): ProjectTaskCard {
+  const isRestrictedExpansionFinancialTask =
+    task.description?.startsWith("EXPANSION_FEASIBILITY_MODEL:") ||
+    task.description?.startsWith("EXPANSION_CAPEX_PROCUREMENT_ITEM:");
   const activeChecklistItems = task.checklistItems.filter((item) => !item.archivedAt);
   const activeAttachments =
     task.attachments?.filter(
@@ -375,7 +388,9 @@ function mapTask(task: {
     projectName: task.project.name,
     taskKey: task.taskKey,
     title: task.title,
-    description: task.description,
+    description: isRestrictedExpansionFinancialTask
+      ? "Financial assumptions are available in the restricted Expansion workspace."
+      : task.description,
     status: task.status as ProjectTaskStatus,
     priority: task.priority as ProjectTaskPriority,
     ownerName: task.owner.displayName,
@@ -924,6 +939,14 @@ export async function transitionProjectTask(formData: FormData) {
       checklistItems: {
         where: { archivedAt: null },
         select: { isRequired: true, isCompleted: true }
+      },
+      attachments: {
+        where: { status: "ACTIVE", archivedAt: null },
+        select: { id: true }
+      },
+      recordLinks: {
+        where: { archivedAt: null },
+        select: { id: true }
       }
     }
   });
@@ -935,16 +958,41 @@ export async function transitionProjectTask(formData: FormData) {
   }
 
   const canMutate = await getTaskMutationAccess(session, task.projectId);
+  const taskPolicy = await getProjectTaskPolicy(session);
   assertTaskTransition({
     currentStatus: task.status as ProjectTaskStatus,
     nextStatus: values.nextStatus,
     canMutate,
+    blockerReasonRequired: taskPolicy.blockerReasonRequired,
     ...(values.reason ? { reason: values.reason } : {})
   });
   assertProjectTaskStatusEnabled({
     projectConfigJson: task.project.projectConfigJson,
     nextStatus: values.nextStatus
   });
+  const expansionTaskKind = assertExpansionSpecializedTaskTransition({
+    description: task.description,
+    currentStatus: task.status as ProjectTaskStatus,
+    nextStatus: values.nextStatus,
+    hasStructuredEvidence: hasExpansionStructuredEvidence({
+      description: task.description,
+      activeAttachmentCount: task.attachments.length,
+      sourceRecordLinkCount: task.recordLinks.length
+    }),
+    actorUserId: session.user.id,
+    ownerUserId: task.ownerUserId,
+    createdByUserId: task.createdByUserId,
+    sponsorUserId: task.project.sponsorUserId
+  });
+  if (
+    expansionTaskKind &&
+    ["EXPANSION_FEASIBILITY_MODEL", "EXPANSION_CAPEX_PROCUREMENT_ITEM"].includes(
+      expansionTaskKind
+    ) &&
+    !canViewExpansionFinancialEstimates(session.permissionCodes)
+  ) {
+    throw new Error("EXPANSION_FINANCIAL_PERMISSION_DENIED");
+  }
   if (
     values.nextStatus === "COMPLETED" &&
     task.checklistItems.some((item) => item.isRequired && !item.isCompleted)
@@ -1010,9 +1058,21 @@ export async function transitionProjectTask(formData: FormData) {
       });
     }
 
-    const updated = await tx.projectTask.update({
-      where: { id: task.id },
+    const updateResult = await tx.projectTask.updateMany({
+      where: {
+        id: task.id,
+        tenantId: task.tenantId,
+        companyId: task.companyId,
+        version: task.version,
+        archivedAt: null
+      },
       data: updateData
+    });
+    if (updateResult.count !== 1) {
+      throw new Error("PROJECT_TASK_STALE_VERSION");
+    }
+    const updated = await tx.projectTask.findUniqueOrThrow({
+      where: { id: task.id }
     });
 
     if (values.nextStatus === "BLOCKED") {

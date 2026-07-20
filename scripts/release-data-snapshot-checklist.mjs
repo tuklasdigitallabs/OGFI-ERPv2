@@ -81,7 +81,7 @@ const checklist = [
   },
   {
     owner: "Release Manager / DBA",
-    action: "Refresh the final evidence manifest after source evidence and signed documents are complete.",
+    action: "Refresh the final evidence manifest after source evidence, signed documents, and external-security proof references are complete.",
     command: "pnpm release:evidence:manifest",
     artifact: "manifests/release-evidence-manifest-*.txt",
     acceptance: "Manifest includes checksums for preflight, pre/post snapshots, delta, status, and final signed evidence; no source files are regenerated after manifest without rerunning it.",

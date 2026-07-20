@@ -44,6 +44,14 @@ const checklist = [
     acceptance: "Must contain RESULT | PASS | Pilot setup is ready for UAT execution evidence capture.",
   },
   {
+    owner: "QA Lead / Release Manager",
+    action: "Rerun DB-backed readiness in strict release-gate mode before final review.",
+    command: "DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness",
+    artifact: "pilot-readiness/pilot-readiness-*.txt",
+    acceptance:
+      "Must contain requireReleaseGatesReady=true, DEC-0036 strict release gate status, and zero-count live security rows for Pending controlled access requests, Privileged users missing verified MFA evidence, Pending provider session invalidations, and Break-glass access open or post-review due.",
+  },
+  {
     owner: "QA Lead / Named Tester",
     action: "Execute every UAT scenario with real source records and screenshots/exports where required.",
     command: "Manual execution; record tester, role, environment, device/browser, timestamp, result, evidence reference, defect/waiver disposition, and owner signoff.",

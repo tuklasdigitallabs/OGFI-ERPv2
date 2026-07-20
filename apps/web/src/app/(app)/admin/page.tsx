@@ -24,6 +24,7 @@ import {
 import {
   createCoreAdminBrand,
   createCoreAdminCompany,
+  createCoreAdminDepartment,
   createCoreAdminLocation,
   createCoreAdminRole,
   createCoreAdminUser,
@@ -96,6 +97,18 @@ async function createBrandAction(formData: FormData) {
 
   try {
     await createCoreAdminBrand(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath("/admin?tab=organization", error));
+  }
+  revalidatePath("/admin");
+  redirect("/admin?tab=organization");
+}
+
+async function createDepartmentAction(formData: FormData) {
+  "use server";
+
+  try {
+    await createCoreAdminDepartment(formData);
   } catch (error) {
     redirect(actionErrorRedirectPath("/admin?tab=organization", error));
   }
@@ -606,6 +619,38 @@ export default async function CoreAdministrationPage({
                   </button>
                 </form>
               </EntryModal>
+              <EntryModal title="Create Department" triggerLabel="Create Department">
+                <form action={createDepartmentAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">
+                    Company
+                    <select className="rounded-md border border-slate-300 px-3 py-2" name="companyId" required>
+                      {overview.companies.map((company) => (
+                        <option key={company.id} value={company.id}>
+                          {company.name} / {company.code}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">
+                    Department code
+                    <input className="rounded-md border border-slate-300 px-3 py-2" name="code" placeholder="e.g. MARKETING" required />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">
+                    Department name
+                    <input className="rounded-md border border-slate-300 px-3 py-2" name="name" placeholder="e.g. Marketing" required />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">
+                    Setup reason
+                    <input className="rounded-md border border-slate-300 px-3 py-2" name="reason" required />
+                  </label>
+                  <p className="text-sm text-slate-500 md:col-span-2">
+                    Departments are company-scoped owners for budgets, cost centers, projects, workforce assignments, and finance requests.
+                  </p>
+                  <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 md:w-fit">
+                    Create Department
+                  </button>
+                </form>
+              </EntryModal>
               <EntryModal title="Create Branch / Location" triggerLabel="Create Branch / Location">
                 <form action={createLocationAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -671,7 +716,7 @@ export default async function CoreAdministrationPage({
               </EntryModal>
             </div>
           </div>
-          <div className="grid gap-4 xl:grid-cols-3">
+          <div className="grid gap-4 xl:grid-cols-4">
             <section className="space-y-3">
               <div>
                 <h3 className="font-bold text-slate-950">Companies</h3>
@@ -725,6 +770,48 @@ export default async function CoreAdministrationPage({
                       </div>
                       <Badge tone={brand.status === "ACTIVE" ? "success" : "neutral"}>
                         {brand.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <div>
+                <h3 className="font-bold text-slate-950">Departments</h3>
+                <p className="text-sm text-slate-500">Budget and responsibility owners</p>
+              </div>
+              {overview.departments.length === 0 ? (
+                <div className="ogfi-record-summary p-4">
+                  <p className="font-semibold text-slate-950">No departments yet</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Create departments such as Marketing, Purchasing, HR, Finance, and Operations before assigning department budgets.
+                  </p>
+                </div>
+              ) : (
+                overview.departments.map((department) => (
+                  <div key={department.id} data-testid="admin-department-row" className="ogfi-record-summary p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-950">{department.name}</p>
+                        <p className="text-sm text-slate-600">
+                          {department.companyName} / {department.code}
+                        </p>
+                      </div>
+                      <Badge tone={department.status === "ACTIVE" ? "success" : "neutral"}>
+                        {department.status}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge tone="info" size="sm">
+                        {department.budgetCount} budget{department.budgetCount === 1 ? "" : "s"}
+                      </Badge>
+                      <Badge tone="neutral" size="sm">
+                        {department.budgetLineCount} line{department.budgetLineCount === 1 ? "" : "s"}
+                      </Badge>
+                      <Badge tone="neutral" size="sm">
+                        {department.costCenterCount} cost center{department.costCenterCount === 1 ? "" : "s"}
                       </Badge>
                     </div>
                   </div>

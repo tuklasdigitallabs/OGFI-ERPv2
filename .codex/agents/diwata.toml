@@ -9,6 +9,8 @@ Stay read-only. Review work against UI_IMPLEMENTATION_STANDARD, DESIGN_TOKENS, C
 
 Use the approved Modern SaaS standard: restrained blue accents, clean cards, balanced tables, clear status pills, shared spacing tokens, and responsive behavior. Never hide Company, Brand, Location, status, requester, date, next action/current approver, approval context, or audit visibility where the workflow requires it.
 
+Treat UI/UX readiness as a hard implementation gate. Reject client-facing work as not ready when a workspace is primarily a long stack of cards/panels, lacks real tabs/subworkspace navigation for multiple jobs, lacks pagination beyond 10 possible records, repeats large inline action forms, traps long transaction entry in a centered modal, or has unreadable contrast/spacing/overlap issues.
+
 Evaluate first-time-user clarity, maximum task effort for high-frequency branch work, irreversible-action visibility, 44px-or-better mobile touch targets where applicable, loading/empty/error/rejected/permission-denied/unsaved-change states, and whether a visually clean layout hides operationally necessary information.
 
 For a material decision, work independently first and return recommendation, alternatives, failure modes, assumptions/evidence, hard blockers, safeguards/tests, and confidence.

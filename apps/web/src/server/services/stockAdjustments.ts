@@ -23,6 +23,12 @@ import {
   listActiveOperationalReasonCodes,
   requireActiveOperationalReasonCode
 } from "./operationalReasonCodes";
+import {
+  getInventoryAdjustmentPolicy,
+  getInventoryLotExpiryPolicy,
+  inventoryItemLotExpiryRequirements
+} from "./policySettings";
+import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 
 const manualAdjustmentTypes = ["INCREASE", "DECREASE", "OPENING_BALANCE"] as const;
 
@@ -141,12 +147,13 @@ export function calculateAdjustmentDelta(
 export function assertOpeningBalanceIsPostable(values: {
   adjustmentType: string;
   evidenceReference?: string | null | undefined;
+  evidenceRequired?: boolean | undefined;
   systemQuantityBaseUom: number;
 }) {
   if (values.adjustmentType !== "OPENING_BALANCE") {
     return;
   }
-  if (!values.evidenceReference?.trim()) {
+  if (values.evidenceRequired !== false && !values.evidenceReference?.trim()) {
     throw new Error("OPENING_BALANCE_EVIDENCE_REQUIRED");
   }
   if (values.systemQuantityBaseUom !== 0) {
@@ -242,7 +249,7 @@ function parseStockAdjustmentLines(formData: FormData) {
 export async function listStockAdjustmentFormOptions(session: SessionContext) {
   await requirePermission(session, permissions.stockAdjustmentCreate);
 
-  const [inventoryLocations, items, reasonCodes] = await Promise.all([
+  const [inventoryLocations, items, reasonCodes, adjustmentPolicy] = await Promise.all([
     prisma.inventoryLocation.findMany({
       where: {
         tenantId: session.context.tenantId,
@@ -264,7 +271,8 @@ export async function listStockAdjustmentFormOptions(session: SessionContext) {
       },
       orderBy: { itemName: "asc" }
     }),
-    listActiveOperationalReasonCodes(session, "STOCK_ADJUSTMENT")
+    listActiveOperationalReasonCodes(session, "STOCK_ADJUSTMENT"),
+    getInventoryAdjustmentPolicy(session)
   ]);
 
   return {
@@ -281,7 +289,8 @@ export async function listStockAdjustmentFormOptions(session: SessionContext) {
       trackExpiry: item.trackExpiry
     })),
     adjustmentTypes: manualAdjustmentTypes,
-    reasonCodes
+    reasonCodes,
+    policy: adjustmentPolicy
   };
 }
 
@@ -452,7 +461,8 @@ export async function createStockAdjustment(formData: FormData) {
       trackInventory: true
     },
     include: {
-      baseUom: true
+      baseUom: true,
+      category: true
     }
   });
   const itemById = new Map(items.map((item) => [item.id, item]));
@@ -462,16 +472,22 @@ export async function createStockAdjustment(formData: FormData) {
 
   const lineDrafts: StockAdjustmentLineDraft[] = [];
   const openingBalanceLotKeys = new Set<string>();
+  const adjustmentPolicy = await getInventoryAdjustmentPolicy(session);
+  const lotExpiryPolicy = await getInventoryLotExpiryPolicy(session);
 
   for (const [index, line] of lineValues.entries()) {
     const item = itemById.get(line.itemId);
     if (!item) {
       throw new Error("STOCK_ADJUSTMENT_ITEM_NOT_FOUND");
     }
-    if (item.trackLot && !line.lotNumber) {
+    const lotExpiryRequirements = inventoryItemLotExpiryRequirements(
+      item,
+      lotExpiryPolicy
+    );
+    if (lotExpiryRequirements.requiresLot && !line.lotNumber) {
       throw new Error("STOCK_ADJUSTMENT_LOT_REQUIRED");
     }
-    if (item.trackExpiry && !line.expiryDate) {
+    if (lotExpiryRequirements.requiresExpiry && !line.expiryDate) {
       throw new Error("STOCK_ADJUSTMENT_EXPIRY_REQUIRED");
     }
 
@@ -496,6 +512,7 @@ export async function createStockAdjustment(formData: FormData) {
     assertOpeningBalanceIsPostable({
       adjustmentType: values.adjustmentType,
       evidenceReference: line.evidenceReference || values.evidenceReference,
+      evidenceRequired: adjustmentPolicy.openingBalanceEvidenceRequired,
       systemQuantityBaseUom
     });
 
@@ -662,6 +679,19 @@ export async function submitStockAdjustment(formData: FormData) {
   if (adjustment.lines.length === 0) {
     throw new Error("STOCK_ADJUSTMENT_HAS_NO_LINES");
   }
+  await assertPrivilegedMfaForAction(session, {
+    action: "stock_adjustment.post",
+    enforcementScope: "all_sensitive",
+    permissionCode: permissions.stockAdjustmentPost,
+    entityType: "StockAdjustment",
+    entityId: adjustment.id,
+    reason:
+      "Posting a stock adjustment changes inventory balances and requires privileged MFA evidence.",
+    metadata: {
+      adjustmentType: adjustment.adjustmentType,
+      inventoryLocationId: adjustment.inventoryLocationId
+    }
+  });
 
   await prisma.$transaction(async (tx) => {
     const transactionType = adjustment.sourceStockCountSessionId
@@ -895,6 +925,19 @@ export async function postStockAdjustment(formData: FormData) {
   if (adjustment.lines.length === 0) {
     throw new Error("STOCK_ADJUSTMENT_HAS_NO_LINES");
   }
+  await assertPrivilegedMfaForAction(session, {
+    action: "stock_adjustment.reverse",
+    enforcementScope: "all_sensitive",
+    permissionCode: permissions.stockAdjustmentReverse,
+    entityType: "StockAdjustment",
+    entityId: adjustment.id,
+    reason:
+      "Reversing a stock adjustment creates counter-movements and requires privileged MFA evidence.",
+    metadata: {
+      adjustmentType: adjustment.adjustmentType,
+      inventoryLocationId: adjustment.inventoryLocationId
+    }
+  });
 
   await prisma.$transaction(async (tx) => {
     const claimed = await tx.stockAdjustment.updateMany({

@@ -10,7 +10,8 @@ import {
   assertStockCountCanSubmit,
   assertStockCountReviewerSegregation,
   calculateCountVariance,
-  filterCountVarianceLines
+  filterCountVarianceLines,
+  recommendedStockCountCadenceDays
 } from "./stockCounts";
 
 describe("stock count foundation rules", () => {
@@ -27,6 +28,39 @@ describe("stock count foundation rules", () => {
     const source = readFileSync(path.resolve(__dirname, "stockCounts.ts"), "utf8");
 
     expect(source).toContain("canUseStockCounts(session.permissionCodes)");
+  });
+
+  test("stock count cadence reads configurable DEC-0036 policy", () => {
+    expect(
+      recommendedStockCountCadenceDays("HIGH_VALUE", {
+        standardFrequencyDays: 30,
+        highRiskFrequencyDays: 7
+      })
+    ).toBe(7);
+    expect(
+      recommendedStockCountCadenceDays("CYCLE", {
+        standardFrequencyDays: 30,
+        highRiskFrequencyDays: 7
+      })
+    ).toBe(30);
+
+    const source = readFileSync(path.resolve(__dirname, "stockCounts.ts"), "utf8");
+    const policySource = readFileSync(
+      path.resolve(__dirname, "policySettings.ts"),
+      "utf8"
+    );
+    const pageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/counts/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("getStockCountCadencePolicy");
+    expect(source).toContain("recommendedCadenceDays");
+    expect(source).toContain("cadencePolicy");
+    expect(policySource).toContain("inventory.stock_count.standard_frequency_days");
+    expect(policySource).toContain("inventory.stock_count.high_risk_frequency_days");
+    expect(pageSource).toContain("Current count cadence policy");
+    expect(pageSource).toContain("recommendedCadenceDays");
   });
 
   test("starts draft counts only", () => {

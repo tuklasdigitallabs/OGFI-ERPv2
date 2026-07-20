@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import {
   assertAuthorizedLocation,
@@ -16,6 +16,8 @@ import {
   resolveScopedNotificationRecipients,
 } from "./notifications";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
+import { getPurchasingControlPolicy } from "./policySettings";
+import { reverseBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
 
 export type PurchaseRequestStatus =
   | "DRAFT"
@@ -33,8 +35,19 @@ export type PurchaseRequest = {
   brandId: string;
   requestLocationId: string;
   requesterUserId: string;
+  createdAt: string;
   requiredDate: string;
   urgency: string;
+  isEmergency: boolean;
+  slaStatus: PurchaseRequestSlaStatus;
+  slaLabel: string;
+  emergencyReason: string | null;
+  emergencyEvidenceReference: string | null;
+  emergencyPostReviewCompleted: boolean;
+  emergencyPostReviewOutcome: string | null;
+  emergencyPostReviewReason: string | null;
+  emergencyPostReviewEvidenceReference: string | null;
+  emergencyPostReviewCompletedAt: string | null;
   justification: string;
   status: PurchaseRequestStatus;
   currentApprovalStep: number | null;
@@ -44,6 +57,12 @@ export type PurchaseRequest = {
     uomId: string | null;
     description: string;
     requestedQty: number;
+    estimatedUnitCost: number;
+    estimatedLineTotal: number;
+    budgetLineId: string | null;
+    budgetLineCode: string | null;
+    budgetLineName: string | null;
+    budgetReference: string | null;
     uomCode: string;
     purpose: string;
   };
@@ -55,6 +74,12 @@ export type PurchaseRequest = {
     uomId: string | null;
     description: string;
     requestedQty: number;
+    estimatedUnitCost: number;
+    estimatedLineTotal: number;
+    budgetLineId: string | null;
+    budgetLineCode: string | null;
+    budgetLineName: string | null;
+    budgetReference: string | null;
     uomCode: string;
     purpose: string;
   }>;
@@ -94,6 +119,13 @@ export type PurchaseRequest = {
   }>;
 };
 
+export type PurchaseRequestSlaStatus =
+  | "NOT_APPLICABLE"
+  | "ON_TRACK"
+  | "DUE_TODAY"
+  | "OVERDUE"
+  | "RESOLVED";
+
 const optionalUuidSchema = z
   .string()
   .uuid()
@@ -103,8 +135,13 @@ const optionalUuidSchema = z
 const purchaseRequestLineInputSchema = z
   .object({
     itemId: optionalUuidSchema,
-    description: z.string().min(2).max(240),
+    description: z.string().trim().max(240).optional(),
     requestedQty: z.coerce.number().positive(),
+    estimatedUnitCost: z.preprocess(
+      (value) => (value === "" ? 0 : value),
+      z.coerce.number().nonnegative(),
+    ),
+    budgetLineId: optionalUuidSchema,
     uomId: optionalUuidSchema,
     uomCode: z.string().max(24).optional(),
     purpose: z.string().min(2).max(240),
@@ -122,7 +159,9 @@ const purchaseRequestLineInputSchema = z
 
 const createDraftHeaderSchema = z.object({
   requiredDate: z.string().min(1),
-  urgency: z.string().min(1).max(80),
+  urgency: z.enum(["Normal", "Urgent", "Emergency"]),
+  emergencyReason: z.string().trim().max(500).optional(),
+  emergencyEvidenceReference: z.string().trim().max(240).optional(),
   justification: z.string().min(5).max(1000),
 });
 
@@ -135,6 +174,74 @@ const addPurchaseRequestCommentSchema = z.object({
   purchaseRequestId: z.string().uuid(),
   body: z.string().trim().min(2).max(1000),
 });
+
+const completeEmergencyPurchasePostReviewSchema = z.object({
+  id: z.string().uuid(),
+  reviewOutcome: z.enum([
+    "ACCEPTED",
+    "FOLLOW_UP_REQUIRED",
+    "POLICY_EXCEPTION",
+  ]),
+  reason: z.string().trim().min(5).max(500),
+  evidenceReference: z.string().trim().min(2).max(240),
+});
+
+const activePurchaseRequestStatuses = new Set<PurchaseRequestStatus>([
+  "DRAFT",
+  "PENDING_APPROVAL",
+  "RETURNED",
+]);
+
+export function isEmergencyPurchaseUrgency(urgency: string) {
+  return urgency.trim().toLowerCase().includes("emergency");
+}
+
+function utcDateOnly(value: Date) {
+  return Date.UTC(
+    value.getUTCFullYear(),
+    value.getUTCMonth(),
+    value.getUTCDate(),
+  );
+}
+
+export function getPurchaseRequestSlaStatus(values: {
+  urgency: string;
+  requiredDate: Date;
+  status: PurchaseRequestStatus;
+  now?: Date;
+}): PurchaseRequestSlaStatus {
+  if (!isEmergencyPurchaseUrgency(values.urgency)) {
+    return "NOT_APPLICABLE";
+  }
+  if (!activePurchaseRequestStatuses.has(values.status)) {
+    return "RESOLVED";
+  }
+
+  const requiredDate = utcDateOnly(values.requiredDate);
+  const today = utcDateOnly(values.now ?? new Date());
+  if (requiredDate < today) {
+    return "OVERDUE";
+  }
+  if (requiredDate === today) {
+    return "DUE_TODAY";
+  }
+  return "ON_TRACK";
+}
+
+export function getPurchaseRequestSlaLabel(status: PurchaseRequestSlaStatus) {
+  switch (status) {
+    case "ON_TRACK":
+      return "Emergency SLA on track";
+    case "DUE_TODAY":
+      return "Emergency SLA due today";
+    case "OVERDUE":
+      return "Emergency SLA overdue";
+    case "RESOLVED":
+      return "Emergency SLA resolved";
+    default:
+      return "Normal priority";
+  }
+}
 
 export function getCatalogLineUomRequirementIssue(values: {
   itemId?: string | undefined;
@@ -177,6 +284,16 @@ function parsePurchaseRequestLineInputs(formData: FormData) {
     "lineRequestedQty",
     "requestedQty",
   );
+  const estimatedUnitCosts = getFormValues(
+    formData,
+    "lineEstimatedUnitCost",
+    "estimatedUnitCost",
+  );
+  const budgetLineIds = getFormValues(
+    formData,
+    "lineBudgetLineId",
+    "budgetLineId",
+  );
   const itemIds = getFormValues(formData, "lineItemId", "itemId");
   const uomIds = getFormValues(formData, "lineUomId", "uomId");
   const uomCodes = getFormValues(formData, "lineUomCode", "uomCode");
@@ -185,6 +302,7 @@ function parsePurchaseRequestLineInputs(formData: FormData) {
     descriptions.length,
     quantities.length,
     itemIds.length,
+    budgetLineIds.length,
     uomIds.length,
     uomCodes.length,
     purposes.length,
@@ -194,6 +312,8 @@ function parsePurchaseRequestLineInputs(formData: FormData) {
     itemId: itemIds[index] ?? "",
     description: descriptions[index] ?? "",
     requestedQty: quantities[index] ?? "",
+    estimatedUnitCost: estimatedUnitCosts[index] ?? "",
+    budgetLineId: budgetLineIds[index] ?? "",
     uomId: uomIds[index] ?? "",
     uomCode: uomCodes[index] ?? "",
     purpose: purposes[index] ?? "",
@@ -202,6 +322,8 @@ function parsePurchaseRequestLineInputs(formData: FormData) {
       line.itemId.trim() ||
       line.description.trim() ||
       line.requestedQty.trim() ||
+      line.estimatedUnitCost.trim() ||
+      line.budgetLineId.trim() ||
       line.uomId.trim() ||
       line.uomCode.trim() ||
       line.purpose.trim(),
@@ -219,6 +341,105 @@ type AuditEventRecord = Awaited<ReturnType<typeof findAuditEvents>>[number];
 type ApprovalActionRecord = Awaited<
   ReturnType<typeof findApprovalActions>
 >[number];
+type PurchaseRequestApprovalRules = Awaited<
+  ReturnType<typeof findPurchaseRequestApprovalRule>
+>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isEmergencyApprovalRule(scopeFilters: unknown) {
+  if (!isRecord(scopeFilters)) {
+    return false;
+  }
+  const route = String(scopeFilters.route ?? scopeFilters.appliesTo ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    scopeFilters.emergency === true ||
+    route === "emergency" ||
+    route === "emergency_purchase"
+  );
+}
+
+export function resolvePurchaseRequestApprovalRule(input: {
+  rules: PurchaseRequestApprovalRules;
+  isEmergency: boolean;
+}) {
+  const emergencyRule = input.rules.find((rule) =>
+    isEmergencyApprovalRule(rule.scopeFilters),
+  );
+  if (input.isEmergency && emergencyRule) {
+    return {
+      approvalRule: emergencyRule,
+      routeType: "emergency" as const,
+      fallbackUsed: false,
+    };
+  }
+  const defaultRule =
+    input.rules.find((rule) => !isEmergencyApprovalRule(rule.scopeFilters)) ??
+    input.rules[0];
+  return {
+    approvalRule: defaultRule ?? null,
+    routeType: input.isEmergency
+      ? ("emergency_fallback" as const)
+      : ("normal" as const),
+    fallbackUsed: input.isEmergency && Boolean(defaultRule),
+  };
+}
+
+function findPurchaseRequestApprovalRule(
+  tx: TransactionClient,
+  session: SessionContext,
+) {
+  return tx.approvalRule.findMany({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      transactionType: "PURCHASE_REQUEST",
+      isActive: true,
+    },
+    include: {
+      steps: {
+        orderBy: { stepOrder: "asc" },
+      },
+    },
+    orderBy: { priority: "asc" },
+  });
+}
+
+function emergencyReviewMetadata(auditEvents: AuditEventRecord[]) {
+  const createdEvent = auditEvents.find(
+    (event) => event.eventType === "purchase_request.created",
+  );
+  const metadata =
+    createdEvent?.metadata && typeof createdEvent.metadata === "object"
+      ? (createdEvent.metadata as Record<string, unknown>)
+      : {};
+  return metadata.emergencyReview && typeof metadata.emergencyReview === "object"
+    ? (metadata.emergencyReview as Record<string, unknown>)
+    : {};
+}
+
+function emergencyPostReviewEvent(auditEvents: AuditEventRecord[]) {
+  return auditEvents.find(
+    (event) =>
+      event.eventType === "purchase_request.emergency_post_review.completed",
+  );
+}
+
+function emergencyPostReviewMetadata(auditEvents: AuditEventRecord[]) {
+  const reviewEvent = emergencyPostReviewEvent(auditEvents);
+  const metadata =
+    reviewEvent?.metadata && typeof reviewEvent.metadata === "object"
+      ? (reviewEvent.metadata as Record<string, unknown>)
+      : {};
+  return {
+    event: reviewEvent,
+    metadata,
+  };
+}
 
 function toPurchaseRequest(
   record: PurchaseRequestRecord,
@@ -229,6 +450,13 @@ function toPurchaseRequest(
   if (!line) {
     throw new Error("PURCHASE_REQUEST_LINE_NOT_FOUND");
   }
+  const emergencyReview = emergencyReviewMetadata(auditEvents);
+  const emergencyPostReview = emergencyPostReviewMetadata(auditEvents);
+  const slaStatus = getPurchaseRequestSlaStatus({
+    urgency: record.urgency,
+    requiredDate: record.requiredDate,
+    status: record.status as PurchaseRequestStatus,
+  });
   const lines = record.lines.map((requestLine) => ({
     id: requestLine.id,
     lineNumber: requestLine.lineNumber,
@@ -237,6 +465,12 @@ function toPurchaseRequest(
     uomId: requestLine.uomId,
     description: requestLine.description,
     requestedQty: Number(requestLine.requestedQty),
+    estimatedUnitCost: Number(requestLine.estimatedUnitCost),
+    estimatedLineTotal: Number(requestLine.estimatedLineTotal),
+    budgetLineId: requestLine.budgetLineId,
+    budgetLineCode: requestLine.budgetLine?.code ?? null,
+    budgetLineName: requestLine.budgetLine?.name ?? null,
+    budgetReference: requestLine.budgetLine?.budget.publicReference ?? null,
     uomCode: requestLine.uom?.uomCode ?? requestLine.uomCode,
     purpose: requestLine.purpose,
   }));
@@ -249,8 +483,34 @@ function toPurchaseRequest(
     brandId: record.brandId ?? "",
     requestLocationId: record.requestLocationId,
     requesterUserId: record.requesterUserId,
+    createdAt: record.createdAt.toISOString(),
     requiredDate: record.requiredDate.toISOString().slice(0, 10),
     urgency: record.urgency,
+    isEmergency: isEmergencyPurchaseUrgency(record.urgency),
+    slaStatus,
+    slaLabel: getPurchaseRequestSlaLabel(slaStatus),
+    emergencyReason:
+      typeof emergencyReview.reason === "string" ? emergencyReview.reason : null,
+    emergencyEvidenceReference:
+      typeof emergencyReview.evidenceReference === "string"
+        ? emergencyReview.evidenceReference
+        : null,
+    emergencyPostReviewCompleted: Boolean(emergencyPostReview.event),
+    emergencyPostReviewOutcome:
+      typeof emergencyPostReview.metadata.reviewOutcome === "string"
+        ? emergencyPostReview.metadata.reviewOutcome
+        : null,
+    emergencyPostReviewReason:
+      typeof emergencyPostReview.metadata.reason === "string"
+        ? emergencyPostReview.metadata.reason
+        : null,
+    emergencyPostReviewEvidenceReference:
+      typeof emergencyPostReview.metadata.evidenceReference === "string"
+        ? emergencyPostReview.metadata.evidenceReference
+        : null,
+    emergencyPostReviewCompletedAt: emergencyPostReview.event
+      ? emergencyPostReview.event.occurredAt.toISOString()
+      : null,
     justification: record.justification,
     status: record.status as PurchaseRequestStatus,
     currentApprovalStep: record.currentApprovalStep,
@@ -260,6 +520,12 @@ function toPurchaseRequest(
       uomId: line.uomId,
       description: line.description,
       requestedQty: Number(line.requestedQty),
+      estimatedUnitCost: Number(line.estimatedUnitCost),
+      estimatedLineTotal: Number(line.estimatedLineTotal),
+      budgetLineId: line.budgetLineId,
+      budgetLineCode: line.budgetLine?.code ?? null,
+      budgetLineName: line.budgetLine?.name ?? null,
+      budgetReference: line.budgetLine?.budget.publicReference ?? null,
       uomCode: line.uom?.uomCode ?? line.uomCode,
       purpose: line.purpose,
     },
@@ -324,6 +590,16 @@ function findPurchaseRequestRecord(session: SessionContext, id: string) {
         include: {
           item: true,
           uom: true,
+          budgetLine: {
+            include: {
+              budget: {
+                select: {
+                  publicReference: true,
+                  name: true,
+                },
+              },
+            },
+          },
         },
       },
       comments: {
@@ -473,6 +749,16 @@ export async function listPurchaseRequests(
         include: {
           item: true,
           uom: true,
+          budgetLine: {
+            include: {
+              budget: {
+                select: {
+                  publicReference: true,
+                  name: true,
+                },
+              },
+            },
+          },
         },
       },
       comments: {
@@ -530,15 +816,27 @@ export async function listPurchaseRequestDraftOptions(session: SessionContext) {
     return {
       items: [],
       uoms: [],
+      budgetLines: [],
     };
   }
 
-  const [items, uoms] = await Promise.all([
+  const [items, uoms, budgetLines] = await Promise.all([
     prisma.item.findMany({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "ACTIVE",
+      },
+      include: {
+        baseUom: true,
+        purchaseUom: true,
+        issueUom: true,
+        uomConversions: {
+          include: {
+            fromUom: true,
+            toUom: true,
+          },
+        },
       },
       orderBy: { itemName: "asc" },
     }),
@@ -550,18 +848,94 @@ export async function listPurchaseRequestDraftOptions(session: SessionContext) {
       },
       orderBy: { uomCode: "asc" },
     }),
+    prisma.budgetLine.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE",
+        budget: {
+          status: { in: ["ACTIVE", "PARTIALLY_RELEASED"] },
+        },
+        OR: [
+          { locationId: null },
+          { locationId: session.context.locationId },
+        ],
+        ...(session.context.brandId
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { brandId: null },
+                    { brandId: session.context.brandId },
+                  ],
+                },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        budget: {
+          select: {
+            publicReference: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: [{ code: "asc" }, { name: "asc" }],
+      take: 200,
+    }),
   ]);
 
   return {
-    items: items.map((item) => ({
-      id: item.id,
-      itemCode: item.itemCode,
-      itemName: item.itemName,
-    })),
+    items: items.map((item) => {
+      const itemUoms = new Map<
+        string,
+        { id: string; uomCode: string; uomName: string }
+      >();
+      const addUom = (
+        uom:
+          | {
+              id: string;
+              uomCode: string;
+              uomName: string;
+            }
+          | null,
+      ) => {
+        if (uom) {
+          itemUoms.set(uom.id, {
+            id: uom.id,
+            uomCode: uom.uomCode,
+            uomName: uom.uomName,
+          });
+        }
+      };
+      addUom(item.purchaseUom);
+      addUom(item.baseUom);
+      addUom(item.issueUom);
+      item.uomConversions.forEach((conversion) => {
+        addUom(conversion.fromUom);
+        addUom(conversion.toUom);
+      });
+
+      return {
+        id: item.id,
+        itemCode: item.itemCode,
+        itemName: item.itemName,
+        defaultUomId: item.purchaseUomId ?? item.baseUomId,
+        uoms: Array.from(itemUoms.values()).sort((left, right) =>
+          left.uomCode.localeCompare(right.uomCode),
+        ),
+      };
+    }),
     uoms: uoms.map((uom) => ({
       id: uom.id,
       uomCode: uom.uomCode,
       uomName: uom.uomName,
+    })),
+    budgetLines: budgetLines.map((line) => ({
+      id: line.id,
+      label: `${line.code} - ${line.name}`,
+      helper: `${line.budget.publicReference} / ${line.budget.name}`,
     })),
   };
 }
@@ -577,6 +951,19 @@ export async function createDraftPurchaseRequest(formData: FormData) {
   }
   await requirePermission(session, permissions.purchaseRequestCreate);
   assertAuthorizedLocation(session, session.context.locationId);
+  const purchasingPolicy = await getPurchasingControlPolicy(session);
+  const isEmergency = isEmergencyPurchaseUrgency(values.urgency);
+  if (isEmergency && !values.emergencyReason?.trim()) {
+    throw new Error("EMERGENCY_PURCHASE_REASON_REQUIRED");
+  }
+  if (isEmergency && !values.emergencyEvidenceReference?.trim()) {
+    throw new Error("EMERGENCY_PURCHASE_EVIDENCE_REQUIRED");
+  }
+  const emergencySlaStatus = getPurchaseRequestSlaStatus({
+    urgency: values.urgency,
+    requiredDate: new Date(`${values.requiredDate}T00:00:00.000Z`),
+    status: "DRAFT",
+  });
 
   const itemIds = Array.from(
     new Set(lines.flatMap((line) => (line.itemId ? [line.itemId] : []))),
@@ -584,7 +971,12 @@ export async function createDraftPurchaseRequest(formData: FormData) {
   const uomIds = Array.from(
     new Set(lines.flatMap((line) => (line.uomId ? [line.uomId] : []))),
   );
-  const [items, catalogUoms] = await Promise.all([
+  const budgetLineIds = Array.from(
+    new Set(
+      lines.flatMap((line) => (line.budgetLineId ? [line.budgetLineId] : [])),
+    ),
+  );
+  const [items, catalogUoms, budgetLines] = await Promise.all([
     itemIds.length
       ? prisma.item.findMany({
           where: {
@@ -605,17 +997,63 @@ export async function createDraftPurchaseRequest(formData: FormData) {
           },
         })
       : [],
+    budgetLineIds.length
+      ? prisma.budgetLine.findMany({
+          where: {
+            id: { in: budgetLineIds },
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            status: "ACTIVE",
+            budget: {
+              status: { in: ["ACTIVE", "PARTIALLY_RELEASED"] },
+            },
+            OR: [
+              { locationId: null },
+              { locationId: session.context.locationId },
+            ],
+            ...(session.context.brandId
+              ? {
+                  AND: [
+                    {
+                      OR: [
+                        { brandId: null },
+                        { brandId: session.context.brandId },
+                      ],
+                    },
+                  ],
+                }
+              : {}),
+          },
+          include: {
+            budget: {
+              select: {
+                publicReference: true,
+                name: true,
+              },
+            },
+          },
+        })
+      : [],
   ]);
   const itemById = new Map(items.map((item) => [item.id, item]));
   const uomById = new Map(catalogUoms.map((uom) => [uom.id, uom]));
+  const budgetLineById = new Map(
+    budgetLines.map((budgetLine) => [budgetLine.id, budgetLine]),
+  );
   const resolvedLines = lines.map((line, index) => {
     const item = line.itemId ? itemById.get(line.itemId) : null;
     const catalogUom = line.uomId ? uomById.get(line.uomId) : null;
+    const budgetLine = line.budgetLineId
+      ? budgetLineById.get(line.budgetLineId)
+      : null;
     if (line.itemId && !item) {
       throw new Error("PR_LINE_ITEM_NOT_FOUND");
     }
     if (line.uomId && !catalogUom) {
       throw new Error("PR_LINE_UOM_NOT_FOUND");
+    }
+    if (line.budgetLineId && !budgetLine) {
+      throw new Error("PR_LINE_BUDGET_LINE_NOT_FOUND");
     }
     const uomCode = catalogUom?.uomCode ?? line.uomCode?.trim().toUpperCase();
     if (!uomCode) {
@@ -625,12 +1063,28 @@ export async function createDraftPurchaseRequest(formData: FormData) {
       lineNumber: index + 1,
       item,
       catalogUom,
+      budgetLine,
       description: line.description,
       requestedQty: line.requestedQty,
+      estimatedUnitCost: line.estimatedUnitCost,
+      estimatedLineTotal: line.requestedQty * line.estimatedUnitCost,
       uomCode,
       purpose: line.purpose,
     };
   });
+  const estimatedTotalAmount = resolvedLines.reduce(
+    (total, line) => total + line.estimatedLineTotal,
+    0,
+  );
+  if (isEmergency && estimatedTotalAmount <= 0) {
+    throw new Error("EMERGENCY_PURCHASE_ESTIMATE_REQUIRED");
+  }
+  if (
+    isEmergency &&
+    estimatedTotalAmount > purchasingPolicy.emergencyMaxAmountPhp
+  ) {
+    throw new Error("EMERGENCY_PURCHASE_CAP_EXCEEDED");
+  }
 
   const created = await prisma.$transaction(async (tx) => {
     const request = await tx.purchaseRequest.create({
@@ -649,8 +1103,14 @@ export async function createDraftPurchaseRequest(formData: FormData) {
           create: resolvedLines.map((line) => ({
             lineNumber: line.lineNumber,
             itemId: line.item?.id ?? null,
-            description: line.description,
+            description:
+              line.description?.trim() ||
+              line.item?.itemName ||
+              line.purpose,
             requestedQty: line.requestedQty,
+            estimatedUnitCost: line.estimatedUnitCost,
+            estimatedLineTotal: line.estimatedLineTotal,
+            budgetLineId: line.budgetLine?.id ?? null,
             uomId: line.catalogUom?.id ?? null,
             uomCode: line.uomCode,
             purpose: line.purpose,
@@ -677,6 +1137,31 @@ export async function createDraftPurchaseRequest(formData: FormData) {
             (line) => line.item?.itemCode ?? null,
           ),
           lineUomCodes: resolvedLines.map((line) => line.uomCode),
+          budgetLineCodes: resolvedLines.map(
+            (line) => line.budgetLine?.code ?? null,
+          ),
+          estimatedTotalAmount,
+          emergencyReview: {
+            isEmergency,
+            slaStatus: emergencySlaStatus,
+            slaLabel: getPurchaseRequestSlaLabel(emergencySlaStatus),
+            reason: values.emergencyReason?.trim() || null,
+            evidenceReference: values.emergencyEvidenceReference?.trim() || null,
+            estimatedTotalAmount,
+            capAmount: purchasingPolicy.emergencyMaxAmountPhp,
+          },
+          purchasingPolicy: {
+            standardApprovalThresholdPhp:
+              purchasingPolicy.standardApprovalThresholdPhp,
+            highValueApprovalThresholdPhp:
+              purchasingPolicy.highValueApprovalThresholdPhp,
+            seniorApprovalThresholdPhp:
+              purchasingPolicy.seniorApprovalThresholdPhp,
+            emergencyMaxAmountPhp: purchasingPolicy.emergencyMaxAmountPhp,
+            quotationRequiredThresholdPhp:
+              purchasingPolicy.quotationRequiredThresholdPhp,
+            minimumQuotes: purchasingPolicy.minimumQuotes,
+          },
         },
       },
     });
@@ -703,20 +1188,11 @@ export async function submitPurchaseRequest(id: string) {
   }
 
   await prisma.$transaction(async (tx) => {
-    const approvalRule = await tx.approvalRule.findFirst({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        transactionType: "PURCHASE_REQUEST",
-        isActive: true,
-      },
-      include: {
-        steps: {
-          orderBy: { stepOrder: "asc" },
-        },
-      },
-      orderBy: { priority: "asc" },
+    const route = resolvePurchaseRequestApprovalRule({
+      rules: await findPurchaseRequestApprovalRule(tx, session),
+      isEmergency: existing.isEmergency,
     });
+    const approvalRule = route.approvalRule;
 
     if (!approvalRule || approvalRule.steps.length === 0) {
       throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
@@ -773,6 +1249,13 @@ export async function submitPurchaseRequest(id: string) {
         },
         metadata: {
           approvalRuleId: approvalRule.id,
+          approvalRouteType: route.routeType,
+          emergencyFallbackUsed: route.fallbackUsed,
+          emergencyReview: {
+            isEmergency: existing.isEmergency,
+            slaStatus: existing.slaStatus,
+            slaLabel: existing.slaLabel,
+          },
         },
       },
     });
@@ -802,6 +1285,9 @@ export async function submitPurchaseRequest(id: string) {
         approvalInstanceId: approvalInstance.id,
         approvalStepOrder: firstStep.stepOrder,
         publicReference: existing.publicReference,
+        approvalRouteType: route.routeType,
+        emergencyFallbackUsed: route.fallbackUsed,
+        emergencySlaStatus: existing.slaStatus,
       },
     });
   });
@@ -868,6 +1354,7 @@ export async function reopenReturnedPurchaseRequest(id: string) {
         },
       },
     });
+
   });
 
   const request = await getPurchaseRequest(session, id);
@@ -921,11 +1408,81 @@ export async function cancelPurchaseRequest(formData: FormData) {
         },
       },
     });
+
+    for (const line of existing.lines) {
+      if (!line.budgetLineId) {
+        continue;
+      }
+      await reverseBudgetCommitmentFromApprovedSourceEvent(tx, session, {
+        sourceType: "PURCHASE_REQUEST",
+        sourceId: existing.id,
+        sourceEventKey: `purchase_request.approved:${line.id}`,
+        reversalEventKey: `purchase_request.cancelled:${line.id}`,
+        reason: values.reason,
+      });
+    }
   });
 
   const request = await getPurchaseRequest(session, values.id);
   if (!request) {
     throw new Error("PURCHASE_REQUEST_NOT_FOUND_AFTER_CANCEL");
+  }
+  return request;
+}
+
+export async function completeEmergencyPurchasePostReview(formData: FormData) {
+  const session = await requireSessionContext();
+  await requirePermission(session, permissions.purchaseRequestApprove);
+  const values = completeEmergencyPurchasePostReviewSchema.parse(
+    Object.fromEntries(formData),
+  );
+  const existing = await getPurchaseRequest(session, values.id);
+  if (!existing) {
+    throw new Error("PURCHASE_REQUEST_NOT_FOUND");
+  }
+  if (!existing.isEmergency) {
+    throw new Error("EMERGENCY_PURCHASE_POST_REVIEW_NOT_REQUIRED");
+  }
+  if (!["APPROVED", "REJECTED", "CANCELLED"].includes(existing.status)) {
+    throw new Error("EMERGENCY_PURCHASE_POST_REVIEW_NOT_READY");
+  }
+  if (existing.requesterUserId === session.user.id) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  if (existing.emergencyPostReviewCompleted) {
+    throw new Error("EMERGENCY_PURCHASE_POST_REVIEW_ALREADY_COMPLETED");
+  }
+
+  await prisma.auditEvent.create({
+    data: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      actorUserId: session.user.id,
+      eventType: "purchase_request.emergency_post_review.completed",
+      entityType: "PurchaseRequest",
+      entityId: values.id,
+      beforeData: {
+        emergencyPostReviewCompleted: false,
+      },
+      afterData: {
+        emergencyPostReviewCompleted: true,
+        reviewOutcome: values.reviewOutcome,
+      },
+      metadata: {
+        source: "emergency-purchase-post-review",
+        sourceDecisionId: "DEC-0036",
+        reviewOutcome: values.reviewOutcome,
+        reason: values.reason,
+        evidenceReference: values.evidenceReference,
+        statusAtReview: existing.status,
+        publicReference: existing.publicReference,
+      },
+    },
+  });
+
+  const request = await getPurchaseRequest(session, values.id);
+  if (!request) {
+    throw new Error("PURCHASE_REQUEST_NOT_FOUND_AFTER_POST_REVIEW");
   }
   return request;
 }

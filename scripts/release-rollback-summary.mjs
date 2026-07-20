@@ -1,6 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { evidenceRunId } from "./release-evidence-metadata.mjs";
+import {
+  evidenceMetadataValue,
+  evidenceRunId,
+} from "./release-evidence-metadata.mjs";
 
 const evidenceRoot = process.env.RELEASE_EVIDENCE_ROOT ?? "release-evidence";
 const outputFile =
@@ -9,9 +12,13 @@ const outputFile =
 
 const runId = evidenceRunId(process.env);
 const rollbackReleaseVersion = requiredEnv("ROLLBACK_RELEASE_VERSION");
-const githubRunId = requiredEnv("GITHUB_RUN_ID");
-const githubSha = requiredEnv("GITHUB_SHA");
-const environment = process.env.RELEASE_ENVIRONMENT ?? "staging-rollback";
+const githubRunId = requiredMetadata("GITHUB_RUN_ID");
+const githubSha = requiredMetadata("GITHUB_SHA");
+const environment = evidenceMetadataValue(
+  "RELEASE_ENVIRONMENT",
+  process.env,
+  "staging-rollback",
+);
 const verifiedAtUtc = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 const failedChecks = [
   [
@@ -51,6 +58,16 @@ console.log(`Staging rollback summary written: ${outputFile}`);
 
 function requiredEnv(name) {
   const value = process.env[name];
+  if (!value) {
+    console.error(`${name} is required for the rollback summary.`);
+    process.exit(2);
+  }
+
+  return value;
+}
+
+function requiredMetadata(name) {
+  const value = evidenceMetadataValue(name, process.env);
   if (!value) {
     console.error(`${name} is required for the rollback summary.`);
     process.exit(2);

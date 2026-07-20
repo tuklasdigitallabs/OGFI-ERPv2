@@ -9,6 +9,8 @@
 
 Dashboards must help users decide what to do next. They are not decorative scoreboards.
 
+Dashboards are not a license to stack every workflow section as cards. A dashboard may use a compact KPI strip, but the dominant workspace must still be action-first, list-first, and drill-down oriented.
+
 Every dashboard must answer four questions immediately:
 
 1. What requires action now?
@@ -94,6 +96,18 @@ Each KPI card must show:
 - data freshness when not real-time.
 
 Never display a KPI with no explanation of its scope or period.
+
+KPI cards are limited decision aids. They must not push the actionable queue below the fold, and they must not become the primary structure for finance, workforce, procurement, inventory, or operations workspaces. If a page needs many metrics, use tabs, grouped lists, charts, or a report view rather than a long card stack.
+
+### 5.1.1 Workspace dashboard boundary
+
+For multi-workflow modules such as Finance or Workforce:
+
+- The overview route should act as a command center: priority actions, exceptions, and shortcuts.
+- Sub-workspaces must use tabs or route-level navigation for distinct jobs.
+- Each sub-workspace must expose a paginated list, queue, or workbench as the main content.
+- Setup cards, policy guardrails, and report previews are secondary and should not dominate the first viewport.
+- A workflow cannot be considered dashboard-ready if the user must scroll through unrelated cards to find the next action.
 
 ### 5.2 Phase I KPI baseline
 

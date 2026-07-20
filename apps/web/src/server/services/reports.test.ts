@@ -75,6 +75,129 @@ describe("operational report catalog", () => {
     );
   });
 
+  it("keeps report catalog metadata complete and uniquely addressable", () => {
+    const session = sessionWithPermissions([
+      permissions.purchaseRequestCreate,
+      permissions.purchaseOrderView,
+      permissions.quoteManage,
+      permissions.receivingView,
+      permissions.inventoryBalanceView,
+      permissions.inventoryLedgerView,
+      permissions.transferView,
+      permissions.stockCountView,
+      permissions.wastageView,
+      permissions.stockAdjustmentView,
+      permissions.purchaseRequestApprove,
+      permissions.projectView,
+      permissions.coreAdminister,
+      permissions.recipeView,
+      permissions.menuCostView,
+      permissions.branchOperationsView,
+      permissions.foodSafetyView,
+      permissions.incidentView,
+      permissions.maintenanceView
+    ]);
+    const reports = listOperationalReports(session);
+    const reportIds = reports.map((report) => report.id);
+
+    expect(new Set(reportIds).size).toBe(reportIds.length);
+    expect(reports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "recipe-revision-workbook",
+          description: expect.stringContaining("planning workbook")
+        }),
+        expect.objectContaining({
+          id: "branch-checklist-compliance",
+          description: expect.stringContaining("Opening and closing checklist")
+        }),
+        expect.objectContaining({
+          id: "food-safety-exceptions",
+          description: expect.stringContaining("Temperature")
+        }),
+        expect.objectContaining({
+          id: "incident-corrective-actions",
+          description: expect.stringContaining("Operational incidents")
+        }),
+        expect.objectContaining({
+          id: "maintenance-sla-downtime",
+          description: expect.stringContaining("Maintenance tickets")
+        })
+      ])
+    );
+    expect(reports.every((report) => report.description.trim().length > 0)).toBe(true);
+    expect(reports.every((report) => report.trustNotice?.sourceDecisionId === "DEC-0036")).toBe(
+      true
+    );
+    expect(reports).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "purchase-order-status",
+          trustNotice: expect.objectContaining({
+            label: "Source-record scoped",
+            detail: expect.stringContaining("does not approve, post, reverse")
+          })
+        })
+      ])
+    );
+  });
+
+  it("flags food-cost analysis with POS/import trust-state warning", () => {
+    const session = sessionWithPermissions([permissions.menuCostView]);
+    const reports = listOperationalReports(session);
+    const foodCostReport = reports.find((report) => report.id === "food-cost-analysis");
+    const pageSource = readFileSync(
+      new URL("../../app/(app)/reports/page.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(foodCostReport).toEqual(
+      expect.objectContaining({
+        trustNotice: expect.objectContaining({
+          label: "POS/import trust-gated",
+          sourceDecisionId: "DEC-0036",
+          detail: expect.stringContaining("Sales import data is analysis-only")
+        })
+      })
+    );
+    expect(pageSource).toContain("report.trustNotice");
+    expect(pageSource).toContain("sourceDecisionId");
+  });
+
+  it("documents export metadata and report trust gates for users", () => {
+    const exportArticle = readFileSync(
+      new URL("../../../../../docs/knowledge-base/reports/how-to-export-a-report.md", import.meta.url),
+      "utf8"
+    );
+    const trustArticle = readFileSync(
+      new URL(
+        "../../../../../docs/knowledge-base/reports/understanding-report-trust-notices.md",
+        import.meta.url
+      ),
+      "utf8"
+    );
+    const adminTraining = readFileSync(
+      new URL("../../../../../docs/training/phase-i-administrator-setup-guide.md", import.meta.url),
+      "utf8"
+    );
+
+    for (const expected of [
+      "report ID",
+      "company, brand, location, and location type",
+      "scope-filter requirement",
+      "trust-gate source decision",
+      "DEC-0036"
+    ]) {
+      expect(exportArticle).toContain(expected);
+    }
+    expect(trustArticle).toContain(
+      "Operational CSV metadata includes report ID, company, brand, location, scope-filter requirement, trust-gate mode, trust-gate source decision, and override status."
+    );
+    expect(adminTraining).toContain(
+      "Confirm the CSV metadata includes report ID, selected scope, trust-gate mode, and `DEC-0036`."
+    );
+  });
+
   it("exposes project exports only with project visibility", () => {
     const session = sessionWithPermissions([permissions.projectView]);
 

@@ -9,6 +9,8 @@ Implement only the scoped UI task after reading the relevant UI spec, design sys
 
 Use the approved Modern SaaS standard. Every important record view must make Company, Brand, Location, status, requester, date, next action/current approver, and activity/audit context easy to find. Do not build unreleased Phase II-V menus or hide operational controls to make a layout look minimal.
 
+UI/UX readiness is part of implementation completion. Do not implement or extend long stacked-card workspaces for operational modules. Multi-function routes must use tabs/subworkspace navigation, filters/search, paginated lists or queues, selected-record detail/drawers, and contextual action composers. More than 10 possible records requires pagination or approved incremental loading. Long transaction entry must use a drawer, sheet, stepper, or full-page task mode rather than a cramped centered modal.
+
 Use clear contextual actions such as Create Purchase Request, Request Stock, Receive Delivery, Dispatch Transfer, Start Stock Count, and Log Wastage.
 
 Include empty, loading, error, rejected, returned-for-revision, permission-denied, duplicate-submit prevention, and unsaved-changes states. Ensure changing context cannot cause a user to submit a transaction to the wrong branch or warehouse. Never rely on frontend authorization for control enforcement.

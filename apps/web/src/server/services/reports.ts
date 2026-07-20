@@ -2,31 +2,60 @@ import { canUseApprovals, permissions } from "./authorization";
 import type { SessionContext } from "./context";
 import {
   canExportCoreAdminAudit,
+  canExportBranchOperations,
+  canExportExpansion,
+  canExportFoodCostAnalysis,
+  canExportFoodSafety,
   canExportInventoryBalances,
   canExportInventoryLedger,
   canExportInventoryTransfers,
+  canExportIncidents,
+  canExportMaintenance,
   canExportProjects,
   canExportPurchaseOrders,
   canExportPurchaseRequests,
   canExportReceivingReports,
+  canExportRecipeCosting,
   canExportStockAdjustments,
   canExportStockCounts,
   canExportSupplierQuotes,
   canExportWastageReports
 } from "./exportAuthorization";
+import { getReportExportPolicy } from "./policySettings";
 
 export type OperationalReportCard = {
   id: string;
   title: string;
-  group: "Purchasing" | "Receiving" | "Inventory" | "Controls" | "Projects" | "Audit";
+  group:
+    | "Purchasing"
+    | "Receiving"
+    | "Inventory"
+    | "Controls"
+    | "Projects"
+    | "Restaurant Ops"
+    | "Audit";
   description: string;
   sourceHref: string;
   exportHref: string | null;
   status: "CSV_AVAILABLE" | "VIEW_ONLY";
+  trustNotice?: {
+    tone: "warning" | "info";
+    label: string;
+    detail: string;
+    sourceDecisionId: string;
+  };
 };
 
 type ReportDefinition = OperationalReportCard & {
   isVisible: (session: SessionContext) => boolean;
+};
+
+const sourceRecordTrustNotice = {
+  tone: "info" as const,
+  label: "Source-record scoped",
+  detail:
+    "This report opens and exports permitted source records only for the selected company/location context. It does not approve, post, reverse, or replace the underlying workflow record.",
+  sourceDecisionId: "DEC-0036"
 };
 
 const reportDefinitions: ReportDefinition[] = [
@@ -181,6 +210,17 @@ const reportDefinitions: ReportDefinition[] = [
     isVisible: canExportProjects
   },
   {
+    id: "phase-4-expansion-portfolio",
+    title: "Expansion Portfolio",
+    group: "Projects",
+    description:
+      "Branch-opening portfolio, lifecycle gates, permits, construction progress, readiness, punch-list exceptions, and source-record boundary summary.",
+    sourceHref: "/expansion",
+    exportHref: "/expansion/export",
+    status: "CSV_AVAILABLE",
+    isVisible: canExportExpansion
+  },
+  {
     id: "audit-trail",
     title: "Audit Trail Export",
     group: "Audit",
@@ -189,13 +229,94 @@ const reportDefinitions: ReportDefinition[] = [
     exportHref: "/admin/audit/export",
     status: "CSV_AVAILABLE",
     isVisible: canExportCoreAdminAudit
+  },
+  {
+    id: "recipe-costing",
+    title: "Recipe Costing Register",
+    group: "Restaurant Ops",
+    description: "Published recipe versions, ingredient lines, supplier price basis, plate cost, and margin preview.",
+    sourceHref: "/recipes",
+    exportHref: "/recipes/export",
+    status: "CSV_AVAILABLE",
+    isVisible: canExportRecipeCosting
+  },
+  {
+    id: "recipe-revision-workbook",
+    title: "Recipe Revision Workbook",
+    group: "Restaurant Ops",
+    description:
+      "Recipe-specific planning workbook with source lines, change columns, and template rows; export from the selected recipe detail.",
+    sourceHref: "/recipes",
+    exportHref: null,
+    status: "VIEW_ONLY",
+    isVisible: canExportRecipeCosting
+  },
+  {
+    id: "food-cost-analysis",
+    title: "Food Cost Analysis",
+    group: "Restaurant Ops",
+    description: "Imported sales by menu item with theoretical food cost and target comparison.",
+    sourceHref: "/recipes?view=analysis",
+    exportHref: "/recipes/analysis/export",
+    status: "CSV_AVAILABLE",
+    isVisible: canExportFoodCostAnalysis,
+    trustNotice: {
+      tone: "warning",
+      label: "POS/import trust-gated",
+      detail:
+        "Sales import data is analysis-only until the source system, import completeness, duplicate controls, and reconciliation are validated for the selected scope.",
+      sourceDecisionId: "DEC-0036"
+    }
+  },
+  {
+    id: "branch-checklist-compliance",
+    title: "Branch Checklist Compliance",
+    group: "Restaurant Ops",
+    description: "Opening and closing checklist source records, line results, exceptions, and evidence references.",
+    sourceHref: "/branch-operations",
+    exportHref: "/branch-operations/export",
+    status: "CSV_AVAILABLE",
+    isVisible: canExportBranchOperations
+  },
+  {
+    id: "food-safety-exceptions",
+    title: "Food Safety Exceptions",
+    group: "Restaurant Ops",
+    description: "Temperature, sanitation, corrective-action, exception, and evidence readings for the selected branch.",
+    sourceHref: "/food-safety",
+    exportHref: "/food-safety/export",
+    status: "CSV_AVAILABLE",
+    isVisible: canExportFoodSafety
+  },
+  {
+    id: "incident-corrective-actions",
+    title: "Open Incidents and Corrective Actions",
+    group: "Restaurant Ops",
+    description: "Operational incidents, severity, due dates, source links, corrective actions, and evidence references.",
+    sourceHref: "/incidents",
+    exportHref: "/incidents/export",
+    status: "CSV_AVAILABLE",
+    isVisible: canExportIncidents
+  },
+  {
+    id: "maintenance-sla-downtime",
+    title: "Maintenance SLA and Downtime",
+    group: "Restaurant Ops",
+    description: "Maintenance tickets, assets, priority, SLA due dates, downtime, corrective actions, and evidence references.",
+    sourceHref: "/maintenance",
+    exportHref: "/maintenance/export",
+    status: "CSV_AVAILABLE",
+    isVisible: canExportMaintenance
   }
 ];
 
 export function listOperationalReports(session: SessionContext) {
   return reportDefinitions
     .filter((report) => report.isVisible(session))
-    .map(({ isVisible: _isVisible, ...report }) => report);
+    .map(({ isVisible: _isVisible, ...report }) => ({
+      ...report,
+      trustNotice: report.trustNotice ?? sourceRecordTrustNotice
+    }));
 }
 
 export function canUseOperationalReports(session: SessionContext) {
@@ -203,4 +324,16 @@ export function canUseOperationalReports(session: SessionContext) {
     listOperationalReports(session).length > 0 ||
     session.permissionCodes.includes(permissions.coreAdminister)
   );
+}
+
+export async function getOperationalReportTrustContext(session: SessionContext) {
+  const exportPolicy = await getReportExportPolicy(session);
+
+  return {
+    requireScopeFilters: exportPolicy.requireScopeFilters,
+    trustGateMode: exportPolicy.trustGate.mode,
+    trustGateLabel: exportPolicy.trustGate.label,
+    trustGateSourceDecisionId: exportPolicy.trustGate.sourceDecisionId,
+    trustGateIsOverridden: exportPolicy.trustGate.isOverridden
+  };
 }

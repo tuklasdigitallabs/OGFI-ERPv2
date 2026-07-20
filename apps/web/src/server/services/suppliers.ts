@@ -46,6 +46,20 @@ const deactivateSupplierSchema = z.object({
   reason: z.string().min(5).max(500)
 });
 
+const supplierAccreditationStatuses = [
+  "PENDING_REVIEW",
+  "APPROVED",
+  "SUSPENDED",
+  "BLOCKED"
+] as const;
+
+const updateSupplierAccreditationSchema = z.object({
+  supplierId: z.string().uuid(),
+  accreditationStatus: z.enum(supplierAccreditationStatuses),
+  reason: z.string().min(5).max(500),
+  evidenceReference: optionalTextSchema
+});
+
 const createSupplierItemLinkSchema = z.object({
   supplierId: z.string().uuid(),
   itemId: z.string().uuid(),
@@ -121,6 +135,7 @@ export async function listSuppliers(session: SessionContext) {
     tradingName: supplier.tradingName,
     taxIdentifier: supplier.taxIdentifier,
     status: supplier.status,
+    accreditationStatus: supplier.accreditationStatus,
     paymentTerms: supplier.paymentTerms,
     createdAt: supplier.createdAt.toISOString(),
     itemLinkCount: supplier._count.itemLinks,
@@ -307,6 +322,7 @@ export async function getSupplierCatalog(
       tradingName: supplier.tradingName,
       taxIdentifier: supplier.taxIdentifier,
       status: supplier.status,
+      accreditationStatus: supplier.accreditationStatus,
       paymentTerms: supplier.paymentTerms,
       updatedAt: supplier.updatedAt.toISOString(),
       primaryContact: supplier.contacts[0]
@@ -432,6 +448,7 @@ export async function createSupplier(formData: FormData) {
         legalName: values.legalName,
         tradingName: values.tradingName ?? null,
         taxIdentifier: values.taxIdentifier ?? null,
+        accreditationStatus: "PENDING_REVIEW",
         paymentTerms: values.paymentTerms ?? null,
         ...(values.primaryContactName
           ? {
@@ -460,7 +477,8 @@ export async function createSupplier(formData: FormData) {
         afterData: {
           supplierCode: supplier.supplierCode,
           legalName: supplier.legalName,
-          status: supplier.status
+          status: supplier.status,
+          accreditationStatus: supplier.accreditationStatus
         },
         metadata: {
           reason: values.reason
@@ -496,7 +514,8 @@ export async function deactivateSupplier(formData: FormData) {
     const updated = await tx.supplier.update({
       where: { id: supplier.id },
       data: {
-        status: "INACTIVE"
+        status: "INACTIVE",
+        accreditationStatus: "SUSPENDED"
       }
     });
 
@@ -511,13 +530,71 @@ export async function deactivateSupplier(formData: FormData) {
         beforeData: {
           supplierCode: supplier.supplierCode,
           legalName: supplier.legalName,
-          status: supplier.status
+          status: supplier.status,
+          accreditationStatus: supplier.accreditationStatus
         },
         afterData: {
-          status: updated.status
+          status: updated.status,
+          accreditationStatus: updated.accreditationStatus
         },
         metadata: {
           reason: values.reason
+        }
+      }
+    });
+  });
+}
+
+export async function updateSupplierAccreditation(formData: FormData) {
+  const session = await requireSessionContext();
+  const values = updateSupplierAccreditationSchema.parse(
+    Object.fromEntries(formData)
+  );
+
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+
+  const supplier = await prisma.supplier.findFirst({
+    where: {
+      id: values.supplierId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE"
+    }
+  });
+
+  if (!supplier) {
+    throw new Error("SUPPLIER_NOT_FOUND");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.supplier.update({
+      where: { id: supplier.id },
+      data: {
+        accreditationStatus: values.accreditationStatus
+      }
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        eventType: "supplier.accreditation_status_updated",
+        entityType: "Supplier",
+        entityId: supplier.id,
+        beforeData: {
+          supplierCode: supplier.supplierCode,
+          legalName: supplier.legalName,
+          accreditationStatus: supplier.accreditationStatus
+        },
+        afterData: {
+          accreditationStatus: updated.accreditationStatus
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          reason: values.reason,
+          evidenceReference: values.evidenceReference ?? null
         }
       }
     });

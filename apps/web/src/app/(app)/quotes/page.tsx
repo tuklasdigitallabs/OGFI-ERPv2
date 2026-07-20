@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Badge, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import { SupplierQuoteLinesEditor } from "@/components/SupplierQuoteLinesEditor";
 import {
   actionErrorRedirectPath,
@@ -124,14 +124,14 @@ export default async function SupplierQuotesPage({
 
       <div className="space-y-4">
         <div className="flex justify-end">
-          <EntryModal title="Record Supplier Quote" triggerLabel="Record Supplier Quote">
+          <TaskSheet title="Record Supplier Quote" description="Price each approved request line for one supplier." trigger={<span>Record Supplier Quote</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
             <SupplierQuoteLinesEditor
               action={createSupplierQuoteAction}
               requests={requests}
               suppliers={options.suppliers}
               uoms={options.uoms}
             />
-          </EntryModal>
+          </TaskSheet>
         </div>
 
         <section className="ogfi-data-surface">

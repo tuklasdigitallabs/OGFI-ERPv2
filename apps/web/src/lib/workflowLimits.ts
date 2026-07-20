@@ -1,0 +1,6 @@
+export const PURCHASE_REQUEST_MAX_LINES = 100;
+export const STOCK_ADJUSTMENT_MAX_LINES = 100;
+export const TRANSFER_MAX_LINES = 100;
+export const WASTAGE_MAX_LINES = 100;
+export const BRANCH_CHECKLIST_MAX_LINES = 20;
+export const FOOD_SAFETY_MAX_READINGS = 20;

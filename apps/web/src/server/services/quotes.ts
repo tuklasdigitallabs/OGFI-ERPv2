@@ -8,6 +8,7 @@ import {
   resolveScopedNotificationRecipients
 } from "./notifications";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
+import { getPurchasingControlPolicy } from "./policySettings";
 
 const optionalDateSchema = z
   .string()
@@ -117,6 +118,8 @@ export function evaluateQuotationRecommendation(
 export function assertQuotationRecommendationJustification(values: {
   quoteCount: number;
   isLowestEvaluatedCost: boolean;
+  comparisonRequired?: boolean | undefined;
+  minimumQuotes?: number | undefined;
   nonLowestJustification?: string | undefined;
   singleSourceJustification?: string | undefined;
 }) {
@@ -125,6 +128,15 @@ export function assertQuotationRecommendationJustification(values: {
     !values.singleSourceJustification?.trim()
   ) {
     throw new Error("SINGLE_SOURCE_JUSTIFICATION_REQUIRED");
+  }
+
+  if (
+    values.comparisonRequired &&
+    values.minimumQuotes &&
+    values.quoteCount < values.minimumQuotes &&
+    !values.singleSourceJustification?.trim()
+  ) {
+    throw new Error("QUOTE_SHORTFALL_JUSTIFICATION_REQUIRED");
   }
 
   if (
@@ -540,7 +552,11 @@ export async function createQuotationRecommendation(formData: FormData) {
       companyId: session.context.companyId
     },
     include: {
-      purchaseRequest: true,
+      purchaseRequest: {
+        include: {
+          lines: true
+        }
+      },
       supplierQuotes: {
         include: {
           supplier: true,
@@ -582,8 +598,17 @@ export async function createQuotationRecommendation(formData: FormData) {
     quoteValues,
     values.selectedSupplierQuotationId
   );
+  const purchasingPolicy = await getPurchasingControlPolicy(session);
+  const requestEstimatedTotal = quotationRequest.purchaseRequest.lines.reduce(
+    (total, line) => total + Number(line.estimatedLineTotal),
+    0
+  );
+  const quotationComparisonRequired =
+    requestEstimatedTotal >= purchasingPolicy.quotationRequiredThresholdPhp;
   assertQuotationRecommendationJustification({
     ...evaluation,
+    comparisonRequired: quotationComparisonRequired,
+    minimumQuotes: purchasingPolicy.minimumQuotes,
     nonLowestJustification: values.nonLowestJustification,
     singleSourceJustification: values.singleSourceJustification
   });
@@ -609,6 +634,13 @@ export async function createQuotationRecommendation(formData: FormData) {
       documentType: "QuotationRecommendation",
       requiredBeforePurchaseOrder: true,
       status: "DRAFT_NOT_SUBMITTED"
+    },
+    purchasingPolicy: {
+      requestEstimatedTotal,
+      quotationComparisonRequired,
+      quotationRequiredThresholdPhp:
+        purchasingPolicy.quotationRequiredThresholdPhp,
+      minimumQuotes: purchasingPolicy.minimumQuotes
     },
     selectedSupplierQuotationId: selectedQuote.id,
     quotes: quotationRequest.supplierQuotes.map((quote) => ({
@@ -672,6 +704,11 @@ export async function createQuotationRecommendation(formData: FormData) {
           selectedEvaluatedTotal: evaluation.selectedEvaluatedTotal,
           lowestEvaluatedTotal: evaluation.lowestEvaluatedTotal,
           quoteCount: evaluation.quoteCount,
+          requestEstimatedTotal,
+          quotationComparisonRequired,
+          quotationRequiredThresholdPhp:
+            purchasingPolicy.quotationRequiredThresholdPhp,
+          minimumQuotes: purchasingPolicy.minimumQuotes,
           isLowestEvaluatedCost: evaluation.isLowestEvaluatedCost,
           selectionReason: values.selectionReason,
           nonLowestJustification: values.nonLowestJustification ?? null,

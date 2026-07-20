@@ -1,9 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink } from "@ogfi/ui";
+import { Badge, ButtonLink, EmptyState, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
+import { GoodsReceiptLinesEditor } from "@/components/GoodsReceiptLinesEditor";
+import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -28,6 +29,45 @@ export const dynamic = "force-dynamic";
 type ReceivingPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type ReceivingTab = "all" | "draft" | "posted" | "discrepancies";
+
+const PAGE_SIZE = 10;
+
+function getStringParam(
+  searchParams: Record<string, string | string[] | undefined>,
+  key: string
+) {
+  const value = searchParams[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getReceivingTab(
+  searchParams: Record<string, string | string[] | undefined>
+): ReceivingTab {
+  const tab = getStringParam(searchParams, "tab");
+  if (tab === "draft" || tab === "posted" || tab === "discrepancies") {
+    return tab;
+  }
+  return "all";
+}
+
+function getPage(searchParams: Record<string, string | string[] | undefined>) {
+  const page = Number.parseInt(getStringParam(searchParams, "page") ?? "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+function receivingHref(tab: ReceivingTab, page = 1) {
+  const params = new URLSearchParams();
+  if (tab !== "all") {
+    params.set("tab", tab);
+  }
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+  const query = params.toString();
+  return query ? `/receiving?${query}` : "/receiving";
+}
 
 async function createReceiptAction(formData: FormData) {
   "use server";
@@ -97,6 +137,46 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
   ]);
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
+  const activeTab = getReceivingTab(params);
+  const page = getPage(params);
+  const draftReceipts = receipts.filter((receipt) => receipt.status === "DRAFT");
+  const postedReceipts = receipts.filter((receipt) => receipt.status !== "DRAFT");
+  const discrepantReceipts = receipts.filter((receipt) => receipt.discrepancyFlag);
+  const visibleReceipts =
+    activeTab === "draft"
+      ? draftReceipts
+      : activeTab === "posted"
+        ? postedReceipts
+        : activeTab === "discrepancies"
+          ? discrepantReceipts
+          : receipts;
+  const pageCount = Math.max(1, Math.ceil(visibleReceipts.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pagedReceipts = visibleReceipts.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
+  const emptyCopy =
+    activeTab === "draft"
+      ? {
+          title: "No draft receipts",
+          description: "Draft receiving reports waiting for posting will appear here."
+        }
+      : activeTab === "posted"
+        ? {
+            title: "No posted receipts",
+            description: "Posted receiving reports will appear here after inventory posting."
+          }
+        : activeTab === "discrepancies"
+          ? {
+              title: "No receiving discrepancies",
+              description:
+                "Receipts with rejected, damaged, short, or other discrepancy lines will appear here."
+            }
+          : {
+              title: "No receiving reports yet",
+              description: "Create a draft receiving report from an issued Purchase Order."
+            };
 
   return (
     <AppShell
@@ -123,117 +203,9 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
       <div className="space-y-4">
         {canCreateReceiving ? (
           <div className="flex justify-end">
-            <EntryModal title="Create Draft Receipt" triggerLabel="Create Draft Receipt">
-              {receivableOrders.length === 0 ? (
-                <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                  No issued Purchase Orders are ready for receiving in this location.
-                </div>
-              ) : (
-                <div className="mt-4 grid gap-4">
-                  {receivableOrders.map((order) => (
-                    <form
-                      key={order.id}
-                      action={createReceiptAction}
-                      className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4"
-                    >
-                      <input name="purchaseOrderId" type="hidden" value={order.id} />
-                      <div>
-                        <p className="text-xs font-bold uppercase text-slate-400">
-                          {order.publicReference}
-                        </p>
-                        <p className="font-semibold text-slate-950">{order.supplierName}</p>
-                        <p className="text-xs text-slate-500">
-                          Expected {order.expectedDeliveryDate} / {order.status}
-                        </p>
-                        {deliveryAgingText(
-                          order.deliveryAgingStatus,
-                          order.daysOverdue
-                        ) ? (
-                          <p
-                            className={`text-xs font-semibold ${
-                              order.deliveryAgingStatus === "OVERDUE"
-                                ? "text-red-700"
-                                : order.deliveryAgingStatus === "DUE_TODAY"
-                                  ? "text-amber-700"
-                                  : "text-slate-500"
-                            }`}
-                          >
-                            {deliveryAgingText(
-                              order.deliveryAgingStatus,
-                              order.daysOverdue
-                            )}
-                          </p>
-                        ) : null}
-                      </div>
-                      <label className="grid gap-1 text-sm font-medium text-slate-700">
-                        Supplier DR / reference
-                        <input
-                          className="rounded-md border border-slate-300 px-3 py-2"
-                          name="supplierDeliveryReceiptNumber"
-                          placeholder="Optional"
-                        />
-                      </label>
-                      <div className="grid gap-3">
-                        {order.lines.map((line) => (
-                          <div
-                            key={line.id}
-                            className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3"
-                          >
-                            <div>
-                              <p className="font-semibold text-slate-950">
-                                #{line.lineNumber} {line.description}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                Open {line.outstandingQty} {line.uomCode}
-                              </p>
-                            </div>
-                            <div className="grid gap-2 md:grid-cols-3">
-                              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                                Delivered
-                                <input className="rounded-md border border-slate-300 px-3 py-2" defaultValue={line.outstandingQty} min="0" name={`line.${line.id}.deliveredQty`} step="0.001" type="number" />
-                              </label>
-                              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                                Accepted
-                                <input className="rounded-md border border-slate-300 px-3 py-2" defaultValue={line.outstandingQty} min="0" name={`line.${line.id}.acceptedQty`} step="0.001" type="number" />
-                              </label>
-                              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                                Rejected
-                                <input className="rounded-md border border-slate-300 px-3 py-2" defaultValue="0" min="0" name={`line.${line.id}.rejectedQty`} step="0.001" type="number" />
-                              </label>
-                              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                                Damaged
-                                <input className="rounded-md border border-slate-300 px-3 py-2" defaultValue="0" min="0" name={`line.${line.id}.damagedQty`} step="0.001" type="number" />
-                              </label>
-                              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                                Lot
-                                <input className="rounded-md border border-slate-300 px-3 py-2" name={`line.${line.id}.lotNumber`} placeholder={line.requiresLot ? "Required" : "Optional"} />
-                              </label>
-                              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                                Expiry
-                                <input className="rounded-md border border-slate-300 px-3 py-2" name={`line.${line.id}.expiryDate`} type="date" />
-                              </label>
-                            </div>
-                            <div className="grid gap-2 md:grid-cols-2">
-                              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                                Discrepancy reason
-                                <input className="rounded-md border border-slate-300 px-3 py-2" name={`line.${line.id}.discrepancyReason`} placeholder="Required for rejected, damaged, or short quantities" />
-                              </label>
-                              <label className="grid gap-1 text-xs font-semibold text-slate-600">
-                                Discrepancy evidence reference
-                                <input className="rounded-md border border-slate-300 px-3 py-2" name={`line.${line.id}.evidenceReference`} placeholder="Required for rejected, damaged, or short quantities" />
-                              </label>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <button className="inline-flex min-h-9 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                        Create Draft Receipt
-                      </button>
-                    </form>
-                  ))}
-                </div>
-              )}
-            </EntryModal>
+            <TaskSheet title="Create Draft Receipt" description="Receive one issued purchase order with controlled accepted and discrepancy quantities." trigger={<span>Create Draft Receipt</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
+              {receivableOrders.length === 0 ? <div className="m-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No issued Purchase Orders are ready for receiving in this location.</div> : <GoodsReceiptLinesEditor action={createReceiptAction} orders={receivableOrders} />}
+            </TaskSheet>
           </div>
         ) : null}
 
@@ -242,7 +214,8 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
             <div>
               <h2 className="text-lg font-bold text-slate-950">Receiving Reports</h2>
               <p className="text-sm text-slate-500">
-                Posted receipts create immutable inventory movements for accepted quantities
+                {receipts.length} total, {draftReceipts.length} draft,{" "}
+                {discrepantReceipts.length} with discrepancies
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -257,16 +230,43 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               ) : null}
             </div>
           </div>
-          {receipts.length === 0 ? (
-            <div className="ogfi-empty-state">
-              <p className="font-semibold text-slate-900">No receiving reports yet</p>
-              <p className="mt-1 text-sm text-slate-600">
-                Create a draft receiving report from an issued Purchase Order.
-              </p>
+          <div className="border-b border-slate-100 p-4">
+            <WorkspaceTabs
+              items={[
+                {
+                  label: "All receipts",
+                  href: receivingHref("all"),
+                  active: activeTab === "all",
+                  count: receipts.length
+                },
+                {
+                  label: "Draft",
+                  href: receivingHref("draft"),
+                  active: activeTab === "draft",
+                  count: draftReceipts.length
+                },
+                {
+                  label: "Posted",
+                  href: receivingHref("posted"),
+                  active: activeTab === "posted",
+                  count: postedReceipts.length
+                },
+                {
+                  label: "Discrepancies",
+                  href: receivingHref("discrepancies"),
+                  active: activeTab === "discrepancies",
+                  count: discrepantReceipts.length
+                }
+              ]}
+            />
+          </div>
+          {visibleReceipts.length === 0 ? (
+            <div className="p-5">
+              <EmptyState title={emptyCopy.title} description={emptyCopy.description} />
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {receipts.map((receipt) => (
+              {pagedReceipts.map((receipt) => (
                 <div key={receipt.id} className="ogfi-list-row grid gap-3">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
@@ -320,6 +320,15 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               ))}
             </div>
           )}
+          {visibleReceipts.length > 0 ? (
+            <PaginationBar
+              page={safePage}
+              pageSize={PAGE_SIZE}
+              totalItems={visibleReceipts.length}
+              itemLabel="receipts"
+              getPageHref={(nextPage) => receivingHref(activeTab, nextPage)}
+            />
+          ) : null}
         </section>
       </div>
     </AppShell>

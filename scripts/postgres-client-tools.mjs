@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { basename } from "node:path";
 
 const postgresToolEnvNames = {
   psql: ["PSQL_BIN", "POSTGRES_PSQL_BIN"],
@@ -9,7 +10,7 @@ const postgresToolEnvNames = {
 export function resolvePostgresTool(command) {
   for (const envName of postgresToolEnvNames[command] ?? []) {
     const candidate = process.env[envName];
-    if (candidate && canRun(candidate)) {
+    if (candidate && isExpectedTool(command, candidate) && canRun(candidate)) {
       return candidate;
     }
   }
@@ -34,6 +35,12 @@ export function requirePostgresTool(command, context) {
     `${command} is required${context ? ` for ${context}` : ""}. Install PostgreSQL client tools, add ${command} to PATH, or set ${envHint}.`,
   );
   process.exit(1);
+}
+
+function isExpectedTool(command, candidate) {
+  const normalized = candidate.replaceAll("\\", "/");
+  const name = basename(normalized).toLowerCase();
+  return name === command || name === `${command}.exe`;
 }
 
 function canRun(command) {

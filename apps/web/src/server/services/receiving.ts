@@ -5,6 +5,7 @@ import { assertAuthorizedLocation, requireSessionContext, type SessionContext } 
 import type { CsvRow } from "./csv";
 import { postInventoryMovementInTransaction } from "./inventory";
 import { classifyPurchaseOrderDeliveryAging } from "./purchaseOrders";
+import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 
 const createReceiptSchema = z.object({
   purchaseOrderId: z.string().uuid(),
@@ -725,6 +726,19 @@ export async function postGoodsReceipt(formData: FormData) {
   assertAuthorizedLocation(session, receipt.receivingLocationId);
   assertGoodsReceiptCanBePosted(receipt.status);
   assertPurchaseOrderCanBeReceived(receipt.purchaseOrder.status);
+  await assertPrivilegedMfaForAction(session, {
+    action: "goods_receipt.post",
+    enforcementScope: "all_sensitive",
+    permissionCode: permissions.receivingPost,
+    entityType: "GoodsReceipt",
+    entityId: receipt.id,
+    reason:
+      "Posting receiving creates inventory ledger movements and requires privileged MFA evidence.",
+    metadata: {
+      purchaseOrderId: receipt.purchaseOrderId,
+      receivingLocationId: receipt.receivingLocationId
+    }
+  });
 
   await prisma.$transaction(async (tx) => {
     const claimedReceipt = await tx.goodsReceipt.updateMany({
@@ -914,6 +928,19 @@ export async function reverseGoodsReceipt(formData: FormData) {
   ) {
     throw new Error("GOODS_RECEIPT_REVERSAL_PO_CLOSURE_ACTIVE");
   }
+  await assertPrivilegedMfaForAction(session, {
+    action: "goods_receipt.reverse",
+    enforcementScope: "all_sensitive",
+    permissionCode: permissions.receivingReverse,
+    entityType: "GoodsReceipt",
+    entityId: receipt.id,
+    reason:
+      "Receiving reversal creates counter-movements and requires privileged MFA evidence.",
+    metadata: {
+      purchaseOrderId: receipt.purchaseOrderId,
+      receivingLocationId: receipt.receivingLocationId
+    }
+  });
 
   await prisma.$transaction(async (tx) => {
     const claimedReceipt = await tx.goodsReceipt.updateMany({

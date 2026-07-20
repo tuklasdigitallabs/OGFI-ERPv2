@@ -91,6 +91,13 @@ describe("project tracker authorization helpers", () => {
     expect(source).not.toContain("./approvals");
   });
 
+  test("project scope lookup excludes future and expired assignments", () => {
+    const source = readFileSync(path.resolve(__dirname, "projects.ts"), "utf8");
+
+    expect(source).toContain("startsAt: { lte: now }");
+    expect(source).toContain("OR: [{ endsAt: null }, { endsAt: { gt: now } }]");
+  });
+
   test("published template application stores an immutable project snapshot", () => {
     const snapshot = buildProjectTemplateSnapshot({
       id: "template-1",
@@ -180,7 +187,9 @@ describe("project tracker authorization helpers", () => {
             targetOffsetDays: 5,
             owner: { type: "ROLE", value: "PROJECT_SPONSOR" }
           }
-        ]
+        ],
+        evidenceDefaults: [],
+        signoffDefaults: []
       }
     });
 
@@ -278,6 +287,7 @@ describe("project tracker authorization helpers", () => {
     );
     const _shape: ProjectMemberSummary = {
       id: "member-1",
+      userId: "user-1",
       projectId: "project-1",
       projectCode: "P-1",
       projectName: "Project",
@@ -297,6 +307,9 @@ describe("project tracker authorization helpers", () => {
     expect(source).toContain("PROJECT_LIFECYCLE_ACTIVE_TASKS_BLOCKED");
     expect(source).toContain("PROJECT_LIFECYCLE_OPEN_BLOCKERS_BLOCKED");
     expect(source).toContain("PROJECT_LIFECYCLE_OPEN_RISKS_BLOCKED");
+    expect(source).toContain("PROJECT_LIFECYCLE_EXPANSION_GATES_BLOCKED");
+    expect(source).toContain("EXPANSION_LIFECYCLE_GATE:");
+    expect(source).toContain("tx.project.updateMany");
     expect(source).toContain("reasonCode: \"PROJECT_LIFECYCLE_ACTIVE_TASKS_BLOCKED\"");
     expect(source).toContain("canMutateWork");
     expect(source).toContain('"MANAGER", "ADMINISTRATOR", "CONTRIBUTOR"');

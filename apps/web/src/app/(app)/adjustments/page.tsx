@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Badge, ButtonLink } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import { StockAdjustmentLinesEditor } from "@/components/StockAdjustmentLinesEditor";
 import {
   actionErrorRedirectPath,
@@ -120,7 +120,7 @@ export default async function AdjustmentsPage({
       <div className="space-y-4">
         {canCreateAdjustments ? (
           <div className="flex justify-end">
-            <EntryModal title="Create Adjustment" triggerLabel="Create Adjustment">
+            <TaskSheet title="Create Adjustment" description="Document the controlled correction, evidence, and affected lines." trigger={<span>Create Adjustment</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
               {!firstInventoryLocation || !firstItem ? (
                 <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   The current location needs an active inventory location and tracked item
@@ -132,10 +132,13 @@ export default async function AdjustmentsPage({
                   adjustmentTypes={formOptions.adjustmentTypes}
                   inventoryLocations={formOptions.inventoryLocations}
                   items={formOptions.items}
+                  openingBalanceEvidenceRequired={
+                    formOptions.policy.openingBalanceEvidenceRequired
+                  }
                   reasonCodes={formOptions.reasonCodes}
                 />
               )}
-            </EntryModal>
+            </TaskSheet>
           </div>
         ) : null}
 

@@ -44,21 +44,35 @@ describe("project dashboard reporting boundary", () => {
     expect(generalProjectExports).toContain("project_report.export_denied");
     expect(generalProjectExports).toContain("project_report.export_started");
     expect(generalProjectExports).toContain("project_report.export_completed");
+    expect(generalProjectExports).toContain("project_report.export_failed");
     expect(generalProjectExports).toContain("assertProjectExportThrottle");
+    expect(reportSource).toContain("assertReportExportScopeFilters");
+    expect(reportSource).toContain("getReportExportPolicy");
+    expect(reportSource).toContain("trustGateMode");
+    expect(reportSource).toContain("requireScopeFilters");
+    expect(reportSource).toContain("trustGateSourceDecisionId");
+    expect(exportRoute).toContain("buildReportCsvMetadata");
+    expect(taskExportRoute).toContain("buildReportCsvMetadata");
+    expect(activityExportRoute).toContain("buildReportCsvMetadata");
+    expect(linkedRecordExportRoute).toContain("buildReportCsvMetadata");
     expect(generalProjectExports).not.toContain("sourceRecordId");
     expect(generalProjectExports).not.toContain("sourceRecordType");
     expect(exportRoute).toContain("buildProjectHealthExportRows(session)");
+    expect(exportRoute).toContain("logProjectExportFailure");
     expect(exportRoute).not.toContain("sourceRecordId");
     expect(exportRoute).not.toContain("sourceRecordType");
     expect(taskExportRoute).toContain("buildProjectTaskRegisterExportRows(session)");
+    expect(taskExportRoute).toContain("logProjectExportFailure");
     expect(taskExportRoute).not.toContain("sourceRecordId");
     expect(taskExportRoute).not.toContain("sourceRecordType");
     expect(activityExportRoute).toContain("buildProjectActivityLogExportRows(session)");
+    expect(activityExportRoute).toContain("logProjectExportFailure");
     expect(activityExportRoute).not.toContain("sourceRecordId");
     expect(activityExportRoute).not.toContain("sourceRecordType");
     expect(linkedRecordExportRoute).toContain(
       "buildProjectLinkedRecordFollowUpExportRows(session)"
     );
+    expect(linkedRecordExportRoute).toContain("logProjectExportFailure");
     expect(linkedRecordExportRoute).toContain("project-linked-record-follow-up.csv");
     expect(projectsPage).toContain('href="/projects/export"');
     expect(projectsPage).toContain('href="/projects/tasks/export"');

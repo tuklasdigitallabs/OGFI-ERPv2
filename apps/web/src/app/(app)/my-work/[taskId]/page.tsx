@@ -10,6 +10,7 @@ import {
   getActionFeedback
 } from "@/server/services/actionFeedback";
 import { getSessionContext } from "@/server/services/context";
+import { getProjectTaskPolicy } from "@/server/services/policySettings";
 import {
   addProjectTaskChecklistItem,
   addProjectTaskComment,
@@ -119,7 +120,13 @@ function formatDate(value: string | null) {
   return value ? new Date(value).toLocaleDateString() : "No due date";
 }
 
-function PrimaryTaskActions({ task }: { task: ProjectTaskCard }) {
+function PrimaryTaskActions({
+  task,
+  blockerReasonRequired
+}: {
+  task: ProjectTaskCard;
+  blockerReasonRequired: boolean;
+}) {
   if (!task.canMutate || task.status === "CANCELLED") {
     return null;
   }
@@ -175,10 +182,16 @@ function PrimaryTaskActions({ task }: { task: ProjectTaskCard }) {
                 <input name="nextStatus" type="hidden" value="BLOCKED" />
                 <input
                   className="min-h-10 rounded-md border border-amber-300 px-3 text-sm"
+                  minLength={blockerReasonRequired ? 5 : undefined}
                   name="reason"
-                  placeholder="Blocker reason"
-                  required
+                  placeholder={blockerReasonRequired ? "Blocker reason" : "Optional blocker note"}
+                  required={blockerReasonRequired}
                 />
+                <p className="text-xs text-slate-500">
+                  {blockerReasonRequired
+                    ? "Company policy requires a blocker reason before this task can be marked blocked."
+                    : "Company policy allows an optional blocker reason, but a short note is recommended."}
+                </p>
                 <input
                   className="min-h-10 rounded-md border border-amber-300 px-3 text-sm"
                   name="nextReviewAt"
@@ -385,11 +398,12 @@ export default async function MyWorkTaskPage({
   if (!task) {
     notFound();
   }
-  const [links, assigneeOptions] = await Promise.all([
+  const [links, assigneeOptions, taskPolicy] = await Promise.all([
     listProjectTaskRecordLinks(session, task.id),
     task.canMutate
       ? listProjectTaskAssigneeOptions(session, task.projectId)
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    getProjectTaskPolicy(session)
   ]);
 
   return (
@@ -461,7 +475,10 @@ export default async function MyWorkTaskPage({
                 {task.blockedReason}
               </div>
             ) : null}
-            <PrimaryTaskActions task={task} />
+            <PrimaryTaskActions
+              blockerReasonRequired={taskPolicy.blockerReasonRequired}
+              task={task}
+            />
           </Panel>
           <Checklist task={task} />
           <Comments task={task} />

@@ -52,15 +52,15 @@
 - Run `pnpm release:data-snapshot:compare-latest` for standard rehearsal folders or `pnpm release:data-snapshot:compare` for manual before/after snapshot pairs, then review unexpected deltas before release approval. Missing-after or unmatched table deltas fail by default and require approved destructive-migration evidence to override.
 - Run the `Staging Rollback Rehearsal` workflow against a previous staging release and attach the rollback evidence artifact before final GO approval.
 - Review the staging rehearsal backup/restore artifact and rerun equivalent backup/restore proof against the real pilot or production release environment before final GO approval.
-- Run `pnpm release:evidence:init` and follow `docs/core/07-quality/PHASE1_PHASE1_5_RELEASE_EVIDENCE_COLLECTION_GUIDE.md` when collecting downloaded workflow artifacts and signed evidence into the final review folder.
+- Run `pnpm release:evidence:init` and follow `docs/core/07-quality/PHASE1_PHASE1_5_RELEASE_EVIDENCE_COLLECTION_GUIDE.md` when collecting downloaded workflow artifacts, signed evidence, and external-security proof references into the final review folder.
 - Run `pnpm release:summary` with approved release metadata when evidence is collected manually outside the staging rehearsal workflow.
 - Run `pnpm release:backup-summary` after backup creation when backup evidence is collected manually outside the staging rehearsal workflow.
 - Run `pnpm release:restore-summary` after isolated restore verification when backup/restore evidence is collected manually outside the staging rehearsal workflow.
 - Run `pnpm release:rollback-summary` with approved rollback metadata when rollback evidence is collected manually outside the staging rollback workflow.
-- Run `pnpm release:evidence:manifest` after collecting workflow artifacts or signed evidence documents.
+- Run `pnpm release:evidence:manifest` after collecting workflow artifacts, signed evidence documents, or external-security proof references.
 - Run `pnpm release:milestones` for an advisory progress view before final GO/NO-GO review.
 - Run `pnpm release:tools:test` after release helper changes or before a release rehearsal to verify the local helper behavior and attach the generated `self-tests/release-tools-self-test-*.txt` artifact.
-- Run `pnpm release:go-no-go` against the collected evidence folder before signoff. If signed evidence documents are copied outside the source tree, set `RELEASE_UAT_EVIDENCE_FILE`, `RELEASE_DEPLOYMENT_EVIDENCE_FILE`, and `RELEASE_TRAINING_EVIDENCE_FILE` to those files. Treat a clean report as review-ready, not as automatic approval.
+- Run `pnpm release:go-no-go` against the collected evidence folder before signoff. If signed evidence documents are copied outside the source tree, set `RELEASE_UAT_EVIDENCE_FILE`, `RELEASE_DEPLOYMENT_EVIDENCE_FILE`, and `RELEASE_TRAINING_EVIDENCE_FILE` to those files. External-security proof references must still be present under `external-security/` with the matching evidence run ID. Treat a clean report as review-ready, not as automatic approval.
 - Confirm pilot support contacts, defect intake route, daily triage cadence, and rollback decision owner before go-live approval.
 - Capture evidence references during receiving discrepancies, transfer discrepancies, wastage, and stock adjustments.
 - Use dashboard cards and notifications to open source records; do not treat them as source records.
@@ -68,7 +68,7 @@
 ## Important notes
 
 - This release note is a readiness summary. It is not a go-live signoff.
-- UAT execution, defect disposition, deployment rehearsal, rollback evidence, backup/restore evidence, and final release approval remain required before GO.
+- UAT execution, defect disposition, deployment rehearsal, rollback evidence, backup/restore evidence, external-security proof references, and final release approval remain required before GO.
 - Latest local release-candidate verification on 30 June 2026 passed lint, typecheck, production build, the standard app test suite at 32 files / 274 tests, the named access-control integration gate (`pnpm test:access-control`) at 1 file / 2 tests, and the Playwright desktop/mobile e2e smoke at 10 tests. These checks must still be rerun in CI/staging for final release approval.
 - CI now includes production build and Playwright e2e gates; the manual staging release rehearsal workflow must still be executed for the release candidate, and staging deployment, backup/restore, rollback drill, smoke-test artifacts, and signed GO/NO-GO evidence still need environment execution.
 - No queueing functionality is included in the Phase I or Phase 1.5 scope.

@@ -17,6 +17,9 @@ const runId = evidenceRunId(process.env, "<set-approved-evidence-run-id>");
 const trainingFile =
   process.env.RELEASE_TRAINING_EVIDENCE_FILE ??
   "docs/core/08-knowledge-and-enablement/PHASE1_PHASE1_5_TRAINING_IMPACT_ASSESSMENT.md";
+const phase3TrainingFile =
+  process.env.RELEASE_PHASE3_TRAINING_FILE ??
+  "docs/training/phase-3-finance-workforce-controlled-foundation-quick-start.md";
 const hypercareFile =
   process.env.RELEASE_HYPERCARE_EVIDENCE_FILE ??
   "docs/core/07-quality/PHASE1_PHASE1_5_PILOT_HYPERCARE_AND_DEFECT_RUNBOOK.md";
@@ -49,6 +52,13 @@ const checklist = [
     command: "Record each known limitation, operational workaround, acknowledgement owner, decision, date, and follow-up action.",
     artifact: "signed-documents/training-impact-assessment.md or approved external evidence reference",
     acceptance: "Users acknowledge source-record boundaries, deferred workflows, no queueing promise, attachment limits, and safe workarounds.",
+  },
+  {
+    owner: "Enablement Owner / Finance Owner / Workforce Owner",
+    action: "Run Phase 3 finance and workforce controlled-foundation training before Phase 3 UAT signoff.",
+    command: "Review phase-3-finance-workforce-controlled-foundation-quick-start.md with finance, branch cash, workforce, approver, administrator, and UAT tester audiences.",
+    artifact: "signed-documents/training-impact-assessment.md plus Phase 3 attendance or approved external evidence reference",
+    acceptance: "Participants can identify Phase 3 finance foundation, workforce foundation, and deferred blocker review evidence paths, and understand no AP settlement, bank mutation, payroll computation, or production go-live is implied.",
   },
   {
     owner: "Release Manager / Operations Owner",
@@ -87,7 +97,7 @@ const checklist = [
   },
   {
     owner: "Release Manager",
-    action: "Refresh the final evidence manifest after source evidence and signed documents are complete.",
+    action: "Refresh the final evidence manifest after source evidence, signed documents, and external-security proof references are complete.",
     command: "pnpm release:evidence:manifest",
     artifact: "manifests/release-evidence-manifest-*.txt",
     acceptance: "Manifest includes checksums for enablement status, signed training evidence, and final owner signoff documents.",
@@ -109,6 +119,7 @@ const lines = [
   `Evidence run ID: ${runId}`,
   `Evidence root: ${evidenceRoot}`,
   `Training evidence file: ${trainingFile}`,
+  `Phase 3 training quick-start: ${phase3TrainingFile}`,
   `Hypercare evidence file: ${hypercareFile}`,
   "",
   "This checklist is advisory. It does not conduct training, collect attendance, sign owner approvals, close hypercare, approve waivers, or approve release.",
@@ -124,6 +135,11 @@ const lines = [
   "FIELD | defect / waiver | severity, business impact, workaround, owner, disposition, due date, retest evidence, and release decision",
   "FIELD | signoff | owner name, role, date, decision, evidence reference, and matching evidence_run_id",
   "FIELD | final integrity | final manifest checksum lines and owner confirmation that source evidence was not edited after manifest generation",
+  "",
+  "Phase 3 Enablement Coverage",
+  "COVERAGE | Phase 3 finance controlled foundation | train finance users, branch cash custodians, approvers, administrators, auditors, and UAT testers on controlled foundation boundaries and evidence capture",
+  "COVERAGE | Phase 3 workforce controlled foundation | train workforce managers, approvers, administrators, auditors, and UAT testers on scoped employee, assignment, schedule, leave, overtime, attendance, and export controls",
+  "COVERAGE | Phase 3 deferred blocker review | train owners to record blocker disposition without representing production blockers as solved unless completed or formally waived",
   "",
   "Enablement Evidence Steps",
 ];

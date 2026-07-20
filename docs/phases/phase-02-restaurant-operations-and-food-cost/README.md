@@ -1,7 +1,7 @@
 # Phase II — Restaurant Operations and Food Cost
 
-**Status:** Planned documentation framework with Marketing Operations add-on included for review
-**Build authorization:** Do not begin implementation until the detailed phase workflow, data, UI, reporting, UAT and decision documents are reviewed and marked build-ready.
+**Status:** Partial implementation in progress with Marketing Operations add-on included for review
+**Build authorization:** Build only approved slices. Recipe/menu-costing source-of-truth policy is confirmed by `DEC-0035`; controlled recipe create, edit-by-new-version, archive, version workflow, and menu-price decisions are authorized by that decision.
 
 ## Objective
 
@@ -11,7 +11,8 @@ Marketing Operations planning is included in this phase folder because it coordi
 
 ## Planned Scope
 
-- Recipe and sub-recipe management
+- Recipe and sub-recipe management (controlled draft create, edit-by-new-version revision with ingredient append/remove/reorder, link-only sub-recipe lines, revision workbook export, archive, and version workflow implemented; bulk import/apply and recursive sub-recipe costing still staged)
+- Recipe costing and version-history visibility for the current implementation slice
 - Menu-item costing and version history
 - Theoretical versus actual food-cost analysis
 - Branch opening and closing controls

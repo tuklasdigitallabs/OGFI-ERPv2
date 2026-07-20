@@ -1,9 +1,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink } from "@ogfi/ui";
+import { Badge, ButtonLink, EmptyState, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import { TransferLinesEditor } from "@/components/TransferLinesEditor";
 import {
   actionErrorRedirectPath,
@@ -28,6 +28,45 @@ export const dynamic = "force-dynamic";
 type TransfersPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+type TransferTab = "all" | "draft" | "dispatch" | "receive" | "completed";
+
+const PAGE_SIZE = 10;
+
+function getStringParam(
+  searchParams: Record<string, string | string[] | undefined>,
+  key: string
+) {
+  const value = searchParams[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getTransferTab(
+  searchParams: Record<string, string | string[] | undefined>
+): TransferTab {
+  const tab = getStringParam(searchParams, "tab");
+  if (tab === "draft" || tab === "dispatch" || tab === "receive" || tab === "completed") {
+    return tab;
+  }
+  return "all";
+}
+
+function getPage(searchParams: Record<string, string | string[] | undefined>) {
+  const page = Number.parseInt(getStringParam(searchParams, "page") ?? "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+function transfersHref(tab: TransferTab, page = 1) {
+  const params = new URLSearchParams();
+  if (tab !== "all") {
+    params.set("tab", tab);
+  }
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+  const query = params.toString();
+  return query ? `/transfers?${query}` : "/transfers";
+}
 
 async function createTransferAction(formData: FormData) {
   "use server";
@@ -98,6 +137,59 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
   const firstItem = formOptions?.items[0];
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
+  const activeTab = getTransferTab(params);
+  const page = getPage(params);
+  const draftTransfers = transfers.filter((transfer) => transfer.status === "DRAFT");
+  const dispatchTransfers = transfers.filter(
+    (transfer) => transfer.status === "REQUESTED"
+  );
+  const receiveTransfers = transfers.filter((transfer) =>
+    ["DISPATCHED", "PARTIALLY_RECEIVED"].includes(transfer.status)
+  );
+  const completedTransfers = transfers.filter((transfer) => transfer.status === "RECEIVED");
+  const visibleTransfers =
+    activeTab === "draft"
+      ? draftTransfers
+      : activeTab === "dispatch"
+        ? dispatchTransfers
+        : activeTab === "receive"
+          ? receiveTransfers
+          : activeTab === "completed"
+            ? completedTransfers
+            : transfers;
+  const pageCount = Math.max(1, Math.ceil(visibleTransfers.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pagedTransfers = visibleTransfers.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
+  const emptyCopy =
+    activeTab === "draft"
+      ? {
+          title: "No draft transfer requests",
+          description: "Draft transfer requests waiting for submission will appear here."
+        }
+      : activeTab === "dispatch"
+        ? {
+            title: "No transfers ready for dispatch",
+            description: "Submitted transfer requests waiting for source dispatch will appear here."
+          }
+        : activeTab === "receive"
+          ? {
+              title: "No transfers ready to receive",
+              description:
+                "Dispatched or partially received transfers waiting for destination confirmation will appear here."
+            }
+          : activeTab === "completed"
+            ? {
+                title: "No completed transfers",
+                description: "Fully received transfers will appear here."
+              }
+            : {
+                title: "No transfer requests yet",
+                description:
+                  "Create a request to plan source-to-destination movement before dispatch from the source location."
+              };
 
   return (
     <AppShell
@@ -123,7 +215,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
       <div className="space-y-4">
         {canCreateTransfers ? (
           <div className="flex justify-end">
-            <EntryModal title="Request Stock" triggerLabel="Request Stock">
+            <TaskSheet title="Request Stock" description="Choose the source and build the requested transfer lines." trigger={<span>Request Stock</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
               {!formOptions?.destinationInventoryLocation ? (
                 <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   The current location needs an active inventory location before transfer
@@ -142,7 +234,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
                   items={formOptions.items}
                 />
               )}
-            </EntryModal>
+            </TaskSheet>
           </div>
         ) : null}
 
@@ -153,7 +245,8 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
                 Stock Requests & Transfers
               </h2>
               <p className="text-sm text-slate-500">
-                Requested transfers can be dispatched and received by authorized locations
+                {transfers.length} total, {dispatchTransfers.length} awaiting dispatch,{" "}
+                {receiveTransfers.length} awaiting receipt
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -168,17 +261,49 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
               ) : null}
             </div>
           </div>
-          {transfers.length === 0 ? (
-            <div className="ogfi-empty-state">
-              <p className="font-semibold text-slate-900">No transfer requests yet</p>
-              <p className="mt-1 text-sm text-slate-600">
-                Create a request to plan source-to-destination movement before dispatch
-                from the source location.
-              </p>
+          <div className="border-b border-slate-100 p-4">
+            <WorkspaceTabs
+              items={[
+                {
+                  label: "All",
+                  href: transfersHref("all"),
+                  active: activeTab === "all",
+                  count: transfers.length
+                },
+                {
+                  label: "Draft",
+                  href: transfersHref("draft"),
+                  active: activeTab === "draft",
+                  count: draftTransfers.length
+                },
+                {
+                  label: "Dispatch",
+                  href: transfersHref("dispatch"),
+                  active: activeTab === "dispatch",
+                  count: dispatchTransfers.length
+                },
+                {
+                  label: "Receive",
+                  href: transfersHref("receive"),
+                  active: activeTab === "receive",
+                  count: receiveTransfers.length
+                },
+                {
+                  label: "Completed",
+                  href: transfersHref("completed"),
+                  active: activeTab === "completed",
+                  count: completedTransfers.length
+                }
+              ]}
+            />
+          </div>
+          {visibleTransfers.length === 0 ? (
+            <div className="p-5">
+              <EmptyState title={emptyCopy.title} description={emptyCopy.description} />
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {transfers.map((transfer) => (
+              {pagedTransfers.map((transfer) => (
                 <div key={transfer.id} className="ogfi-list-row grid gap-3">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
@@ -229,6 +354,15 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
               ))}
             </div>
           )}
+          {visibleTransfers.length > 0 ? (
+            <PaginationBar
+              page={safePage}
+              pageSize={PAGE_SIZE}
+              totalItems={visibleTransfers.length}
+              itemLabel="transfers"
+              getPageHref={(nextPage) => transfersHref(activeTab, nextPage)}
+            />
+          ) : null}
         </section>
 
       </div>

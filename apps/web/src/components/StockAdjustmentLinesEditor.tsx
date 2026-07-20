@@ -1,286 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { STOCK_ADJUSTMENT_MAX_LINES } from "@/lib/workflowLimits";
 
-type AdjustmentItemOption = {
-  id: string;
-  itemCode: string;
-  itemName: string;
-  baseUomCode: string;
-  trackLot: boolean;
-  trackExpiry: boolean;
-};
+type AdjustmentItemOption = { id: string; itemCode: string; itemName: string; baseUomCode: string; trackLot: boolean; trackExpiry: boolean };
+type AdjustmentReasonOption = { id: string; code: string; label: string; appliesTo: string | null };
+type InventoryLocationOption = { id: string; name: string };
+type Props = { action: (formData: FormData) => void | Promise<void>; adjustmentTypes: readonly string[]; inventoryLocations: InventoryLocationOption[]; items: AdjustmentItemOption[]; reasonCodes: AdjustmentReasonOption[]; openingBalanceEvidenceRequired: boolean };
+type DraftLine = { key: number; itemId: string; quantity: string; unitCost: string; lotNumber: string; expiryDate: string; evidenceReference: string; notes: string };
+function emptyLine(key: number, itemId: string): DraftLine { return { key, itemId, quantity: "", unitCost: "0", lotNumber: "", expiryDate: "", evidenceReference: "", notes: "" }; }
 
-type AdjustmentReasonOption = {
-  id: string;
-  code: string;
-  label: string;
-  appliesTo: string | null;
-};
+export function StockAdjustmentLinesEditor({ action, adjustmentTypes, inventoryLocations, items, reasonCodes, openingBalanceEvidenceRequired }: Props) {
+  const [lines, setLines] = useState<DraftLine[]>(() => [emptyLine(1, items[0]?.id ?? "")]);
+  const [selectedKey, setSelectedKey] = useState(1);
+  const [errors, setErrors] = useState<number[]>([]);
+  const selectedIndex = Math.max(0, lines.findIndex((line) => line.key === selectedKey));
+  const selected = lines[selectedIndex] ?? lines[0]!;
+  const selectedItem = items.find((item) => item.id === selected.itemId);
+  const incomplete = useMemo(() => lines.flatMap((line, index) => line.itemId && Number(line.quantity) > 0 ? [] : [index]), [lines]);
+  const input = "min-h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
+  function update(values: Partial<Omit<DraftLine, "key">>) { setLines((current) => current.map((line) => line.key === selected.key ? { ...line, ...values } : line)); }
+  function addLine() { if (lines.length >= STOCK_ADJUSTMENT_MAX_LINES) return; const key = Math.max(...lines.map((line) => line.key)) + 1; setLines((current) => [...current, emptyLine(key, items[0]?.id ?? "")]); setSelectedKey(key); }
+  function removeLine() { if (lines.length === 1) return; const next = lines.filter((line) => line.key !== selected.key); setLines(next); setSelectedKey(next[Math.min(selectedIndex, next.length - 1)]!.key); }
+  function submit(event: FormEvent<HTMLFormElement>) { if (incomplete[0] === undefined) return; event.preventDefault(); setErrors(incomplete); setSelectedKey(lines[incomplete[0]]!.key); }
 
-type InventoryLocationOption = {
-  id: string;
-  name: string;
-};
-
-type StockAdjustmentLinesEditorProps = {
-  action: (formData: FormData) => void | Promise<void>;
-  adjustmentTypes: readonly string[];
-  inventoryLocations: InventoryLocationOption[];
-  items: AdjustmentItemOption[];
-  reasonCodes: AdjustmentReasonOption[];
-};
-
-type DraftLine = {
-  key: number;
-};
-
-export function StockAdjustmentLinesEditor({
-  action,
-  adjustmentTypes,
-  inventoryLocations,
-  items,
-  reasonCodes,
-}: StockAdjustmentLinesEditorProps) {
-  const [lines, setLines] = useState<DraftLine[]>([{ key: 1 }]);
-  const canAddLine = lines.length < STOCK_ADJUSTMENT_MAX_LINES;
-
-  function addLine() {
-    if (!canAddLine) {
-      return;
-    }
-    setLines((current) => [
-      ...current,
-      { key: Math.max(...current.map((line) => line.key)) + 1 },
-    ]);
-  }
-
-  function removeLine(key: number) {
-    setLines((current) =>
-      current.length === 1
-        ? current
-        : current.filter((line) => line.key !== key),
-    );
-  }
-
-  return (
-    <form action={action} className="ogfi-form-shell relative isolate mt-4 grid gap-3">
-      <div className="ogfi-callout p-3 text-sm">
-        Creation records the request and evidence. Approval is required before a
-        separate Post Adjustment action writes ADJUSTMENT_IN, ADJUSTMENT_OUT, or
-        OPENING_BALANCE_IN ledger movements.
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <label className="grid gap-1 text-sm font-medium text-slate-700">
-          Inventory location
-          <select
-            className="rounded-md border border-slate-300 px-3 py-2"
-            defaultValue={inventoryLocations[0]?.id}
-            name="inventoryLocationId"
-            required
-          >
-            {inventoryLocations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm font-medium text-slate-700">
-          Adjustment type
-          <select
-            className="rounded-md border border-slate-300 px-3 py-2"
-            defaultValue="INCREASE"
-            name="adjustmentType"
-            required
-          >
-            {adjustmentTypes.map((type) => (
-              <option key={type} value={type}>
-                {type === "OPENING_BALANCE"
-                  ? "Opening balance"
-                  : type === "DECREASE"
-                    ? "Decrease"
-                    : "Increase"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm font-medium text-slate-700">
-          Reason code
-          <select
-            className="rounded-md border border-slate-300 px-3 py-2"
-            name="reasonCode"
-            required
-          >
-            {reasonCodes.map((reason) => (
-              <option key={reason.id} value={reason.code}>
-                {reason.code} / {reason.label}
-                {reason.appliesTo ? ` / ${reason.appliesTo}` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="grid gap-1 text-sm font-medium text-slate-700">
-          Evidence reference
-          <input
-            className="rounded-md border border-slate-300 px-3 py-2"
-            name="evidenceReference"
-            placeholder="Required for opening balance"
-          />
-        </label>
-        <label className="grid gap-1 text-sm font-medium text-slate-700">
-          Source type
-          <input
-            className="rounded-md border border-slate-300 px-3 py-2"
-            name="sourceDocumentType"
-            placeholder="Optional"
-          />
-        </label>
-      </div>
-
-      <label className="grid gap-1 text-sm font-medium text-slate-700">
-        Reason description
-        <textarea
-          className="min-h-20 rounded-md border border-slate-300 px-3 py-2"
-          name="reasonDescription"
-          placeholder="For opening balances, describe the cutover source count and baseline date."
-          required
-        />
-      </label>
-
-      <div className="grid gap-3 border-t border-slate-100 pt-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-bold uppercase text-slate-500">
-              Adjustment lines
-            </h3>
-            <p className="text-xs font-semibold text-slate-500">
-              {lines.length} / {STOCK_ADJUSTMENT_MAX_LINES}
-            </p>
-          </div>
-          <button
-            className="inline-flex min-h-9 items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
-            type="button"
-            onClick={addLine}
-            disabled={!canAddLine}
-          >
-            Add Line
-          </button>
-        </div>
-
-        <div className="ogfi-line-table max-h-[58vh]">
-          <table className="min-w-[1180px] table-fixed text-left text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-100 text-xs font-bold uppercase text-slate-500">
-              <tr>
-                <th className="w-12 px-3 py-2">#</th>
-                <th className="w-64 px-3 py-2">Item</th>
-                <th className="w-28 px-3 py-2">Qty</th>
-                <th className="w-28 px-3 py-2">Unit Cost</th>
-                <th className="w-40 px-3 py-2">Lot</th>
-                <th className="w-40 px-3 py-2">Expiry</th>
-                <th className="w-56 px-3 py-2">Line Evidence</th>
-                <th className="w-56 px-3 py-2">Notes</th>
-                <th className="w-20 px-3 py-2">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {lines.map((line, index) => (
-                <tr key={line.key} className="align-top">
-                  <td className="px-3 py-2 text-sm font-bold text-slate-500">
-                    {index + 1}
-                  </td>
-                  <td className="px-3 py-2">
-                    <select
-                      aria-label={`Line ${index + 1} item`}
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2"
-                      name="lineItemId"
-                      required
-                    >
-                      {items.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.itemCode} / {item.itemName} / {item.baseUomCode}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      aria-label={`Line ${index + 1} quantity`}
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2"
-                      min="0.000001"
-                      name="lineQuantity"
-                      step="0.000001"
-                      type="number"
-                      required
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      aria-label={`Line ${index + 1} unit cost`}
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2"
-                      min="0"
-                      name="lineUnitCost"
-                      step="0.01"
-                      type="number"
-                      defaultValue="0"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      aria-label={`Line ${index + 1} lot number`}
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2"
-                      name="lineLotNumber"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      aria-label={`Line ${index + 1} expiry date`}
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2"
-                      name="lineExpiryDate"
-                      type="date"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      aria-label={`Line ${index + 1} evidence reference`}
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2"
-                      name="lineEvidenceReference"
-                      placeholder="Optional line ref"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      aria-label={`Line ${index + 1} notes`}
-                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-2"
-                      name="lineNotes"
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    {lines.length > 1 ? (
-                      <button
-                        className="inline-flex min-h-9 items-center justify-center rounded-md px-2 text-xs font-semibold text-red-700 hover:bg-red-50"
-                        type="button"
-                        onClick={() => removeLine(line.key)}
-                      >
-                        Remove
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <button className="relative z-20 mt-2 inline-flex min-h-10 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-        Create Adjustment
-      </button>
-    </form>
-  );
+  return <form action={action} className="flex h-full min-h-0 flex-col" onSubmit={submit}>
+    {lines.map((line) => <input key={`item-${line.key}`} name="lineItemId" type="hidden" value={line.itemId} readOnly />)}
+    {lines.map((line) => <input key={`qty-${line.key}`} name="lineQuantity" type="hidden" value={line.quantity} readOnly />)}
+    {lines.map((line) => <input key={`cost-${line.key}`} name="lineUnitCost" type="hidden" value={line.unitCost} readOnly />)}
+    {lines.map((line) => <input key={`lot-${line.key}`} name="lineLotNumber" type="hidden" value={line.lotNumber} readOnly />)}
+    {lines.map((line) => <input key={`expiry-${line.key}`} name="lineExpiryDate" type="hidden" value={line.expiryDate} readOnly />)}
+    {lines.map((line) => <input key={`evidence-${line.key}`} name="lineEvidenceReference" type="hidden" value={line.evidenceReference} readOnly />)}
+    {lines.map((line) => <input key={`notes-${line.key}`} name="lineNotes" type="hidden" value={line.notes} readOnly />)}
+    <div className="shrink-0 border-b border-slate-200 p-4"><div className="ogfi-callout p-3 text-sm">Creation records the request and evidence. Approval is required before the separate Post Adjustment action writes inventory ledger movements. {openingBalanceEvidenceRequired ? "Opening balances require source evidence." : "Opening balance evidence is optional under current policy."}</div><div className="mt-3 grid gap-3 md:grid-cols-3"><label className="grid gap-1 text-sm font-medium text-slate-700">Inventory location<select className={input} defaultValue={inventoryLocations[0]?.id} name="inventoryLocationId" required>{inventoryLocations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Adjustment type<select className={input} defaultValue="INCREASE" name="adjustmentType" required>{adjustmentTypes.map((type) => <option key={type} value={type}>{type === "OPENING_BALANCE" ? "Opening balance" : type === "DECREASE" ? "Decrease" : "Increase"}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Reason code<select className={input} name="reasonCode" required>{reasonCodes.map((reason) => <option key={reason.id} value={reason.code}>{reason.code} / {reason.label}{reason.appliesTo ? ` / ${reason.appliesTo}` : ""}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Evidence reference<input className={input} name="evidenceReference" placeholder={openingBalanceEvidenceRequired ? "Required for opening balance" : "Optional under current policy"} /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Source type<input className={input} name="sourceDocumentType" placeholder="Optional" /></label><label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-3">Reason description<textarea className="min-h-16 rounded-md border border-slate-300 px-3 py-2" name="reasonDescription" placeholder="Describe the correction and source evidence." required /></label></div></div>
+    <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(18rem,0.72fr)_minmax(0,1.28fr)]">
+      <aside className="min-h-0 border-b border-slate-200 lg:border-b-0 lg:border-r"><div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3"><div><h3 className="text-sm font-bold text-slate-950">Adjustment lines</h3><p className="text-xs font-semibold text-slate-500">{lines.length} / {STOCK_ADJUSTMENT_MAX_LINES}{errors.length ? ` / ${errors.length} need attention` : ""}</p></div><button className="min-h-10 rounded-md border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700 disabled:text-slate-400" disabled={lines.length >= STOCK_ADJUSTMENT_MAX_LINES} onClick={addLine} type="button">Add line</button></div><div className="max-h-48 divide-y divide-slate-100 overflow-y-auto lg:h-[calc(100%-4.5rem)] lg:max-h-none">{lines.map((line, index) => { const item = items.find((option) => option.id === line.itemId); const invalid = errors.includes(index); return <button key={line.key} className={`grid min-h-14 w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 px-4 py-2 text-left ${line.key === selected.key ? "bg-blue-50" : "hover:bg-slate-50"}`} onClick={() => setSelectedKey(line.key)} type="button"><span className="text-sm font-bold text-slate-500">{index + 1}</span><span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-950">{item?.itemName ?? "Select an item"}</span><span className="block truncate text-xs text-slate-500">{line.quantity ? `${line.quantity} ${item?.baseUomCode ?? ""}` : "Quantity required"}</span></span><span className={invalid ? "text-xs font-bold text-rose-700" : "text-xs font-bold text-slate-500"}>{invalid ? "Needs info" : "Ready"}</span></button>; })}</div></aside>
+      <section className="min-h-0 overflow-y-auto p-4"><div className="mb-4 flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase text-slate-500">Editing line {selectedIndex + 1} of {lines.length}</p><h3 className="text-lg font-bold text-slate-950">{selectedItem?.itemName ?? "Adjustment line"}</h3></div><div className="flex gap-2"><button className="min-h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" disabled={selectedIndex === 0} onClick={() => setSelectedKey(lines[selectedIndex - 1]!.key)} type="button">Previous</button><button className="min-h-10 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" disabled={selectedIndex === lines.length - 1} onClick={() => setSelectedKey(lines[selectedIndex + 1]!.key)} type="button">Next</button></div></div><div className="grid gap-4 md:grid-cols-2"><label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">Item<select className={input} value={selected.itemId} onChange={(event) => update({ itemId: event.target.value })}>{items.map((item) => <option key={item.id} value={item.id}>{item.itemCode} / {item.itemName} / {item.baseUomCode}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Quantity<input className={input} min="0.000001" step="0.000001" type="number" value={selected.quantity} onChange={(event) => update({ quantity: event.target.value })} /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Unit cost<input className={input} min="0" step="0.01" type="number" value={selected.unitCost} onChange={(event) => update({ unitCost: event.target.value })} /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Lot number<input className={input} value={selected.lotNumber} onChange={(event) => update({ lotNumber: event.target.value })} placeholder={selectedItem?.trackLot ? "Tracked lot" : "Optional"} /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Expiry date<input className={input} type="date" value={selected.expiryDate} onChange={(event) => update({ expiryDate: event.target.value })} /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Line evidence<input className={input} value={selected.evidenceReference} onChange={(event) => update({ evidenceReference: event.target.value })} placeholder="Optional line ref" /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Notes<input className={input} value={selected.notes} onChange={(event) => update({ notes: event.target.value })} /></label></div>{lines.length > 1 ? <div className="mt-5 border-t border-slate-200 pt-4"><button className="min-h-10 rounded-md px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50" onClick={removeLine} type="button">Remove selected line</button></div> : null}</section>
+    </div>
+    <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 text-right"><button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Create Adjustment</button></div>
+  </form>;
 }

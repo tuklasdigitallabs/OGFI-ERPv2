@@ -1,6 +1,6 @@
 # OGFI ERP — Phase II Workflow: Theoretical vs Actual Food Cost
 
-**Status:** Planned detailed-specification framework  
+**Status:** Implemented for read/report/export analysis from posted sales import and inventory-ledger evidence
 **Purpose:** Compare sales-driven theoretical ingredient usage to actual inventory consumption.
 
 ## Business Outcome
@@ -15,25 +15,22 @@ Define a controlled, role-aware, auditable workflow that follows OGFI core scope
 - Finance / compliance / quality reviewer where applicable
 - Administrator or auditor with read-only oversight
 
-## Standard Lifecycle
+## Current Implementation Boundary
 
-```text
-Draft → Submitted → Under Review / Approved / Returned → In Progress → Completed / Closed
-                          ↘ Rejected / Cancelled / Reversed where policy allows
-```
+Theoretical-vs-actual food-cost views may:
 
-## Required Workflow Sections to Finalize
+- read posted restaurant sales import batches and lines for the selected company, brand, location, and business date;
+- derive theoretical cost from linked menu items and published recipe/menu-cost basis;
+- summarize actual cost from posted outbound inventory-ledger evidence only;
+- show row health counts for within-target, above-target, missing-cost, and awaiting-actuals rows;
+- preserve selected filters in drilldowns and CSV exports.
 
-1. Trigger and eligibility
-2. Required fields and attachments
-3. Scope: company, brand, branch, warehouse, project and department
-4. Approval route and delegated authority
-5. Exception, rejection, cancellation and reversal paths
-6. Notification and escalation events
-7. Data and audit records created
-8. Downstream inventory, financial, workforce, project or integration impact
-9. Desktop, tablet and mobile actions
-10. Reports and UAT scenarios
+Theoretical-vs-actual views must not:
+
+- import or mutate POS/sales records in the current slice;
+- post or reverse inventory movements;
+- allocate branch-level actual cost to menu items without a controlled production or consumption source;
+- approve, close, or mutate recipe, menu-price, finance, purchasing, or inventory source records.
 
 ## Non-Negotiable Controls
 
@@ -45,4 +42,4 @@ Draft → Submitted → Under Review / Approved / Returned → In Progress → C
 
 ## Open Decisions
 
-Use `../implementation/PHASE2_DECISION_REGISTER.md` to record phase-specific policy decisions before this workflow is marked build-ready.
+POS import write workflow, production/consumption source records, and menu-level actual allocation remain governed by `II-004` and any future approved decision records.

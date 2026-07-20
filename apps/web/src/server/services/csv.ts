@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export function csvCell(value: string | number | boolean | null | undefined) {
   const rawText = String(value ?? "");
   const text =
@@ -19,6 +21,7 @@ export function csvRows(rows: CsvRow[]) {
 export type CsvExportOptions = {
   generatedAt?: Date;
   metadata?: CsvRow[];
+  checksumHeader?: boolean;
 };
 
 export function csvRowsWithMetadata(
@@ -36,17 +39,38 @@ export function csvRowsWithMetadata(
   ];
 }
 
+export function csvExportBody(
+  rows: CsvRow[],
+  filename: string,
+  options: CsvExportOptions = {}
+) {
+  return csvRows(csvRowsWithMetadata(rows, filename, options));
+}
+
+export function csvSha256(body: string) {
+  return createHash("sha256").update(body).digest("hex");
+}
+
 export function csvExportResponse(
   rows: CsvRow[],
   filename: string,
   options: CsvExportOptions = {}
 ) {
-  return new Response(csvRows(csvRowsWithMetadata(rows, filename, options)), {
+  const body = csvExportBody(rows, filename, options);
+  const headers: Record<string, string> = {
+    "Cache-Control": "no-store",
+    "Content-Disposition": `attachment; filename=${filename}`,
+    "Content-Type": "text/csv; charset=utf-8",
+    "X-Content-Type-Options": "nosniff"
+  };
+
+  if (options.checksumHeader) {
+    headers["X-OGFI-CSV-SHA256"] = csvSha256(body);
+  }
+
+  return new Response(body, {
     headers: {
-      "Cache-Control": "no-store",
-      "Content-Disposition": `attachment; filename=${filename}`,
-      "Content-Type": "text/csv; charset=utf-8",
-      "X-Content-Type-Options": "nosniff"
+      ...headers
     }
   });
 }

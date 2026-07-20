@@ -91,7 +91,7 @@ const checklist = [
   },
   {
     owner: "Release Manager",
-    action: "Refresh deployment status and final manifest only after source evidence and signed documents are complete.",
+    action: "Refresh deployment status and final manifest only after source evidence, signed documents, and external-security proof references are complete.",
     command: "pnpm release:deployment-status && pnpm release:evidence:manifest",
     artifact: "deployment-status/deployment-status-*.txt and manifests/release-evidence-manifest-*.txt",
     acceptance: "Deployment status passes, and the manifest includes checksums for deployment status, signed deployment evidence, smoke, rollback, and source artifacts.",

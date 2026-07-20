@@ -5,4 +5,6 @@ export { Panel } from "./primitives";
 export { StatusBadge } from "./primitives";
 export { EmptyState } from "./primitives";
 export { LoadingState } from "./primitives";
+export { PaginationBar } from "./primitives";
+export { WorkspaceTabs } from "./primitives";
 export { cn } from "./utils";

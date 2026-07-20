@@ -19,7 +19,8 @@ import {
   deactivateSupplierItemLink,
   getSupplierCatalog,
   listSupplierItemLinkOptions,
-  listSuppliers
+  listSuppliers,
+  updateSupplierAccreditation
 } from "@/server/services/suppliers";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,19 @@ async function deactivateSupplierAction(formData: FormData) {
   }
   revalidatePath("/suppliers");
   redirect("/suppliers");
+}
+
+async function updateSupplierAccreditationAction(formData: FormData) {
+  "use server";
+
+  try {
+    await updateSupplierAccreditation(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath("/suppliers", error));
+  }
+  revalidatePath("/suppliers");
+  const supplierId = formData.get("supplierId");
+  redirect(typeof supplierId === "string" ? `/suppliers?supplier=${supplierId}` : "/suppliers");
 }
 
 async function createSupplierItemLinkAction(formData: FormData) {
@@ -89,6 +103,27 @@ function formatCurrency(value: number, currencyCode: string) {
   }).format(value);
 }
 
+function accreditationLabel(status: string) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function accreditationTone(status: string) {
+  if (status === "APPROVED") {
+    return "success";
+  }
+  if (status === "BLOCKED") {
+    return "danger";
+  }
+  if (status === "SUSPENDED") {
+    return "warning";
+  }
+  return "info";
+}
+
 export default async function SuppliersPage({ searchParams }: SuppliersPageProps) {
   const session = await getSessionContext();
   if (!session) {
@@ -102,7 +137,9 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     listSuppliers(session),
     listSupplierItemLinkOptions(session)
   ]);
-  const activeCount = suppliers.filter((supplier) => supplier.status === "ACTIVE").length;
+  const approvedCount = suppliers.filter(
+    (supplier) => supplier.accreditationStatus === "APPROVED"
+  ).length;
   const activeItemLinkCount = suppliers.reduce(
     (count, supplier) => count + supplier.itemLinkCount,
     0
@@ -176,8 +213,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
           <p className="mt-2 text-3xl font-bold text-slate-950">{suppliers.length}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Active</p>
-          <p className="mt-2 text-3xl font-bold text-emerald-700">{activeCount}</p>
+          <p className="text-sm font-semibold text-slate-500">Approved</p>
+          <p className="mt-2 text-3xl font-bold text-emerald-700">{approvedCount}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Company</p>
@@ -398,31 +435,89 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                       </p>
                     )}
                   </div>
-                  <Badge tone={supplier.status === "ACTIVE" ? "success" : "neutral"}>{supplier.status}</Badge>
-                  {supplier.status === "ACTIVE" ? (
-                    <EntryModal
-                      title="Deactivate Supplier"
-                      triggerClassName="min-h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
-                      triggerLabel="Deactivate"
-                    >
-                      <form action={deactivateSupplierAction} className="ogfi-form-shell mt-4 grid gap-3">
-                        <input name="supplierId" type="hidden" value={supplier.id} />
-                        <label className="grid gap-1 text-sm font-medium text-slate-700">
-                          Deactivation reason
-                          <input
-                            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                            name="reason"
-                            required
-                          />
-                        </label>
-                        <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
-                          Deactivate Supplier
-                        </button>
-                      </form>
-                    </EntryModal>
-                  ) : (
-                    <span className="text-sm text-slate-500">Retained history</span>
-                  )}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Badge tone={accreditationTone(supplier.accreditationStatus)}>
+                      {accreditationLabel(supplier.accreditationStatus)}
+                    </Badge>
+                    <Badge tone={supplier.status === "ACTIVE" ? "success" : "neutral"}>
+                      {supplier.status === "ACTIVE" ? "Lifecycle active" : "Lifecycle inactive"}
+                    </Badge>
+                    {supplier.status === "ACTIVE" ? (
+                      <>
+                        <EntryModal
+                          title="Update Supplier Accreditation"
+                          triggerClassName="min-h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
+                          triggerLabel="Accreditation"
+                        >
+                          <form
+                            action={updateSupplierAccreditationAction}
+                            className="ogfi-form-shell mt-4 grid gap-3"
+                          >
+                            <input name="supplierId" type="hidden" value={supplier.id} />
+                            <label className="grid gap-1 text-sm font-medium text-slate-700">
+                              Accreditation status
+                              <select
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                defaultValue={supplier.accreditationStatus}
+                                name="accreditationStatus"
+                                required
+                              >
+                                <option value="PENDING_REVIEW">Pending review</option>
+                                <option value="APPROVED">Approved</option>
+                                <option value="SUSPENDED">Suspended</option>
+                                <option value="BLOCKED">Blocked</option>
+                              </select>
+                            </label>
+                            <label className="grid gap-1 text-sm font-medium text-slate-700">
+                              Reason
+                              <input
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                name="reason"
+                                required
+                              />
+                            </label>
+                            <label className="grid gap-1 text-sm font-medium text-slate-700">
+                              Evidence reference
+                              <input
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                name="evidenceReference"
+                                placeholder="Accreditation checklist, supplier file, or review note"
+                              />
+                            </label>
+                            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-3 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
+                              Save Accreditation
+                            </button>
+                          </form>
+                        </EntryModal>
+                        <EntryModal
+                          title="Deactivate Supplier"
+                          triggerClassName="min-h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
+                          triggerLabel="Deactivate"
+                        >
+                          <form action={deactivateSupplierAction} className="ogfi-form-shell mt-4 grid gap-3">
+                            <input name="supplierId" type="hidden" value={supplier.id} />
+                            <p className="text-sm text-slate-600">
+                              Deactivation preserves supplier history and also suspends PO
+                              accreditation.
+                            </p>
+                            <label className="grid gap-1 text-sm font-medium text-slate-700">
+                              Deactivation reason
+                              <input
+                                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                name="reason"
+                                required
+                              />
+                            </label>
+                            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
+                              Deactivate Supplier
+                            </button>
+                          </form>
+                        </EntryModal>
+                      </>
+                    ) : (
+                      <span className="text-sm text-slate-500">Retained history</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

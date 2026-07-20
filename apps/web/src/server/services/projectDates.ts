@@ -29,6 +29,18 @@ export function dateOnlyString(value: Date | string | null | undefined) {
   return value.toISOString().slice(0, 10);
 }
 
+export function parseDateOnlyUtc(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+  const [year = 0, month = 0, day = 0] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (!Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString().slice(0, 10) === value ? parsed : null;
+}
+
 export function projectTaskDueDateString(input: {
   dueDate?: Date | string | null;
   dueAt?: Date | string | null;

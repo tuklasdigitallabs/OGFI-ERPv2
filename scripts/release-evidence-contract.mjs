@@ -16,6 +16,11 @@ export const finalManifestRequiredContent = [
   "backups/restore-check-summary.txt",
   "backup-restore-status/backup-restore-status-",
   "deployment-status/deployment-status-",
+  "release-readiness-register/release-readiness-register-",
+  "external-security/mfa-provider-enrollment-and-runtime-proof.",
+  "external-security/idp-session-invalidation-proof.",
+  "external-security/vault-or-artifact-storage-index.",
+  "external-security/break-glass-review-and-revocation-proof.",
   "pilot-readiness/pilot-readiness-preflight-",
   "uat-status/uat-status-",
   "pilot-uat-status/pilot-uat-status-",
@@ -31,6 +36,11 @@ export const finalManifestRequiredContent = [
 
 export const finalManifestRequiredPatterns = [
   /backups\/ogfi-erp-.*\.dump\.sha256/,
+  /release-readiness-register\/release-readiness-register-.*\.csv\.sha256/,
+  /external-security\/mfa-provider-enrollment-and-runtime-proof\..+/,
+  /external-security\/idp-session-invalidation-proof\..+/,
+  /external-security\/vault-or-artifact-storage-index\..+/,
+  /external-security\/break-glass-review-and-revocation-proof\..+/,
   /pilot-readiness\/pilot-readiness-(?!preflight).*\.txt/,
 ];
 

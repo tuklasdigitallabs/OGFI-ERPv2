@@ -1,4 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { evidenceRunId } from "./release-evidence-metadata.mjs";
 import { evaluateSignedEvidenceDocument } from "./release-signed-evidence-contract.mjs";
@@ -59,6 +65,52 @@ const signedDocuments = [
   },
 ];
 
+const externalSecurityProofs = [
+  {
+    label: "External MFA provider proof",
+    directory: join(evidenceRoot, "external-security"),
+    pattern: /^mfa-provider-enrollment-and-runtime-proof\..+$/,
+    targetPath:
+      "external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension>",
+    severity: "Critical",
+    owner: "Security Owner / IT Owner",
+    evidence:
+      "provider-side MFA enrollment/runtime challenge proof with matching evidence run ID and PASS marker",
+  },
+  {
+    label: "External IdP session invalidation proof",
+    directory: join(evidenceRoot, "external-security"),
+    pattern: /^idp-session-invalidation-proof\..+$/,
+    targetPath:
+      "external-security/idp-session-invalidation-proof.<approved-extension>",
+    severity: "Critical",
+    owner: "Security Owner / IT Owner",
+    evidence:
+      "provider-side session termination proof with matching evidence run ID and PASS marker",
+  },
+  {
+    label: "External evidence storage index",
+    directory: join(evidenceRoot, "external-security"),
+    pattern: /^vault-or-artifact-storage-index\..+$/,
+    targetPath: "external-security/vault-or-artifact-storage-index.<approved-extension>",
+    severity: "Critical",
+    owner: "Security Owner / Release Manager",
+    evidence:
+      "vault or approved evidence-repository index with matching evidence run ID and PASS marker",
+  },
+  {
+    label: "External break-glass review proof",
+    directory: join(evidenceRoot, "external-security"),
+    pattern: /^break-glass-review-and-revocation-proof\..+$/,
+    targetPath:
+      "external-security/break-glass-review-and-revocation-proof.<approved-extension>",
+    severity: "Critical",
+    owner: "Security Owner / IT Owner",
+    evidence:
+      "break-glass post-use review/revocation proof with matching evidence run ID and PASS marker",
+  },
+];
+
 const lines = [
   "OGFI ERP Phase I / Phase 1.5 signed evidence status",
   `Generated UTC: ${timestamp}`,
@@ -73,6 +125,15 @@ const lines = [
     `  default_path=${document.targetPath}`,
     `  env_override=${document.envOverride}`,
     `  reviewed_file=${document.file}`,
+  ]),
+  "",
+  "Required External Security Evidence",
+  ...externalSecurityProofs.flatMap((proof) => [
+    `DOCUMENT | ${proof.label}`,
+    `  default_path=${proof.targetPath}`,
+    `  reviewed_directory=${proof.directory}`,
+    `  filename_pattern=${proof.pattern}`,
+    "  required_marker=RESULT | PASS | External security proof captured.",
   ]),
   "",
 ];
@@ -92,17 +153,30 @@ for (const document of signedDocuments) {
   }
 }
 
+for (const proof of externalSecurityProofs) {
+  const result = evaluateExternalSecurityProof(proof);
+  if (result.pass) {
+    lines.push(`PASS | ${proof.label} | ${result.detail}`);
+  } else {
+    blockers += 1;
+    lines.push(`BLOCKED | ${proof.label} | ${result.detail}`);
+    lines.push(
+      `  OWNER | severity=${proof.severity} | owner=${proof.owner} | evidence=${proof.evidence}`,
+    );
+  }
+}
+
 lines.push("");
 if (blockers > 0) {
   lines.push(
-    `RESULT | BLOCKED | ${blockers} signed evidence document blocker(s) remain before GO / NO-GO review.`,
+    `RESULT | BLOCKED | ${blockers} signed/external evidence blocker(s) remain before GO / NO-GO review.`,
   );
   lines.push(
-    "Next action: copy completed owner-approved evidence documents into signed-documents/ or set RELEASE_*_EVIDENCE_FILE to approved external copies, then rerun this status.",
+    "Next action: copy completed owner-approved evidence documents into signed-documents/, add approved external-security proof files, or set RELEASE_*_EVIDENCE_FILE to approved external copies, then rerun this status.",
   );
 } else {
   lines.push(
-    "RESULT | PASS | Signed evidence documents are present and have no unresolved placeholders.",
+    "RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
   );
 }
 
@@ -117,4 +191,47 @@ function evaluateDocument(document) {
     ...document,
     expectedEvidenceRunId: runId,
   });
+}
+
+function evaluateExternalSecurityProof(proof) {
+  const file = findLatestMatchingFile(proof);
+  if (!file) {
+    return {
+      pass: false,
+      detail: `missing matching file in ${proof.directory}: ${proof.pattern}`,
+    };
+  }
+
+  try {
+    const content = readFileSync(file, "utf8");
+    const missing = [];
+    if (!content.includes(`Evidence run ID: ${runId}`)) {
+      missing.push("matching Evidence run ID");
+    }
+    if (!content.includes("RESULT | PASS | External security proof captured.")) {
+      missing.push("external security PASS marker");
+    }
+    if (missing.length > 0) {
+      return { pass: false, detail: `missing ${missing.join(", ")} in ${file}` };
+    }
+    return { pass: true, detail: `validated ${file}` };
+  } catch {
+    return { pass: false, detail: `cannot read matching file: ${file}` };
+  }
+}
+
+function findLatestMatchingFile(proof) {
+  if (!existsSync(proof.directory)) {
+    return null;
+  }
+
+  const matches = readdirSync(proof.directory)
+    .filter((file) => proof.pattern.test(file))
+    .sort();
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  return join(proof.directory, matches.at(-1));
 }

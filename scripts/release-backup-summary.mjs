@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   databaseUrlFingerprint,
+  evidenceMetadataValue,
   evidenceRunId,
 } from "./release-evidence-metadata.mjs";
 
@@ -16,9 +17,17 @@ const backupExists = existsSync(backupFile);
 const backupSizeBytes = backupExists ? statSync(backupFile).size : "not-found";
 const checksumFile = process.env.BACKUP_CHECKSUM_FILE ?? `${backupFile}.sha256`;
 const checksumStatus = existsSync(checksumFile) ? "present" : "missing";
-const environment = process.env.RELEASE_ENVIRONMENT ?? "staging-rehearsal";
-const githubRunId = process.env.GITHUB_RUN_ID ?? "not-recorded";
-const githubSha = process.env.GITHUB_SHA ?? "not-recorded";
+const environment = evidenceMetadataValue(
+  "RELEASE_ENVIRONMENT",
+  process.env,
+  "staging-rehearsal",
+);
+const githubRunId = evidenceMetadataValue(
+  "GITHUB_RUN_ID",
+  process.env,
+  "not-recorded",
+);
+const githubSha = evidenceMetadataValue("GITHUB_SHA", process.env, "not-recorded");
 const verifiedAtUtc = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 const failedChecks = [
   [

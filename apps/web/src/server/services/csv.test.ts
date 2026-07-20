@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { csvCell, csvExportResponse, csvRows, csvRowsWithMetadata } from "./csv";
@@ -53,11 +54,29 @@ describe("CSV helpers", () => {
     );
   });
 
+  test("can include a SHA-256 checksum header for controlled evidence exports", async () => {
+    const rows = [
+      ["Gate", "Status"],
+      ["GO / NO-GO", "READY"]
+    ];
+    const generatedAt = new Date("2026-06-30T01:02:03.000Z");
+    const response = csvExportResponse(rows, "release-readiness-register.csv", {
+      generatedAt,
+      checksumHeader: true
+    });
+    const body = await response.text();
+
+    expect(response.headers.get("X-OGFI-CSV-SHA256")).toBe(
+      createHash("sha256").update(body).digest("hex")
+    );
+  });
+
   test("keeps export routes on shared CSV response handling", () => {
     const exportRoutes = [
       "adjustments/export/route.ts",
       "admin/audit/export/route.ts",
       "counts/export/route.ts",
+      "expansion/export/route.ts",
       "inventory/export/route.ts",
       "inventory/ledger/export/route.ts",
       "projects/activity/export/route.ts",
@@ -97,5 +116,25 @@ describe("CSV helpers", () => {
         /new\s+(NextResponse|Response)\s*\(/
       );
     }
+  });
+
+  test("PO status export carries trust metadata and cancellation subtype columns", () => {
+    const routeSource = readFileSync(
+      `${appRouteRoot}purchase-orders/export/route.ts`,
+      "utf8"
+    );
+    const exportAuditSource = readFileSync(
+      fileURLToPath(new URL("exportAudit.ts", import.meta.url)),
+      "utf8"
+    );
+
+    expect(routeSource).toContain("getOperationalReportTrustContext");
+    expect(routeSource).toContain("logOperationalExportAudit");
+    expect(routeSource).toContain('"Cancellation Subtype"');
+    expect(routeSource).toContain('"Cancellation Reason"');
+    expect(routeSource).toContain('"Cancelled At"');
+    expect(exportAuditSource).toContain("Reporting Trust Gate");
+    expect(exportAuditSource).toContain("Scope Filters Required");
+    expect(routeSource).toContain("metadata: auditMetadata");
   });
 });

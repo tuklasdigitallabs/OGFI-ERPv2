@@ -51,7 +51,8 @@ Validate that OGFI ERP can create correct, auditable, secure, reversible, and re
 | FIN-AP-001 | Invoice matches PO and receipt | Invoice can progress to AP/approval per policy. |
 | FIN-AP-002 | Quantity/price mismatch beyond tolerance | Invoice enters exception/hold; payment blocked. |
 | FIN-AP-003 | Duplicate supplier invoice number | Flag/block under configured rules; no duplicate AP liability. |
-| FIN-AP-004 | Credit note against invoice | Credit is traceable and reduces balance through controlled posting. |
+| FIN-AP-004A | Credit note foundation | Credit note is traceable, linked to the original AP invoice, can be submitted for application review, and does not silently reduce AP balance, release cash, mutate source records, or post journals. |
+| FIN-AP-004B | Credit note production application | Credit reduces payable balance only through a controlled, approved, reversible accounting/settlement path with supplier statement reconciliation evidence. This remains blocked until `P3-BLOCK-004` is resolved or formally waived. |
 | FIN-AP-005 | User prepares and releases own payment | Blocked where segregation requires different users. |
 | FIN-AP-006 | Payment exceeds remaining payable | Blocked. |
 | FIN-AP-007 | Payment retry | No duplicate payment/journal. |

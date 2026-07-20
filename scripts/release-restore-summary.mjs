@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   databaseUrlFingerprint,
+  evidenceMetadataValue,
   evidenceRunId,
 } from "./release-evidence-metadata.mjs";
 import {
@@ -20,9 +21,17 @@ const restoreDatabase = restoreDatabaseName(process.env);
 const restoreDatabaseSource = process.env.RESTORE_DATABASE
   ? "RESTORE_DATABASE"
   : "RESTORE_DATABASE_URL";
-const environment = process.env.RELEASE_ENVIRONMENT ?? "staging-rehearsal";
-const githubRunId = process.env.GITHUB_RUN_ID ?? "not-recorded";
-const githubSha = process.env.GITHUB_SHA ?? "not-recorded";
+const environment = evidenceMetadataValue(
+  "RELEASE_ENVIRONMENT",
+  process.env,
+  "staging-rehearsal",
+);
+const githubRunId = evidenceMetadataValue(
+  "GITHUB_RUN_ID",
+  process.env,
+  "not-recorded",
+);
+const githubSha = evidenceMetadataValue("GITHUB_SHA", process.env, "not-recorded");
 const verifiedAtUtc = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 const failedChecks = [
   [

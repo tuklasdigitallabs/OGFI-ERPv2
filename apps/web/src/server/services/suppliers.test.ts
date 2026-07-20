@@ -33,9 +33,15 @@ describe("supplier master-data controls", () => {
     expect(source).toContain("prisma.$transaction");
     expect(source).toContain("tx.auditEvent.create");
     expect(source).toContain("currencyCode: company.currencyCode");
+    expect(source).toContain('accreditationStatus: "PENDING_REVIEW"');
+    expect(source).toContain("updateSupplierAccreditation");
+    expect(source).toContain("supplier.accreditation_status_updated");
+    expect(source).toContain("sourceDecisionId: \"DEC-0036\"");
+    expect(source).toContain('accreditationStatus: "SUSPENDED"');
     for (const eventType of [
       "supplier.created",
       "supplier.deactivated",
+      "supplier.accreditation_status_updated",
       "supplier_item_link.created",
       "supplier_item_link.deactivated"
     ]) {

@@ -42,12 +42,28 @@ Common export paths include:
 3. Apply search, status, date, or other available filters.
 4. Select `Export CSV`.
 5. Open the downloaded CSV in your spreadsheet tool.
-6. Check the export metadata rows for filename and generated-at timestamp.
+6. Check the export metadata rows before using the data.
+
+## CSV Metadata Rows
+
+Operational CSV exports include a metadata block before the data rows. Review it for:
+
+- export filename
+- generated-at UTC timestamp
+- report ID
+- company, brand, location, and location type
+- scope-filter requirement, showing whether scope filters are required
+- reporting trust-gate label and mode
+- trust-gate source decision, normally `DEC-0036`
+- whether the trust-gate setting is overridden
+
+Some exports add extra context, such as Purchase Order filter values, recipe ID, or a release-readiness scope note.
 
 ## Expected Result
 
 - The CSV contains only records the user is authorized to export.
 - Active filters and selected scope are preserved by the export route where supported.
+- The CSV metadata shows the selected scope and DEC-0036 trust-gate context.
 - Operational exports write audit events for denied, started, and completed export attempts.
 - Project exports use project visibility and do not expose protected source-record payloads.
 - Admin audit export requires core administration permission.
@@ -64,7 +80,7 @@ Common export paths include:
 
 - The exported rows match the filter and scope you expected.
 - Sensitive fields are present only when your role is allowed to see them.
-- The report title, filename, and generated timestamp are present.
+- The report ID, filename, generated timestamp, selected scope, and trust-gate source decision are present.
 - If the export is denied, ask an administrator to review permissions and scope instead of using another user's account.
 
 ## Related Articles

@@ -1,6 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { databaseUrlFingerprint, evidenceRunId } from "./release-evidence-metadata.mjs";
+import {
+  databaseUrlFingerprint,
+  evidenceMetadataValue,
+  evidenceRunId,
+} from "./release-evidence-metadata.mjs";
 
 const timestamp = new Date()
   .toISOString()
@@ -17,10 +21,13 @@ const outputFile =
   );
 
 const environmentLines = [
-  envStatus("RELEASE_EVIDENCE_RUN_ID", process.env.RELEASE_EVIDENCE_RUN_ID),
-  envStatus("RELEASE_VERSION", process.env.RELEASE_VERSION),
-  envStatus("GITHUB_RUN_ID", process.env.GITHUB_RUN_ID),
-  envStatus("GITHUB_SHA", process.env.GITHUB_SHA),
+  envStatus(
+    "RELEASE_EVIDENCE_RUN_ID",
+    evidenceMetadataValue("RELEASE_EVIDENCE_RUN_ID"),
+  ),
+  envStatus("RELEASE_VERSION", evidenceMetadataValue("RELEASE_VERSION")),
+  envStatus("GITHUB_RUN_ID", evidenceMetadataValue("GITHUB_RUN_ID")),
+  envStatus("GITHUB_SHA", evidenceMetadataValue("GITHUB_SHA")),
   envStatus("DATABASE_URL", process.env.DATABASE_URL, {
     detail: `fingerprint=${databaseUrlFingerprint(process.env.DATABASE_URL)}`,
   }),
@@ -108,14 +115,16 @@ const collectionGroups = [
       "release-evidence/staging-rollback/smoke/smoke-*.txt",
       "release-evidence/deployment-status/deployment-status-*.txt",
     ],
-    "Use an isolated restore database. Do not restore into production unless an explicit emergency procedure authorizes it.",
+    "Use an isolated restore database. Do not restore into production unless an explicit emergency procedure authorizes it. Record verified migration, backup, restore rehearsal, rollback, smoke, and monitoring evidence in ERP Admin > Release Readiness > Deployment controls.",
   ),
   group(
     "Pilot readiness, UAT, training, and signatures",
     "QA Lead / Operations Lead / Enablement Owner",
     [
       "pnpm release:pilot-readiness-preflight",
-      "pnpm release:pilot-readiness",
+      "PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness-preflight",
+      "DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness",
+      "DATABASE_URL=<pilot-or-staging-url> pnpm release:readiness-register",
       "pnpm release:uat-status",
       "pnpm release:pilot-uat-status",
       "pnpm release:enablement-status",
@@ -124,6 +133,8 @@ const collectionGroups = [
     ],
     [
       "release-evidence/pilot-readiness/pilot-readiness-*.txt",
+      "release-evidence/release-readiness-register/release-readiness-register-*.csv",
+      "release-evidence/release-readiness-register/release-readiness-register-*.csv.sha256",
       "release-evidence/uat-status/uat-status-*.txt",
       "release-evidence/pilot-uat-status/pilot-uat-status-*.txt",
       "release-evidence/enablement-status/enablement-status-*.txt",
@@ -132,7 +143,26 @@ const collectionGroups = [
       "release-evidence/signed-documents/deployment-rollback-evidence.md",
       "release-evidence/signed-documents/training-impact-assessment.md",
     ],
-    "Named users must execute UAT and sign evidence. Status scripts only validate the completed documents.",
+    "Named users must execute UAT and sign evidence. Status scripts only validate the completed documents. Record verified UAT and enablement evidence in ERP Admin > Release Readiness before final review.",
+  ),
+  group(
+    "External identity, security, and evidence storage proof",
+    "Security Owner / IT Owner",
+    [
+      "Collect MFA provider enrollment and runtime challenge proof for privileged users.",
+      "Collect identity-provider session termination proof for every ERP AuthSessionInvalidation record still pending external completion.",
+      "Collect vault or approved evidence-repository references for release artifacts, backup checksums, signed documents, and access-controlled screenshots.",
+      "Collect break-glass post-use review evidence and revocation proof where emergency access was used.",
+      "Rerun DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness after security evidence is recorded and reviewed.",
+    ],
+    [
+      "external-security/mfa-provider-enrollment-and-runtime-proof.*",
+      "external-security/idp-session-invalidation-proof.*",
+      "external-security/vault-or-artifact-storage-index.*",
+      "external-security/break-glass-review-and-revocation-proof.*",
+      "release-evidence/pilot-readiness/pilot-readiness-*.txt",
+    ],
+    "ERP-side records are evidence registers only. Production release still needs provider-side MFA/runtime, IdP session termination, vault or evidence-repository, and break-glass review proof from the external systems.",
   ),
   group(
     "Final review",
@@ -147,11 +177,12 @@ const collectionGroups = [
     [
       "release-evidence/release-summary.txt",
       "release-evidence/manifests/release-evidence-manifest-*.txt",
+      "release-evidence/manifests/release-evidence-manifest-*.txt.sha256",
       "release-evidence/final-review-status/final-review-status-*.txt",
       "release-evidence/go-no-go/go-no-go-*.txt",
       "release-evidence/milestones/milestone-status-*.txt",
     ],
-    "Generate the manifest only after the final evidence bundle is complete, then rerun final review and GO / NO-GO.",
+    "Generate the manifest only after the final evidence bundle is complete, keep the matching .sha256 sidecar with it, then rerun final review and GO / NO-GO. Record the board decision in ERP Admin > Release Readiness > GO / NO-GO.",
   ),
 ];
 
@@ -172,9 +203,17 @@ const lines = [
   "Non-Fabrication Boundary",
   "EXTERNAL | Migration rehearsal | requires real pre/post database snapshots and reviewed delta.",
   "EXTERNAL | Backup restore | requires real dump, checksum, isolated restore, rollback summary, and post-rollback smoke.",
+  "EXTERNAL | Identity provider | requires MFA provider/runtime proof and IdP session invalidation proof for privileged users and sensitive-action session changes.",
+  "EXTERNAL | Evidence storage | requires vault or approved artifact repository references for release evidence, signed documents, backup checksums, and screenshots.",
+  "EXTERNAL | Break-glass security | requires external revocation and post-use review proof when emergency access was used.",
   "EXTERNAL | UAT | requires named testers, dates, source records, results, defects or waivers, and signoff.",
   "EXTERNAL | Training and hypercare | requires attendance, acknowledgement, daily checks, and owners.",
   "EXTERNAL | Signoff | requires approved signed documents with matching Evidence run ID.",
+  "ERP REGISTER | UAT evidence | record verified scenario, defect, policy, acceptance-matrix, and default-revision evidence in Admin > Release Readiness.",
+  "ERP REGISTER | Deployment evidence | record verified migration, backup, restore rehearsal, rollback, smoke, and monitoring evidence in Admin > Release Readiness.",
+  "ERP REGISTER | Enablement evidence | record verified training, known-limit, support-route, KB, release-note, and training-impact evidence in Admin > Release Readiness.",
+  "ERP REGISTER | Release Board decision | record GO, Conditional GO, Hold, Rollback, or Forward Fix decision in Admin > Release Readiness.",
+  "ERP REGISTER EXPORT | Release readiness register | run DATABASE_URL=<pilot-or-staging-url> pnpm release:readiness-register after the ERP register is current and before the final manifest; keep the generated .csv.sha256 sidecar with the CSV.",
   "",
   "Final Check",
   "Run pnpm release:status-suite to refresh advisory status after external evidence is copied in.",

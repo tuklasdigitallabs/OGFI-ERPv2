@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Badge, ButtonLink } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import { WastageLinesEditor } from "@/components/WastageLinesEditor";
 import {
   actionErrorRedirectPath,
@@ -117,7 +117,7 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
       <div className="space-y-4">
         {canCreateWastage ? (
           <div className="flex justify-end">
-            <EntryModal title="Log Wastage" triggerLabel="Log Wastage">
+            <TaskSheet title="Log Wastage" description="Capture loss quantities, reasons, and line evidence before review." trigger={<span>Log Wastage</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
               {!firstInventoryLocation || !firstItem ? (
                 <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   The current location needs an active inventory location and tracked item
@@ -132,7 +132,7 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
                   wastageTypes={formOptions.wastageTypes}
                 />
               )}
-            </EntryModal>
+            </TaskSheet>
           </div>
         ) : null}
 

@@ -6,5 +6,7 @@ Release notes do not replace source-of-truth specifications, technical deploymen
 
 ## Current release notes
 
+- `docs/release-notes/phase-4-expansion-projects-readiness-summary.md`
+- `docs/release-notes/phase-3-controlled-foundation-readiness-summary.md`
 - `docs/release-notes/phase-i-phase-1-5-release-readiness-summary.md`
 - `docs/release-notes/phase-1-po-approval-foundation.md`

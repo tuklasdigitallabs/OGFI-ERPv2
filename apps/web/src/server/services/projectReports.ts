@@ -1,6 +1,8 @@
 import { prisma } from "@ogfi/database";
 import type { CsvRow } from "./csv";
+import { getExportFailureReasonCode } from "./exportErrors";
 import { canExportProjects } from "./exportAuthorization";
+import { assertReportExportScopeFilters } from "./exportAudit";
 import { getProjectDashboard } from "./projectDashboard";
 import type { SessionContext } from "./context";
 import { projectTaskDueDateString, projectTaskDueState } from "./projectDates";
@@ -10,6 +12,7 @@ import {
   type ProjectLinkSourceRecordType
 } from "./projectRecordLinks";
 import { listAuthorizedProjectAccess } from "./projects";
+import { getReportExportPolicy } from "./policySettings";
 
 const projectExportAttempts = new Map<string, number[]>();
 const projectExportWindowMs = 60_000;
@@ -37,7 +40,8 @@ export async function logProjectExportAudit(input: {
   eventType:
     | "project_report.export_denied"
     | "project_report.export_started"
-    | "project_report.export_completed";
+    | "project_report.export_completed"
+    | "project_report.export_failed";
   reportId?:
     | "project-health"
     | "project-task-register"
@@ -46,6 +50,10 @@ export async function logProjectExportAudit(input: {
   rowCount?: number;
   reasonCode?: string;
 }) {
+  const exportPolicy =
+    input.eventType === "project_report.export_started"
+      ? await assertReportExportScopeFilters(input.session)
+      : await getReportExportPolicy(input.session);
   await prisma.auditEvent.create({
     data: {
       tenantId: input.session.context.tenantId,
@@ -58,9 +66,38 @@ export async function logProjectExportAudit(input: {
         reportId: input.reportId ?? "project-health",
         rowCount: input.rowCount ?? null,
         reasonCode: input.reasonCode ?? null,
+        companyId: input.session.context.companyId,
+        companyName: input.session.context.companyName,
+        brandId: input.session.context.brandId,
+        brandName: input.session.context.brandName,
+        locationId: input.session.context.locationId,
+        locationName: input.session.context.locationName,
+        locationType: input.session.context.locationType,
+        requireScopeFilters: exportPolicy.requireScopeFilters,
+        trustGateMode: exportPolicy.trustGate.mode,
+        trustGateLabel: exportPolicy.trustGate.label,
+        trustGateSourceDecisionId: exportPolicy.trustGate.sourceDecisionId,
+        trustGateIsOverridden: exportPolicy.trustGate.isOverridden,
         source: "project-report-export"
       }
     }
+  });
+}
+
+export async function logProjectExportFailure(input: {
+  session: SessionContext;
+  reportId:
+    | "project-health"
+    | "project-task-register"
+    | "project-activity-log"
+    | "project-linked-record-follow-up";
+  error: unknown;
+}) {
+  await logProjectExportAudit({
+    session: input.session,
+    eventType: "project_report.export_failed",
+    reportId: input.reportId,
+    reasonCode: getExportFailureReasonCode(input.error)
   });
 }
 

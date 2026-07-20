@@ -1,7 +1,14 @@
 import {
   canReadPurchaseOrders,
+  canUseFinance,
+  canUseBranchOperations,
+  canUseFoodSafety,
+  canUseIncidents,
+  canUseMaintenance,
   canUseProjects,
   canUsePurchaseRequests,
+  canUseRecipesAndCosting,
+  canUseWorkforce,
   permissions
 } from "./authorization";
 import type { SessionContext } from "./context";
@@ -19,6 +26,10 @@ export function canExportSupplierQuotes(session: SessionContext) {
 }
 
 export function canExportCoreAdminAudit(session: SessionContext) {
+  return session.permissionCodes.includes(permissions.coreAdminister);
+}
+
+export function canExportReleaseReadiness(session: SessionContext) {
   return session.permissionCodes.includes(permissions.coreAdminister);
 }
 
@@ -52,4 +63,40 @@ export function canExportStockAdjustments(session: SessionContext) {
 
 export function canExportProjects(session: SessionContext) {
   return canUseProjects(session.permissionCodes);
+}
+
+export function canExportExpansion(session: SessionContext) {
+  return canUseProjects(session.permissionCodes);
+}
+
+export function canExportRecipeCosting(session: SessionContext) {
+  return canUseRecipesAndCosting(session.permissionCodes);
+}
+
+export function canExportFoodCostAnalysis(session: SessionContext) {
+  return canUseRecipesAndCosting(session.permissionCodes);
+}
+
+export function canExportBranchOperations(session: SessionContext) {
+  return canUseBranchOperations(session.permissionCodes);
+}
+
+export function canExportFoodSafety(session: SessionContext) {
+  return canUseFoodSafety(session.permissionCodes);
+}
+
+export function canExportIncidents(session: SessionContext) {
+  return canUseIncidents(session.permissionCodes);
+}
+
+export function canExportMaintenance(session: SessionContext) {
+  return canUseMaintenance(session.permissionCodes);
+}
+
+export function canExportFinance(session: SessionContext) {
+  return canUseFinance(session.permissionCodes);
+}
+
+export function canExportWorkforce(session: SessionContext) {
+  return canUseWorkforce(session.permissionCodes);
 }

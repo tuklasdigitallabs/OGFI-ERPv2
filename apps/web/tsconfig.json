@@ -20,12 +20,12 @@
   "include": [
     ".next-build-check/types/**/*.ts",
     ".next-e2e/types/**/*.ts",
+    ".next-ogfi-devrun/types/**/*.ts",
     ".next-ogfi/types/**/*.ts",
     ".next-ui01-build/types/**/*.ts",
     "next-env.d.ts",
     "src/**/*.ts",
-    "src/**/*.tsx",
-    ".next-ogfi-devrun/types/**/*.ts"
+    "src/**/*.tsx"
   ],
   "exclude": [
     "node_modules",

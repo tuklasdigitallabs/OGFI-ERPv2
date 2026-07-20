@@ -22,6 +22,27 @@ It must **not** become a generic consumer dashboard that hides important control
 
 ---
 
+## 1.1 Implementation completion gate
+
+UI/UX readiness is a completion requirement, not a polish activity.
+
+A client-facing workflow is not implemented if its primary workspace is still a long stack of cards, panels, inline forms, or unrelated sections. Schema, service, route, migration, and test coverage can prove a backend foundation, but they do not prove a usable SaaS workspace.
+
+Before any operational or finance/workforce milestone is marked `Implemented`, the workspace must satisfy these gates unless the milestone is explicitly labeled backend-only:
+
+- The primary view is list-first or task-queue-first, not card-stack-first.
+- Multi-function workspaces use real route/subworkspace tabs or equivalent segmented navigation.
+- The first viewport shows actionable records, exceptions, or a focused task queue, not only metrics or setup cards.
+- Lists with more than 10 possible records have pagination, virtualized loading, or an approved incremental-load pattern.
+- Record-specific actions are opened from one selected record in a drawer, detail page, or focused composer; repeated inline action forms are not allowed.
+- Long transaction entry and multi-line entry use a drawer, sheet, stepper, or full-page task mode, not a cramped centered modal.
+- Desktop, tablet, and mobile layouts remain readable, non-overlapping, and task-completable.
+- Light and dark themes preserve readable contrast for text, chips, buttons, disabled controls, table headers, tabs, and posting context.
+
+If these gates conflict with an existing implementation pattern, the gate wins. Existing code is not authority for repeating a weak workspace pattern.
+
+---
+
 ## 2. Visual baseline
 
 ### 2.1 Default token direction
@@ -200,6 +221,8 @@ Use Phase I operational controls instead:
 
 ## 6. Data tables and lists
 
+Operational modules are list-first by default. Cards support summaries, mobile row transformations, and short repeated previews; they are not the default desktop structure for large operational registers.
+
 ### 6.1 Desktop table design
 
 Use balanced, readable data tables:
@@ -211,6 +234,7 @@ Use balanced, readable data tables:
 - primary item/record label plus compact secondary metadata;
 - search, filters, saved views, sorting, column visibility, and export where permitted;
 - row click opens a full detail view; quick actions are visible only where safe.
+- server-side pagination or equivalent incremental loading when more than 10 records can exist.
 
 ### 6.2 Responsive transformation
 

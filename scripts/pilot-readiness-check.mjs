@@ -52,7 +52,72 @@ const thresholds = {
   projectMilestones: numberEnv("PILOT_MIN_PROJECT_MILESTONES", 1),
   projectRisks: numberEnv("PILOT_MIN_PROJECT_RISKS", 1),
   projectRecordLinks: numberEnv("PILOT_MIN_PROJECT_RECORD_LINKS", 1),
+  uatEvidenceRecords: numberEnv("PILOT_MIN_UAT_EVIDENCE_RECORDS", 0),
+  verifiedUatEvidenceRecords: numberEnv(
+    "PILOT_MIN_VERIFIED_UAT_EVIDENCE_RECORDS",
+    0,
+  ),
+  deploymentEvidenceRecords: numberEnv(
+    "PILOT_MIN_DEPLOYMENT_EVIDENCE_RECORDS",
+    0,
+  ),
+  verifiedDeploymentEvidenceRecords: numberEnv(
+    "PILOT_MIN_VERIFIED_DEPLOYMENT_EVIDENCE_RECORDS",
+    0,
+  ),
+  enablementEvidenceRecords: numberEnv(
+    "PILOT_MIN_ENABLEMENT_EVIDENCE_RECORDS",
+    0,
+  ),
+  verifiedEnablementEvidenceRecords: numberEnv(
+    "PILOT_MIN_VERIFIED_ENABLEMENT_EVIDENCE_RECORDS",
+    0,
+  ),
+  releaseBoardDecisions: numberEnv("PILOT_MIN_RELEASE_BOARD_DECISIONS", 0),
+  requireReleaseGatesReady: booleanEnv("PILOT_REQUIRE_RELEASE_GATES_READY", false),
 };
+
+const requiredReleaseReadinessGateKeys = [
+  "uat.scenario_execution",
+  "uat.defect_disposition",
+  "uat.policy_version_trace",
+  "uat.acceptance_matrix_signed",
+  "uat.default_revision_register",
+  "deployment.migration_backup_restore",
+  "deployment.monitoring_hypercare",
+  "enablement.training_signoff",
+  "enablement.kb_release_notes",
+  "security.privileged_mfa_enrollment",
+  "security.break_glass_control",
+  "security.session_revalidation",
+  "security.controlled_access_requests",
+  "go_no_go.release_board_decision",
+];
+
+const releaseGateKeySql = requiredReleaseReadinessGateKeys
+  .map((key) => `('${key}')`)
+  .join(",");
+
+const sensitivePermissionSql = [
+  "core.administer",
+  "purchasing.purchase_order.issue",
+  "purchasing.purchase_order.cancel",
+  "purchasing.purchase_order.close_remaining",
+  "purchasing.purchase_order.amend",
+  "inventory.transfer.dispatch",
+  "inventory.transfer.receive",
+  "inventory.transfer.discrepancy.settle",
+  "projects.project.manage",
+  "projects.project.manage_members",
+  "projects.template.configure",
+  "restaurant.recipe.publish",
+  "restaurant.recipe.archive",
+  "restaurant.menu_price.decide",
+  "restaurant.incident.resolve",
+  "restaurant.maintenance.complete",
+]
+  .map((code) => `'${code}'`)
+  .join(",");
 
 const permissionCodes = [
   "purchasing.purchase_request.create",
@@ -264,6 +329,127 @@ const checks = [
     thresholds.projectRecordLinks,
     `select count(*) from "ProjectRecordLink" where "archivedAt" is null;`,
   ),
+  section("DEC-0036 release readiness registers"),
+  equal(
+    "UAT evidence register table",
+    1,
+    `select case when to_regclass('"UatEvidenceRecord"') is null then 0 else 1 end;`,
+  ),
+  equal(
+    "Deployment evidence register table",
+    1,
+    `select case when to_regclass('"DeploymentEvidenceRecord"') is null then 0 else 1 end;`,
+  ),
+  equal(
+    "Enablement evidence register table",
+    1,
+    `select case when to_regclass('"EnablementEvidenceRecord"') is null then 0 else 1 end;`,
+  ),
+  equal(
+    "Release Board decision register table",
+    1,
+    `select case when to_regclass('"ReleaseBoardDecision"') is null then 0 else 1 end;`,
+  ),
+  min(
+    "UAT evidence records",
+    thresholds.uatEvidenceRecords,
+    `select count(*) from "UatEvidenceRecord";`,
+  ),
+  min(
+    "Verified UAT evidence records",
+    thresholds.verifiedUatEvidenceRecords,
+    `select count(*) from "UatEvidenceRecord" where "verificationStatus" = 'VERIFIED';`,
+  ),
+  min(
+    "Deployment evidence records",
+    thresholds.deploymentEvidenceRecords,
+    `select count(*) from "DeploymentEvidenceRecord";`,
+  ),
+  min(
+    "Verified deployment evidence records",
+    thresholds.verifiedDeploymentEvidenceRecords,
+    `select count(*) from "DeploymentEvidenceRecord" where "verificationStatus" = 'VERIFIED';`,
+  ),
+  min(
+    "Enablement evidence records",
+    thresholds.enablementEvidenceRecords,
+    `select count(*) from "EnablementEvidenceRecord";`,
+  ),
+  min(
+    "Verified enablement evidence records",
+    thresholds.verifiedEnablementEvidenceRecords,
+    `select count(*) from "EnablementEvidenceRecord" where "verificationStatus" = 'VERIFIED';`,
+  ),
+  min(
+    "Release Board decisions",
+    thresholds.releaseBoardDecisions,
+    `select count(*) from "ReleaseBoardDecision";`,
+  ),
+  ...(thresholds.requireReleaseGatesReady
+    ? [
+        section("DEC-0036 strict release gate status"),
+        equal(
+          "Required release readiness gates missing",
+          0,
+          `select count(*) from (values ${releaseGateKeySql}) as expected("gateKey") left join "ReleaseReadinessGate" g on g."gateKey" = expected."gateKey" and g."requiredByPolicy" = true where g."id" is null;`,
+        ),
+        equal(
+          "Required release readiness gates not accepted",
+          0,
+          `select count(*) from "ReleaseReadinessGate" where "requiredByPolicy" = true and "gateKey" in (${requiredReleaseReadinessGateKeys.map((key) => `'${key}'`).join(",")}) and "status" not in ('READY','CONDITIONAL_GO','WAIVED');`,
+        ),
+        equal(
+          "Accepted release readiness gates missing evidence",
+          0,
+          `select count(*) from "ReleaseReadinessGate" where "requiredByPolicy" = true and "gateKey" in (${requiredReleaseReadinessGateKeys.map((key) => `'${key}'`).join(",")}) and "status" in ('READY','CONDITIONAL_GO','WAIVED') and coalesce(nullif(trim("evidenceReference"), ''), '') = '';`,
+        ),
+        equal(
+          "Conditional or waived release gates missing decision note",
+          0,
+          `select count(*) from "ReleaseReadinessGate" where "requiredByPolicy" = true and "gateKey" in (${requiredReleaseReadinessGateKeys.map((key) => `'${key}'`).join(",")}) and "status" in ('CONDITIONAL_GO','WAIVED') and coalesce(nullif(trim("decisionNote"), ''), '') = '';`,
+        ),
+        equal(
+          "Hold release gates missing blocker summary",
+          0,
+          `select count(*) from "ReleaseReadinessGate" where "requiredByPolicy" = true and "gateKey" in (${requiredReleaseReadinessGateKeys.map((key) => `'${key}'`).join(",")}) and "status" = 'HOLD' and coalesce(nullif(trim("blockerSummary"), ''), '') = '';`,
+        ),
+        equal(
+          "Pending controlled access requests",
+          0,
+          `select (select count(*) from "HighRiskScopeRequest" where "status" = 'PENDING') + (select count(*) from "SensitiveRoleRequest" where "status" = 'PENDING');`,
+        ),
+        equal(
+          "Privileged users missing verified MFA evidence",
+          0,
+          `with privileged_users as (select distinct u."id" as "userId", case when usa."scopeType" = 'COMPANY' then usa."scopeId" else l."companyId" end as "companyId" from "User" u join "UserRoleAssignment" ura on ura."userId" = u."id" and ura."status" = 'ACTIVE' and ura."startsAt" <= now() and (ura."endsAt" is null or ura."endsAt" > now()) join "RolePermission" rp on rp."roleId" = ura."roleId" join "Permission" p on p."id" = rp."permissionId" join "UserScopeAssignment" usa on usa."userId" = u."id" and usa."status" = 'ACTIVE' and usa."startsAt" <= now() and (usa."endsAt" is null or usa."endsAt" > now()) left join "Location" l on usa."scopeType" = 'LOCATION' and l."id" = usa."scopeId" and l."status" = 'ACTIVE' where u."status" = 'ACTIVE' and (usa."scopeType" = 'COMPANY' or (usa."scopeType" = 'LOCATION' and l."id" is not null)) and (p."code" in (${sensitivePermissionSql}) or p."code" like '%.approve' or p."code" like '%.post' or p."code" like '%.reverse' or p."code" like '%.review' or p."code" like '%.correct')) select count(*) from privileged_users pu where pu."companyId" is not null and not exists (select 1 from (select distinct on ("targetUserId", "companyId") "targetUserId", "companyId", "status" from "PrivilegedMfaEnrollment" order by "targetUserId", "companyId", "createdAt" desc) latest where latest."targetUserId" = pu."userId" and latest."companyId" = pu."companyId" and latest."status" = 'VERIFIED');`,
+        ),
+        equal(
+          "Pending provider session invalidations",
+          0,
+          `select count(*) from "AuthSessionInvalidation" where "status" = 'PENDING_PROVIDER';`,
+        ),
+        equal(
+          "Break-glass access open or post-review due",
+          0,
+          `select count(*) from "BreakGlassAccessGrant" where "status" in ('PENDING_REVIEW','ACTIVE','REVOKED','EXPIRED','REJECTED');`,
+        ),
+        equal(
+          "GO / NO-GO ready gate missing GO board decision",
+          0,
+          `select count(*) from "ReleaseReadinessGate" g where g."requiredByPolicy" = true and g."gateKey" = 'go_no_go.release_board_decision' and g."status" = 'READY' and coalesce((select d."decision" from "ReleaseBoardDecision" d where d."companyId" = g."companyId" order by d."decidedAt" desc, d."createdAt" desc limit 1), '') <> 'GO';`,
+        ),
+        equal(
+          "GO / NO-GO conditional gate missing Conditional GO board decision",
+          0,
+          `select count(*) from "ReleaseReadinessGate" g where g."requiredByPolicy" = true and g."gateKey" = 'go_no_go.release_board_decision' and g."status" = 'CONDITIONAL_GO' and coalesce((select d."decision" from "ReleaseBoardDecision" d where d."companyId" = g."companyId" order by d."decidedAt" desc, d."createdAt" desc limit 1), '') <> 'CONDITIONAL_GO';`,
+        ),
+        equal(
+          "GO / NO-GO waived gate missing Hold board decision",
+          0,
+          `select count(*) from "ReleaseReadinessGate" g where g."requiredByPolicy" = true and g."gateKey" = 'go_no_go.release_board_decision' and g."status" = 'WAIVED' and coalesce((select d."decision" from "ReleaseBoardDecision" d where d."companyId" = g."companyId" order by d."decidedAt" desc, d."createdAt" desc limit 1), '') <> 'HOLD';`,
+        ),
+      ]
+    : []),
 ];
 
 mkdirSync(dirname(outputFile), { recursive: true });
@@ -336,6 +522,23 @@ function numberEnv(name, fallback) {
   }
 
   return parsed;
+}
+
+function booleanEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  if (raw.toLowerCase() === "true") {
+    return true;
+  }
+  if (raw.toLowerCase() === "false") {
+    return false;
+  }
+
+  console.error(`${name} must be true or false.`);
+  process.exit(2);
 }
 
 function section(label) {

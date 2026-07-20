@@ -12,6 +12,10 @@ import {
 } from "./release-evidence-contract.mjs";
 import { evidenceRunId } from "./release-evidence-metadata.mjs";
 import { evaluateManifestFreshness } from "./release-evidence-freshness.mjs";
+import {
+  evaluateChecksumSidecar,
+  evaluateManifestChecksum,
+} from "./release-manifest-integrity.mjs";
 import { evaluateEvidenceRunConsistency } from "./release-evidence-run-consistency.mjs";
 import { evaluateSignedEvidenceDocument } from "./release-signed-evidence-contract.mjs";
 
@@ -246,12 +250,65 @@ const artifactChecks = [
     ],
   },
   {
+    label: "Release readiness register export",
+    pattern: /^release-readiness-register-.*\.csv$/,
+    directory: join(evidenceRoot, "release-readiness-register"),
+    requiredContent: [
+      "Evidence run ID,",
+      "Source Decision,DEC-0036",
+      "RESULT,PASS,Release readiness register export captured.",
+    ],
+    requireChecksumSidecar: true,
+  },
+  {
+    label: "Release readiness register checksum",
+    pattern: /^release-readiness-register-.*\.csv\.sha256$/,
+    directory: join(evidenceRoot, "release-readiness-register"),
+  },
+  {
+    label: "External MFA provider proof",
+    pattern: /^mfa-provider-enrollment-and-runtime-proof\..+$/,
+    directory: join(evidenceRoot, "external-security"),
+    requiredContent: [
+      "Evidence run ID:",
+      "RESULT | PASS | External security proof captured.",
+    ],
+  },
+  {
+    label: "External IdP session invalidation proof",
+    pattern: /^idp-session-invalidation-proof\..+$/,
+    directory: join(evidenceRoot, "external-security"),
+    requiredContent: [
+      "Evidence run ID:",
+      "RESULT | PASS | External security proof captured.",
+    ],
+  },
+  {
+    label: "External evidence storage index",
+    pattern: /^vault-or-artifact-storage-index\..+$/,
+    directory: join(evidenceRoot, "external-security"),
+    requiredContent: [
+      "Evidence run ID:",
+      "RESULT | PASS | External security proof captured.",
+    ],
+  },
+  {
+    label: "External break-glass review proof",
+    pattern: /^break-glass-review-and-revocation-proof\..+$/,
+    directory: join(evidenceRoot, "external-security"),
+    requiredContent: [
+      "Evidence run ID:",
+      "RESULT | PASS | External security proof captured.",
+    ],
+  },
+  {
     label: "Pilot readiness preflight",
     pattern: /^pilot-readiness-preflight-.*\.txt$/,
     directory: join(evidenceRoot, "pilot-readiness"),
     requiredAnyContent: [
       "RESULT | PASS | Pilot readiness prerequisites are configured.",
     ],
+    requiredContent: ["PILOT_REQUIRE_RELEASE_GATES_READY=true"],
   },
   {
     label: "Pilot readiness report",
@@ -260,6 +317,12 @@ const artifactChecks = [
     requiredContent: [
       "Evidence run ID:",
       "Database URL fingerprint:",
+      "requireReleaseGatesReady=true",
+      "DEC-0036 strict release gate status",
+      "Pending controlled access requests",
+      "Privileged users missing verified MFA evidence",
+      "Pending provider session invalidations",
+      "Break-glass access open or post-review due",
       "RESULT | PASS | Pilot setup is ready for UAT execution evidence capture.",
     ],
   },
@@ -283,6 +346,41 @@ const artifactChecks = [
     ],
   },
   {
+    label: "Phase 3 UAT execution checklist",
+    pattern: /^phase3-uat-checklist-.*\.txt$/,
+    directory: join(evidenceRoot, "phase3-uat-checklist"),
+    requiredContent: [
+      "Phase 3 finance controlled foundation",
+      "Phase 3 workforce controlled foundation",
+      "Phase 3 deferred blocker review",
+      "RESULT | ACTION REQUIRED | Execute Phase 3 UAT scenarios and collect verified Release Readiness evidence.",
+    ],
+    optional: true,
+  },
+  {
+    label: "Phase 3 UAT evidence status",
+    pattern: /^phase3-uat-status-.*\.txt$/,
+    directory: join(evidenceRoot, "phase3-uat-status"),
+    requiredContent: [
+      "Phase 3 finance controlled foundation",
+      "Phase 3 workforce controlled foundation",
+      "Phase 3 deferred blocker review",
+      "RESULT | WARN | Phase 3 UAT evidence is incomplete",
+    ],
+    optional: true,
+  },
+  {
+    label: "Phase 3 controlled foundation status",
+    pattern: /^phase3-status-.*\.txt$/,
+    directory: join(evidenceRoot, "phase3-status"),
+    requiredContent: [
+      "OGFI ERP Phase 3 controlled foundation status",
+      "Deferred Production Blockers",
+      "Pending Backlog Milestones",
+    ],
+    optional: true,
+  },
+  {
     label: "Enablement hypercare status",
     pattern: /^enablement-status-.*\.txt$/,
     directory: join(evidenceRoot, "enablement-status"),
@@ -296,7 +394,7 @@ const artifactChecks = [
     pattern: /^signed-evidence-status-.*\.txt$/,
     directory: join(evidenceRoot, "signed-evidence-status"),
     requiredContent: [
-      "RESULT | PASS | Signed evidence documents are present and have no unresolved placeholders.",
+      "RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
     ],
   },
   {
@@ -390,7 +488,53 @@ const blockerGuidance = new Map([
     {
       severity: "Critical",
       owner: "Release Manager / Product Owner",
-      evidence: "all final evidence artifacts generated in the same RELEASE_EVIDENCE_RUN_ID session",
+      evidence:
+        "all final evidence artifacts, signed documents, and external-security proof references generated in the same RELEASE_EVIDENCE_RUN_ID session",
+    },
+  ],
+  [
+    "Release readiness register export",
+    {
+      severity: "Critical",
+      owner: "Release Manager",
+      evidence:
+        "DB-backed release readiness register CSV exported after Admin > Release Readiness gates, evidence records, and Release Board decisions are current",
+    },
+  ],
+  [
+    "External MFA provider proof",
+    {
+      severity: "Critical",
+      owner: "Security Owner / IT Owner",
+      evidence:
+        "provider-side MFA enrollment and runtime challenge proof for privileged users copied to external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension> with matching Evidence run ID and RESULT | PASS | External security proof captured.",
+    },
+  ],
+  [
+    "External IdP session invalidation proof",
+    {
+      severity: "Critical",
+      owner: "Security Owner / IT Owner",
+      evidence:
+        "identity-provider session termination proof for ERP invalidation records copied to external-security/idp-session-invalidation-proof.<approved-extension> with matching Evidence run ID and RESULT | PASS | External security proof captured.",
+    },
+  ],
+  [
+    "External evidence storage index",
+    {
+      severity: "Critical",
+      owner: "Security Owner / IT Owner",
+      evidence:
+        "vault or approved evidence-repository index copied to external-security/vault-or-artifact-storage-index.<approved-extension> with matching Evidence run ID and RESULT | PASS | External security proof captured.",
+    },
+  ],
+  [
+    "External break-glass review proof",
+    {
+      severity: "Critical",
+      owner: "Security Owner / IT Owner",
+      evidence:
+        "break-glass revocation and post-use review proof copied to external-security/break-glass-review-and-revocation-proof.<approved-extension> with matching Evidence run ID and RESULT | PASS | External security proof captured.",
     },
   ],
   [
@@ -502,7 +646,8 @@ const blockerGuidance = new Map([
     {
       severity: "Critical",
       owner: "Release Manager / Product Owner",
-      evidence: "passing signed-evidence-status report proving all signed documents satisfy signoff contract",
+      evidence:
+        "passing signed-evidence-status report proving all signed documents satisfy signoff contract and external-security proof references are present",
     },
   ],
   [
@@ -558,7 +703,7 @@ const lines = [
   `Deployment evidence file: ${deploymentEvidenceFile}`,
   `Training evidence file: ${trainingEvidenceFile}`,
   "",
-  "This report is advisory. It does not approve release. Named owners must still sign the UAT, deployment, training, and GO/NO-GO records.",
+  "This report is advisory. It does not approve release. Named owners must still sign the UAT, deployment, training, and GO/NO-GO records, and the final board decision must be recorded in ERP Admin > Release Readiness > GO / NO-GO.",
   "Download or copy workflow artifacts into the evidence root before running this command.",
   "",
   "Document Gates",
@@ -646,15 +791,21 @@ if (blockingFailures > 0) {
     `RESULT | NO-GO | ${blockingFailures} blocking gate(s) are missing or still pending. Warnings: ${warnings}.`,
   );
   lines.push(
-    "Next action: complete the missing evidence, rerun this report, then obtain named owner signoff.",
+    "Next action: complete the missing evidence, record/verify the matching ERP readiness-register entries, rerun this report, then obtain named owner signoff.",
   );
 } else if (warnings > 0) {
   lines.push(
     `RESULT | CONDITIONAL GO REVIEW | No blocking gates failed, but ${warnings} warning(s) need owner review before signoff.`,
   );
+  lines.push(
+    "Next action: record the conditional Release Board decision in ERP Admin > Release Readiness > GO / NO-GO before updating the final readiness gate.",
+  );
 } else {
   lines.push(
     "RESULT | GO REVIEW READY | All scanned gates passed. Named owner signoff is still required.",
+  );
+  lines.push(
+    "Next action: record the GO Release Board decision in ERP Admin > Release Readiness > GO / NO-GO before marking the final readiness gate ready.",
   );
 }
 
@@ -750,14 +901,34 @@ function evaluateArtifact(check) {
     }
 
     if (check.requireFreshManifest) {
+      const manifestPath = join(check.directory, latestFile);
+      const checksum = evaluateManifestChecksum(manifestPath);
+      if (!checksum.pass) {
+        return {
+          status: "FAIL",
+          detail: `matching artifact found but checksum verification failed in ${latestFile}: ${checksum.detail}`,
+        };
+      }
+
       const freshness = evaluateManifestFreshness(
         evidenceRoot,
-        join(check.directory, latestFile),
+        manifestPath,
       );
       if (!freshness.pass) {
         return {
           status: "FAIL",
           detail: `matching artifact found but stale in ${latestFile}: ${freshness.detail}`,
+        };
+      }
+    }
+
+    if (check.requireChecksumSidecar) {
+      const artifactPath = join(check.directory, latestFile);
+      const checksum = evaluateChecksumSidecar(artifactPath, check.label);
+      if (!checksum.pass) {
+        return {
+          status: "FAIL",
+          detail: `matching artifact found but checksum verification failed in ${latestFile}: ${checksum.detail}`,
         };
       }
     }

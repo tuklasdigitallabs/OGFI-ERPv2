@@ -1,7 +1,9 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
+import { recordAuthSessionInvalidation } from "./authInvalidation";
 import { requireSessionContext, type SessionContext } from "./context";
+import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import {
   getPermissionPresentation,
   getRecommendedPermissionCodesForRole,
@@ -16,12 +18,47 @@ type AuditEventWhereInput = NonNullable<
 const scopeReasonSchema = z.string().min(5).max(500);
 const accessLevelSchema = z.enum(["VIEW", "OPERATE", "APPROVE", "MANAGE"]);
 const assignableNonSensitiveRoleCodes = new Set(["CONFIGURED_REQUESTER"]);
+const highRiskLocationTypes = new Set([
+  "WAREHOUSE",
+  "COMMISSARY",
+  "CENTRAL_KITCHEN",
+  "HEAD_OFFICE",
+  "PROJECT_SITE",
+  "TEMPORARY_SITE"
+]);
 
 const createLocationScopeSchema = z.object({
   targetUserId: z.string().uuid(),
   locationId: z.string().uuid(),
   accessLevel: accessLevelSchema,
   reason: scopeReasonSchema
+});
+
+const requestHighRiskLocationScopeSchema = z.object({
+  targetUserId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  accessLevel: accessLevelSchema,
+  reason: scopeReasonSchema,
+  evidenceReference: z.string().trim().min(2).max(240)
+});
+
+const requestSensitiveRoleSchema = z.object({
+  targetUserId: z.string().uuid(),
+  roleId: z.string().uuid(),
+  reason: scopeReasonSchema,
+  evidenceReference: z.string().trim().min(2).max(240)
+});
+
+const reviewHighRiskLocationScopeSchema = z.object({
+  requestId: z.string().uuid(),
+  targetUserId: z.string().uuid(),
+  reviewReason: scopeReasonSchema
+});
+
+const reviewSensitiveRoleSchema = z.object({
+  requestId: z.string().uuid(),
+  targetUserId: z.string().uuid(),
+  reviewReason: scopeReasonSchema
 });
 
 const deactivateScopeSchema = z.object({
@@ -83,6 +120,13 @@ const createCoreAdminBrandSchema = z.object({
   reason: scopeReasonSchema
 });
 
+const createCoreAdminDepartmentSchema = z.object({
+  companyId: z.string().uuid(),
+  code: z.string().trim().min(2).max(50),
+  name: z.string().trim().min(2).max(255),
+  reason: scopeReasonSchema
+});
+
 const createCoreAdminLocationSchema = z.object({
   companyId: z.string().uuid(),
   brandId: optionalUuidSchema,
@@ -130,6 +174,41 @@ export function assertNoActiveDuplicateScope(existingAssignmentId?: string) {
   }
 }
 
+export function getLocationScopeRiskLabel(location: { locationType: string }) {
+  if (highRiskLocationTypes.has(location.locationType)) {
+    return "High-risk location requires controlled approval";
+  }
+  return "Standard branch scope";
+}
+
+export function isDirectlyAssignableLocationScope(input: {
+  locationType: string;
+  accessLevel: z.infer<typeof accessLevelSchema>;
+}) {
+  return (
+    input.accessLevel !== "MANAGE" &&
+    !highRiskLocationTypes.has(input.locationType)
+  );
+}
+
+export function assertDirectLocationScopeAssignmentAllowed(input: {
+  locationType: string;
+  accessLevel: z.infer<typeof accessLevelSchema>;
+}) {
+  if (!isDirectlyAssignableLocationScope(input)) {
+    throw new Error("HIGH_RISK_SCOPE_ASSIGNMENT_BLOCKED");
+  }
+}
+
+export function assertRequiresControlledLocationScopeRequest(input: {
+  locationType: string;
+  accessLevel: z.infer<typeof accessLevelSchema>;
+}) {
+  if (isDirectlyAssignableLocationScope(input)) {
+    throw new Error("LOW_RISK_SCOPE_USE_QUICK_ASSIGNMENT");
+  }
+}
+
 export function assertNotSelfRoleMutation(
   actorUserId: string,
   targetUserId: string
@@ -155,7 +234,7 @@ export function assertAssignableNonSensitiveRole(roleCode: string) {
   }
 }
 
-function isDirectlyAssignableRole(role: {
+export function isDirectlyAssignableRole(role: {
   code: string;
   systemRole: boolean;
   permissions: Array<{ permission: { code: string } }>;
@@ -171,6 +250,16 @@ function isDirectlyAssignableRole(role: {
   );
 }
 
+export function assertDirectRoleAssignmentAllowed(role: {
+  code: string;
+  systemRole: boolean;
+  permissions: Array<{ permission: { code: string } }>;
+}) {
+  if (!isDirectlyAssignableRole(role)) {
+    throw new Error("SENSITIVE_ROLE_ASSIGNMENT_BLOCKED");
+  }
+}
+
 function roleAssignmentRiskLabel(role: {
   code: string;
   systemRole: boolean;
@@ -183,6 +272,47 @@ function roleAssignmentRiskLabel(role: {
     return "Admin-controlled role";
   }
   return "Sensitive permissions require admin reason";
+}
+
+function sensitiveRoleRiskLabel(role: {
+  code: string;
+  systemRole: boolean;
+  permissions: Array<{ permission: { code: string } }>;
+}) {
+  if (role.systemRole) {
+    return "System/admin role requires controlled approval";
+  }
+  if (!isDirectlyAssignableRole(role)) {
+    return "Sensitive permissions require controlled approval";
+  }
+  return "Use quick role assignment";
+}
+
+export async function touchUserPrivilegeEpoch(
+  tx: TransactionClient,
+  userId: string,
+  input: {
+    companyId?: string | null;
+    requestedByUserId?: string | null;
+    reason?: string;
+    sourceEventType?: string;
+    sourceRecordId?: string | null;
+  } = {}
+) {
+  await tx.user.update({
+    where: { id: userId },
+    data: { updatedAt: new Date() }
+  });
+  await recordAuthSessionInvalidation(tx, {
+    targetUserId: userId,
+    companyId: input.companyId ?? null,
+    requestedByUserId: input.requestedByUserId ?? null,
+    reason:
+      input.reason ??
+      "Privilege epoch changed; invalidate active sessions for sensitive access.",
+    sourceEventType: input.sourceEventType ?? "privilege_epoch.changed",
+    sourceRecordId: input.sourceRecordId ?? null
+  });
 }
 
 export function assertRolePermissionChangesExist(
@@ -256,6 +386,7 @@ export async function getCoreAdminOverview(session: SessionContext) {
     roles,
     companies,
     brands,
+    departments,
     locations,
     approvalRules,
     recentAuditEvents
@@ -307,6 +438,21 @@ export async function getCoreAdminOverview(session: SessionContext) {
           company: true
         },
         orderBy: { name: "asc" }
+      }),
+      prisma.department.findMany({
+        where: { tenantId: session.context.tenantId },
+        include: {
+          company: true,
+          _count: {
+            select: {
+              budgets: true,
+              budgetLines: true,
+              costCenters: true,
+              employeeAssignments: true
+            }
+          }
+        },
+        orderBy: [{ company: { legalName: "asc" } }, { name: "asc" }]
       }),
       prisma.location.findMany({
         where: { tenantId: session.context.tenantId },
@@ -387,6 +533,18 @@ export async function getCoreAdminOverview(session: SessionContext) {
       code: brand.code,
       status: brand.status
     })),
+    departments: departments.map((department) => ({
+      id: department.id,
+      companyId: department.companyId,
+      companyName: department.company.tradingName ?? department.company.legalName,
+      name: department.name,
+      code: department.code,
+      status: department.status,
+      budgetCount: department._count.budgets,
+      budgetLineCount: department._count.budgetLines,
+      costCenterCount: department._count.costCenters,
+      employeeAssignmentCount: department._count.employeeAssignments
+    })),
     locations: locations.map((location) => ({
       id: location.id,
       companyName: location.company.tradingName ?? location.company.legalName,
@@ -466,10 +624,17 @@ export async function createCoreAdminUser(formData: FormData) {
   if (values.initialRoleId && !initialRole) {
     throw new Error("TARGET_ROLE_NOT_FOUND");
   }
+  if (initialRole) {
+    assertDirectRoleAssignmentAllowed(initialRole);
+  }
   if (values.initialLocationId && !initialLocation) {
     throw new Error("TARGET_LOCATION_NOT_FOUND");
   }
   if (initialLocation) {
+    assertDirectLocationScopeAssignmentAllowed({
+      locationType: initialLocation.locationType,
+      accessLevel: values.accessLevel
+    });
     await assertCanManageCompanyScope(session, initialLocation.companyId);
   } else {
     await assertCanManageCompanyScope(session, session.context.companyId);
@@ -568,6 +733,10 @@ export async function createCoreAdminUser(formData: FormData) {
           }
         }
       });
+    }
+
+    if (initialRole || initialLocation) {
+      await touchUserPrivilegeEpoch(tx, user.id);
     }
   });
 }
@@ -752,6 +921,76 @@ export async function createCoreAdminBrand(formData: FormData) {
         code: brand.code,
         name: brand.name,
         status: brand.status
+      },
+      metadata: {
+        reason: values.reason,
+        companyName: company.tradingName ?? company.legalName
+      }
+    }
+  });
+}
+
+export async function createCoreAdminDepartment(formData: FormData) {
+  const session = await requireSessionContext();
+  await requirePermission(session, permissions.coreAdminister);
+  const values = createCoreAdminDepartmentSchema.parse(
+    Object.fromEntries(formData)
+  );
+  const code = normalizeBusinessCode(values.code);
+  if (!code) {
+    throw new Error("CORE_ADMIN_DEPARTMENT_CODE_INVALID");
+  }
+
+  const [company, existingDepartment] = await Promise.all([
+    prisma.company.findFirst({
+      where: {
+        id: values.companyId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE"
+      }
+    }),
+    prisma.department.findUnique({
+      where: {
+        companyId_code: {
+          companyId: values.companyId,
+          code
+        }
+      },
+      select: { id: true }
+    })
+  ]);
+
+  if (!company) {
+    throw new Error("COMPANY_NOT_FOUND");
+  }
+  if (existingDepartment) {
+    throw new Error("CORE_ADMIN_DEPARTMENT_DUPLICATE");
+  }
+
+  await assertCanManageCompanyScope(session, company.id);
+
+  const department = await prisma.department.create({
+    data: {
+      tenantId: session.context.tenantId,
+      companyId: company.id,
+      code,
+      name: values.name
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      tenantId: session.context.tenantId,
+      companyId: company.id,
+      actorUserId: session.user.id,
+      eventType: "core_admin.department.created",
+      entityType: "Department",
+      entityId: department.id,
+      afterData: {
+        companyId: company.id,
+        code: department.code,
+        name: department.name,
+        status: department.status
       },
       metadata: {
         reason: values.reason,
@@ -1025,6 +1264,83 @@ export async function getCoreAdminUserDetail(
     },
     orderBy: { name: "asc" }
   });
+  const [highRiskScopeRequests, sensitiveRoleRequests, allActiveLocations] =
+    await Promise.all([
+    prisma.highRiskScopeRequest.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        targetUserId: user.id,
+        status: { in: ["PENDING", "APPROVED", "REJECTED"] }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20
+    }),
+    prisma.sensitiveRoleRequest.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        targetUserId: user.id,
+        status: { in: ["PENDING", "APPROVED", "REJECTED"] }
+      },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: { permission: true }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20
+    }),
+    prisma.location.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
+      orderBy: { name: "asc" }
+    })
+  ]);
+  const highRiskRequestUserIds = Array.from(
+    new Set(
+      [
+        ...highRiskScopeRequests.flatMap((request) => [
+          request.requestedByUserId,
+          ...(request.reviewedByUserId ? [request.reviewedByUserId] : [])
+        ]),
+        ...sensitiveRoleRequests.flatMap((request) => [
+          request.requestedByUserId,
+          ...(request.reviewedByUserId ? [request.reviewedByUserId] : [])
+        ])
+      ]
+    )
+  );
+  const highRiskRequestUsers = highRiskRequestUserIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: { in: highRiskRequestUserIds },
+          tenantId: session.context.tenantId
+        },
+        select: { id: true, displayName: true, email: true }
+      })
+    : [];
+  const highRiskRequestUserDisplay = new Map(
+    highRiskRequestUsers.map((requestUser) => [
+      requestUser.id,
+      requestUser.displayName || requestUser.email
+    ])
+  );
+  const allActiveLocationDisplay = new Map(
+    allActiveLocations.map((location) => [location.id, location])
+  );
+  const pendingSensitiveRoleIds = new Set(
+    sensitiveRoleRequests
+      .filter((request) => request.status === "PENDING")
+      .map((request) => request.roleId)
+  );
 
   return {
     id: user.id,
@@ -1049,26 +1365,67 @@ export async function getCoreAdminUserDetail(
         scopeDisplay.get(assignment.scopeId)?.context ?? "Scope record not found",
       code: scopeDisplay.get(assignment.scopeId)?.code ?? null,
       accessLevel: assignment.accessLevel,
+      canMutate:
+        assignment.scopeType === "LOCATION" &&
+        isDirectlyAssignableLocationScope({
+          locationType:
+            scopeLocations.find((location) => location.id === assignment.scopeId)
+              ?.locationType ?? "UNKNOWN",
+          accessLevel: assignment.accessLevel as z.infer<typeof accessLevelSchema>
+        }),
+      riskLabel:
+        assignment.scopeType === "LOCATION"
+          ? getLocationScopeRiskLabel({
+              locationType:
+                scopeLocations.find((location) => location.id === assignment.scopeId)
+                  ?.locationType ?? "UNKNOWN"
+            })
+          : "Broad scope requires controlled approval",
       startsAt: assignment.startsAt.toISOString()
     })),
-    assignableLocations: await prisma.location.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      },
-      orderBy: { name: "asc" }
-    }).then((locations) =>
-      locations.map((location) => ({
+    assignableLocations: allActiveLocations.map((location) => ({
         id: location.id,
         name: location.name,
         code: location.code,
-        type: location.locationType
-      }))
-    ),
+        type: location.locationType,
+        assignmentEligibility: getLocationScopeRiskLabel(location),
+        directAssignable: isDirectlyAssignableLocationScope({
+          locationType: location.locationType,
+          accessLevel: "VIEW"
+        })
+      })),
+    highRiskScopeRequests: highRiskScopeRequests.map((request) => {
+      const location = allActiveLocationDisplay.get(request.locationId);
+      return {
+        id: request.id,
+        status: request.status,
+        accessLevel: request.accessLevel,
+        reason: request.reason,
+        evidenceReference: request.evidenceReference,
+        reviewReason: request.reviewReason,
+        createdAt: request.createdAt.toISOString(),
+        reviewedAt: request.reviewedAt?.toISOString() ?? null,
+        requestedByUserId: request.requestedByUserId,
+        requestedByName:
+          highRiskRequestUserDisplay.get(request.requestedByUserId) ??
+          "Unknown requester",
+        reviewedByName: request.reviewedByUserId
+          ? highRiskRequestUserDisplay.get(request.reviewedByUserId) ??
+            "Unknown reviewer"
+          : null,
+        locationId: request.locationId,
+        locationName: location?.name ?? "Unknown location",
+        locationCode: location?.code ?? null,
+        locationType: location?.locationType ?? "UNKNOWN",
+        riskLabel: location
+          ? getLocationScopeRiskLabel(location)
+          : "Scope record not found"
+      };
+    }),
     canMutateScopes: user.id !== session.user.id,
     canMutateRoles: user.id !== session.user.id,
     assignableRoles: assignableRoles
+      .filter((role) => isDirectlyAssignableRole(role))
       .map((role) => ({
         id: role.id,
         name: role.name,
@@ -1078,6 +1435,42 @@ export async function getCoreAdminUserDetail(
           (rolePermission) => rolePermission.permission.code
         )
       })),
+    requestableSensitiveRoles: assignableRoles
+      .filter((role) => !isDirectlyAssignableRole(role))
+      .filter((role) => !pendingSensitiveRoleIds.has(role.id))
+      .map((role) => ({
+        id: role.id,
+        name: role.name,
+        code: role.code,
+        assignmentEligibility: sensitiveRoleRiskLabel(role),
+        permissionCodes: role.permissions.map(
+          (rolePermission) => rolePermission.permission.code
+        )
+      })),
+    sensitiveRoleRequests: sensitiveRoleRequests.map((request) => ({
+      id: request.id,
+      status: request.status,
+      reason: request.reason,
+      evidenceReference: request.evidenceReference,
+      reviewReason: request.reviewReason,
+      createdAt: request.createdAt.toISOString(),
+      reviewedAt: request.reviewedAt?.toISOString() ?? null,
+      requestedByUserId: request.requestedByUserId,
+      requestedByName:
+        highRiskRequestUserDisplay.get(request.requestedByUserId) ??
+        "Unknown requester",
+      reviewedByName: request.reviewedByUserId
+        ? highRiskRequestUserDisplay.get(request.reviewedByUserId) ??
+          "Unknown reviewer"
+        : null,
+      roleId: request.roleId,
+      roleName: request.role.name,
+      roleCode: request.role.code,
+      riskLabel: sensitiveRoleRiskLabel(request.role),
+      permissionLabels: request.role.permissions.map((rolePermission) =>
+        getPermissionPresentation(rolePermission.permission.code)
+      )
+    })),
     permissionCodes,
     permissions: permissionCodes.map((code) => getPermissionPresentation(code)),
     auditEvents: user.auditEvents.map((event) => ({
@@ -1125,6 +1518,7 @@ export async function createUserRoleAssignment(formData: FormData) {
   if (!role) {
     throw new Error("TARGET_ROLE_NOT_FOUND");
   }
+  assertDirectRoleAssignmentAllowed(role);
 
   await assertCanManageCompanyScope(session, session.context.companyId);
   await assertRoleNotUsedInActiveApprovalRules(role.id, session.context.tenantId);
@@ -1150,6 +1544,7 @@ export async function createUserRoleAssignment(formData: FormData) {
         roleId: role.id
       }
     });
+    await touchUserPrivilegeEpoch(tx, targetUser.id);
 
     await tx.auditEvent.create({
       data: {
@@ -1209,6 +1604,7 @@ export async function deactivateUserRoleAssignment(formData: FormData) {
   if (!assignment) {
     throw new Error("ROLE_ASSIGNMENT_NOT_FOUND");
   }
+  assertDirectRoleAssignmentAllowed(assignment.role);
 
   await assertCanManageCompanyScope(session, session.context.companyId);
   await assertRoleNotUsedInActiveApprovalRules(
@@ -1228,6 +1624,7 @@ export async function deactivateUserRoleAssignment(formData: FormData) {
         endsAt: endedAt
       }
     });
+    await touchUserPrivilegeEpoch(tx, assignment.userId);
 
     await tx.auditEvent.create({
       data: {
@@ -1254,6 +1651,384 @@ export async function deactivateUserRoleAssignment(formData: FormData) {
           roleCode: assignment.role.code,
           permissionCodes,
           nonSensitiveAllowlist: true
+        }
+      }
+    });
+  });
+}
+
+export async function requestSensitiveUserRole(formData: FormData) {
+  const session = await requireSessionContext();
+  const values = requestSensitiveRoleSchema.parse(Object.fromEntries(formData));
+  assertNotSelfRoleMutation(session.user.id, values.targetUserId);
+
+  const [targetUser, role] = await Promise.all([
+    prisma.user.findFirst({
+      where: {
+        id: values.targetUserId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE"
+      }
+    }),
+    prisma.role.findFirst({
+      where: {
+        id: values.roleId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE"
+      },
+      include: {
+        permissions: {
+          include: {
+            permission: true
+          }
+        }
+      }
+    })
+  ]);
+
+  if (!targetUser) {
+    throw new Error("TARGET_USER_NOT_FOUND");
+  }
+  if (!role) {
+    throw new Error("TARGET_ROLE_NOT_FOUND");
+  }
+  if (isDirectlyAssignableRole(role)) {
+    throw new Error("LOW_RISK_ROLE_USE_QUICK_ASSIGNMENT");
+  }
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertRoleNotUsedInActiveApprovalRules(role.id, session.context.tenantId);
+  await assertPrivilegedMfaForAction(session, {
+    action: "sensitive_role_request.create",
+    permissionCode: permissions.coreAdminister,
+    entityType: "SensitiveRoleRequest",
+    reason: "Sensitive role requests require verified privileged MFA evidence.",
+    metadata: {
+      targetUserId: targetUser.id,
+      roleId: role.id,
+      roleCode: role.code
+    }
+  });
+
+  const [existingAssignment, pendingRequest] = await Promise.all([
+    prisma.userRoleAssignment.findFirst({
+      where: {
+        userId: targetUser.id,
+        roleId: role.id,
+        status: "ACTIVE"
+      },
+      select: { id: true }
+    }),
+    prisma.sensitiveRoleRequest.findFirst({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        targetUserId: targetUser.id,
+        roleId: role.id,
+        status: "PENDING"
+      },
+      select: { id: true }
+    })
+  ]);
+  assertNoActiveDuplicateRole(existingAssignment?.id);
+  if (pendingRequest) {
+    throw new Error("DUPLICATE_PENDING_SENSITIVE_ROLE_REQUEST");
+  }
+
+  const permissionCodes = role.permissions.map(
+    (rolePermission) => rolePermission.permission.code
+  );
+
+  await prisma.$transaction(async (tx) => {
+    const request = await tx.sensitiveRoleRequest.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        targetUserId: targetUser.id,
+        roleId: role.id,
+        reason: values.reason,
+        evidenceReference: values.evidenceReference,
+        requestedByUserId: session.user.id
+      }
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        eventType: "sensitive_role_request.created",
+        entityType: "SensitiveRoleRequest",
+        entityId: request.id,
+        afterData: {
+          targetUserId: targetUser.id,
+          roleId: role.id,
+          roleCode: role.code,
+          status: "PENDING"
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          reason: values.reason,
+          evidenceReference: values.evidenceReference,
+          targetUserEmail: targetUser.email,
+          roleName: role.name,
+          roleCode: role.code,
+          permissionCodes,
+          riskLabel: sensitiveRoleRiskLabel(role)
+        }
+      }
+    });
+  });
+}
+
+export async function approveSensitiveUserRoleRequest(formData: FormData) {
+  const session = await requireSessionContext();
+  const values = reviewSensitiveRoleSchema.parse(Object.fromEntries(formData));
+
+  const request = await prisma.sensitiveRoleRequest.findFirst({
+    where: {
+      id: values.requestId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      targetUserId: values.targetUserId,
+      status: "PENDING"
+    }
+  });
+  if (!request) {
+    throw new Error("SENSITIVE_ROLE_REQUEST_NOT_FOUND");
+  }
+  if (
+    request.requestedByUserId === session.user.id ||
+    request.targetUserId === session.user.id
+  ) {
+    throw new Error("SELF_ROLE_APPROVAL_BLOCKED");
+  }
+
+  const [targetUser, role] = await Promise.all([
+    prisma.user.findFirst({
+      where: {
+        id: request.targetUserId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE"
+      }
+    }),
+    prisma.role.findFirst({
+      where: {
+        id: request.roleId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE"
+      },
+      include: {
+        permissions: {
+          include: {
+            permission: true
+          }
+        }
+      }
+    })
+  ]);
+  if (!targetUser) {
+    throw new Error("TARGET_USER_NOT_FOUND");
+  }
+  if (!role) {
+    throw new Error("TARGET_ROLE_NOT_FOUND");
+  }
+  if (isDirectlyAssignableRole(role)) {
+    throw new Error("LOW_RISK_ROLE_USE_QUICK_ASSIGNMENT");
+  }
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertRoleNotUsedInActiveApprovalRules(role.id, session.context.tenantId);
+  await assertPrivilegedMfaForAction(session, {
+    action: "sensitive_role_request.approve",
+    permissionCode: permissions.coreAdminister,
+    entityType: "SensitiveRoleRequest",
+    entityId: request.id,
+    reason: "Sensitive role approval requires verified privileged MFA evidence.",
+    metadata: {
+      targetUserId: targetUser.id,
+      roleId: role.id,
+      roleCode: role.code
+    }
+  });
+
+  const existing = await prisma.userRoleAssignment.findFirst({
+    where: {
+      userId: targetUser.id,
+      roleId: role.id,
+      status: "ACTIVE"
+    },
+    select: { id: true }
+  });
+  assertNoActiveDuplicateRole(existing?.id);
+  const reviewedAt = new Date();
+  const permissionCodes = role.permissions.map(
+    (rolePermission) => rolePermission.permission.code
+  );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.sensitiveRoleRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "APPROVED",
+        reviewedByUserId: session.user.id,
+        reviewReason: values.reviewReason,
+        reviewedAt
+      }
+    });
+
+    const assignment = await tx.userRoleAssignment.create({
+      data: {
+        userId: targetUser.id,
+        roleId: role.id
+      }
+    });
+    await touchUserPrivilegeEpoch(tx, targetUser.id, {
+      companyId: session.context.companyId,
+      requestedByUserId: session.user.id,
+      reason: "Sensitive role assignment approved; invalidate active sessions.",
+      sourceEventType: "sensitive_role_request.approved",
+      sourceRecordId: request.id
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        eventType: "sensitive_role_request.approved",
+        entityType: "SensitiveRoleRequest",
+        entityId: request.id,
+        beforeData: {
+          status: "PENDING"
+        },
+        afterData: {
+          status: "APPROVED",
+          assignmentId: assignment.id
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          reviewReason: values.reviewReason,
+          requestedByUserId: request.requestedByUserId,
+          targetUserEmail: targetUser.email,
+          roleName: role.name,
+          roleCode: role.code,
+          permissionCodes
+        }
+      }
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        eventType: "user_role_assignment.created",
+        entityType: "UserRoleAssignment",
+        entityId: assignment.id,
+        afterData: {
+          userId: targetUser.id,
+          roleId: role.id,
+          roleCode: role.code,
+          status: "ACTIVE"
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          sourceRequestId: request.id,
+          reviewReason: values.reviewReason,
+          targetUserEmail: targetUser.email,
+          roleName: role.name,
+          roleCode: role.code,
+          permissionCodes,
+          controlledSensitiveRoleAssignment: true
+        }
+      }
+    });
+  });
+}
+
+export async function rejectSensitiveUserRoleRequest(formData: FormData) {
+  const session = await requireSessionContext();
+  const values = reviewSensitiveRoleSchema.parse(Object.fromEntries(formData));
+
+  const request = await prisma.sensitiveRoleRequest.findFirst({
+    where: {
+      id: values.requestId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      targetUserId: values.targetUserId,
+      status: "PENDING"
+    }
+  });
+  if (!request) {
+    throw new Error("SENSITIVE_ROLE_REQUEST_NOT_FOUND");
+  }
+  if (
+    request.requestedByUserId === session.user.id ||
+    request.targetUserId === session.user.id
+  ) {
+    throw new Error("SELF_ROLE_APPROVAL_BLOCKED");
+  }
+  const role = await prisma.role.findFirst({
+    where: {
+      id: request.roleId,
+      tenantId: session.context.tenantId
+    },
+    include: {
+      permissions: {
+        include: {
+          permission: true
+        }
+      }
+    }
+  });
+  if (!role) {
+    throw new Error("TARGET_ROLE_NOT_FOUND");
+  }
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertPrivilegedMfaForAction(session, {
+    action: "sensitive_role_request.reject",
+    permissionCode: permissions.coreAdminister,
+    entityType: "SensitiveRoleRequest",
+    entityId: request.id,
+    reason: "Sensitive role rejection requires verified privileged MFA evidence.",
+    metadata: {
+      targetUserId: request.targetUserId,
+      roleId: role.id,
+      roleCode: role.code
+    }
+  });
+  const reviewedAt = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.sensitiveRoleRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "REJECTED",
+        reviewedByUserId: session.user.id,
+        reviewReason: values.reviewReason,
+        reviewedAt
+      }
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        eventType: "sensitive_role_request.rejected",
+        entityType: "SensitiveRoleRequest",
+        entityId: request.id,
+        beforeData: {
+          status: "PENDING"
+        },
+        afterData: {
+          status: "REJECTED"
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          reviewReason: values.reviewReason,
+          requestedByUserId: request.requestedByUserId,
+          roleName: role.name,
+          roleCode: role.code
         }
       }
     });
@@ -1289,6 +2064,10 @@ export async function createUserLocationScopeAssignment(formData: FormData) {
   if (!location) {
     throw new Error("TARGET_LOCATION_NOT_FOUND");
   }
+  assertDirectLocationScopeAssignmentAllowed({
+    locationType: location.locationType,
+    accessLevel: values.accessLevel
+  });
 
   await assertCanManageCompanyScope(session, location.companyId);
 
@@ -1312,6 +2091,7 @@ export async function createUserLocationScopeAssignment(formData: FormData) {
         accessLevel: values.accessLevel
       }
     });
+    await touchUserPrivilegeEpoch(tx, targetUser.id);
 
     await tx.auditEvent.create({
       data: {
@@ -1331,7 +2111,375 @@ export async function createUserLocationScopeAssignment(formData: FormData) {
         metadata: {
           reason: values.reason,
           targetUserEmail: targetUser.email,
-          locationCode: location.code
+          locationCode: location.code,
+          locationType: location.locationType,
+          directScopeAssignment: true
+        }
+      }
+    });
+  });
+}
+
+export async function requestHighRiskUserLocationScope(formData: FormData) {
+  const session = await requireSessionContext();
+  const values = requestHighRiskLocationScopeSchema.parse(
+    Object.fromEntries(formData)
+  );
+  assertNotSelfScopeMutation(session.user.id, values.targetUserId);
+
+  const [targetUser, location] = await Promise.all([
+    prisma.user.findFirst({
+      where: {
+        id: values.targetUserId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE"
+      }
+    }),
+    prisma.location.findFirst({
+      where: {
+        id: values.locationId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      }
+    })
+  ]);
+
+  if (!targetUser) {
+    throw new Error("TARGET_USER_NOT_FOUND");
+  }
+  if (!location) {
+    throw new Error("TARGET_LOCATION_NOT_FOUND");
+  }
+  assertRequiresControlledLocationScopeRequest({
+    locationType: location.locationType,
+    accessLevel: values.accessLevel
+  });
+  await assertCanManageCompanyScope(session, location.companyId);
+  await assertPrivilegedMfaForAction(session, {
+    action: "high_risk_scope_request.create",
+    permissionCode: permissions.coreAdminister,
+    entityType: "HighRiskScopeRequest",
+    reason: "High-risk scope requests require verified privileged MFA evidence.",
+    metadata: {
+      targetUserId: targetUser.id,
+      locationId: location.id,
+      locationType: location.locationType,
+      accessLevel: values.accessLevel
+    }
+  });
+
+  const [existingAssignment, pendingRequest] = await Promise.all([
+    prisma.userScopeAssignment.findFirst({
+      where: {
+        userId: targetUser.id,
+        scopeType: "LOCATION",
+        scopeId: location.id,
+        status: "ACTIVE"
+      },
+      select: { id: true }
+    }),
+    prisma.highRiskScopeRequest.findFirst({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: location.companyId,
+        targetUserId: targetUser.id,
+        locationId: location.id,
+        status: "PENDING"
+      },
+      select: { id: true }
+    })
+  ]);
+  assertNoActiveDuplicateScope(existingAssignment?.id);
+  if (pendingRequest) {
+    throw new Error("DUPLICATE_PENDING_HIGH_RISK_SCOPE_REQUEST");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const request = await tx.highRiskScopeRequest.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: location.companyId,
+        targetUserId: targetUser.id,
+        locationId: location.id,
+        accessLevel: values.accessLevel,
+        reason: values.reason,
+        evidenceReference: values.evidenceReference,
+        requestedByUserId: session.user.id
+      }
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: location.companyId,
+        actorUserId: session.user.id,
+        eventType: "high_risk_scope_request.created",
+        entityType: "HighRiskScopeRequest",
+        entityId: request.id,
+        afterData: {
+          targetUserId: targetUser.id,
+          scopeType: "LOCATION",
+          scopeId: location.id,
+          accessLevel: values.accessLevel,
+          status: "PENDING"
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          reason: values.reason,
+          evidenceReference: values.evidenceReference,
+          targetUserEmail: targetUser.email,
+          locationCode: location.code,
+          locationType: location.locationType,
+          riskLabel: getLocationScopeRiskLabel(location)
+        }
+      }
+    });
+  });
+}
+
+export async function approveHighRiskUserLocationScopeRequest(
+  formData: FormData
+) {
+  const session = await requireSessionContext();
+  const values = reviewHighRiskLocationScopeSchema.parse(
+    Object.fromEntries(formData)
+  );
+
+  const request = await prisma.highRiskScopeRequest.findFirst({
+    where: {
+      id: values.requestId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      targetUserId: values.targetUserId,
+      status: "PENDING"
+    }
+  });
+  if (!request) {
+    throw new Error("HIGH_RISK_SCOPE_REQUEST_NOT_FOUND");
+  }
+  if (
+    request.requestedByUserId === session.user.id ||
+    request.targetUserId === session.user.id
+  ) {
+    throw new Error("SELF_SCOPE_APPROVAL_BLOCKED");
+  }
+
+  const [targetUser, location] = await Promise.all([
+    prisma.user.findFirst({
+      where: {
+        id: request.targetUserId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE"
+      }
+    }),
+    prisma.location.findFirst({
+      where: {
+        id: request.locationId,
+        tenantId: session.context.tenantId,
+        companyId: request.companyId,
+        status: "ACTIVE"
+      }
+    })
+  ]);
+  if (!targetUser) {
+    throw new Error("TARGET_USER_NOT_FOUND");
+  }
+  if (!location) {
+    throw new Error("TARGET_LOCATION_NOT_FOUND");
+  }
+  assertRequiresControlledLocationScopeRequest({
+    locationType: location.locationType,
+    accessLevel: request.accessLevel as z.infer<typeof accessLevelSchema>
+  });
+  await assertCanManageCompanyScope(session, location.companyId);
+  await assertPrivilegedMfaForAction(session, {
+    action: "high_risk_scope_request.approve",
+    permissionCode: permissions.coreAdminister,
+    entityType: "HighRiskScopeRequest",
+    entityId: request.id,
+    reason: "High-risk scope approval requires verified privileged MFA evidence.",
+    metadata: {
+      targetUserId: targetUser.id,
+      locationId: location.id,
+      locationType: location.locationType,
+      accessLevel: request.accessLevel
+    }
+  });
+
+  const existing = await prisma.userScopeAssignment.findFirst({
+    where: {
+      userId: targetUser.id,
+      scopeType: "LOCATION",
+      scopeId: location.id,
+      status: "ACTIVE"
+    },
+    select: { id: true }
+  });
+  assertNoActiveDuplicateScope(existing?.id);
+  const reviewedAt = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.highRiskScopeRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "APPROVED",
+        reviewedByUserId: session.user.id,
+        reviewReason: values.reviewReason,
+        reviewedAt
+      }
+    });
+
+    const assignment = await tx.userScopeAssignment.create({
+      data: {
+        userId: targetUser.id,
+        scopeType: "LOCATION",
+        scopeId: location.id,
+        accessLevel: request.accessLevel
+      }
+    });
+    await touchUserPrivilegeEpoch(tx, targetUser.id);
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: location.companyId,
+        actorUserId: session.user.id,
+        eventType: "high_risk_scope_request.approved",
+        entityType: "HighRiskScopeRequest",
+        entityId: request.id,
+        beforeData: {
+          status: "PENDING"
+        },
+        afterData: {
+          status: "APPROVED",
+          assignmentId: assignment.id
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          reviewReason: values.reviewReason,
+          requestedByUserId: request.requestedByUserId,
+          targetUserEmail: targetUser.email,
+          locationCode: location.code,
+          locationType: location.locationType,
+          accessLevel: request.accessLevel
+        }
+      }
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: location.companyId,
+        actorUserId: session.user.id,
+        eventType: "user_scope_assignment.created",
+        entityType: "UserScopeAssignment",
+        entityId: assignment.id,
+        afterData: {
+          userId: targetUser.id,
+          scopeType: "LOCATION",
+          scopeId: location.id,
+          accessLevel: request.accessLevel,
+          status: "ACTIVE"
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          sourceRequestId: request.id,
+          reviewReason: values.reviewReason,
+          targetUserEmail: targetUser.email,
+          locationCode: location.code,
+          locationType: location.locationType,
+          controlledScopeAssignment: true
+        }
+      }
+    });
+  });
+}
+
+export async function rejectHighRiskUserLocationScopeRequest(
+  formData: FormData
+) {
+  const session = await requireSessionContext();
+  const values = reviewHighRiskLocationScopeSchema.parse(
+    Object.fromEntries(formData)
+  );
+
+  const request = await prisma.highRiskScopeRequest.findFirst({
+    where: {
+      id: values.requestId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      targetUserId: values.targetUserId,
+      status: "PENDING"
+    }
+  });
+  if (!request) {
+    throw new Error("HIGH_RISK_SCOPE_REQUEST_NOT_FOUND");
+  }
+  if (
+    request.requestedByUserId === session.user.id ||
+    request.targetUserId === session.user.id
+  ) {
+    throw new Error("SELF_SCOPE_APPROVAL_BLOCKED");
+  }
+  const location = await prisma.location.findFirst({
+    where: {
+      id: request.locationId,
+      tenantId: session.context.tenantId,
+      companyId: request.companyId
+    }
+  });
+  if (!location) {
+    throw new Error("TARGET_LOCATION_NOT_FOUND");
+  }
+  await assertCanManageCompanyScope(session, location.companyId);
+  await assertPrivilegedMfaForAction(session, {
+    action: "high_risk_scope_request.reject",
+    permissionCode: permissions.coreAdminister,
+    entityType: "HighRiskScopeRequest",
+    entityId: request.id,
+    reason: "High-risk scope rejection requires verified privileged MFA evidence.",
+    metadata: {
+      targetUserId: request.targetUserId,
+      locationId: location.id,
+      locationType: location.locationType,
+      accessLevel: request.accessLevel
+    }
+  });
+  const reviewedAt = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.highRiskScopeRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "REJECTED",
+        reviewedByUserId: session.user.id,
+        reviewReason: values.reviewReason,
+        reviewedAt
+      }
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: location.companyId,
+        actorUserId: session.user.id,
+        eventType: "high_risk_scope_request.rejected",
+        entityType: "HighRiskScopeRequest",
+        entityId: request.id,
+        beforeData: {
+          status: "PENDING"
+        },
+        afterData: {
+          status: "REJECTED"
+        },
+        metadata: {
+          sourceDecisionId: "DEC-0036",
+          reviewReason: values.reviewReason,
+          requestedByUserId: request.requestedByUserId,
+          locationCode: location.code,
+          locationType: location.locationType,
+          accessLevel: request.accessLevel
         }
       }
     });
@@ -1375,6 +2523,10 @@ export async function deactivateUserScopeAssignment(formData: FormData) {
   if (!location) {
     throw new Error("TARGET_LOCATION_NOT_FOUND");
   }
+  assertDirectLocationScopeAssignmentAllowed({
+    locationType: location.locationType,
+    accessLevel: assignment.accessLevel as z.infer<typeof accessLevelSchema>
+  });
 
   await assertCanManageCompanyScope(session, location.companyId);
   const endedAt = new Date();
@@ -1387,6 +2539,7 @@ export async function deactivateUserScopeAssignment(formData: FormData) {
         endsAt: endedAt
       }
     });
+    await touchUserPrivilegeEpoch(tx, assignment.userId);
 
     await tx.auditEvent.create({
       data: {
@@ -1410,7 +2563,9 @@ export async function deactivateUserScopeAssignment(formData: FormData) {
         metadata: {
           reason: values.reason,
           targetUserEmail: assignment.user.email,
-          locationCode: location.code
+          locationCode: location.code,
+          locationType: location.locationType,
+          directScopeDeactivation: true
         }
       }
     });
@@ -1846,6 +3001,22 @@ async function updateRolePermissionCodes({
   const sensitiveChanges = [...addedCodes, ...removedCodes].filter((code) =>
     isSensitivePermissionCode(code)
   );
+  if (sensitiveChanges.length > 0) {
+    await assertPrivilegedMfaForAction(session, {
+      action: "role_permissions.update_sensitive",
+      permissionCode: permissions.coreAdminister,
+      entityType: "Role",
+      entityId: role.id,
+      reason:
+        "Sensitive role-permission changes require verified privileged MFA evidence.",
+      metadata: {
+        roleCode: role.code,
+        addedCodes,
+        removedCodes,
+        sensitiveChanges
+      }
+    });
+  }
 
   await prisma.$transaction(async (tx) => {
     if (removedCodes.length > 0) {

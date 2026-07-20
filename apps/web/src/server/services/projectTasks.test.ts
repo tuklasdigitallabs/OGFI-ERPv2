@@ -16,7 +16,17 @@ import {
   projectTaskReassignmentRequiresReason
 } from "./projectTasks";
 
+const projectTaskService = readFileSync(
+  path.resolve(__dirname, "projectTasks.ts"),
+  "utf8"
+);
+
 describe("project task workflow controls", () => {
+  test("status transitions use a version-checked write to reject concurrent changes", () => {
+    expect(projectTaskService).toContain("version: task.version");
+    expect(projectTaskService).toContain("PROJECT_TASK_STALE_VERSION");
+    expect(projectTaskService).toContain("tx.projectTask.updateMany");
+  });
   test("project overdue helper uses local date-only semantics and terminal overrides", () => {
     const asOf = new Date("2026-06-30T16:30:00.000Z");
 
@@ -92,6 +102,47 @@ describe("project task workflow controls", () => {
         canMutate: true
       })
     ).toThrow("PROJECT_TASK_REOPEN_REASON_REQUIRED");
+  });
+
+  test("blocked task reason enforcement reads the configurable DEC-0036 policy", () => {
+    expect(() =>
+      assertTaskTransition({
+        currentStatus: "IN_PROGRESS",
+        nextStatus: "BLOCKED",
+        canMutate: true,
+        blockerReasonRequired: false
+      })
+    ).not.toThrow();
+
+    const source = readFileSync(path.resolve(__dirname, "projectTasks.ts"), "utf8");
+    const policySource = readFileSync(
+      path.resolve(__dirname, "policySettings.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("getProjectTaskPolicy");
+    expect(source).toContain("blockerReasonRequired");
+    expect(policySource).toContain("projects.blocker_reason_required");
+
+    const boardPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/work-boards/page.tsx"),
+      "utf8"
+    );
+    const myWorkSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/my-work/page.tsx"),
+      "utf8"
+    );
+    const detailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/my-work/[taskId]/page.tsx"),
+      "utf8"
+    );
+
+    for (const pageSource of [boardPageSource, myWorkSource, detailPageSource]) {
+      expect(pageSource).toContain("getProjectTaskPolicy");
+      expect(pageSource).toContain("blockerReasonRequired");
+      expect(pageSource).toContain("required={blockerReasonRequired}");
+      expect(pageSource).toContain("Company policy requires a blocker reason");
+    }
   });
 
   test("blocked task transition persists optional next-review dates across task forms", () => {

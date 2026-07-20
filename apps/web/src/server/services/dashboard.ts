@@ -1,8 +1,13 @@
 import {
   canReadPurchaseOrders,
+  canUseBranchOperations,
+  canUseFoodSafety,
+  canUseIncidents,
+  canUseMaintenance,
   canUseApprovals,
   canUsePurchaseRequests,
   canUseReceiving,
+  canUseRecipesAndCosting,
   canUseStockAdjustments,
   canUseStockCounts,
   canUseTransfers,
@@ -12,9 +17,20 @@ import {
 import { listPendingApprovals, type ApprovalQueueItem } from "./approvals";
 import type { SessionContext } from "./context";
 import {
+  getBranchOperationsDashboard,
+  type BranchOperationsDashboard
+} from "./branchOperations";
+import {
+  getFoodCostAnalysisDashboard,
+  type FoodCostAnalysisDashboard
+} from "./recipes";
+import { getFoodSafetyDashboard, type FoodSafetyDashboard } from "./foodSafety";
+import { getIncidentDashboard, type IncidentDashboard } from "./incidents";
+import {
   getInventoryBalanceReconciliation,
   listInventoryBalances
 } from "./inventory";
+import { getMaintenanceDashboard, type MaintenanceDashboard } from "./maintenance";
 import { listPurchaseOrders } from "./purchaseOrders";
 import { listPurchaseRequests, type PurchaseRequest } from "./purchaseRequests";
 import { listGoodsReceipts } from "./receiving";
@@ -22,6 +38,10 @@ import { listStockAdjustments } from "./stockAdjustments";
 import { listStockCounts } from "./stockCounts";
 import { listInventoryTransfers } from "./transfers";
 import { listWastageReports } from "./wastage";
+import {
+  getDashboardTrustGatePolicy,
+  type DashboardTrustGateMode
+} from "./policySettings";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning";
 
@@ -59,6 +79,8 @@ export type DashboardQueueItem = {
   status: string;
   href: string;
   tone: BadgeTone;
+  nextAction?: string;
+  nextActor?: string;
 };
 
 export type DashboardMetric = {
@@ -82,6 +104,12 @@ export type OperationalDashboard = {
   metrics: DashboardMetric[];
   stockHealth: DashboardMetric[];
   sourceHealth: DashboardMetric[];
+  trustGate: {
+    mode: DashboardTrustGateMode;
+    label: string;
+    isOverridden: boolean;
+    sourceDecisionId: string;
+  };
   approvalQueue: DashboardQueueItem[];
   exceptionQueue: DashboardQueueItem[];
 };
@@ -97,6 +125,12 @@ export type OperationalDashboardSource = {
   stockAdjustments?: StockAdjustmentSummary[];
   inventoryBalances?: InventoryBalanceSummary[];
   reconciliation?: InventoryReconciliationSummary | null;
+  foodCostAnalysis?: FoodCostAnalysisDashboard;
+  branchOperations?: BranchOperationsDashboard;
+  foodSafety?: FoodSafetyDashboard;
+  incidents?: IncidentDashboard;
+  maintenance?: MaintenanceDashboard;
+  dashboardTrustGate?: Awaited<ReturnType<typeof getDashboardTrustGatePolicy>>;
 };
 
 const purchaseRequestOpenStatuses = new Set([
@@ -141,9 +175,15 @@ const stockAdjustmentExceptionStatuses = new Set([
   "POSTING",
   "RETURNED"
 ]);
+const branchChecklistReviewStatuses = new Set(["SUBMITTED", "MANAGER_REVIEW"]);
+const foodSafetyReviewStatuses = new Set(["SUBMITTED", "EXCEPTION_REVIEW"]);
 
 function cardTone(value: number): BadgeTone {
   return value > 0 ? "warning" : "success";
+}
+
+function isDashboardTrustGateBlocking(source: OperationalDashboardSource) {
+  return source.dashboardTrustGate?.mode === "block";
 }
 
 function countByStatus<T extends { status: string }>(
@@ -172,6 +212,13 @@ function number(value: number) {
   return new Intl.NumberFormat("en-PH", {
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function percent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "Pending";
+  }
+  return `${value.toFixed(1)}%`;
 }
 
 export function buildOperationalDashboardModel(
@@ -424,7 +471,7 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.reconciliation) {
+  if (source.reconciliation && !isDashboardTrustGateBlocking(source)) {
     cards.push({
       id: "ledger-reconciliation",
       label: "Ledger Variance",
@@ -510,13 +557,465 @@ export function buildOperationalDashboardModel(
     );
   }
 
+  if (source.foodCostAnalysis) {
+    const varianceAmount = source.foodCostAnalysis.varianceAmount ?? 0;
+    const overTargetRows = source.foodCostAnalysis.statusCounts.ABOVE_TARGET;
+    const missingCostRows = source.foodCostAnalysis.statusCounts.MISSING_COST;
+    const awaitingActualRows = source.foodCostAnalysis.statusCounts.AWAITING_ACTUALS;
+    const foodCostExceptionRows = overTargetRows + missingCostRows;
+
+    cards.push({
+      id: "food-cost-exceptions",
+      label: "Food Cost Exceptions",
+      value: foodCostExceptionRows,
+      href: "/recipes/analysis",
+      description: "Menu rows above target or missing recipe cost",
+      tone: cardTone(foodCostExceptionRows)
+    });
+    metrics.push(
+      {
+        id: "restaurant-net-sales",
+        label: "Net sales",
+        displayValue: currency(source.foodCostAnalysis.netSalesAmount),
+        detail: `${number(source.foodCostAnalysis.quantitySold)} sold units from posted imports`,
+        href: "/recipes/analysis",
+        tone: source.foodCostAnalysis.netSalesAmount > 0 ? "success" : "neutral"
+      },
+      {
+        id: "theoretical-food-cost",
+        label: "Theoretical food cost",
+        displayValue: currency(source.foodCostAnalysis.theoreticalCost),
+        detail: `${percent(source.foodCostAnalysis.theoreticalFoodCostPercent)} of imported net sales`,
+        href: "/recipes/analysis",
+        tone: source.foodCostAnalysis.theoreticalCost > 0 ? "info" : "neutral"
+      },
+      {
+        id: "actual-food-cost",
+        label: "Actual food cost",
+        displayValue:
+          source.foodCostAnalysis.actualCost === null
+            ? "Pending"
+            : currency(source.foodCostAnalysis.actualCost),
+        detail: source.foodCostAnalysis.actualCostSource,
+        href: "/recipes/analysis",
+        tone: source.foodCostAnalysis.actualCost === null ? "warning" : "info"
+      },
+      {
+        id: "food-cost-variance",
+        label: "Food cost variance",
+        displayValue:
+          source.foodCostAnalysis.varianceAmount === null
+            ? "Pending"
+            : currency(Math.abs(varianceAmount)),
+        detail: `${percent(source.foodCostAnalysis.variancePercent)} variance from posted actual consumption`,
+        href: "/recipes/analysis",
+        tone:
+          source.foodCostAnalysis.varianceAmount === null
+            ? "warning"
+            : varianceAmount > 0
+              ? "warning"
+              : "success"
+      },
+      {
+        id: "food-cost-above-target",
+        label: "Above target",
+        displayValue: number(overTargetRows),
+        detail: "Menu rows above target food-cost percentage",
+        href: "/recipes/analysis",
+        tone: overTargetRows > 0 ? "warning" : "success"
+      },
+      {
+        id: "food-cost-missing-cost",
+        label: "Missing cost",
+        displayValue: number(missingCostRows),
+        detail: "Menu rows without complete recipe costing",
+        href: "/recipes/analysis",
+        tone: missingCostRows > 0 ? "warning" : "success"
+      },
+      {
+        id: "food-cost-awaiting-actuals",
+        label: "Awaiting actuals",
+        displayValue: number(awaitingActualRows),
+        detail: "Menu rows waiting for actual ledger evidence",
+        href: "/recipes/analysis",
+        tone: awaitingActualRows > 0 ? "warning" : "success"
+      }
+    );
+
+    if (source.foodCostAnalysis.actualCost === null) {
+      exceptionQueue.push({
+        id: "food-cost-actual-ledger-pending",
+        label: "Actual ledger pending",
+        reference: source.foodCostAnalysis.businessDate ?? "No business date",
+        detail: source.foodCostAnalysis.actualCostSource,
+        status: "AWAITING_ACTUALS",
+        href: "/recipes/analysis",
+        tone: "warning",
+        nextAction: "Review actual ledger evidence"
+      });
+    }
+
+    for (const row of source.foodCostAnalysis.rows
+      .filter((analysisRow) =>
+        ["ABOVE_TARGET", "MISSING_COST"].includes(analysisRow.status)
+      )
+      .slice(0, 3)) {
+      exceptionQueue.push({
+        id: `food-cost-${row.menuItemId}`,
+        label: "Food cost follow-up",
+        reference: row.menuItemName,
+        detail: `${row.status.replaceAll("_", " ").toLowerCase()} / ${currency(row.netSalesAmount)} sales`,
+        status: row.status,
+        href: "/recipes/analysis",
+        tone: "warning",
+        nextAction: "Review recipe cost and sales evidence"
+      });
+    }
+  }
+
+  if (source.branchOperations) {
+    const reviewReadyChecklistCount =
+      source.branchOperations.statusCounts.SUBMITTED +
+      source.branchOperations.statusCounts.MANAGER_REVIEW;
+    const reviewReadyChecklists = source.branchOperations.checklists.filter(
+      (checklistSummary) =>
+        branchChecklistReviewStatuses.has(checklistSummary.status)
+    );
+    cards.push({
+      id: "branch-checklist-exceptions",
+      label: "Checklist Exceptions",
+      value: source.branchOperations.openExceptions,
+      href: "/branch-operations",
+      description: `${source.branchOperations.averageCompletionPercent.toFixed(0)}% average completion`,
+      tone: cardTone(source.branchOperations.openExceptions)
+    });
+    cards.push({
+      id: "branch-checklist-reviews",
+      label: "Checklist Reviews",
+      value: reviewReadyChecklistCount,
+      href: "/branch-operations",
+      description: "Submitted or manager-review checklists",
+      tone: cardTone(reviewReadyChecklistCount)
+    });
+    metrics.push(
+      {
+        id: "branch-critical-exception-count",
+        label: "Critical checklist exceptions",
+        displayValue: number(source.branchOperations.severityCounts.CRITICAL),
+        detail: "Critical branch checklist line exceptions in current scope",
+        href: "/branch-operations",
+        tone:
+          source.branchOperations.severityCounts.CRITICAL > 0
+            ? "warning"
+            : "success"
+      },
+      {
+        id: "branch-manager-review-count",
+        label: "Manager review checklists",
+        displayValue: number(source.branchOperations.statusCounts.MANAGER_REVIEW),
+        detail: "Branch checklists waiting for manager review",
+        href: "/branch-operations",
+        tone:
+          source.branchOperations.statusCounts.MANAGER_REVIEW > 0
+            ? "warning"
+            : "success"
+      },
+      {
+        id: "branch-reviewed-count",
+        label: "Reviewed checklists",
+        displayValue: number(source.branchOperations.statusCounts.REVIEWED),
+        detail: "Reviewed branch checklists in current scope",
+        href: "/branch-operations",
+        tone: "success"
+      }
+    );
+
+    for (const checklist of reviewReadyChecklists.slice(0, 3)) {
+      exceptionQueue.push({
+        id: `branch-review-${checklist.id}`,
+        label: "Checklist review",
+        reference: checklist.checklistName,
+        detail: `${checklist.businessDate} / ${checklist.shiftType.toLowerCase()} / ${checklist.exceptionCount} exception${checklist.exceptionCount === 1 ? "" : "s"}`,
+        status: checklist.status,
+        href: `/branch-operations/${checklist.id}`,
+        tone: "warning",
+        nextAction: "Review checklist"
+      });
+    }
+
+    for (const checklist of source.branchOperations.checklists
+      .filter((checklistSummary) => checklistSummary.exceptionCount > 0)
+      .slice(0, 3)) {
+      exceptionQueue.push({
+        id: `branch-ops-${checklist.id}`,
+        label: "Checklist exception",
+        reference: checklist.checklistName,
+        detail: `${checklist.businessDate} / ${checklist.exceptionCount} exception${checklist.exceptionCount === 1 ? "" : "s"}`,
+        status: checklist.status,
+        href: `/branch-operations/${checklist.id}`,
+        tone: checklist.lines.some(
+          (line) => line.result === "EXCEPTION" && line.severity === "CRITICAL"
+        )
+          ? "warning"
+          : "info",
+        nextAction: "Investigate checklist exception"
+      });
+    }
+  }
+
+  if (source.foodSafety) {
+    const reviewReadyLogCount =
+      source.foodSafety.statusCounts.SUBMITTED +
+      source.foodSafety.statusCounts.EXCEPTION_REVIEW;
+    const reviewReadyLogs = source.foodSafety.logs.filter((logSummary) =>
+      foodSafetyReviewStatuses.has(logSummary.status)
+    );
+    cards.push({
+      id: "food-safety-exceptions",
+      label: "Food Safety Exceptions",
+      value: source.foodSafety.exceptionCount,
+      href: "/food-safety",
+      description: `${source.foodSafety.totalReadings} reading${source.foodSafety.totalReadings === 1 ? "" : "s"} checked`,
+      tone: cardTone(source.foodSafety.exceptionCount)
+    });
+    cards.push({
+      id: "food-safety-reviews",
+      label: "Food Safety Reviews",
+      value: reviewReadyLogCount,
+      href: "/food-safety",
+      description: "Submitted or exception-review logs",
+      tone: cardTone(reviewReadyLogCount)
+    });
+    metrics.push(
+      {
+        id: "food-safety-critical-count",
+        label: "Critical food-safety exceptions",
+        displayValue: number(source.foodSafety.severityCounts.CRITICAL),
+        detail: "Critical food-safety reading exceptions in current scope",
+        href: "/food-safety",
+        tone:
+          source.foodSafety.severityCounts.CRITICAL > 0 ? "warning" : "success"
+      },
+      {
+        id: "food-safety-exception-review-count",
+        label: "Exception review logs",
+        displayValue: number(source.foodSafety.statusCounts.EXCEPTION_REVIEW),
+        detail: "Food-safety logs waiting for exception review",
+        href: "/food-safety",
+        tone:
+          source.foodSafety.statusCounts.EXCEPTION_REVIEW > 0
+            ? "warning"
+            : "success"
+      },
+      {
+        id: "food-safety-reviewed-count",
+        label: "Reviewed food-safety logs",
+        displayValue: number(source.foodSafety.statusCounts.REVIEWED),
+        detail: "Reviewed food-safety logs in current scope",
+        href: "/food-safety",
+        tone: "success"
+      }
+    );
+
+    for (const log of reviewReadyLogs.slice(0, 3)) {
+      exceptionQueue.push({
+        id: `food-safety-review-${log.id}`,
+        label: "Food safety review",
+        reference: log.title,
+        detail: `${log.businessDate} / ${log.logType.toLowerCase()} / ${log.exceptionCount} exception${log.exceptionCount === 1 ? "" : "s"}`,
+        status: log.status,
+        href: `/food-safety/${log.id}`,
+        tone: "warning",
+        nextAction: "Review food-safety log"
+      });
+    }
+
+    for (const log of source.foodSafety.logs
+      .filter((logSummary) => logSummary.exceptionCount > 0)
+      .slice(0, 3)) {
+      exceptionQueue.push({
+        id: `food-safety-${log.id}`,
+        label: "Food safety exception",
+        reference: log.title,
+        detail: `${log.businessDate} / ${log.exceptionCount} exception${log.exceptionCount === 1 ? "" : "s"}`,
+        status: log.status,
+        href: `/food-safety/${log.id}`,
+        tone: log.readings.some(
+          (reading) =>
+            reading.result === "EXCEPTION" && reading.severity === "CRITICAL"
+        )
+          ? "warning"
+          : "info",
+        nextAction: "Acknowledge food-safety deviation"
+      });
+    }
+  }
+
+  if (source.incidents) {
+    const openIncidentCount =
+      source.incidents.statusCounts.OPEN +
+      source.incidents.statusCounts.IN_PROGRESS +
+      source.incidents.statusCounts.PENDING_REVIEW;
+    cards.push({
+      id: "open-operational-incidents",
+      label: "Open Incidents",
+      value: openIncidentCount,
+      href: "/incidents",
+      description: `${source.incidents.overdueIncidents} overdue corrective action${source.incidents.overdueIncidents === 1 ? "" : "s"}`,
+      tone: cardTone(openIncidentCount)
+    });
+    metrics.push(
+      {
+        id: "incident-critical-count",
+        label: "Critical incidents",
+        displayValue: number(source.incidents.severityCounts.CRITICAL),
+        detail: "Critical incident records in current scope",
+        href: "/incidents",
+        tone: source.incidents.severityCounts.CRITICAL > 0 ? "warning" : "success"
+      },
+      {
+        id: "incident-pending-review-count",
+        label: "Incident review",
+        displayValue: number(source.incidents.statusCounts.PENDING_REVIEW),
+        detail: "Incidents waiting for closure review",
+        href: "/incidents",
+        tone:
+          source.incidents.statusCounts.PENDING_REVIEW > 0 ? "warning" : "success"
+      },
+      {
+        id: "incident-overdue-count",
+        label: "Incident overdue",
+        displayValue: number(source.incidents.overdueIncidents),
+        detail: "Incidents past corrective-action due date",
+        href: "/incidents",
+        tone: source.incidents.overdueIncidents > 0 ? "warning" : "success"
+      }
+    );
+
+    for (const incident of source.incidents.incidents
+      .filter((incidentSummary) =>
+        ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"].includes(incidentSummary.status)
+      )
+      .slice(0, 3)) {
+      exceptionQueue.push({
+        id: `incident-${incident.id}`,
+        label: "Incident follow-up",
+        reference: incident.incidentNumber,
+        detail: `${incident.title} / ${incident.severity.toLowerCase()}`,
+        status: incident.status,
+        href: `/incidents/${incident.id}`,
+        tone: incident.severity === "CRITICAL" ? "warning" : "info",
+        nextAction:
+          incident.status === "PENDING_REVIEW"
+            ? "Review closure evidence"
+            : "Assign or resolve incident",
+        nextActor: incident.ownerName ?? "Unassigned"
+      });
+    }
+  }
+
+  if (source.maintenance) {
+    const openMaintenanceCount =
+      source.maintenance.statusCounts.OPEN +
+      source.maintenance.statusCounts.IN_PROGRESS +
+      source.maintenance.statusCounts.PENDING_VENDOR;
+    cards.push({
+      id: "maintenance-follow-up",
+      label: "Maintenance Follow-up",
+      value: openMaintenanceCount,
+      href: "/maintenance",
+      description: `${source.maintenance.overdueTickets} overdue / ${source.maintenance.downtimeMinutes} downtime minutes`,
+      tone: cardTone(openMaintenanceCount)
+    });
+    metrics.push(
+      {
+        id: "maintenance-critical-count",
+        label: "Critical maintenance",
+        displayValue: number(source.maintenance.priorityCounts.CRITICAL),
+        detail: "Critical maintenance tickets in current scope",
+        href: "/maintenance",
+        tone:
+          source.maintenance.priorityCounts.CRITICAL > 0 ? "warning" : "success"
+      },
+      {
+        id: "maintenance-vendor-count",
+        label: "Pending vendor",
+        displayValue: number(source.maintenance.statusCounts.PENDING_VENDOR),
+        detail: "Tickets waiting for vendor action",
+        href: "/maintenance",
+        tone:
+          source.maintenance.statusCounts.PENDING_VENDOR > 0
+            ? "warning"
+            : "success"
+      },
+      {
+        id: "maintenance-overdue-count",
+        label: "Maintenance overdue",
+        displayValue: number(source.maintenance.overdueTickets),
+        detail: "Tickets past target due date",
+        href: "/maintenance",
+        tone: source.maintenance.overdueTickets > 0 ? "warning" : "success"
+      }
+    );
+
+    for (const ticket of source.maintenance.tickets
+      .filter((ticketSummary) =>
+        ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"].includes(ticketSummary.status)
+      )
+      .slice(0, 3)) {
+      exceptionQueue.push({
+        id: `maintenance-${ticket.id}`,
+        label: "Maintenance follow-up",
+        reference: ticket.ticketNumber,
+        detail: `${ticket.assetName} / ${ticket.priority.toLowerCase()}`,
+        status: ticket.status,
+        href: `/maintenance/${ticket.id}`,
+        tone: ticket.priority === "CRITICAL" ? "warning" : "info",
+        nextAction:
+          ticket.status === "PENDING_VENDOR"
+            ? "Follow up vendor"
+            : "Update or complete ticket",
+        nextActor: ticket.ownerName ?? "Unassigned"
+      });
+    }
+  }
+
   sourceHealth.push(
+    {
+      id: "dashboard-trust-gate",
+      label: "Reporting trust gate",
+      displayValue: source.dashboardTrustGate?.label ?? "Show warning and source link",
+      detail: source.dashboardTrustGate?.isOverridden
+        ? "Company override is active for unreconciled dashboard source data"
+        : "Recommended DEC-0036 dashboard source-data policy is active",
+      tone:
+        source.dashboardTrustGate?.mode === "show_only"
+          ? "warning"
+          : source.dashboardTrustGate?.mode === "block"
+            ? "success"
+            : "info"
+    },
+    ...(source.reconciliation && isDashboardTrustGateBlocking(source)
+      ? [
+          {
+            id: "ledger-reconciliation-blocked",
+            label: "Ledger reconciliation",
+            displayValue: "Blocked by trust gate",
+            detail: `${source.reconciliation.totalRows} balance row${source.reconciliation.totalRows === 1 ? "" : "s"} withheld until ledger reconciliation is accepted`,
+            href: "/inventory",
+            tone: "warning" as const
+          }
+        ]
+      : []),
     {
       id: "sales-source",
       label: "Sales / revenue",
-      displayValue: "Not connected",
-      detail: "No approved POS/accounting sales source is live in Phase I",
-      tone: "neutral"
+      displayValue: source.foodCostAnalysis ? "Import source live" : "Not connected",
+      detail: source.foodCostAnalysis
+        ? `${source.foodCostAnalysis.salesImportBatches} posted sales import batch${source.foodCostAnalysis.salesImportBatches === 1 ? "" : "es"} in scope`
+        : "No approved POS/accounting sales source is live for this scope",
+      ...(source.foodCostAnalysis ? { href: "/recipes/analysis" } : {}),
+      tone: source.foodCostAnalysis ? "info" : "neutral"
     },
     {
       id: "inventory-value-source",
@@ -537,7 +1036,9 @@ export function buildOperationalDashboardModel(
       detail: `${approval.requesterName} / ${approval.locationName}`,
       status: approval.status,
       href: `/approvals/${approval.approvalInstanceId}`,
-      tone: "warning" as const
+      tone: "warning" as const,
+      nextAction: "Review assigned approval",
+      nextActor: session.user.displayName
     })) ?? [];
 
   return {
@@ -552,6 +1053,12 @@ export function buildOperationalDashboardModel(
     metrics,
     stockHealth,
     sourceHealth,
+    trustGate: {
+      mode: source.dashboardTrustGate?.mode ?? "warn_and_link",
+      label: source.dashboardTrustGate?.label ?? "Show warning and source link",
+      isOverridden: source.dashboardTrustGate?.isOverridden ?? false,
+      sourceDecisionId: source.dashboardTrustGate?.sourceDecisionId ?? "DEC-0036"
+    },
     approvalQueue,
     exceptionQueue: exceptionQueue.slice(0, 8)
   };
@@ -612,7 +1119,35 @@ export async function getOperationalDashboard(
       ? getInventoryBalanceReconciliation(session).then((reconciliation) => {
           source.reconciliation = reconciliation;
         })
-      : Promise.resolve()
+      : Promise.resolve(),
+    canUseRecipesAndCosting(session.permissionCodes)
+      ? getFoodCostAnalysisDashboard(session).then((foodCostAnalysis) => {
+          source.foodCostAnalysis = foodCostAnalysis;
+        })
+      : Promise.resolve(),
+    canUseBranchOperations(session.permissionCodes)
+      ? getBranchOperationsDashboard(session).then((branchOperations) => {
+          source.branchOperations = branchOperations;
+        })
+      : Promise.resolve(),
+    canUseFoodSafety(session.permissionCodes)
+      ? getFoodSafetyDashboard(session).then((foodSafety) => {
+          source.foodSafety = foodSafety;
+        })
+      : Promise.resolve(),
+    canUseIncidents(session.permissionCodes)
+      ? getIncidentDashboard(session).then((incidents) => {
+          source.incidents = incidents;
+        })
+      : Promise.resolve(),
+    canUseMaintenance(session.permissionCodes)
+      ? getMaintenanceDashboard(session).then((maintenance) => {
+          source.maintenance = maintenance;
+        })
+      : Promise.resolve(),
+    getDashboardTrustGatePolicy(session).then((dashboardTrustGate) => {
+      source.dashboardTrustGate = dashboardTrustGate;
+    })
   ]);
 
   return buildOperationalDashboardModel(session, source);

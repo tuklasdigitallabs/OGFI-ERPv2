@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   exportAuthRequiredResponse,
   exportErrorResponse,
+  getStrictDateSearchParam,
   exportPermissionDeniedResponse
 } from "./exportErrors";
 
@@ -31,6 +32,45 @@ describe("export error responses", () => {
     await expect(response?.json()).resolves.toEqual({
       error: "INVENTORY_SEARCH_QUERY_TOO_LONG"
     });
+  });
+
+  test("returns stable validation responses for Phase 2 export date filters", async () => {
+    for (const code of [
+      "BRANCH_OPERATIONS_BUSINESS_DATE_INVALID",
+      "FOOD_COST_BUSINESS_DATE_INVALID",
+      "FOOD_SAFETY_BUSINESS_DATE_INVALID",
+      "INCIDENT_FILTER_DATE_INVALID",
+      "MAINTENANCE_REQUESTED_AT_FILTER_INVALID"
+    ]) {
+      const response = exportErrorResponse(new Error(code));
+
+      expect(response?.status).toBe(400);
+      await expect(response?.json()).resolves.toEqual({ error: code });
+    }
+  });
+
+  test("strict date search params reject malformed calendar dates", () => {
+    expect(
+      getStrictDateSearchParam(
+        new URLSearchParams("requestedAt=2026-07-04"),
+        "requestedAt",
+        "MAINTENANCE_REQUESTED_AT_FILTER_INVALID"
+      )
+    ).toBe("2026-07-04");
+    expect(
+      getStrictDateSearchParam(
+        new URLSearchParams("status=open"),
+        "requestedAt",
+        "MAINTENANCE_REQUESTED_AT_FILTER_INVALID"
+      )
+    ).toBeUndefined();
+    expect(() =>
+      getStrictDateSearchParam(
+        new URLSearchParams("requestedAt=2026-02-31"),
+        "requestedAt",
+        "MAINTENANCE_REQUESTED_AT_FILTER_INVALID"
+      )
+    ).toThrow("MAINTENANCE_REQUESTED_AT_FILTER_INVALID");
   });
 
   test("does not mask unknown export failures", () => {

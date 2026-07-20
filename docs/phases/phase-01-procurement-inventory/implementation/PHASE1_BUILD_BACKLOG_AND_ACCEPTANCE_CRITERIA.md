@@ -100,6 +100,35 @@ Architecture must not block these future modules.
 
 ## 6. Epic Acceptance Criteria
 
+## Pending Controlled Evidence Upload Slice
+
+**Status:** Pending controlled implementation; current workflows may capture evidence references, but binary file upload is not yet the production evidence system.
+
+Build a shared Evidence Attachment service before treating uploaded files as release-ready evidence for Phase I workflows. The slice should cover:
+
+- private file storage strategy for local/demo use, with a later production object-storage path;
+- evidence metadata tables with tenant, company, brand/location where applicable, source entity type, source entity ID, category, filename, MIME type, file size, checksum, uploaded-by, status, and timestamps;
+- allowlisted file types for photos, PDFs, documents, and CSV/XLSX only where the workflow needs them;
+- per-file and per-record size limits;
+- server-side authorization before upload, view, download, archive, or supersede;
+- audit events for upload, view/download, archive, supersede, denied access, and validation failure;
+- no hard delete for evidence used by controlled records;
+- configurable required-evidence policy by workflow, reason code, threshold, and exception type;
+- reusable upload/list/download/archive UI for transaction detail pages;
+- UAT proof for happy path, invalid file type, oversized file, unauthorized download, archive/supersede reason, and audit trail.
+
+Priority Phase I integration points:
+
+1. Emergency Purchase Requests
+2. Supplier quotation evidence and supplier communications
+3. Receiving discrepancy photos/documents
+4. Wastage reports
+5. Stock adjustments and opening balances
+6. Stock counts and variance support documents
+7. PO issue/re-send and closure evidence
+
+Until this slice is implemented, evidence fields remain references to external proof, not ERP-managed uploaded files.
+
 ### Epic A — Organization and Access Foundation
 
 **Acceptance criteria**

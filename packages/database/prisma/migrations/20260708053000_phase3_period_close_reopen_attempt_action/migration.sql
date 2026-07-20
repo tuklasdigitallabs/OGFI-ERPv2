@@ -1,0 +1,1 @@
+ALTER TYPE "FinanceCloseAttemptAction" ADD VALUE IF NOT EXISTS 'REOPEN_PERIOD';

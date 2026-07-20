@@ -1,11 +1,11 @@
 # OGFI ERP — Phase II Workflow: Incident Management
 
-**Status:** Planned detailed-specification framework  
+**Status:** Controlled incident create, correction, resolve, cancel, dashboard, detail, and export slice implemented
 **Purpose:** Log, assign, investigate, resolve and verify restaurant operational incidents.
 
 ## Business Outcome
 
-Define a controlled, role-aware, auditable workflow that follows OGFI core scope, approvals, audit, notification, security and Modern SaaS design standards.
+Define a controlled, role-aware, auditable workflow that follows OGFI core scope, approvals, audit, notification, security and Modern SaaS design standards. The current implementation supports scoped incident creation, read-only source-record links, non-terminal detail correction with `OperationalCorrectionRecord`, resolution, cancellation, list/detail visibility, dashboard counts, notifications, and CSV export.
 
 ## Primary Roles
 
@@ -18,22 +18,24 @@ Define a controlled, role-aware, auditable workflow that follows OGFI core scope
 ## Standard Lifecycle
 
 ```text
-Draft → Submitted → Under Review / Approved / Returned → In Progress → Completed / Closed
-                          ↘ Rejected / Cancelled / Reversed where policy allows
+Open → In Progress / Pending Review → Resolved
+                                  ↘ Cancelled
 ```
 
-## Required Workflow Sections to Finalize
+Non-terminal detail correction keeps the current status and records correction reason, optional evidence reference, before/after audit data, and a same-status transition row. Resolved and cancelled incidents are terminal for direct correction in the current slice.
 
-1. Trigger and eligibility
-2. Required fields and attachments
-3. Scope: company, brand, branch, warehouse, project and department
-4. Approval route and delegated authority
-5. Exception, rejection, cancellation and reversal paths
-6. Notification and escalation events
-7. Data and audit records created
-8. Downstream inventory, financial, workforce, project or integration impact
-9. Desktop, tablet and mobile actions
-10. Reports and UAT scenarios
+## Implemented Workflow Sections
+
+1. Trigger and eligibility for scoped incident creation
+2. Required fields, due-date validation, corrective action, and evidence reference
+3. Scope: tenant, company, brand where applicable, and location
+4. Permissioned create, correct, resolve, and cancel actions
+5. Cancellation path with reason and terminal-status guard
+6. Notification and dashboard visibility for open and critical incidents
+7. Audit events, `OperationalStatusTransition`, and `OperationalCorrectionRecord` for correction actions
+8. No downstream inventory, financial, maintenance, approval, or source-record mutation
+9. Desktop detail/list actions with source-record navigation
+10. Reports and UAT scenarios for create, correct, resolve, cancel, filter, and export
 
 ## Non-Negotiable Controls
 
@@ -45,4 +47,4 @@ Draft → Submitted → Under Review / Approved / Returned → In Progress → C
 
 ## Open Decisions
 
-Use `../implementation/PHASE2_DECISION_REGISTER.md` to record phase-specific policy decisions before this workflow is marked build-ready.
+Use `../implementation/PHASE2_DECISION_REGISTER.md` for future expansion such as assignment workflow, terminal reopen, source-link correction after creation, escalation routes, or approval-backed incident closure.

@@ -44,12 +44,37 @@ const previewRoutes = {
   adminSettings: "admin/settings/page.tsx"
 } satisfies Record<ModulePreviewKey, string>;
 
+const implementedRouteAssertions: Partial<Record<ModulePreviewKey, string[]>> = {
+  expansionDashboard: ["getExpansionDashboard", "getExpansionReportRollups"],
+  sitePipeline: ["listExpansionSitePipeline", "createProject(formData)"],
+  lifecycleGates: [
+    "getExpansionLifecycleGates",
+    "transitionExpansionLifecycleGate"
+  ],
+  permits: ["getExpansionPermitDocuments", "createExpansionPermitDocument"],
+  constructionBoard: [
+    "getExpansionConstructionBoard",
+    "createExpansionConstructionTask"
+  ],
+  openingReadiness: [
+    "getExpansionOpeningReadiness",
+    "createExpansionOpeningReadiness"
+  ],
+  punchList: ["getExpansionPunchList", "createExpansionPunchListItem"],
+  financeOverview: ["getFinanceFoundationDashboard"],
+  generalLedger: ["getFinanceFoundationDashboard"],
+  accountsPayable: ["getFinanceFoundationDashboard"],
+  bankCash: ["getFinanceFoundationDashboard"],
+  periodClose: ["getPeriodCloseDashboard"]
+};
+
 function allNavItems(sections: ReturnType<typeof getNavigationSections>) {
   return sections.flatMap((section) => section.items);
 }
 
 function routePathForHref(href: string) {
-  return `${appRouteRoot}${href.slice(1)}/page.tsx`;
+  const pathname = href.split("?")[0] ?? href;
+  return `${appRouteRoot}${pathname.slice(1)}/page.tsx`;
 }
 
 function appPageSource(routePath: string) {
@@ -78,6 +103,12 @@ describe("module preview navigation", () => {
         expect(readFileSync(filePath, "utf8")).not.toContain("renderModulePreview");
         continue;
       }
+      if (previewKey === "adminSettings") {
+        expect(readFileSync(filePath, "utf8")).toContain("listCompanyPolicySettings(session)");
+        expect(readFileSync(filePath, "utf8")).toContain("updateCompanyPolicySetting(formData)");
+        expect(readFileSync(filePath, "utf8")).not.toContain("renderModulePreview");
+        continue;
+      }
       if (previewKey === "projects") {
         expect(readFileSync(filePath, "utf8")).toContain("listProjects(session");
         expect(readFileSync(filePath, "utf8")).not.toContain("renderModulePreview");
@@ -99,12 +130,30 @@ describe("module preview navigation", () => {
         expect(readFileSync(filePath, "utf8")).not.toContain("renderModulePreview");
         continue;
       }
+      const implementedAssertions =
+        implementedRouteAssertions[previewKey as ModulePreviewKey];
+      if (implementedAssertions) {
+        const source = readFileSync(filePath, "utf8");
+        for (const assertion of implementedAssertions) {
+          expect(source).toContain(assertion);
+        }
+        expect(source).not.toContain("renderModulePreview");
+        continue;
+      }
       expect(readFileSync(filePath, "utf8")).toContain(`renderModulePreview("${previewKey}")`);
     }
   });
 
   it("keeps preview active nav keys present in the admin navigation", () => {
     const sections = getNavigationSections(
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
       true,
       true,
       true,
@@ -172,14 +221,17 @@ describe("module preview navigation", () => {
       .map((config) => config.activeNav);
 
     expect([...visibleActiveKeys].sort()).toEqual([
-      "dashboard"
+      "dashboard",
+      "knowledge-base"
     ]);
     for (const activeKey of adminOnlyPreviewKeys) {
       expect(visibleActiveKeys.has(activeKey), `${activeKey} is hidden from non-admin nav`).toBe(
         false
       );
     }
-    expect(getMobilePreviewRailItems(sections)).toEqual([]);
+    expect(getMobilePreviewRailItems(sections).map((item) => item.activeKey)).toEqual([
+      "knowledge-base"
+    ]);
   });
 
   it("keeps every enabled admin navigation link pointed at a route page", () => {

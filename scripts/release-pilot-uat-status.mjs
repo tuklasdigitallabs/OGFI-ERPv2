@@ -30,6 +30,7 @@ const artifactChecks = [
       "RESULT | PASS | Pilot readiness prerequisites are configured.",
       "RESULT | WARN | Pilot readiness prerequisites are incomplete; no database checks were attempted.",
     ],
+    requiredAll: ["PILOT_REQUIRE_RELEASE_GATES_READY=true"],
     severity: "High",
     owner: "QA Lead / Operations Lead",
     evidence: "DATABASE_URL, psql availability, and pilot threshold preflight result",
@@ -40,6 +41,8 @@ const artifactChecks = [
     pattern: /^pilot-readiness-(?!preflight).*\.txt$/,
     requiredAll: [
       "OGFI ERP Phase I / Phase 1.5 pilot readiness check",
+      "requireReleaseGatesReady=true",
+      "DEC-0036 strict release gate status",
       "RESULT | PASS | Pilot setup is ready for UAT execution evidence capture.",
     ],
     severity: "Critical",
@@ -138,6 +141,39 @@ if (documentResult.pass) {
   );
 }
 
+lines.push("", "Phase 3 Controlled Foundation Advisory");
+for (const advisory of [
+  {
+    label: "Phase 3 UAT execution checklist",
+    directory: "phase3-uat-checklist",
+    pattern: /^phase3-uat-checklist-.*\.txt$/,
+    markers: [
+      "Phase 3 finance controlled foundation",
+      "Phase 3 workforce controlled foundation",
+      "Phase 3 deferred blocker review",
+    ],
+  },
+  {
+    label: "Phase 3 UAT evidence status",
+    directory: "phase3-uat-status",
+    pattern: /^phase3-uat-status-.*\.txt$/,
+    markers: [
+      "Phase 3 finance controlled foundation",
+      "Phase 3 workforce controlled foundation",
+      "Phase 3 deferred blocker review",
+    ],
+  },
+]) {
+  const result = evaluateOptionalArtifact(advisory);
+  lines.push(`${result.pass ? "PASS" : "WARN"} | ${advisory.label} | ${result.detail}`);
+  for (const statusLine of result.statusLines) {
+    lines.push(`  ${statusLine}`);
+  }
+}
+lines.push(
+  "NOTE | Phase 3 advisory lines do not clear the pilot/UAT blockers above. Phase 3 readiness still requires verified Release Readiness UAT evidence and deferred blocker disposition.",
+);
+
 lines.push("");
 if (blockers > 0) {
   lines.push(
@@ -206,6 +242,45 @@ function evaluateArtifact(check) {
     file: filePath,
     generatedAt: generatedAtFromContent(readFileSync(filePath, "utf8")),
     metadata: extractArtifactMetadata(filePath),
+  };
+}
+
+function evaluateOptionalArtifact(check) {
+  const directory = join(evidenceRoot, check.directory);
+  if (!existsSync(directory)) {
+    return {
+      pass: false,
+      detail: `missing directory: ${directory}`,
+      statusLines: [],
+    };
+  }
+
+  const latestFile = readdirSync(directory)
+    .filter((file) => check.pattern.test(file))
+    .sort()
+    .at(-1);
+
+  if (!latestFile) {
+    return {
+      pass: false,
+      detail: `no matching artifact in ${directory}`,
+      statusLines: [],
+    };
+  }
+
+  const filePath = join(directory, latestFile);
+  const content = readFileSync(filePath, "utf8");
+  const missing = check.markers.filter((marker) => !content.includes(marker));
+  return {
+    pass: missing.length === 0,
+    detail:
+      missing.length === 0
+        ? latestFile
+        : `${latestFile} missing marker(s): ${missing.join(", ")}`,
+    statusLines: content
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("RESULT |") || line.startsWith("OWNER |"))
+      .slice(0, 8),
   };
 }
 

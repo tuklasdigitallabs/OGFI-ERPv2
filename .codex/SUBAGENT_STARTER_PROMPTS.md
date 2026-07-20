@@ -14,7 +14,7 @@
 
 ## Implement a Phase I feature safely
 
-> Confirm that the relevant decision and workflow are already documented. Use one write-capable implementation owner only. After implementation, run Lualhati, Luningning, and Mayari as read-only reviewers; include Diwata for UI and Mayumi for infrastructure when relevant. Fix validated findings, run tests, update source-of-truth documentation with Mithi, and ask Dunong to assess user guidance impact. Report files changed, tests run, controls verified, risks, and documentation updates.
+> Confirm that the relevant decision and workflow are already documented. Use one write-capable implementation owner only. For client-facing work, treat UI/UX readiness as an implementation gate: no long stacked-card operational workspaces, real tabs/subworkspace navigation for multi-function routes, pagination beyond 10 possible records, selected-record detail/action drawers, readable light/dark contrast, and no repeated inline action forms. After implementation, run Lualhati, Luningning, and Mayari as read-only reviewers; include Diwata for UI and Mayumi for infrastructure when relevant. Fix validated findings, run tests, update source-of-truth documentation with Mithi, and ask Dunong to assess user guidance impact. Report files changed, tests run, controls verified, risks, and documentation updates.
 
 ## Create end-user knowledge-base content
 

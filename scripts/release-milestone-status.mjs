@@ -12,6 +12,7 @@ import {
 } from "./release-evidence-contract.mjs";
 import { evidenceRunId } from "./release-evidence-metadata.mjs";
 import { evaluateManifestFreshness } from "./release-evidence-freshness.mjs";
+import { evaluateChecksumSidecar } from "./release-manifest-integrity.mjs";
 import { evaluateSignedEvidenceDocument } from "./release-signed-evidence-contract.mjs";
 
 const timestamp = new Date()
@@ -271,7 +272,10 @@ const milestones = [
       artifactExists(
         "pilot-readiness",
         /^pilot-readiness-preflight-.*\.txt$/,
-        "RESULT | PASS | Pilot readiness prerequisites are configured.",
+        [
+          "RESULT | PASS | Pilot readiness prerequisites are configured.",
+          "PILOT_REQUIRE_RELEASE_GATES_READY=true",
+        ],
       ),
       artifactHasAllContent(
         "uat-status",
@@ -300,6 +304,13 @@ const milestones = [
         [
           "Evidence run ID:",
           "Database URL fingerprint:",
+          "requireReleaseGatesReady=true",
+          "DEC-0036 release readiness registers",
+          "DEC-0036 strict release gate status",
+          "UAT evidence register table",
+          "Deployment evidence register table",
+          "Enablement evidence register table",
+          "Release Board decision register table",
           "RESULT | PASS | Pilot setup is ready for UAT execution evidence capture.",
         ],
       ),
@@ -362,6 +373,7 @@ const milestones = [
       scriptExists("release:signed-evidence-templates"),
       scriptExists("release:signed-evidence-checklist"),
       scriptExists("release:signed-evidence-status"),
+      scriptExists("release:readiness-register"),
       scriptExists("release:go-no-go"),
       fileExists("scripts/release-evidence-init.mjs"),
       fileExists("scripts/release-evidence-manifest.mjs"),
@@ -381,6 +393,7 @@ const milestones = [
       fileExists("scripts/release-signed-evidence-templates.mjs"),
       fileExists("scripts/release-signed-evidence-checklist.mjs"),
       fileExists("scripts/release-signed-evidence-status.mjs"),
+      fileExists("scripts/release-readiness-register-export.mjs"),
       fileExists("scripts/release-go-no-go.mjs"),
       fileExists(
         "docs/core/07-quality/PHASE1_PHASE1_5_RELEASE_EVIDENCE_COLLECTION_GUIDE.md",
@@ -409,6 +422,22 @@ const milestones = [
         "manifests",
         /^release-evidence-manifest-.*\.txt$/,
         "RESULT | PASS | Release evidence manifest captured.",
+      ),
+      artifactExists(
+        "manifests",
+        /^release-evidence-manifest-.*\.txt\.sha256$/,
+      ),
+      artifactChecksumMatches(
+        "manifests",
+        /^release-evidence-manifest-.*\.txt$/,
+      ),
+      artifactExists(
+        "release-readiness-register",
+        /^release-readiness-register-.*\.csv\.sha256$/,
+      ),
+      artifactChecksumMatches(
+        "release-readiness-register",
+        /^release-readiness-register-.*\.csv$/,
       ),
       artifactExists(
         "pending-evidence-checklist",
@@ -475,6 +504,38 @@ const milestones = [
         /^signed-evidence-checklist-.*\.txt$/,
         "OGFI ERP Phase I / Phase 1.5 signed evidence checklist",
       ),
+      artifactExists(
+        "external-security",
+        /^mfa-provider-enrollment-and-runtime-proof\..+$/,
+        [
+          "Evidence run ID:",
+          "RESULT | PASS | External security proof captured.",
+        ],
+      ),
+      artifactExists(
+        "external-security",
+        /^idp-session-invalidation-proof\..+$/,
+        [
+          "Evidence run ID:",
+          "RESULT | PASS | External security proof captured.",
+        ],
+      ),
+      artifactExists(
+        "external-security",
+        /^vault-or-artifact-storage-index\..+$/,
+        [
+          "Evidence run ID:",
+          "RESULT | PASS | External security proof captured.",
+        ],
+      ),
+      artifactExists(
+        "external-security",
+        /^break-glass-review-and-revocation-proof\..+$/,
+        [
+          "Evidence run ID:",
+          "RESULT | PASS | External security proof captured.",
+        ],
+      ),
       evidenceDocumentHasNoPending(
         "signed UAT evidence pack",
         "RELEASE_UAT_EVIDENCE_FILE",
@@ -500,6 +561,10 @@ const milestones = [
         finalManifestRequiredPatterns,
         true,
       ),
+      artifactExists(
+        "manifests",
+        /^release-evidence-manifest-.*\.txt\.sha256$/,
+      ),
       artifactHasAllContent(
         "final-review-status",
         /^final-review-status-.*\.txt$/,
@@ -511,7 +576,7 @@ const milestones = [
         "signed-evidence-status",
         /^signed-evidence-status-.*\.txt$/,
         [
-          "RESULT | PASS | Signed evidence documents are present and have no unresolved placeholders.",
+          "RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
         ],
       ),
       artifactHasAllContent(
@@ -566,7 +631,7 @@ const pendingGuidance = new Map([
       severity: "Critical",
       owner: "Release Manager / Product Owner",
       evidence:
-        "release metadata, signed evidence documents, fresh manifest, and final GO / NO-GO review",
+        "release metadata, signed evidence documents, external-security proof references, fresh manifest, and final GO / NO-GO review",
     },
   ],
 ]);
@@ -644,7 +709,7 @@ lines.push(
 
 if (pending > 0) {
   lines.push(
-    "NEXT | Complete pending environment artifacts, signed documents, UAT evidence, training evidence, and rollback proof before GO review.",
+    "NEXT | Complete pending environment artifacts, signed documents, external-security proof references, UAT evidence, training evidence, and rollback proof before GO review.",
   );
 } else {
   lines.push(
@@ -810,6 +875,39 @@ function artifactHasRequiredMarkers(
             requiredContent,
             requiredPatterns,
           ).join(", ")}`),
+  };
+}
+
+function artifactChecksumMatches(directory, artifactPattern) {
+  const fullDirectory = join(evidenceRoot, directory);
+  if (!existsSync(fullDirectory)) {
+    return {
+      label: `artifact checksum ${directory}/${artifactPattern.source}`,
+      pass: false,
+      detail: "missing directory",
+    };
+  }
+
+  const matchingFiles = readdirSync(fullDirectory)
+    .filter((file) => artifactPattern.test(file))
+    .sort();
+  const latestFile = matchingFiles.at(-1);
+
+  if (!latestFile) {
+    return {
+      label: `artifact checksum ${directory}/${artifactPattern.source}`,
+      pass: false,
+      detail: "no matching artifact",
+    };
+  }
+
+  const checksum = evaluateChecksumSidecar(join(fullDirectory, latestFile), latestFile);
+  return {
+    label: `artifact checksum ${directory}/${artifactPattern.source}`,
+    pass: checksum.pass,
+    detail: checksum.pass
+      ? checksum.detail
+      : `latest matching artifact ${latestFile} failed checksum verification: ${checksum.detail}`,
   };
 }
 

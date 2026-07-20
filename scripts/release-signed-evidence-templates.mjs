@@ -21,6 +21,7 @@ const templates = [
       "Approved for GO / NO-GO review, Conditional GO, Deferred, Hold, or No-GO",
     requiredEvidence: [
       "Completed UAT scenario register with tester, role, environment, device, execution timestamp, result, evidence reference, defect or waiver disposition, and owner signoff.",
+      "Verified ERP UAT evidence-register records for scenario execution, defect disposition, policy trace, acceptance matrix, and default revision register.",
       "Pilot readiness and UAT status artifacts generated from the same evidence run.",
       "Open defect, waiver, and deferral decisions with named owner and approval date.",
     ],
@@ -45,6 +46,7 @@ const templates = [
       "Approved for GO / NO-GO review, Conditional GO, Rollback, Hold, or No-GO",
     requiredEvidence: [
       "Completed deployment and rollback checklist rows with environment, execution timestamp, actual actor, accepted result, and evidence reference.",
+      "Verified ERP deployment evidence-register records for migration, backup, restore rehearsal, rollback plan, smoke test, and monitoring/hypercare.",
       "Backup dump, checksum, backup summary, isolated restore summary, rollback summary, and post-rollback smoke artifacts.",
       "Deployment status and backup/restore status artifacts generated from the same evidence run.",
     ],
@@ -69,6 +71,7 @@ const templates = [
       "Approved for GO / NO-GO review, Conditional GO, Deferred, Hold, or No-GO",
     requiredEvidence: [
       "Training attendance, trainer, material coverage, known-limit acknowledgement, follow-up owner, evidence reference, and signoff date.",
+      "Verified ERP enablement evidence-register records for training signoff, known-limit acknowledgement, support-route confirmation, KB review, release-note review, and training-impact assessment.",
       "Hypercare roles, support routes, daily review evidence, escalation path, and defect triage owner.",
       "Enablement status artifact generated from the same evidence run.",
     ],
@@ -82,6 +85,98 @@ const templates = [
       "Completed training attendance or acknowledgement evidence from actual pilot users.",
       "Approved hypercare owner roster, support route, and escalation path.",
       "Enablement/Operations owner signoff on known limits and follow-up ownership.",
+    ],
+  },
+  {
+    file: "external-mfa-provider-proof-template.md",
+    title: "External MFA Provider Proof Template",
+    owner: "Security Owner / IT Owner",
+    decision: "Approved external MFA provider proof for GO / NO-GO review",
+    copyTargets: ["external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension>"],
+    requiredEvidence: [
+      "Evidence run ID matching the approved release evidence session.",
+      "Provider-side MFA enrollment export or attestation for privileged users.",
+      "Runtime challenge proof showing privileged sign-in or sensitive action challenge behavior.",
+      "Explicit final marker: RESULT | PASS | External security proof captured.",
+    ],
+    interimLocalArtifacts: [
+      "admin/mfa ERP evidence register screenshots or export references",
+      "pilot-readiness/pilot-readiness-*.txt",
+      "release-readiness-register/release-readiness-register-*.csv",
+    ],
+    finalExternalEvidence: [
+      "Provider-side evidence from the selected IdP/MFA system, redacted for secrets.",
+      "Named Security or IT owner review and approval.",
+      "Mapping between ERP privileged users and provider-side MFA subjects where applicable.",
+    ],
+  },
+  {
+    file: "external-idp-session-invalidation-proof-template.md",
+    title: "External IdP Session Invalidation Proof Template",
+    owner: "Security Owner / IT Owner",
+    decision: "Approved external IdP session invalidation proof for GO / NO-GO review",
+    copyTargets: ["external-security/idp-session-invalidation-proof.<approved-extension>"],
+    requiredEvidence: [
+      "Evidence run ID matching the approved release evidence session.",
+      "List or reference of ERP AuthSessionInvalidation records cleared in the provider.",
+      "Provider-side session termination evidence or audit reference.",
+      "Explicit final marker: RESULT | PASS | External security proof captured.",
+    ],
+    interimLocalArtifacts: [
+      "admin/session-invalidation ERP register references",
+      "pilot-readiness/pilot-readiness-*.txt",
+      "release-readiness-register/release-readiness-register-*.csv",
+    ],
+    finalExternalEvidence: [
+      "Provider-side invalidation or revocation proof, redacted for secrets.",
+      "Separate reviewer confirmation that requester did not complete their own invalidation proof.",
+      "Named Security or IT owner approval.",
+    ],
+  },
+  {
+    file: "external-evidence-storage-index-template.md",
+    title: "External Evidence Storage Index Template",
+    owner: "Security Owner / Release Manager",
+    decision: "Approved evidence repository index for GO / NO-GO review",
+    copyTargets: ["external-security/vault-or-artifact-storage-index.<approved-extension>"],
+    requiredEvidence: [
+      "Evidence run ID matching the approved release evidence session.",
+      "Vault, repository, or controlled artifact-storage references for final evidence.",
+      "Access-control owner and retention note for release evidence artifacts.",
+      "Explicit final marker: RESULT | PASS | External security proof captured.",
+    ],
+    interimLocalArtifacts: [
+      "manifests/release-evidence-manifest-*.txt",
+      "release-metadata/release-session-lock-*.txt",
+      "pending-evidence-checklist/pending-evidence-checklist-*.txt",
+    ],
+    finalExternalEvidence: [
+      "Approved evidence repository index with artifact paths, owners, and checksums where applicable.",
+      "Confirmation that screenshots, backup checksums, signed documents, and exports are retained in approved storage.",
+      "Named Security or Release owner approval.",
+    ],
+  },
+  {
+    file: "external-break-glass-review-proof-template.md",
+    title: "External Break-Glass Review Proof Template",
+    owner: "Security Owner / IT Owner",
+    decision: "Approved break-glass revocation and post-use review proof for GO / NO-GO review",
+    copyTargets: ["external-security/break-glass-review-and-revocation-proof.<approved-extension>"],
+    requiredEvidence: [
+      "Evidence run ID matching the approved release evidence session.",
+      "Break-glass grant IDs or incident references reviewed.",
+      "External revocation or access-removal evidence where emergency access was used.",
+      "Explicit final marker: RESULT | PASS | External security proof captured.",
+    ],
+    interimLocalArtifacts: [
+      "admin/break-glass ERP register references",
+      "pilot-readiness/pilot-readiness-*.txt",
+      "release-readiness-register/release-readiness-register-*.csv",
+    ],
+    finalExternalEvidence: [
+      "Emergency access post-use review with reviewer, date, result, and follow-up owner.",
+      "Provider-side revocation proof or confirmation no emergency access was used.",
+      "Named Security or IT owner approval.",
     ],
   },
 ];
@@ -146,13 +241,16 @@ function renderTemplate(template) {
     "",
     "- Scope reviewed: <company / branch / environment>",
     "- Evidence package reviewed: <artifact folder or evidence reference>",
+    "- ERP readiness register record IDs reviewed: <UAT / deployment / enablement / board decision IDs>",
     "- Exceptions, waivers, or deferrals: <none or approved reference>",
     "- Follow-up owner and date: <owner / YYYY-MM-DD>",
     "",
     "## Copy Target After Approval",
     "",
-    "- UAT: signed-documents/uat-evidence-pack.md",
-    "- Deployment/rollback: signed-documents/deployment-rollback-evidence.md",
-    "- Training: signed-documents/training-impact-assessment.md",
+    ...(template.copyTargets ?? [
+      "signed-documents/uat-evidence-pack.md",
+      "signed-documents/deployment-rollback-evidence.md",
+      "signed-documents/training-impact-assessment.md",
+    ]).map((target) => `- ${target}`),
   ].join("\n");
 }

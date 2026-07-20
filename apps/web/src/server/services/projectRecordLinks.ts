@@ -55,8 +55,9 @@ const createLinkSchema = z.object({
   projectId: z.string().uuid(),
   taskId: z.string().uuid().optional(),
   milestoneId: z.string().uuid().optional(),
+  requirementId: z.string().uuid().optional(),
   sourceRecordType: z.enum(sourceRecordTypes),
-  sourceRecordId: z.string().uuid(),
+  sourceRecordId: z.string().trim().min(2).max(120),
   relationType: z.string().trim().min(2).max(80).default("RELATED"),
   linkLabel: z.string().trim().min(2).max(120)
 });
@@ -132,7 +133,7 @@ async function resolvePurchaseRequestSummary(
   }
   const record = await prisma.purchaseRequest.findFirst({
     where: {
-      id: sourceRecordId,
+      OR: [{ id: sourceRecordId }, { publicReference: sourceRecordId }],
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       requestLocationId: session.context.locationId
@@ -163,7 +164,7 @@ async function resolvePurchaseOrderSummary(
   }
   const record = await prisma.purchaseOrder.findFirst({
     where: {
-      id: sourceRecordId,
+      OR: [{ id: sourceRecordId }, { publicReference: sourceRecordId }],
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       deliveryLocationId: session.context.locationId
@@ -194,7 +195,7 @@ async function resolveGoodsReceiptSummary(
   }
   const record = await prisma.goodsReceipt.findFirst({
     where: {
-      id: sourceRecordId,
+      OR: [{ id: sourceRecordId }, { publicReference: sourceRecordId }],
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       receivingLocationId: session.context.locationId
@@ -225,13 +226,17 @@ async function resolveTransferSummary(
   }
   const record = await prisma.inventoryTransfer.findFirst({
     where: {
-      id: sourceRecordId,
+      AND: [
+        { OR: [{ id: sourceRecordId }, { publicReference: sourceRecordId }] },
+        {
+          OR: [
+            { sourceLocationId: session.context.locationId },
+            { destinationLocationId: session.context.locationId }
+          ]
+        }
+      ],
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      OR: [
-        { sourceLocationId: session.context.locationId },
-        { destinationLocationId: session.context.locationId }
-      ]
+      companyId: session.context.companyId
     },
     include: {
       sourceLocation: true,
@@ -769,7 +774,7 @@ async function assertProjectMutationAccess(session: SessionContext, projectId: s
 }
 
 async function assertLinkContext(session: SessionContext, values: z.infer<typeof createLinkSchema>) {
-  if (values.taskId && values.milestoneId) {
+  if ([values.taskId, values.milestoneId, values.requirementId].filter(Boolean).length > 1) {
     throw new Error("PROJECT_LINK_CONTEXT_INVALID");
   }
 
@@ -801,6 +806,23 @@ async function assertLinkContext(session: SessionContext, values: z.infer<typeof
       select: { id: true }
     });
     if (!milestone) {
+      throw new Error("PROJECT_LINK_CONTEXT_INVALID");
+    }
+  }
+
+  if (values.requirementId) {
+    const requirement = await prisma.projectRequirement.findFirst({
+      where: {
+        id: values.requirementId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        projectId: values.projectId,
+        archivedAt: null,
+        status: { in: ["PENDING", "RETURNED"] }
+      },
+      select: { id: true }
+    });
+    if (!requirement) {
       throw new Error("PROJECT_LINK_CONTEXT_INVALID");
     }
   }
@@ -875,6 +897,7 @@ export async function createProjectRecordLink(formData: FormData) {
     projectId: formData.get("projectId"),
     taskId: formData.get("taskId") || undefined,
     milestoneId: formData.get("milestoneId") || undefined,
+    requirementId: formData.get("requirementId") || undefined,
     sourceRecordType: formData.get("sourceRecordType"),
     sourceRecordId: formData.get("sourceRecordId"),
     relationType: formData.get("relationType") || "RELATED",
@@ -910,8 +933,9 @@ export async function createProjectRecordLink(formData: FormData) {
         projectId: values.projectId,
         taskId: values.taskId ?? null,
         milestoneId: values.milestoneId ?? null,
+        requirementId: values.requirementId ?? null,
         sourceRecordType: values.sourceRecordType,
-        sourceRecordId: values.sourceRecordId,
+        sourceRecordId: summary.sourceRecordId!,
         relationType: values.relationType,
         linkLabel: values.linkLabel,
         createdByUserId: session.user.id,
@@ -931,7 +955,8 @@ export async function createProjectRecordLink(formData: FormData) {
           sourceRecordType: link.sourceRecordType,
           relationType: link.relationType,
           taskId: link.taskId,
-          milestoneId: link.milestoneId
+          milestoneId: link.milestoneId,
+          requirementId: link.requirementId
         },
         metadata: { source: "project-record-links-foundation" }
       }

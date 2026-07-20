@@ -18,6 +18,7 @@ Logical design only. It must be reconciled with the active schema and approved m
 | ProjectRiskIssue | Specialized risk/blocker/issue metadata | Uses shared risk/blocker records or extension. |
 | PunchListItem | Construction defect/nonconformance tracker | Inspection/closure evidence and reviewer controls. |
 | OpeningReadinessCheck | Readiness checklist record | Controlled completion/approval evidence. |
+| ProjectRequirement | Project-scoped evidence or signoff requirement copied from a published playbook | Stores only the requirement, role owner/reviewer, controlled state, and references to existing project attachments or source-record links; never stores a confidential ERP payload. |
 | ProjectFinancialReference | Link to budget, PR, PO, invoice, payment, capex source records | Reference-only/authorized summary; no financial mutation rights. |
 
 ## Required fields and relationships

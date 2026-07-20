@@ -4,7 +4,11 @@ import {
   exportAuthRequiredResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
-import { logOperationalExportAudit } from "@/server/services/exportAudit";
+import {
+  buildReportCsvMetadata,
+  logOperationalExportAudit,
+  logOperationalExportFailure
+} from "@/server/services/exportAudit";
 import { canExportInventoryTransfers } from "@/server/services/exportAuthorization";
 import { buildInventoryTransferExportRows } from "@/server/services/transfers";
 
@@ -25,18 +29,32 @@ export async function GET() {
     return exportPermissionDeniedResponse();
   }
 
-  await logOperationalExportAudit({
-    session,
-    reportId: "transfer-status",
-    eventType: "report.export_started"
-  });
-  const rows = await buildInventoryTransferExportRows(session);
-  await logOperationalExportAudit({
-    session,
-    reportId: "transfer-status",
-    eventType: "report.export_completed",
-    rowCount: Math.max(0, rows.length - 1)
-  });
+  try {
+    await logOperationalExportAudit({
+      session,
+      reportId: "transfer-status",
+      eventType: "report.export_started"
+    });
+    const rows = await buildInventoryTransferExportRows(session);
+    await logOperationalExportAudit({
+      session,
+      reportId: "transfer-status",
+      eventType: "report.export_completed",
+      rowCount: Math.max(0, rows.length - 1)
+    });
 
-  return csvExportResponse(rows, "inventory-transfers.csv");
+    return csvExportResponse(rows, "inventory-transfers.csv", {
+      metadata: await buildReportCsvMetadata({
+        session,
+        reportId: "transfer-status"
+      })
+    });
+  } catch (error) {
+    await logOperationalExportFailure({
+      session,
+      reportId: "transfer-status",
+      error
+    });
+    throw error;
+  }
 }

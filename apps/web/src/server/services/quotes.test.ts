@@ -110,6 +110,36 @@ describe("quotation recommendation rules", () => {
     ).not.toThrow();
   });
 
+  test("requires quote-shortfall justification when policy requires more quotes", () => {
+    expect(() =>
+      assertQuotationRecommendationJustification({
+        quoteCount: 2,
+        minimumQuotes: 3,
+        comparisonRequired: true,
+        isLowestEvaluatedCost: true
+      })
+    ).toThrow("QUOTE_SHORTFALL_JUSTIFICATION_REQUIRED");
+
+    expect(() =>
+      assertQuotationRecommendationJustification({
+        quoteCount: 2,
+        minimumQuotes: 3,
+        comparisonRequired: true,
+        isLowestEvaluatedCost: true,
+        singleSourceJustification: "Only two accredited suppliers quoted before validity cutoff."
+      })
+    ).not.toThrow();
+
+    expect(() =>
+      assertQuotationRecommendationJustification({
+        quoteCount: 2,
+        minimumQuotes: 3,
+        comparisonRequired: false,
+        isLowestEvaluatedCost: true
+      })
+    ).not.toThrow();
+  });
+
   test("blocks mixed-currency comparisons until evaluated FX policy exists", () => {
     expect(() =>
       evaluateQuotationRecommendation(
@@ -127,6 +157,9 @@ describe("quotation recommendation rules", () => {
 
     expect(source).toContain('documentType: "QuotationRecommendation"');
     expect(source).toContain("requiredBeforePurchaseOrder: true");
+    expect(source).toContain("getPurchasingControlPolicy");
+    expect(source).toContain("quotationRequiredThresholdPhp");
+    expect(source).toContain("QUOTE_SHORTFALL_JUSTIFICATION_REQUIRED");
     expect(source).toContain('status: "DRAFT_NOT_SUBMITTED"');
     expect(source).not.toContain("approvalRoutingDeferred");
   });

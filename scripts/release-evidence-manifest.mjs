@@ -8,6 +8,8 @@ import {
 } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { finalManifestFreshnessIgnoredDirectories } from "./release-evidence-contract.mjs";
+import { evidenceRunId } from "./release-evidence-metadata.mjs";
+import { writeManifestChecksumLine } from "./release-manifest-integrity.mjs";
 
 const timestamp = new Date()
   .toISOString()
@@ -17,7 +19,7 @@ const evidenceRoot = process.env.RELEASE_EVIDENCE_ROOT ?? "release-evidence";
 const outputFile =
   process.env.RELEASE_EVIDENCE_MANIFEST_OUTPUT_FILE ??
   join(evidenceRoot, "manifests", `release-evidence-manifest-${timestamp}.txt`);
-const evidenceRunId = process.env.RELEASE_EVIDENCE_RUN_ID ?? timestamp;
+const manifestEvidenceRunId = evidenceRunId(process.env, timestamp);
 
 const files = listFiles(evidenceRoot)
   .filter((file) => !isManifestFile(file))
@@ -26,7 +28,7 @@ const files = listFiles(evidenceRoot)
 const lines = [
   "OGFI ERP Phase I / Phase 1.5 release evidence manifest",
   `generated_at_utc=${timestamp}`,
-  `evidence_run_id=${evidenceRunId}`,
+  `evidence_run_id=${manifestEvidenceRunId}`,
   `evidence_root=${evidenceRoot}`,
   `file_count=${files.length}`,
   "",
@@ -64,7 +66,9 @@ lines.push("", "RESULT | PASS | Release evidence manifest captured.");
 
 mkdirSync(dirname(outputFile), { recursive: true });
 writeFileSync(outputFile, `${lines.join("\n")}\n`);
+writeFileSync(`${outputFile}.sha256`, writeManifestChecksumLine(outputFile));
 console.log(`Release evidence manifest written: ${outputFile}`);
+console.log(`Release evidence manifest checksum written: ${outputFile}.sha256`);
 console.log(`Release evidence manifest file count: ${files.length}`);
 
 function listFiles(directory) {
@@ -88,7 +92,9 @@ function listFiles(directory) {
 
 function isManifestFile(file) {
   const relativePath = toRelativePath(file);
-  return /^manifests\/release-evidence-manifest-.*\.txt$/.test(relativePath);
+  return /^manifests\/release-evidence-manifest-.*\.txt(\.sha256)?$/.test(
+    relativePath,
+  );
 }
 
 function toRelativePath(file) {

@@ -7,3 +7,4 @@ Use the knowledge-base article template and follow the knowledge-base standard.
 ## Current articles
 
 - `docs/knowledge-base/reports/how-to-export-a-report.md`
+- `docs/knowledge-base/reports/understanding-report-trust-notices.md`

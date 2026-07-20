@@ -10,6 +10,7 @@ import {
   getActionFeedback
 } from "@/server/services/actionFeedback";
 import { getSessionContext } from "@/server/services/context";
+import { getProjectTaskPolicy } from "@/server/services/policySettings";
 import {
   addProjectTaskChecklistItem,
   addProjectTaskComment,
@@ -160,7 +161,13 @@ function nextTaskAction(task: ProjectTaskCard) {
   return "Start task";
 }
 
-function TaskActions({ task }: { task: ProjectTaskCard }) {
+function TaskActions({
+  task,
+  blockerReasonRequired
+}: {
+  task: ProjectTaskCard;
+  blockerReasonRequired: boolean;
+}) {
   if (!task.canMutate || task.status === "CANCELLED") {
     return null;
   }
@@ -215,10 +222,16 @@ function TaskActions({ task }: { task: ProjectTaskCard }) {
               <input name="nextStatus" type="hidden" value="BLOCKED" />
               <input
                 className="rounded-md border border-amber-300 px-3 py-2 text-sm"
+                minLength={blockerReasonRequired ? 5 : undefined}
                 name="reason"
-                placeholder="Blocker reason"
-                required
+                placeholder={blockerReasonRequired ? "Blocker reason" : "Optional blocker note"}
+                required={blockerReasonRequired}
               />
+              <p className="text-xs text-slate-500">
+                {blockerReasonRequired
+                  ? "Company policy requires a blocker reason before this task can be marked blocked."
+                  : "Company policy allows an optional blocker reason, but a short note is recommended."}
+              </p>
               <input
                 className="rounded-md border border-amber-300 px-3 py-2 text-sm"
                 name="nextReviewAt"
@@ -536,10 +549,12 @@ function TaskAttachments({ task }: { task: ProjectTaskCard }) {
 
 function TaskCard({
   task,
-  links
+  links,
+  blockerReasonRequired
 }: {
   task: ProjectTaskCard;
   links: ProjectRecordLinkSummary[];
+  blockerReasonRequired: boolean;
 }) {
   return (
     <Panel className="border border-slate-200">
@@ -616,7 +631,7 @@ function TaskCard({
       <TaskAttachments task={task} />
       <SourceLinks links={links} />
       <LinkForm task={task} />
-      <TaskActions task={task} />
+      <TaskActions blockerReasonRequired={blockerReasonRequired} task={task} />
     </Panel>
   );
 }
@@ -632,7 +647,10 @@ export default async function MyWorkPage({ searchParams }: MyWorkPageProps) {
 
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
-  const tasks = await listMyProjectTasks(session);
+  const [tasks, taskPolicy] = await Promise.all([
+    listMyProjectTasks(session),
+    getProjectTaskPolicy(session)
+  ]);
   const linkEntries = await Promise.all(
     tasks.map(async (task) => [task.id, await listProjectTaskRecordLinks(session, task.id)] as const)
   );
@@ -706,7 +724,12 @@ export default async function MyWorkPage({ searchParams }: MyWorkPageProps) {
         <div className="grid gap-4 xl:grid-cols-[1fr_24rem]">
           <section className="grid gap-4">
             {activeTasks.map((task) => (
-              <TaskCard key={task.id} links={linksByTaskId.get(task.id) ?? []} task={task} />
+              <TaskCard
+                blockerReasonRequired={taskPolicy.blockerReasonRequired}
+                key={task.id}
+                links={linksByTaskId.get(task.id) ?? []}
+                task={task}
+              />
             ))}
           </section>
           <aside className="grid content-start gap-3">
@@ -714,7 +737,12 @@ export default async function MyWorkPage({ searchParams }: MyWorkPageProps) {
               Recently Completed
             </h2>
             {completedTasks.slice(0, 5).map((task) => (
-              <TaskCard key={task.id} links={linksByTaskId.get(task.id) ?? []} task={task} />
+              <TaskCard
+                blockerReasonRequired={taskPolicy.blockerReasonRequired}
+                key={task.id}
+                links={linksByTaskId.get(task.id) ?? []}
+                task={task}
+              />
             ))}
           </aside>
         </div>

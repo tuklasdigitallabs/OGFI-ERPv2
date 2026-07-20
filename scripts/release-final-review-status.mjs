@@ -12,6 +12,10 @@ import {
 } from "./release-evidence-contract.mjs";
 import { evaluateManifestFreshness } from "./release-evidence-freshness.mjs";
 import {
+  evaluateChecksumSidecar,
+  evaluateManifestChecksum,
+} from "./release-manifest-integrity.mjs";
+import {
   failedMetadataChecks,
   getReleaseSummaryMetadata,
   validateReleaseSummaryMetadata,
@@ -137,12 +141,41 @@ const artifactChecks = [
     "Evidence run ID:",
     "RESULT | PASS | Deployment, rollback, backup/restore, smoke, and signoff evidence has no unresolved placeholders.",
   ]),
+  requiredArtifact("Release readiness register export", "release-readiness-register", /^release-readiness-register-.*\.csv$/, [
+    "Evidence run ID,",
+    "Source Decision,DEC-0036",
+    "RESULT,PASS,Release readiness register export captured.",
+  ], [], false, true),
+  requiredArtifact("Release readiness register checksum", "release-readiness-register", /^release-readiness-register-.*\.csv\.sha256$/),
+  requiredArtifact("External MFA provider proof", "external-security", /^mfa-provider-enrollment-and-runtime-proof\..+$/, [
+    "Evidence run ID:",
+    "RESULT | PASS | External security proof captured.",
+  ]),
+  requiredArtifact("External IdP session invalidation proof", "external-security", /^idp-session-invalidation-proof\..+$/, [
+    "Evidence run ID:",
+    "RESULT | PASS | External security proof captured.",
+  ]),
+  requiredArtifact("External evidence storage index", "external-security", /^vault-or-artifact-storage-index\..+$/, [
+    "Evidence run ID:",
+    "RESULT | PASS | External security proof captured.",
+  ]),
+  requiredArtifact("External break-glass review proof", "external-security", /^break-glass-review-and-revocation-proof\..+$/, [
+    "Evidence run ID:",
+    "RESULT | PASS | External security proof captured.",
+  ]),
   requiredArtifact("Pilot readiness preflight PASS", "pilot-readiness", /^pilot-readiness-preflight-.*\.txt$/, [
     "RESULT | PASS | Pilot readiness prerequisites are configured.",
+    "PILOT_REQUIRE_RELEASE_GATES_READY=true",
   ]),
   requiredArtifact("Pilot readiness report", "pilot-readiness", /^pilot-readiness-(?!preflight).*\.txt$/, [
     "Evidence run ID:",
     "Database URL fingerprint:",
+    "requireReleaseGatesReady=true",
+    "DEC-0036 strict release gate status",
+    "Pending controlled access requests",
+    "Privileged users missing verified MFA evidence",
+    "Pending provider session invalidations",
+    "Break-glass access open or post-review due",
     "RESULT | PASS | Pilot setup is ready for UAT execution evidence capture.",
   ]),
   requiredArtifact("UAT status report", "uat-status", /^uat-status-.*\.txt$/, [
@@ -159,7 +192,7 @@ const artifactChecks = [
     "RESULT | PASS | Enablement, training, and hypercare evidence has no unresolved placeholders.",
   ]),
   requiredArtifact("Signed evidence status", "signed-evidence-status", /^signed-evidence-status-.*\.txt$/, [
-    "RESULT | PASS | Signed evidence documents are present and have no unresolved placeholders.",
+    "RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
   ]),
   requiredArtifact("Staging rollback summary", "staging-rollback", /^rollback-summary\.txt$/, [
     "evidence_run_id=",
@@ -235,7 +268,53 @@ const blockerGuidance = new Map([
     {
       severity: "Critical",
       owner: "Release Manager / Product Owner",
-      evidence: "all final evidence artifacts generated in the same RELEASE_EVIDENCE_RUN_ID session",
+      evidence:
+        "all final evidence artifacts, signed documents, and external-security proof references generated in the same RELEASE_EVIDENCE_RUN_ID session",
+    },
+  ],
+  [
+    "Release readiness register export",
+    {
+      severity: "Critical",
+      owner: "Release Manager",
+      evidence:
+        "DB-backed release readiness register CSV exported after Admin > Release Readiness gates, evidence records, and Release Board decisions are current",
+    },
+  ],
+  [
+    "External MFA provider proof",
+    {
+      severity: "Critical",
+      owner: "Security Owner / IT Owner",
+      evidence:
+        "provider-side MFA enrollment and runtime challenge proof for privileged users copied to external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension> with matching Evidence run ID and RESULT | PASS | External security proof captured.",
+    },
+  ],
+  [
+    "External IdP session invalidation proof",
+    {
+      severity: "Critical",
+      owner: "Security Owner / IT Owner",
+      evidence:
+        "identity-provider session termination proof for ERP invalidation records copied to external-security/idp-session-invalidation-proof.<approved-extension> with matching Evidence run ID and RESULT | PASS | External security proof captured.",
+    },
+  ],
+  [
+    "External evidence storage index",
+    {
+      severity: "Critical",
+      owner: "Security Owner / IT Owner",
+      evidence:
+        "vault or approved evidence-repository index copied to external-security/vault-or-artifact-storage-index.<approved-extension> with matching Evidence run ID and RESULT | PASS | External security proof captured.",
+    },
+  ],
+  [
+    "External break-glass review proof",
+    {
+      severity: "Critical",
+      owner: "Security Owner / IT Owner",
+      evidence:
+        "break-glass revocation and post-use review proof copied to external-security/break-glass-review-and-revocation-proof.<approved-extension> with matching Evidence run ID and RESULT | PASS | External security proof captured.",
     },
   ],
   [
@@ -371,7 +450,8 @@ const blockerGuidance = new Map([
     {
       severity: "Critical",
       owner: "Release Manager / Product Owner",
-      evidence: "passing signed-evidence-status report proving all signed documents satisfy signoff contract",
+      evidence:
+        "passing signed-evidence-status report proving all signed documents satisfy signoff contract and external-security proof references are present",
     },
   ],
   [
@@ -521,7 +601,7 @@ if (blockers > 0) {
     `RESULT | BLOCKED | ${blockers} final-review blocker(s) remain before GO / NO-GO can be ready.`,
   );
   lines.push(
-    "Next action: complete real environment evidence, signed documents, release metadata, manifest refresh, then rerun release:go-no-go.",
+    "Next action: complete real environment evidence, signed documents, external-security proof references, release metadata, manifest refresh, then rerun release:go-no-go.",
   );
 } else {
   lines.push(
@@ -542,6 +622,7 @@ function requiredArtifact(
   requiredContent = [],
   requiredPatterns = [],
   requireFreshManifest = false,
+  requireChecksumSidecar = false,
 ) {
   return {
     label,
@@ -553,6 +634,7 @@ function requiredArtifact(
         : requiredContent,
     requiredPatterns,
     requireFreshManifest,
+    requireChecksumSidecar,
   };
 }
 
@@ -622,11 +704,29 @@ function evaluateArtifact(check) {
   }
 
   if (check.requireFreshManifest) {
+    const checksum = evaluateManifestChecksum(latestFilePath);
+    if (!checksum.pass) {
+      return {
+        pass: false,
+        detail: `latest matching manifest ${latestFile} failed checksum verification: ${checksum.detail}`,
+      };
+    }
+
     const freshness = evaluateManifestFreshness(evidenceRoot, latestFilePath);
     if (!freshness.pass) {
       return {
         pass: false,
         detail: `latest matching manifest ${latestFile} is stale: ${freshness.detail}`,
+      };
+    }
+  }
+
+  if (check.requireChecksumSidecar) {
+    const checksum = evaluateChecksumSidecar(latestFilePath, check.label);
+    if (!checksum.pass) {
+      return {
+        pass: false,
+        detail: `latest matching artifact ${latestFile} failed checksum verification: ${checksum.detail}`,
       };
     }
   }

@@ -11,6 +11,7 @@ import {
   normalizeInventoryMovementFilters,
   normalizeInventoryLotKey
 } from "./inventory";
+import { inventoryItemLotExpiryRequirements } from "./policySettings";
 
 describe("inventory ledger foundation rules", () => {
   test("inventory empty states match implemented posting sources", () => {
@@ -64,6 +65,54 @@ describe("inventory ledger foundation rules", () => {
     expect(
       normalizeInventoryLotKey(" LOT-001 ", new Date("2026-06-29T10:30:00.000Z"))
     ).toBe("LOT-001|2026-06-29");
+  });
+
+  test("lot and expiry requirements include configurable DEC-0036 category policy", () => {
+    expect(
+      inventoryItemLotExpiryRequirements(
+        {
+          trackLot: false,
+          trackExpiry: false,
+          category: { categoryCode: "BEEF_CUTS" }
+        },
+        { requiredCategoryCodes: ["BEEF_CUTS"] }
+      )
+    ).toEqual({
+      requiresLot: true,
+      requiresExpiry: true,
+      requiredByCategoryPolicy: true
+    });
+    expect(
+      inventoryItemLotExpiryRequirements(
+        {
+          trackLot: true,
+          trackExpiry: false,
+          category: { categoryCode: "DRY_GOODS" }
+        },
+        { requiredCategoryCodes: ["BEEF_CUTS"] }
+      )
+    ).toEqual({
+      requiresLot: true,
+      requiresExpiry: false,
+      requiredByCategoryPolicy: false
+    });
+
+    const inventorySource = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
+    const adjustmentSource = readFileSync(
+      path.resolve(__dirname, "stockAdjustments.ts"),
+      "utf8"
+    );
+    const wastageSource = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
+    const policySource = readFileSync(
+      path.resolve(__dirname, "policySettings.ts"),
+      "utf8"
+    );
+
+    for (const source of [inventorySource, adjustmentSource, wastageSource]) {
+      expect(source).toContain("getInventoryLotExpiryPolicy");
+      expect(source).toContain("inventoryItemLotExpiryRequirements");
+    }
+    expect(policySource).toContain("inventory.lot_expiry.required_categories");
   });
 
   test("calculates balance reconciliation variance from cache minus ledger", () => {

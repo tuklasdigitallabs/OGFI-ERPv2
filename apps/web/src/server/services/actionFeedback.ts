@@ -5,6 +5,56 @@ export type ActionFeedback = {
 };
 
 const actionFeedbackMessages: Record<string, string> = {
+  EXPANSION_GATE_EVIDENCE_REQUIRED:
+    "Provide a clear evidence or decision reason before changing this expansion gate.",
+  EXPANSION_GATE_ACHIEVEMENT_REASON_REQUIRED:
+    "Explain why this lifecycle gate is ready before approving it.",
+  EXPANSION_GATE_PRIOR_GATE_REQUIRED:
+    "Complete the earlier lifecycle gates before approving this one.",
+  EXPANSION_GATE_REVIEWER_REQUIRED:
+    "Only the configured project sponsor can approve this lifecycle gate.",
+  EXPANSION_GATE_SELF_APPROVAL_NOT_ALLOWED:
+    "The gate owner or creator cannot approve the same lifecycle gate.",
+  EXPANSION_GATE_TRANSITION_NOT_ALLOWED:
+    "This lifecycle gate is no longer awaiting review. Refresh and check its current status.",
+  EXPANSION_FINANCIAL_ESTIMATES_PERMISSION_DENIED:
+    "You need financial estimate access to create or view confidential Expansion assumptions.",
+  EXPANSION_FEASIBILITY_EVIDENCE_REQUIRED:
+    "Provide executive, finance, or business-case evidence before marking this feasibility review complete.",
+  EXPANSION_CAPEX_PROCUREMENT_EVIDENCE_REQUIRED:
+    "Provide the budget, procurement, award, PO, invoice, or handover evidence reference before marking this capex/procurement item complete.",
+  EXPANSION_POST_OPENING_EVIDENCE_REQUIRED:
+    "Provide the 30/60/90-day review pack, operating report, or owner signoff evidence before marking this post-opening review complete.",
+  EXPANSION_PERMIT_EVIDENCE_REQUIRED:
+    "Provide the permit or document evidence reference before marking this requirement complete.",
+  EXPANSION_CONSTRUCTION_EVIDENCE_REQUIRED:
+    "Provide construction progress, inspection, or handover evidence before marking this work complete.",
+  EXPANSION_CONSTRUCTION_PROGRESS_TRANSITION_DENIED:
+    "Use the controlled status action to return a blocked or reviewed construction task to active work before recording progress.",
+  EXPANSION_READINESS_EVIDENCE_REQUIRED:
+    "Provide opening-readiness evidence before marking this readiness item complete.",
+  EXPANSION_PUNCH_LIST_EVIDENCE_REQUIRED:
+    "Provide rectification, inspection, or handover evidence before closing this punch-list item.",
+  EXPANSION_PUNCH_LIST_REVIEW_REQUIRED:
+    "High and critical punch-list items must be sent for review before they can be closed.",
+  EXPANSION_PUNCH_LIST_INDEPENDENT_REVIEW_REQUIRED:
+    "A high or critical punch-list item must be closed by its independent reviewer, not its creator or owner.",
+  EXPANSION_PUNCH_LIST_ESCALATION_OWNER_REQUIRED:
+    "Assign an escalation owner before recording a high or critical punch-list item.",
+  EXPANSION_PUNCH_LIST_INITIAL_EVIDENCE_REQUIRED:
+    "Record the initial inspection or evidence reference before raising a high or critical punch-list item.",
+  EXPANSION_PUNCH_LIST_RETURN_REASON_REQUIRED:
+    "Explain the unmet acceptance criteria before returning a punch-list item for more work.",
+  EXPANSION_PUNCH_LIST_INVALID_TRANSITION:
+    "That punch-list status change is not allowed. Progress the item through rectification, review, and closure in order.",
+  EXPANSION_TASK_INVALID_TRANSITION:
+    "That Expansion work-item status change is not allowed from its current status.",
+  EXPANSION_TASK_REVIEW_REQUIRED:
+    "Send the Expansion work item for review before marking it complete.",
+  EXPANSION_TASK_EVIDENCE_REQUIRED:
+    "Add a document, photo, source-record link, or structured evidence reference before completing this Expansion work item.",
+  EXPANSION_FINANCIAL_PERMISSION_DENIED:
+    "Viewing or changing Expansion financial estimates requires the Budget Control permission.",
   GOODS_RECEIPT_LINE_REQUIRED:
     "A receiving report needs at least one receivable line.",
   GOODS_RECEIPT_NOT_DRAFT_FOR_POSTING:
@@ -94,6 +144,78 @@ const actionFeedbackMessages: Record<string, string> = {
   PURCHASE_ORDER_NOT_FOUND:
     "The selected Purchase Order is no longer available.",
   PERMISSION_DENIED: "You do not have permission to perform this action.",
+  PHASE2_WORKFLOW_TRANSITION_NOT_ALLOWED:
+    "That workflow action is not available from the record's current status.",
+  PHASE2_WORKFLOW_REASON_REQUIRED:
+    "Provide a reason before completing this workflow action.",
+  PHASE2_WORKFLOW_EVIDENCE_REQUIRED:
+    "Provide an evidence reference before completing this workflow action.",
+  RECIPE_VERSION_NOT_FOUND:
+    "This recipe version is no longer available or outside your scope.",
+  RECIPE_VERSION_SELF_APPROVAL_BLOCKED:
+    "You cannot approve or publish your own recipe version.",
+  RECIPE_VERSION_TRANSITION_CONFLICT:
+    "This recipe version changed while the action was being processed. Refresh and try again.",
+  RECIPE_NOT_FOUND:
+    "This recipe is no longer available or outside your scope.",
+  RECIPE_ARCHIVED_NOT_EDITABLE:
+    "Archived recipes cannot be changed. Create a new active recipe instead.",
+  RECIPE_OPEN_VERSION_EXISTS:
+    "Finish or cancel the open recipe version before creating another draft revision.",
+  RECIPE_OPEN_VERSION_BLOCKS_ARCHIVE:
+    "Archive is blocked while a recipe version is still in draft, review, returned, or approved status.",
+  RECIPE_ALREADY_ARCHIVED:
+    "This recipe is already archived.",
+  RECIPE_ARCHIVE_CONFLICT:
+    "This recipe changed while archive was being processed. Refresh and try again.",
+  RECIPE_REVISION_LINE_QUANTITY_INVALID:
+    "Recipe revision line quantities must be greater than zero.",
+  RECIPE_DUPLICATE_LINE_NOT_ALLOWED:
+    "The revision contains a duplicate ingredient and unit. Update the existing line instead of adding another duplicate.",
+  RECIPE_LINE_SORT_ORDER_INVALID:
+    "Recipe line order values must be whole numbers from 1 to 100.",
+  RECIPE_SUB_RECIPE_VERSION_NOT_FOUND:
+    "The selected sub-recipe version is unpublished, inactive, missing, or outside your scope.",
+  RECIPE_CODE_DUPLICATE:
+    "A recipe with this code already exists for the selected company.",
+  RECIPE_LINES_REQUIRED:
+    "Add at least one ingredient line before creating a draft recipe.",
+  RECIPE_LINES_LIMIT_EXCEEDED:
+    "A draft recipe can include up to 100 ingredient lines in one create action.",
+  RECIPE_LINE_INDEX_INVALID:
+    "Review the recipe ingredient lines and try again.",
+  RECIPE_LINE_ITEM_NOT_FOUND:
+    "One or more recipe ingredients are inactive, missing, or outside your company scope.",
+  RECIPE_LINE_UOM_NOT_FOUND:
+    "One or more recipe units are inactive, missing, or outside your company scope.",
+  RECIPE_TARGET_FOOD_COST_INVALID:
+    "Target food cost percent must be greater than zero and no more than 100.",
+  BRANCH_CHECKLIST_STATUS_NOT_CORRECTABLE:
+    "Only returned branch checklists can be corrected and resubmitted.",
+  BRANCH_CHECKLIST_CORRECTION_CONFLICT:
+    "This branch checklist changed while the correction was being applied. Refresh and try again.",
+  FOOD_SAFETY_LOG_STATUS_NOT_CORRECTABLE:
+    "Only returned food-safety logs can be corrected and resubmitted.",
+  FOOD_SAFETY_CORRECTION_CONFLICT:
+    "This food-safety log changed while the correction was being applied. Refresh and try again.",
+  INCIDENT_STATUS_NOT_CORRECTABLE:
+    "Only open, in-progress, or pending-review incidents can be corrected.",
+  INCIDENT_CORRECTION_CONFLICT:
+    "This incident changed while the correction was being applied. Refresh and try again.",
+  MAINTENANCE_TICKET_STATUS_NOT_CORRECTABLE:
+    "Only open, in-progress, or vendor-pending maintenance tickets can be corrected.",
+  MAINTENANCE_TICKET_CORRECTION_CONFLICT:
+    "This maintenance ticket changed while the correction was being applied. Refresh and try again.",
+  MENU_PRICE_DECISION_NOT_FOUND:
+    "This menu-price decision is no longer available or outside your scope.",
+  MENU_PRICE_DECISION_EFFECTIVE_RANGE_INVALID:
+    "The menu-price effective end date must be after the effective start date.",
+  MENU_PRICE_DECISION_SELF_APPROVAL_BLOCKED:
+    "You cannot approve or apply your own menu-price decision.",
+  MENU_PRICE_DECISION_TRANSITION_CONFLICT:
+    "This menu-price decision changed while the action was being processed. Refresh and try again.",
+  MENU_ITEM_NOT_FOUND:
+    "The selected menu item is no longer available or outside your scope.",
   SCOPE_DENIED: "This record is outside your authorized scope.",
   AUTH_REQUIRED: "Sign in again before continuing this action.",
   VALIDATION_FAILED:
@@ -106,6 +228,110 @@ const actionFeedbackMessages: Record<string, string> = {
     "A role with that code already exists in this tenant.",
   CORE_ADMIN_ROLE_CODE_INVALID:
     "Enter a valid role code using letters, numbers, dashes, underscores, or periods.",
+  POLICY_SETTING_NOT_FOUND:
+    "That policy setting is not available for this company.",
+  POLICY_SETTING_BOOLEAN_INVALID:
+    "Select either enabled or disabled for this policy setting.",
+  POLICY_SETTING_NUMBER_INVALID:
+    "Enter a valid zero-or-greater number for this policy setting.",
+  POLICY_SETTING_JSON_INVALID:
+    "Enter valid JSON for this policy setting.",
+  POLICY_SETTING_SELECT_INVALID:
+    "Select one of the available policy options.",
+  RELEASE_READINESS_GATE_NOT_FOUND:
+    "That release-readiness gate is not available for this company.",
+  RELEASE_READINESS_EVIDENCE_REQUIRED:
+    "Attach or reference evidence before marking this gate ready, conditional, or waived.",
+  RELEASE_READINESS_DECISION_NOTE_REQUIRED:
+    "Conditional GO and waiver gates require a decision note with owner, mitigation, or expiry.",
+  RELEASE_READINESS_UAT_SIGNOFF_REQUIRED:
+    "UAT readiness gates require a decision note that names the owner signoff, finding disposition, or default revision decision.",
+  RELEASE_READINESS_UAT_EVIDENCE_UNRESOLVED:
+    "Record and verify the required UAT evidence, and resolve failed or blocked UAT results, before marking this UAT gate ready.",
+  RELEASE_READINESS_BLOCKER_SUMMARY_REQUIRED:
+    "Hold gates require a blocker summary.",
+  RELEASE_READINESS_SECURITY_EVIDENCE_UNRESOLVED:
+    "Resolve the live security evidence counters before marking this security gate ready, or record a Conditional GO or waiver with a decision note.",
+  RELEASE_READINESS_DEPLOYMENT_EVIDENCE_UNRESOLVED:
+    "Record and verify the required deployment evidence before marking this deployment gate ready, or record a Conditional GO or waiver with a decision note.",
+  RELEASE_READINESS_ENABLEMENT_EVIDENCE_UNRESOLVED:
+    "Record and verify the required training, support-route, KB, release-note, and training-impact evidence before marking this enablement gate ready.",
+  RELEASE_READINESS_TARGET_DATE_INVALID:
+    "Enter a valid target date for this readiness gate.",
+  DEPLOYMENT_EVIDENCE_PERFORMED_AT_INVALID:
+    "Enter a valid date and time for when this deployment evidence was performed.",
+  DEPLOYMENT_EVIDENCE_NOT_FOUND:
+    "This deployment evidence record is no longer available for this company.",
+  DEPLOYMENT_EVIDENCE_NOT_RECORDED:
+    "Only newly recorded deployment evidence can be verified or rejected.",
+  DEPLOYMENT_EVIDENCE_SELF_VERIFICATION_BLOCKED:
+    "Deployment evidence must be verified or rejected by someone other than the person who recorded it.",
+  ENABLEMENT_EVIDENCE_COMPLETED_AT_INVALID:
+    "Enter a valid date and time for when this enablement evidence was completed.",
+  ENABLEMENT_EVIDENCE_NOT_FOUND:
+    "This enablement evidence record is no longer available for this company.",
+  ENABLEMENT_EVIDENCE_NOT_RECORDED:
+    "Only newly recorded enablement evidence can be verified or rejected.",
+  ENABLEMENT_EVIDENCE_SELF_VERIFICATION_BLOCKED:
+    "Enablement evidence must be verified or rejected by someone other than the person who recorded it.",
+  UAT_EVIDENCE_EXECUTED_AT_INVALID:
+    "Enter a valid date and time for when this UAT evidence was executed.",
+  UAT_EVIDENCE_NOT_FOUND:
+    "This UAT evidence record is no longer available for this company.",
+  UAT_EVIDENCE_NOT_RECORDED:
+    "Only newly recorded UAT evidence can be verified or rejected.",
+  UAT_EVIDENCE_SELF_VERIFICATION_BLOCKED:
+    "UAT evidence must be verified or rejected by someone other than the person who recorded it.",
+  RELEASE_BOARD_DECIDED_AT_INVALID:
+    "Enter a valid date and time for the Release Board decision.",
+  RELEASE_BOARD_READY_GATES_REQUIRED:
+    "A GO decision requires all required readiness gates to be ready, conditionally ready, or waived with no hold gates.",
+  RELEASE_BOARD_DECISION_REQUIRED:
+    "Record the Release Board decision before marking the GO / NO-GO gate ready or conditional.",
+  RELEASE_BOARD_GO_DECISION_REQUIRED:
+    "Marking the GO / NO-GO gate ready requires the latest Release Board decision to be GO.",
+  RELEASE_BOARD_CONDITIONAL_DECISION_REQUIRED:
+    "Marking the GO / NO-GO gate conditional requires the latest Release Board decision to be Conditional GO.",
+  RELEASE_BOARD_WAIVER_DECISION_REQUIRED:
+    "Waiving the GO / NO-GO gate requires a recorded Release Board hold decision, evidence, and a decision note.",
+  BREAK_GLASS_SELF_REQUEST_BLOCKED:
+    "You cannot request break-glass access for yourself.",
+  BREAK_GLASS_SELF_APPROVAL_BLOCKED:
+    "You cannot approve or reject break-glass access that you requested or that grants access to yourself.",
+  BREAK_GLASS_SELF_REVIEW_BLOCKED:
+    "You cannot complete the post-review for break-glass access that you requested or that granted access to yourself.",
+  BREAK_GLASS_EXPIRY_INVALID:
+    "Enter a future break-glass expiry date and time.",
+  BREAK_GLASS_EXPIRY_TOO_LONG:
+    "Break-glass access cannot exceed the configured 24-hour maximum.",
+  DUPLICATE_ACTIVE_BREAK_GLASS_ACCESS:
+    "This user already has pending or active break-glass access.",
+  BREAK_GLASS_ACCESS_NOT_FOUND:
+    "This break-glass access record is no longer available or is outside your admin scope.",
+  BREAK_GLASS_POST_REVIEW_NOT_READY:
+    "Break-glass post-review is available only after the access is rejected, revoked, or expired.",
+  PRIVILEGED_MFA_SELF_ATTESTATION_BLOCKED:
+    "You cannot attest your own privileged MFA enrollment evidence.",
+  PRIVILEGED_MFA_SELF_VERIFICATION_BLOCKED:
+    "You cannot verify or revoke your own privileged MFA enrollment evidence, or evidence you attested.",
+  PRIVILEGED_MFA_TARGET_NOT_PRIVILEGED:
+    "The selected user does not currently have sensitive permissions in this company scope.",
+  PRIVILEGED_MFA_ENROLLMENT_NOT_FOUND:
+    "This privileged MFA enrollment record is no longer available or is outside your admin scope.",
+  PRIVILEGED_MFA_REQUIRED:
+    "Verified privileged MFA evidence is required before this sensitive administrative action can continue.",
+  AUTH_SESSION_INVALIDATION_NOT_FOUND:
+    "This session invalidation record is no longer pending or is outside your admin scope.",
+  AUTH_SESSION_INVALIDATION_SELF_COMPLETION_BLOCKED:
+    "A separate admin must confirm the external provider session invalidation evidence.",
+  LOW_RISK_ROLE_USE_QUICK_ASSIGNMENT:
+    "This role is eligible for quick assignment. Use Assign Role instead of controlled approval.",
+  DUPLICATE_PENDING_SENSITIVE_ROLE_REQUEST:
+    "A pending controlled role request already exists for this user and role.",
+  SENSITIVE_ROLE_REQUEST_NOT_FOUND:
+    "This controlled role request is no longer pending or is outside your admin scope.",
+  SELF_ROLE_APPROVAL_BLOCKED:
+    "You cannot approve or reject a controlled role request that you requested for yourself or that grants access to yourself.",
   CORE_ADMIN_COMPANY_DUPLICATE:
     "A company with that code already exists in this tenant.",
   CORE_ADMIN_COMPANY_CODE_INVALID:
@@ -160,6 +386,30 @@ const actionFeedbackMessages: Record<string, string> = {
     "This user already has that active role assignment.",
   DUPLICATE_ACTIVE_SCOPE_ASSIGNMENT:
     "This user already has that active scope assignment.",
+  HIGH_RISK_SCOPE_ASSIGNMENT_BLOCKED:
+    "High-risk scope changes require controlled approval and cannot be changed from quick assignment.",
+  LOW_RISK_SCOPE_USE_QUICK_ASSIGNMENT:
+    "This location scope is eligible for quick assignment. Use Assign Scope instead of controlled approval.",
+  DUPLICATE_PENDING_HIGH_RISK_SCOPE_REQUEST:
+    "A pending controlled scope request already exists for this user and location.",
+  HIGH_RISK_SCOPE_REQUEST_NOT_FOUND:
+    "This controlled scope request is no longer pending or is outside your admin scope.",
+  SELF_SCOPE_APPROVAL_BLOCKED:
+    "You cannot approve or reject a controlled scope request that you requested for yourself or that grants access to yourself.",
+  EMERGENCY_PURCHASE_REASON_REQUIRED:
+    "Emergency Purchase Requests require an emergency reason.",
+  EMERGENCY_PURCHASE_EVIDENCE_REQUIRED:
+    "Emergency Purchase Requests require an evidence reference.",
+  EMERGENCY_PURCHASE_ESTIMATE_REQUIRED:
+    "Emergency Purchase Requests require a positive estimated amount.",
+  EMERGENCY_PURCHASE_CAP_EXCEEDED:
+    "This emergency Purchase Request exceeds the configured emergency cap and must use the normal purchase request route.",
+  EMERGENCY_PURCHASE_POST_REVIEW_NOT_REQUIRED:
+    "Emergency post-review is only required for emergency Purchase Requests.",
+  EMERGENCY_PURCHASE_POST_REVIEW_NOT_READY:
+    "Emergency post-review can be completed only after the emergency Purchase Request reaches an approved, rejected, or cancelled outcome.",
+  EMERGENCY_PURCHASE_POST_REVIEW_ALREADY_COMPLETED:
+    "Emergency post-review has already been completed for this Purchase Request.",
   DUPLICATE_SUPPLIER_CODE: "A supplier with this code already exists.",
   DUPLICATE_SUPPLIER_ITEM_LINK:
     "This supplier is already linked to the selected item and UOM.",
@@ -276,6 +526,108 @@ const actionFeedbackMessages: Record<string, string> = {
     "The Purchase Request was reopened but could not be reloaded.",
   PURCHASE_REQUEST_NOT_FOUND_AFTER_SUBMIT:
     "The Purchase Request was submitted but could not be reloaded.",
+  BRANCH_CHECKLIST_EXCEPTION_REVIEW_REQUIRED:
+    "A checklist with exceptions must stay open for follow-up instead of being marked reviewed.",
+  BRANCH_CHECKLIST_ALREADY_EXISTS:
+    "A checklist already exists for this business date and shift in the selected location.",
+  BRANCH_CHECKLIST_LINES_REQUIRED:
+    "Add at least one checklist line before saving the branch checklist.",
+  BRANCH_CHECKLIST_LINE_INDEX_INVALID:
+    "Checklist lines must be entered in order from line 1 with no skipped or out-of-range rows.",
+  BRANCH_BUSINESS_DATE_INVALID:
+    "Enter a valid branch checklist business date.",
+  BRANCH_CHECKLIST_NOT_FOUND:
+    "This branch checklist is no longer available or is outside your scope.",
+  BRANCH_REVIEWED_AT_INVALID:
+    "Enter a valid branch checklist review date.",
+  BRANCH_CHECKLIST_REVIEW_CONFLICT:
+    "This branch checklist changed while review was being saved. Refresh and try again.",
+  BRANCH_CHECKLIST_SELF_REVIEW_BLOCKED:
+    "A different authorized reviewer must review this checklist.",
+  BRANCH_CHECKLIST_STATUS_NOT_REVIEWABLE:
+    "Only submitted or manager-review checklists can be reviewed.",
+  BRANCH_CHECKLIST_STATUS_NOT_CLOSABLE:
+    "Only reviewed or exception-open branch checklists can be closed.",
+  BRANCH_CHECKLIST_CLOSE_CONFLICT:
+    "This branch checklist changed while close was being saved. Refresh and try again.",
+  BRANCH_REVIEWED_AT_BEFORE_BUSINESS_DATE:
+    "The review date cannot be before the checklist business date.",
+  FOOD_SAFETY_EXCEPTION_REVIEW_REQUIRED:
+    "A food-safety log with exceptions must stay open for follow-up instead of being marked reviewed.",
+  FOOD_SAFETY_LOG_ALREADY_EXISTS:
+    "A food-safety log already exists for this business date and log type in the selected location.",
+  FOOD_SAFETY_READINGS_REQUIRED:
+    "Add at least one reading before saving the food-safety log.",
+  FOOD_SAFETY_READING_INDEX_INVALID:
+    "Food-safety readings must be entered in order from reading 1 with no skipped or out-of-range rows.",
+  FOOD_SAFETY_BUSINESS_DATE_INVALID:
+    "Enter a valid food-safety business date.",
+  FOOD_SAFETY_READING_VALUE_INVALID:
+    "Food-safety reading values and expected limits must be valid numbers.",
+  FOOD_SAFETY_LOG_NOT_FOUND:
+    "This food-safety log is no longer available or is outside your scope.",
+  FOOD_SAFETY_LOG_STATUS_NOT_REVIEWABLE:
+    "Only submitted or exception-review food-safety logs can be reviewed.",
+  FOOD_SAFETY_REVIEWED_AT_INVALID:
+    "Enter a valid food-safety review date.",
+  FOOD_SAFETY_REVIEW_CONFLICT:
+    "This food-safety log changed while review was being saved. Refresh and try again.",
+  FOOD_SAFETY_REVIEWED_AT_BEFORE_BUSINESS_DATE:
+    "The review date cannot be before the food-safety log business date.",
+  FOOD_SAFETY_SELF_REVIEW_BLOCKED:
+    "A different authorized reviewer must review this food-safety log.",
+  FOOD_SAFETY_LOG_STATUS_NOT_CLOSABLE:
+    "Only reviewed or exception-open food-safety logs can be closed.",
+  FOOD_SAFETY_CLOSE_CONFLICT:
+    "This food-safety log changed while close was being saved. Refresh and try again.",
+  INCIDENT_NOT_FOUND:
+    "This incident is no longer available or is outside your scope.",
+  INCIDENT_DATE_INVALID:
+    "Enter a valid incident date.",
+  INCIDENT_DUE_DATE_INVALID:
+    "Enter a valid incident due date, or leave it blank.",
+  INCIDENT_DUE_AT_BEFORE_INCIDENT_DATE:
+    "The incident due date cannot be before the incident date.",
+  INCIDENT_RESOLVED_AT_INVALID:
+    "Enter a valid incident resolution date.",
+  INCIDENT_RESOLVED_AT_BEFORE_INCIDENT_DATE:
+    "The resolution date cannot be before the incident date.",
+  INCIDENT_RESOLUTION_CONFLICT:
+    "This incident changed while resolution was being saved. Refresh and try again.",
+  INCIDENT_NUMBER_GENERATION_FAILED:
+    "The incident number could not be generated after several attempts. Refresh and try again.",
+  INCIDENT_STATUS_NOT_RESOLVABLE:
+    "Only open, in-progress, or pending-review incidents can be resolved.",
+  INCIDENT_STATUS_NOT_CANCELLABLE:
+    "Only open, in-progress, or pending-review incidents can be cancelled.",
+  INCIDENT_CANCELLATION_CONFLICT:
+    "This incident changed while cancellation was being saved. Refresh and try again.",
+  INCIDENT_SOURCE_RECORD_NOT_FOUND_OR_UNSCOPED:
+    "The selected incident source record is unavailable or outside your scope.",
+  MAINTENANCE_COMPLETED_AT_INVALID:
+    "Enter a valid maintenance completion date.",
+  MAINTENANCE_COMPLETED_AT_BEFORE_REQUESTED_AT:
+    "The completion date cannot be before the maintenance request date.",
+  MAINTENANCE_REQUESTED_AT_INVALID:
+    "Enter a valid maintenance request date.",
+  MAINTENANCE_TARGET_DUE_AT_INVALID:
+    "Enter a valid maintenance target due date, or leave it blank.",
+  MAINTENANCE_TARGET_DUE_AT_BEFORE_REQUESTED_AT:
+    "The maintenance target due date cannot be before the requested date.",
+  MAINTENANCE_TICKET_COMPLETION_CONFLICT:
+    "This maintenance ticket changed while completion was being saved. Refresh and try again.",
+  MAINTENANCE_TICKET_NUMBER_RETRY_EXHAUSTED:
+    "The maintenance ticket number could not be generated after several attempts. Refresh and try again.",
+  MAINTENANCE_TICKET_NOT_FOUND:
+    "This maintenance ticket is no longer available or is outside your scope.",
+  MAINTENANCE_TICKET_STATUS_NOT_COMPLETABLE:
+    "Only open, in-progress, or pending-vendor maintenance tickets can be completed.",
+  MAINTENANCE_TICKET_STATUS_NOT_CANCELLABLE:
+    "Only open, in-progress, or pending-vendor maintenance tickets can be cancelled.",
+  MAINTENANCE_TICKET_CANCELLATION_CONFLICT:
+    "This maintenance ticket changed while cancellation was being saved. Refresh and try again.",
+  MAINTENANCE_SOURCE_INCIDENT_NOT_FOUND_OR_UNSCOPED:
+    "The selected source incident is unavailable or outside your scope.",
   PROJECT_TASK_ASSIGNEE_NOT_PROJECT_MEMBER:
     "Select an active member of this project as the task owner.",
   PROJECT_TASK_BLOCKER_REASON_REQUIRED:
@@ -317,6 +669,10 @@ const actionFeedbackMessages: Record<string, string> = {
     "Resolve or cancel open project blockers before closing or cancelling this project.",
   PROJECT_LIFECYCLE_OPEN_RISKS_BLOCKED:
     "Resolve, mitigate, accept, or close open project risks before closing or cancelling this project.",
+  PROJECT_LIFECYCLE_EXPANSION_GATES_BLOCKED:
+    "Generate and achieve every required Expansion lifecycle gate before completing this project.",
+  PROJECT_LIFECYCLE_REQUIREMENTS_BLOCKED:
+    "Complete required project checklist lines and approve or waive every required evidence and signoff before closing this project.",
   PROJECT_LIFECYCLE_PERMISSION_DENIED:
     "You do not have permission to change this project's lifecycle.",
   PROJECT_LIFECYCLE_REASON_REQUIRED:
@@ -361,6 +717,18 @@ const actionFeedbackMessages: Record<string, string> = {
   PROJECT_SCOPE_DENIED:
     "The selected project scope is outside your authorized access.",
   PROJECT_SCOPE_REQUIRED: "Select a valid scope before creating this project.",
+  PROJECT_STALE_VERSION:
+    "This project changed while you were working. Refresh and review the latest details.",
+  PROJECT_DETAILS_PERMISSION_DENIED:
+    "You do not have permission to update this project's details.",
+  PROJECT_TARGET_DATE_INVALID:
+    "Enter a valid target opening date.",
+  PROJECT_LEADERSHIP_INCOMPLETE:
+    "Assign distinct active project manager and sponsor roles before continuing.",
+  PROJECT_LEADERSHIP_SEGREGATION_REQUIRED:
+    "The project creator, manager, and sponsor must be different people for this controlled workflow.",
+  PROJECT_LEADERSHIP_USER_NOT_FOUND:
+    "Choose an active user for the project leadership assignment.",
   PROJECT_MILESTONE_STALE_VERSION:
     "This project milestone changed while you were working. Refresh and try again.",
   PROJECT_MILESTONE_AT_RISK_REASON_REQUIRED:
@@ -380,12 +748,74 @@ const actionFeedbackMessages: Record<string, string> = {
     "Project templates must include in-progress, completed, and cancelled task outcomes before publishing.",
   PROJECT_TEMPLATE_TASK_CODE_DUPLICATE:
     "Project template task codes must be unique.",
+  PROJECT_TEMPLATE_MILESTONE_CODE_DUPLICATE:
+    "Project template milestone codes must be unique.",
   PROJECT_TEMPLATE_TASK_STATUS_DISABLED:
     "A project template task uses a status that is not enabled for this template.",
   PROJECT_TEMPLATE_CHECKLIST_DUPLICATE:
     "Checklist item titles must be unique within each template task.",
   PROJECT_TEMPLATE_CONFIG_INVALID:
     "This project template configuration is invalid and cannot be applied.",
+  PROJECT_TEMPLATE_EVIDENCE_CODE_DUPLICATE:
+    "Each evidence requirement needs a unique code.",
+  PROJECT_TEMPLATE_EVIDENCE_TASK_NOT_FOUND:
+    "Choose an existing playbook task for this evidence requirement.",
+  PROJECT_TEMPLATE_REQUIREMENT_TASK_NOT_FOUND:
+    "Choose an existing playbook task for this requirement.",
+  PROJECT_REQUIREMENT_ATTACHMENT_NOT_ALLOWED:
+    "This requirement does not accept an uploaded attachment.",
+  PROJECT_REQUIREMENT_DECISION_REVIEWER_REQUIRED:
+    "Only the assigned reviewer can decide this requirement.",
+  PROJECT_REQUIREMENT_CONTROL_PERMISSION_DENIED:
+    "Only an authorized project manager, sponsor, administrator, or company manager can control requirement exceptions.",
+  PROJECT_REQUIREMENT_EVIDENCE_FILE_REQUIRED:
+    "Attach the required evidence file before submitting this requirement.",
+  PROJECT_REQUIREMENT_EVIDENCE_MIME_MISMATCH:
+    "The selected file type does not match this evidence requirement.",
+  PROJECT_REQUIREMENT_EVIDENCE_NOTE_REQUIRED:
+    "Record the required evidence note before submitting this requirement.",
+  PROJECT_REQUIREMENT_EVIDENCE_TYPE_INVALID:
+    "This requirement has an unsupported evidence type. Contact an administrator.",
+  PROJECT_REQUIREMENT_EXCEPTION_INVALID_STATE:
+    "Only pending, returned, or submitted requirements can be waived or cancelled.",
+  PROJECT_REQUIREMENT_INVALID_DECISION_STATE:
+    "Only a submitted requirement can be reviewed.",
+  PROJECT_REQUIREMENT_INVALID_SUBMIT_STATE:
+    "This requirement cannot be submitted in its current status.",
+  PROJECT_REQUIREMENT_MATCHING_ATTACHMENT_REQUIRED:
+    "Attach the required document or photo before submitting this requirement.",
+  PROJECT_REQUIREMENT_CHECKLIST_INCOMPLETE:
+    "Complete every required project checklist line before submitting a signoff package.",
+  PROJECT_REQUIREMENT_NOT_FOUND:
+    "This project requirement is no longer available.",
+  PROJECT_REQUIREMENT_REVIEWER_NOT_ACTIVE_PROJECT_MEMBER:
+    "Choose an active member of this project as the reviewer.",
+  PROJECT_REQUIREMENT_REASSIGNMENT_INVALID_STATE:
+    "A reviewer can only be reassigned while the requirement is pending, returned, or submitted.",
+  PROJECT_REQUIREMENT_REVIEWER_UNCHANGED:
+    "Choose a different active project member as reviewer.",
+  PROJECT_REQUIREMENT_REQUIRED_CANCELLATION_DENIED:
+    "A required requirement cannot be cancelled. Record an auditable waiver instead.",
+  PROJECT_REQUIREMENT_RETURN_REASON_REQUIRED:
+    "Explain why the requirement is being returned to its owner.",
+  PROJECT_REQUIREMENT_SELF_DECISION_DENIED:
+    "The person who submitted a requirement cannot approve it.",
+  PROJECT_REQUIREMENT_SIGNOFF_REVIEWER_MUST_BE_INDEPENDENT:
+    "Assign a reviewer who is independent from the requirement owner.",
+  PROJECT_REQUIREMENT_SOURCE_RECORD_LINK_REQUIRED:
+    "Link an authorized source record before submitting this requirement.",
+  PROJECT_REQUIREMENT_STALE_VERSION:
+    "This requirement changed while you were working. Refresh and review the latest status.",
+  PROJECT_REQUIREMENT_SUBMISSION_OWNER_REQUIRED:
+    "Only the assigned owner can submit this requirement.",
+  PROJECT_TEMPLATE_REVISION_SOURCE_NOT_FOUND:
+    "The source playbook is unavailable for creating a draft revision.",
+  PROJECT_TEMPLATE_SIGNOFF_CODE_DUPLICATE:
+    "Each signoff requirement needs a unique code.",
+  PROJECT_TEMPLATE_STALE_VERSION:
+    "This playbook changed while you were editing it. Refresh and review the latest version.",
+  PROJECT_TEMPLATE_TASK_NOT_FOUND:
+    "This playbook task is no longer available.",
   PROJECT_TEMPLATE_NOT_PUBLISHED:
     "Only published project templates can be used to create projects.",
   QUOTATION_RECOMMENDATION_ALREADY_SUBMITTED:
@@ -434,9 +864,9 @@ const actionFeedbackMessages: Record<string, string> = {
   SUPPLIER_ITEM_LINK_NOT_FOUND:
     "This supplier item link is no longer available.",
   SUPPLIER_NOT_ACTIVE_FOR_PO:
-    "The selected supplier must be active before creating a Purchase Order.",
+    "The selected supplier is not eligible for normal Purchase Order creation under the current supplier-status policy.",
   SUPPLIER_NOT_ACTIVE_FOR_PO_ISSUE:
-    "The selected supplier must be active before issuing the Purchase Order.",
+    "The selected supplier is not eligible for Purchase Order issue under the current supplier-status policy.",
   SUPPLIER_NOT_FOUND: "The selected supplier is no longer available.",
   TARGET_LOCATION_NOT_FOUND:
     "The selected target location is no longer available.",

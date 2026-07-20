@@ -1,19 +1,25 @@
 # OGFI ERP — Phase II UI Specification: Food Cost Analysis
 
-**Status:** Planned detailed-specification framework  
+**Status:** Implemented for theoretical-vs-actual analysis, filterable source rows, health summaries, and CSV export
 **Visual standard:** Modern SaaS UI with restaurant-grade operational control
 
 ## Screen Purpose
 
-Provide a role-aware workspace for food cost analysis while preserving company, brand, location/project, department, requester, status, approval and audit context.
+Provide a role-aware workspace for food-cost analysis while preserving company,
+brand, location, business date, recipe/menu-price basis, actual-ledger evidence,
+filter context, export audit, and source-record boundaries.
 
-## Required Screens or Views
+## Implemented Screens or Views
 
-1. List / queue view with search, filters, saved views, export and permission-aware actions
-2. Detail view with record summary, structured data, status, next action, timeline and attachments
-3. Create / edit flow with validation, autosave or draft behavior where appropriate
-4. Approval, review or exception action surface when the role permits it
-5. Responsive mobile view for field, branch, warehouse or manager actions when relevant
+1. Analysis view with business-date, menu/sales search, sales status, actual
+   evidence search, and movement-type filters.
+2. Summary cards for visible filtered rows and full-date totals so users can
+   distinguish current filter context from total operating context.
+3. Food-cost health counts for within-target, above-target, missing-cost, and
+   awaiting-actuals rows.
+4. Sales/import rows tied to recipe costing and effective menu-price basis.
+5. Actual-cost evidence rows derived from posted outbound inventory movements.
+6. CSV export preserving the same filter contract and audited export activity.
 
 ## Global UI Rules
 
@@ -25,16 +31,25 @@ Provide a role-aware workspace for food cost analysis while preserving company, 
 - Include empty, loading, error, permission-denied, rejected, cancelled and archived states.
 - Use a single shared spacing token across page layout, cards, forms and table controls.
 
-## Required Details Before Build
+## Implemented Details
 
-- Exact columns and filters
-- Form fields and conditional validation
-- Role-based actions and visibility
-- Approval panel and audit timeline treatment
-- Mobile priority tasks and touch target requirements
-- Related-record navigation and export behavior
-- Accessibility and keyboard behavior
+- Business date uses strict `YYYY-MM-DD` parsing.
+- Theoretical cost is derived from posted sales/import data and recipe costing.
+- Actual cost uses posted outbound inventory movement evidence only.
+- Missing recipe, price, supplier price, UOM conversion, or actual-ledger
+  evidence is displayed as pending evidence rather than guessed.
+- CSV export includes source/evidence fields and preserves filters.
+- The analysis view does not create sales imports, allocate actual cost by
+  assumption, approve prices, post inventory, or create finance records.
 
 ## Acceptance Criteria
 
-The UI is complete only when a first-time permitted user can identify the record, scope, status, next action, owner and material operational impact without leaving the record page.
+The current controlled slice is complete when a permitted user can open food-cost
+analysis for a business date, understand theoretical cost, actual ledger
+evidence, missing evidence, food-cost health, filter context, and export results
+without the analysis screen mutating recipes, POS/sales imports, inventory,
+finance, or approvals.
+
+Future UI expansion for POS write/import workflow, production/consumption
+source records, menu-level actual allocation, recursive sub-recipe flattening,
+or additional approval surfaces requires a new approved backlog item.

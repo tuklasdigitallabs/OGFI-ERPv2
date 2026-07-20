@@ -27,7 +27,7 @@ A task may link to one or more ERP records. Link actions are read-only reference
 
 ## Validation
 
-- Blocked status requires blocker reason.
+- Blocked status requires a blocker reason when the company policy requires it. The pilot default requires the reason; policy overrides must be visible in the UI and enforced in the service layer.
 - Completed status requires completion action by an authorized contributor/owner, records timestamp, and is blocked until required checklist items are complete.
 - Cancelled status requires reason by authorized role.
 - Tasks cannot be moved to a status not enabled for the project template/configuration.

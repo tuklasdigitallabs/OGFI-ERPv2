@@ -1,10 +1,16 @@
 import { describe, expect, test } from "vitest";
 import {
   canReadPurchaseOrders,
+  canUseBranchOperations,
+  canUseFoodSafety,
+  canUseIncidents,
+  canUseMaintenance,
+  canUseFinance,
   canUseApprovals,
   canUsePurchaseRequests,
   canUseProjects,
   canUseReceiving,
+  canUseRecipesAndCosting,
   canUseStockAdjustments,
   canUseStockCounts,
   canUseTransfers,
@@ -14,34 +20,14 @@ import {
 } from "./authorization";
 
 describe("module access permission helpers", () => {
-  test("selects the first accessible default app route", () => {
-    expect(getDefaultAppRoute([permissions.coreAdminister])).toBe("/admin");
+  test("uses Overview as the default app route for every role", () => {
+    expect(getDefaultAppRoute([permissions.coreAdminister])).toBe("/dashboard");
     expect(getDefaultAppRoute([permissions.purchaseRequestCreate])).toBe(
-      "/purchase-requests"
+      "/dashboard"
     );
-    expect(getDefaultAppRoute([permissions.purchaseRequestApprove])).toBe(
-      "/purchase-requests"
+    expect(getDefaultAppRoute([permissions.financeCashDepositCreate])).toBe(
+      "/dashboard"
     );
-    expect(getDefaultAppRoute([permissions.purchaseOrderApprove])).toBe("/approvals");
-    expect(getDefaultAppRoute([permissions.inventoryBalanceView])).toBe("/inventory");
-    expect(getDefaultAppRoute([permissions.inventoryLedgerView])).toBe(
-      "/inventory/ledger"
-    );
-    expect(getDefaultAppRoute([permissions.purchaseOrderView])).toBe(
-      "/purchase-orders"
-    );
-    expect(getDefaultAppRoute([permissions.receivingView])).toBe("/receiving");
-    expect(getDefaultAppRoute([permissions.transferView])).toBe("/transfers");
-    expect(getDefaultAppRoute([permissions.stockCountView])).toBe("/counts");
-    expect(getDefaultAppRoute([permissions.wastageView])).toBe("/wastage");
-    expect(getDefaultAppRoute([permissions.stockAdjustmentView])).toBe(
-      "/adjustments"
-    );
-    expect(getDefaultAppRoute([permissions.quoteManage])).toBe("/quotes");
-    expect(getDefaultAppRoute([permissions.projectTemplateView])).toBe(
-      "/project-templates"
-    );
-    expect(getDefaultAppRoute([permissions.projectView])).toBe("/projects");
     expect(getDefaultAppRoute([])).toBe("/dashboard");
   });
 
@@ -163,5 +149,57 @@ describe("module access permission helpers", () => {
       expect(canUseProjects([permission]), permission).toBe(true);
     }
     expect(canUseProjects([permissions.projectTemplateView])).toBe(false);
+  });
+
+  test("allows restaurant recipe and costing access from Phase 2 permissions", () => {
+    expect(canUseRecipesAndCosting([])).toBe(false);
+    for (const permission of [
+      permissions.recipeView,
+      permissions.recipeManage,
+      permissions.menuCostView
+    ]) {
+      expect(canUseRecipesAndCosting([permission]), permission).toBe(true);
+    }
+    expect(canUseRecipesAndCosting([permissions.inventoryBalanceView])).toBe(false);
+  });
+
+  test("allows branch operations access from Phase 2 permission", () => {
+    expect(canUseBranchOperations([])).toBe(false);
+    expect(canUseBranchOperations([permissions.branchOperationsView])).toBe(true);
+    expect(canUseBranchOperations([permissions.branchOperationsCreate])).toBe(true);
+    expect(canUseBranchOperations([permissions.branchOperationsReview])).toBe(true);
+    expect(canUseBranchOperations([permissions.recipeView])).toBe(false);
+  });
+
+  test("allows food safety access from Phase 2 permission", () => {
+    expect(canUseFoodSafety([])).toBe(false);
+    expect(canUseFoodSafety([permissions.foodSafetyView])).toBe(true);
+    expect(canUseFoodSafety([permissions.foodSafetyCreate])).toBe(true);
+    expect(canUseFoodSafety([permissions.foodSafetyReview])).toBe(true);
+    expect(canUseFoodSafety([permissions.branchOperationsView])).toBe(false);
+  });
+
+  test("allows incident access from Phase 2 permission", () => {
+    expect(canUseIncidents([])).toBe(false);
+    expect(canUseIncidents([permissions.incidentView])).toBe(true);
+    expect(canUseIncidents([permissions.incidentCreate])).toBe(true);
+    expect(canUseIncidents([permissions.incidentResolve])).toBe(true);
+    expect(canUseIncidents([permissions.foodSafetyView])).toBe(false);
+  });
+
+  test("allows maintenance access from Phase 2 permission", () => {
+    expect(canUseMaintenance([])).toBe(false);
+    expect(canUseMaintenance([permissions.maintenanceView])).toBe(true);
+    expect(canUseMaintenance([permissions.maintenanceCreate])).toBe(true);
+    expect(canUseMaintenance([permissions.maintenanceComplete])).toBe(true);
+    expect(canUseMaintenance([permissions.incidentView])).toBe(false);
+  });
+
+  test("allows finance access from cash deposit declaration permission", () => {
+    expect(canUseFinance([])).toBe(false);
+    expect(canUseFinance([permissions.financeCashDepositCreate])).toBe(true);
+    expect(getDefaultAppRoute([permissions.financeCashDepositCreate])).toBe(
+      "/dashboard"
+    );
   });
 });

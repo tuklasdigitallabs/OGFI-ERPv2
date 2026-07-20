@@ -16,6 +16,11 @@ import {
   listActiveOperationalReasonCodes,
   requireActiveOperationalReasonCode
 } from "./operationalReasonCodes";
+import {
+  getInventoryLotExpiryPolicy,
+  inventoryItemLotExpiryRequirements
+} from "./policySettings";
+import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 
 const wastageTypes = [
   "SPOILAGE_EXPIRY",
@@ -668,16 +673,21 @@ export async function createWastageReport(formData: FormData) {
   }
 
   const lineDrafts: WastageLineDraft[] = [];
+  const lotExpiryPolicy = await getInventoryLotExpiryPolicy(session);
   for (const [index, line] of lineValues.entries()) {
     assertWastageQuantity(line.quantity);
     const item = itemById.get(line.itemId);
     if (!item) {
       throw new Error("WASTAGE_ITEM_NOT_FOUND");
     }
-    if (item.trackLot && !line.lotNumber) {
+    const lotExpiryRequirements = inventoryItemLotExpiryRequirements(
+      item,
+      lotExpiryPolicy
+    );
+    if (lotExpiryRequirements.requiresLot && !line.lotNumber) {
       throw new Error("WASTAGE_LOT_REQUIRED");
     }
-    if (item.trackExpiry && !line.expiryDate) {
+    if (lotExpiryRequirements.requiresExpiry && !line.expiryDate) {
       throw new Error("WASTAGE_EXPIRY_REQUIRED");
     }
 
@@ -1158,6 +1168,19 @@ export async function postWastageReport(formData: FormData) {
   if (report.lines.length === 0) {
     throw new Error("WASTAGE_REPORT_HAS_NO_LINES");
   }
+  await assertPrivilegedMfaForAction(session, {
+    action: "wastage_report.post",
+    enforcementScope: "all_sensitive",
+    permissionCode: permissions.wastagePost,
+    entityType: "WastageReport",
+    entityId: report.id,
+    reason:
+      "Posting wastage changes inventory balances and requires privileged MFA evidence.",
+    metadata: {
+      wastageType: report.wastageType,
+      inventoryLocationId: report.inventoryLocationId
+    }
+  });
 
   await prisma.$transaction(async (tx) => {
     const claimed = await tx.wastageReport.updateMany({
@@ -1292,6 +1315,19 @@ export async function reverseWastageReport(formData: FormData) {
   if (report.lines.length === 0) {
     throw new Error("WASTAGE_REPORT_HAS_NO_LINES");
   }
+  await assertPrivilegedMfaForAction(session, {
+    action: "wastage_report.reverse",
+    enforcementScope: "all_sensitive",
+    permissionCode: permissions.wastageReverse,
+    entityType: "WastageReport",
+    entityId: report.id,
+    reason:
+      "Reversing wastage creates counter-movements and requires privileged MFA evidence.",
+    metadata: {
+      wastageType: report.wastageType,
+      inventoryLocationId: report.inventoryLocationId
+    }
+  });
 
   await prisma.$transaction(async (tx) => {
     const claimed = await tx.wastageReport.updateMany({

@@ -60,7 +60,90 @@ export const permissions = {
   projectRiskResolve: "projects.risk.resolve",
   projectRiskArchive: "projects.risk.archive",
   projectTemplateView: "projects.template.view",
-  projectTemplateConfigure: "projects.template.configure"
+  projectTemplateConfigure: "projects.template.configure",
+  recipeView: "restaurant.recipe.view",
+  recipeManage: "restaurant.recipe.manage",
+  recipeSubmit: "restaurant.recipe.submit",
+  recipeReview: "restaurant.recipe.review",
+  recipeApprove: "restaurant.recipe.approve",
+  recipePublish: "restaurant.recipe.publish",
+  recipeArchive: "restaurant.recipe.archive",
+  menuCostView: "restaurant.menu_cost.view",
+  menuPriceDecide: "restaurant.menu_price.decide",
+  branchOperationsView: "restaurant.branch_operations.view",
+  branchOperationsCreate: "restaurant.branch_operations.create",
+  branchOperationsReview: "restaurant.branch_operations.review",
+  branchOperationsCorrect: "restaurant.branch_operations.correct",
+  foodSafetyView: "restaurant.food_safety.view",
+  foodSafetyCreate: "restaurant.food_safety.create",
+  foodSafetyReview: "restaurant.food_safety.review",
+  foodSafetyCorrect: "restaurant.food_safety.correct",
+  incidentView: "restaurant.incident.view",
+  incidentCreate: "restaurant.incident.create",
+  incidentResolve: "restaurant.incident.resolve",
+  incidentCorrect: "restaurant.incident.correct",
+  maintenanceView: "restaurant.maintenance.view",
+  maintenanceCreate: "restaurant.maintenance.create",
+  maintenanceComplete: "restaurant.maintenance.complete",
+  maintenanceCorrect: "restaurant.maintenance.correct",
+  financeView: "finance.view",
+  financeConfigure: "finance.configure",
+  financeLedgerView: "finance.ledger.view",
+  financePayablesView: "finance.payables.view",
+  financeApInvoiceCreate: "finance.ap_invoice.create",
+  financeApInvoiceSubmit: "finance.ap_invoice.submit",
+  financeApInvoiceMatch: "finance.ap_invoice.match",
+  financeApInvoiceReviewException: "finance.ap_invoice.review_exception",
+  financeApInvoiceCancel: "finance.ap_invoice.cancel",
+  financeSupplierCreditCreate: "finance.supplier_credit.create",
+  financeSupplierCreditSubmit: "finance.supplier_credit.submit",
+  financeSupplierCreditCancel: "finance.supplier_credit.cancel",
+  financePaymentRequestCreate: "finance.payment_request.create",
+  financePaymentRequestApprove: "finance.payment_request.approve",
+  financePaymentRelease: "finance.payment.release",
+  financeDisbursementCreate: "finance.disbursement.create",
+  financeDisbursementApprove: "finance.disbursement.approve",
+  financeCashDepositCreate: "finance.cash_deposit.create",
+  financeReconciliationView: "finance.reconciliation.view",
+  financeReconciliationMatch: "finance.reconciliation.match",
+  financePeriodCloseManage: "finance.period_close.manage",
+  financeJournalCreate: "finance.journal.create",
+  financeJournalSubmit: "finance.journal.submit",
+  financeJournalApprove: "finance.journal.approve",
+  financeJournalPost: "finance.journal.post",
+  financeJournalReverse: "finance.journal.reverse",
+  financeBudgetView: "finance.budget.view",
+  financeBudgetManage: "finance.budget.manage",
+  financeBudgetApprove: "finance.budget.approve",
+  financeBudgetCommitmentReview: "finance.budget.commitment.review",
+  financeExpenseRequestView: "finance.expense_request.view",
+  financeExpenseRequestCreate: "finance.expense_request.create",
+  financeExpenseRequestSubmit: "finance.expense_request.submit",
+  financeExpenseRequestApprove: "finance.expense_request.approve",
+  financeExpenseRequestComplete: "finance.expense_request.complete",
+  financeCashAdvanceView: "finance.cash_advance.view",
+  financeCashAdvanceCreate: "finance.cash_advance.create",
+  financeCashAdvanceSubmit: "finance.cash_advance.submit",
+  financeCashAdvanceApprove: "finance.cash_advance.approve",
+  financeCashAdvanceLiquidate: "finance.cash_advance.liquidate",
+  financeCashAdvanceReviewLiquidation:
+    "finance.cash_advance.review_liquidation",
+  financePettyCashView: "finance.petty_cash.view",
+  financePettyCashCreate: "finance.petty_cash.create",
+  financePettyCashSubmit: "finance.petty_cash.submit",
+  financePettyCashApprove: "finance.petty_cash.approve",
+  financePettyCashReplenish: "finance.petty_cash.replenish",
+  financePettyCashLiquidate: "finance.petty_cash.liquidate",
+  financePettyCashReviewLiquidation:
+    "finance.petty_cash.review_liquidation",
+  workforceView: "workforce.view",
+  workforceManage: "workforce.manage",
+  workforceLeaveApprove: "workforce.leave.approve",
+  workforceOvertimeApprove: "workforce.overtime.approve",
+  workforceScheduleView: "workforce.schedule.view",
+  workforceScheduleManage: "workforce.schedule.manage",
+  workforceAttendanceImportView: "workforce.attendance_import.view",
+  workforceAttendanceImportManage: "workforce.attendance_import.manage"
 } as const;
 
 export function assertPermissionAllowed(
@@ -173,6 +256,10 @@ export function canUseProjects(permissionCodes: string[]) {
   );
 }
 
+export function canViewExpansionFinancialEstimates(permissionCodes: string[]) {
+  return permissionCodes.includes(permissions.financeBudgetView);
+}
+
 export function canConfigureProjectTemplates(permissionCodes: string[]) {
   return (
     permissionCodes.includes(permissions.projectTemplateView) ||
@@ -180,49 +267,115 @@ export function canConfigureProjectTemplates(permissionCodes: string[]) {
   );
 }
 
-export function getDefaultAppRoute(permissionCodes: string[]) {
-  if (permissionCodes.includes(permissions.coreAdminister)) {
-    return "/admin";
-  }
-  if (canUsePurchaseRequests(permissionCodes)) {
-    return "/purchase-requests";
-  }
-  if (canUseApprovals(permissionCodes)) {
-    return "/approvals";
-  }
-  if (permissionCodes.includes(permissions.inventoryBalanceView)) {
-    return "/inventory";
-  }
-  if (permissionCodes.includes(permissions.inventoryLedgerView)) {
-    return "/inventory/ledger";
-  }
-  if (canReadPurchaseOrders(permissionCodes)) {
-    return "/purchase-orders";
-  }
-  if (canUseReceiving(permissionCodes)) {
-    return "/receiving";
-  }
-  if (canUseTransfers(permissionCodes)) {
-    return "/transfers";
-  }
-  if (canUseStockCounts(permissionCodes)) {
-    return "/counts";
-  }
-  if (canUseWastageReports(permissionCodes)) {
-    return "/wastage";
-  }
-  if (canUseStockAdjustments(permissionCodes)) {
-    return "/adjustments";
-  }
-  if (permissionCodes.includes(permissions.quoteManage)) {
-    return "/quotes";
-  }
-  if (canConfigureProjectTemplates(permissionCodes)) {
-    return "/project-templates";
-  }
-  if (canUseProjects(permissionCodes)) {
-    return "/projects";
-  }
+export function canUseRecipesAndCosting(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.recipeView) ||
+    permissionCodes.includes(permissions.recipeManage) ||
+    permissionCodes.includes(permissions.menuCostView)
+  );
+}
+
+export function canUseBranchOperations(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.branchOperationsView) ||
+    permissionCodes.includes(permissions.branchOperationsCreate) ||
+    permissionCodes.includes(permissions.branchOperationsReview)
+  );
+}
+
+export function canUseFoodSafety(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.foodSafetyView) ||
+    permissionCodes.includes(permissions.foodSafetyCreate) ||
+    permissionCodes.includes(permissions.foodSafetyReview)
+  );
+}
+
+export function canUseIncidents(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.incidentView) ||
+    permissionCodes.includes(permissions.incidentCreate) ||
+    permissionCodes.includes(permissions.incidentResolve)
+  );
+}
+
+export function canUseMaintenance(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.maintenanceView) ||
+    permissionCodes.includes(permissions.maintenanceCreate) ||
+    permissionCodes.includes(permissions.maintenanceComplete)
+  );
+}
+
+export function canUseFinance(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.coreAdminister) ||
+    permissionCodes.includes(permissions.financeView) ||
+    permissionCodes.includes(permissions.financeConfigure) ||
+    permissionCodes.includes(permissions.financeLedgerView) ||
+    permissionCodes.includes(permissions.financePayablesView) ||
+    permissionCodes.includes(permissions.financeApInvoiceCreate) ||
+    permissionCodes.includes(permissions.financeApInvoiceSubmit) ||
+    permissionCodes.includes(permissions.financeApInvoiceMatch) ||
+    permissionCodes.includes(permissions.financeApInvoiceReviewException) ||
+    permissionCodes.includes(permissions.financeApInvoiceCancel) ||
+    permissionCodes.includes(permissions.financeSupplierCreditCreate) ||
+    permissionCodes.includes(permissions.financeSupplierCreditSubmit) ||
+    permissionCodes.includes(permissions.financeSupplierCreditCancel) ||
+    permissionCodes.includes(permissions.financePaymentRequestCreate) ||
+    permissionCodes.includes(permissions.financePaymentRequestApprove) ||
+    permissionCodes.includes(permissions.financePaymentRelease) ||
+    permissionCodes.includes(permissions.financeDisbursementCreate) ||
+    permissionCodes.includes(permissions.financeDisbursementApprove) ||
+    permissionCodes.includes(permissions.financeCashDepositCreate) ||
+    permissionCodes.includes(permissions.financeReconciliationView) ||
+    permissionCodes.includes(permissions.financeReconciliationMatch) ||
+    permissionCodes.includes(permissions.financePeriodCloseManage) ||
+    permissionCodes.includes(permissions.financeJournalCreate) ||
+    permissionCodes.includes(permissions.financeJournalSubmit) ||
+    permissionCodes.includes(permissions.financeJournalApprove) ||
+    permissionCodes.includes(permissions.financeJournalPost) ||
+    permissionCodes.includes(permissions.financeJournalReverse) ||
+    permissionCodes.includes(permissions.financeBudgetView) ||
+    permissionCodes.includes(permissions.financeBudgetManage) ||
+    permissionCodes.includes(permissions.financeBudgetApprove) ||
+    permissionCodes.includes(permissions.financeBudgetCommitmentReview) ||
+    permissionCodes.includes(permissions.financeExpenseRequestView) ||
+    permissionCodes.includes(permissions.financeExpenseRequestCreate) ||
+    permissionCodes.includes(permissions.financeExpenseRequestSubmit) ||
+    permissionCodes.includes(permissions.financeExpenseRequestApprove) ||
+    permissionCodes.includes(permissions.financeExpenseRequestComplete) ||
+    permissionCodes.includes(permissions.financeCashAdvanceView) ||
+    permissionCodes.includes(permissions.financeCashAdvanceCreate) ||
+    permissionCodes.includes(permissions.financeCashAdvanceSubmit) ||
+    permissionCodes.includes(permissions.financeCashAdvanceApprove) ||
+    permissionCodes.includes(permissions.financeCashAdvanceLiquidate) ||
+    permissionCodes.includes(permissions.financeCashAdvanceReviewLiquidation) ||
+    permissionCodes.includes(permissions.financePettyCashView) ||
+    permissionCodes.includes(permissions.financePettyCashCreate) ||
+    permissionCodes.includes(permissions.financePettyCashSubmit) ||
+    permissionCodes.includes(permissions.financePettyCashApprove) ||
+    permissionCodes.includes(permissions.financePettyCashReplenish) ||
+    permissionCodes.includes(permissions.financePettyCashLiquidate) ||
+    permissionCodes.includes(permissions.financePettyCashReviewLiquidation)
+  );
+}
+
+export function canUseWorkforce(permissionCodes: string[]) {
+  return (
+    permissionCodes.includes(permissions.coreAdminister) ||
+    permissionCodes.includes(permissions.workforceView) ||
+    permissionCodes.includes(permissions.workforceManage) ||
+    permissionCodes.includes(permissions.workforceLeaveApprove) ||
+    permissionCodes.includes(permissions.workforceOvertimeApprove) ||
+    permissionCodes.includes(permissions.workforceScheduleView) ||
+    permissionCodes.includes(permissions.workforceScheduleManage) ||
+    permissionCodes.includes(permissions.workforceAttendanceImportView) ||
+    permissionCodes.includes(permissions.workforceAttendanceImportManage)
+  );
+}
+
+export function getDefaultAppRoute(_permissionCodes: string[]) {
   return "/dashboard";
 }
 

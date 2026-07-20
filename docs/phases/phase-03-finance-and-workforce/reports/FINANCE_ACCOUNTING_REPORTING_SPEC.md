@@ -33,7 +33,7 @@
 - Payment schedule and release register
 - PO / receipt / invoice matching report
 - Match exception report
-- Supplier credit-note report
+- Supplier credit-note report, currently register-only for drafted/cancelled/pending-application credits until settlement application is implemented
 - AR aging and customer ledger when AR scope is released
 - Cash advance and liquidation aging
 - Petty cash fund and replenishment report

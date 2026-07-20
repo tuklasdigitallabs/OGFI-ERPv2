@@ -15,6 +15,11 @@ import {
   recordWorkflowNotifications,
   resolveScopedNotificationRecipients,
 } from "./notifications";
+import {
+  assertSupplierStatusAllowedForPurchaseOrder,
+  getPurchasingSupplierPolicy,
+} from "./policySettings";
+import { reverseBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
 
 const createPurchaseOrderSchema = z.object({
   quotationRecommendationId: z.string().uuid(),
@@ -74,6 +79,16 @@ const purchaseOrderStatuses = [
   "CLOSED",
 ] as const;
 
+export const purchaseOrderCancellationSubtypes = [
+  "approval_rejected",
+  "pre_receiving_cancellation",
+  "remaining_balance_closure",
+  "unknown_unclassified",
+] as const;
+
+export type PurchaseOrderCancellationSubtype =
+  (typeof purchaseOrderCancellationSubtypes)[number];
+
 export type PurchaseOrderListFilters = {
   query?: string | undefined;
   status?: string | undefined;
@@ -83,6 +98,15 @@ export type PurchaseOrderListFilters = {
   maxAmount?: string | undefined;
   approver?: string | undefined;
 };
+
+function normalizeDateFilter(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const date = new Date(trimmed);
+  return Number.isNaN(date.getTime()) ? undefined : trimmed;
+}
 
 export function normalizePurchaseOrderFilters(
   filters: PurchaseOrderListFilters = {},
@@ -95,8 +119,8 @@ export function normalizePurchaseOrderFilters(
     status: purchaseOrderStatuses.includes(filters.status as never)
       ? filters.status
       : undefined,
-    expectedFrom: filters.expectedFrom || undefined,
-    expectedTo: filters.expectedTo || undefined,
+    expectedFrom: normalizeDateFilter(filters.expectedFrom),
+    expectedTo: normalizeDateFilter(filters.expectedTo),
     minAmount:
       Number.isFinite(minAmount) && minAmount >= 0
         ? String(minAmount)
@@ -125,6 +149,7 @@ type QuoteLineSnapshotInput = {
     description: string;
     purpose: string;
     notes: string | null;
+    budgetLineId?: string | null;
   } | null;
   item?: {
     itemName: string;
@@ -241,6 +266,29 @@ export function assertSupplierNoticeEvidence(
   ) {
     throw new Error("PURCHASE_ORDER_CLOSURE_SUPPLIER_NOTICE_REQUIRED");
   }
+}
+
+export function derivePurchaseOrderCancellationSubtype(input: {
+  status: string;
+  cancellationSubtype?: string | null;
+  receivedQty: number;
+  balanceClosureCount?: number;
+}): PurchaseOrderCancellationSubtype {
+  if (
+    input.cancellationSubtype &&
+    purchaseOrderCancellationSubtypes.includes(
+      input.cancellationSubtype as PurchaseOrderCancellationSubtype,
+    )
+  ) {
+    return input.cancellationSubtype as PurchaseOrderCancellationSubtype;
+  }
+  if (input.status === "CLOSED" && (input.balanceClosureCount ?? 0) > 0) {
+    return "remaining_balance_closure";
+  }
+  if (input.status === "CANCELLED" && input.receivedQty <= 0) {
+    return "pre_receiving_cancellation";
+  }
+  return "unknown_unclassified";
 }
 
 export function assertPurchaseOrderCanRequestBalanceClosure({
@@ -452,6 +500,7 @@ export function buildPurchaseOrderLineSnapshots(
     return {
       sourceSupplierQuoteLineId: line.id,
       sourcePrLineId: line.sourcePrLineId,
+      budgetLineId: line.sourcePrLine?.budgetLineId ?? null,
       itemId: line.itemId,
       uomId: line.uomId,
       lineNumber: line.sourcePrLine?.lineNumber ?? index + 1,
@@ -685,6 +734,10 @@ export async function listPurchaseOrders(
       deliveryLocation: true,
       quotationRecommendation: true,
       selectedSupplierQuotation: true,
+      balanceClosures: {
+        where: { status: "APPROVED" },
+        select: { id: true },
+      },
       lines: {
         orderBy: { lineNumber: "asc" },
         include: {
@@ -789,11 +842,20 @@ export async function listPurchaseOrders(
       expectedDeliveryDate,
       today,
     });
+    const cancellationSubtype = derivePurchaseOrderCancellationSubtype({
+      status: order.status,
+      cancellationSubtype: order.cancellationSubtype,
+      receivedQty: fulfillment.receivedQty,
+      balanceClosureCount: order.balanceClosures.length,
+    });
 
     return {
       id: order.id,
       publicReference: order.publicReference,
       status: order.status,
+      cancellationSubtype,
+      cancellationReason: order.cancellationReason,
+      cancelledAt: order.cancelledAt?.toISOString() ?? null,
       supplierName: order.supplier.tradingName ?? order.supplier.legalName,
       supplierCode: order.supplier.supplierCode,
       purchaseRequestReference: order.purchaseRequest.publicReference,
@@ -1304,9 +1366,11 @@ export async function createPurchaseOrderFromRecommendation(
   if (recommendation.purchaseOrder) {
     throw new Error("PURCHASE_ORDER_ALREADY_EXISTS_FOR_RECOMMENDATION");
   }
-  if (recommendation.selectedSupplierQuotation.supplier.status !== "ACTIVE") {
-    throw new Error("SUPPLIER_NOT_ACTIVE_FOR_PO");
-  }
+  const supplierPolicy = await getPurchasingSupplierPolicy(session);
+  assertSupplierStatusAllowedForPurchaseOrder(
+    recommendation.selectedSupplierQuotation.supplier.accreditationStatus,
+    supplierPolicy,
+  );
 
   const lineSnapshots = buildPurchaseOrderLineSnapshots(
     recommendation.selectedSupplierQuotation.lines,
@@ -1359,6 +1423,7 @@ export async function createPurchaseOrderFromRecommendation(
           lines: lineSnapshots.map((line) => ({
             sourceSupplierQuoteLineId: line.sourceSupplierQuoteLineId,
             sourcePrLineId: line.sourcePrLineId,
+            budgetLineId: line.budgetLineId,
             itemId: line.itemId,
             lineNumber: line.lineNumber,
             description: line.description,
@@ -1376,6 +1441,7 @@ export async function createPurchaseOrderFromRecommendation(
             companyId: session.context.companyId,
             sourcePrLineId: line.sourcePrLineId,
             sourceSupplierQuoteLineId: line.sourceSupplierQuoteLineId,
+            budgetLineId: line.budgetLineId,
             itemId: line.itemId,
             uomId: line.uomId,
             lineNumber: line.lineNumber,
@@ -1457,9 +1523,11 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
   assertApprovedQuotationRecommendationForPo(
     order.quotationRecommendation.status,
   );
-  if (order.supplier.status !== "ACTIVE") {
-    throw new Error("SUPPLIER_NOT_ACTIVE_FOR_PO");
-  }
+  const supplierPolicy = await getPurchasingSupplierPolicy(session);
+  assertSupplierStatusAllowedForPurchaseOrder(
+    order.supplier.accreditationStatus,
+    supplierPolicy,
+  );
   if (order.deliveryLocation.status !== "ACTIVE") {
     throw new Error("PURCHASE_ORDER_DELIVERY_LOCATION_INACTIVE");
   }
@@ -1618,9 +1686,12 @@ export async function issuePurchaseOrderToSupplier(formData: FormData) {
   }
   assertAuthorizedLocation(session, order.deliveryLocationId);
 
-  if (order.supplier.status !== "ACTIVE") {
-    throw new Error("SUPPLIER_NOT_ACTIVE_FOR_PO_ISSUE");
-  }
+  const supplierPolicy = await getPurchasingSupplierPolicy(session);
+  assertSupplierStatusAllowedForPurchaseOrder(
+    order.supplier.accreditationStatus,
+    supplierPolicy,
+    "SUPPLIER_NOT_ACTIVE_FOR_PO_ISSUE",
+  );
   if (order.deliveryLocation.status !== "ACTIVE") {
     throw new Error("PURCHASE_ORDER_DELIVERY_LOCATION_INACTIVE");
   }
@@ -1748,6 +1819,7 @@ export async function cancelPurchaseOrder(formData: FormData) {
       },
       select: {
         id: true,
+        budgetLineId: true,
         orderedQty: true,
         receivedQty: true,
         cancelledQty: true,
@@ -1774,6 +1846,10 @@ export async function cancelPurchaseOrder(formData: FormData) {
       },
       data: {
         status: "CANCELLED",
+        cancellationSubtype: "pre_receiving_cancellation",
+        cancellationReason: values.cancellationReason,
+        cancelledAt: new Date(),
+        cancelledByUserId: session.user.id,
       },
     });
 
@@ -1803,6 +1879,7 @@ export async function cancelPurchaseOrder(formData: FormData) {
         beforeData: { status: order.status },
         afterData: { status: "CANCELLED" },
         metadata: {
+          cancellationSubtype: "pre_receiving_cancellation",
           cancellationReason: values.cancellationReason,
           previousStatus: order.status,
           supplierNoticeReference,
@@ -1815,6 +1892,19 @@ export async function cancelPurchaseOrder(formData: FormData) {
         },
       },
     });
+
+    for (const line of currentLines) {
+      if (!line.budgetLineId) {
+        continue;
+      }
+      await reverseBudgetCommitmentFromApprovedSourceEvent(tx, session, {
+        sourceType: "PURCHASE_ORDER",
+        sourceId: order.id,
+        sourceEventKey: `purchase_order.approved:${line.id}`,
+        reversalEventKey: `purchase_order.cancelled:${line.id}`,
+        reason: values.cancellationReason,
+      });
+    }
   });
 }
 

@@ -1,12 +1,14 @@
+import { loadLocalEnvValue } from "./local-env.mjs";
+
 export function getReleaseSummaryMetadata(env = process.env) {
   return {
-    evidenceRunId: env.RELEASE_EVIDENCE_RUN_ID ?? "",
-    releaseVersion: env.RELEASE_VERSION ?? "",
-    githubRunId: env.GITHUB_RUN_ID ?? "",
-    githubSha: env.GITHUB_SHA ?? "",
-    deployToStaging: env.DEPLOY_TO_STAGING ?? "false",
-    environment: env.RELEASE_ENVIRONMENT ?? "staging-rehearsal",
-    migrationMode: env.RELEASE_MIGRATION_MODE ?? "prisma-deploy",
+    evidenceRunId: envValue(env, "RELEASE_EVIDENCE_RUN_ID"),
+    releaseVersion: envValue(env, "RELEASE_VERSION"),
+    githubRunId: envValue(env, "GITHUB_RUN_ID"),
+    githubSha: envValue(env, "GITHUB_SHA"),
+    deployToStaging: envValue(env, "DEPLOY_TO_STAGING") || "false",
+    environment: envValue(env, "RELEASE_ENVIRONMENT") || "staging-rehearsal",
+    migrationMode: envValue(env, "RELEASE_MIGRATION_MODE") || "prisma-deploy",
   };
 }
 
@@ -51,4 +53,11 @@ export function validateReleaseSummaryMetadata(metadata) {
 
 export function failedMetadataChecks(checks) {
   return checks.filter(([, passed]) => !passed).map(([label]) => label);
+}
+
+function envValue(env, name) {
+  if (env !== process.env) {
+    return env[name] ?? "";
+  }
+  return loadLocalEnvValue(name, env);
 }

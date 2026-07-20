@@ -1,6 +1,6 @@
 # Phase III — Data Extensions
 
-**Status:** Planned data-model framework
+**Status:** Partially implemented. Finance configuration, journals, AP/payment foundations, bank/cash readiness, period-close readiness, budget/commitment visibility, expense request foundation, cash advance/liquidation foundation, petty cash foundation, workforce registry/readiness foundations, scheduling/manpower coverage foundation, and attendance-import evidence foundation are implemented. Production workflow actions, approval-instance integration, reporting hardening, and UAT remain pending.
 
 ## Purpose
 
@@ -10,15 +10,31 @@ This document defines how Phase III extends the core ERP data model without dupl
 
 - `budgets`
 - `budget_lines`
+- `budget_revisions`
+- `budget_commitments`
 - `expense_requests`
+- `expense_request_lines`
+- `expense_request_source_links`
 - `petty_cash_funds`
-- `cash_advances`
-- `liquidations`
+- `petty_cash_requests`
+- `petty_cash_ledger_entries`
+- `petty_cash_liquidations`
+- `petty_cash_liquidation_lines`
+- `cash_advance_requests`
+- `cash_advance_movements`
+- `cash_advance_liquidations`
+- `cash_advance_liquidation_lines`
+- `finance_close_runs`
+- `finance_close_checklist_items`
+- `finance_close_exceptions`
+- `finance_close_attempts`
 - `payment_requests`
 - `employees`
 - `employee_assignments`
-- `schedules`
-- `attendance_imports`
+- `workforce_schedules`
+- `workforce_schedule_lines`
+- `attendance_import_batches`
+- `attendance_import_lines`
 
 ## Mandatory Data Rules
 

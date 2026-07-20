@@ -1,19 +1,26 @@
 # OGFI ERP — Phase II UI Specification: Branch Operations
 
-**Status:** Planned detailed-specification framework  
+**Status:** Implemented for checklist queue, detail, create modal, review, return-for-correction, correction apply, close, export, dashboard source links, and review-reminder visibility
 **Visual standard:** Modern SaaS UI with restaurant-grade operational control
 
 ## Screen Purpose
 
-Provide a role-aware workspace for branch operations while preserving company, brand, location/project, department, requester, status, approval and audit context.
+Provide a role-aware workspace for opening/closing and branch-execution
+checklists while preserving company, brand, location, requester/reviewer,
+status, evidence, correction, export, and audit context.
 
-## Required Screens or Views
+## Implemented Screens or Views
 
-1. List / queue view with search, filters, saved views, export and permission-aware actions
-2. Detail view with record summary, structured data, status, next action, timeline and attachments
-3. Create / edit flow with validation, autosave or draft behavior where appropriate
-4. Approval, review or exception action surface when the role permits it
-5. Responsive mobile view for field, branch, warehouse or manager actions when relevant
+1. List / queue view with search, business-date, shift, status filters, export,
+   status counts, and permission-aware create action.
+2. Detail view with source summary, structured checklist lines, status,
+   evidence references, reviewer fields, correction history, and source context.
+3. Create modal with business date, shift, checklist name, and structured
+   checklist lines.
+4. Review, return-for-correction, correction apply, and close action surfaces
+   when the role and status permit them.
+5. Dashboard/report links route to source records instead of replacing source
+   review actions.
 
 ## Global UI Rules
 
@@ -25,16 +32,24 @@ Provide a role-aware workspace for branch operations while preserving company, b
 - Include empty, loading, error, permission-denied, rejected, cancelled and archived states.
 - Use a single shared spacing token across page layout, cards, forms and table controls.
 
-## Required Details Before Build
+## Implemented Details
 
-- Exact columns and filters
-- Form fields and conditional validation
-- Role-based actions and visibility
-- Approval panel and audit timeline treatment
-- Mobile priority tasks and touch target requirements
-- Related-record navigation and export behavior
-- Accessibility and keyboard behavior
+- Columns and cards show checklist number/name, date, shift, status, exception
+  count, evidence, reviewer, and opened-by context.
+- Filters preserve `q`, business date, shift, and status in list/export flows.
+- Create/review/correction/close actions use explicit labels and modal forms.
+- Denied or unavailable actions are hidden by server-side permission and status
+  checks.
+- Export keeps the same filter contract as the queue.
+- Dashboard and notification entries are visibility-only source links.
 
 ## Acceptance Criteria
 
-The UI is complete only when a first-time permitted user can identify the record, scope, status, next action, owner and material operational impact without leaving the record page.
+The current controlled slice is complete when a permitted user can create a
+branch checklist, review it, return it for correction, apply correction, close
+it, filter/export it, and trace audit/correction context without inventory,
+finance, incident, maintenance, or approval-source mutation.
+
+Future UI expansion for terminal reopen, formal attachment upload enforcement,
+automatic incident generation, escalation timers, saved views, or additional
+mobile shortcuts requires a new approved backlog item.

@@ -60,6 +60,8 @@ const lines = [
   "PowerShell: $env:RELEASE_EVIDENCE_RUN_ID='<evidence-run-id>'; $env:RELEASE_VERSION='<approved-version>'; $env:GITHUB_RUN_ID='<approved-run-id>'; $env:GITHUB_SHA='<approved-sha>'; pnpm release:summary-preflight",
   "cmd.exe: set RELEASE_EVIDENCE_RUN_ID=<evidence-run-id> && set RELEASE_VERSION=<approved-version> && set GITHUB_RUN_ID=<approved-run-id> && set GITHUB_SHA=<approved-sha> && pnpm release:summary-preflight",
   "POSIX shell: RELEASE_EVIDENCE_RUN_ID=<evidence-run-id> RELEASE_VERSION=<approved-version> GITHUB_RUN_ID=<approved-run-id> GITHUB_SHA=<approved-sha> pnpm release:summary-preflight",
+  ".env.release.local: copy the approved non-secret metadata values into .env.release.local, then run LOCAL_ENV_FILES=.env.release.local pnpm release:summary-preflight. Release summary commands read .env.release.local automatically; explicit shell environment variables still override file values.",
+  "Never store secrets, DATABASE_URL, database passwords, API tokens, or raw credentials in .env.release.local.",
   "",
   "Preflight Checks",
   ...checks.map(([label, passed]) => `${passed ? "PASS" : "MISSING"} | ${label}`),
@@ -78,6 +80,7 @@ lines.push(
   "Next Commands",
   "pnpm release:summary-preflight",
   "pnpm release:summary",
+  "DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness",
   "pnpm release:evidence:manifest",
   "pnpm release:final-review-status",
 );

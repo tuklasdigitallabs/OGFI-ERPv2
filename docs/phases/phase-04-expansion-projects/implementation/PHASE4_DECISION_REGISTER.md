@@ -1,15 +1,17 @@
 # Phase IV — Decision Register
 
-**Status:** Open for planning
+**Status:** Configurable baseline confirmed for planning and UAT
 
-Record only decisions required to make this phase build-ready. Do not treat assumptions as approved policy.
+Record only decisions required to make this phase build-ready. Do not treat configurable defaults as hardcoded permanent policy.
 
 | ID | Decision Needed | Default / Starting Assumption | Owner | Status | Decision Date |
 |---|---|---|---|---|---|
-| IV-001 | Final scope and release boundary | Build the listed planned scope; defer non-essential features | Product / Executive | Open | |
-| IV-002 | Detailed approval matrix additions | Reuse core configurable approval engine | Finance / Operations / HR / Projects as applicable | Open | |
-| IV-003 | Reporting and dashboard priorities | Use role-specific dashboards and exportable operational reports | Management | Open | |
-| IV-004 | Integration and migration needs | Integrate only where reliable source data exists | IT / Data Owner | Open | |
-| IV-005 | Go-live and UAT owners | Cross-functional sign-off required | Executive / Project Lead | Open | |
+| IV-001 | Final scope and release boundary | Build the listed planned scope through the shared Work Management Engine; defer non-essential features until validated | Product / Executive | Confirmed baseline by `DEC-0036` | 2026-07-07 |
+| IV-002 | Detailed approval matrix additions | Reuse core configurable approval engine for lifecycle gates, target-date changes, restricted visibility, financial links, handover, and closure authority | Finance / Operations / HR / Projects as applicable | Confirmed baseline by `DEC-0036` | 2026-07-07 |
+| IV-003 | Reporting and dashboard priorities | Use role-specific dashboards and exportable operational/project reports that link to source records | Management | Confirmed baseline by `DEC-0036` | 2026-07-07 |
+| IV-004 | Integration and migration needs | Integrate only reliable source data; external collaboration remains gated until approved | IT / Data Owner | Confirmed baseline by `DEC-0036` | 2026-07-07 |
+| IV-005 | Go-live and UAT owners | Use Release Board signoff with Expansion, Operations, Finance, IT, QA, Release, and Enablement owners as applicable | Executive / Project Lead | Confirmed baseline by `DEC-0036` | 2026-07-07 |
 | IV-006 | Branch Expansion & Construction shared-engine dependency | Use shared Work Management Engine for tasks, assignments, comments, attachments, activity, notifications, calendars, milestones, blockers, and boards | Product / Expansion / IT | Confirmed by `DEC-0007` | |
-| IV-007 | Branch Expansion & Construction control policy | Lifecycle gates, target opening date changes, restricted visibility, financial-link display, contractor references, punch-list closure, and handover rules must be approved before build | Expansion / Operations / Finance / Executive | Open | |
+| IV-007 | Branch Expansion & Construction control policy | Lifecycle gates, target opening date changes, restricted visibility, financial-link display, contractor references, punch-list closure, and handover rules use configurable defaults from `DEC-0036` | Expansion / Operations / Finance / Executive | Confirmed baseline by `DEC-0036` | 2026-07-07 |
+| IV-008 | Project evidence and signoff requirement materialization | Published playbook defaults create additive, project-scoped requirement records. Evidence is fulfilled only through existing project attachments or authorized source-record links; signoff records a project coordination decision and never mutates the linked ERP source record. Requirements preserve owner, reviewer, status, reason, version, and activity history. A required requirement may be waived only by an authorized project controller with a mandatory reason and immutable activity/audit record; it cannot be silently cancelled. Optional requirements may be cancelled with the same controlled record. | Expansion / IT | Confirmed pilot baseline under IV-006 / IV-007; validate in UAT | 2026-07-11 |
+| IV-009 | Independent Expansion leadership and gate review | New Expansion projects require distinct active manager and sponsor assignments, neither equal to the creator. Gate decisions fail closed when an independent eligible reviewer is unavailable. Each new high- or critical-severity punch item records an active project-member reviewer distinct from its owner and creator; only that reviewer may close it after review. Reviewer assignment is controlled and auditable. A cancelled lifecycle gate is withdrawn and reissued rather than treated as achieved. | Expansion / Operations / IT | Confirmed pilot baseline; validate in UAT | 2026-07-11 |

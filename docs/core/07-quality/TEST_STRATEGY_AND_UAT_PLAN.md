@@ -3,7 +3,7 @@
 **Status:** Phase I quality baseline  
 **Purpose:** Prove that the ERP controls are correct in real restaurant operations before go-live.
 
-**Release evidence pack:** `PHASE1_PHASE1_5_UAT_EVIDENCE_PACK.md` is the required execution and signoff record for Phase I and Phase 1.5. `PHASE1_PHASE1_5_ACCEPTANCE_TRACEABILITY_MATRIX.md` maps each acceptance workflow to current automated evidence and remaining manual UAT proof. `PHASE1_PHASE1_5_DEPLOYMENT_ROLLBACK_EVIDENCE_CHECKLIST.md` records deployment, rollback, backup/restore, and smoke-test evidence. `PHASE1_PHASE1_5_PILOT_HYPERCARE_AND_DEFECT_RUNBOOK.md` defines defect intake, triage, daily hypercare, and release decision procedures. This plan defines what to test; the evidence pack records whether UAT actually passed.
+**Release evidence pack:** `PHASE1_PHASE1_5_UAT_EVIDENCE_PACK.md` is the required execution and signoff record for Phase I and Phase 1.5. `PHASE1_PHASE1_5_ACCEPTANCE_TRACEABILITY_MATRIX.md` maps each acceptance workflow to current automated evidence and remaining manual UAT proof. `PHASE1_PHASE1_5_DEPLOYMENT_ROLLBACK_EVIDENCE_CHECKLIST.md` records deployment, rollback, backup/restore, and smoke-test evidence. `PHASE1_PHASE1_5_PILOT_HYPERCARE_AND_DEFECT_RUNBOOK.md` defines defect intake, triage, daily hypercare, and release decision procedures. `PHASE1_PHASE1_5_DEFERRED_GO_LIVE_BLOCKERS_FOR_UAT.md` parks release/go-live blockers that do not prevent demos or continued implementation but must be reviewed during actual user UAT before production approval. This plan defines what to test; the evidence pack records whether UAT actually passed.
 
 ---
 
@@ -16,6 +16,7 @@ Phase I is successful only when it is both usable and controlled:
 - Purchasing and inventory workflow states cannot be bypassed.
 - Inventory ledger and balance data remain correct under normal retries and concurrent activity.
 - Notifications, audit logs, reports, exports, attachments, and mobile use work as specified.
+- Client-facing workspaces follow the approved Modern SaaS layout standard: list-first/task-first pages, real tabs for multi-function workspaces, pagination beyond 10 records, selected-record detail/action drawers, readable light/dark contrast, and no long stacked-card operational pages.
 
 ## 2. Test layers
 
@@ -28,6 +29,7 @@ Phase I is successful only when it is both usable and controlled:
 | Security/permission tests | Validate least privilege, approval segregation, tenant/scope isolation                             | QA + Security/Tech Lead |
 | Data migration tests      | Validate template imports, duplicates, reconciliation, opening stock                               | Data owners + QA        |
 | Performance tests         | Validate common load/search/submit/report behavior                                                 | Tech Lead / QA          |
+| Visual readiness tests    | Validate layout, navigation, spacing, contrast, pagination, action hierarchy, no-overlap behavior, and no stacked-card operational workspaces | Product / UI / QA       |
 | UAT                       | Validate real business procedures and acceptance                                                   | Process owners          |
 | Pilot/hypercare           | Validate real operating environment with controlled locations                                      | Operations + Support    |
 
@@ -120,6 +122,19 @@ Automate high-risk deterministic rules first:
 4. Run desktop, tablet, and mobile validation for applicable operations.
 5. Do not sign off based only on demo success; complete the scenario set.
 
+### 6.1 Visual readiness method
+
+Before client UAT, each client-facing workspace in scope must pass a visual readiness review:
+
+1. Confirm the primary workspace is list-first, task-queue-first, or workbench-first, not a long stack of cards.
+2. Confirm multi-function routes use real tabs, subroutes, or segmented navigation.
+3. Confirm all lists that can exceed 10 records have pagination or an approved incremental-load pattern.
+4. Confirm row-level workflow actions do not repeat large inline forms; use a selected-record drawer, detail route, or focused action composer.
+5. Confirm multi-line and evidence-heavy entry uses a drawer, sheet, stepper, or full-page task mode.
+6. Capture light and dark screenshots for text contrast, button hierarchy, status pills, disabled states, posting context, and table headers.
+7. Check 1366px desktop, wider desktop, tablet, and mobile for overlap, clipping, horizontal-scroll dependency, and text wrapping.
+8. Record remaining High/Critical visual findings as UAT blockers unless the Product Owner explicitly accepts a temporary demo-only limitation.
+
 ## 7. Defect severity
 
 | Severity | Definition                                                                                  | Go-live impact                                    |
@@ -140,6 +155,7 @@ Phase I pilot may go live only when:
 - Opening master data and inventory reconciliation are approved.
 - Backup/restore and deployment rollback checks are completed.
 - Notifications and audit logs are verified.
+- Visual readiness checks pass for all client-facing workspaces in scope, including no long stacked-card operational pages and no unpaginated operational lists above 10 records.
 - Training, support contacts, and hypercare plan are ready.
 - Named process owners sign off.
 

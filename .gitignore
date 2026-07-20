@@ -3,6 +3,8 @@ node_modules/
 .next/
 .next-ogfi/
 .next-e2e/
+.next-*/
+*.tsbuildinfo
 dist/
 build/
 coverage/
@@ -29,6 +31,8 @@ volumes/
 minio-data/
 postgres-data/
 redis-data/
+.ogfi-private-attachments/
+apps/web/.ogfi-private-attachments/
 
 # Logs
 *.log

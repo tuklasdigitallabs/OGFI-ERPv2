@@ -556,6 +556,10 @@ html[data-theme="dark"] .ogfi-workflow-cue {
   color: var(--color-action-primary);
 }
 
+.shell-nav-subitems {
+  border-color: color-mix(in srgb, var(--color-border-default) 82%, transparent);
+}
+
 .posting-context-bar {
   border-top: 1px solid var(--color-border-default);
   border-bottom: 1px solid var(--color-border-default);
@@ -592,6 +596,10 @@ html[data-theme="dark"] .shell-nav-section.is-active {
 
 html[data-theme="dark"] .shell-nav-section.is-active .shell-nav-section-icon {
   color: #bfdbfe;
+}
+
+html[data-theme="dark"] .shell-nav-subitems {
+  border-color: rgba(96, 165, 250, 0.28);
 }
 
 html[data-theme="dark"] .posting-context-bar {

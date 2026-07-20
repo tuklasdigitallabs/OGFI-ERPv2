@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, EmptyState, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import {
   canUseApprovals,
@@ -10,8 +10,50 @@ import {
   listPendingApprovals,
   type ApprovalQueueItem
 } from "@/server/services/approvals";
+import type { PurchaseRequestSlaStatus } from "@/server/services/purchaseRequests";
 
 export const dynamic = "force-dynamic";
+
+type ApprovalInboxTab = "inbox" | "due-soon" | "returned" | "audit";
+
+type ApprovalsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+const PAGE_SIZE = 10;
+
+function getStringParam(
+  searchParams: Record<string, string | string[] | undefined>,
+  key: string
+) {
+  const value = searchParams[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getTab(searchParams: Record<string, string | string[] | undefined>): ApprovalInboxTab {
+  const tab = getStringParam(searchParams, "tab");
+  if (tab === "due-soon" || tab === "returned" || tab === "audit") {
+    return tab;
+  }
+  return "inbox";
+}
+
+function getPage(searchParams: Record<string, string | string[] | undefined>) {
+  const page = Number.parseInt(getStringParam(searchParams, "page") ?? "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+function approvalsHref(tab: ApprovalInboxTab, page = 1) {
+  const params = new URLSearchParams();
+  if (tab !== "inbox") {
+    params.set("tab", tab);
+  }
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+  const query = params.toString();
+  return query ? `/approvals?${query}` : "/approvals";
+}
 
 function approvalTone(status: string) {
   const normalized = status.toUpperCase();
@@ -31,6 +73,9 @@ function approvalTone(status: string) {
 }
 
 function isDueSoon(approval: ApprovalQueueItem) {
+  if (approval.slaStatus === "OVERDUE" || approval.slaStatus === "DUE_TODAY") {
+    return true;
+  }
   const required = new Date(`${approval.requiredDate}T00:00:00`);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -38,7 +83,20 @@ function isDueSoon(approval: ApprovalQueueItem) {
   return days <= 1;
 }
 
-export default async function ApprovalsPage() {
+function slaBadgeTone(status: PurchaseRequestSlaStatus) {
+  if (status === "OVERDUE") {
+    return "destructive" as const;
+  }
+  if (status === "DUE_TODAY") {
+    return "warning" as const;
+  }
+  if (status === "ON_TRACK") {
+    return "info" as const;
+  }
+  return "neutral" as const;
+}
+
+export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps) {
   const session = await getSessionContext();
   if (!session) {
     redirect("/sign-in");
@@ -47,8 +105,43 @@ export default async function ApprovalsPage() {
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
+  const params = searchParams ? await searchParams : {};
+  const activeTab = getTab(params);
+  const page = getPage(params);
   const approvals = await listPendingApprovals(session);
   const urgentApprovals = approvals.filter(isDueSoon);
+  const visibleApprovals =
+    activeTab === "due-soon" ? urgentApprovals : activeTab === "inbox" ? approvals : [];
+  const pageCount = Math.max(1, Math.ceil(visibleApprovals.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const pagedApprovals = visibleApprovals.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE
+  );
+  const tabEmptyCopy =
+    activeTab === "returned"
+      ? {
+          title: "No returned approvals",
+          description:
+            "Returned decisions will appear here when a controlled record is sent back for revision."
+        }
+      : activeTab === "audit"
+        ? {
+            title: "No approval audit entries in this inbox",
+            description:
+              "Approval history will be shown from controlled records after audit views are connected to this queue."
+          }
+        : activeTab === "due-soon"
+          ? {
+              title: "No approvals due soon",
+              description:
+                "Approvals that are overdue or due today will be isolated here for faster review."
+            }
+          : {
+              title: "No pending approvals",
+              description:
+                "Assigned decisions appear here after a requester submits a controlled record."
+            };
 
   return (
     <AppShell
@@ -57,39 +150,48 @@ export default async function ApprovalsPage() {
       subtitle="Assigned controlled record decisions"
       activeNav="approvals"
     >
-      <div className="mb-5 grid gap-4 md:grid-cols-3">
-        <Panel className="ogfi-metric-card p-5">
-          <p className="text-sm font-semibold text-slate-500">Assigned</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{approvals.length}</p>
-        </Panel>
-        <Panel className="ogfi-metric-card p-5">
-          <p className="text-sm font-semibold text-slate-500">Due soon</p>
-          <p className="mt-2 text-3xl font-bold text-amber-700">{urgentApprovals.length}</p>
-        </Panel>
-        <Panel className="ogfi-metric-card p-5">
-          <p className="text-sm font-semibold text-slate-500">Approver</p>
-          <p className="mt-2 text-lg font-bold text-slate-950">{session.user.displayName}</p>
-        </Panel>
-      </div>
-
       <div className="ogfi-data-surface">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="ogfi-tab-list mb-4">
-              <span className="ogfi-tab is-active">Inbox</span>
-              <span className="ogfi-tab">Due soon</span>
-              <span className="ogfi-tab">Returned</span>
-              <span className="ogfi-tab">Audit</span>
-            </div>
+          <div className="min-w-0">
             <h2 className="text-2xl font-bold tracking-tight text-slate-950">Pending decisions</h2>
             <p className="text-sm text-slate-500">
-              Review controlled records assigned to your role and scoped locations.
+              {approvals.length} assigned to {session.user.displayName}; {urgentApprovals.length} due soon.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone="info" size="sm">Scoped</Badge>
             <Badge tone="warning" size="sm">Self-approval blocked</Badge>
           </div>
+        </div>
+        <div className="border-b border-slate-100 p-4">
+          <WorkspaceTabs
+            items={[
+              {
+                label: "Inbox",
+                href: approvalsHref("inbox"),
+                active: activeTab === "inbox",
+                count: approvals.length
+              },
+              {
+                label: "Due soon",
+                href: approvalsHref("due-soon"),
+                active: activeTab === "due-soon",
+                count: urgentApprovals.length
+              },
+              {
+                label: "Returned",
+                href: approvalsHref("returned"),
+                active: activeTab === "returned",
+                count: 0
+              },
+              {
+                label: "Audit",
+                href: approvalsHref("audit"),
+                active: activeTab === "audit",
+                count: 0
+              }
+            ]}
+          />
         </div>
         <div className="ogfi-table-head hidden grid-cols-[1.35fr_1fr_1fr_1fr_auto] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold text-slate-500 md:grid">
           <span>Record</span>
@@ -98,16 +200,13 @@ export default async function ApprovalsPage() {
           <span>Next action</span>
           <span>Action</span>
         </div>
-        {approvals.length === 0 ? (
+        {visibleApprovals.length === 0 ? (
           <div className="p-5">
-            <p className="font-semibold text-slate-900">No pending approvals</p>
-            <p className="mt-1 text-sm text-slate-600">
-              Assigned decisions appear here after a requester submits a controlled record.
-            </p>
+            <EmptyState title={tabEmptyCopy.title} description={tabEmptyCopy.description} />
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {approvals.map((approval) => (
+            {pagedApprovals.map((approval) => (
               <div
                 key={approval.approvalInstanceId}
                 data-testid="approval-row"
@@ -137,6 +236,13 @@ export default async function ApprovalsPage() {
                       ))}
                     </div>
                   ) : null}
+                  {approval.isEmergency && approval.slaStatus ? (
+                    <div className="mt-2">
+                      <Badge tone={slaBadgeTone(approval.slaStatus)}>
+                        {approval.slaLabel}
+                      </Badge>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="text-sm text-slate-700">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 md:hidden">
@@ -155,7 +261,9 @@ export default async function ApprovalsPage() {
                   <p className="mt-1">
                     Step {approval.currentStepOrder ?? "current"} / Due {approval.requiredDate}
                   </p>
-                  {isDueSoon(approval) ? (
+                  {approval.slaStatus === "OVERDUE" ? (
+                    <p className="mt-1 font-semibold text-rose-700">Overdue</p>
+                  ) : isDueSoon(approval) ? (
                     <p className="mt-1 font-semibold text-amber-700">Due soon</p>
                   ) : null}
                 </div>
@@ -170,6 +278,15 @@ export default async function ApprovalsPage() {
             ))}
           </div>
         )}
+        {visibleApprovals.length > 0 ? (
+          <PaginationBar
+            page={safePage}
+            pageSize={PAGE_SIZE}
+            totalItems={visibleApprovals.length}
+            itemLabel="approvals"
+            getPageHref={(nextPage) => approvalsHref(activeTab, nextPage)}
+          />
+        ) : null}
       </div>
     </AppShell>
   );

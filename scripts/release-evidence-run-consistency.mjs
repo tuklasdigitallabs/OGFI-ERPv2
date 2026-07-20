@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { evidenceMetadataValue } from "./release-evidence-metadata.mjs";
+import { evaluateChecksumSidecar } from "./release-manifest-integrity.mjs";
 
 const requiredSources = [
   source("Release summary preflight", ".", /^release-summary-preflight-.*\.txt$/, [
@@ -38,12 +40,56 @@ const requiredSources = [
   source("Deployment status", "deployment-status", /^deployment-status-.*\.txt$/, [
     /^Evidence run ID: (.+)$/m,
   ]),
-  source("Pilot readiness preflight", "pilot-readiness", /^pilot-readiness-preflight-.*\.txt$/, [
-    /^Evidence run ID: (.+)$/m,
-  ]),
-  source("Pilot readiness report", "pilot-readiness", /^pilot-readiness-(?!preflight).*\.txt$/, [
-    /^Evidence run ID: (.+)$/m,
-  ]),
+  source(
+    "Release readiness register export",
+    "release-readiness-register",
+    /^release-readiness-register-.*\.csv$/,
+    [/^Evidence run ID,(.+)$/m],
+    ["RESULT,PASS,Release readiness register export captured."],
+    true,
+  ),
+  source(
+    "External MFA provider proof",
+    "external-security",
+    /^mfa-provider-enrollment-and-runtime-proof\..+$/,
+    [/^Evidence run ID: (.+)$/m],
+    ["RESULT | PASS | External security proof captured."],
+  ),
+  source(
+    "External IdP session invalidation proof",
+    "external-security",
+    /^idp-session-invalidation-proof\..+$/,
+    [/^Evidence run ID: (.+)$/m],
+    ["RESULT | PASS | External security proof captured."],
+  ),
+  source(
+    "External evidence storage index",
+    "external-security",
+    /^vault-or-artifact-storage-index\..+$/,
+    [/^Evidence run ID: (.+)$/m],
+    ["RESULT | PASS | External security proof captured."],
+  ),
+  source(
+    "External break-glass review proof",
+    "external-security",
+    /^break-glass-review-and-revocation-proof\..+$/,
+    [/^Evidence run ID: (.+)$/m],
+    ["RESULT | PASS | External security proof captured."],
+  ),
+  source(
+    "Pilot readiness preflight",
+    "pilot-readiness",
+    /^pilot-readiness-preflight-.*\.txt$/,
+    [/^Evidence run ID: (.+)$/m],
+    ["PILOT_REQUIRE_RELEASE_GATES_READY=true"],
+  ),
+  source(
+    "Pilot readiness report",
+    "pilot-readiness",
+    /^pilot-readiness-(?!preflight).*\.txt$/,
+    [/^Evidence run ID: (.+)$/m],
+    ["requireReleaseGatesReady=true", "DEC-0036 strict release gate status"],
+  ),
   source("UAT status", "uat-status", /^uat-status-.*\.txt$/, [
     /^Evidence run ID: (.+)$/m,
   ]),
@@ -58,12 +104,15 @@ const requiredSources = [
 export function evaluateEvidenceRunConsistency(evidenceRoot, options = {}) {
   const expectedEvidenceRunId = (
     options.expectedEvidenceRunId ??
-    process.env.RELEASE_EVIDENCE_RUN_ID ??
+    evidenceMetadataValue("RELEASE_EVIDENCE_RUN_ID") ??
     ""
   ).trim();
   const entries = requiredSources.map((item) => readEvidenceRunId(evidenceRoot, item));
   const missing = entries.filter((entry) => !entry.evidenceRunId);
   const invalid = entries.filter((entry) => isPlaceholderEvidenceRunId(entry.evidenceRunId));
+  const missingRequiredMarkers = entries.filter(
+    (entry) => entry.missingRequiredMarkers?.length,
+  );
   const values = entries
     .filter((entry) => entry.evidenceRunId)
     .map((entry) => entry.evidenceRunId);
@@ -94,6 +143,18 @@ export function evaluateEvidenceRunConsistency(evidenceRoot, options = {}) {
     };
   }
 
+  if (missingRequiredMarkers.length > 0) {
+    return {
+      pass: false,
+      detail: `missing required evidence marker: ${missingRequiredMarkers
+        .map(
+          (entry) =>
+            `${entry.label} (${entry.detail}) missing ${entry.missingRequiredMarkers.join(", ")}`,
+        )
+        .join("; ")}`,
+    };
+  }
+
   if (uniqueValues.length > 1) {
     return {
       pass: false,
@@ -118,8 +179,22 @@ export function evaluateEvidenceRunConsistency(evidenceRoot, options = {}) {
   };
 }
 
-function source(label, directory, pattern, runIdPatterns) {
-  return { label, directory, pattern, runIdPatterns };
+function source(
+  label,
+  directory,
+  pattern,
+  runIdPatterns,
+  requiredMarkers = [],
+  requireChecksumSidecar = false,
+) {
+  return {
+    label,
+    directory,
+    pattern,
+    runIdPatterns,
+    requiredMarkers,
+    requireChecksumSidecar,
+  };
 }
 
 function isPlaceholderEvidenceRunId(value) {
@@ -158,6 +233,16 @@ function readEvidenceRunId(evidenceRoot, item) {
   }
 
   const content = readFileSync(join(directory, file), "utf8");
+  const filePath = join(directory, file);
+  const missingRequiredMarkers = item.requiredMarkers.filter(
+    (marker) => !content.includes(marker),
+  );
+  if (item.requireChecksumSidecar) {
+    const checksum = evaluateChecksumSidecar(filePath, item.label);
+    if (!checksum.pass) {
+      missingRequiredMarkers.push(`checksum sidecar: ${checksum.detail}`);
+    }
+  }
   for (const pattern of item.runIdPatterns) {
     const value = pattern.exec(content)?.[1]?.trim();
     if (value) {
@@ -165,6 +250,7 @@ function readEvidenceRunId(evidenceRoot, item) {
         label: item.label,
         evidenceRunId: value,
         detail: `${item.directory}/${file}`,
+        missingRequiredMarkers,
       };
     }
   }

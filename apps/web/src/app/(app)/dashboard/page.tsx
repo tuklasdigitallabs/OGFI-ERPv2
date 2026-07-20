@@ -9,7 +9,10 @@ import {
   ClipboardCheck,
   Database,
   FileText,
-  PackageCheck
+  PackageCheck,
+  ShieldCheck,
+  Utensils,
+  Wrench
 } from "lucide-react";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
@@ -32,11 +35,17 @@ const metricIcons = {
   "lot-expiry-coverage": Database,
   "recent-stock-updates": ClipboardCheck,
   "sales-source": BarChart3,
-  "inventory-value-source": Boxes
+  "inventory-value-source": Boxes,
+  "restaurant-net-sales": CircleDollarSign,
+  "theoretical-food-cost": Utensils,
+  "actual-food-cost": ClipboardCheck,
+  "food-cost-variance": AlertTriangle
 };
 
 const dashboardViews = ["overview", "analytics", "reports", "notifications"] as const;
 type DashboardView = (typeof dashboardViews)[number];
+const analyticsPanels = ["risk", "stock", "attention", "details"] as const;
+type AnalyticsPanel = (typeof analyticsPanels)[number];
 
 function getSearchParam(
   searchParams: Record<string, string | string[] | undefined>,
@@ -54,6 +63,16 @@ function normalizeDashboardView(value: string | undefined): DashboardView {
 
 function dashboardViewHref(view: DashboardView) {
   return view === "overview" ? "/dashboard" : `/dashboard?view=${view}`;
+}
+
+function normalizeAnalyticsPanel(value: string | undefined): AnalyticsPanel {
+  return analyticsPanels.includes(value as AnalyticsPanel)
+    ? (value as AnalyticsPanel)
+    : "risk";
+}
+
+function analyticsPanelHref(panel: AnalyticsPanel) {
+  return `/dashboard?view=analytics&panel=${panel}`;
 }
 
 function MetricCard({ metric }: { metric: DashboardMetric }) {
@@ -161,8 +180,13 @@ function QueueList({
             <h3 className="mt-1 font-bold text-slate-950">{item.reference}</h3>
             <p className="mt-1 text-sm leading-6 text-slate-600">{item.detail}</p>
             <p className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-              Next action: {actionLabel}
+              Next action: {item.nextAction ?? actionLabel}
             </p>
+            {item.nextActor ? (
+              <p className="mt-2 text-xs font-semibold text-slate-500">
+                Assigned to: {item.nextActor}
+              </p>
+            ) : null}
           </div>
           <div className="text-sm text-slate-600">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -185,6 +209,157 @@ function QueueList({
   );
 }
 
+function chartToneClass(tone: DashboardMetric["tone"] | "warning") {
+  if (tone === "success") {
+    return "bg-emerald-500";
+  }
+  if (tone === "warning") {
+    return "bg-amber-500";
+  }
+  if (tone === "info") {
+    return "bg-blue-600";
+  }
+  return "bg-slate-400";
+}
+
+function parseDisplayNumber(value: string) {
+  const parsed = Number(value.replace(/[^0-9.-]+/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function AnalyticsBarPanel({
+  title,
+  detail,
+  rows
+}: {
+  title: string;
+  detail: string;
+  rows: Array<{
+    href?: string;
+    label: string;
+    value: number;
+    detail: string;
+    tone: DashboardMetric["tone"] | "warning";
+  }>;
+}) {
+  const maxValue = Math.max(...rows.map((row) => row.value), 1);
+
+  return (
+    <section className="ogfi-data-surface overflow-hidden">
+      <div className="border-b border-slate-100 p-4">
+        <h2 className="text-lg font-bold text-slate-950">{title}</h2>
+        <p className="text-sm text-slate-500">{detail}</p>
+      </div>
+      {rows.length === 0 ? (
+        <div className="p-4">
+          <EmptyDashboardState
+            title="No chart data yet"
+            detail="This chart will populate when matching source records are visible in the selected scope."
+          />
+        </div>
+      ) : (
+        <div className="grid gap-4 p-4">
+          {rows.map((row) => {
+            const width = `${Math.max((row.value / maxValue) * 100, row.value > 0 ? 8 : 2)}%`;
+            const content = (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-slate-950">{row.label}</p>
+                    <p className="text-xs text-slate-500">{row.detail}</p>
+                  </div>
+                  <p className="text-lg font-bold text-slate-950">{row.value}</p>
+                </div>
+                <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={`h-full rounded-full ${chartToneClass(row.tone)}`}
+                    style={{ width }}
+                  />
+                </div>
+              </>
+            );
+
+            return row.href ? (
+              <a
+                key={row.label}
+                className="block rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-blue-200 hover:bg-blue-50/40"
+                href={row.href}
+              >
+                {content}
+              </a>
+            ) : (
+              <div
+                key={row.label}
+                className="rounded-xl border border-slate-200 bg-white p-4"
+              >
+                {content}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AnalyticsDonutPanel({
+  approvals,
+  exceptions
+}: {
+  approvals: number;
+  exceptions: number;
+}) {
+  const total = approvals + exceptions;
+  const approvalDegrees = total > 0 ? (approvals / total) * 360 : 0;
+  const background =
+    total > 0
+      ? `conic-gradient(#2563eb 0deg ${approvalDegrees}deg, #f59e0b ${approvalDegrees}deg 360deg)`
+      : "conic-gradient(#e2e8f0 0deg 360deg)";
+
+  return (
+    <section className="ogfi-data-surface">
+      <div className="border-b border-slate-100 p-4">
+        <h2 className="text-lg font-bold text-slate-950">Attention Split</h2>
+        <p className="text-sm text-slate-500">
+          Approval alerts compared with operational exception alerts.
+        </p>
+      </div>
+      <div className="grid gap-5 p-5 md:grid-cols-[16rem_1fr] md:items-center">
+        <div className="mx-auto grid h-52 w-52 place-items-center rounded-full p-5" style={{ background }}>
+          <div className="grid h-36 w-36 place-items-center rounded-full bg-white text-center shadow-inner">
+            <div>
+              <p className="text-3xl font-bold text-slate-950">{total}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                open alerts
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-3">
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-bold text-blue-950">Approval alerts</p>
+              <p className="text-2xl font-bold text-blue-700">{approvals}</p>
+            </div>
+            <p className="mt-1 text-sm text-blue-900/70">
+              Decisions assigned to the logged-in user and visible scope.
+            </p>
+          </div>
+          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-bold text-amber-950">Exception alerts</p>
+              <p className="text-2xl font-bold text-amber-700">{exceptions}</p>
+            </div>
+            <p className="mt-1 text-sm text-amber-900/70">
+              Overdue, variance, discrepancy, and ledger follow-ups.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof getOperationalDashboard>> }) {
   return (
     <>
@@ -194,7 +369,7 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
             <div>
               <h2 className="text-lg font-bold text-slate-950">Operational Indicators</h2>
               <p className="text-sm text-slate-500">
-                Counts and exceptions from purchasing, receiving, transfers, stock counts, wastage, and ledger checks
+                Counts and exceptions from purchasing, receiving, stock controls, restaurant operations, and food cost
               </p>
             </div>
             <Badge tone="info" size="sm">{dashboard.cards.length} indicators</Badge>
@@ -307,17 +482,109 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
   );
 }
 
-function DashboardAnalytics({ dashboard }: { dashboard: Awaited<ReturnType<typeof getOperationalDashboard>> }) {
+function DashboardAnalytics({
+  activePanel,
+  dashboard
+}: {
+  activePanel: AnalyticsPanel;
+  dashboard: Awaited<ReturnType<typeof getOperationalDashboard>>;
+}) {
   const analyticsMetrics = [...dashboard.metrics, ...dashboard.stockHealth];
+  const stockRows = dashboard.stockHealth.map((metric) => ({
+    label: metric.label,
+    value: parseDisplayNumber(metric.displayValue),
+    detail: metric.detail,
+    tone: metric.tone,
+    ...(metric.href ? { href: metric.href } : {})
+  }));
+  const exceptionRows = dashboard.cards.map((card) => ({
+    href: card.href,
+    label: card.label,
+    value: card.value,
+    detail: card.description,
+    tone: card.tone
+  }));
+  const panelTabs: Array<{
+    id: AnalyticsPanel;
+    label: string;
+    detail: string;
+  }> = [
+    {
+      id: "risk",
+      label: "Risk Mix",
+      detail: "Open operational indicators"
+    },
+    {
+      id: "stock",
+      label: "Stock Health",
+      detail: "Inventory coverage signals"
+    },
+    {
+      id: "attention",
+      label: "Attention Split",
+      detail: "Approvals vs exceptions"
+    },
+    {
+      id: "details",
+      label: "Metric Details",
+      detail: "Drill-down metric cards"
+    }
+  ];
 
   return (
     <div className="grid gap-5">
+      <section className="ogfi-data-surface p-2">
+        <div className="grid gap-2 md:grid-cols-4">
+          {panelTabs.map((tab) => {
+            const active = activePanel === tab.id;
+            return (
+              <a
+                key={tab.id}
+                className={
+                  active
+                    ? "rounded-xl bg-blue-50 px-4 py-3 text-blue-700 ring-1 ring-blue-100"
+                    : "rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                }
+                href={analyticsPanelHref(tab.id)}
+              >
+                <span className="block text-sm font-bold">{tab.label}</span>
+                <span className="mt-1 block text-xs text-slate-500">{tab.detail}</span>
+              </a>
+            );
+          })}
+        </div>
+      </section>
+
+      {activePanel === "risk" ? (
+        <AnalyticsBarPanel
+          title="Operational Risk Mix"
+          detail="Visual comparison of open indicators across controlled workflows."
+          rows={exceptionRows}
+        />
+      ) : null}
+
+      {activePanel === "stock" ? (
+        <AnalyticsBarPanel
+          title="Stock Health Coverage"
+          detail="Visual stock balance signals for the current location and authorized inventory scope."
+          rows={stockRows}
+        />
+      ) : null}
+
+      {activePanel === "attention" ? (
+        <AnalyticsDonutPanel
+          approvals={dashboard.approvalQueue.length}
+          exceptions={dashboard.exceptionQueue.length}
+        />
+      ) : null}
+
+      {activePanel === "details" ? (
       <section className="ogfi-data-surface">
         <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-950">Operational Analytics</h2>
+            <h2 className="text-lg font-bold text-slate-950">Metric Details</h2>
             <p className="text-sm text-slate-500">
-              Read-only analysis from source records in the selected operating scope.
+              Drill-down cards behind the visual charts above.
             </p>
           </div>
           <Badge tone="info" size="sm">{analyticsMetrics.length} metrics</Badge>
@@ -337,42 +604,7 @@ function DashboardAnalytics({ dashboard }: { dashboard: Awaited<ReturnType<typeo
           </div>
         )}
       </section>
-
-      <section className="ogfi-data-surface">
-        <div className="border-b border-slate-100 p-4">
-          <h2 className="text-lg font-bold text-slate-950">Exception Mix</h2>
-          <p className="text-sm text-slate-500">
-            A quick comparison of the operational indicators currently visible to you.
-          </p>
-        </div>
-        {dashboard.cards.length === 0 ? (
-          <div className="p-4">
-            <EmptyDashboardState
-              title="No indicator data yet"
-              detail="Open PRs, POs, receiving variances, transfer follow-ups, counts, wastage, adjustments, and ledger checks will appear here when available."
-            />
-          </div>
-        ) : (
-          <div className="grid gap-3 p-4">
-            {dashboard.cards.map((card) => (
-              <a
-                key={card.id}
-                className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-blue-200 hover:bg-blue-50/40 md:grid-cols-[1fr_auto_9rem] md:items-center"
-                href={card.href}
-              >
-                <div>
-                  <p className="font-bold text-slate-950">{card.label}</p>
-                  <p className="text-sm text-slate-600">{card.description}</p>
-                </div>
-                <p className="text-2xl font-bold text-slate-950">{card.value}</p>
-                <Badge tone={card.tone} size="sm">
-                  {card.value > 0 ? "Follow-up" : "Clear"}
-                </Badge>
-              </a>
-            ))}
-          </div>
-        )}
-      </section>
+      ) : null}
     </div>
   );
 }
@@ -414,6 +646,42 @@ function DashboardReports({ dashboard }: { dashboard: Awaited<ReturnType<typeof 
       detail: "Pending approvals assigned by role, scope, approver eligibility, and status.",
       href: "/approvals",
       available: dashboard.approvalQueue.length > 0
+    },
+    {
+      title: "Food Cost Analysis",
+      detail: "Posted sales imports, theoretical food cost, actual ledger evidence, and variance follow-up.",
+      href: "/recipes/analysis",
+      available: dashboard.metrics.some((metric) => metric.id === "restaurant-net-sales")
+    },
+    {
+      title: "Recipes and Menu Costing",
+      detail: "Published recipe versions, line costs, menu prices, and target food cost visibility.",
+      href: "/recipes",
+      available: dashboard.metrics.some((metric) => metric.id === "theoretical-food-cost")
+    },
+    {
+      title: "Branch Checklist Compliance",
+      detail: "Opening and closing checklists, exception counts, completion, and source detail.",
+      href: "/branch-operations",
+      available: dashboard.cards.some((card) => card.id === "branch-checklist-exceptions")
+    },
+    {
+      title: "Food Safety Exceptions",
+      detail: "Temperature, sanitation, corrective action, and evidence reading source records.",
+      href: "/food-safety",
+      available: dashboard.cards.some((card) => card.id === "food-safety-exceptions")
+    },
+    {
+      title: "Incident Corrective Actions",
+      detail: "Open incidents, severity, due dates, source links, corrective actions, and evidence.",
+      href: "/incidents",
+      available: dashboard.cards.some((card) => card.id === "open-operational-incidents")
+    },
+    {
+      title: "Maintenance SLA and Downtime",
+      detail: "Maintenance tickets, equipment, SLA risk, downtime, corrective actions, and evidence.",
+      href: "/maintenance",
+      available: dashboard.cards.some((card) => card.id === "maintenance-follow-up")
     }
   ];
 
@@ -437,7 +705,15 @@ function DashboardReports({ dashboard }: { dashboard: Awaited<ReturnType<typeof 
           >
             <div className="flex items-start justify-between gap-3">
               <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-700">
-                <FileText aria-hidden="true" className="h-5 w-5" />
+                {report.title.includes("Safety") ? (
+                  <ShieldCheck aria-hidden="true" className="h-5 w-5" />
+                ) : report.title.includes("Maintenance") ? (
+                  <Wrench aria-hidden="true" className="h-5 w-5" />
+                ) : report.title.includes("Food") || report.title.includes("Recipes") ? (
+                  <Utensils aria-hidden="true" className="h-5 w-5" />
+                ) : (
+                  <FileText aria-hidden="true" className="h-5 w-5" />
+                )}
               </span>
               <Badge tone={report.available ? "success" : "neutral"} size="sm">
                 {report.available ? "Data available" : "Ready"}
@@ -537,6 +813,7 @@ export default async function DashboardPage({
 
   const params = searchParams ? await searchParams : {};
   const activeView = normalizeDashboardView(getSearchParam(params, "view"));
+  const activeAnalyticsPanel = normalizeAnalyticsPanel(getSearchParam(params, "panel"));
   const dashboard = await getOperationalDashboard(session);
 
   return (
@@ -593,7 +870,12 @@ export default async function DashboardPage({
       </section>
 
       {activeView === "overview" ? <DashboardOverview dashboard={dashboard} /> : null}
-      {activeView === "analytics" ? <DashboardAnalytics dashboard={dashboard} /> : null}
+      {activeView === "analytics" ? (
+        <DashboardAnalytics
+          activePanel={activeAnalyticsPanel}
+          dashboard={dashboard}
+        />
+      ) : null}
       {activeView === "reports" ? <DashboardReports dashboard={dashboard} /> : null}
       {activeView === "notifications" ? (
         <DashboardNotifications dashboard={dashboard} />

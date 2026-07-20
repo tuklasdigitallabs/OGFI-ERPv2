@@ -118,6 +118,12 @@ Current Phase I scaffold permission keys for the PO foundation:
 | `inventory.transfer.submit` | Submit a scoped draft transfer request for operational review. This does not create `TRANSFER_OUT` or `TRANSFER_IN` movements. |
 | `inventory.transfer.cancel` | Cancel a scoped draft or requested transfer request with reason while preserving audit history. |
 | `inventory.transfer.dispatch` | Dispatch a requested transfer from the user's current authorized source location, creating immutable `TRANSFER_OUT` movements. This does not grant destination receipt authority. |
+
+Phase II recipe and menu-costing permission boundary:
+
+- Current implementation may grant read/export permissions for recipe costing and food-cost analysis, controlled recipe draft/revision/archive permissions, controlled recipe-version workflow permissions, and controlled menu-price decision permissions.
+- Broad ingredient add/remove editing and bulk maintenance permissions remain staged until their implementation slice is explicitly approved.
+- Recipe workflow permissions must be separate from confidential costing view/export permissions, and cost-impacting approvals must enforce no self-approval.
 | `inventory.transfer.receive` | Receive a dispatched transfer into the user's current authorized destination location, creating immutable `TRANSFER_IN` movements. This does not grant source dispatch authority. |
 | `inventory.transfer.discrepancy.settle` | Settle a disputed transfer at the authorized destination location with reason and evidence reference. This is a non-posting audit closure and does not grant dispatch, receipt, reversal, adjustment, wastage, or finance authority. |
 | `inventory.stock_count.view` | View scoped physical count sessions for the user's current authorized location. This is read-only and does not grant count entry, review, or variance posting authority. |
@@ -138,6 +144,55 @@ Current Phase I scaffold permission keys for the PO foundation:
 | `inventory.receiving.create` | Create draft Receiving Reports from issued or partially received Purchase Orders for the user's current authorized receiving location. |
 | `inventory.receiving.post` | Post draft Receiving Reports, creating immutable receipt movements for accepted quantities. |
 | `inventory.receiving.reverse` | Reverse a posted Receiving Report as a full-document correction. Requires scoped access, reason, linked reversal movements, and PO received-quantity restoration. |
+| `restaurant.recipe.view` | View scoped recipe versions, ingredient lines, menu-price basis, and food-cost analysis without mutating recipes or menu prices. |
+| `restaurant.recipe.manage` | Create controlled draft recipes and revision drafts before submission. This does not publish or mutate historical published recipe versions. |
+| `restaurant.recipe.submit` | Submit draft recipe versions into controlled review workflow. |
+| `restaurant.recipe.review` | Review submitted recipe versions and return or reject them with required reason. |
+| `restaurant.recipe.approve` | Approve cost-impacting recipe versions before publication. This blocks self-approval where approval is required. |
+| `restaurant.recipe.publish` | Publish approved recipe versions as the effective costing basis with reason, evidence, audit, and concurrency controls. |
+| `restaurant.recipe.archive` | Archive recipes through controlled soft archive without hard deletion and without mutating menu prices, inventory, sales, or finance records. |
+| `restaurant.menu_cost.view` | View scoped menu item cost, margin, and theoretical-vs-actual food-cost analysis. |
+| `restaurant.menu_price.decide` | Review, approve, apply, reject, or cancel controlled menu-price decision records. This creates effective-dated menu-price records only through approved workflow. |
+| `restaurant.branch_operations.view` | View scoped branch opening, closing, midshift checklist records, sign-off status, and exceptions. |
+| `restaurant.branch_operations.create` | Create scoped branch checklist source records with structured lines, results, severity, evidence, and audit history. This does not review checklists or mutate inventory, incidents, maintenance, approvals, or finance records. |
+| `restaurant.branch_operations.review` | Review scoped submitted or manager-review branch checklists. This does not create or close incidents, maintenance tickets, inventory movements, approvals, or finance records. |
+| `restaurant.branch_operations.correct` | Request or approve controlled corrections to submitted branch checklist records with reason, evidence where required, and audit history. |
+| `restaurant.food_safety.view` | View scoped food-safety logs, readings, compliance exceptions, corrective actions, and evidence references. |
+| `restaurant.food_safety.create` | Record scoped food-safety source logs with structured readings, result, severity, corrective action, evidence, and audit history. This does not create incidents, post wastage, change stock, or review logs. |
+| `restaurant.food_safety.review` | Review scoped submitted or exception-review food-safety logs. This does not create incidents, post wastage, change stock, or close compliance actions automatically. |
+| `restaurant.food_safety.correct` | Request or approve controlled corrections to submitted food-safety logs with reason, evidence where required, and audit history. |
+| `restaurant.incident.view` | View scoped operational incidents, owners, severity, due dates, corrective actions, source references, and evidence. |
+| `restaurant.incident.create` | Log scoped operational incidents with category, severity, summary, owner context, corrective action, due date, and evidence reference. This does not resolve incidents, post inventory, approve exceptions, or create maintenance tickets automatically. |
+| `restaurant.incident.resolve` | Resolve scoped operational incidents with resolution date, corrective action, and evidence. This does not reverse inventory, close food-safety logs, complete maintenance tickets, or bypass source-record controls. |
+| `restaurant.incident.correct` | Request or approve controlled corrections to operational incident records with reason, evidence where required, and audit history. |
+| `restaurant.maintenance.view` | View scoped maintenance tickets, asset area, priority, downtime, target due date, completion status, and evidence. |
+| `restaurant.maintenance.create` | Create scoped equipment or facility maintenance tickets with asset, priority, description, downtime estimate, due date, corrective action, and evidence reference. This does not resolve incidents or post stock impact automatically. |
+| `restaurant.maintenance.complete` | Complete scoped maintenance tickets with completion date, downtime, corrective action, and evidence. This does not resolve linked incidents or mutate source operational records automatically. |
+| `restaurant.maintenance.correct` | Request or approve controlled corrections to maintenance ticket records with reason, evidence where required, and audit history. |
+
+Phase III finance permission boundary:
+
+- Current implementation grants read-side finance visibility and guarded subworkspace access only.
+- Finance permissions do not grant automatic journal posting, payment release, bank reconciliation mutation, accounting period lock, supplier settlement, PO/receiving mutation, inventory mutation, or official-books production authority unless the corresponding controlled workflow is implemented, tested, and approved.
+- Finance reads authoritative source records from procurement and receiving. The source workflow remains the source of truth.
+- Payment preparation, payment approval, payment release, journal review, and period close must remain separately permissioned and auditable.
+
+| Permission key | Meaning |
+|---|---|
+| `finance.view` | View the guarded Finance Control Center and source-linked finance readiness summaries. This does not grant confidential posting, payment, reconciliation, or period-close authority. |
+| `finance.configure` | Configure finance controls when implemented. This is sensitive and does not by itself post journals or release payments. |
+| `finance.ledger.view` | View the guarded General Ledger workspace and future journal records. Current guarded implementation does not create, post, reverse, or edit journals. |
+| `finance.payables.view` | View Accounts Payable source chains, supplier invoice readiness, and PO/receiving match context. This does not capture invoices, approve payments, or change PO/receiving status. |
+| `finance.supplier_credit.create` | Record draft supplier credit notes against original AP invoices. This does not apply credits, reduce invoice balances, settle AP, release cash, or post journals. |
+| `finance.supplier_credit.submit` | Submit draft supplier credit notes for application review. This moves the credit into a pending-application state only; it does not reduce AP balances, settle suppliers, release cash, or post journals. |
+| `finance.supplier_credit.cancel` | Cancel draft or pending-application supplier credit notes with reason and audit history. This does not mutate the original AP invoice or settlement records. |
+| `finance.payment_request.create` | Prepare controlled payment requests when implemented. This does not approve or release payment. |
+| `finance.payment_request.approve` | Approve controlled payment requests when assigned and permitted by segregation rules. This does not release payment. |
+| `finance.payment.release` | Release approved payments when implemented with configured cash/bank controls. This must not be granted to users who can approve their own payment request. |
+| `finance.cash_deposit.create` | Declare branch cash deposit evidence for finance review. This does not match statements, reconcile bank/cash, mutate bank balances, settle payments, or post journals. |
+| `finance.reconciliation.view` | View bank/cash reconciliation workspace and exception context. This does not import statements, match, clear, or mutate reconciliation records. |
+| `finance.reconciliation.match` | Match controlled cash/bank source records to imported statement lines. Current guarded implementation supports source-linked payment-release matching only; it does not call bank APIs, settle AP, mutate bank balances, or post journals. |
+| `finance.period_close.manage` | Manage accounting period close readiness, close-packet completion, and sensitive lock/reopen approval actions. Hard lock and reopen actions require approval-instance routing and remain auditable. |
 
 ---
 
@@ -356,7 +411,15 @@ Expired temporary access must be automatically removed.
 
 ### 9.3 Role changes
 
-Role changes should be controlled by an authorized administrator and, for sensitive roles, require management approval.
+Role changes should be controlled by an authorized administrator. Current implementation separates ordinary quick assignment from controlled sensitive role grants:
+
+- quick role assignment is limited to roles the service marks directly assignable;
+- admin, approver, system, and sensitive-permission roles use a `SensitiveRoleRequest`;
+- controlled role requests require reason and evidence reference;
+- the requester and target user cannot approve or reject the request;
+- approval requires privileged MFA evidence and creates the `UserRoleAssignment` transactionally;
+- approval writes audit history linked to `DEC-0036` and refreshes the target user's privilege epoch so stale sessions must reauthenticate;
+- production identity-provider session invalidation follow-up is tracked through the provider-neutral session invalidation register.
 
 High-risk changes include:
 

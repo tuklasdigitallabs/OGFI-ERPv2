@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const sessionCookieNames = ["ogfi_demo_session", "ogfi_demo_location"] as const;
+const sessionCookieNames = [
+  "ogfi_demo_session",
+  "ogfi_demo_session_issued_at",
+  "ogfi_demo_location"
+] as const;
 
 function signOut(request: NextRequest) {
   const response = NextResponse.redirect(new URL("/sign-in", request.url));

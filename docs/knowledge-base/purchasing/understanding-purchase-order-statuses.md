@@ -13,6 +13,7 @@ Use this article to understand what each available Purchase Order status means i
 
 - You must have Purchase Order view access for the delivery location.
 - Creating a draft PO requires an approved supplier recommendation.
+- The selected supplier must have an allowed accreditation status. The DEC-0036 pilot default allows normal PO creation, submission, and issue for `APPROVED` suppliers only; `PENDING_REVIEW`, `SUSPENDED`, and `BLOCKED` suppliers are stopped unless a future controlled exception workflow is implemented.
 - Submitting a PO requires `purchasing.purchase_order.submit`.
 - Approving, returning, or rejecting a PO requires `purchasing.purchase_order.approve`, assignment to the current approval step, and the correct location scope.
 - Recording supplier issue/send or re-send requires `purchasing.purchase_order.issue`.

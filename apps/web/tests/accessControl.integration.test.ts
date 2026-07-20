@@ -6,9 +6,13 @@ import type { PrismaClient } from "@prisma/client";
 import type { getConfiguredContext as getConfiguredContextType } from "../src/server/services/context";
 import type { requirePermission as requirePermissionType } from "../src/server/services/authorization";
 
+function isSupportedIntegrationDatabaseUrl(databaseUrl: string) {
+  return databaseUrl.startsWith("prisma://") || databaseUrl.startsWith("prisma+postgres://");
+}
+
 function loadDatabaseUrl() {
   if (process.env.DATABASE_URL) {
-    return true;
+    return isSupportedIntegrationDatabaseUrl(process.env.DATABASE_URL);
   }
 
   const envPath = fileURLToPath(
@@ -26,6 +30,10 @@ function loadDatabaseUrl() {
     .trim();
 
   if (!databaseUrl) {
+    return false;
+  }
+
+  if (!isSupportedIntegrationDatabaseUrl(databaseUrl)) {
     return false;
   }
 

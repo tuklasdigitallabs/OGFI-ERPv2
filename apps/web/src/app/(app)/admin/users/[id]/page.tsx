@@ -10,11 +10,17 @@ import {
 } from "@/server/services/actionFeedback";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import {
+  approveHighRiskUserLocationScopeRequest,
+  approveSensitiveUserRoleRequest,
   createUserRoleAssignment,
   createUserLocationScopeAssignment,
   deactivateUserRoleAssignment,
   deactivateUserScopeAssignment,
-  getCoreAdminUserDetail
+  getCoreAdminUserDetail,
+  rejectHighRiskUserLocationScopeRequest,
+  rejectSensitiveUserRoleRequest,
+  requestSensitiveUserRole,
+  requestHighRiskUserLocationScope
 } from "@/server/services/coreAdmin";
 import { getSessionContext } from "@/server/services/context";
 
@@ -33,6 +39,84 @@ async function createLocationScope(formData: FormData) {
   const targetUserId = String(formData.get("targetUserId"));
   try {
     await createUserLocationScopeAssignment(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+  }
+  revalidatePath(`/admin/users/${targetUserId}`);
+  redirect(`/admin/users/${targetUserId}`);
+}
+
+async function requestHighRiskScope(formData: FormData) {
+  "use server";
+
+  const targetUserId = String(formData.get("targetUserId"));
+  try {
+    await requestHighRiskUserLocationScope(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+  }
+  revalidatePath(`/admin/users/${targetUserId}`);
+  redirect(`/admin/users/${targetUserId}`);
+}
+
+async function approveHighRiskScopeRequest(formData: FormData) {
+  "use server";
+
+  const targetUserId = String(formData.get("targetUserId"));
+  try {
+    await approveHighRiskUserLocationScopeRequest(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+  }
+  revalidatePath(`/admin/users/${targetUserId}`);
+  redirect(`/admin/users/${targetUserId}`);
+}
+
+async function rejectHighRiskScopeRequest(formData: FormData) {
+  "use server";
+
+  const targetUserId = String(formData.get("targetUserId"));
+  try {
+    await rejectHighRiskUserLocationScopeRequest(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+  }
+  revalidatePath(`/admin/users/${targetUserId}`);
+  redirect(`/admin/users/${targetUserId}`);
+}
+
+async function requestSensitiveRole(formData: FormData) {
+  "use server";
+
+  const targetUserId = String(formData.get("targetUserId"));
+  try {
+    await requestSensitiveUserRole(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+  }
+  revalidatePath(`/admin/users/${targetUserId}`);
+  redirect(`/admin/users/${targetUserId}`);
+}
+
+async function approveSensitiveRoleRequest(formData: FormData) {
+  "use server";
+
+  const targetUserId = String(formData.get("targetUserId"));
+  try {
+    await approveSensitiveUserRoleRequest(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+  }
+  revalidatePath(`/admin/users/${targetUserId}`);
+  redirect(`/admin/users/${targetUserId}`);
+}
+
+async function rejectSensitiveRoleRequest(formData: FormData) {
+  "use server";
+
+  const targetUserId = String(formData.get("targetUserId"));
+  try {
+    await rejectSensitiveUserRoleRequest(formData);
   } catch (error) {
     redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
   }
@@ -105,7 +189,18 @@ export default async function CoreAdminUserDetailPage({
       .map((scope) => scope.scopeId)
   );
   const availableLocations = user.assignableLocations.filter(
-    (location) => !assignedLocationScopeIds.has(location.id)
+    (location) =>
+      !assignedLocationScopeIds.has(location.id) && location.directAssignable
+  );
+  const pendingHighRiskLocationIds = new Set(
+    user.highRiskScopeRequests
+      .filter((request) => request.status === "PENDING")
+      .map((request) => request.locationId)
+  );
+  const requestableHighRiskLocations = user.assignableLocations.filter(
+    (location) =>
+      !assignedLocationScopeIds.has(location.id) &&
+      !pendingHighRiskLocationIds.has(location.id)
   );
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(resolvedSearchParams);
@@ -256,7 +351,10 @@ export default async function CoreAdminUserDetailPage({
                   <div>
                     <Badge tone="success">{humanizeEnum(scope.accessLevel)}</Badge>
                     <p className="mt-2 text-sm text-slate-600">Assigned {scope.startsAt}</p>
-                    {user.canMutateScopes && scope.type === "LOCATION" ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      {scope.riskLabel}
+                    </p>
+                    {user.canMutateScopes && scope.canMutate ? (
                       <div className="mt-3">
                         <EntryModal title="Deactivate Scope" triggerLabel="Deactivate Scope">
                           <form action={deactivateScope} className="ogfi-form-shell mt-4 grid gap-3">
@@ -314,7 +412,9 @@ export default async function CoreAdminUserDetailPage({
             </div>
             {availableLocations.length === 0 ? (
               <p className="mt-4 text-sm text-slate-600">
-                No unassigned active locations are available for this user.
+                No low-risk unassigned active locations are available for this user.
+                High-risk warehouse, commissary, head-office, project, temporary, or
+                Manage-level scope changes require controlled approval.
               </p>
             ) : (
               <div className="mt-4">
@@ -326,7 +426,7 @@ export default async function CoreAdminUserDetailPage({
                       <select className="rounded-md border border-slate-300 px-3 py-2" name="locationId" required>
                         {availableLocations.map((location) => (
                           <option key={location.id} value={location.id}>
-                            {location.name} / {location.type}
+                            {location.name} / {location.type} / {location.assignmentEligibility}
                           </option>
                         ))}
                       </select>
@@ -337,8 +437,10 @@ export default async function CoreAdminUserDetailPage({
                         <option value="VIEW">VIEW</option>
                         <option value="OPERATE">OPERATE</option>
                         <option value="APPROVE">APPROVE</option>
-                        <option value="MANAGE">MANAGE</option>
                       </select>
+                      <span className="text-xs text-slate-500">
+                        Manage-level scope requires controlled approval and is not available in quick assignment.
+                      </span>
                     </label>
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Scope assignment reason
@@ -351,6 +453,190 @@ export default async function CoreAdminUserDetailPage({
                 </EntryModal>
               </div>
             )}
+          </Panel>
+        ) : null}
+
+        {user.canMutateScopes ? (
+          <Panel className="xl:col-span-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">
+                  Controlled Scope Requests
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Warehouse, commissary, head-office, project, temporary, and
+                  Manage-level scope changes require a second admin decision.
+                </p>
+              </div>
+              <Badge tone="warning">Approval required</Badge>
+            </div>
+
+            <div className="mt-4">
+              {requestableHighRiskLocations.length === 0 ? (
+                <p className="text-sm text-slate-600">
+                  No unassigned active locations are available for controlled
+                  scope request.
+                </p>
+              ) : (
+                <EntryModal
+                  title="Request Controlled Scope"
+                  triggerLabel="Request Controlled Scope"
+                  triggerClassName="bg-amber-600 hover:bg-amber-700"
+                >
+                  <form action={requestHighRiskScope} className="ogfi-form-shell mt-4 grid gap-3">
+                    <input name="targetUserId" type="hidden" value={user.id} />
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Location
+                      <select className="rounded-md border border-slate-300 px-3 py-2" name="locationId" required>
+                        {requestableHighRiskLocations.map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name} / {location.type} / {location.assignmentEligibility}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Requested access
+                      <select className="rounded-md border border-slate-300 px-3 py-2" name="accessLevel" required>
+                        <option value="VIEW">VIEW</option>
+                        <option value="OPERATE">OPERATE</option>
+                        <option value="APPROVE">APPROVE</option>
+                        <option value="MANAGE">MANAGE</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Business reason
+                      <textarea
+                        className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
+                        name="reason"
+                        required
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Evidence reference
+                      <input
+                        className="rounded-md border border-slate-300 px-3 py-2"
+                        name="evidenceReference"
+                        placeholder="Approval note, ticket, rollout plan, or incident reference"
+                        required
+                      />
+                    </label>
+                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700 sm:w-fit">
+                      Submit Controlled Request
+                    </button>
+                  </form>
+                </EntryModal>
+              )}
+            </div>
+
+            <div className="mt-5 divide-y divide-slate-100">
+              {user.highRiskScopeRequests.length === 0 ? (
+                <p className="py-4 text-sm text-slate-600">
+                  No controlled scope requests have been recorded for this user.
+                </p>
+              ) : (
+                user.highRiskScopeRequests.map((request) => {
+                  const canReview =
+                    request.status === "PENDING" &&
+                    request.requestedByUserId !== session.user.id &&
+                    user.id !== session.user.id;
+                  return (
+                    <div
+                      key={request.id}
+                      className="ogfi-list-row grid gap-3 lg:grid-cols-[1fr_auto]"
+                    >
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-slate-950">
+                            {request.locationName}
+                          </p>
+                          <Badge
+                            tone={
+                              request.status === "APPROVED"
+                                ? "success"
+                                : request.status === "REJECTED"
+                                  ? "destructive"
+                                  : "warning"
+                            }
+                          >
+                            {humanizeEnum(request.status)}
+                          </Badge>
+                          <Badge tone="info">
+                            {humanizeEnum(request.accessLevel)}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {request.locationCode ?? "No code"} /{" "}
+                          {humanizeEnum(request.locationType)} /{" "}
+                          {request.riskLabel}
+                        </p>
+                        <p className="mt-2 text-sm text-slate-700">
+                          {request.reason}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          Evidence: {request.evidenceReference} / Requested by{" "}
+                          {request.requestedByName} on{" "}
+                          {request.createdAt.slice(0, 10)}
+                        </p>
+                        {request.reviewedByName ? (
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            Reviewed by {request.reviewedByName}
+                            {request.reviewedAt
+                              ? ` on ${request.reviewedAt.slice(0, 10)}`
+                              : ""}
+                            {request.reviewReason
+                              ? ` / ${request.reviewReason}`
+                              : ""}
+                          </p>
+                        ) : null}
+                      </div>
+                      {canReview ? (
+                        <div className="flex flex-wrap gap-2 lg:justify-end">
+                          <EntryModal title="Approve Controlled Scope" triggerLabel="Approve">
+                            <form action={approveHighRiskScopeRequest} className="ogfi-form-shell mt-4 grid gap-3">
+                              <input name="targetUserId" type="hidden" value={user.id} />
+                              <input name="requestId" type="hidden" value={request.id} />
+                              <label className="grid gap-1 text-sm font-medium text-slate-700">
+                                Approval reason
+                                <textarea
+                                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
+                                  name="reviewReason"
+                                  required
+                                />
+                              </label>
+                              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
+                                Approve Scope
+                              </button>
+                            </form>
+                          </EntryModal>
+                          <EntryModal
+                            title="Reject Controlled Scope"
+                            triggerLabel="Reject"
+                            triggerClassName="bg-red-600 hover:bg-red-700"
+                          >
+                            <form action={rejectHighRiskScopeRequest} className="ogfi-form-shell mt-4 grid gap-3">
+                              <input name="targetUserId" type="hidden" value={user.id} />
+                              <input name="requestId" type="hidden" value={request.id} />
+                              <label className="grid gap-1 text-sm font-medium text-slate-700">
+                                Rejection reason
+                                <textarea
+                                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
+                                  name="reviewReason"
+                                  required
+                                />
+                              </label>
+                              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 sm:w-fit">
+                                Reject Scope
+                              </button>
+                            </form>
+                          </EntryModal>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </Panel>
         ) : null}
 
@@ -395,6 +681,193 @@ export default async function CoreAdminUserDetailPage({
                 </EntryModal>
               </div>
             )}
+          </Panel>
+        ) : null}
+
+        {user.canMutateRoles ? (
+          <Panel className="xl:col-span-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">
+                  Controlled Role Requests
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Admin, approver, and sensitive-permission roles require
+                  evidence, MFA, and a separate admin decision.
+                </p>
+              </div>
+              <Badge tone="warning">Dual approval</Badge>
+            </div>
+
+            <div className="mt-4">
+              {user.requestableSensitiveRoles.length === 0 ? (
+                <p className="text-sm text-slate-600">
+                  No unassigned sensitive roles are available for controlled
+                  request.
+                </p>
+              ) : (
+                <EntryModal
+                  title="Request Controlled Role"
+                  triggerLabel="Request Controlled Role"
+                  triggerClassName="bg-amber-600 hover:bg-amber-700"
+                >
+                  <form action={requestSensitiveRole} className="ogfi-form-shell mt-4 grid gap-3">
+                    <input name="targetUserId" type="hidden" value={user.id} />
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Role
+                      <select className="rounded-md border border-slate-300 px-3 py-2" name="roleId" required>
+                        {user.requestableSensitiveRoles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name} - {role.assignmentEligibility}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Business reason
+                      <textarea
+                        className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
+                        name="reason"
+                        required
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Evidence reference
+                      <input
+                        className="rounded-md border border-slate-300 px-3 py-2"
+                        name="evidenceReference"
+                        placeholder="Approval note, ticket, rollout plan, or controls evidence"
+                        required
+                      />
+                    </label>
+                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700 sm:w-fit">
+                      Submit Controlled Role Request
+                    </button>
+                  </form>
+                </EntryModal>
+              )}
+            </div>
+
+            <div className="mt-5 divide-y divide-slate-100">
+              {user.sensitiveRoleRequests.length === 0 ? (
+                <p className="py-4 text-sm text-slate-600">
+                  No controlled role requests have been recorded for this user.
+                </p>
+              ) : (
+                user.sensitiveRoleRequests.map((request) => {
+                  const canReview =
+                    request.status === "PENDING" &&
+                    request.requestedByUserId !== session.user.id &&
+                    user.id !== session.user.id;
+                  return (
+                    <div
+                      key={request.id}
+                      className="ogfi-list-row grid gap-3 lg:grid-cols-[1fr_auto]"
+                    >
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-slate-950">
+                            {request.roleName}
+                          </p>
+                          <Badge
+                            tone={
+                              request.status === "APPROVED"
+                                ? "success"
+                                : request.status === "REJECTED"
+                                  ? "destructive"
+                                  : "warning"
+                            }
+                          >
+                            {humanizeEnum(request.status)}
+                          </Badge>
+                          <Badge tone="info">{request.roleCode}</Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {request.riskLabel}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {request.permissionLabels.slice(0, 6).map((permission) => (
+                            <Badge
+                              key={permission.code}
+                              tone={permission.sensitive ? "warning" : "info"}
+                              size="sm"
+                            >
+                              {permission.label}
+                            </Badge>
+                          ))}
+                          {request.permissionLabels.length > 6 ? (
+                            <Badge tone="neutral" size="sm">
+                              +{request.permissionLabels.length - 6} more
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 text-sm text-slate-700">
+                          {request.reason}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          Evidence: {request.evidenceReference} / Requested by{" "}
+                          {request.requestedByName} on{" "}
+                          {request.createdAt.slice(0, 10)}
+                        </p>
+                        {request.reviewedByName ? (
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            Reviewed by {request.reviewedByName}
+                            {request.reviewedAt
+                              ? ` on ${request.reviewedAt.slice(0, 10)}`
+                              : ""}
+                            {request.reviewReason
+                              ? ` / ${request.reviewReason}`
+                              : ""}
+                          </p>
+                        ) : null}
+                      </div>
+                      {canReview ? (
+                        <div className="flex flex-wrap gap-2 lg:justify-end">
+                          <EntryModal title="Approve Controlled Role" triggerLabel="Approve">
+                            <form action={approveSensitiveRoleRequest} className="ogfi-form-shell mt-4 grid gap-3">
+                              <input name="targetUserId" type="hidden" value={user.id} />
+                              <input name="requestId" type="hidden" value={request.id} />
+                              <label className="grid gap-1 text-sm font-medium text-slate-700">
+                                Approval reason
+                                <textarea
+                                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
+                                  name="reviewReason"
+                                  required
+                                />
+                              </label>
+                              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
+                                Approve Role
+                              </button>
+                            </form>
+                          </EntryModal>
+                          <EntryModal
+                            title="Reject Controlled Role"
+                            triggerLabel="Reject"
+                            triggerClassName="bg-red-600 hover:bg-red-700"
+                          >
+                            <form action={rejectSensitiveRoleRequest} className="ogfi-form-shell mt-4 grid gap-3">
+                              <input name="targetUserId" type="hidden" value={user.id} />
+                              <input name="requestId" type="hidden" value={request.id} />
+                              <label className="grid gap-1 text-sm font-medium text-slate-700">
+                                Rejection reason
+                                <textarea
+                                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
+                                  name="reviewReason"
+                                  required
+                                />
+                              </label>
+                              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 sm:w-fit">
+                                Reject Role
+                              </button>
+                            </form>
+                          </EntryModal>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </Panel>
         ) : null}
       </div>

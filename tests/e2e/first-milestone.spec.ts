@@ -16,13 +16,13 @@ async function expectDemoSession(page: Page, email: string) {
 
 async function signInAs(
   page: Page,
-  buttonName: "Sign in as Requester" | "Sign in as Approver" | "Sign in as Admin",
   email: string,
   landingPath: string,
   landingHeading: string
 ) {
   await page.goto("/sign-in");
-  await page.getByRole("button", { name: buttonName }).click();
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expectDemoSession(page, email);
   await page.goto(landingPath);
   await expect(page.getByRole("heading", { name: landingHeading })).toBeVisible();
@@ -63,7 +63,6 @@ async function gotoCoreAdmin(page: Page) {
 test("non-admin users cannot open core administration", async ({ page }) => {
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -97,7 +96,6 @@ test("returned purchase requests can be reopened as draft", async ({
 
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -119,7 +117,7 @@ test("returned purchase requests can be reopened as draft", async ({
   await page.getByRole("button", { name: "Submit for Approval" }).click();
   await expect(page.getByText("PENDING APPROVAL")).toBeVisible();
 
-  await signInAs(page, "Sign in as Approver", approverEmail, "/approvals", "Approval Inbox");
+  await signInAs(page, approverEmail, "/approvals", "Approval Inbox");
   const approvalRow = page.getByTestId("approval-row").filter({ hasText: marker });
   await approvalRow.getByRole("link", { name: "Review" }).click();
   const approverComment = `Approver comment ${marker}`;
@@ -132,7 +130,6 @@ test("returned purchase requests can be reopened as draft", async ({
 
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -153,7 +150,6 @@ test("draft purchase requests can be cancelled with audit history", async ({
 }, testInfo) => {
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -190,7 +186,6 @@ test("purchase requests can be rejected with remarks and action history", async 
 
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -211,7 +206,7 @@ test("purchase requests can be rejected with remarks and action history", async 
   await page.getByRole("button", { name: "Submit for Approval" }).click();
   await expect(page.getByText("PENDING APPROVAL")).toBeVisible();
 
-  await signInAs(page, "Sign in as Approver", approverEmail, "/approvals", "Approval Inbox");
+  await signInAs(page, approverEmail, "/approvals", "Approval Inbox");
   await page
     .getByTestId("approval-row")
     .filter({ hasText: marker })
@@ -224,7 +219,6 @@ test("purchase requests can be rejected with remarks and action history", async 
 
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -250,7 +244,6 @@ test("first milestone purchase request path works end to end", async ({
 
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -279,7 +272,7 @@ test("first milestone purchase request path works end to end", async ({
   await expect(page.getByRole("heading", { name: "Purchase Requests" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Approval Inbox" })).not.toBeVisible();
 
-  await signInAs(page, "Sign in as Approver", approverEmail, "/approvals", "Approval Inbox");
+  await signInAs(page, approverEmail, "/approvals", "Approval Inbox");
   const approvalRow = page.getByTestId("approval-row").filter({ hasText: marker });
   await approvalRow.getByRole("link", { name: "Review" }).click();
   await expect(page.getByRole("heading", { name: "Approval Review" })).toBeVisible();
@@ -304,7 +297,7 @@ test("first milestone purchase request path works end to end", async ({
     page.getByTestId("purchase-request-approval-action").filter({ hasText: "APPROVED" }).filter({ hasText: "Configured Approver" })
   ).toBeVisible();
 
-  await signInAs(page, "Sign in as Admin", adminEmail, "/admin", "Core Administration");
+  await signInAs(page, adminEmail, "/admin", "Core Administration");
   await page.goto("/quotes");
   await expect(page.getByRole("heading", { name: "Supplier Quotes" })).toBeVisible();
   const quoteRequestSelect = page.locator('select[name="purchaseRequestId"]');
@@ -361,7 +354,7 @@ test("first milestone purchase request path works end to end", async ({
     .click({ force: true });
   await expect(currentQuoteRequestRow.getByText("PENDING APPROVAL")).toBeVisible();
 
-  await signInAs(page, "Sign in as Approver", approverEmail, "/approvals", "Approval Inbox");
+  await signInAs(page, approverEmail, "/approvals", "Approval Inbox");
   const recommendationApprovalRow = page
     .getByTestId("approval-row")
     .filter({ hasText: quoteReference })
@@ -373,7 +366,7 @@ test("first milestone purchase request path works end to end", async ({
   await page.getByRole("button", { name: "Approve Recommendation" }).click();
   await expect(page.getByRole("heading", { name: "Approval Inbox" })).toBeVisible();
 
-  await signInAs(page, "Sign in as Admin", adminEmail, "/quotes", "Supplier Quotes");
+  await signInAs(page, adminEmail, "/quotes", "Supplier Quotes");
   await expect(
     page
       .getByTestId("quote-request-row")
@@ -397,7 +390,6 @@ test("first milestone purchase request path works end to end", async ({
   expect(quoteExportCsv).toContain("true");
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -416,7 +408,7 @@ test("first milestone purchase request path works end to end", async ({
   await expect(requestQuoteRow.filter({ hasText: "Configured Supplier" })).toBeVisible();
   await expect(requestQuoteRow.filter({ hasText: "PHP 127.50" })).toBeVisible();
 
-  await signInAs(page, "Sign in as Admin", adminEmail, "/admin", "Core Administration");
+  await signInAs(page, adminEmail, "/admin", "Core Administration");
   await expect(page.getByRole("heading", { name: "Core Administration" })).toBeVisible();
   await expect(page.getByLabel("Location context")).toHaveValue(
     "00000000-0000-4000-8000-000000000004"
@@ -528,7 +520,6 @@ test("first milestone purchase request path works end to end", async ({
 
   await signInAs(
     page,
-    "Sign in as Requester",
     requesterEmail,
     "/purchase-requests",
     "Purchase Requests"
@@ -547,7 +538,7 @@ test("first milestone purchase request path works end to end", async ({
   await expect(page.getByText(catalogMarker)).toBeVisible();
   await expect(page.getByText(`2 ${uomCode}`)).toBeVisible();
 
-  await signInAs(page, "Sign in as Admin", adminEmail, "/items", "Item Master");
+  await signInAs(page, adminEmail, "/items", "Item Master");
   await expect(page.getByRole("heading", { name: "Item Master" })).toBeVisible();
   const itemRow = page.getByTestId("item-row").filter({ hasText: itemCode });
   await itemRow.getByLabel("Item deactivation reason").fill(`E2E item deactivation for ${marker}`);

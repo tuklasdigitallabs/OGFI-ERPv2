@@ -27,6 +27,9 @@ const finalScripts = [
   ["UAT execution checklist", "scripts/release-uat-execution-checklist.mjs"],
   ["UAT evidence status", "scripts/release-uat-status.mjs"],
   ["Pilot and UAT readiness status", "scripts/release-pilot-uat-status.mjs"],
+  ["Phase 3 UAT execution checklist", "scripts/release-phase3-uat-checklist.mjs"],
+  ["Phase 3 UAT evidence status", "scripts/release-phase3-uat-status.mjs"],
+  ["Phase 3 controlled foundation status", "scripts/release-phase3-status.mjs"],
   ["Enablement evidence checklist", "scripts/release-enablement-checklist.mjs"],
   ["Enablement and hypercare status", "scripts/release-enablement-status.mjs"],
   ["Signed evidence templates", "scripts/release-signed-evidence-templates.mjs"],
@@ -54,6 +57,9 @@ const interimScripts = [
   ["UAT execution checklist", "scripts/release-uat-execution-checklist.mjs"],
   ["UAT evidence status", "scripts/release-uat-status.mjs"],
   ["Pilot and UAT readiness status", "scripts/release-pilot-uat-status.mjs"],
+  ["Phase 3 UAT execution checklist", "scripts/release-phase3-uat-checklist.mjs"],
+  ["Phase 3 UAT evidence status", "scripts/release-phase3-uat-status.mjs"],
+  ["Phase 3 controlled foundation status", "scripts/release-phase3-status.mjs"],
   ["Enablement evidence checklist", "scripts/release-enablement-checklist.mjs"],
   ["Enablement and hypercare status", "scripts/release-enablement-status.mjs"],
   ["Signed evidence templates", "scripts/release-signed-evidence-templates.mjs"],
@@ -78,7 +84,7 @@ const lines = [
   "This suite refreshes advisory status reports only. It does not create source evidence, execute UAT, approve release, or replace GO / NO-GO review.",
   reviewMode === "interim"
     ? "Final-only signed evidence status, final-review, and GO / NO-GO checks are skipped in interim mode; run the default suite for final release readiness."
-    : "The final evidence manifest is intentionally not regenerated here; refresh it only after source evidence and signed documents are complete, then rerun final-review and GO / NO-GO checks.",
+    : "The final evidence manifest is intentionally not regenerated here; refresh it only after source evidence, signed documents, and external-security proof references are complete, then rerun final-review and GO / NO-GO checks.",
   "",
 ];
 let failed = false;
@@ -136,18 +142,22 @@ if (failed || strictFailed) {
 }
 
 function isStrictFailure(label, resultLine) {
-  if (
-    label === "Final-review readiness status" &&
-    !resultLine.startsWith("RESULT | PASS")
-  ) {
-    return true;
-  }
+  const acceptedStrictResultsByLabel = {
+    "Final-review readiness status": [
+      "RESULT | PASS",
+      "RESULT | READY FOR GO / NO-GO",
+    ],
+    "GO / NO-GO evidence summary": [
+      "RESULT | GO REVIEW READY",
+      "RESULT | CONDITIONAL GO REVIEW",
+    ],
+  };
+  const acceptedResults = acceptedStrictResultsByLabel[label];
 
-  if (
-    label === "GO / NO-GO evidence summary" &&
-    !resultLine.startsWith("RESULT | GO")
-  ) {
-    return true;
+  if (acceptedResults) {
+    return !acceptedResults.some((acceptedResult) =>
+      resultLine.startsWith(acceptedResult),
+    );
   }
 
   return false;

@@ -16,3 +16,4 @@ Use the knowledge-base article template and follow the knowledge-base standard.
 - `docs/knowledge-base/projects/reviewing-overdue-and-blocked-work.md`
 - `docs/knowledge-base/projects/closing-or-archiving-a-project.md`
 - `docs/knowledge-base/projects/why-cant-i-see-this-project-or-linked-record.md`
+- `docs/knowledge-base/projects/managing-expansion-projects-and-opening-readiness.md`

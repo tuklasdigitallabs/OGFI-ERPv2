@@ -8,6 +8,7 @@ import {
 } from "./context";
 import type { CsvRow } from "./csv";
 import { normalizeInventoryLotKey } from "./inventory";
+import { getStockCountCadencePolicy } from "./policySettings";
 import { nextStockAdjustmentReference } from "./stockAdjustments";
 
 const countTypes = ["FULL", "CYCLE", "SPOT", "HIGH_VALUE", "OPENING"] as const;
@@ -124,6 +125,18 @@ export function filterCountVarianceLines<
   );
 }
 
+export function recommendedStockCountCadenceDays(
+  countType: string,
+  policy: {
+    standardFrequencyDays: number;
+    highRiskFrequencyDays: number;
+  }
+) {
+  return countType === "HIGH_VALUE"
+    ? policy.highRiskFrequencyDays
+    : policy.standardFrequencyDays;
+}
+
 async function nextStockCountReference(companyId: string) {
   const year = new Date().getUTCFullYear();
   const count = await prisma.stockCountSession.count({
@@ -163,6 +176,7 @@ function scopedStockCountWhere(session: SessionContext, id?: string) {
 
 export async function listStockCountFormOptions(session: SessionContext) {
   await requirePermission(session, permissions.stockCountCreate);
+  const cadencePolicy = await getStockCountCadencePolicy(session);
 
   const inventoryLocations = await prisma.inventoryLocation.findMany({
     where: {
@@ -179,12 +193,18 @@ export async function listStockCountFormOptions(session: SessionContext) {
       id: location.id,
       name: location.name
     })),
-    countTypes
+    countTypes: countTypes.map((countType) => ({
+      value: countType,
+      label: countType.replaceAll("_", " "),
+      recommendedCadenceDays: recommendedStockCountCadenceDays(countType, cadencePolicy)
+    })),
+    cadencePolicy
   };
 }
 
 export async function listStockCounts(session: SessionContext) {
   await requireStockCountRead(session);
+  const cadencePolicy = await getStockCountCadencePolicy(session);
 
   const counts = await prisma.stockCountSession.findMany({
     where: scopedStockCountWhere(session),
@@ -208,6 +228,10 @@ export async function listStockCounts(session: SessionContext) {
     assignedToName: count.assignedTo?.displayName ?? null,
     reviewedByName: count.reviewedBy?.displayName ?? null,
     scheduledDate: count.scheduledDate?.toISOString().slice(0, 10) ?? null,
+    recommendedCadenceDays: recommendedStockCountCadenceDays(
+      count.countType,
+      cadencePolicy
+    ),
     cutoffAt: count.cutoffAt?.toISOString() ?? null,
     submittedAt: count.submittedAt?.toISOString() ?? null,
     lineCount: count.lines.length,
@@ -434,6 +458,11 @@ export async function scheduleStockCount(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.stockCountCreate);
   const values = scheduleStockCountSchema.parse(Object.fromEntries(formData));
+  const cadencePolicy = await getStockCountCadencePolicy(session);
+  const recommendedCadenceDays = recommendedStockCountCadenceDays(
+    values.countType,
+    cadencePolicy
+  );
 
   const inventoryLocation = await prisma.inventoryLocation.findFirst({
     where: {
@@ -490,7 +519,9 @@ export async function scheduleStockCount(formData: FormData) {
       afterData: { status: "DRAFT" },
       metadata: {
         inventoryLocationId: inventoryLocation.id,
-        countType: values.countType
+        countType: values.countType,
+        recommendedCadenceDays,
+        cadencePolicy
       }
     }
   });

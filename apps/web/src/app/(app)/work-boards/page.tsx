@@ -10,6 +10,7 @@ import {
   getActionFeedback
 } from "@/server/services/actionFeedback";
 import { getSessionContext } from "@/server/services/context";
+import { getProjectTaskPolicy } from "@/server/services/policySettings";
 import {
   createProjectTask,
   listProjectTaskAssigneeOptions,
@@ -107,10 +108,12 @@ function statusTone(status: ProjectTaskCard["status"]) {
 
 function BoardTaskCard({
   task,
-  enabledStatuses
+  enabledStatuses,
+  blockerReasonRequired
 }: {
   task: ProjectTaskCard;
   enabledStatuses: Set<ProjectTaskStatus>;
+  blockerReasonRequired: boolean;
 }) {
   const canStart = enabledStatuses.has("IN_PROGRESS");
   const canComplete = enabledStatuses.has("COMPLETED");
@@ -195,10 +198,16 @@ function BoardTaskCard({
                 <input name="nextStatus" type="hidden" value="BLOCKED" />
                 <input
                   className="rounded-md border border-amber-300 px-3 py-2 text-sm"
+                  minLength={blockerReasonRequired ? 5 : undefined}
                   name="reason"
-                  placeholder="Blocker reason"
-                  required
+                  placeholder={blockerReasonRequired ? "Blocker reason" : "Optional blocker note"}
+                  required={blockerReasonRequired}
                 />
+                <p className="text-xs text-slate-500">
+                  {blockerReasonRequired
+                    ? "Company policy requires a blocker reason before this task can be marked blocked."
+                    : "Company policy allows an optional blocker reason, but a short note is recommended."}
+                </p>
                 <input
                   className="rounded-md border border-amber-300 px-3 py-2 text-sm"
                   name="nextReviewAt"
@@ -227,7 +236,10 @@ export default async function WorkBoardsPage({ searchParams }: WorkBoardsPagePro
 
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
-  const projects = await listProjects(session);
+  const [projects, taskPolicy] = await Promise.all([
+    listProjects(session),
+    getProjectTaskPolicy(session)
+  ]);
   const requestedProjectId = getParam(params, "projectId");
   const selectedProject =
     projects.find((project) => project.id === requestedProjectId) ?? projects[0] ?? null;
@@ -425,6 +437,7 @@ export default async function WorkBoardsPage({ searchParams }: WorkBoardsPagePro
                       ) : (
                         columnTasks.map((task) => (
                           <BoardTaskCard
+                            blockerReasonRequired={taskPolicy.blockerReasonRequired}
                             enabledStatuses={enabledStatusSet}
                             key={task.id}
                             task={task}

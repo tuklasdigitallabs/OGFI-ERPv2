@@ -1,7 +1,7 @@
 # Phase IV — Expansion Projects and New Branch Opening
 
-**Status:** Planned documentation framework with Branch Expansion & Construction add-on included for review
-**Build authorization:** Do not begin implementation until the detailed phase workflow, data, UI, reporting, UAT and decision documents are reviewed and marked build-ready.
+**Status:** Implemented Expansion workspace foundation; client UAT and release evidence remain pending
+**Build authorization:** Implementation is authorized for the scoped ERP workspace. Production release still requires documented client UAT, visual QA, migration/recovery evidence, and release approval.
 
 ## Objective
 
@@ -25,13 +25,14 @@ Manage new restaurant sites from pipeline and feasibility through capex, constru
 - Defined project-stage and opening-readiness governance
 - Shared Work Management Engine direction from `DEC-0007`
 
-## What This Folder Establishes Now
+## Current Implementation Boundary
 
 - Complete documentation structure for this phase
 - Initial workflow and UI specification frameworks
 - Initial data-extension, reporting, UAT and release-gate documents
-- Required decisions to turn the phase into a build-ready scope
-- Branch Expansion & Construction planning documents for lifecycle gates, milestones, risk/blocker/punch-list control, and dashboard/calendar/timeline views
+- The implemented Expansion workspace uses the shared project and work-management source of truth.
+- Playbooks, site projects, tasks, milestones, checklists, evidence/signoffs, lifecycle gates, permits, capex coordination, construction, readiness, punch lists, and post-opening review are scoped through the ERP services and routes.
+- Client UAT, responsive visual QA, production evidence-storage decisions, and release signoff remain acceptance work, not authorization blockers for continued implementation.
 
 ## Branch Expansion & Construction Add-On
 
@@ -47,7 +48,7 @@ Start with:
 - `specs/branch-expansion-dashboard-ui-spec.md`
 - `specs/branch-expansion-calendar-timeline-ui-spec.md`
 
-These documents are planning and review inputs only. They do not authorize expansion code, schema, migrations, UI, routes, services, dependencies, deployment, contractor portals, financial posting, payment release, inventory posting, or production branch-opening workflow behavior.
+These documents remain the policy and acceptance references for the implemented workspace. They do not authorize contractor portals, financial posting, payment release, inventory posting, or other source-module mutations outside the documented ERP boundary.
 
 ## What Must Be Finalized Before Development
 

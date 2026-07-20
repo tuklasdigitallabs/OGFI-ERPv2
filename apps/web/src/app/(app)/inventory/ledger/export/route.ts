@@ -5,7 +5,11 @@ import {
   exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
-import { logOperationalExportAudit } from "@/server/services/exportAudit";
+import {
+  buildReportCsvMetadata,
+  logOperationalExportAudit,
+  logOperationalExportFailure
+} from "@/server/services/exportAudit";
 import { canExportInventoryLedger } from "@/server/services/exportAuthorization";
 import {
   listInventoryMovements,
@@ -44,6 +48,11 @@ export async function GET(request: Request) {
     });
     movements = await listInventoryMovements(session, filters);
   } catch (error) {
+    await logOperationalExportFailure({
+      session,
+      reportId: "movement-ledger",
+      error
+    });
     const response = exportErrorResponse(error);
     if (response) {
       return response;
@@ -96,5 +105,10 @@ export async function GET(request: Request) {
     rowCount: movements.length
   });
 
-  return csvExportResponse(rows, "inventory-ledger.csv");
+  return csvExportResponse(rows, "inventory-ledger.csv", {
+    metadata: await buildReportCsvMetadata({
+      session,
+      reportId: "movement-ledger"
+    })
+  });
 }

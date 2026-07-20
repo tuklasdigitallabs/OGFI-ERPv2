@@ -20,7 +20,7 @@ For each scenario:
 ### P1-SETUP — Pilot Master-Data Readiness
 
 1. Run `pnpm release:pilot-readiness-preflight` to confirm the local shell has the required database URL and PostgreSQL client tooling. A WARN result is setup evidence only; it does not replace the DB-backed readiness check.
-2. Run `DATABASE_URL=<pilot-or-staging-url> pnpm release:pilot-readiness` and attach the generated `release-evidence/pilot-readiness/` artifact to the UAT evidence pack.
+2. Run `DATABASE_URL=<pilot-or-staging-url> pnpm release:pilot-readiness` and attach the generated `release-evidence/pilot-readiness/` artifact to the UAT evidence pack. For release rehearsal or final GO / NO-GO, rerun with `DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness` so the artifact also proves accepted release readiness gates.
 3. Confirm active pilot company, brand, branch, warehouse, inventory locations, department/cost center, and project scope.
 4. Confirm requester, approver, purchasing, receiver, warehouse, inventory, project, reporting, and administrator test users have expected role and scope assignments.
 5. Confirm active approval policies route PR, quotation recommendation, PO, transfer/count review, wastage, and adjustment actions to the intended users.

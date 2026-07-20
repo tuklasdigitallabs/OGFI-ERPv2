@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import { PurchaseRequestLinesEditor } from "@/components/PurchaseRequestLinesEditor";
 import {
   actionErrorRedirectPath,
@@ -19,9 +19,11 @@ import {
   createDraftPurchaseRequest,
   listPurchaseRequestDraftOptions,
   listPurchaseRequests,
+  type PurchaseRequestSlaStatus,
   type PurchaseRequestStatus,
 } from "@/server/services/purchaseRequests";
 import { canExportPurchaseRequests } from "@/server/services/exportAuthorization";
+import { getPurchasingControlPolicy } from "@/server/services/policySettings";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +59,19 @@ function normalizeStatus(value?: string): PurchaseRequestStatus | "ALL" {
     : "ALL";
 }
 
+function slaBadgeTone(status: PurchaseRequestSlaStatus) {
+  if (status === "OVERDUE") {
+    return "destructive" as const;
+  }
+  if (status === "DUE_TODAY") {
+    return "warning" as const;
+  }
+  if (status === "ON_TRACK") {
+    return "info" as const;
+  }
+  return "neutral" as const;
+}
+
 export default async function PurchaseRequestsPage({
   searchParams,
 }: {
@@ -83,12 +98,13 @@ export default async function PurchaseRequestsPage({
   }
   const exportHref = `/purchase-requests/export${exportParams.size ? `?${exportParams.toString()}` : ""}`;
   const canExportPurchaseRequestCsv = canExportPurchaseRequests(session);
-  const [requests, draftOptions] = await Promise.all([
+  const [requests, draftOptions, purchasingPolicy] = await Promise.all([
     listPurchaseRequests(session, {
       status: selectedStatus,
       search,
     }),
     listPurchaseRequestDraftOptions(session),
+    getPurchasingControlPolicy(session),
   ]);
   const canCreateDraft = session.permissionCodes.includes(
     permissions.purchaseRequestCreate,
@@ -112,6 +128,20 @@ export default async function PurchaseRequestsPage({
           Warehouse stock should move through Transfer Requests; unavailable stock
           continues through Purchase Request approval, quotation, PO, receiving,
           and ledger posting.
+        </p>
+        <p className="mt-2 text-xs text-blue-900/75">
+          Current purchasing policy: standard approval from PHP{" "}
+          {purchasingPolicy.standardApprovalThresholdPhp.toLocaleString("en-PH")},
+          high-value review from PHP{" "}
+          {purchasingPolicy.highValueApprovalThresholdPhp.toLocaleString("en-PH")},
+          executive review from PHP{" "}
+          {purchasingPolicy.seniorApprovalThresholdPhp.toLocaleString("en-PH")},
+          emergency cap PHP{" "}
+          {purchasingPolicy.emergencyMaxAmountPhp.toLocaleString("en-PH")}, and{" "}
+          {purchasingPolicy.minimumQuotes} quote
+          {purchasingPolicy.minimumQuotes === 1 ? "" : "s"} from PHP{" "}
+          {purchasingPolicy.quotationRequiredThresholdPhp.toLocaleString("en-PH")}
+          {" "}when quotation comparison is required.
         </p>
       </div>
       <div className="mb-5 grid gap-4 md:grid-cols-4">
@@ -152,13 +182,14 @@ export default async function PurchaseRequestsPage({
       <div className="space-y-4">
         {canCreateDraft ? (
           <div className="flex justify-end">
-            <EntryModal title="Create Draft PR" triggerLabel="Create Draft PR">
+            <TaskSheet title="Create Draft PR" description="Build and review request lines before creating the draft." trigger={<span>Create Purchase Request</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
               <PurchaseRequestLinesEditor
                 action={createDraft}
+                budgetLines={draftOptions.budgetLines}
                 items={draftOptions.items}
                 uoms={draftOptions.uoms}
               />
-            </EntryModal>
+            </TaskSheet>
           </div>
         ) : null}
 
@@ -259,9 +290,16 @@ export default async function PurchaseRequestsPage({
                         ) : null}
                       </div>
                     </div>
-                    <p className="text-sm font-medium text-slate-700">
-                      {request.requiredDate}
-                    </p>
+                    <div className="grid gap-2">
+                      <p className="text-sm font-medium text-slate-700">
+                        {request.requiredDate}
+                      </p>
+                      {request.isEmergency ? (
+                        <Badge tone={slaBadgeTone(request.slaStatus)} size="sm">
+                          {request.slaLabel}
+                        </Badge>
+                      ) : null}
+                    </div>
                     <Badge
                       tone={request.status === "DRAFT" ? "neutral" : "warning"}
                     >

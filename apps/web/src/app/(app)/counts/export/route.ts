@@ -5,7 +5,11 @@ import {
   exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
-import { logOperationalExportAudit } from "@/server/services/exportAudit";
+import {
+  buildReportCsvMetadata,
+  logOperationalExportAudit,
+  logOperationalExportFailure
+} from "@/server/services/exportAudit";
 import { canExportStockCounts } from "@/server/services/exportAuthorization";
 import { buildStockCountExportRows } from "@/server/services/stockCounts";
 
@@ -39,8 +43,18 @@ export async function GET() {
       eventType: "report.export_completed",
       rowCount: Math.max(0, rows.length - 1)
     });
-    return csvExportResponse(rows, "stock-counts.csv");
+    return csvExportResponse(rows, "stock-counts.csv", {
+      metadata: await buildReportCsvMetadata({
+        session,
+        reportId: "stock-count-variance"
+      })
+    });
   } catch (error) {
+    await logOperationalExportFailure({
+      session,
+      reportId: "stock-count-variance",
+      error
+    });
     const errorResponse = exportErrorResponse(error);
     if (errorResponse) {
       return errorResponse;

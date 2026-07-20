@@ -6,6 +6,7 @@ import {
   projectTaskDeadlineReminderKind,
   readProjectReminderConfig
 } from "./projectNotifications";
+import { buildRestaurantOpsReminderInputs } from "./restaurantOpsNotifications";
 
 describe("notification foundation wiring", () => {
   test("notification model enforces scoped idempotent in-app records", () => {
@@ -168,9 +169,21 @@ describe("notification foundation wiring", () => {
     expect(page).toContain("markNotificationRead");
     expect(page).toContain("archiveNotification");
     expect(page).toContain("runProjectTaskDeadlineReminderScan");
+    expect(page).toContain("runRestaurantOpsExceptionReminderScan");
     expect(page).toContain("scanApprovalRemindersAction");
     expect(page).toContain("scanDeadlineRemindersAction");
+    expect(page).toContain("scanRestaurantOpsRemindersAction");
     expect(page).toContain("Scan Approvals");
+    expect(page).toContain("Scan Restaurant Ops");
+    expect(page).toContain("appendInboxFilterParams(params, formData)");
+    expect(page).toContain("formData.get(\"status\")");
+    expect(page).toContain("formData.get(\"group\")");
+    expect(page).toContain("<input name=\"status\" type=\"hidden\" value={status} />");
+    expect(page).toContain("<input name=\"group\" type=\"hidden\" value={group} />");
+    expect(page).toContain("notificationGroups");
+    expect(page).toContain("notificationGroupForType");
+    expect(page).toContain("visibleNotifications");
+    expect(page).toContain("buildQueryHref(\"/notifications\"");
     expect(page).toContain("permissions.projectManage");
     expect(page).toContain("permissions.purchaseRequestApprove");
     expect(page).toContain("Scan Reminders");
@@ -180,7 +193,196 @@ describe("notification foundation wiring", () => {
     expect(page).toContain("reminderCount");
     expect(page).toContain("tasks scanned /");
     expect(page).toContain("approvals scanned /");
+    expect(page).toContain("restaurant exceptions scanned /");
+    expect(page).toContain("BRANCH_CHECKLIST_REVIEW_READY");
+    expect(page).toContain("FOOD_SAFETY_REVIEW_READY");
     expect(page).not.toContain("renderModulePreview");
+  });
+
+  test("restaurant ops exception scan is scoped, idempotent, audited, and non-mutating", () => {
+    const scanSource = readFileSync(
+      path.resolve(__dirname, "restaurantOpsNotifications.ts"),
+      "utf8"
+    );
+
+    expect(scanSource).toContain("runRestaurantOpsExceptionReminderScan");
+    expect(scanSource).toContain("buildRestaurantOpsReminderInputs");
+    expect(scanSource).toContain("phase2NotificationAccess(session)");
+    expect(scanSource).toContain("throw new Error(\"PERMISSION_DENIED\")");
+    expect(scanSource).toContain("getFoodCostAnalysisDashboard(session)");
+    expect(scanSource).toContain("getBranchOperationsDashboard(session)");
+    expect(scanSource).toContain("getFoodSafetyDashboard(session)");
+    expect(scanSource).toContain("getIncidentDashboard(session)");
+    expect(scanSource).toContain("getMaintenanceDashboard(session)");
+    expect(scanSource).toContain("recordWorkflowNotifications(tx");
+    expect(scanSource).toContain("recipientUserIds: [session.user.id]");
+    expect(scanSource).toContain("CURRENT_USER_AUTHORIZED_PHASE2_SCOPE");
+    expect(scanSource).toContain("restaurant-ops-exception:");
+    expect(scanSource).toContain("notification.restaurant_ops_exception_scan");
+    expect(scanSource).toContain("scannedExceptionCount");
+    expect(scanSource).toContain("reminderCount");
+    expect(scanSource).toContain("FOOD_COST_EXCEPTION");
+    expect(scanSource).toContain("BRANCH_CHECKLIST_REVIEW_READY");
+    expect(scanSource).toContain("BRANCH_CHECKLIST_EXCEPTION");
+    expect(scanSource).toContain("FOOD_SAFETY_REVIEW_READY");
+    expect(scanSource).toContain("FOOD_SAFETY_EXCEPTION");
+    expect(scanSource).toContain("OPERATIONAL_INCIDENT_OPEN");
+    expect(scanSource).toContain("MAINTENANCE_FOLLOW_UP");
+    expect(scanSource).toContain("branchChecklistReviewStatuses");
+    expect(scanSource).toContain("foodSafetyReviewStatuses");
+    expect(scanSource).toContain("branch-checklist-review:");
+    expect(scanSource).toContain("food-safety-review:");
+    expect(scanSource).toContain("Checklist ready for review");
+    expect(scanSource).toContain("Food-safety log ready for review");
+    expect(scanSource).not.toContain("prisma.recipe.update");
+    expect(scanSource).not.toContain("prisma.foodSafetyLog.update");
+    expect(scanSource).not.toContain("prisma.branchOperationalChecklist.update");
+    expect(scanSource).not.toContain("prisma.operationalIncident.update");
+    expect(scanSource).not.toContain("prisma.maintenanceTicket.update");
+    expect(scanSource).not.toContain("inventoryMovement.create");
+  });
+
+  test("restaurant ops reminders are built from source records without terminal follow-ups", () => {
+    const reminders = buildRestaurantOpsReminderInputs({
+      foodCost: {
+        locationName: "SM North Edsa",
+        rows: [
+          {
+            menuItemId: "menu-1",
+            menuItemName: "Karubi Set",
+            status: "ABOVE_TARGET",
+            netSalesAmount: 12000,
+            theoreticalCost: 4800,
+            actualCost: null
+          },
+          {
+            menuItemId: "menu-2",
+            menuItemName: "Chicken Set",
+            status: "WITHIN_TARGET",
+            netSalesAmount: 8000,
+            theoreticalCost: 2400,
+            actualCost: null
+          }
+        ]
+      } as never,
+      branchOps: {
+        checklists: [
+          {
+            id: "checklist-1",
+            checklistName: "Opening Checklist",
+            locationName: "SM North Edsa",
+            businessDate: "2026-07-03",
+            status: "SUBMITTED",
+            exceptionCount: 1,
+            lines: [
+              {
+                result: "EXCEPTION",
+                severity: "CRITICAL"
+              }
+            ]
+          }
+        ]
+      } as never,
+      foodSafety: {
+        logs: [
+          {
+            id: "safety-1",
+            title: "Opening Temperature Log",
+            locationName: "SM North Edsa",
+            businessDate: "2026-07-03",
+            status: "EXCEPTION_REVIEW",
+            exceptionCount: 1,
+            readings: [
+              {
+                result: "EXCEPTION",
+                severity: "CRITICAL"
+              }
+            ]
+          }
+        ]
+      } as never,
+      incidents: {
+        incidents: [
+          {
+            id: "incident-1",
+            incidentNumber: "INC-001",
+            title: "Guest complaint escalation",
+            locationName: "SM North Edsa",
+            severity: "CRITICAL",
+            status: "OPEN"
+          },
+          {
+            id: "incident-2",
+            incidentNumber: "INC-002",
+            title: "Resolved equipment issue",
+            locationName: "SM North Edsa",
+            severity: "HIGH",
+            status: "RESOLVED"
+          }
+        ]
+      } as never,
+      maintenance: {
+        tickets: [
+          {
+            id: "ticket-1",
+            ticketNumber: "MT-001",
+            assetName: "Grill table 4",
+            locationName: "SM North Edsa",
+            priority: "CRITICAL",
+            status: "PENDING_VENDOR"
+          },
+          {
+            id: "ticket-2",
+            ticketNumber: "MT-002",
+            assetName: "Exhaust fan",
+            locationName: "SM North Edsa",
+            priority: "HIGH",
+            status: "COMPLETED"
+          }
+        ]
+      } as never
+    });
+
+    expect(
+      reminders.map((reminder) => [
+        reminder.reminderKind,
+        reminder.sourceKey,
+        reminder.priority
+      ])
+    ).toEqual([
+      ["FOOD_COST_EXCEPTION", "food-cost:menu-1:ABOVE_TARGET", "HIGH"],
+      [
+        "BRANCH_CHECKLIST_REVIEW_READY",
+        "branch-checklist-review:checklist-1:SUBMITTED",
+        "HIGH"
+      ],
+      ["BRANCH_CHECKLIST_EXCEPTION", "branch-checklist:checklist-1:1", "HIGH"],
+      [
+        "FOOD_SAFETY_REVIEW_READY",
+        "food-safety-review:safety-1:EXCEPTION_REVIEW",
+        "HIGH"
+      ],
+      ["FOOD_SAFETY_EXCEPTION", "food-safety:safety-1:1", "CRITICAL"],
+      ["OPERATIONAL_INCIDENT_OPEN", "incident:incident-1:OPEN", "HIGH"],
+      ["MAINTENANCE_FOLLOW_UP", "maintenance:ticket-1:PENDING_VENDOR", "HIGH"]
+    ]);
+    expect(
+      reminders.find(
+        (reminder) => reminder.reminderKind === "FOOD_SAFETY_EXCEPTION"
+      )?.metadata
+    ).toMatchObject({
+      critical: true,
+      source: "restaurant-ops-notification-scan"
+    });
+    expect(reminders.map((reminder) => reminder.deepLink)).toEqual([
+      "/recipes/analysis",
+      "/branch-operations/checklist-1",
+      "/branch-operations/checklist-1",
+      "/food-safety/safety-1",
+      "/food-safety/safety-1",
+      "/incidents/incident-1",
+      "/maintenance/ticket-1"
+    ]);
   });
 
   test("approval reminder scan is manual, scoped, idempotent, and non-mutating", () => {

@@ -1,6 +1,13 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildOperationalDashboardModel } from "./dashboard";
 import type { SessionContext } from "./context";
+
+const dashboardPageSource = readFileSync(
+  path.resolve(__dirname, "../../app/(app)/dashboard/page.tsx"),
+  "utf8"
+);
 
 const session: SessionContext = {
   user: {
@@ -76,7 +83,9 @@ describe("operational dashboard model", () => {
         detail: "Requester / Selected Branch",
         status: "PENDING_APPROVAL",
         href: "/approvals/approval-1",
-        tone: "warning"
+        tone: "warning",
+        nextAction: "Review assigned approval",
+        nextActor: "Branch User"
       }
     ]);
   });
@@ -138,6 +147,61 @@ describe("operational dashboard model", () => {
       "/receiving/grn-1",
       "/inventory"
     ]);
+  });
+
+  it("blocks reconciliation-dependent dashboard values when the trust gate requires blocking", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      dashboardTrustGate: {
+        key: "reporting.dashboard.unreconciled_mode",
+        mode: "block",
+        label: "Block metric until reconciled",
+        isOverridden: true,
+        sourceDecisionId: "DEC-0036"
+      },
+      reconciliation: {
+        totalRows: 3,
+        matchedRows: 2,
+        varianceRows: 1,
+        rows: [
+          {
+            key: "loc-1|item-1|none",
+            inventoryLocationName: "Branch Stock",
+            locationName: "Selected Branch",
+            itemCode: "RICE",
+            itemName: "Rice",
+            lotNumber: null,
+            expiryDate: null,
+            baseUomCode: "KG",
+            balanceQuantity: 5,
+            ledgerQuantity: 4,
+            varianceQuantity: 1,
+            status: "VARIANCE"
+          }
+        ]
+      }
+    });
+
+    expect(dashboard.trustGate).toMatchObject({
+      mode: "block",
+      label: "Block metric until reconciled",
+      isOverridden: true
+    });
+    expect(dashboard.cards.map((card) => card.id)).not.toContain(
+      "ledger-reconciliation"
+    );
+    expect(dashboard.exceptionQueue.map((item) => item.label)).not.toContain(
+      "Ledger variance"
+    );
+    expect(dashboard.sourceHealth).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "ledger-reconciliation-blocked",
+          displayValue: "Blocked by trust gate",
+          href: "/inventory",
+          tone: "warning"
+        })
+      ])
+    );
   });
 
   it("includes implemented follow-up records for PO amendments, wastage, and adjustments", () => {
@@ -316,5 +380,342 @@ describe("operational dashboard model", () => {
       ["Adjustment follow-up", "/adjustments/adjustment-1"],
       ["Ledger variance", "/inventory"]
     ]);
+  });
+
+  it("surfaces Phase 2 restaurant operations from source dashboards", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      foodCostAnalysis: {
+        businessDate: "2026-07-03",
+        locationName: "Selected Branch",
+        salesImportBatches: 1,
+        quantitySold: 120,
+        netSalesAmount: 54000,
+        theoreticalCost: 16200,
+        theoreticalFoodCostPercent: 30,
+        actualCost: null,
+        varianceAmount: null,
+        variancePercent: null,
+        actualMovementCount: 0,
+        actualCostSource: "No scoped actual ledger movements found",
+        statusCounts: {
+          WITHIN_TARGET: 0,
+          ABOVE_TARGET: 1,
+          MISSING_COST: 0,
+          AWAITING_ACTUALS: 1
+        },
+        actualConsumptionRows: [],
+        rows: [
+          {
+            menuItemId: "menu-1",
+            menuItemName: "Karubi Set",
+            recipeName: "Karubi Set Recipe",
+            quantitySold: 120,
+            netSalesAmount: 54000,
+            theoreticalCost: 16200,
+            theoreticalFoodCostPercent: 30,
+            targetFoodCostPercent: 28,
+            actualCost: null,
+            varianceAmount: null,
+            variancePercent: null,
+            status: "ABOVE_TARGET"
+          },
+          {
+            menuItemId: "menu-2",
+            menuItemName: "Chicken Set",
+            recipeName: "Chicken Set Recipe",
+            quantitySold: 80,
+            netSalesAmount: 32000,
+            theoreticalCost: 9000,
+            theoreticalFoodCostPercent: 28.12,
+            targetFoodCostPercent: null,
+            actualCost: null,
+            varianceAmount: null,
+            variancePercent: null,
+            status: "AWAITING_ACTUALS"
+          }
+        ]
+      },
+      branchOperations: {
+        locationName: "Selected Branch",
+        businessDate: "2026-07-03",
+        totalChecklists: 2,
+        completedChecklists: 1,
+        openExceptions: 1,
+        criticalExceptions: 1,
+        statusCounts: {
+          DRAFT: 0,
+          IN_PROGRESS: 0,
+          EXCEPTION_OPEN: 0,
+          MANAGER_REVIEW: 0,
+          SUBMITTED: 1,
+          RETURNED: 0,
+          REVIEWED: 0,
+          CLOSED: 0
+        },
+        severityCounts: {
+          CRITICAL: 1,
+          HIGH: 0,
+          MEDIUM: 0,
+          LOW: 0,
+          NORMAL: 0
+        },
+        averageCompletionPercent: 87.5,
+        checklists: [
+          {
+            id: "checklist-1",
+            checklistName: "Opening Checklist",
+            locationName: "Selected Branch",
+            businessDate: "2026-07-03",
+            shiftType: "OPENING",
+            status: "SUBMITTED",
+            openedByName: "Branch Opener",
+            submittedByName: "Shift Lead",
+            reviewedByName: null,
+            reviewedAt: null,
+            exceptionCount: 1,
+            completionPercent: 87.5,
+            lines: [
+              {
+                id: "line-1",
+                lineNo: 1,
+                area: "Dining",
+                checkName: "Floor ready",
+                expectedResult: "Clean",
+                result: "EXCEPTION",
+                severity: "CRITICAL",
+                evidenceReference: null,
+                notes: null
+              }
+            ]
+          }
+        ]
+      },
+      foodSafety: {
+        locationName: "Selected Branch",
+        businessDate: "2026-07-03",
+        totalLogs: 1,
+        reviewedLogs: 0,
+        totalReadings: 4,
+        exceptionCount: 1,
+        criticalExceptions: 0,
+        statusCounts: {
+          DRAFT: 0,
+          IN_PROGRESS: 0,
+          SUBMITTED: 1,
+          RETURNED: 0,
+          REVIEWED: 0,
+          CLOSED: 0,
+          EXCEPTION_OPEN: 0,
+          EXCEPTION_REVIEW: 0
+        },
+        severityCounts: {
+          CRITICAL: 0,
+          HIGH: 1,
+          MEDIUM: 0,
+          LOW: 0,
+          NORMAL: 0
+        },
+        logs: [
+          {
+            id: "safety-1",
+            title: "Opening Temperature Log",
+            locationName: "Selected Branch",
+            businessDate: "2026-07-03",
+            logType: "TEMPERATURE",
+            status: "SUBMITTED",
+            recordedByName: "Food Safety Clerk",
+            reviewedByName: null,
+            reviewedAt: null,
+            exceptionCount: 1,
+            readings: []
+          }
+        ]
+      },
+      incidents: {
+        locationName: "Selected Branch",
+        totalIncidents: 1,
+        openIncidents: 1,
+        criticalIncidents: 1,
+        overdueIncidents: 0,
+        statusCounts: {
+          OPEN: 1,
+          IN_PROGRESS: 0,
+          PENDING_REVIEW: 0,
+          RESOLVED: 0,
+          CANCELLED: 0
+        },
+        severityCounts: {
+          CRITICAL: 1,
+          HIGH: 0,
+          MEDIUM: 0,
+          LOW: 0
+        },
+        incidents: [
+          {
+            id: "incident-1",
+            incidentNumber: "INC-001",
+            incidentDate: "2026-07-03",
+            category: "SERVICE",
+            severity: "CRITICAL",
+            status: "OPEN",
+            title: "Guest complaint escalation",
+            summary: "Escalated issue",
+            locationName: "Selected Branch",
+            reportedByName: "Service Lead",
+            ownerName: "Operations Manager",
+            sourceRecordType: null,
+            sourceRecordId: null,
+            correctiveAction: null,
+            evidenceReference: null,
+            dueAt: null,
+            resolvedAt: null
+          }
+        ]
+      },
+      maintenance: {
+        locationName: "Selected Branch",
+        totalTickets: 1,
+        openTickets: 1,
+        criticalTickets: 0,
+        overdueTickets: 0,
+        downtimeMinutes: 45,
+        statusCounts: {
+          OPEN: 1,
+          IN_PROGRESS: 0,
+          PENDING_VENDOR: 0,
+          COMPLETED: 0,
+          CANCELLED: 0
+        },
+        priorityCounts: {
+          CRITICAL: 1,
+          HIGH: 0,
+          MEDIUM: 0,
+          LOW: 0
+        },
+        tickets: [
+          {
+            id: "ticket-1",
+            ticketNumber: "MT-001",
+            requestedAt: "2026-07-03",
+            category: "EQUIPMENT",
+            assetName: "Grill table 4",
+            assetArea: "Dining",
+            priority: "HIGH",
+            status: "OPEN",
+            title: "Ignition issue",
+            description: "Pilot not lighting",
+            locationName: "Selected Branch",
+            reportedByName: "Branch Manager",
+            ownerName: "Maintenance Lead",
+            sourceIncidentId: null,
+            downtimeMinutes: 45,
+            targetDueAt: null,
+            completedAt: null,
+            correctiveAction: null,
+            evidenceReference: null
+          }
+        ]
+      }
+    });
+
+    expect(
+      dashboard.cards.map((card) => [card.id, card.value, card.href])
+    ).toEqual([
+      ["food-cost-exceptions", 1, "/recipes/analysis"],
+      ["branch-checklist-exceptions", 1, "/branch-operations"],
+      ["branch-checklist-reviews", 1, "/branch-operations"],
+      ["food-safety-exceptions", 1, "/food-safety"],
+      ["food-safety-reviews", 1, "/food-safety"],
+      ["open-operational-incidents", 1, "/incidents"],
+      ["maintenance-follow-up", 1, "/maintenance"]
+    ]);
+    expect(dashboard.metrics.map((metric) => metric.id)).toContain(
+      "restaurant-net-sales"
+    );
+    expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
+      expect.arrayContaining([
+        "food-cost-above-target",
+        "food-cost-missing-cost",
+        "food-cost-awaiting-actuals",
+        "branch-critical-exception-count",
+        "branch-manager-review-count",
+        "branch-reviewed-count",
+        "food-safety-critical-count",
+        "food-safety-exception-review-count",
+        "food-safety-reviewed-count"
+      ])
+    );
+    expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
+      expect.arrayContaining([
+        "incident-critical-count",
+        "incident-pending-review-count",
+        "incident-overdue-count",
+        "maintenance-critical-count",
+        "maintenance-vendor-count",
+        "maintenance-overdue-count"
+      ])
+    );
+    expect(
+      dashboard.metrics
+        .filter((metric) =>
+          [
+            "food-cost-above-target",
+            "food-cost-missing-cost",
+            "food-cost-awaiting-actuals"
+          ].includes(metric.id)
+        )
+        .map((metric) => [metric.id, metric.displayValue])
+    ).toEqual([
+      ["food-cost-above-target", "1"],
+      ["food-cost-missing-cost", "0"],
+      ["food-cost-awaiting-actuals", "1"]
+    ]);
+    expect(
+      dashboard.exceptionQueue.map((item) => [item.label, item.href])
+    ).toEqual([
+      ["Actual ledger pending", "/recipes/analysis"],
+      ["Food cost follow-up", "/recipes/analysis"],
+      ["Checklist review", "/branch-operations/checklist-1"],
+      ["Checklist exception", "/branch-operations/checklist-1"],
+      ["Food safety review", "/food-safety/safety-1"],
+      ["Food safety exception", "/food-safety/safety-1"],
+      ["Incident follow-up", "/incidents/incident-1"],
+      ["Maintenance follow-up", "/maintenance/ticket-1"]
+    ]);
+    expect(
+      dashboard.exceptionQueue.map((item) => [item.label, item.nextAction])
+    ).toEqual([
+      ["Actual ledger pending", "Review actual ledger evidence"],
+      ["Food cost follow-up", "Review recipe cost and sales evidence"],
+      ["Checklist review", "Review checklist"],
+      ["Checklist exception", "Investigate checklist exception"],
+      ["Food safety review", "Review food-safety log"],
+      ["Food safety exception", "Acknowledge food-safety deviation"],
+      ["Incident follow-up", "Assign or resolve incident"],
+      ["Maintenance follow-up", "Update or complete ticket"]
+    ]);
+    expect(dashboard.sourceHealth).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "dashboard-trust-gate",
+          displayValue: "Show warning and source link"
+        })
+      ])
+    );
+    expect(dashboard.sourceHealth.find((metric) => metric.id === "sales-source")).toMatchObject({
+      id: "sales-source",
+      displayValue: "Import source live",
+      href: "/recipes/analysis"
+    });
+  });
+
+  it("keeps incident and maintenance report shortcuts routed to their own sources", () => {
+    expect(dashboardPageSource).toContain("Incident Corrective Actions");
+    expect(dashboardPageSource).toContain('href: "/incidents"');
+    expect(dashboardPageSource).toContain("Maintenance SLA and Downtime");
+    expect(dashboardPageSource).toContain('href: "/maintenance"');
+    expect(dashboardPageSource).toContain("item.nextAction ?? actionLabel");
+    expect(dashboardPageSource).toContain("Assigned to: {item.nextActor}");
+    expect(dashboardPageSource).not.toContain("Incidents and Maintenance");
   });
 });

@@ -27,51 +27,33 @@ type ApprovalDetailPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-async function approve(formData: FormData) {
-  "use server";
-
-  const approvalInstanceId = String(formData.get("approvalInstanceId"));
-  try {
-    await approveApproval(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(`/approvals/${approvalInstanceId}`, error));
-  }
+function revalidateApprovalTargets() {
   revalidatePath("/approvals");
   revalidatePath("/purchase-orders");
   revalidatePath("/receiving");
   revalidatePath("/adjustments");
-  redirect("/approvals");
+  revalidatePath("/workforce");
 }
 
-async function returnForRevision(formData: FormData) {
+async function reviewApproval(formData: FormData) {
   "use server";
 
   const approvalInstanceId = String(formData.get("approvalInstanceId"));
+  const decision = String(formData.get("decision") ?? "");
   try {
-    await returnApproval(formData);
+    if (decision === "approve") {
+      await approveApproval(formData);
+    } else if (decision === "return") {
+      await returnApproval(formData);
+    } else if (decision === "reject") {
+      await rejectApproval(formData);
+    } else {
+      throw new Error("APPROVAL_DECISION_REQUIRED");
+    }
   } catch (error) {
     redirect(actionErrorRedirectPath(`/approvals/${approvalInstanceId}`, error));
   }
-  revalidatePath("/approvals");
-  revalidatePath("/purchase-orders");
-  revalidatePath("/receiving");
-  revalidatePath("/adjustments");
-  redirect("/approvals");
-}
-
-async function reject(formData: FormData) {
-  "use server";
-
-  const approvalInstanceId = String(formData.get("approvalInstanceId"));
-  try {
-    await rejectApproval(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(`/approvals/${approvalInstanceId}`, error));
-  }
-  revalidatePath("/approvals");
-  revalidatePath("/purchase-orders");
-  revalidatePath("/receiving");
-  revalidatePath("/adjustments");
+  revalidateApprovalTargets();
   redirect("/approvals");
 }
 
@@ -103,6 +85,39 @@ function getApproveButtonLabel(approvalKind: string) {
   if (approvalKind === "StockAdjustment") {
     return "Approve Stock Adjustment";
   }
+  if (approvalKind === "BudgetRevision") {
+    return "Approve Budget Revision";
+  }
+  if (approvalKind === "ExpenseRequest") {
+    return "Approve Expense Request";
+  }
+  if (approvalKind === "CashAdvanceRequest") {
+    return "Approve Cash Advance";
+  }
+  if (approvalKind === "PettyCashRequest") {
+    return "Approve Petty Cash";
+  }
+  if (approvalKind === "PaymentRequest") {
+    return "Approve Payment Request";
+  }
+  if (approvalKind === "PaymentRelease") {
+    return "Approve Payment Release";
+  }
+  if (approvalKind === "FinanceCloseRun") {
+    return "Approve Period Action";
+  }
+  if (approvalKind === "EmployeeLeaveRequest") {
+    return "Approve Leave";
+  }
+  if (approvalKind === "EmployeeOvertimeRecord") {
+    return "Approve Overtime";
+  }
+  if (approvalKind === "WorkforceSchedule") {
+    return "Approve Schedule";
+  }
+  if (approvalKind === "AttendanceImportBatch") {
+    return "Approve Attendance Review";
+  }
   return "Approve Recommendation";
 }
 
@@ -122,7 +137,49 @@ function getRejectButtonLabel(approvalKind: string) {
   if (approvalKind === "StockAdjustment") {
     return "Reject Stock Adjustment";
   }
+  if (approvalKind === "BudgetRevision") {
+    return "Reject Budget Revision";
+  }
+  if (approvalKind === "ExpenseRequest") {
+    return "Reject Expense Request";
+  }
+  if (approvalKind === "CashAdvanceRequest") {
+    return "Reject Cash Advance";
+  }
+  if (approvalKind === "PettyCashRequest") {
+    return "Reject Petty Cash";
+  }
+  if (approvalKind === "PaymentRequest") {
+    return "Reject Payment Request";
+  }
+  if (approvalKind === "PaymentRelease") {
+    return "Reject Payment Release";
+  }
+  if (approvalKind === "FinanceCloseRun") {
+    return "Reject Period Action";
+  }
+  if (approvalKind === "EmployeeLeaveRequest") {
+    return "Reject Leave";
+  }
+  if (approvalKind === "EmployeeOvertimeRecord") {
+    return "Reject Overtime";
+  }
+  if (approvalKind === "WorkforceSchedule") {
+    return "Reject Schedule";
+  }
+  if (approvalKind === "AttendanceImportBatch") {
+    return "Reject Attendance Review";
+  }
   return "Reject Purchase Request";
+}
+
+function canReturnApprovalKind(approvalKind: string) {
+  return ![
+    "BudgetRevision",
+    "PaymentRelease",
+    "FinanceCloseRun",
+    "EmployeeOvertimeRecord"
+  ].includes(approvalKind);
 }
 
 export default async function ApprovalDetailPage({
@@ -238,54 +295,62 @@ export default async function ApprovalDetailPage({
             ) : null}
           </div>
 
-          <div className="mt-6 grid gap-3">
-            <form action={approve}>
+          <form
+            action={reviewApproval}
+            className="mt-6 rounded-xl border border-blue-100 bg-blue-50/60 p-4"
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="font-bold text-slate-950">Decision composer</h3>
+                <p className="text-sm text-slate-600">
+                  Choose one outcome for this approval step. Remarks are required for return or reject decisions.
+                </p>
+              </div>
+              <Badge tone="info" size="sm">One decision only</Badge>
+            </div>
+            <div className="mt-4 grid gap-3">
               <input name="approvalInstanceId" type="hidden" value={approval.approvalInstanceId} />
               <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Approval remarks
-                <input
-                  className="rounded-md border border-slate-300 px-3 py-2"
+                Decision remarks
+                <textarea
+                  className="min-h-24 rounded-md border border-slate-300 bg-white px-3 py-2"
                   name="remarks"
-                  placeholder="Optional"
+                  placeholder="Optional for approval; required for return or rejection"
                 />
               </label>
-              <button className="mt-3 inline-flex min-h-9 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                {getApproveButtonLabel(approval.approvalKind)}
-              </button>
-            </form>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <form action={returnForRevision}>
-                <input name="approvalInstanceId" type="hidden" value={approval.approvalInstanceId} />
-                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  Return remarks
-                  <input
-                    className="rounded-md border border-slate-300 px-3 py-2"
-                    name="remarks"
-                    required
-                  />
-                </label>
-                <button className="mt-3 inline-flex min-h-9 w-full items-center justify-center rounded-md bg-slate-700 px-4 text-sm font-semibold text-white hover:bg-slate-800">
-                  Return for Revision
+              <div
+                className={
+                  canReturnApprovalKind(approval.approvalKind)
+                    ? "grid gap-2 sm:grid-cols-3"
+                    : "grid gap-2 sm:grid-cols-2"
+                }
+              >
+                <button
+                  className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+                  name="decision"
+                  value="approve"
+                >
+                  {getApproveButtonLabel(approval.approvalKind)}
                 </button>
-              </form>
-
-              <form action={reject}>
-                <input name="approvalInstanceId" type="hidden" value={approval.approvalInstanceId} />
-                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  Reject remarks
-                  <input
-                    className="rounded-md border border-slate-300 px-3 py-2"
-                    name="remarks"
-                    required
-                  />
-                </label>
-                <button className="mt-3 inline-flex min-h-9 w-full items-center justify-center rounded-md bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700">
+                {canReturnApprovalKind(approval.approvalKind) ? (
+                  <button
+                    className="inline-flex min-h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                    name="decision"
+                    value="return"
+                  >
+                    Return for Revision
+                  </button>
+                ) : null}
+                <button
+                  className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700"
+                  name="decision"
+                  value="reject"
+                >
                   {getRejectButtonLabel(approval.approvalKind)}
                 </button>
-              </form>
+              </div>
             </div>
-          </div>
+          </form>
 
           <div className="mt-6">
             <ButtonLink href="/approvals" className="bg-slate-100 text-blue-700 hover:bg-blue-50">
@@ -300,19 +365,19 @@ export default async function ApprovalDetailPage({
             <p className="text-sm text-slate-500">Scoped operational discussion</p>
             {approval.approvalKind === "PurchaseRequest" ? (
               <form action={addComment} className="mt-4 grid gap-2">
-              <input name="approvalInstanceId" type="hidden" value={approval.approvalInstanceId} />
-              <input name="purchaseRequestId" type="hidden" value={approval.documentId} />
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Add comment
-                <textarea
-                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                  name="body"
-                  required
-                />
-              </label>
-              <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                Add Comment
-              </button>
+                <input name="approvalInstanceId" type="hidden" value={approval.approvalInstanceId} />
+                <input name="purchaseRequestId" type="hidden" value={approval.documentId} />
+                <label className="grid gap-1 text-sm font-medium text-slate-700">
+                  Add comment
+                  <textarea
+                    className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
+                    name="body"
+                    required
+                  />
+                </label>
+                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                  Add Comment
+                </button>
               </form>
             ) : null}
             <div className="mt-4 space-y-3">

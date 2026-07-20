@@ -5,6 +5,7 @@ import { canUseTransfers, permissions, requirePermission } from "./authorization
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
 import type { CsvRow } from "./csv";
 import { postInventoryMovementInTransaction } from "./inventory";
+import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 
 const optionalDateSchema = z
   .string()
@@ -1389,6 +1390,19 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
   if (transfer.dispatchedByUserId === session.user.id) {
     throw new Error("TRANSFER_RECEIPT_DISPATCHER_REVERSAL_NOT_ALLOWED");
   }
+  await assertPrivilegedMfaForAction(session, {
+    action: "inventory_transfer_receipt.reverse",
+    enforcementScope: "all_sensitive",
+    permissionCode: permissions.transferReceiptReverse,
+    entityType: "InventoryTransferReceipt",
+    entityId: receipt.id,
+    reason:
+      "Transfer receipt reversal creates counter-movements and requires privileged MFA evidence.",
+    metadata: {
+      transferId: transfer.id,
+      destinationLocationId: transfer.destinationLocationId
+    }
+  });
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {

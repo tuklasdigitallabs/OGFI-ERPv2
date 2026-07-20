@@ -64,5 +64,6 @@ Exit gate: sponsor/project manager approves closure or archival.
 
 - Each gate has owner, required evidence, required reviewers/approvers, target date, status, and activity history.
 - Failed or incomplete gates block the project from being represented as ready for the next phase.
+- An Expansion project cannot move to `Completed` or `Archived` until all nine required lifecycle gates have been generated and achieved. This is enforced with the same project-version concurrency check used by lifecycle actions.
 - An approved exception must record reason, approver, impact, expiry/review date, and remediation owner.
 - Project phase movement does not alter financial or procurement records.

@@ -4,7 +4,11 @@ import {
   exportAuthRequiredResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
-import { logOperationalExportAudit } from "@/server/services/exportAudit";
+import {
+  buildReportCsvMetadata,
+  logOperationalExportAudit,
+  logOperationalExportFailure
+} from "@/server/services/exportAudit";
 import { canExportReceivingReports } from "@/server/services/exportAuthorization";
 import { buildReceivingReportExportRows } from "@/server/services/receiving";
 
@@ -25,18 +29,32 @@ export async function GET() {
     return exportPermissionDeniedResponse();
   }
 
-  await logOperationalExportAudit({
-    session,
-    reportId: "receiving-reports",
-    eventType: "report.export_started"
-  });
-  const rows = await buildReceivingReportExportRows(session);
-  await logOperationalExportAudit({
-    session,
-    reportId: "receiving-reports",
-    eventType: "report.export_completed",
-    rowCount: Math.max(0, rows.length - 1)
-  });
+  try {
+    await logOperationalExportAudit({
+      session,
+      reportId: "receiving-reports",
+      eventType: "report.export_started"
+    });
+    const rows = await buildReceivingReportExportRows(session);
+    await logOperationalExportAudit({
+      session,
+      reportId: "receiving-reports",
+      eventType: "report.export_completed",
+      rowCount: Math.max(0, rows.length - 1)
+    });
 
-  return csvExportResponse(rows, "receiving-reports.csv");
+    return csvExportResponse(rows, "receiving-reports.csv", {
+      metadata: await buildReportCsvMetadata({
+        session,
+        reportId: "receiving-reports"
+      })
+    });
+  } catch (error) {
+    await logOperationalExportFailure({
+      session,
+      reportId: "receiving-reports",
+      error
+    });
+    throw error;
+  }
 }

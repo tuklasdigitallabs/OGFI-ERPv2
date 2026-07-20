@@ -15,7 +15,7 @@ This assessment confirms the user-facing enablement materials needed before UAT 
 | Branch managers               | Must understand branch context, Purchase Requests, approvals, transfer receipt, wastage, dashboards, and notifications.                            | `docs/training/phase-i-branch-manager-quick-start.md`                                              |
 | Warehouse / storekeeper users | Must understand inventory location context, transfer dispatch/receipt, stock counts, wastage, adjustments, ledger impact, and evidence references. | `docs/training/phase-i-warehouse-storekeeper-quick-start.md`                                       |
 | Purchasing users              | Must understand PR follow-up, quotation/PO lineage, PO statuses, supplier issue/send, receiving variance visibility, and exports.                  | `docs/training/phase-i-purchasing-quick-start.md`                                                  |
-| Administrators                | Must understand role, permission, scope, approval assignment, audit review, evidence-reference support, and export controls.                       | `docs/training/phase-i-administrator-setup-guide.md`                                               |
+| Administrators                | Must understand role, permission, scope, approval assignment, audit review, evidence-reference support, export controls, release readiness gates, and external-security proof references. | `docs/training/phase-i-administrator-setup-guide.md`; `docs/knowledge-base/administration/managing-release-readiness-gates.md` |
 | Project users                 | Must understand project/task coordination, blockers, milestones, comments, notifications, reports, and safe source-record links.                   | `docs/training/phase-1-5-project-tracker-quick-start.md`; `docs/knowledge-base/projects/README.md` |
 
 ## Knowledge-Base Coverage
@@ -34,6 +34,7 @@ This assessment confirms the user-facing enablement materials needed before UAT 
 - Binary upload/download should not be taught as generally available for every Phase I operational workflow.
 - Queueing, automated email delivery, and automated scheduler behavior must not be promised.
 - Project tracker training must emphasize that tasks link to source records but do not mutate operational records.
+- Release-readiness training must explain that ERP security counters do not replace external MFA provider, identity-provider session invalidation, evidence repository, or break-glass review proof references.
 - Deferred workflows must be called out: full PO amendment after issue, backdated correction, partial receiving-line reversal, transfer dispatch reversal, automated replacement/finance settlement, and formal PDF summaries. Transfer discrepancy closure is available only as a non-posting audited settlement action.
 
 ## Readiness Checklist
@@ -50,6 +51,7 @@ This assessment confirms the user-facing enablement materials needed before UAT 
 - [ ] Pilot training session scheduled and attendance recorded.
 - [ ] UAT defects dispositioned.
 - [ ] Deployment, rollback, backup/restore evidence attached.
+- [ ] External-security proof references collected for MFA provider, IdP session invalidation, evidence repository index, and break-glass review.
 - [ ] Pilot support contacts, defect intake route, daily triage cadence, and rollback decision owner confirmed.
 - [ ] Final release owner signs GO / NO-GO decision.
 
@@ -62,7 +64,7 @@ Use this table during UAT or pilot preparation. Do not mark training complete un
 | Branch managers               | Pending           | Pending | Pending           | Branch manager quick-start; dashboard/tasks/notifications; PR/approval/transfer receipt/wastage flows        | Pending                   | Pending                          | Pending            | Pending    | Pending      |
 | Warehouse / storekeeper users | Pending           | Pending | Pending           | Warehouse/storekeeper quick-start; receiving, transfers, counts, wastage, adjustments, ledger controls       | Pending                   | Pending                          | Pending            | Pending    | Pending      |
 | Purchasing users              | Pending           | Pending | Pending           | Purchasing quick-start; quote/PO lineage, supplier issue/send, receiving variance, exports                   | Pending                   | Pending                          | Pending            | Pending    | Pending      |
-| Administrators                | Pending           | Pending | Pending           | Administrator setup guide; users, roles, scopes, approvals, audit, export controls                           | Pending                   | Pending                          | Pending            | Pending    | Pending      |
+| Administrators                | Pending           | Pending | Pending           | Administrator setup guide; users, roles, scopes, approvals, audit, export controls, release readiness, external-security proof references | Pending                   | Pending                          | Pending            | Pending    | Pending      |
 | Project users                 | Pending           | Pending | Pending           | Project tracker quick-start; tasks, blockers, milestones, source links, reports, redaction, tracker boundary | Pending                   | Pending                          | Pending            | Pending    | Pending      |
 
 ## Known-Limit Acknowledgement Checklist
@@ -70,6 +72,7 @@ Use this table during UAT or pilot preparation. Do not mark training complete un
 Before GO, pilot users and release owners must acknowledge:
 
 - UAT and deployment evidence remain required before release signoff.
+- External-security proof references remain required before final GO / NO-GO, even when ERP security counters show zero unresolved items.
 - Project tasks coordinate work only and do not mutate PR, PO, receiving, transfer, inventory, approval, finance, wastage, or adjustment records.
 - Binary upload/download is not a general release promise unless the approved shared attachment service is enabled.
 - Automated job queues, background schedulers, and email delivery are not in Phase I or Phase 1.5 scope.

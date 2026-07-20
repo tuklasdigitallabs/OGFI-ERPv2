@@ -44,6 +44,23 @@ The parent agent frames the decision, selects specialists, compiles the debate p
 
 Specialists provide bounded evidence and challenge reasoning inside their discipline. They do not vote, make policy unilaterally, or edit implementation while the decision is unresolved.
 
+### Model fallback
+
+Use the default inherited subagent model first. If a subagent fails because
+`GPT-5.3-Codex-Spark` or the current default subagent model is at its usage limit,
+the parent must close the failed thread and avoid repeatedly retrying that model.
+
+When a council is still needed, use the smallest necessary fallback council:
+
+- `gpt-5.4` for material product, architecture, data, security, workflow,
+  permissions, approval, inventory, finance, integration, release, or UI/UX
+  decisions.
+- `gpt-5.4-mini` for lightweight checklist review, copy review, focused
+  verification, or low-risk sidecar analysis.
+
+The fallback model choice is an execution reliability measure, not permission to
+broaden scope, spawn unnecessary agents, or bypass the hard gates.
+
 ### Mithi — Decision record steward
 
 Mithi records only confirmed material decisions under `docs/core/00-governance/decisions/`. Mithi must preserve rejected alternatives, safeguards, and follow-up actions.

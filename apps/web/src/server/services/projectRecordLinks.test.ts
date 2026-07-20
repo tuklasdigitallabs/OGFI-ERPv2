@@ -77,6 +77,19 @@ describe("project record link boundary controls", () => {
     expect(source).not.toContain('entityType: "ApprovalInstance"');
   });
 
+  test("document references resolve to canonical authorized source records before storage", () => {
+    const source = readFileSync(path.resolve(__dirname, "projectRecordLinks.ts"), "utf8");
+    const siteDetailPage = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/expansion/sites/[id]/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("publicReference: sourceRecordId");
+    expect(source).toContain("sourceRecordId: summary.sourceRecordId!");
+    expect(siteDetailPage).toContain("Source document number");
+    expect(siteDetailPage).not.toContain("Authorized source record UUID");
+  });
+
   test("project record link schema never stores source payload snapshots", () => {
     const schema = readFileSync(
       path.resolve(__dirname, "../../../../../packages/database/prisma/schema.prisma"),
@@ -84,7 +97,7 @@ describe("project record link boundary controls", () => {
     );
     const model = schema.slice(
       schema.indexOf("model ProjectRecordLink"),
-      schema.indexOf("model Supplier")
+      schema.indexOf("model ProjectRequirement")
     );
 
     expect(model).not.toContain("amount");

@@ -4,6 +4,7 @@ import {
   dateOnlyString,
   daysBetweenDateOnly,
   isProjectTaskOverdue,
+  parseDateOnlyUtc,
   projectDateWindowBounds,
   projectTaskDaysUntilDue,
   projectTaskDueDateString,
@@ -32,6 +33,15 @@ describe("project date helpers", () => {
       })
     ).toBe("2026-07-05");
     expect(dateOnlyString(null)).toBeNull();
+  });
+
+  test("strict date-only parsing rejects malformed calendar dates", () => {
+    expect(parseDateOnlyUtc("2026-07-04")?.toISOString()).toBe(
+      "2026-07-04T00:00:00.000Z"
+    );
+    expect(parseDateOnlyUtc("2026-02-31")).toBeNull();
+    expect(parseDateOnlyUtc("2026-13-01")).toBeNull();
+    expect(parseDateOnlyUtc("not-a-date")).toBeNull();
   });
 
   test("day math is based on calendar dates, not elapsed hours", () => {

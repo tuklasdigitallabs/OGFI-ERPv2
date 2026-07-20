@@ -11,6 +11,8 @@
 - Components must represent clear business semantics, not only visual shapes.
 - The same status, permission, amount, attachment, and audit behavior must look and behave consistently across modules.
 - Components must support desktop, tablet, and mobile variations.
+- Components must prevent long stacked-card workspaces. Shared components should encourage list-first workspaces, route/subworkspace tabs, pagination, selected-record detail, and contextual actions.
+- A component that makes it easy to repeat large inline forms per row, hide actions off-screen, or render every workflow section at once is not acceptable for operational workspaces.
 
 ---
 
@@ -158,6 +160,13 @@ Capabilities:
 - row actions based on permission;
 - clear empty/loading/error states.
 
+Rules:
+
+- Use operational tables or list rows as the desktop default for registers, queues, approvals, finance records, workforce records, inventory records, and master data.
+- More than 10 possible records requires pagination, virtualized loading, or an approved incremental-load pattern.
+- Row actions must stay compact. Opening a record-specific action with reason, evidence, approval, rejection, handoff, reconciliation, or reversal fields must use a drawer, detail route, or focused action composer.
+- Do not use nested cards to represent tabular operational data on desktop.
+
 ### 5.3 Mobile record card
 
 Alternative to a dense table on narrow screens. Must include the data necessary to decide whether to open the record.
@@ -165,6 +174,42 @@ Alternative to a dense table on narrow screens. Must include the data necessary 
 ### 5.4 KPI card
 
 Displays a single operational metric with scope, period, value, trend where meaningful, severity, and drill-down.
+
+KPI cards must be compact and limited to decision support. A page made primarily of KPI/setup/status cards is not an operational workspace.
+
+### 5.5 Workspace tabs
+
+Used when a route contains multiple related jobs.
+
+Rules:
+
+- Tabs must be real interactive controls, not decorative labels.
+- Tabs must preserve relevant filters where appropriate.
+- Each tab should expose one dominant list, queue, workbench, or focused task.
+- Do not hide critical record context behind tabs; repeat the active company/brand/location/status context where needed.
+- Do not place every tab's content on the page at once.
+
+### 5.6 Record action drawer
+
+Used for record-specific workflow actions such as approve, reject, return, submit, post, reverse, match, resolve, waive, hand off, or attach evidence.
+
+Rules:
+
+- Only one selected record action composer is open at a time.
+- The drawer must show a compact record summary, resulting status/impact, required reason/evidence fields, and permission-aware submit controls.
+- Destructive actions must be visually separated from normal progression actions.
+- The drawer must not bypass service-layer authorization, status guards, audit, or evidence requirements.
+
+### 5.7 Transaction sheet
+
+Used for long transaction entry or multi-line entry.
+
+Rules:
+
+- Use for PR lines, receiving, counts, adjustments, recipes, finance invoice lines, workforce schedules, and similar high-density forms.
+- Provide sticky submit/cancel controls.
+- Provide row validation summaries and mobile row-card entry.
+- Do not trap long transaction entry inside a centered modal with internal scrolling.
 
 ---
 

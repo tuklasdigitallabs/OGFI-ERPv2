@@ -146,10 +146,32 @@ Follow all documents under `docs/core/04-design/`, especially:
 
 Use a Modern SaaS interface: clean structure, restrained blue accents, white cards, balanced tables, clear status pills, role-aware dashboards, and responsive task-focused mobile workflows.
 
+UI/UX readiness is part of implementation completion. A workflow is not complete merely because the schema, services, routes, and tests exist. Client-facing workspaces must also meet the approved layout, navigation, readability, and task-efficiency standards before the milestone may be called implemented or ready for UAT, unless the user explicitly authorizes a clearly labeled backend-only foundation slice.
+
+### Visible workflow completion gate
+
+Do not call a workspace, workflow, phase slice, builder, tracker, dashboard, or administrative tool complete while any visible tab, section, panel, action area, or navigation destination is only a passive placeholder or partially wired experience.
+
+Every visible surface must satisfy one of these outcomes before completion is claimed:
+
+- It has the working create, edit, remove, submit, approve, post, export, configure, or workflow actions that the UI label implies.
+- It is intentionally read-only, and the screen clearly explains why it is read-only and where the authoritative action happens.
+- It is disabled because of status, role, scope, or policy, and the disabled state tells the user the reason.
+- It is explicitly labeled as a preview, future module, or backend-only foundation that the user has approved for the current slice.
+
+Never use vague completion thresholds such as "real enough", "mostly wired", "displaying data", "backend complete", or "good enough for now" to mark implementation work complete. If a page calls itself a builder, setup center, control center, inbox, queue, dashboard, register, or workspace, its visible tabs and sections must behave like that product concept implies. If a tab is shown, it must either provide useful working controls or have a deliberate documented read-only purpose.
+
+Before reporting a feature as done, perform a visible-surface checklist: list the tabs/sections/actions introduced or affected, confirm each has a working behavior or intentional read-only state, and verify the relevant tests/typechecks. If any visible surface is incomplete, report it as pending instead of complete.
+
 ### Non-negotiable UI behavior
 
 - Use one shared spacing token for gaps and padding.
 - Do not sacrifice transaction clarity for visual minimalism.
+- Do not build or extend long stacked-card workspaces for operational modules. Multi-workflow areas must use a clear workspace model: route/subworkspace tabs, filters/search, paginated list or queue, selected-record detail/drawer, and contextual actions.
+- Cards are allowed for compact KPI strips, repeated record summaries on mobile, modals, and genuinely framed tools. They must not become the primary layout for every finance, workforce, procurement, inventory, or operations function.
+- Lists and queues with more than 10 records must provide pagination or an approved virtualized/incremental loading pattern. Do not rely on `slice(0, 10)` or unpaginated browser-only filtering for operational records.
+- Do not repeat large inline action forms in every row or card. Record-specific workflow actions belong in a selected-record drawer, detail page, or focused action composer.
+- Use modals only for short single-purpose forms. Long transaction entry, multi-line entry, evidence-heavy actions, and review workflows must use a drawer, sheet, stepper, full-page task mode, or equivalent focused workspace.
 - Important screens must visibly show company, brand where relevant, location, requester/owner, status, dates, next action/current approver, and audit/activity access.
 - `All Brands / All Locations` is only for authorized dashboards and reports, never for stock posting, receiving, or location-specific transactions.
 - Use clear action labels such as `Create Purchase Request`, `Request Stock`, `Receive Delivery`, `Dispatch Transfer`, and `Log Wastage`; avoid ambiguous universal actions.
@@ -181,6 +203,9 @@ For small, unambiguous changes, proceed directly without a planning ceremony.
 - Do not refactor, rename, move, reformat, or improve unrelated code.
 - Treat each task as self-contained. Do not re-open or re-read earlier context unless it is needed to verify current behavior.
 - Do not replace working logic with placeholders.
+- Do not continue adding functional sections to a workspace after it becomes a long stacked-card or long-scroll page. Stop and restructure the information architecture first, or ask the user for approval to proceed as a backend-only foundation.
+- Do not stop an implementation pass after making a surface "display data" if the user asked to complete the workflow. Finish the visible actions implied by the page, or explicitly mark the remaining visible surfaces as pending blockers before stopping.
+- Treat relevant Critical or High findings in `docs/core/04-design/UI_UX_WORKSPACE_AUDIT.md` as implementation gates for new work in that workspace. New work must remediate or avoid the cited pattern, not deepen it.
 - Preserve backward compatibility unless the task explicitly allows a breaking change.
 - Keep changes coherent, reviewable, and traceable to the request.
 - Default to medium reasoning effort. Escalate only for genuinely hard, high-risk, multi-file, financial, inventory, security, data-integrity, or architecture work.
@@ -319,6 +344,22 @@ The parent agent is the **Decision Chair**. It owns the task end-to-end and must
 6. Do not use majority vote. A credible inventory, security, authorization, audit, or data-integrity blocker cannot be overridden by preference or convenience.
 7. Record unresolved policy questions in `docs/core/00-governance/OPEN_DECISIONS_AND_ASSUMPTIONS.md`.
 8. Ask Mithi to create a formal decision record only after the parent agent or authorized human confirms the conclusion.
+
+### Subagent model fallback
+
+Use the default inherited subagent model first. If a subagent fails because
+`GPT-5.3-Codex-Spark` or the current default subagent model is at its usage limit,
+do not repeatedly retry the same limited model. Close the failed subagent thread and
+continue with the smallest necessary council using an explicit fallback:
+
+- Use `gpt-5.4` for material product, architecture, data, security, workflow,
+  permissions, approval, inventory, finance, integration, release, or UI/UX
+  decisions.
+- Use `gpt-5.4-mini` for lightweight checklist review, copy review, focused
+  verification, or low-risk sidecar analysis.
+
+Use no more fallback subagents than the decision actually needs, and close each
+thread when its result is no longer needed.
 
 ### Required first-round output
 

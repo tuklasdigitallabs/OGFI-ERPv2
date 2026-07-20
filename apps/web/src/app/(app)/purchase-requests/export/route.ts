@@ -5,7 +5,11 @@ import {
   exportAuthRequiredResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
-import { logOperationalExportAudit } from "@/server/services/exportAudit";
+import {
+  buildReportCsvMetadata,
+  logOperationalExportAudit,
+  logOperationalExportFailure
+} from "@/server/services/exportAudit";
 import { canExportPurchaseRequests } from "@/server/services/exportAuthorization";
 import {
   listPurchaseRequests,
@@ -46,47 +50,61 @@ export async function GET(request: NextRequest) {
   }
 
   const searchParams = request.nextUrl.searchParams;
-  await logOperationalExportAudit({
-    session,
-    reportId: "purchase-request-register",
-    eventType: "report.export_started"
-  });
-  const records = await listPurchaseRequests(session, {
-    status: normalizeStatus(searchParams.get("status")),
-    search: searchParams.get("search") ?? ""
-  });
+  try {
+    await logOperationalExportAudit({
+      session,
+      reportId: "purchase-request-register",
+      eventType: "report.export_started"
+    });
+    const records = await listPurchaseRequests(session, {
+      status: normalizeStatus(searchParams.get("status")),
+      search: searchParams.get("search") ?? ""
+    });
 
-  const rows = [
-    [
-      "Reference",
-      "Status",
-      "Required Date",
-      "Location",
-      "Item",
-      "Line Description",
-      "Quantity",
-      "UOM",
-      "Purpose"
-    ],
-    ...records.map((record) => [
-      record.publicReference,
-      record.status,
-      record.requiredDate,
-      session.context.locationName,
-      record.line.itemName ?? "",
-      record.line.description,
-      record.line.requestedQty,
-      record.line.uomCode,
-      record.line.purpose
-    ])
-  ];
+    const rows = [
+      [
+        "Reference",
+        "Status",
+        "Required Date",
+        "Location",
+        "Item",
+        "Line Description",
+        "Quantity",
+        "UOM",
+        "Purpose"
+      ],
+      ...records.map((record) => [
+        record.publicReference,
+        record.status,
+        record.requiredDate,
+        session.context.locationName,
+        record.line.itemName ?? "",
+        record.line.description,
+        record.line.requestedQty,
+        record.line.uomCode,
+        record.line.purpose
+      ])
+    ];
 
-  await logOperationalExportAudit({
-    session,
-    reportId: "purchase-request-register",
-    eventType: "report.export_completed",
-    rowCount: records.length
-  });
+    await logOperationalExportAudit({
+      session,
+      reportId: "purchase-request-register",
+      eventType: "report.export_completed",
+      rowCount: records.length
+    });
 
-  return csvExportResponse(rows, "purchase-requests.csv");
+    return csvExportResponse(rows, "purchase-requests.csv", {
+      metadata: await buildReportCsvMetadata({
+        session,
+        reportId: "purchase-request-register"
+      })
+    });
+  } catch (error) {
+    await logOperationalExportFailure({
+      session,
+      reportId: "purchase-request-register",
+      error
+    });
+    throw error;
+  }
 }

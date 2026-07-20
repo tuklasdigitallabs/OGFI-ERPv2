@@ -7,9 +7,16 @@ import { ThemeModeSelect } from "@/components/ThemeModeSelect";
 import {
   canReadPurchaseOrders,
   canConfigureProjectTemplates,
+  canUseBranchOperations,
+  canUseFoodSafety,
+  canUseIncidents,
+  canUseMaintenance,
+  canUseFinance,
+  canUseWorkforce,
   canUseApprovals,
   canUsePurchaseRequests,
   canUseProjects,
+  canUseRecipesAndCosting,
   canUseReceiving,
   canUseStockAdjustments,
   canUseStockCounts,
@@ -79,6 +86,13 @@ export function AppShell({
   const canAccessStockAdjustments = canUseStockAdjustments(session.permissionCodes);
   const canAccessProjects = canUseProjects(session.permissionCodes);
   const canAccessProjectTemplates = canConfigureProjectTemplates(session.permissionCodes);
+  const canAccessRecipesAndCosting = canUseRecipesAndCosting(session.permissionCodes);
+  const canAccessBranchOperations = canUseBranchOperations(session.permissionCodes);
+  const canAccessFoodSafety = canUseFoodSafety(session.permissionCodes);
+  const canAccessIncidents = canUseIncidents(session.permissionCodes);
+  const canAccessMaintenance = canUseMaintenance(session.permissionCodes);
+  const canAccessFinance = canUseFinance(session.permissionCodes);
+  const canAccessWorkforce = canUseWorkforce(session.permissionCodes);
 
   return (
     <ShellNavigation
@@ -97,6 +111,13 @@ export function AppShell({
       canViewPurchaseOrders={canViewPurchaseOrders}
       canUseProjects={canAccessProjects}
       canUseProjectTemplates={canAccessProjectTemplates}
+      canUseRecipesAndCosting={canAccessRecipesAndCosting}
+      canUseBranchOperations={canAccessBranchOperations}
+      canUseFoodSafety={canAccessFoodSafety}
+      canUseIncidents={canAccessIncidents}
+      canUseMaintenance={canAccessMaintenance}
+      canUseFinance={canAccessFinance}
+      canUseWorkforce={canAccessWorkforce}
       session={session}
     >
       <header className="shell-top-header bg-white/90 backdrop-blur-xl md:sticky md:top-0 md:z-10">

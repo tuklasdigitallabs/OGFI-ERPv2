@@ -1,7 +1,22 @@
 import { createHash } from "node:crypto";
+import { loadLocalEnvValue } from "./local-env.mjs";
 
 export function evidenceRunId(env = process.env, fallback) {
+  if (env === process.env) {
+    return (
+      loadLocalEnvValue("RELEASE_EVIDENCE_RUN_ID", env) ||
+      fallback ||
+      "not-configured"
+    );
+  }
   return env.RELEASE_EVIDENCE_RUN_ID ?? fallback ?? "not-configured";
+}
+
+export function evidenceMetadataValue(name, env = process.env, fallback = "") {
+  if (env === process.env) {
+    return loadLocalEnvValue(name, env) || fallback;
+  }
+  return env[name] ?? fallback;
 }
 
 export function databaseUrlFingerprint(value) {

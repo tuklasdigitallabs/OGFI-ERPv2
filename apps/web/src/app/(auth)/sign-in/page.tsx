@@ -35,6 +35,11 @@ async function signIn(formData: FormData) {
     sameSite: "lax",
     path: "/",
   });
+  cookieStore.set("ogfi_demo_session_issued_at", new Date().toISOString(), {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+  });
   redirect(getDefaultAppRoute(session.permissionCodes));
 }
 
@@ -48,6 +53,8 @@ export default async function SignInPage({
   const approverEmail =
     process.env.DEMO_APPROVER_EMAIL ?? "ops.approver@ogfi.example";
   const adminEmail = process.env.DEMO_ADMIN_EMAIL ?? "erp.admin@ogfi.example";
+  const superUserEmail =
+    process.env.DEMO_SUPER_USER_EMAIL ?? "super.admin@ogfi.example";
   const configured = await getConfiguredContext(requesterEmail);
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
@@ -63,6 +70,10 @@ export default async function SignInPage({
     {
       label: "ERP Administrator",
       email: adminEmail,
+    },
+    {
+      label: "System Super User",
+      email: superUserEmail,
     },
   ];
 

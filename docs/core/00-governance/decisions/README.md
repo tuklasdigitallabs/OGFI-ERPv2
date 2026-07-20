@@ -43,6 +43,8 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0032-PROJECT-RISK-LIFECYCLE.md`
 - `DEC-0033-PROJECT-TASK-REGISTER-EXPORT.md`
 - `DEC-0034-PO-BOUNDED-PRE-RECEIVING-AMENDMENT.md`
+- `DEC-0035-PHASE2-FNB-WORKFLOW-CONTROL-POLICY.md`
+- `DEC-0036-INDUSTRY-STANDARD-CONFIGURABLE-PILOT-DEFAULTS.md`
 
 ## Suggested future decision records
 

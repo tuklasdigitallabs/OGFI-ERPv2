@@ -1,22 +1,29 @@
 # Phase II — Data Extensions
 
-**Status:** Planned data-model framework
+**Status:** Core Phase II data extensions implemented for the current approved slice
 
 ## Purpose
 
 This document defines how Phase II extends the core ERP data model without duplicating or weakening tenant, company, brand, location/project, user, approval, audit or attachment controls.
 
-## Expected New Entity Groups
+## Implemented Entity Groups
 
 - `recipe_versions`
 - `recipe_lines`
-- `sub_recipes`
 - `menu_items`
 - `menu_prices`
-- `operational_checklists`
-- `incidents`
-- `maintenance_tickets`
+- `menu_price_decisions`
+- `recipe_version_transitions`
+- `restaurant_sales_import_batches`
+- `restaurant_sales_import_lines`
+- `branch_operational_checklists`
+- `branch_operational_checklist_lines`
 - `food_safety_logs`
+- `food_safety_readings`
+- `operational_incidents`
+- `maintenance_tickets`
+- `operational_correction_records`
+- `operational_status_transitions`
 
 ## Mandatory Data Rules
 
@@ -27,10 +34,9 @@ This document defines how Phase II extends the core ERP data model without dupli
 - Preserve historical values when a revision changes a financial, recipe, legal, project or workforce record.
 - Add a migration plan before introducing required data fields to production.
 
-## To Finalize Before Build
+## Remaining Data Decisions Before New Build Slices
 
-- Field-level dictionary additions
-- Entity relationships and cardinality
-- Required indexes and performance expectations
-- Retention and confidential-data classifications
-- Migration, seed and reporting impact
+- Full POS/sales import write workflow, source-system contract, duplicate handling, and rollback policy.
+- Bulk recipe import/apply staging tables or equivalent controlled diff workflow, if approved.
+- Recursive sub-recipe cost-flattening snapshot, graph depth, cycle, and recalculation policy, if approved.
+- Marketing Operations data model extensions remain planning-only until campaign, promotion, and launch controls are approved.

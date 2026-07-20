@@ -46,6 +46,7 @@ export type ProjectSummary = {
 
 export type ProjectMemberSummary = {
   id: string;
+  userId: string;
   projectId: string;
   projectCode: string;
   projectName: string;
@@ -69,6 +70,8 @@ const createProjectSchema = z.object({
   description: z.string().trim().max(2000).optional(),
   isRestricted: z.coerce.boolean().default(false),
   locationId: z.string().uuid().optional().or(z.literal("").transform(() => undefined)),
+  sponsorUserId: z.string().uuid().optional().or(z.literal("").transform(() => undefined)),
+  managerUserId: z.string().uuid().optional().or(z.literal("").transform(() => undefined)),
   targetEndAt: z.string().optional().or(z.literal("").transform(() => undefined))
 });
 
@@ -93,11 +96,37 @@ const projectLifecycleStatuses = [
   "ARCHIVED"
 ] as const;
 
+const expansionLifecycleProjectTypes = new Set([
+  "BRANCH OPENING",
+  "BRANCH RELOCATION",
+  "BRANCH RENOVATION",
+  "BRANCH EXPANSION",
+  "KITCHEN UPGRADE",
+  "WAREHOUSE / COMMISSARY PROJECT",
+  "MAJOR EQUIPMENT REPLACEMENT",
+  "MALL COMPLIANCE PROJECT"
+]);
+
 const transitionProjectLifecycleSchema = z.object({
   projectId: z.string().uuid(),
   nextStatus: z.enum(projectLifecycleStatuses),
   expectedVersion: z.coerce.number().int().positive().optional(),
   reason: z.string().trim().max(1000).optional()
+});
+
+const updateProjectLeadershipSchema = z.object({
+  projectId: z.string().uuid(),
+  sponsorUserId: z.string().uuid(),
+  managerUserId: z.string().uuid(),
+  expectedVersion: z.coerce.number().int().positive(),
+  reason: z.string().trim().min(5).max(1000)
+});
+
+const updateProjectDetailsSchema = z.object({
+  projectId: z.string().uuid(),
+  expectedVersion: z.coerce.number().int().positive(),
+  description: z.string().trim().max(2000).optional(),
+  targetEndAt: z.string().optional().or(z.literal(""))
 });
 
 function projectScopeLabel(project: {
@@ -228,7 +257,44 @@ export function buildProjectTemplateSeedPlan(input: {
     })
   }));
 
-  return { tasks, milestones };
+  const evidenceRequirements = input.templateConfig.evidenceDefaults.map((defaultValue) => ({
+    code: defaultValue.code.toUpperCase(),
+    label: defaultValue.label,
+    evidenceType: defaultValue.evidenceType,
+    templateTaskCode: defaultValue.taskCode?.toUpperCase() ?? null,
+    isRequired: defaultValue.required,
+    ownerUserId: resolveProjectTemplateOwner({
+      role: defaultValue.owner.value,
+      managerUserId: input.project.managerUserId,
+      sponsorUserId: input.project.sponsorUserId,
+      creatorUserId: input.actorUserId
+    })
+  }));
+  const signoffRequirements = input.templateConfig.signoffDefaults.map((defaultValue) => {
+    const ownerUserId = resolveProjectTemplateOwner({
+      role: defaultValue.owner.value,
+      managerUserId: input.project.managerUserId,
+      sponsorUserId: input.project.sponsorUserId,
+      creatorUserId: input.actorUserId
+    });
+    // Signoffs require independent review. For the two controlled project
+    // leaders, assign the other leader as reviewer rather than silently
+    // materializing a self-review deadlock.
+    const reviewerUserId =
+      ownerUserId === input.project.managerUserId
+        ? input.project.sponsorUserId
+        : input.project.managerUserId;
+    return {
+      code: defaultValue.code.toUpperCase(),
+      label: defaultValue.label,
+      signoffStage: defaultValue.stage,
+      isRequired: defaultValue.required,
+      ownerUserId,
+      reviewerUserId
+    };
+  });
+
+  return { tasks, milestones, evidenceRequirements, signoffRequirements };
 }
 
 export function buildProjectTemplateSnapshot(template: {
@@ -269,6 +335,7 @@ async function applyProjectTemplateDefaults(
   }
 ) {
   const seedPlan = buildProjectTemplateSeedPlan(input);
+  const taskIdByTemplateCode = new Map<string, string>();
 
   for (const taskDefault of seedPlan.tasks) {
     const task = await tx.projectTask.create({
@@ -334,6 +401,7 @@ async function applyProjectTemplateDefaults(
         metadata: { source: "project-template-apply" }
       }
     });
+    taskIdByTemplateCode.set(taskDefault.templateTaskCode.toUpperCase(), task.id);
   }
 
   for (const milestoneDefault of seedPlan.milestones) {
@@ -364,6 +432,71 @@ async function applyProjectTemplateDefaults(
           code: milestoneDefault.code,
           title: milestone.title,
           targetDate: milestone.targetDate?.toISOString().slice(0, 10) ?? null
+        },
+        metadata: { source: "project-template-apply" }
+      }
+    });
+  }
+
+  const requirements = [
+    ...seedPlan.evidenceRequirements.map((requirement) => ({
+      ...requirement,
+      kind: "EVIDENCE" as const,
+      taskId: requirement.templateTaskCode
+        ? taskIdByTemplateCode.get(requirement.templateTaskCode) ?? null
+        : null,
+      reviewerUserId: null,
+      signoffStage: null
+    })),
+    ...seedPlan.signoffRequirements.map((requirement) => ({
+      ...requirement,
+      kind: "SIGNOFF" as const,
+      taskId: null,
+      evidenceType: null,
+      templateTaskCode: null
+    }))
+  ];
+
+  for (const requirementDefault of requirements) {
+    if (
+      requirementDefault.kind === "EVIDENCE" &&
+      requirementDefault.templateTaskCode &&
+      !requirementDefault.taskId
+    ) {
+      throw new Error("PROJECT_TEMPLATE_REQUIREMENT_TASK_NOT_FOUND");
+    }
+    const requirement = await tx.projectRequirement.create({
+      data: {
+        tenantId: input.project.tenantId,
+        companyId: input.project.companyId,
+        projectId: input.project.id,
+        taskId: requirementDefault.taskId,
+        kind: requirementDefault.kind,
+        code: requirementDefault.code,
+        label: requirementDefault.label,
+        evidenceType: requirementDefault.evidenceType,
+        signoffStage: requirementDefault.signoffStage,
+        isRequired: requirementDefault.isRequired,
+        ownerUserId: requirementDefault.ownerUserId,
+        reviewerUserId: requirementDefault.reviewerUserId,
+        createdByUserId: input.actorUserId,
+        updatedByUserId: input.actorUserId
+      }
+    });
+    await tx.projectActivityEvent.create({
+      data: {
+        tenantId: input.project.tenantId,
+        companyId: input.project.companyId,
+        projectId: input.project.id,
+        actorUserId: input.actorUserId,
+        eventType: "project_requirement.created",
+        entityType: "ProjectRequirement",
+        entityId: requirement.id,
+        afterData: {
+          kind: requirement.kind,
+          code: requirement.code,
+          taskId: requirement.taskId,
+          required: requirement.isRequired
         },
         metadata: { source: "project-template-apply" }
       }
@@ -411,10 +544,13 @@ export function canAccessUnrestrictedProject(input: {
 }
 
 export async function getActiveProjectScopes(session: SessionContext) {
+  const now = new Date();
   const assignments = await prisma.userScopeAssignment.findMany({
     where: {
       userId: session.user.id,
-      status: "ACTIVE"
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }]
     },
     select: {
       scopeType: true,
@@ -861,6 +997,7 @@ export async function listProjectMembers(session: SessionContext) {
   const hasCompanyManage = hasCompanyManageScope(scopes, session.context.companyId);
   return members.map((member): ProjectMemberSummary => ({
     id: member.id,
+    userId: member.userId,
     projectId: member.projectId,
     projectCode: member.project.code,
     projectName: member.project.name,
@@ -1018,6 +1155,7 @@ export async function removeProjectMember(formData: FormData) {
 async function assertProjectCanCloseCancelOrArchive(input: {
   session: SessionContext;
   projectId: string;
+  projectType: string;
   nextStatus: (typeof projectLifecycleStatuses)[number];
 }) {
   if (!["COMPLETED", "CANCELLED", "ARCHIVED"].includes(input.nextStatus)) {
@@ -1073,6 +1211,68 @@ async function assertProjectCanCloseCancelOrArchive(input: {
     });
     throw new Error("PROJECT_LIFECYCLE_OPEN_RISKS_BLOCKED");
   }
+
+  if (
+    ["COMPLETED", "ARCHIVED"].includes(input.nextStatus) &&
+    expansionLifecycleProjectTypes.has(input.projectType.toUpperCase())
+  ) {
+    const [
+      gateCount,
+      unresolvedGateCount,
+      incompleteRequiredChecklistCount,
+      pendingRequiredRequirementCount
+    ] = await Promise.all([
+      prisma.projectMilestone.count({
+        where: {
+          projectId: input.projectId,
+          archivedAt: null,
+          description: { startsWith: "EXPANSION_LIFECYCLE_GATE:" }
+        }
+      }),
+      prisma.projectMilestone.count({
+        where: {
+          projectId: input.projectId,
+          archivedAt: null,
+          description: { startsWith: "EXPANSION_LIFECYCLE_GATE:" },
+          status: { not: "ACHIEVED" }
+        }
+      }),
+      prisma.projectTaskChecklistItem.count({
+        where: {
+          projectId: input.projectId,
+          archivedAt: null,
+          isRequired: true,
+          isCompleted: false
+        }
+      }),
+      prisma.projectRequirement.count({
+        where: {
+          projectId: input.projectId,
+          archivedAt: null,
+          isRequired: true,
+          status: { notIn: ["APPROVED", "WAIVED"] }
+        }
+      })
+    ]);
+    if (gateCount < 9 || unresolvedGateCount > 0) {
+      await logProjectLifecycleDenied({
+        session: input.session,
+        projectId: input.projectId,
+        nextStatus: input.nextStatus,
+        reasonCode: "PROJECT_LIFECYCLE_EXPANSION_GATES_BLOCKED"
+      });
+      throw new Error("PROJECT_LIFECYCLE_EXPANSION_GATES_BLOCKED");
+    }
+    if (incompleteRequiredChecklistCount > 0 || pendingRequiredRequirementCount > 0) {
+      await logProjectLifecycleDenied({
+        session: input.session,
+        projectId: input.projectId,
+        nextStatus: input.nextStatus,
+        reasonCode: "PROJECT_LIFECYCLE_REQUIREMENTS_BLOCKED"
+      });
+      throw new Error("PROJECT_LIFECYCLE_REQUIREMENTS_BLOCKED");
+    }
+  }
 }
 
 export async function transitionProjectLifecycle(formData: FormData) {
@@ -1107,13 +1307,20 @@ export async function transitionProjectLifecycle(formData: FormData) {
   await assertProjectCanCloseCancelOrArchive({
     session,
     projectId: project.id,
+    projectType: project.projectType,
     nextStatus: values.nextStatus
   });
 
   await prisma.$transaction(async (tx) => {
     const now = new Date();
-    const updated = await tx.project.update({
-      where: { id: project.id },
+    const updateResult = await tx.project.updateMany({
+      where: {
+        id: project.id,
+        tenantId: project.tenantId,
+        companyId: project.companyId,
+        version: project.version,
+        archivedAt: null
+      },
       data: {
         status: values.nextStatus,
         updatedByUserId: session.user.id,
@@ -1133,6 +1340,10 @@ export async function transitionProjectLifecycle(formData: FormData) {
           : {})
       }
     });
+    if (updateResult.count !== 1) {
+      throw new Error("PROJECT_LIFECYCLE_STALE_VERSION");
+    }
+    const updated = await tx.project.findUniqueOrThrow({ where: { id: project.id } });
 
     await tx.projectActivityEvent.create({
       data: {
@@ -1202,6 +1413,18 @@ export async function createProject(formData: FormData) {
   await assertCanCreateProjectInScope(session, scopes, { locationId });
 
   const targetEndAt = values.targetEndAt ? new Date(values.targetEndAt) : null;
+  const hasExplicitLeadership = Boolean(values.sponsorUserId || values.managerUserId);
+  if (hasExplicitLeadership && (!values.sponsorUserId || !values.managerUserId)) {
+    throw new Error("PROJECT_LEADERSHIP_INCOMPLETE");
+  }
+  if (
+    hasExplicitLeadership &&
+    (values.sponsorUserId === values.managerUserId ||
+      values.sponsorUserId === session.user.id ||
+      values.managerUserId === session.user.id)
+  ) {
+    throw new Error("PROJECT_LEADERSHIP_SEGREGATION_REQUIRED");
+  }
   const project = await prisma.$transaction(async (tx) => {
     if (locationId) {
       const location = await tx.location.findFirst({
@@ -1241,6 +1464,25 @@ export async function createProject(formData: FormData) {
       ? true
       : values.isRestricted;
 
+    const leadershipUserIds = hasExplicitLeadership
+      ? [values.sponsorUserId!, values.managerUserId!]
+      : [];
+    if (leadershipUserIds.length > 0) {
+      const leaders = await tx.user.findMany({
+        where: {
+          id: { in: leadershipUserIds },
+          tenantId: session.context.tenantId,
+          status: "ACTIVE"
+        },
+        select: { id: true }
+      });
+      if (leaders.length !== leadershipUserIds.length) {
+        throw new Error("PROJECT_LEADERSHIP_USER_NOT_FOUND");
+      }
+    }
+
+    const sponsorUserId = values.sponsorUserId ?? session.user.id;
+    const managerUserId = values.managerUserId ?? session.user.id;
     const createdProject = await tx.project.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1254,8 +1496,8 @@ export async function createProject(formData: FormData) {
         description: values.description || null,
         isRestricted,
         targetEndAt,
-        sponsorUserId: session.user.id,
-        managerUserId: session.user.id,
+        sponsorUserId,
+        managerUserId,
         createdByUserId: session.user.id,
         updatedByUserId: session.user.id,
         ...(templateSnapshot ? { templateSnapshotJson: templateSnapshot } : {}),
@@ -1263,15 +1505,37 @@ export async function createProject(formData: FormData) {
       }
     });
 
-    await tx.projectMember.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        projectId: createdProject.id,
-        userId: session.user.id,
-        projectRole: "MANAGER",
-        addedByUserId: session.user.id
-      }
+    await tx.projectMember.createMany({
+      data: [
+        {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          projectId: createdProject.id,
+          userId: managerUserId,
+          projectRole: "MANAGER",
+          addedByUserId: session.user.id
+        },
+        ...(sponsorUserId !== managerUserId
+          ? [{
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              projectId: createdProject.id,
+              userId: sponsorUserId,
+              projectRole: "SPONSOR" as const,
+              addedByUserId: session.user.id
+            }]
+          : []),
+        ...(session.user.id !== managerUserId && session.user.id !== sponsorUserId
+          ? [{
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              projectId: createdProject.id,
+              userId: session.user.id,
+              projectRole: "CONTRIBUTOR" as const,
+              addedByUserId: session.user.id
+            }]
+          : [])
+      ]
     });
 
     await tx.projectActivityEvent.create({
@@ -1309,4 +1573,201 @@ export async function createProject(formData: FormData) {
   });
 
   return project.id;
+}
+
+export async function updateProjectLeadership(formData: FormData) {
+  const session = await requireSessionContext();
+  const values = updateProjectLeadershipSchema.parse({
+    projectId: formData.get("projectId"),
+    sponsorUserId: formData.get("sponsorUserId"),
+    managerUserId: formData.get("managerUserId"),
+    expectedVersion: formData.get("expectedVersion"),
+    reason: formData.get("reason")
+  });
+  await requirePermission(session, permissions.projectManage);
+  const project = await findAuthorizedProject(session, values.projectId);
+  if (!project) {
+    throw new Error("PROJECT_NOT_FOUND");
+  }
+  if (
+    values.sponsorUserId === values.managerUserId ||
+    values.sponsorUserId === project.createdByUserId ||
+    values.managerUserId === project.createdByUserId
+  ) {
+    throw new Error("PROJECT_LEADERSHIP_SEGREGATION_REQUIRED");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const leaders = await tx.user.findMany({
+      where: {
+        id: { in: [values.sponsorUserId, values.managerUserId] },
+        tenantId: session.context.tenantId,
+        status: "ACTIVE"
+      },
+      select: { id: true }
+    });
+    if (leaders.length !== 2) {
+      throw new Error("PROJECT_LEADERSHIP_USER_NOT_FOUND");
+    }
+    const updated = await tx.project.updateMany({
+      where: {
+        id: project.id,
+        tenantId: project.tenantId,
+        companyId: project.companyId,
+        version: values.expectedVersion,
+        archivedAt: null
+      },
+      data: {
+        sponsorUserId: values.sponsorUserId,
+        managerUserId: values.managerUserId,
+        updatedByUserId: session.user.id,
+        version: { increment: 1 }
+      }
+    });
+    if (updated.count !== 1) {
+      throw new Error("PROJECT_STALE_VERSION");
+    }
+    for (const [userId, projectRole] of [
+      [values.sponsorUserId, "SPONSOR"],
+      [values.managerUserId, "MANAGER"]
+    ] as const) {
+      await tx.projectMember.upsert({
+        where: { projectId_userId: { projectId: project.id, userId } },
+        create: {
+          tenantId: project.tenantId,
+          companyId: project.companyId,
+          projectId: project.id,
+          userId,
+          projectRole,
+          addedByUserId: session.user.id
+        },
+        update: {
+          projectRole,
+          status: "ACTIVE",
+          removedAt: null,
+          removedByUserId: null,
+          addedByUserId: session.user.id
+        }
+      });
+    }
+    await tx.projectActivityEvent.create({
+      data: {
+        tenantId: project.tenantId,
+        companyId: project.companyId,
+        projectId: project.id,
+        actorUserId: session.user.id,
+        eventType: "project_leadership.updated",
+        entityType: "Project",
+        entityId: project.id,
+        reason: values.reason,
+        beforeData: {
+          sponsorUserId: project.sponsorUserId,
+          managerUserId: project.managerUserId,
+          version: project.version
+        },
+        afterData: {
+          sponsorUserId: values.sponsorUserId,
+          managerUserId: values.managerUserId,
+          version: project.version + 1
+        },
+        metadata: { source: "project-leadership-management" }
+      }
+    });
+  });
+}
+
+export async function updateProjectDetails(formData: FormData) {
+  const session = await requireSessionContext();
+  const values = updateProjectDetailsSchema.parse({
+    projectId: formData.get("projectId"),
+    expectedVersion: formData.get("expectedVersion"),
+    description: formData.get("description"),
+    targetEndAt: formData.get("targetEndAt")
+  });
+  const project = await findAuthorizedProject(session, values.projectId);
+  if (!project) {
+    throw new Error("PROJECT_NOT_FOUND");
+  }
+  const scopes = await getActiveProjectScopes(session);
+  if (
+    !canManageLifecycleForProject({
+      session,
+      project,
+      hasCompanyManage: hasCompanyManageScope(scopes, session.context.companyId)
+    })
+  ) {
+    throw new Error("PROJECT_DETAILS_PERMISSION_DENIED");
+  }
+  if (project.version !== values.expectedVersion) {
+    throw new Error("PROJECT_STALE_VERSION");
+  }
+  const targetEndAt = values.targetEndAt ? new Date(values.targetEndAt) : null;
+  if (targetEndAt && Number.isNaN(targetEndAt.getTime())) {
+    throw new Error("PROJECT_TARGET_DATE_INVALID");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const updated = await tx.project.updateMany({
+      where: {
+        id: project.id,
+        tenantId: project.tenantId,
+        companyId: project.companyId,
+        version: values.expectedVersion,
+        archivedAt: null
+      },
+      data: {
+        description: values.description?.trim() || null,
+        targetEndAt,
+        targetEndDate: targetEndAt,
+        updatedByUserId: session.user.id,
+        version: { increment: 1 }
+      }
+    });
+    if (updated.count !== 1) {
+      throw new Error("PROJECT_STALE_VERSION");
+    }
+    await tx.projectActivityEvent.create({
+      data: {
+        tenantId: project.tenantId,
+        companyId: project.companyId,
+        projectId: project.id,
+        actorUserId: session.user.id,
+        eventType: "project.details.updated",
+        entityType: "Project",
+        entityId: project.id,
+        beforeData: {
+          description: project.description,
+          targetEndAt: project.targetEndAt?.toISOString() ?? null,
+          version: project.version
+        },
+        afterData: {
+          description: values.description?.trim() || null,
+          targetEndAt: targetEndAt?.toISOString() ?? null,
+          version: project.version + 1
+        },
+        metadata: { source: "project-details" }
+      }
+    });
+    await tx.auditEvent.create({
+      data: {
+        tenantId: project.tenantId,
+        companyId: project.companyId,
+        actorUserId: session.user.id,
+        eventType: "project.details.updated",
+        entityType: "Project",
+        entityId: project.id,
+        beforeData: {
+          description: project.description,
+          targetEndAt: project.targetEndAt?.toISOString() ?? null,
+          version: project.version
+        },
+        afterData: {
+          description: values.description?.trim() || null,
+          targetEndAt: targetEndAt?.toISOString() ?? null,
+          version: project.version + 1
+        },
+        metadata: { source: "project-details" }
+      }
+    });
+  });
 }

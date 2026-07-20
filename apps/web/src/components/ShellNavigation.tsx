@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   BarChart3,
   Bell,
+  BookOpenText,
   Boxes,
   BriefcaseBusiness,
   Building2,
@@ -15,6 +16,8 @@ import {
   ClipboardList,
   FileText,
   Gauge,
+  HandCoins,
+  KeyRound,
   LayoutDashboard,
   Landmark,
   Megaphone,
@@ -23,8 +26,12 @@ import {
   ReceiptText,
   RotateCw,
   Settings,
+  ShieldCheck,
   ShoppingCart,
   Truck,
+  UsersRound,
+  Utensils,
+  WalletCards,
   type LucideIcon
 } from "lucide-react";
 import type { SessionContext } from "@/server/services/context";
@@ -44,32 +51,52 @@ export type ShellActiveNav =
   | "adjustments"
   | "reports"
   | "notifications"
+  | "knowledge-base"
   | "projects"
   | "project-templates"
   | "my-work"
   | "work-boards"
   | "work-calendar"
+  | "recipes"
+  | "food-cost"
+  | "branch-operations"
+  | "food-safety"
+  | "incidents"
+  | "maintenance"
   | "marketing-calendar"
   | "campaigns"
   | "promotions"
   | "item-launches"
   | "creative-board"
   | "expansion-dashboard"
+  | "opening-playbooks"
   | "site-pipeline"
+  | "feasibility"
+  | "capex-procurement"
   | "lifecycle-gates"
   | "permits"
   | "construction-board"
   | "opening-readiness"
   | "punch-list"
+  | "post-opening"
   | "finance-overview"
+  | "budget-control"
+  | "expense-requests"
+  | "cash-advances"
+  | "petty-cash"
   | "general-ledger"
   | "accounts-payable"
   | "bank-cash"
   | "period-close"
+  | "workforce"
   | "suppliers"
   | "items"
   | "admin-reason-codes"
   | "admin-settings"
+  | "admin-readiness"
+  | "admin-break-glass"
+  | "admin-mfa"
+  | "admin-session-invalidation"
   | "admin";
 
 export type NavSection = {
@@ -106,7 +133,14 @@ export function getNavigationSections(
   canViewInventory: boolean,
   canViewInventoryLedger: boolean,
   canUseProjects = false,
-  canUseProjectTemplates = false
+  canUseProjectTemplates = false,
+  canUseRecipesAndCosting = false,
+  canUseBranchOperations = false,
+  canUseFoodSafety = false,
+  canUseIncidents = false,
+  canUseMaintenance = false,
+  canUseFinance = false,
+  canUseWorkforce = false
 ): NavSection[] {
   const procurementItems: NavSection["items"] = [
     canViewPurchaseOrders
@@ -388,6 +422,124 @@ export function getNavigationSections(
           },
         ]
       : []),
+    ...(canAdminister ||
+    canUseRecipesAndCosting ||
+    canUseBranchOperations ||
+    canUseFoodSafety ||
+    canUseIncidents ||
+    canUseMaintenance
+      ? [
+          {
+            id: "restaurant-ops",
+            label: "Restaurant Ops",
+            icon: Utensils,
+            items: [
+              canUseRecipesAndCosting || canAdminister
+                ? {
+                    label: "Recipes & Costing",
+                    href: "/recipes",
+                    activeKey: "recipes" as const,
+                    badge: "Live",
+                    icon: Utensils
+                  }
+                : {
+                    label: "Recipes & Costing",
+                    badge: "Live",
+                    icon: Utensils,
+                    disabled: true
+                  },
+              canUseBranchOperations || canAdminister
+                ? {
+                    label: "Branch Operations",
+                    href: "/branch-operations",
+                    activeKey: "branch-operations" as const,
+                    badge: "Daily",
+                    icon: ClipboardCheck
+                  }
+                : {
+                    label: "Branch Operations",
+                    badge: "Daily",
+                    icon: ClipboardCheck,
+                    disabled: true
+                  },
+              canUseFoodSafety || canAdminister
+                ? {
+                    label: "Food Safety",
+                    href: "/food-safety",
+                    activeKey: "food-safety" as const,
+                    badge: "Compliance",
+                    icon: ClipboardList
+                  }
+                : {
+                    label: "Food Safety",
+                    badge: "Compliance",
+                    icon: ClipboardList,
+                    disabled: true
+                  },
+              canUseIncidents || canAdminister
+                ? {
+                    label: "Incidents",
+                    href: "/incidents",
+                    activeKey: "incidents" as const,
+                    badge: "Follow-up",
+                    icon: ClipboardList
+                  }
+                : {
+                    label: "Incidents",
+                    badge: "Follow-up",
+                    icon: ClipboardList,
+                    disabled: true
+                  },
+              canUseMaintenance || canAdminister
+                ? {
+                    label: "Maintenance",
+                    href: "/maintenance",
+                    activeKey: "maintenance" as const,
+                    badge: "SLA",
+                    icon: Settings
+                  }
+                : {
+                    label: "Maintenance",
+                    badge: "SLA",
+                    icon: Settings,
+                    disabled: true
+                  },
+              canUseRecipesAndCosting || canAdminister
+                ? {
+                    label: "Food Cost Analysis",
+                    href: "/recipes?view=food-cost",
+                    activeKey: "food-cost" as const,
+                    badge: "Preview",
+                    icon: BarChart3
+                  }
+                : {
+                    label: "Food Cost Analysis",
+                    badge: "Preview",
+                    icon: BarChart3,
+                    disabled: true
+                  }
+            ]
+          },
+        ]
+      : []),
+    ...(canUseWorkforce
+      ? [
+          {
+            id: "workforce",
+            label: "Workforce",
+            icon: UsersRound,
+            items: [
+              {
+                label: "Workforce Operations",
+                href: "/workforce",
+                activeKey: "workforce" as const,
+                badge: "HR Ops",
+                icon: UsersRound
+              }
+            ]
+          },
+        ]
+      : []),
     ...(canAdminister
       ? [
           {
@@ -441,95 +593,144 @@ export function getNavigationSections(
                 label: "Expansion Dashboard",
                 href: "/expansion",
                 activeKey: "expansion-dashboard" as const,
-                badge: "Preview",
                 icon: LayoutDashboard
+              },
+              {
+                label: "Opening Playbooks",
+                href: "/expansion/playbooks",
+                activeKey: "opening-playbooks" as const,
+                icon: BookOpenText
               },
               {
                 label: "Site Pipeline",
                 href: "/expansion/sites",
                 activeKey: "site-pipeline" as const,
-                badge: "Preview",
                 icon: Building2
+              },
+              {
+                label: "Feasibility",
+                href: "/expansion/feasibility",
+                activeKey: "feasibility" as const,
+                icon: Gauge
+              },
+              {
+                label: "Capex & Procurement",
+                href: "/expansion/capex-procurement",
+                activeKey: "capex-procurement" as const,
+                icon: ReceiptText
               },
               {
                 label: "Lifecycle Gates",
                 href: "/expansion/gates",
                 activeKey: "lifecycle-gates" as const,
-                badge: "Preview",
                 icon: ClipboardCheck
               },
               {
                 label: "Permits & Documents",
                 href: "/expansion/permits",
                 activeKey: "permits" as const,
-                badge: "Preview",
                 icon: FileText
               },
               {
                 label: "Construction Board",
                 href: "/expansion/construction",
                 activeKey: "construction-board" as const,
-                badge: "Preview",
                 icon: ClipboardList
               },
               {
                 label: "Opening Readiness",
                 href: "/expansion/readiness",
                 activeKey: "opening-readiness" as const,
-                badge: "Preview",
                 icon: PackageCheck
               },
               {
                 label: "Punch List",
                 href: "/expansion/punch-list",
                 activeKey: "punch-list" as const,
-                badge: "Preview",
                 icon: RotateCw
-              }
-            ]
-          },
-          {
-            id: "finance",
-            label: "Finance",
-            icon: Landmark,
-            items: [
+              },
               {
-                label: "Finance Overview",
-                href: "/finance",
-                activeKey: "finance-overview" as const,
-                badge: "Preview",
+                label: "Post-Opening Review",
+                href: "/expansion/post-opening",
+                activeKey: "post-opening" as const,
                 icon: BarChart3
-              },
-              {
-                label: "General Ledger",
-                href: "/finance/general-ledger",
-                activeKey: "general-ledger" as const,
-                badge: "Preview",
-                icon: Landmark
-              },
-              {
-                label: "Accounts Payable",
-                href: "/finance/accounts-payable",
-                activeKey: "accounts-payable" as const,
-                badge: "Preview",
-                icon: ReceiptText
-              },
-              {
-                label: "Bank & Cash",
-                href: "/finance/bank-cash",
-                activeKey: "bank-cash" as const,
-                badge: "Preview",
-                icon: BriefcaseBusiness
-              },
-              {
-                label: "Period Close",
-                href: "/finance/period-close",
-                activeKey: "period-close" as const,
-                badge: "Preview",
-                icon: CalendarDays
               }
             ]
           },
+          ...(canUseFinance
+            ? [
+                {
+                  id: "finance",
+                  label: "Finance",
+                  icon: Landmark,
+                  items: [
+                    {
+                      label: "Finance Control Center",
+                      href: "/finance",
+                      activeKey: "finance-overview" as const,
+                      badge: "Guarded",
+                      icon: BarChart3
+                    },
+                    {
+                      label: "Budget Control",
+                      href: "/finance/budget-control",
+                      activeKey: "budget-control" as const,
+                      badge: "Budget",
+                      icon: Gauge
+                    },
+                    {
+                      label: "Expense Requests",
+                      href: "/finance/expense-requests",
+                      activeKey: "expense-requests" as const,
+                      badge: "Expense",
+                      icon: FileText
+                    },
+                    {
+                      label: "Cash Advances",
+                      href: "/finance/cash-advances",
+                      activeKey: "cash-advances" as const,
+                      badge: "Advance",
+                      icon: HandCoins
+                    },
+                    {
+                      label: "Petty Cash",
+                      href: "/finance/petty-cash",
+                      activeKey: "petty-cash" as const,
+                      badge: "Cash",
+                      icon: WalletCards
+                    },
+                    {
+                      label: "General Ledger",
+                      href: "/finance/general-ledger",
+                      activeKey: "general-ledger" as const,
+                      badge: "Gated",
+                      icon: Landmark
+                    },
+                    {
+                      label: "Accounts Payable",
+                      href: "/finance/accounts-payable",
+                      activeKey: "accounts-payable" as const,
+                      badge: "AP",
+                      icon: ReceiptText
+                    },
+                    {
+                      label: "Bank & Cash",
+                      href: "/finance/bank-cash",
+                      activeKey: "bank-cash" as const,
+                      badge: "Gated",
+                      icon: BriefcaseBusiness
+                    },
+                    {
+                      label: "Period Close",
+                      href: "/finance/period-close",
+                      activeKey: "period-close" as const,
+                      badge: "Gated",
+                      icon: CalendarDays
+                    }
+                  ]
+                }
+              ]
+            : []),
           {
             id: "admin",
             label: "Admin",
@@ -553,13 +754,55 @@ export function getNavigationSections(
                 label: "Admin Settings",
                 href: "/admin/settings",
                 activeKey: "admin-settings" as const,
-                badge: "Preview",
+                badge: "Config",
                 icon: Settings
+              },
+              {
+                label: "Release Readiness",
+                href: "/admin/readiness",
+                activeKey: "admin-readiness" as const,
+                badge: "Gate",
+                icon: ClipboardCheck
+              },
+              {
+                label: "Break-Glass Access",
+                href: "/admin/break-glass",
+                activeKey: "admin-break-glass" as const,
+                badge: "Security",
+                icon: KeyRound
+              },
+              {
+                label: "MFA Enrollment",
+                href: "/admin/mfa",
+                activeKey: "admin-mfa" as const,
+                badge: "Evidence",
+                icon: ShieldCheck
+              },
+              {
+                label: "Session Invalidation",
+                href: "/admin/session-invalidation",
+                activeKey: "admin-session-invalidation" as const,
+                badge: "Provider",
+                icon: RotateCw
               }
             ]
           }
         ]
-      : [])
+      : []),
+    {
+      id: "help",
+      label: "Help",
+      icon: BookOpenText,
+      items: [
+        {
+          label: "Knowledge Base",
+          href: "/knowledge-base",
+          activeKey: "knowledge-base",
+          badge: "KB",
+          icon: BookOpenText
+        }
+      ]
+    }
   ];
 }
 
@@ -660,8 +903,18 @@ function getDefaultSection(activeNav: ShellActiveNav) {
   if (activeNav === "admin") {
     return "admin";
   }
-  if (activeNav === "admin-settings" || activeNav === "admin-reason-codes") {
+  if (
+    activeNav === "admin-settings" ||
+    activeNav === "admin-readiness" ||
+    activeNav === "admin-break-glass" ||
+    activeNav === "admin-mfa" ||
+    activeNav === "admin-session-invalidation" ||
+    activeNav === "admin-reason-codes"
+  ) {
     return "admin";
+  }
+  if (activeNav === "knowledge-base") {
+    return "help";
   }
   if (activeNav === "reports" || activeNav === "notifications") {
     return "insights";
@@ -676,6 +929,16 @@ function getDefaultSection(activeNav: ShellActiveNav) {
     return "phase-1-5";
   }
   if (
+    activeNav === "recipes" ||
+    activeNav === "food-cost" ||
+    activeNav === "branch-operations" ||
+    activeNav === "food-safety" ||
+    activeNav === "incidents" ||
+    activeNav === "maintenance"
+  ) {
+    return "restaurant-ops";
+  }
+  if (
     activeNav === "marketing-calendar" ||
     activeNav === "campaigns" ||
     activeNav === "promotions" ||
@@ -686,23 +949,34 @@ function getDefaultSection(activeNav: ShellActiveNav) {
   }
   if (
     activeNav === "expansion-dashboard" ||
+    activeNav === "opening-playbooks" ||
     activeNav === "site-pipeline" ||
+    activeNav === "feasibility" ||
+    activeNav === "capex-procurement" ||
     activeNav === "lifecycle-gates" ||
     activeNav === "permits" ||
     activeNav === "construction-board" ||
     activeNav === "opening-readiness" ||
-    activeNav === "punch-list"
+    activeNav === "punch-list" ||
+    activeNav === "post-opening"
   ) {
     return "expansion";
   }
   if (
     activeNav === "finance-overview" ||
+    activeNav === "budget-control" ||
+    activeNav === "expense-requests" ||
+    activeNav === "cash-advances" ||
+    activeNav === "petty-cash" ||
     activeNav === "general-ledger" ||
     activeNav === "accounts-payable" ||
     activeNav === "bank-cash" ||
     activeNav === "period-close"
   ) {
     return "finance";
+  }
+  if (activeNav === "workforce") {
+    return "workforce";
   }
   if (activeNav === "purchase-orders") {
     return "procurement";
@@ -749,24 +1023,26 @@ function NavItem({
         <NavIcon icon={item.icon} />
         {!collapsed ? <span className="truncate">{item.label}</span> : null}
       </span>
-      {!collapsed && item.badge ? (
-        <span className="rounded-full border border-slate-200 bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-          {item.badge}
-        </span>
-      ) : null}
     </>
   );
+  const title = item.badge ? `${item.label} (${item.badge})` : item.label;
 
   if (item.disabled || !item.href) {
     return (
-      <span aria-disabled="true" className={baseClass} title={item.label}>
+      <span aria-disabled="true" className={baseClass} title={title}>
         {content}
       </span>
     );
   }
 
   return (
-    <a aria-label={item.label} className={baseClass} href={item.href} title={item.label}>
+    <a
+      aria-current={active ? "page" : undefined}
+      aria-label={item.label}
+      className={baseClass}
+      href={item.href}
+      title={title}
+    >
       {content}
     </a>
   );
@@ -789,6 +1065,13 @@ export function ShellNavigation({
   canViewInventoryLedger,
   canUseProjects,
   canUseProjectTemplates,
+  canUseRecipesAndCosting,
+  canUseBranchOperations,
+  canUseFoodSafety,
+  canUseIncidents,
+  canUseMaintenance,
+  canUseFinance,
+  canUseWorkforce,
   children
 }: {
   session: SessionContext;
@@ -807,10 +1090,19 @@ export function ShellNavigation({
   canViewInventoryLedger: boolean;
   canUseProjects: boolean;
   canUseProjectTemplates: boolean;
+  canUseRecipesAndCosting: boolean;
+  canUseBranchOperations: boolean;
+  canUseFoodSafety: boolean;
+  canUseIncidents: boolean;
+  canUseMaintenance: boolean;
+  canUseFinance: boolean;
+  canUseWorkforce: boolean;
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [openSection, setOpenSection] = useState(getDefaultSection(activeNav));
+  const [openSection, setOpenSection] = useState<string | null>(
+    getDefaultSection(activeNav)
+  );
   const activeSection = getDefaultSection(activeNav);
   const sections = useMemo(
     () =>
@@ -828,7 +1120,14 @@ export function ShellNavigation({
         canViewInventory,
         canViewInventoryLedger,
         canUseProjects,
-        canUseProjectTemplates
+        canUseProjectTemplates,
+        canUseRecipesAndCosting,
+        canUseBranchOperations,
+        canUseFoodSafety,
+        canUseIncidents,
+        canUseMaintenance,
+        canUseFinance,
+        canUseWorkforce
       ),
     [
       canAdminister,
@@ -844,7 +1143,14 @@ export function ShellNavigation({
       canViewInventory,
       canViewInventoryLedger,
       canUseProjects,
-      canUseProjectTemplates
+      canUseProjectTemplates,
+      canUseRecipesAndCosting,
+      canUseBranchOperations,
+      canUseFoodSafety,
+      canUseIncidents,
+      canUseMaintenance,
+      canUseFinance,
+      canUseWorkforce
     ]
   );
   const mobileOperationalItems = getMobileOperationalNavItems({
@@ -863,10 +1169,14 @@ export function ShellNavigation({
   });
 
   function selectSection(sectionId: string) {
-    setOpenSection(sectionId);
     if (collapsed) {
+      setOpenSection(sectionId);
       setCollapsed(false);
+      return;
     }
+    setOpenSection((currentSection) =>
+      currentSection === sectionId ? null : sectionId
+    );
   }
 
   return (
@@ -943,7 +1253,10 @@ export function ShellNavigation({
                   ) : null}
                 </button>
                 {open ? (
-                  <div id={`${section.id}-links`} className="mt-1 grid gap-1">
+                  <div
+                    id={`${section.id}-links`}
+                    className="shell-nav-subitems ml-4 mt-1 grid gap-1 border-l border-slate-200/80 pl-2"
+                  >
                     {section.items.map((item) => (
                       <NavItem
                         key={item.label}

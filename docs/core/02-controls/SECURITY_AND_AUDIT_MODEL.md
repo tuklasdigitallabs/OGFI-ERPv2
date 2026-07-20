@@ -74,7 +74,9 @@ The system should enforce these standard controls by default:
 | Submit wastage | Reporter may submit; approval/review follows value/rule threshold |
 | Post stock adjustment | Requires authorized approval; requester and poster separation is configurable by risk tier |
 | Change approval rule | Admin access plus audit event; no silent change |
-| Change user scope/role | Administrator access plus audit event and optional second approval for high-risk tenants |
+| Change low-risk user scope/role | Administrator access plus audit event |
+| Change high-risk scope | Controlled `HighRiskScopeRequest`, reason, evidence, separate reviewer, privileged MFA guard, audit, and session invalidation |
+| Grant sensitive/admin/approver role | Controlled `SensitiveRoleRequest`, reason, evidence, separate reviewer, privileged MFA guard, audit, and session invalidation |
 
 These are configurable but should never be removed casually just to reduce clicks.
 
@@ -88,9 +90,10 @@ Minimum requirements:
 - Secure, HttpOnly, SameSite cookies are used for browser sessions.
 - Session rotation occurs after authentication and privilege changes.
 - Rate limit login, password reset, upload intent, search, and public-facing endpoints.
-- MFA capability should be planned for administrators and executive roles, even if not enabled in Phase I.
+- MFA capability is tracked for privileged users through ERP-side verified evidence. Selected high-risk administrative/security actions and guarded operational posting/reversal actions can warn or hard-block when the actor lacks verified evidence, according to the company `security.privileged_mfa.enforcement_mode` policy. This guard does not replace external identity-provider MFA challenge enforcement.
 - Inactive sessions expire according to configurable policy.
 - User deactivation revokes active sessions promptly.
+- Sensitive role grants, high-risk scope grants, break-glass access, and other privilege changes refresh the target user's privilege epoch and create provider-neutral invalidation records for production identity-provider follow-up. Provider completion must be confirmed by a separate admin reviewer with external evidence.
 - Do not include sensitive role/scope assumptions exclusively in a browser token; validate server-side.
 
 ---
@@ -170,13 +173,14 @@ related record and human-readable reference
 
 ## 8. Attachment and document security
 
-- Store attachment metadata in PostgreSQL and file bytes in S3-compatible object storage.
-- Use server-generated short-lived upload/download URLs.
-- Validate file type and size before upload intent.
-- Store checksum and original filename for traceability.
-- Restrict attachment visibility by tenant, document scope, and role.
-- Require attachment purpose labels: invoice, delivery receipt, quotation, photo evidence, supplier document, approval support, other.
-- Optional enhancement: malware scan and quarantine before attachments become downloadable.
+- Store attachment metadata in PostgreSQL and file bytes in a private storage provider. The current Phase 3 pilot provider is `local-private`; S3-compatible object storage remains the preferred production provider once deployment storage is selected.
+- Use server-mediated private upload/download controls. Phase 3 controlled evidence downloads are permission-checked per source record and write download audit events.
+- Validate file type and size before upload. The current configurable evidence-storage policy uses an allowlist, a 10 MB default pilot limit, and the existing platform hard cap.
+- Store checksum and original filename for traceability. Private downloads verify checksum before serving the file.
+- Restrict attachment visibility by tenant, company, document scope, and role. Users with task or workflow visibility alone do not automatically receive source-record evidence access.
+- Require attachment purpose labels: invoice, delivery receipt, quotation, photo evidence, supplier document, approval support, payment proof, close support, workforce document, other.
+- Malware scanning is a production control. The current Phase 3 policy records a local-private scan waiver for UAT; production must either approve the waiver with owner signoff or enable a scanner before go-live.
+- Attachments follow `security.retention.matrix` and `security.backup_restore.default_policy`; recovery proof remains a release-readiness evidence item before production use.
 
 ---
 
@@ -189,6 +193,12 @@ related record and human-readable reference
 - Restrict high-risk exports by permission and audit them.
 - Use environment-secret management; never commit credentials to source control.
 - Separate production data from development and test data. Development must use synthetic or anonymized data.
+
+### Phase II Recipe Costing Boundary
+
+The current recipe/menu-costing implementation may read scoped recipe versions, menu prices, supplier price history, UOM conversion evidence, sales imports, and inventory-ledger evidence for costing analysis and exports. It also supports controlled draft recipe creation, edit-by-new-version revision drafts, controlled recipe archive, controlled recipe-version workflow actions, and controlled menu-price decision records.
+
+Broad ingredient add/remove editing and bulk recipe maintenance remain gated by the approved implementation sequence. Enabled recipe create/revision/archive, recipe-version, and menu-price workflow actions must write audit events with actor, scope, reason where required, before/after metadata, and must not post inventory, sales, finance, or approval-source records from recipe screens.
 
 ---
 

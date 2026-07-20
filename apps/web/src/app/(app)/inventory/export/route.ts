@@ -5,7 +5,11 @@ import {
   exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
-import { logOperationalExportAudit } from "@/server/services/exportAudit";
+import {
+  buildReportCsvMetadata,
+  logOperationalExportAudit,
+  logOperationalExportFailure
+} from "@/server/services/exportAudit";
 import { canExportInventoryBalances } from "@/server/services/exportAuthorization";
 import {
   listInventoryBalances,
@@ -43,6 +47,11 @@ export async function GET(request: Request) {
     });
     balances = await listInventoryBalances(session, filters);
   } catch (error) {
+    await logOperationalExportFailure({
+      session,
+      reportId: "stock-balances",
+      error
+    });
     const response = exportErrorResponse(error);
     if (response) {
       return response;
@@ -85,5 +94,10 @@ export async function GET(request: Request) {
     rowCount: balances.length
   });
 
-  return csvExportResponse(rows, "stock-balances.csv");
+  return csvExportResponse(rows, "stock-balances.csv", {
+    metadata: await buildReportCsvMetadata({
+      session,
+      reportId: "stock-balances"
+    })
+  });
 }

@@ -5,10 +5,12 @@ import {
   exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
+import { buildReportCsvMetadata } from "@/server/services/exportAudit";
 import { canExportProjects } from "@/server/services/exportAuthorization";
 import {
   buildProjectTaskRegisterExportRows,
-  logProjectExportAudit
+  logProjectExportAudit,
+  logProjectExportFailure
 } from "@/server/services/projectReports";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +33,20 @@ export async function GET() {
   try {
     return csvExportResponse(
       await buildProjectTaskRegisterExportRows(session),
-      "project-task-register.csv"
+      "project-task-register.csv",
+      {
+        metadata: await buildReportCsvMetadata({
+          session,
+          reportId: "project-task-register"
+        })
+      }
     );
   } catch (error) {
+    await logProjectExportFailure({
+      session,
+      reportId: "project-task-register",
+      error
+    });
     const errorResponse = exportErrorResponse(error);
     if (errorResponse) {
       return errorResponse;

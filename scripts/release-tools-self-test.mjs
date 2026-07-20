@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -34,6 +35,13 @@ const outputFile =
     "self-tests",
     `release-tools-self-test-${timestamp}.txt`,
   );
+
+const strictSecurityReadinessMarkers = [
+  "Pending controlled access requests",
+  "Privileged users missing verified MFA evidence",
+  "Pending provider session invalidations",
+  "Break-glass access open or post-review due",
+];
 const evidenceLines = [
   "OGFI ERP release helper self-test evidence",
   `generated_at_utc=${timestamp}`,
@@ -43,10 +51,14 @@ const evidenceLines = [
 
 try {
   testEvidenceInitializer();
+  testReleaseReadinessRegisterExport();
+  testPostgresToolEnvValidation();
   testEvidenceCollectionGuide();
   testExternalEvidenceGuide();
   testRehearsalCommandPlan();
   testReleaseSummary();
+  testReleaseSummaryLoadsLocalEnvFile();
+  testReleaseEvidenceRunIdLoadsLocalEnvFile();
   testBackupSummary();
   testRestoreTargetSafety();
   testRestoreSummary();
@@ -79,6 +91,7 @@ try {
   testSignedEvidenceTemplates();
   testSignedEvidenceStatus();
   testGoNoGoReport();
+  testReleaseReadinessRegisterChecksumMismatch();
   testEvidenceManifest();
   testEvidenceManifestFreshness();
   await testSmokeReport();
@@ -109,7 +122,9 @@ function testEvidenceInitializer() {
     "blocker-digest",
     "deployment-checklist",
     "deployment-status",
+    "release-readiness-register",
     "external-evidence-guide",
+    "external-security",
     "pilot-readiness",
     "uat-checklist",
     "uat-status",
@@ -137,6 +152,12 @@ function testEvidenceInitializer() {
   const readme = readFileSync(join(evidenceRoot, "COLLECTION_README.txt"), {
     encoding: "utf8",
   });
+  assert(
+    readme.includes(
+      "Place generated workflow artifacts, signed evidence documents, and external-security proof references",
+    ),
+    "collection README should describe external-security proof references as final evidence inputs",
+  );
   assert(
     readme.includes("signed-documents/uat-evidence-pack.md"),
     "collection README should use portable slash-style signed document paths",
@@ -186,8 +207,35 @@ function testEvidenceInitializer() {
     "collection README should include deployment status path",
   );
   assert(
+    readme.includes("release-readiness-register/release-readiness-register-*.csv"),
+    "collection README should include release readiness register export path",
+  );
+  assert(
+    readme.includes("release-readiness-register/release-readiness-register-*.csv.sha256"),
+    "collection README should include release readiness register checksum sidecar path",
+  );
+  const readinessRegisterSource = readFileSync(
+    "scripts/release-readiness-register-export.mjs",
+    {
+      encoding: "utf8",
+    },
+  );
+  assert(
+    readinessRegisterSource.includes("resolvePostgresTool") &&
+      readinessRegisterSource.includes("using Prisma fallback") &&
+      readinessRegisterSource.includes("new PrismaClient"),
+    "release readiness register export should fall back to Prisma when psql is unavailable",
+  );
+  assert(
     readme.includes("external-evidence-guide/external-evidence-guide-*.txt"),
     "collection README should include external evidence guide path",
+  );
+  assert(
+    readme.includes("external-security/mfa-provider-enrollment-and-runtime-proof.*") &&
+      readme.includes("external-security/idp-session-invalidation-proof.*") &&
+      readme.includes("external-security/vault-or-artifact-storage-index.*") &&
+      readme.includes("external-security/break-glass-review-and-revocation-proof.*"),
+    "collection README should include external security proof paths",
   );
   assert(
     readme.includes("rehearsal-command-plan/rehearsal-command-plan-*.txt"),
@@ -239,6 +287,60 @@ function testEvidenceInitializer() {
     readme.includes("release-metadata/release-session-lock-*.txt"),
     "collection README should include release metadata session lock path",
   );
+  assert(
+    readme.includes(
+      "DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness",
+    ),
+    "collection README should include strict pilot readiness command",
+  );
+  assert(
+    readme.includes("requireReleaseGatesReady=true") &&
+      readme.includes("DEC-0036 strict release gate status"),
+    "collection README should name strict pilot readiness markers",
+  );
+  const pilotReadinessCheck = readFileSync(
+    "scripts/pilot-readiness-check.mjs",
+    "utf8",
+  );
+  assert(
+    pilotReadinessCheck.includes('"security.controlled_access_requests"'),
+    "pilot readiness strict gate check should include controlled access requests gate",
+  );
+  assert(
+    pilotReadinessCheck.includes("Pending controlled access requests") &&
+      pilotReadinessCheck.includes('"HighRiskScopeRequest"') &&
+      pilotReadinessCheck.includes('"SensitiveRoleRequest"'),
+    "pilot readiness strict gate check should block pending controlled access requests",
+  );
+  assert(
+    pilotReadinessCheck.includes("Privileged users missing verified MFA evidence") &&
+      pilotReadinessCheck.includes('"PrivilegedMfaEnrollment"') &&
+      pilotReadinessCheck.includes("core.administer"),
+    "pilot readiness strict gate check should block privileged MFA evidence gaps",
+  );
+  assert(
+    pilotReadinessCheck.includes("Pending provider session invalidations") &&
+      pilotReadinessCheck.includes('"AuthSessionInvalidation"') &&
+      pilotReadinessCheck.includes("PENDING_PROVIDER"),
+    "pilot readiness strict gate check should block pending provider session invalidations",
+  );
+  assert(
+    pilotReadinessCheck.includes("Break-glass access open or post-review due") &&
+      pilotReadinessCheck.includes('"BreakGlassAccessGrant"') &&
+      pilotReadinessCheck.includes("PENDING_REVIEW") &&
+      pilotReadinessCheck.includes("REVOKED"),
+    "pilot readiness strict gate check should block open or post-review break-glass access",
+  );
+  for (const expected of [
+    "GO / NO-GO ready gate missing GO board decision",
+    "GO / NO-GO conditional gate missing Conditional GO board decision",
+    "GO / NO-GO waived gate missing Hold board decision",
+  ]) {
+    assert(
+      pilotReadinessCheck.includes(expected),
+      `pilot readiness strict gate check should include board-decision guard: ${expected}`,
+    );
+  }
   assert(
     readme.includes("pnpm release:pending-evidence"),
     "collection README should include pending evidence checklist command",
@@ -300,6 +402,10 @@ function testEvidenceInitializer() {
     "collection README should include deployment checklist command",
   );
   assert(
+    readme.includes("pnpm release:readiness-register"),
+    "collection README should include release readiness register export command",
+  );
+  assert(
     readme.includes("pnpm release:external-evidence"),
     "collection README should include external evidence guide command",
   );
@@ -316,6 +422,274 @@ function testEvidenceInitializer() {
     "collection README should include signed evidence checklist command",
   );
   evidenceLines.push("PASS | Evidence initializer created required folders.");
+}
+
+function testReleaseReadinessRegisterExport() {
+  evidenceLines.push("CHECK | Release readiness register export command");
+  const fixtureFile = join(tempRoot, "release-readiness-register-fixture.json");
+  const outputDirectory = join(tempRoot, "readiness-register-output");
+  const outputFile = join(outputDirectory, "release-readiness-register-self-test.csv");
+  writeFileSync(
+    fixtureFile,
+    JSON.stringify(
+      {
+        "Readiness gates": [
+          [
+            "Section",
+            "Tenant ID",
+            "Company ID",
+            "Gate Key",
+            "Category",
+            "Title",
+            "Required By Policy",
+            "Status",
+            "Evidence Reference",
+            "Decision Note",
+            "Blocker Summary",
+            "Owner Role",
+            "Signed Off At UTC",
+            "Signed Off By User ID",
+            "Source Decision ID",
+            "Updated At UTC",
+          ],
+          [
+            "Gate register",
+            "tenant-1",
+            "company-1",
+            "release.summary",
+            "go_no_go",
+            "Release summary",
+            "true",
+            "READY",
+            "self-test",
+            "",
+            "",
+            "Release Manager",
+            "",
+            "",
+            "DEC-0036",
+            "2026-07-07T00:00:00.000Z",
+          ],
+        ],
+        "UAT evidence": [
+          [
+            "Section",
+            "Tenant ID",
+            "Company ID",
+            "Evidence Type",
+            "Title",
+            "Workflow Area",
+            "Tester",
+            "Environment",
+            "Result",
+            "Verification Status",
+            "Evidence Reference",
+            "Policy Version",
+            "Defect Reference",
+            "Executed At UTC",
+            "Recorded By User ID",
+            "Verified By User ID",
+            "Rejected By User ID",
+            "Source Decision ID",
+            "Updated At UTC",
+          ],
+          [
+            "UAT evidence",
+            "tenant-1",
+            "company-1",
+            "SCENARIO_EXECUTION",
+            "PR approval UAT",
+            "Purchasing",
+            "QA Lead",
+            "self-test",
+            "PASS",
+            "VERIFIED",
+            "self-test",
+            "",
+            "",
+            "2026-07-07T00:00:00.000Z",
+            "user-1",
+            "user-2",
+            "",
+            "DEC-0036",
+            "2026-07-07T00:00:00.000Z",
+          ],
+        ],
+        "Deployment evidence": [
+          [
+            "Section",
+            "Tenant ID",
+            "Company ID",
+            "Evidence Type",
+            "Title",
+            "Environment",
+            "Performed By",
+            "Verification Status",
+            "Evidence Reference",
+            "Performed At UTC",
+            "Recorded By User ID",
+            "Verified By User ID",
+            "Rejected By User ID",
+            "Source Decision ID",
+            "Updated At UTC",
+          ],
+          [
+            "Deployment evidence",
+            "tenant-1",
+            "company-1",
+            "BACKUP",
+            "Backup rehearsal",
+            "self-test",
+            "DevOps",
+            "VERIFIED",
+            "self-test",
+            "2026-07-07T00:00:00.000Z",
+            "user-1",
+            "user-2",
+            "",
+            "DEC-0036",
+            "2026-07-07T00:00:00.000Z",
+          ],
+        ],
+        "Enablement evidence": [
+          [
+            "Section",
+            "Tenant ID",
+            "Company ID",
+            "Evidence Type",
+            "Title",
+            "Audience / Role",
+            "Owner",
+            "Verification Status",
+            "Evidence Reference",
+            "Known Limit Acknowledged",
+            "Support Route Confirmed",
+            "Completed At UTC",
+            "Recorded By User ID",
+            "Verified By User ID",
+            "Rejected By User ID",
+            "Source Decision ID",
+            "Updated At UTC",
+          ],
+          [
+            "Enablement evidence",
+            "tenant-1",
+            "company-1",
+            "TRAINING_SIGNOFF",
+            "Training signoff",
+            "Store Manager",
+            "Enablement",
+            "VERIFIED",
+            "self-test",
+            "true",
+            "true",
+            "2026-07-07T00:00:00.000Z",
+            "user-1",
+            "user-2",
+            "",
+            "DEC-0036",
+            "2026-07-07T00:00:00.000Z",
+          ],
+        ],
+        "Release Board decisions": [
+          [
+            "Section",
+            "Tenant ID",
+            "Company ID",
+            "Decision",
+            "Evidence Reference",
+            "Decision Note",
+            "Participants",
+            "Decided At UTC",
+            "Chair User ID",
+            "Source Decision ID",
+            "Created At UTC",
+          ],
+          [
+            "Release Board decision",
+            "tenant-1",
+            "company-1",
+            "GO",
+            "self-test",
+            "Self-test board decision",
+            "[\"Release Manager\"]",
+            "2026-07-07T00:00:00.000Z",
+            "user-1",
+            "DEC-0036",
+            "2026-07-07T00:00:00.000Z",
+          ],
+        ],
+      },
+      null,
+      2,
+    ),
+  );
+
+  const output = runNodeScript("scripts/release-readiness-register-export.mjs", {
+    RELEASE_EVIDENCE_RUN_ID: "self-test-run",
+    RELEASE_READINESS_REGISTER_FIXTURE_FILE: fixtureFile,
+    RELEASE_READINESS_REGISTER_OUTPUT_FILE: outputFile,
+  });
+
+  assert(
+    output.includes(`Release readiness register export written: ${outputFile}`),
+    "readiness register export should report generated CSV path",
+  );
+  assert(
+    output.includes(`Release readiness register checksum written: ${outputFile}.sha256`),
+    "readiness register export should report generated checksum path",
+  );
+  assert(existsSync(outputFile), "readiness register fixture CSV should be written");
+  assert(existsSync(`${outputFile}.sha256`), "readiness register checksum should be written");
+
+  const csv = readFileSync(outputFile, "utf8");
+  const checksum = createHash("sha256").update(csv).digest("hex");
+  const checksumSidecar = readFileSync(`${outputFile}.sha256`, "utf8");
+  assert(
+      csv.includes("Evidence run ID,self-test-run") &&
+      csv.includes("Database URL fingerprint,fixture-mode") &&
+      csv.includes("Gate register,tenant-1,company-1,release.summary,go_no_go") &&
+      csv.includes("Expected Phase 3 readiness gate trace") &&
+      csv.includes("uat.phase3_finance_controlled_foundation") &&
+      csv.includes("RESULT,PASS,Release readiness register export captured."),
+    "readiness register fixture CSV should contain metadata, rows, and pass marker",
+  );
+  assert(
+    checksumSidecar.startsWith(`${checksum} `) &&
+      checksumSidecar.includes("release-readiness-register-self-test.csv"),
+    "readiness register checksum sidecar should match generated CSV",
+  );
+  evidenceLines.push("PASS | Release readiness register export writes CSV and checksum artifacts.");
+}
+
+function testPostgresToolEnvValidation() {
+  evidenceLines.push("CHECK | PostgreSQL client env override validation");
+  const stubFile = join(
+    tempRoot,
+    process.platform === "win32" ? "not-psql.cmd" : "not-psql",
+  );
+  writeFileSync(
+    stubFile,
+    process.platform === "win32" ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n",
+  );
+  if (process.platform !== "win32") {
+    chmodSync(stubFile, 0o755);
+  }
+
+  const output = runNodeScript("scripts/release-data-snapshot-preflight.mjs", {
+    DATABASE_URL: "postgres://self-test:secret@localhost:5432/ogfi_self_test",
+    PSQL_BIN: stubFile,
+    RELEASE_DATA_SNAPSHOT_OUTPUT_DIR: join(tempRoot, "invalid-psql-preflight"),
+  });
+
+  assert(
+    output.includes("WARN | psql available or PSQL_BIN configured") &&
+      output.includes(
+        "RESULT | WARN | Data snapshot prerequisites are incomplete; no database checks were attempted.",
+      ),
+    "PostgreSQL client resolver should reject env overrides that are not named psql",
+  );
+  evidenceLines.push("PASS | PostgreSQL client env override rejects non-psql executables.");
 }
 
 function testEvidenceCollectionGuide() {
@@ -358,6 +732,53 @@ function testEvidenceCollectionGuide() {
     assert(
       guide.includes(expected),
       `release evidence collection guide should mention ${expected}`,
+    );
+  }
+
+  for (const expected of [
+    "PILOT_REQUIRE_RELEASE_GATES_READY=true",
+    "requireReleaseGatesReady=true",
+    "DEC-0036 strict release gate status",
+    "GO / NO-GO gate status does not match the latest Release Board decision",
+    "setup-only pilot readiness artifacts",
+    "external-security/",
+    "RESULT | PASS | External security proof captured.",
+    "external-security proof references share one non-placeholder",
+    ...strictSecurityReadinessMarkers,
+  ]) {
+    assert(
+      guide.includes(expected),
+      `release evidence collection guide should mention strict pilot readiness marker: ${expected}`,
+    );
+  }
+
+  const finalReviewStatusSource = readFileSync(
+    "scripts/release-final-review-status.mjs",
+    "utf8",
+  );
+  const goNoGoSource = readFileSync("scripts/release-go-no-go.mjs", "utf8");
+  const evidenceRunConsistencySource = readFileSync(
+    "scripts/release-evidence-run-consistency.mjs",
+    "utf8",
+  );
+  for (const expected of strictSecurityReadinessMarkers) {
+    assert(
+      finalReviewStatusSource.includes(expected),
+      `final review status should require strict security readiness marker: ${expected}`,
+    );
+    assert(
+      goNoGoSource.includes(expected),
+      `GO / NO-GO status should require strict security readiness marker: ${expected}`,
+    );
+  }
+  for (const source of [
+    ["final review status", finalReviewStatusSource],
+    ["GO / NO-GO status", goNoGoSource],
+    ["evidence run consistency", evidenceRunConsistencySource],
+  ]) {
+    assert(
+      source[1].includes("RESULT | PASS | External security proof captured."),
+      `${source[0]} should require external security proof PASS marker`,
     );
   }
 
@@ -404,6 +825,47 @@ function testExternalEvidenceGuide() {
     output.includes("COMMAND | pnpm release:rehearsal-plan"),
     "external evidence guide should include rehearsal command plan command",
   );
+  assert(
+    output.includes("COMMAND | DATABASE_URL=<pilot-or-staging-url> pnpm release:readiness-register"),
+    "external evidence guide should include release readiness register export command",
+  );
+  assert(
+    output.includes("ARTIFACT | release-evidence/release-readiness-register/release-readiness-register-*.csv"),
+    "external evidence guide should include release readiness register export artifact",
+  );
+  assert(
+    output.includes("ARTIFACT | release-evidence/release-readiness-register/release-readiness-register-*.csv.sha256") &&
+      output.includes("keep the generated .csv.sha256 sidecar with the CSV"),
+    "external evidence guide should include release readiness register checksum sidecar",
+  );
+  assert(
+    output.includes("ERP REGISTER EXPORT | Release readiness register"),
+    "external evidence guide should include release readiness register export boundary",
+  );
+  assert(
+    output.includes("GROUP | External identity, security, and evidence storage proof") &&
+      output.includes("OWNER | Security Owner / IT Owner"),
+    "external evidence guide should include security identity evidence group",
+  );
+  assert(
+    output.includes("MFA provider enrollment and runtime challenge proof") &&
+      output.includes("identity-provider session termination proof") &&
+      output.includes("vault or approved evidence-repository references"),
+    "external evidence guide should name external security proof requirements",
+  );
+  assert(
+    output.includes("ARTIFACT | external-security/mfa-provider-enrollment-and-runtime-proof.*") &&
+      output.includes("ARTIFACT | external-security/idp-session-invalidation-proof.*") &&
+      output.includes("ARTIFACT | external-security/vault-or-artifact-storage-index.*"),
+    "external evidence guide should include external security artifact targets",
+  );
+  assert(
+    output.includes("EXTERNAL | Identity provider") &&
+      output.includes("EXTERNAL | Evidence storage") &&
+      output.includes("EXTERNAL | Break-glass security"),
+    "external evidence guide should include security non-fabrication boundaries",
+  );
+  writeExternalSecurityProofFiles(evidenceRoot, "self-test-run");
   assert(
     output.includes("COMMAND | pnpm release:go-no-go"),
     "external evidence guide should include GO / NO-GO command",
@@ -517,8 +979,34 @@ function testRehearsalCommandPlan() {
     "rehearsal command plan should include UAT execution checklist command",
   );
   assert(
+    output.includes("COMMAND | DATABASE_URL=<pilot-or-staging-url> pnpm release:pilot-readiness"),
+    "rehearsal command plan should include setup pilot readiness command",
+  );
+  assert(
+    output.includes(
+      "COMMAND | DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness",
+    ),
+    "rehearsal command plan should include strict pilot readiness command",
+  );
+  assert(
+    output.includes("COMMAND | DATABASE_URL=<pilot-or-staging-url> pnpm release:readiness-register"),
+    "rehearsal command plan should include release readiness register export command",
+  );
+  assert(
+    output.includes("ARTIFACT | release-evidence/release-readiness-register/release-readiness-register-*.csv"),
+    "rehearsal command plan should include release readiness register export artifact",
+  );
+  assert(
+    output.includes("ARTIFACT | release-evidence/release-readiness-register/release-readiness-register-*.csv.sha256"),
+    "rehearsal command plan should include release readiness register checksum artifact",
+  );
+  assert(
     output.includes("ARTIFACT | release-evidence/uat-checklist/uat-execution-checklist-*.txt"),
     "rehearsal command plan should include UAT execution checklist artifact",
+  );
+  assert(
+    output.includes("ARTIFACT | release-evidence/pilot-readiness/pilot-readiness-*.txt"),
+    "rehearsal command plan should include pilot readiness artifact",
   );
   assert(
     output.includes("COMMAND | pnpm release:enablement-checklist"),
@@ -535,6 +1023,12 @@ function testRehearsalCommandPlan() {
   assert(
     output.includes("ARTIFACT | release-evidence/signed-evidence-checklist/signed-evidence-checklist-*.txt"),
     "rehearsal command plan should include signed evidence checklist artifact",
+  );
+  assert(
+    output.includes(
+      "signed documents, and external-security proof references are complete",
+    ),
+    "rehearsal command plan should require external-security proof references before final manifest",
   );
   assert(
     output.includes("COMMAND | pnpm release:deployment-status"),
@@ -664,6 +1158,104 @@ function testReleaseSummary() {
   );
 }
 
+function testReleaseSummaryLoadsLocalEnvFile() {
+  evidenceLines.push("CHECK | Release summary local env metadata");
+  const metadataFile = join(tempRoot, "release-metadata.env");
+  const outputFile = join(evidenceRoot, "release-summary-local-env.txt");
+  writeFileSync(
+    metadataFile,
+    [
+      "RELEASE_EVIDENCE_RUN_ID=local-env-run",
+      "RELEASE_VERSION=v0.1.0-rc.local",
+      "GITHUB_RUN_ID=local-env-gh-run",
+      "GITHUB_SHA=abcdef1234567890",
+      "DEPLOY_TO_STAGING=false",
+      "RELEASE_ENVIRONMENT=local-env-test",
+      "RELEASE_MIGRATION_MODE=prisma-deploy",
+      "",
+    ].join("\n"),
+  );
+
+  const preflightOutput = runNodeScript(
+    "scripts/release-summary-preflight.mjs",
+    {
+      LOCAL_ENV_FILES: metadataFile,
+      RELEASE_EVIDENCE_ROOT: evidenceRoot,
+    },
+  );
+  assert(
+    preflightOutput.includes(
+      "RESULT | PASS | Release summary metadata prerequisites are configured.",
+    ),
+    "release summary preflight should load metadata from LOCAL_ENV_FILES",
+  );
+  assert(
+    preflightOutput.includes("Evidence run ID: local-env-run"),
+    "release summary preflight should include local env evidence run id",
+  );
+
+  const output = runNodeScript("scripts/release-summary.mjs", {
+    LOCAL_ENV_FILES: metadataFile,
+    RELEASE_SUMMARY_OUTPUT_FILE: outputFile,
+  });
+  assert(
+    output.includes("Release candidate summary written:"),
+    "release summary should run with metadata from LOCAL_ENV_FILES",
+  );
+
+  const summary = readFileSync(outputFile, { encoding: "utf8" });
+  assert(
+    summary.includes("evidence_run_id=local-env-run"),
+    "release summary local env output should include evidence run id",
+  );
+  assert(
+    summary.includes("release_version=v0.1.0-rc.local"),
+    "release summary local env output should include release version",
+  );
+  assert(
+    summary.includes("github_run_id=local-env-gh-run"),
+    "release summary local env output should include GitHub run id",
+  );
+  evidenceLines.push(
+    "PASS | Release summary metadata can be loaded from a local env file.",
+  );
+}
+
+function testReleaseEvidenceRunIdLoadsLocalEnvFile() {
+  evidenceLines.push("CHECK | Release evidence run ID local env metadata");
+  const metadataFile = join(tempRoot, "release-evidence-run.env");
+  const outputFile = join(evidenceRoot, "data-snapshot-checklist-local-env.txt");
+  writeFileSync(
+    metadataFile,
+    [
+      "RELEASE_EVIDENCE_RUN_ID=local-env-evidence-run",
+      "RELEASE_VERSION=v0.1.0-rc.local",
+      "GITHUB_RUN_ID=local-env-gh-run",
+      "GITHUB_SHA=abcdef1234567890",
+      "",
+    ].join("\n"),
+  );
+
+  const output = runNodeScript("scripts/release-data-snapshot-checklist.mjs", {
+    LOCAL_ENV_FILES: metadataFile,
+    RELEASE_DATA_SNAPSHOT_CHECKLIST_OUTPUT_FILE: outputFile,
+    RELEASE_EVIDENCE_ROOT: evidenceRoot,
+  });
+  assert(
+    output.includes("Evidence run ID: local-env-evidence-run"),
+    "release evidence run helper should load evidence run ID from LOCAL_ENV_FILES",
+  );
+
+  const checklist = readFileSync(outputFile, { encoding: "utf8" });
+  assert(
+    checklist.includes("Evidence run ID: local-env-evidence-run"),
+    "release checklist output should include local env evidence run ID",
+  );
+  evidenceLines.push(
+    "PASS | Release evidence checklist run IDs can be loaded from a local env file.",
+  );
+}
+
 function testBackupSummary() {
   evidenceLines.push("CHECK | Backup summary");
   const backupFile = join(evidenceRoot, "backups", "ogfi-erp-self-test.dump");
@@ -712,6 +1304,39 @@ function testBackupSummary() {
   assert(
     summary.includes("RESULT | PASS | Backup summary captured."),
     "backup summary should include pass marker",
+  );
+
+  const metadataFile = join(tempRoot, "backup-summary-metadata.env");
+  const localEnvOutputFile = join(
+    evidenceRoot,
+    "backups",
+    "backup-summary-local-env.txt",
+  );
+  writeFileSync(
+    metadataFile,
+    [
+      "RELEASE_EVIDENCE_RUN_ID=backup-local-env-run",
+      "RELEASE_ENVIRONMENT=backup-local-env",
+      "GITHUB_RUN_ID=backup-local-env-gh-run",
+      "GITHUB_SHA=abcdef1234567890",
+      "",
+    ].join("\n"),
+  );
+  runNodeScript("scripts/release-backup-summary.mjs", {
+    LOCAL_ENV_FILES: metadataFile,
+    RELEASE_BACKUP_SUMMARY_OUTPUT_FILE: localEnvOutputFile,
+    BACKUP_FILE: backupFile,
+    DATABASE_URL: "postgres://self-test:secret@localhost:5432/ogfi_self_test",
+  });
+  const localEnvSummary = readFileSync(localEnvOutputFile, {
+    encoding: "utf8",
+  });
+  assert(
+    localEnvSummary.includes("evidence_run_id=backup-local-env-run") &&
+      localEnvSummary.includes("environment=backup-local-env") &&
+      localEnvSummary.includes("github_run_id=backup-local-env-gh-run") &&
+      localEnvSummary.includes("github_sha=abcdef1234567890"),
+    "backup summary should load release metadata from LOCAL_ENV_FILES",
   );
   evidenceLines.push(
     "PASS | Backup summary captures backup artifact metadata required by GO / NO-GO.",
@@ -1604,6 +2229,12 @@ function testUatStatus() {
     output.includes("OWNER | severity=Critical | owner=QA Lead / Operations Lead"),
     "UAT status should include owner guidance for scenario area completion",
   );
+  assert(
+    output.includes("Phase 3 finance controlled foundation") &&
+      output.includes("Phase 3 workforce controlled foundation") &&
+      output.includes("Phase 3 deferred blocker review"),
+    "UAT status should include Phase 3 workflow labels for umbrella release-status traceability",
+  );
 
   writeFileSync(
     selfTestUatFile,
@@ -1693,6 +2324,9 @@ function testPilotUatStatus() {
       "Generated UTC: 20260701T020000Z",
       "Evidence run ID: stale-self-test-run",
       "Database URL fingerprint: stale-selftestdb",
+      "Threshold snapshot: requireReleaseGatesReady=true",
+      "DEC-0036 strict release gate status",
+      ...strictSecurityReadinessMarkers.map((marker) => `PASS | ${marker}`),
       "",
       "RESULT | PASS | Pilot setup is ready for UAT execution evidence capture.",
       "",
@@ -1739,6 +2373,9 @@ function testPilotUatStatus() {
       "Generated UTC: 20260701T010000Z",
       "Evidence run ID: pilot-run",
       "Database URL fingerprint: selftestdb",
+      "Threshold snapshot: requireReleaseGatesReady=true",
+      "DEC-0036 strict release gate status",
+      ...strictSecurityReadinessMarkers.map((marker) => `PASS | ${marker}`),
       "",
       "RESULT | PASS | Pilot setup is ready for UAT execution evidence capture.",
       "",
@@ -1822,6 +2459,16 @@ function testUatExecutionChecklist() {
     "UAT execution checklist should include DB-backed pilot readiness command",
   );
   assert(
+    output.includes(
+      "COMMAND | DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness",
+    ),
+    "UAT execution checklist should include strict release-gate pilot readiness command",
+  );
+  assert(
+    strictSecurityReadinessMarkers.every((marker) => output.includes(marker)),
+    "UAT execution checklist should require strict pilot live security rows",
+  );
+  assert(
     output.includes("Latest UAT Status"),
     "UAT execution checklist should include latest UAT status snapshot",
   );
@@ -1857,10 +2504,11 @@ function testPilotReadinessPreflight() {
       "OGFI ERP Phase I / Phase 1.5 pilot readiness preflight",
       "Evidence run ID: self-test-run",
       "Database URL fingerprint: selftestdb",
-      "Threshold snapshot: self-test",
+      "Threshold snapshot: PILOT_REQUIRE_RELEASE_GATES_READY=true",
       "PASS | DATABASE_URL configured",
       "PASS | psql available or PSQL_BIN configured",
       "PASS | pilot threshold overrides valid",
+      "PASS | pilot boolean overrides valid",
       "RESULT | PASS | Pilot readiness prerequisites are configured.",
       "",
     ].join("\n"),
@@ -2155,6 +2803,22 @@ function testMilestoneReport() {
     "milestone report should include signed evidence checklist gate",
   );
   assert(
+    output.includes("artifact external-security/^mfa-provider-enrollment-and-runtime-proof\\..+$") &&
+      output.includes("artifact external-security/^idp-session-invalidation-proof\\..+$") &&
+      output.includes("artifact external-security/^vault-or-artifact-storage-index\\..+$") &&
+      output.includes("artifact external-security/^break-glass-review-and-revocation-proof\\..+$"),
+    "milestone report should include all external-security proof artifact gates",
+  );
+  assert(
+    output.includes(
+      "release metadata, signed evidence documents, external-security proof references, fresh manifest, and final GO / NO-GO review",
+    ) &&
+      output.includes(
+        "NEXT | Complete pending environment artifacts, signed documents, external-security proof references, UAT evidence, training evidence, and rollback proof before GO review.",
+      ),
+    "milestone report should include external-security proof references in owner guidance and next action",
+  );
+  assert(
     readdirSync(join(evidenceRoot, "milestones")).some((file) =>
       /^milestone-status-.*\.txt$/.test(file),
     ),
@@ -2176,6 +2840,8 @@ function testMilestoneReportRequiresAllArtifactMarkers() {
   const uatStatusDirectory = join(markerRoot, "uat-status");
   const enablementStatusDirectory = join(markerRoot, "enablement-status");
   const signedEvidenceStatusDirectory = join(markerRoot, "signed-evidence-status");
+  const externalSecurityDirectory = join(markerRoot, "external-security");
+  const registerDirectory = join(markerRoot, "release-readiness-register");
   const smokeDirectory = join(markerRoot, "smoke");
   const rollbackDirectory = join(markerRoot, "staging-rollback");
   const rollbackSmokeDirectory = join(rollbackDirectory, "smoke");
@@ -2187,6 +2853,8 @@ function testMilestoneReportRequiresAllArtifactMarkers() {
   mkdirSync(uatStatusDirectory, { recursive: true });
   mkdirSync(enablementStatusDirectory, { recursive: true });
   mkdirSync(signedEvidenceStatusDirectory, { recursive: true });
+  mkdirSync(externalSecurityDirectory, { recursive: true });
+  mkdirSync(registerDirectory, { recursive: true });
   mkdirSync(smokeDirectory, { recursive: true });
   mkdirSync(rollbackDirectory, { recursive: true });
   mkdirSync(rollbackSmokeDirectory, { recursive: true });
@@ -2327,6 +2995,21 @@ function testMilestoneReportRequiresAllArtifactMarkers() {
       "",
     ].join("\n"),
   );
+  for (const fileName of [
+    "mfa-provider-enrollment-and-runtime-proof.partial",
+    "idp-session-invalidation-proof.partial",
+    "vault-or-artifact-storage-index.partial",
+    "break-glass-review-and-revocation-proof.partial",
+  ]) {
+    writeFileSync(
+      join(externalSecurityDirectory, fileName),
+      [
+        "External security proof",
+        "Evidence run ID: self-test",
+        "",
+      ].join("\n"),
+    );
+  }
   writeFileSync(
     join(markerRoot, "release-summary.txt"),
     [
@@ -2334,6 +3017,23 @@ function testMilestoneReportRequiresAllArtifactMarkers() {
       "RESULT | PASS | Release candidate summary captured.",
       "",
     ].join("\n"),
+  );
+  const registerExportFile = join(
+    registerDirectory,
+    "release-readiness-register-self-test.csv",
+  );
+  writeFileSync(
+    registerExportFile,
+    [
+      "Evidence run ID,self-test",
+      "Source Decision,DEC-0036",
+      "RESULT,PASS,Release readiness register export captured.",
+      "",
+    ].join("\n"),
+  );
+  writeFileSync(
+    `${registerExportFile}.sha256`,
+    "0000000000000000000000000000000000000000000000000000000000000000  release-readiness-register-self-test.csv\n",
   );
 
   const output = runNodeScript("scripts/release-milestone-status.mjs", {
@@ -2426,6 +3126,30 @@ function testMilestoneReportRequiresAllArtifactMarkers() {
   );
   assert(
     output.includes(
+      "PENDING | artifact external-security/^mfa-provider-enrollment-and-runtime-proof\\..+$ | matching artifact found but required marker missing in mfa-provider-enrollment-and-runtime-proof.partial",
+    ),
+    "milestone report must require external MFA proof PASS marker",
+  );
+  assert(
+    output.includes(
+      "PENDING | artifact external-security/^idp-session-invalidation-proof\\..+$ | matching artifact found but required marker missing in idp-session-invalidation-proof.partial",
+    ),
+    "milestone report must require external IdP session proof PASS marker",
+  );
+  assert(
+    output.includes(
+      "PENDING | artifact external-security/^vault-or-artifact-storage-index\\..+$ | matching artifact found but required marker missing in vault-or-artifact-storage-index.partial",
+    ),
+    "milestone report must require external evidence storage proof PASS marker",
+  );
+  assert(
+    output.includes(
+      "PENDING | artifact external-security/^break-glass-review-and-revocation-proof\\..+$ | matching artifact found but required marker missing in break-glass-review-and-revocation-proof.partial",
+    ),
+    "milestone report must require external break-glass proof PASS marker",
+  );
+  assert(
+    output.includes(
       "PENDING | artifact backups/^backup-summary\\.txt$ | matching artifact found but required marker missing in backup-summary.txt",
     ),
     "milestone report must require backup summary metadata markers",
@@ -2448,6 +3172,12 @@ function testMilestoneReportRequiresAllArtifactMarkers() {
     ),
     "milestone report must require release summary metadata markers",
   );
+  assert(
+    output.includes(
+      "PENDING | artifact checksum release-readiness-register/^release-readiness-register-.*\\.csv$ | latest matching artifact release-readiness-register-self-test.csv failed checksum verification",
+    ),
+    "milestone report must flag readiness-register checksum mismatches",
+  );
   evidenceLines.push(
     "PASS | Milestone report rejects partial multi-marker and WARN-only preflight artifacts.",
   );
@@ -2468,6 +3198,23 @@ function testPendingEvidenceChecklist() {
   assert(
     output.includes("GATE | Data snapshot and migration safety evidence"),
     "pending evidence checklist should include data snapshot gate",
+  );
+  assert(
+    output.includes("GATE | External identity and evidence storage proof") &&
+      output.includes("OWNER | severity=Critical | owner=Security Owner / IT Owner"),
+    "pending evidence checklist should include external security evidence gate",
+  );
+  assert(
+    output.includes("external-security/mfa-provider-enrollment-and-runtime-proof.*") &&
+      output.includes("external-security/idp-session-invalidation-proof.*") &&
+      output.includes("external-security/vault-or-artifact-storage-index.*"),
+    "pending evidence checklist should include external security evidence artifacts",
+  );
+  assert(
+    output.includes("Copy approved external-security proof references") &&
+      output.includes("source evidence, signed documents, and external-security proof references are present") &&
+      output.includes("signed documents and external-security proof references are present"),
+    "pending evidence checklist should include external-security proof references in final collection steps",
   );
   assert(
     output.includes("OWNER | severity=Critical"),
@@ -2496,6 +3243,15 @@ function testPendingEvidenceChecklist() {
   assert(
     output.includes("pnpm release:rehearsal-plan"),
     "pending evidence checklist should include rehearsal command plan command",
+  );
+  assert(
+    output.includes("DATABASE_URL=<pilot-or-staging-url> pnpm release:readiness-register"),
+    "pending evidence checklist should include release readiness register export command",
+  );
+  assert(
+    strictSecurityReadinessMarkers.every((marker) => output.includes(marker)) &&
+      output.includes("live security rows at zero"),
+    "pending evidence checklist should require strict pilot live security rows",
   );
   assert(
     output.includes("pnpm release:recovery-checklist"),
@@ -2544,6 +3300,14 @@ function testPendingEvidenceChecklist() {
   assert(
     output.includes("rehearsal-command-plan/rehearsal-command-plan-*.txt"),
     "pending evidence checklist should include rehearsal command plan artifact",
+  );
+  assert(
+    output.includes("release-readiness-register/release-readiness-register-*.csv"),
+    "pending evidence checklist should include release readiness register export artifact",
+  );
+  assert(
+    output.includes("release-readiness-register/release-readiness-register-*.csv.sha256"),
+    "pending evidence checklist should include release readiness register checksum artifact",
   );
   assert(
     output.includes("recovery-checklist/recovery-evidence-checklist-*.txt"),
@@ -2630,8 +3394,10 @@ function testPendingEvidenceChecklist() {
     "pending evidence checklist should use the configured evidence root for signed training evidence",
   );
   assert(
-    output.includes("Run pnpm release:evidence:manifest after all final evidence files and passing focused status reports are present."),
-    "pending evidence checklist should include final manifest sequencing",
+    output.includes("Run pnpm release:evidence:manifest after all final evidence files") &&
+      output.includes("passing focused status reports are present") &&
+      output.includes("retain the matching .sha256 sidecar"),
+    "pending evidence checklist should include final manifest and checksum sequencing",
   );
   assert(
     output.includes("Run pnpm release:status-suite:strict as the CI-style readiness gate"),
@@ -2697,6 +3463,18 @@ function testReleaseMetadataWorksheet() {
     "release metadata worksheet should include command templates",
   );
   assert(
+    output.includes(
+      "DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness",
+    ),
+    "release metadata worksheet should include strict pilot readiness command",
+  );
+  assert(
+    output.includes(".env.release.local") &&
+      output.includes("LOCAL_ENV_FILES=.env.release.local") &&
+      output.includes("Never store secrets"),
+    "release metadata worksheet should include local env file handoff with no-secret boundary",
+  );
+  assert(
     output.includes("RESULT | ACTION REQUIRED |"),
     "release metadata worksheet should require owner action when metadata is missing",
   );
@@ -2742,6 +3520,12 @@ function testReleaseMetadataEnvTemplate() {
   assert(
     output.includes("RELEASE_EVIDENCE_RUN_ID"),
     "release metadata environment template should include evidence run ID variable",
+  );
+  assert(
+    output.includes(".env.release.local") &&
+      output.includes("LOCAL_ENV_FILES=.env.release.local") &&
+      output.includes("Do not store secrets"),
+    "release metadata environment template should include local env file handoff with no-secret boundary",
   );
   assert(
     output.includes("pnpm release:summary-preflight"),
@@ -2802,6 +3586,27 @@ function testReleaseMetadataSessionLock() {
     output.includes("Final Evidence Session Commands"),
     "release metadata session lock should include final evidence session commands",
   );
+  assert(
+    output.includes(".env.release.local Handoff") &&
+      output.includes("LOCAL_ENV_FILES=.env.release.local") &&
+      output.includes("Do not store secrets"),
+    "release metadata session lock should include local env file handoff with no-secret boundary",
+  );
+  assert(
+    output.includes(
+      "DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness",
+    ),
+    "release metadata session lock should include strict pilot readiness command",
+  );
+  assert(
+    output.includes("DATABASE_URL=<pilot-or-staging-url> pnpm release:readiness-register"),
+    "release metadata session lock should include release readiness register export command",
+  );
+  assert(
+    output.includes("requireReleaseGatesReady=true") &&
+      output.includes("DEC-0036 strict release gate status"),
+    "release metadata session lock should name strict pilot readiness markers",
+  );
 
   const configuredOutput = runNodeScript("scripts/release-metadata-session-lock.mjs", {
     RELEASE_EVIDENCE_ROOT: evidenceRoot,
@@ -2844,6 +3649,11 @@ function testEvidenceRunConsistencyContract() {
     "Release summary preflight",
     "Data snapshot preflight",
     "Backup/restore preflight",
+    "Release readiness register export",
+    "External MFA provider proof",
+    "External IdP session invalidation proof",
+    "External evidence storage index",
+    "External break-glass review proof",
     "Pilot readiness preflight",
   ]) {
     assert(
@@ -2866,6 +3676,40 @@ function testEvidenceRunConsistencyContract() {
     "evidence run consistency should pass when all required artifacts share the approved run ID",
   );
 
+  const metadataFile = join(tempRoot, "evidence-run-consistency.env");
+  writeFileSync(
+    metadataFile,
+    ["RELEASE_EVIDENCE_RUN_ID=self-test-run", ""].join("\n"),
+  );
+  const localEnvResult = withTemporaryEnv(
+    { LOCAL_ENV_FILES: metadataFile },
+    () => evaluateEvidenceRunConsistency(completeRoot),
+  );
+  assert(
+    localEnvResult.pass,
+    "evidence run consistency should load expected run ID from LOCAL_ENV_FILES",
+  );
+
+  const checksumMismatchRoot = join(tempRoot, "evidence-run-consistency-checksum-mismatch");
+  writeEvidenceRunConsistencyArtifacts(checksumMismatchRoot, "self-test-run");
+  writeFileSync(
+    join(
+      checksumMismatchRoot,
+      "release-readiness-register",
+      "release-readiness-register-self-test.csv.sha256",
+    ),
+    "0000000000000000000000000000000000000000000000000000000000000000  release-readiness-register-self-test.csv\n",
+  );
+  const checksumMismatchResult = evaluateEvidenceRunConsistency(checksumMismatchRoot, {
+    expectedEvidenceRunId: "self-test-run",
+  });
+  assert(
+    !checksumMismatchResult.pass &&
+      checksumMismatchResult.detail.includes("Release readiness register export") &&
+      checksumMismatchResult.detail.includes("checksum sidecar"),
+    "evidence run consistency should reject readiness-register exports with mismatched checksum sidecars",
+  );
+
   const placeholderRoot = join(tempRoot, "evidence-run-consistency-placeholder");
   writeEvidenceRunConsistencyArtifacts(placeholderRoot, "self-test-run");
   writeFileSync(
@@ -2879,6 +3723,22 @@ function testEvidenceRunConsistencyContract() {
     !placeholderResult.pass &&
       placeholderResult.detail.includes("placeholder evidence run ID"),
     "evidence run consistency should fail when any artifact uses a placeholder run ID",
+  );
+
+  const setupOnlyPilotRoot = join(tempRoot, "evidence-run-consistency-setup-only-pilot");
+  writeEvidenceRunConsistencyArtifacts(setupOnlyPilotRoot, "self-test-run");
+  writeFileSync(
+    join(setupOnlyPilotRoot, "pilot-readiness", "pilot-readiness-self-test.txt"),
+    "Evidence run ID: self-test-run\n",
+  );
+  const setupOnlyPilotResult = evaluateEvidenceRunConsistency(setupOnlyPilotRoot, {
+    expectedEvidenceRunId: "self-test-run",
+  });
+  assert(
+    !setupOnlyPilotResult.pass &&
+      setupOnlyPilotResult.detail.includes("missing required evidence marker") &&
+      setupOnlyPilotResult.detail.includes("requireReleaseGatesReady=true"),
+    "evidence run consistency should reject setup-only pilot readiness artifacts during final review",
   );
 
   const mismatchResult = evaluateEvidenceRunConsistency(completeRoot, {
@@ -2902,6 +3762,8 @@ function writeEvidenceRunConsistencyArtifacts(root, evidenceRunId) {
     "backups",
     "staging-rollback",
     "deployment-status",
+    "release-readiness-register",
+    "external-security",
     "pilot-readiness",
     "uat-status",
     "enablement-status",
@@ -2954,13 +3816,34 @@ function writeEvidenceRunConsistencyArtifacts(root, evidenceRunId) {
     join(root, "deployment-status", "deployment-status-self-test.txt"),
     `Evidence run ID: ${evidenceRunId}\n`,
   );
+  const registerExportFile = join(
+    root,
+    "release-readiness-register",
+    "release-readiness-register-self-test.csv",
+  );
+  const registerExportContent = `Evidence run ID,${evidenceRunId}\nSource Decision,DEC-0036\nRESULT,PASS,Release readiness register export captured.\n`;
+  const registerExportChecksum = createHash("sha256")
+    .update(registerExportContent)
+    .digest("hex");
+  writeFileSync(registerExportFile, registerExportContent);
+  writeFileSync(
+    `${registerExportFile}.sha256`,
+    `${registerExportChecksum}  release-readiness-register-self-test.csv\n`,
+  );
+  writeExternalSecurityProofFiles(root, evidenceRunId);
   writeFileSync(
     join(root, "pilot-readiness", "pilot-readiness-preflight-self-test.txt"),
-    `Evidence run ID: ${evidenceRunId}\n`,
+    `Evidence run ID: ${evidenceRunId}\nPILOT_REQUIRE_RELEASE_GATES_READY=true\n`,
   );
   writeFileSync(
     join(root, "pilot-readiness", "pilot-readiness-self-test.txt"),
-    `Evidence run ID: ${evidenceRunId}\n`,
+    [
+      `Evidence run ID: ${evidenceRunId}`,
+      "requireReleaseGatesReady=true",
+      "DEC-0036 strict release gate status",
+      ...strictSecurityReadinessMarkers.map((marker) => `PASS | ${marker}`),
+      "",
+    ].join("\n"),
   );
   writeFileSync(
     join(root, "uat-status", "uat-status-self-test.txt"),
@@ -2974,6 +3857,21 @@ function writeEvidenceRunConsistencyArtifacts(root, evidenceRunId) {
     join(root, "signed-evidence-status", "signed-evidence-status-self-test.txt"),
     `Evidence run ID: ${evidenceRunId}\n`,
   );
+}
+
+function writeExternalSecurityProofFiles(root, evidenceRunId, extension = "self-test") {
+  mkdirSync(join(root, "external-security"), { recursive: true });
+  for (const fileName of [
+    `mfa-provider-enrollment-and-runtime-proof.${extension}`,
+    `idp-session-invalidation-proof.${extension}`,
+    `vault-or-artifact-storage-index.${extension}`,
+    `break-glass-review-and-revocation-proof.${extension}`,
+  ]) {
+    writeFileSync(
+      join(root, "external-security", fileName),
+      `Evidence run ID: ${evidenceRunId}\nRESULT | PASS | External security proof captured.\n`,
+    );
+  }
 }
 
 function testBlockerDigest() {
@@ -3143,6 +4041,10 @@ function testBlockerDigest() {
 
 function testStatusSuite() {
   evidenceLines.push("CHECK | Release status suite");
+  const statusSuiteSource = readFileSync(
+    join(workspaceRoot, "scripts", "release-status-suite.mjs"),
+    "utf8",
+  );
   const output = runNodeScript("scripts/release-status-suite.mjs", {
     RELEASE_EVIDENCE_ROOT: evidenceRoot,
   });
@@ -3222,6 +4124,12 @@ function testStatusSuite() {
   assert(
     output.includes("COMMAND | Blocker digest"),
     "release status suite should run blocker digest after refreshing status reports",
+  );
+  assert(
+    output.includes(
+      "source evidence, signed documents, and external-security proof references are complete",
+    ),
+    "release status suite should tell owners to refresh manifest after external-security proof references are complete",
   );
   assertCommandOrder(output, [
     "COMMAND | Data snapshot evidence checklist",
@@ -3320,6 +4228,18 @@ function testStatusSuite() {
     "release status suite strict mode should report readiness failure",
   );
   assert(
+    statusSuiteSource.includes("RESULT | READY FOR GO / NO-GO"),
+    "release status suite strict mode should accept final-review ready-for-GO output",
+  );
+  assert(
+    statusSuiteSource.includes("RESULT | GO REVIEW READY"),
+    "release status suite strict mode should accept GO review-ready output",
+  );
+  assert(
+    statusSuiteSource.includes("RESULT | CONDITIONAL GO REVIEW"),
+    "release status suite strict mode should accept conditional GO review output",
+  );
+  assert(
     readdirSync(join(evidenceRoot, "status-suite")).some((file) =>
       /^status-suite-.*\.txt$/.test(file),
     ),
@@ -3388,6 +4308,10 @@ function testInterimReview() {
 
 function testFinalReviewStatus() {
   evidenceLines.push("CHECK | Final-review readiness status");
+  const finalReviewSource = readFileSync(
+    join(workspaceRoot, "scripts", "release-final-review-status.mjs"),
+    "utf8",
+  );
   const output = runNodeScript("scripts/release-final-review-status.mjs", {
     RELEASE_EVIDENCE_ROOT: evidenceRoot,
   });
@@ -3441,6 +4365,42 @@ function testFinalReviewStatus() {
     "final-review status should include deployment status evidence gate",
   );
   assert(
+    output.includes("Release readiness register export"),
+    "final-review status should include release readiness register export gate",
+  );
+  assert(
+    output.includes("Release readiness register checksum"),
+    "final-review status should include release readiness register checksum gate",
+  );
+  assert(
+    finalReviewSource.includes("evaluateChecksumSidecar") &&
+      finalReviewSource.includes("requireChecksumSidecar"),
+    "final-review status should verify release readiness register checksum sidecars",
+  );
+  assert(
+    output.includes("External MFA provider proof") &&
+      output.includes("External IdP session invalidation proof") &&
+      output.includes("External evidence storage index") &&
+      output.includes("External break-glass review proof"),
+    "final-review status should include external security proof gates",
+  );
+  assert(
+    finalReviewSource.includes(
+      "external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension>",
+    ) &&
+      finalReviewSource.includes(
+        "external-security/idp-session-invalidation-proof.<approved-extension>",
+      ) &&
+      finalReviewSource.includes(
+        "external-security/vault-or-artifact-storage-index.<approved-extension>",
+      ) &&
+      finalReviewSource.includes(
+        "external-security/break-glass-review-and-revocation-proof.<approved-extension>",
+      ) &&
+      finalReviewSource.includes("RESULT | PASS | External security proof captured."),
+    "final-review status should give external-security proof owners exact copy targets and PASS marker",
+  );
+  assert(
     output.includes("Pilot readiness preflight PASS"),
     "final-review status should include pilot readiness preflight PASS gate",
   );
@@ -3455,6 +4415,18 @@ function testFinalReviewStatus() {
   assert(
     output.includes("Signed evidence status"),
     "final-review status should include signed evidence status gate",
+  );
+  assert(
+    finalReviewSource.includes(
+      "RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
+    ) &&
+      finalReviewSource.includes(
+        "all final evidence artifacts, signed documents, and external-security proof references generated in the same RELEASE_EVIDENCE_RUN_ID session",
+      ) &&
+      finalReviewSource.includes(
+        "signed documents satisfy signoff contract and external-security proof references are present",
+      ),
+    "final-review status should require external-security proof references in evidence-run and signed-evidence owner guidance",
   );
   assert(
     output.includes("BLOCKED | Release Manager | blocker_count="),
@@ -3506,6 +4478,22 @@ function testSignedEvidenceTemplates() {
       "training-impact-assessment-template.md",
       "Signed Training Impact Assessment Template",
     ],
+    [
+      "external-mfa-provider-proof-template.md",
+      "External MFA Provider Proof Template",
+    ],
+    [
+      "external-idp-session-invalidation-proof-template.md",
+      "External IdP Session Invalidation Proof Template",
+    ],
+    [
+      "external-evidence-storage-index-template.md",
+      "External Evidence Storage Index Template",
+    ],
+    [
+      "external-break-glass-review-proof-template.md",
+      "External Break-Glass Review Proof Template",
+    ],
   ]) {
     const content = readFileSync(join(templateDir, file), "utf8");
     assert(content.includes(title), `${file} should include template title`);
@@ -3528,6 +4516,16 @@ function testSignedEvidenceTemplates() {
       content.includes("They do not replace final owner-approved evidence."),
       `${file} should preserve the local-artifact evidence boundary`,
     );
+    if (file.startsWith("external-")) {
+      assert(
+        content.includes("RESULT | PASS | External security proof captured."),
+        `${file} should include required external security PASS marker`,
+      );
+      assert(
+        content.includes("external-security/"),
+        `${file} should include external-security copy target`,
+      );
+    }
   }
 
   assert(
@@ -3575,6 +4573,23 @@ function testSignedEvidenceChecklist() {
     "signed evidence checklist should include signed UAT document matrix row",
   );
   assert(
+    output.includes("DOCUMENT | External MFA provider proof") &&
+      output.includes("DOCUMENT | External IdP session invalidation proof") &&
+      output.includes("DOCUMENT | External evidence storage index") &&
+      output.includes("DOCUMENT | External break-glass review proof"),
+    "signed evidence checklist should include external security proof matrix rows",
+  );
+  assert(
+    output.includes("RESULT | PASS | External security proof captured."),
+    "signed evidence checklist should require external security PASS marker",
+  );
+  assert(
+    output.includes("signed documents, external-security proof references, manifest") &&
+      output.includes("Verify signed documents and external-security proof references") &&
+      output.includes("Signed and external security evidence documents are present"),
+    "signed evidence checklist should treat external-security proof references as part of signed-evidence status",
+  );
+  assert(
     output.includes("ENV_OVERRIDE | RELEASE_DEPLOYMENT_EVIDENCE_FILE"),
     "signed evidence checklist should include deployment evidence override",
   );
@@ -3591,8 +4606,8 @@ function testSignedEvidenceChecklist() {
     "signed evidence checklist should include latest final review status snapshot",
   );
   assert(
-    output.includes("RESULT | ACTION REQUIRED | Collect owner-approved signed UAT"),
-    "signed evidence checklist should end with one action-required owner handoff",
+    output.includes("RESULT | ACTION REQUIRED | Collect owner-approved signed UAT, deployment/rollback, training, and external security evidence"),
+    "signed evidence checklist should end with one action-required owner handoff including external security evidence",
   );
   assert(
     readdirSync(join(evidenceRoot, "signed-evidence-checklist")).some((file) =>
@@ -3611,8 +4626,9 @@ function testSignedEvidenceChecklist() {
 
 function testSignedEvidenceStatus() {
   evidenceLines.push("CHECK | Signed evidence status");
+  const missingProofEvidenceRoot = join(tempRoot, "signed-status-missing-proof-evidence");
   const output = runNodeScript("scripts/release-signed-evidence-status.mjs", {
-    RELEASE_EVIDENCE_ROOT: evidenceRoot,
+    RELEASE_EVIDENCE_ROOT: missingProofEvidenceRoot,
   });
 
   assert(
@@ -3628,12 +4644,34 @@ function testSignedEvidenceStatus() {
     "signed evidence status should include signed document collection instructions",
   );
   assert(
+    output.includes("Required External Security Evidence") &&
+      output.includes("DOCUMENT | External MFA provider proof") &&
+      output.includes("DOCUMENT | External IdP session invalidation proof") &&
+      output.includes("DOCUMENT | External evidence storage index") &&
+      output.includes("DOCUMENT | External break-glass review proof"),
+    "signed evidence status should include external security proof collection instructions",
+  );
+  assert(
+    output.includes("required_marker=RESULT | PASS | External security proof captured."),
+    "signed evidence status should show external security PASS marker requirement",
+  );
+  assert(
+    output.includes("reviewed_directory=") &&
+      output.includes("filename_pattern=/^mfa-provider-enrollment-and-runtime-proof\\..+$/"),
+    "signed evidence status should scan external security proofs by directory and filename pattern",
+  );
+  assert(
     output.includes("default_path=signed-documents/uat-evidence-pack.md"),
     "signed evidence status should include default UAT signed document path",
   );
   assert(
     output.includes("env_override=RELEASE_DEPLOYMENT_EVIDENCE_FILE"),
     "signed evidence status should include deployment evidence override variable",
+  );
+  assert(
+    output.includes("BLOCKED | External MFA provider proof") &&
+      output.includes("missing matching file in"),
+    "signed evidence status should block when external security proof files are missing by pattern",
   );
   const incompleteSignedFile = join(tempRoot, "incomplete-signed-evidence.md");
   writeFileSync(
@@ -3683,6 +4721,7 @@ function testSignedEvidenceStatus() {
       "",
     ].join("\n"),
   );
+  writeExternalSecurityProofFiles(evidenceRoot, "self-test-run", "approved.md");
   const completeOutput = runNodeScript("scripts/release-signed-evidence-status.mjs", {
     RELEASE_EVIDENCE_ROOT: evidenceRoot,
     RELEASE_EVIDENCE_RUN_ID: "self-test-run",
@@ -3695,8 +4734,8 @@ function testSignedEvidenceStatus() {
     "signed evidence status should include evidence run ID",
   );
   assert(
-    completeOutput.includes("RESULT | PASS | Signed evidence documents are present and have no unresolved placeholders."),
-    "signed evidence status should pass when all required signoff fields are present",
+    completeOutput.includes("RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders."),
+    "signed evidence status should pass when all required signoff fields and external security proof files are present",
   );
   assert(
     readdirSync(join(evidenceRoot, "signed-evidence-status")).some((file) =>
@@ -3711,6 +4750,10 @@ function testSignedEvidenceStatus() {
 
 function testGoNoGoReport() {
   evidenceLines.push("CHECK | GO / NO-GO report");
+  const goNoGoSource = readFileSync(
+    join(workspaceRoot, "scripts", "release-go-no-go.mjs"),
+    "utf8",
+  );
   const checksumFile = join(evidenceRoot, "backups", "ogfi-erp-self-test.dump.sha256");
   const hiddenChecksumFile = `${checksumFile}.self-test-hidden`;
   if (existsSync(checksumFile)) {
@@ -3769,6 +4812,42 @@ function testGoNoGoReport() {
     "GO / NO-GO report should include deployment status evidence gate",
   );
   assert(
+    output.includes("Release readiness register export"),
+    "GO / NO-GO report should include release readiness register export gate",
+  );
+  assert(
+    output.includes("Release readiness register checksum"),
+    "GO / NO-GO report should include release readiness register checksum gate",
+  );
+  assert(
+    goNoGoSource.includes("evaluateChecksumSidecar") &&
+      goNoGoSource.includes("requireChecksumSidecar"),
+    "GO / NO-GO report should verify release readiness register checksum sidecars",
+  );
+  assert(
+    output.includes("External MFA provider proof") &&
+      output.includes("External IdP session invalidation proof") &&
+      output.includes("External evidence storage index") &&
+      output.includes("External break-glass review proof"),
+    "GO / NO-GO report should include external security proof gates",
+  );
+  assert(
+    goNoGoSource.includes(
+      "external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension>",
+    ) &&
+      goNoGoSource.includes(
+        "external-security/idp-session-invalidation-proof.<approved-extension>",
+      ) &&
+      goNoGoSource.includes(
+        "external-security/vault-or-artifact-storage-index.<approved-extension>",
+      ) &&
+      goNoGoSource.includes(
+        "external-security/break-glass-review-and-revocation-proof.<approved-extension>",
+      ) &&
+      goNoGoSource.includes("RESULT | PASS | External security proof captured."),
+    "GO / NO-GO report should give external-security proof owners exact copy targets and PASS marker",
+  );
+  assert(
     output.includes("FAIL | Backup checksum artifact"),
     "GO / NO-GO report should block when the required backup checksum artifact is missing",
   );
@@ -3793,6 +4872,18 @@ function testGoNoGoReport() {
     "GO / NO-GO report should include signed evidence status gate",
   );
   assert(
+    goNoGoSource.includes(
+      "RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
+    ) &&
+      goNoGoSource.includes(
+        "all final evidence artifacts, signed documents, and external-security proof references generated in the same RELEASE_EVIDENCE_RUN_ID session",
+      ) &&
+      goNoGoSource.includes(
+        "signed documents satisfy signoff contract and external-security proof references are present",
+      ),
+    "GO / NO-GO report should require external-security proof references in evidence-run and signed-evidence owner guidance",
+  );
+  assert(
     output.includes("FAIL | Release Manager | blocking_gate_count="),
     "GO / NO-GO report should summarize release-manager blocking gates",
   );
@@ -3811,6 +4902,52 @@ function testGoNoGoReport() {
   );
 }
 
+function testReleaseReadinessRegisterChecksumMismatch() {
+  evidenceLines.push("CHECK | Release readiness register checksum mismatch");
+  const checksumEvidenceRoot = join(tempRoot, "readiness-register-checksum-mismatch");
+  writeEvidenceRunConsistencyArtifacts(checksumEvidenceRoot, "self-test-run");
+  const registerExportFile = join(
+    checksumEvidenceRoot,
+    "release-readiness-register",
+    "release-readiness-register-self-test.csv",
+  );
+  const registerChecksumFile = `${registerExportFile}.sha256`;
+  const originalChecksum = readFileSync(registerChecksumFile, "utf8");
+
+  writeFileSync(
+    registerChecksumFile,
+    `0000000000000000000000000000000000000000000000000000000000000000  release-readiness-register-self-test.csv\n`,
+  );
+
+  try {
+    const finalReviewOutput = runNodeScript("scripts/release-final-review-status.mjs", {
+      RELEASE_EVIDENCE_ROOT: checksumEvidenceRoot,
+    });
+    assert(
+      finalReviewOutput.includes("BLOCKED | Release readiness register export") &&
+        finalReviewOutput.includes("failed checksum verification") &&
+        finalReviewOutput.includes("Release readiness register export checksum mismatch"),
+      "final-review status should block a readiness-register export with a mismatched checksum sidecar",
+    );
+
+    const goNoGoOutput = runNodeScript("scripts/release-go-no-go.mjs", {
+      RELEASE_EVIDENCE_ROOT: checksumEvidenceRoot,
+    });
+    assert(
+      goNoGoOutput.includes("FAIL | Release readiness register export") &&
+        goNoGoOutput.includes("checksum verification failed") &&
+        goNoGoOutput.includes("Release readiness register export checksum mismatch"),
+      "GO / NO-GO report should fail a readiness-register export with a mismatched checksum sidecar",
+    );
+  } finally {
+    writeFileSync(registerChecksumFile, originalChecksum);
+  }
+
+  evidenceLines.push(
+    "PASS | Final-review and GO / NO-GO reject readiness-register exports with mismatched checksum sidecars.",
+  );
+}
+
 function testEvidenceManifest() {
   evidenceLines.push("CHECK | Evidence manifest");
   const output = runNodeScript("scripts/release-evidence-manifest.mjs", {
@@ -3822,18 +4959,56 @@ function testEvidenceManifest() {
     output.includes("Release evidence manifest written:"),
     "manifest command should report output path",
   );
+  assert(
+    output.includes("Release evidence manifest checksum written:"),
+    "manifest command should report checksum sidecar path",
+  );
 
   const manifestFile = readdirSync(join(evidenceRoot, "manifests")).find(
     (file) => /^release-evidence-manifest-.*\.txt$/.test(file),
   );
   assert(manifestFile, "release evidence manifest artifact missing");
 
-  const manifest = readFileSync(join(evidenceRoot, "manifests", manifestFile), {
+  const manifestPath = join(evidenceRoot, "manifests", manifestFile);
+  const manifest = readFileSync(manifestPath, {
     encoding: "utf8",
   });
+  const manifestChecksumFile = `${manifestPath}.sha256`;
+  assert(existsSync(manifestChecksumFile), "release evidence manifest checksum missing");
+  const manifestChecksum = createHash("sha256").update(manifest).digest("hex");
+  const manifestChecksumSidecar = readFileSync(manifestChecksumFile, "utf8");
+  assert(
+    manifestChecksumSidecar.startsWith(`${manifestChecksum} `) &&
+      manifestChecksumSidecar.includes(manifestFile),
+    "manifest checksum sidecar should match the generated manifest",
+  );
   assert(
     manifest.includes("evidence_run_id=self-test-run"),
     "manifest should include evidence run id",
+  );
+
+  const metadataFile = join(tempRoot, "manifest-metadata.env");
+  const localEnvManifestOutput = join(
+    evidenceRoot,
+    "manifests",
+    "release-evidence-manifest-local-env.txt",
+  );
+  writeFileSync(
+    metadataFile,
+    ["RELEASE_EVIDENCE_RUN_ID=manifest-local-env-run", ""].join("\n"),
+  );
+  runNodeScript("scripts/release-evidence-manifest.mjs", {
+    LOCAL_ENV_FILES: metadataFile,
+    RELEASE_EVIDENCE_RUN_ID: "",
+    RELEASE_EVIDENCE_ROOT: evidenceRoot,
+    RELEASE_EVIDENCE_MANIFEST_OUTPUT_FILE: localEnvManifestOutput,
+  });
+  const localEnvManifest = readFileSync(localEnvManifestOutput, {
+    encoding: "utf8",
+  });
+  assert(
+    localEnvManifest.includes("evidence_run_id=manifest-local-env-run"),
+    "manifest should load evidence run ID from LOCAL_ENV_FILES",
   );
   assert(
     manifest.includes("COLLECTION_README.txt"),
@@ -3884,8 +5059,22 @@ function testEvidenceManifest() {
     "manifest should include deployment status artifacts as source evidence",
   );
   assert(
+    manifest.includes("external-security/mfa-provider-enrollment-and-runtime-proof.") &&
+      manifest.includes("external-security/idp-session-invalidation-proof.") &&
+      manifest.includes("external-security/vault-or-artifact-storage-index.") &&
+      manifest.includes("external-security/break-glass-review-and-revocation-proof."),
+    "manifest should include external security proof artifacts",
+  );
+  assert(
     manifest.includes(" source deployment-status/deployment-status-"),
     "manifest should classify deployment status artifacts as source evidence",
+  );
+  assert(
+    manifest.includes(" source external-security/mfa-provider-enrollment-and-runtime-proof.") &&
+      manifest.includes(" source external-security/idp-session-invalidation-proof.") &&
+      manifest.includes(" source external-security/vault-or-artifact-storage-index.") &&
+      manifest.includes(" source external-security/break-glass-review-and-revocation-proof."),
+    "manifest should classify external security proof artifacts as source evidence",
   );
   assert(
     manifest.includes("freshness_ignored_directory=final-review-status/"),
@@ -3933,6 +5122,17 @@ function testEvidenceManifest() {
     ),
     "manifest contract should require backup checksum evidence",
   );
+  for (const expectedPattern of [
+    "external-security\\/mfa-provider-enrollment-and-runtime-proof\\..+",
+    "external-security\\/idp-session-invalidation-proof\\..+",
+    "external-security\\/vault-or-artifact-storage-index\\..+",
+    "external-security\\/break-glass-review-and-revocation-proof\\..+",
+  ]) {
+    assert(
+      finalManifestRequiredPatterns.some((pattern) => pattern.source === expectedPattern),
+      `manifest contract should require external security evidence: ${expectedPattern}`,
+    );
+  }
   assert(
     manifest.includes("signed-evidence-status/signed-evidence-status-"),
     "manifest should include signed evidence status artifacts as source evidence",
@@ -3945,8 +5145,17 @@ function testEvidenceManifest() {
     !manifest.includes("freshness_ignored_directory=deployment-status/"),
     "manifest must not treat deployment status as freshness-ignored",
   );
+  assert(
+    readFileSync("scripts/release-final-review-status.mjs", "utf8").includes(
+      "evaluateManifestChecksum",
+    ) &&
+      readFileSync("scripts/release-go-no-go.mjs", "utf8").includes(
+        "evaluateManifestChecksum",
+      ),
+    "final review and GO / NO-GO should verify manifest checksum sidecars",
+  );
   evidenceLines.push(
-    "PASS | Evidence manifest records file checksums for collected release artifacts.",
+    "PASS | Evidence manifest records file checksums and a verified manifest checksum sidecar.",
   );
 }
 
@@ -4068,6 +5277,27 @@ function runNodeScript(scriptPath, env) {
   }
 
   return `${result.stdout}${result.stderr}`;
+}
+
+function withTemporaryEnv(env, callback) {
+  const previous = new Map(
+    Object.keys(env).map((key) => [key, process.env[key]]),
+  );
+
+  try {
+    for (const [key, value] of Object.entries(env)) {
+      process.env[key] = value;
+    }
+    return callback();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
 }
 
 function assertCommandOrder(output, expectedLines) {

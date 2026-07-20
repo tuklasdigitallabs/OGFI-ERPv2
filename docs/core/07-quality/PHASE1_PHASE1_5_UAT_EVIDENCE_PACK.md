@@ -27,7 +27,7 @@ Use `PHASE1_PHASE1_5_ACCEPTANCE_TRACEABILITY_MATRIX.md` to confirm each scenario
 | Counts, wastage, adjustments   | Pending | Count/recount, generated adjustment, approval/post/reversal, evidence policy proof        | QA Lead / Operations Owner | Pending |
 | Dashboards, reports, exports   | Pending | Scope-filtered dashboard, source drilldown, export audit proof                            | QA Lead / Reporting Owner  | Pending |
 | Project tracker                | Pending | Restricted visibility, task lifecycle, blockers, links, reports, no source mutation proof | QA Lead / Project Owner    | Pending |
-| Security and scope             | Pending | Deep-link denial, branch/warehouse/project scope denial, role denial evidence             | Security Owner             | Pending |
+| Security and scope             | Pending | Deep-link denial, branch/warehouse/project scope denial, role denial, privileged MFA, break-glass, and session revalidation evidence | Security Owner             | Pending |
 | Training and release readiness | Pending | KB, training, release notes, known limits, support contacts                               | Enablement Owner           | Pending |
 | Deployment and rollback        | Pending | Staging rehearsal, backup/restore, rollback drill, smoke test evidence                    | DevOps Owner               | Pending |
 
@@ -106,7 +106,9 @@ Complete this gate before executing transaction UAT. If this gate fails, stop an
 | Reporting/export data ready    | Source records, report permissions, export permissions, and denied-export users are ready for dashboard/report/export UAT                                           | Pending | Pending            | Reporting Owner / Security Owner |
 | Project tracker setup ready    | Published project template, scoped project, restricted project, members, tasks, blockers, milestones, risks, safe source links, and redaction test user exist       | Pending | Pending            | Project Owner                    |
 
-Run `DATABASE_URL=<pilot-or-staging-url> pnpm release:pilot-readiness` before transaction UAT and attach the generated `release-evidence/pilot-readiness/` artifact to this gate. The script is read-only and checks minimum pilot setup counts for organization scope, users, role/scope assignments, approval routes, supplier/item/UOM data, opening stock records, and project tracker setup. Passing output supports this gate but does not replace manual owner signoff, named user review, or screenshot/record-ID evidence.
+Run `DATABASE_URL=<pilot-or-staging-url> pnpm release:pilot-readiness` before transaction UAT and attach the generated `release-evidence/pilot-readiness/` artifact to this gate. The script is read-only and checks minimum pilot setup counts for organization scope, users, role/scope assignments, approval routes, supplier/item/UOM data, opening stock records, and project tracker setup. Passing setup output supports this gate but does not replace manual owner signoff, named user review, or screenshot/record-ID evidence.
+
+Before release rehearsal, final review, or GO / NO-GO, rerun the same DB-backed check as `DATABASE_URL=<pilot-or-staging-url> PILOT_REQUIRE_RELEASE_GATES_READY=true pnpm release:pilot-readiness`. The strict artifact must show `requireReleaseGatesReady=true` and `DEC-0036 strict release gate status` so reviewers can prove required ERP readiness gates are accepted with evidence and decision notes.
 
 | ID         | Workflow                                                                                                 | Roles                                   | Required proof                                                                                                                                                           | Result  | Defect / waiver |
 | ---------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | --------------- |
@@ -234,7 +236,7 @@ Use these sheets for scenarios that require multiple screenshots, record IDs, CS
 | Opening test inventory                 | Known starting balances or seeded stock for pilot warehouse/branch items used in receiving, transfer, count, wastage, and adjustment scripts | Pending | Pending            | Must reconcile to ledger/balance expectations before workflow testing.                        |
 | Reporting/export scopes                | Report/export permissions and sample source records available for permitted and denied export tests                                          | Pending | Pending            | Needed for P1-UAT-015 and P15-UAT-011.                                                        |
 
-Attach the `pnpm release:pilot-readiness` output here as the baseline data-readiness artifact, then add the manual screenshots, exports, record IDs, named users, and owner confirmations required above.
+Attach the setup `pnpm release:pilot-readiness` output here as the baseline data-readiness artifact, then add the manual screenshots, exports, record IDs, named users, and owner confirmations required above. Attach the strict `PILOT_REQUIRE_RELEASE_GATES_READY=true` output before final review so the evidence pack distinguishes setup readiness from release-gate acceptance.
 
 ## 9. Signoff
 

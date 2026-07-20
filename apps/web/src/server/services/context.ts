@@ -37,15 +37,19 @@ const defaultApproverEmail =
   process.env.DEMO_APPROVER_EMAIL ?? "ops.approver@ogfi.example";
 const defaultAdminEmail =
   process.env.DEMO_ADMIN_EMAIL ?? "erp.admin@ogfi.example";
+const defaultSuperUserEmail =
+  process.env.DEMO_SUPER_USER_EMAIL ?? "super.admin@ogfi.example";
 const seededDemoUserIds = {
   requester: "00000000-0000-4000-8000-000000000005",
   approver: "00000000-0000-4000-8000-000000000012",
   admin: "00000000-0000-4000-8000-000000000014",
+  superUser: "00000000-0000-4000-8000-000000000991",
 } as const;
 const legacyDemoEmailAliases = new Map([
   ["user@example.test", defaultRequesterEmail],
   ["approver@example.test", defaultApproverEmail],
   ["admin@example.test", defaultAdminEmail],
+  ["super@example.test", defaultSuperUserEmail],
 ]);
 
 function resolveDemoEmail(email: string) {
@@ -68,6 +72,12 @@ function resolveSeededDemoUserId(email: string) {
   }
   if (resolvedEmail === defaultAdminEmail || email === "admin@example.test") {
     return seededDemoUserIds.admin;
+  }
+  if (
+    resolvedEmail === defaultSuperUserEmail ||
+    email === "super@example.test"
+  ) {
+    return seededDemoUserIds.superUser;
   }
   return null;
 }
@@ -127,9 +137,26 @@ export function getConfiguredContextFallback(): SessionContext {
   };
 }
 
+export function assertSessionFresh(input: {
+  userUpdatedAt: Date;
+  sessionIssuedAt?: string;
+}) {
+  if (!input.sessionIssuedAt) {
+    throw new Error("SESSION_REVALIDATION_REQUIRED");
+  }
+  const issuedAt = new Date(input.sessionIssuedAt);
+  if (Number.isNaN(issuedAt.getTime())) {
+    throw new Error("SESSION_REVALIDATION_REQUIRED");
+  }
+  if (input.userUpdatedAt.getTime() > issuedAt.getTime() + 1000) {
+    throw new Error("SESSION_REVALIDATION_REQUIRED");
+  }
+}
+
 export async function getConfiguredContext(
   email = defaultRequesterEmail,
   selectedLocationId?: string,
+  sessionIssuedAt?: string,
 ): Promise<SessionContext> {
   const resolvedEmail = resolveDemoEmail(email);
   const seededUserId = resolveSeededDemoUserId(email);
@@ -168,6 +195,12 @@ export async function getConfiguredContext(
 
   if (!user || user.scopeAssignments.length === 0) {
     throw new Error("SEEDED_USER_CONTEXT_NOT_FOUND");
+  }
+  if (sessionIssuedAt) {
+    assertSessionFresh({
+      userUpdatedAt: user.updatedAt,
+      sessionIssuedAt,
+    });
   }
 
   const locationIds = user.scopeAssignments.map((scope) => scope.scopeId);
@@ -246,10 +279,26 @@ export async function getConfiguredContext(
 export async function getSessionContext() {
   const cookieStore = await cookies();
   const signedInEmail = cookieStore.get("ogfi_demo_session")?.value;
+  const sessionIssuedAt = cookieStore.get("ogfi_demo_session_issued_at")?.value;
   const selectedLocationId = cookieStore.get("ogfi_demo_location")?.value;
-  return signedInEmail
-    ? getConfiguredContext(signedInEmail, selectedLocationId)
-    : null;
+  if (!signedInEmail) {
+    return null;
+  }
+  try {
+    return await getConfiguredContext(
+      signedInEmail,
+      selectedLocationId,
+      sessionIssuedAt,
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "SESSION_REVALIDATION_REQUIRED"
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function requireSessionContext() {

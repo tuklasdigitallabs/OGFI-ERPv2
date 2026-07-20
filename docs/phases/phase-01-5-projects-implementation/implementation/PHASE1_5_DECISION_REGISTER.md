@@ -11,6 +11,6 @@
 | P15-005 | Mobile prioritizes task completion and evidence, not board drag-and-drop. | Confirmed |
 | P15-006 | Branch Expansion & Construction and Marketing Operations use one shared Work Management Engine rather than duplicate task/comment/attachment/activity/notification systems. | Confirmed by `DEC-0007` |
 
-## Open
+## Configurable Defaults
 
-See `docs/core/00-governance/OPEN_DECISIONS_AND_ASSUMPTIONS.md` for configuration and policy decisions to resolve before implementation.
+`DEC-0036` confirms configurable defaults for project templates, task statuses, owner/collaborator behavior, evidence requirements, restricted project categories, calendar behavior, and concurrency/versioning. See `docs/core/00-governance/OPEN_DECISIONS_AND_ASSUMPTIONS.md` for the active baseline and UAT revision triggers.

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
+import { EntryModal } from "@/components/EntryModal";
 import {
   actionErrorRedirectPath,
   getActionFeedback,
@@ -10,14 +11,17 @@ import {
 import {
   canUsePurchaseRequests,
   getDefaultAppRoute,
+  permissions,
 } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
   addPurchaseRequestComment,
   cancelPurchaseRequest,
+  completeEmergencyPurchasePostReview,
   getPurchaseRequest,
   reopenReturnedPurchaseRequest,
   submitPurchaseRequest,
+  type PurchaseRequestSlaStatus,
 } from "@/server/services/purchaseRequests";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +79,18 @@ async function addComment(formData: FormData) {
   revalidatePath(`/purchase-requests/${id}`);
 }
 
+async function completeEmergencyPostReview(formData: FormData) {
+  "use server";
+
+  const id = String(formData.get("id"));
+  try {
+    await completeEmergencyPurchasePostReview(formData);
+  } catch (error) {
+    redirect(actionErrorRedirectPath(`/purchase-requests/${id}`, error));
+  }
+  revalidatePath(`/purchase-requests/${id}`);
+}
+
 function getNextAction(status: string) {
   if (status === "DRAFT") {
     return "Submit for approval";
@@ -86,6 +102,19 @@ function getNextAction(status: string) {
     return "Await approval";
   }
   return "No pending action";
+}
+
+function slaBadgeTone(status: PurchaseRequestSlaStatus) {
+  if (status === "OVERDUE") {
+    return "destructive" as const;
+  }
+  if (status === "DUE_TODAY") {
+    return "warning" as const;
+  }
+  if (status === "ON_TRACK") {
+    return "info" as const;
+  }
+  return "neutral" as const;
 }
 
 export default async function PurchaseRequestDetailPage({
@@ -107,6 +136,12 @@ export default async function PurchaseRequestDetailPage({
   }
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(resolvedSearchParams);
+  const canCompleteEmergencyPostReview =
+    request.isEmergency &&
+    ["APPROVED", "REJECTED", "CANCELLED"].includes(request.status) &&
+    !request.emergencyPostReviewCompleted &&
+    request.requesterUserId !== session.user.id &&
+    session.permissionCodes.includes(permissions.purchaseRequestApprove);
 
   return (
     <AppShell
@@ -130,9 +165,16 @@ export default async function PurchaseRequestDetailPage({
                 {session.context.locationName}
               </p>
             </div>
-            <Badge tone={request.status === "DRAFT" ? "neutral" : "warning"}>
-              {request.status.replace("_", " ")}
-            </Badge>
+            <div className="flex flex-wrap gap-2">
+              {request.isEmergency ? (
+                <Badge tone={slaBadgeTone(request.slaStatus)}>
+                  {request.slaLabel}
+                </Badge>
+              ) : null}
+              <Badge tone={request.status === "DRAFT" ? "neutral" : "warning"}>
+                {request.status.replace("_", " ")}
+              </Badge>
+            </div>
           </div>
 
           <dl className="mt-6 grid gap-4 ogfi-record-summary p-4 sm:grid-cols-2">
@@ -166,6 +208,130 @@ export default async function PurchaseRequestDetailPage({
             </div>
           </dl>
 
+          {request.isEmergency ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-bold text-amber-950">
+                  Emergency purchase support
+                </h3>
+                <Badge tone={slaBadgeTone(request.slaStatus)}>
+                  {request.slaLabel}
+                </Badge>
+              </div>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="font-semibold text-amber-900">
+                    Emergency reason
+                  </dt>
+                  <dd className="mt-1 text-slate-800">
+                    {request.emergencyReason ?? "Not recorded"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-semibold text-amber-900">
+                    Evidence reference
+                  </dt>
+                  <dd className="mt-1 text-slate-800">
+                    {request.emergencyEvidenceReference ?? "Not recorded"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-semibold text-amber-900">
+                    Estimated request value
+                  </dt>
+                  <dd className="mt-1 text-slate-800">
+                    PHP{" "}
+                    {request.lines
+                      .reduce((total, line) => total + line.estimatedLineTotal, 0)
+                      .toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-semibold text-amber-900">
+                    Post-review
+                  </dt>
+                  <dd className="mt-1 text-slate-800">
+                    {request.emergencyPostReviewCompleted
+                      ? `${request.emergencyPostReviewOutcome?.replaceAll("_", " ") ?? "Completed"}${
+                          request.emergencyPostReviewCompletedAt
+                            ? ` / ${request.emergencyPostReviewCompletedAt.slice(0, 10)}`
+                            : ""
+                        }`
+                      : "Not completed"}
+                  </dd>
+                </div>
+              </dl>
+              {request.emergencyPostReviewCompleted ? (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-white/70 p-3 text-sm text-slate-800">
+                  <p className="font-semibold text-amber-950">
+                    Review notes
+                  </p>
+                  <p className="mt-1">
+                    {request.emergencyPostReviewReason ?? "No reason recorded"}
+                  </p>
+                  <p className="mt-2 text-xs font-semibold text-slate-600">
+                    Evidence:{" "}
+                    {request.emergencyPostReviewEvidenceReference ??
+                      "Not recorded"}
+                  </p>
+                </div>
+              ) : null}
+              {canCompleteEmergencyPostReview ? (
+                <div className="mt-4">
+                  <EntryModal
+                    title="Complete Emergency Post-Review"
+                    triggerLabel="Complete Post-Review"
+                    triggerClassName="bg-amber-600 hover:bg-amber-700"
+                  >
+                    <form action={completeEmergencyPostReview} className="grid gap-4">
+                      <input name="id" type="hidden" value={request.id} />
+                      <label className="grid gap-1 text-sm font-medium text-slate-700">
+                        Review outcome
+                        <select
+                          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+                          name="reviewOutcome"
+                          required
+                        >
+                          <option value="ACCEPTED">Accepted</option>
+                          <option value="FOLLOW_UP_REQUIRED">
+                            Follow-up required
+                          </option>
+                          <option value="POLICY_EXCEPTION">
+                            Policy exception
+                          </option>
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-sm font-medium text-slate-700">
+                        Review reason
+                        <textarea
+                          className="min-h-24 rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+                          name="reason"
+                          placeholder="Summarize why the emergency purchase was accepted, needs follow-up, or is a policy exception."
+                          required
+                        />
+                      </label>
+                      <label className="grid gap-1 text-sm font-medium text-slate-700">
+                        Evidence reference
+                        <input
+                          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950"
+                          name="evidenceReference"
+                          placeholder="Incident, photo, receiving proof, or approval note reference"
+                          required
+                        />
+                      </label>
+                      <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                        Save Post-Review
+                      </button>
+                    </form>
+                  </EntryModal>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="mt-6 rounded-lg border border-slate-200">
             <div className="border-b border-slate-100 p-4">
               <h3 className="font-semibold text-slate-950">Request Lines</h3>
@@ -195,7 +361,22 @@ export default async function PurchaseRequestDetailPage({
                   <p className="text-sm font-medium text-slate-700">
                     {line.requestedQty} {line.uomCode}
                   </p>
-                  <p className="text-sm text-slate-600">{line.purpose}</p>
+                  <div className="text-sm text-slate-600">
+                    <p>{line.purpose}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      Est. PHP{" "}
+                      {line.estimatedLineTotal.toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      Budget:{" "}
+                      {line.budgetLineCode
+                        ? `${line.budgetLineCode} - ${line.budgetLineName} (${line.budgetReference})`
+                        : "Finance to classify"}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>

@@ -50,6 +50,42 @@ const documents = [
     requiredProof:
       "training attendance, known-limit acknowledgement, hypercare owners, daily review evidence, follow-up owner, signoff, and matching evidence run ID",
   },
+  {
+    label: "External MFA provider proof",
+    owner: "Security Owner / IT Owner",
+    targetPath: "external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension>",
+    envOverride: "None",
+    sourceStatus: "pilot-readiness/pilot-readiness-*.txt and release-readiness-register/release-readiness-register-*.csv",
+    requiredProof:
+      "provider-side MFA enrollment/runtime challenge proof, matching evidence run ID, and RESULT | PASS | External security proof captured.",
+  },
+  {
+    label: "External IdP session invalidation proof",
+    owner: "Security Owner / IT Owner",
+    targetPath: "external-security/idp-session-invalidation-proof.<approved-extension>",
+    envOverride: "None",
+    sourceStatus: "pilot-readiness/pilot-readiness-*.txt and admin session invalidation register references",
+    requiredProof:
+      "provider-side session termination proof for ERP invalidation records, matching evidence run ID, and RESULT | PASS | External security proof captured.",
+  },
+  {
+    label: "External evidence storage index",
+    owner: "Security Owner / Release Manager",
+    targetPath: "external-security/vault-or-artifact-storage-index.<approved-extension>",
+    envOverride: "None",
+    sourceStatus: "manifests/release-evidence-manifest-*.txt and release-metadata/release-session-lock-*.txt",
+    requiredProof:
+      "approved vault or evidence-repository index, artifact owners, matching evidence run ID, and RESULT | PASS | External security proof captured.",
+  },
+  {
+    label: "External break-glass review proof",
+    owner: "Security Owner / IT Owner",
+    targetPath: "external-security/break-glass-review-and-revocation-proof.<approved-extension>",
+    envOverride: "None",
+    sourceStatus: "pilot-readiness/pilot-readiness-*.txt and admin break-glass register references",
+    requiredProof:
+      "break-glass post-use review and revocation proof, matching evidence run ID, and RESULT | PASS | External security proof captured.",
+  },
 ];
 
 const checklist = [
@@ -58,7 +94,7 @@ const checklist = [
     action: "Lock the final evidence session before asking owners to sign.",
     command: "pnpm release:metadata-session-lock",
     artifact: "release-metadata/release-session-lock-*.txt",
-    acceptance: "One approved RELEASE_EVIDENCE_RUN_ID is reused for source status artifacts, signed documents, manifest, final review, and GO / NO-GO.",
+    acceptance: "One approved RELEASE_EVIDENCE_RUN_ID is reused for source status artifacts, signed documents, external-security proof references, manifest, final review, and GO / NO-GO.",
   },
   {
     owner: "Release Manager / Evidence Owners",
@@ -90,17 +126,17 @@ const checklist = [
   },
   {
     owner: "Release Manager / Product Owner",
-    action: "Verify signed documents before regenerating the final manifest.",
+    action: "Verify signed documents and external-security proof references before regenerating the final manifest.",
     command: "pnpm release:signed-evidence-status",
     artifact: "signed-evidence-status/signed-evidence-status-*.txt",
-    acceptance: "Must contain RESULT | PASS | Signed evidence documents are present and have no unresolved placeholders.",
+    acceptance: "Must contain RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
   },
   {
     owner: "Release Manager",
-    action: "Refresh the final manifest only after signed evidence and focused source statuses pass.",
+    action: "Refresh the final manifest only after signed evidence, external-security proof references, and focused source statuses pass.",
     command: "pnpm release:evidence:manifest",
     artifact: "manifests/release-evidence-manifest-*.txt",
-    acceptance: "Manifest includes signed-documents entries, signed-evidence-status, focused source status artifacts, checksums, and no stale source evidence.",
+    acceptance: "Manifest includes signed-documents entries, external-security proof references, signed-evidence-status, focused source status artifacts, checksums, and no stale source evidence.",
   },
   {
     owner: "Release Manager / Product Owner",
@@ -127,7 +163,7 @@ const lines = [
   `Evidence root: ${evidenceRoot}`,
   "",
   "This checklist is advisory. It does not create, copy, sign, edit, approve, or replace evidence documents, and it does not approve release.",
-  "Use the same RELEASE_EVIDENCE_RUN_ID across focused status artifacts, signed documents, final manifest, final review, and GO / NO-GO.",
+  "Use the same RELEASE_EVIDENCE_RUN_ID across focused status artifacts, signed documents, external-security proof references, final manifest, final review, and GO / NO-GO.",
   "",
   "Required Signed Evidence Fields",
   "FIELD | evidence run | Evidence run ID matching the approved session when RELEASE_EVIDENCE_RUN_ID is set",
@@ -172,7 +208,7 @@ lines.push(
   "Latest Final Review Status",
   ...latestStatusLines("final-review-status", latestFinalReview),
   "",
-  "RESULT | ACTION REQUIRED | Collect owner-approved signed UAT, deployment/rollback, and training evidence documents before final release review.",
+  "RESULT | ACTION REQUIRED | Collect owner-approved signed UAT, deployment/rollback, training, and external security evidence before final release review.",
 );
 
 mkdirSync(dirname(outputFile), { recursive: true });

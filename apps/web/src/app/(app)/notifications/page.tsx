@@ -12,13 +12,30 @@ import {
   markNotificationRead
 } from "@/server/services/notifications";
 import { runProjectTaskDeadlineReminderScan } from "@/server/services/projectNotifications";
-import { permissions } from "@/server/services/authorization";
+import {
+  canUseBranchOperations,
+  canUseFoodSafety,
+  canUseIncidents,
+  canUseMaintenance,
+  canUseRecipesAndCosting,
+  permissions
+} from "@/server/services/authorization";
+import { runRestaurantOpsExceptionReminderScan } from "@/server/services/restaurantOpsNotifications";
 
 export const dynamic = "force-dynamic";
 
 type NotificationsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const notificationGroups = [
+  "All",
+  "Approvals",
+  "Projects",
+  "Restaurant Ops",
+  "Other"
+] as const;
+type NotificationGroup = (typeof notificationGroups)[number];
 
 function getSearchParam(
   searchParams: Record<string, string | string[] | undefined>,
@@ -30,6 +47,60 @@ function getSearchParam(
 
 function normalizeStatus(value?: string) {
   return value === "UNREAD" || value === "ARCHIVED" ? value : "ALL";
+}
+
+function normalizeGroup(value?: string): NotificationGroup {
+  const decoded = value?.replaceAll("-", " ");
+  return notificationGroups.includes(decoded as NotificationGroup)
+    ? (decoded as NotificationGroup)
+    : "All";
+}
+
+function notificationGroupForType(notificationType: string): NotificationGroup {
+  if (notificationType.startsWith("APPROVE_") || notificationType === "APPROVAL_OVERDUE") {
+    return "Approvals";
+  }
+  if (notificationType.startsWith("PROJECT_")) {
+    return "Projects";
+  }
+  if (
+    [
+      "FOOD_COST_EXCEPTION",
+      "BRANCH_CHECKLIST_REVIEW_READY",
+      "BRANCH_CHECKLIST_EXCEPTION",
+      "FOOD_SAFETY_REVIEW_READY",
+      "FOOD_SAFETY_EXCEPTION",
+      "OPERATIONAL_INCIDENT_OPEN",
+      "MAINTENANCE_FOLLOW_UP"
+    ].includes(notificationType)
+  ) {
+    return "Restaurant Ops";
+  }
+  return "Other";
+}
+
+function buildQueryHref(
+  basePath: string,
+  params: Record<string, string | null | undefined>
+) {
+  const url = new URL(basePath, "http://localhost");
+  for (const [key, value] of Object.entries(params)) {
+    if (value) {
+      url.searchParams.set(key, value);
+    }
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+function appendInboxFilterParams(params: URLSearchParams, formData: FormData) {
+  const status = normalizeStatus(String(formData.get("status") ?? ""));
+  const group = normalizeGroup(String(formData.get("group") ?? ""));
+  if (status !== "ALL") {
+    params.set("status", status);
+  }
+  if (group !== "All") {
+    params.set("group", group.replaceAll(" ", "-"));
+  }
 }
 
 function priorityTone(priority: string) {
@@ -66,7 +137,7 @@ async function archiveAction(formData: FormData) {
   revalidatePath("/notifications");
 }
 
-async function scanDeadlineRemindersAction() {
+async function scanDeadlineRemindersAction(formData: FormData) {
   "use server";
 
   const session = await getSessionContext();
@@ -79,11 +150,12 @@ async function scanDeadlineRemindersAction() {
     scanned: String(result.scannedTaskCount),
     reminders: String(result.reminderCount)
   });
+  appendInboxFilterParams(params, formData);
   revalidatePath("/notifications");
   redirect(`/notifications?${params.toString()}`);
 }
 
-async function scanApprovalRemindersAction() {
+async function scanApprovalRemindersAction(formData: FormData) {
   "use server";
 
   const session = await getSessionContext();
@@ -96,6 +168,25 @@ async function scanApprovalRemindersAction() {
     approvalScanned: String(result.scannedApprovalCount),
     approvalReminders: String(result.reminderCount)
   });
+  appendInboxFilterParams(params, formData);
+  revalidatePath("/notifications");
+  redirect(`/notifications?${params.toString()}`);
+}
+
+async function scanRestaurantOpsRemindersAction(formData: FormData) {
+  "use server";
+
+  const session = await getSessionContext();
+  if (!session) {
+    redirect("/sign-in");
+  }
+
+  const result = await runRestaurantOpsExceptionReminderScan(session);
+  const params = new URLSearchParams({
+    restaurantOpsScanned: String(result.scannedExceptionCount),
+    restaurantOpsReminders: String(result.reminderCount)
+  });
+  appendInboxFilterParams(params, formData);
   revalidatePath("/notifications");
   redirect(`/notifications?${params.toString()}`);
 }
@@ -110,10 +201,16 @@ export default async function NotificationsPage({
 
   const params = searchParams ? await searchParams : {};
   const status = normalizeStatus(getSearchParam(params, "status"));
+  const group = normalizeGroup(getSearchParam(params, "group"));
   const scannedTaskCount = getSearchParam(params, "scanned");
   const reminderCount = getSearchParam(params, "reminders");
   const scannedApprovalCount = getSearchParam(params, "approvalScanned");
   const approvalReminderCount = getSearchParam(params, "approvalReminders");
+  const scannedRestaurantOpsCount = getSearchParam(params, "restaurantOpsScanned");
+  const restaurantOpsReminderCount = getSearchParam(
+    params,
+    "restaurantOpsReminders"
+  );
   const scanSummary =
     scannedTaskCount && reminderCount
       ? `${scannedTaskCount} tasks scanned / ${reminderCount} reminder groups generated`
@@ -122,7 +219,17 @@ export default async function NotificationsPage({
     scannedApprovalCount && approvalReminderCount
       ? `${scannedApprovalCount} approvals scanned / ${approvalReminderCount} reminders generated`
       : null;
+  const restaurantOpsScanSummary =
+    scannedRestaurantOpsCount && restaurantOpsReminderCount
+      ? `${scannedRestaurantOpsCount} restaurant exceptions scanned / ${restaurantOpsReminderCount} reminders generated`
+      : null;
   const notifications = await listNotifications(session, { status });
+  const visibleNotifications =
+    group === "All"
+      ? notifications
+      : notifications.filter(
+          (notification) => notificationGroupForType(notification.notificationType) === group
+        );
   const unreadCount = notifications.filter(
     (notification) => notification.status === "UNREAD"
   ).length;
@@ -139,6 +246,12 @@ export default async function NotificationsPage({
     permissions.wastageApprove,
     permissions.stockAdjustmentApprove
   ].some((permission) => session.permissionCodes.includes(permission));
+  const canRunRestaurantOpsReminderScan =
+    canUseRecipesAndCosting(session.permissionCodes) ||
+    canUseBranchOperations(session.permissionCodes) ||
+    canUseFoodSafety(session.permissionCodes) ||
+    canUseIncidents(session.permissionCodes) ||
+    canUseMaintenance(session.permissionCodes);
 
   return (
     <AppShell
@@ -173,6 +286,8 @@ export default async function NotificationsPage({
               </p>
             </div>
             <form action={scanDeadlineRemindersAction}>
+              <input name="status" type="hidden" value={status} />
+              <input name="group" type="hidden" value={group} />
               <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
                 Scan Reminders
               </button>
@@ -193,6 +308,8 @@ export default async function NotificationsPage({
               </p>
             </div>
             <form action={scanApprovalRemindersAction}>
+              <input name="status" type="hidden" value={status} />
+              <input name="group" type="hidden" value={group} />
               <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
                 Scan Approvals
               </button>
@@ -201,6 +318,33 @@ export default async function NotificationsPage({
           {approvalScanSummary ? (
             <p className="mt-3 text-sm font-semibold text-blue-700">
               {approvalScanSummary}
+            </p>
+          ) : null}
+        </Panel>
+      ) : null}
+      {canRunRestaurantOpsReminderScan ? (
+        <Panel className="mb-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-slate-900">
+                Restaurant operations exceptions
+              </p>
+              <p className="text-sm text-slate-500">
+                Manual scan for food-cost, checklist review, food-safety review,
+                incident, and maintenance follow-ups in your authorized scope
+              </p>
+            </div>
+            <form action={scanRestaurantOpsRemindersAction}>
+              <input name="status" type="hidden" value={status} />
+              <input name="group" type="hidden" value={group} />
+              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                Scan Restaurant Ops
+              </button>
+            </form>
+          </div>
+          {restaurantOpsScanSummary ? (
+            <p className="mt-3 text-sm font-semibold text-blue-700">
+              {restaurantOpsScanSummary}
             </p>
           ) : null}
         </Panel>
@@ -227,13 +371,48 @@ export default async function NotificationsPage({
                 <option value="ARCHIVED">Archived</option>
               </select>
             </label>
+            <input name="group" type="hidden" value={group} />
             <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
               Apply
             </button>
           </form>
         </div>
 
-        {notifications.length === 0 ? (
+        <div className="border-b border-slate-100 px-4 py-3">
+          <div className="grid gap-2 md:grid-cols-5">
+            {notificationGroups.map((tab) => {
+              const count =
+                tab === "All"
+                  ? notifications.length
+                  : notifications.filter(
+                      (notification) =>
+                        notificationGroupForType(notification.notificationType) === tab
+                    ).length;
+              const active = group === tab;
+              return (
+                <a
+                  key={tab}
+                  className={
+                    active
+                      ? "rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 shadow-sm"
+                      : "rounded-xl border border-transparent px-4 py-3 text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-950"
+                  }
+                  href={buildQueryHref("/notifications", {
+                    status: status === "ALL" ? null : status,
+                    group: tab === "All" ? null : tab.replaceAll(" ", "-")
+                  })}
+                >
+                  <span className="block text-sm font-bold">{tab}</span>
+                  <span className="mt-1 block text-xs font-semibold text-slate-500">
+                    {count} item{count === 1 ? "" : "s"}
+                  </span>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+
+        {visibleNotifications.length === 0 ? (
           <div className="p-5">
             <p className="font-semibold text-slate-900">No notifications found</p>
             <p className="mt-1 text-sm text-slate-600">
@@ -243,7 +422,7 @@ export default async function NotificationsPage({
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {notifications.map((notification) => (
+            {visibleNotifications.map((notification) => (
               <div
                 key={notification.id}
                 data-testid="notification-row"

@@ -97,9 +97,18 @@ describe("stock adjustment controlled workflow rules", () => {
       assertOpeningBalanceIsPostable({
         adjustmentType: "OPENING_BALANCE",
         evidenceReference: "",
+        evidenceRequired: true,
         systemQuantityBaseUom: 0
       })
     ).toThrow("OPENING_BALANCE_EVIDENCE_REQUIRED");
+    expect(() =>
+      assertOpeningBalanceIsPostable({
+        adjustmentType: "OPENING_BALANCE",
+        evidenceReference: "",
+        evidenceRequired: false,
+        systemQuantityBaseUom: 0
+      })
+    ).not.toThrow();
     expect(() =>
       assertOpeningBalanceIsPostable({
         adjustmentType: "OPENING_BALANCE",
@@ -107,6 +116,18 @@ describe("stock adjustment controlled workflow rules", () => {
         systemQuantityBaseUom: 1
       })
     ).toThrow("OPENING_BALANCE_EXISTING_STOCK_ACTIVITY");
+  });
+
+  test("opening balance evidence enforcement reads the configurable DEC-0036 policy", () => {
+    const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
+    const policySource = readFileSync(
+      path.resolve(__dirname, "policySettings.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("getInventoryAdjustmentPolicy");
+    expect(source).toContain("openingBalanceEvidenceRequired");
+    expect(policySource).toContain("inventory.adjustment.opening_balance_evidence_required");
   });
 
   test("submits draft, submitted, or returned adjustments into approval", () => {

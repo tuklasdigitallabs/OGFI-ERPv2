@@ -29,6 +29,14 @@ export type ButtonTone = "primary" | "secondary" | "ghost";
 export type ButtonSize = "sm" | "md" | "lg";
 export type StatusTone = keyof typeof statusBadgeStyles;
 
+export type WorkspaceTabItem = {
+  label: string;
+  href: string;
+  active?: boolean;
+  count?: number;
+  disabled?: boolean;
+};
+
 export function Badge({
   children,
   tone = "neutral",
@@ -187,5 +195,139 @@ export function StatusBadge({
     >
       {children}
     </span>
+  );
+}
+
+export function WorkspaceTabs({
+  items,
+  ariaLabel = "Workspace sections",
+  className
+}: {
+  items: WorkspaceTabItem[];
+  ariaLabel?: string;
+  className?: string;
+}) {
+  return (
+    <nav
+      aria-label={ariaLabel}
+      className={cn(
+        "flex flex-wrap gap-1 rounded-[var(--radius-card)] border border-[var(--color-border-default)] bg-[var(--color-bg-muted)] p-1",
+        className
+      )}
+    >
+      {items.map((item) => {
+        const content = (
+          <>
+            <span className="truncate">{item.label}</span>
+            {typeof item.count === "number" ? (
+              <span
+                className={cn(
+                  "inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-bold",
+                  item.active
+                    ? "bg-[var(--color-bg-surface)] text-[var(--color-action-primary)]"
+                    : "bg-[var(--color-bg-surface)] text-[var(--color-text-muted)]"
+                )}
+              >
+                {item.count}
+              </span>
+            ) : null}
+          </>
+        );
+
+        const className = cn(
+          "inline-flex min-h-8 min-w-0 items-center justify-center gap-2 rounded-[var(--radius-control)] px-3 text-sm font-semibold transition-colors",
+          item.active
+            ? "bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] shadow-[var(--shadow-soft)]"
+            : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-text-primary)]",
+          item.disabled && "pointer-events-none opacity-55"
+        );
+
+        if (item.disabled) {
+          return (
+            <span key={item.label} aria-disabled="true" className={className}>
+              {content}
+            </span>
+          );
+        }
+
+        return (
+          <a
+            key={item.label}
+            aria-current={item.active ? "page" : undefined}
+            className={className}
+            href={item.href}
+          >
+            {content}
+          </a>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function PaginationBar({
+  page,
+  pageSize,
+  totalItems,
+  getPageHref,
+  itemLabel = "records",
+  className
+}: {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  getPageHref: (page: number) => string;
+  itemLabel?: string;
+  className?: string;
+}) {
+  const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(Math.max(1, page), pageCount);
+  const start = totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const end = Math.min(totalItems, safePage * pageSize);
+  const canGoPrevious = safePage > 1;
+  const canGoNext = safePage < pageCount;
+  const buttonClass =
+    "inline-flex min-h-9 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-border-default)] px-3 text-sm font-semibold transition-colors";
+  const enabledClass =
+    "bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] hover:bg-[var(--color-bg-muted)]";
+  const disabledClass =
+    "cursor-not-allowed bg-[var(--color-bg-muted)] text-[var(--color-text-disabled,var(--color-text-muted))] opacity-70";
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 border-t border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+        className
+      )}
+    >
+      <p className="text-sm text-[var(--color-text-secondary)]">
+        Showing <span className="font-semibold text-[var(--color-text-primary)]">{start}-{end}</span>{" "}
+        of <span className="font-semibold text-[var(--color-text-primary)]">{totalItems}</span>{" "}
+        {itemLabel}
+      </p>
+      <div className="flex items-center gap-2">
+        {canGoPrevious ? (
+          <a className={cn(buttonClass, enabledClass)} href={getPageHref(safePage - 1)}>
+            Previous
+          </a>
+        ) : (
+          <span aria-disabled="true" className={cn(buttonClass, disabledClass)}>
+            Previous
+          </span>
+        )}
+        <span className="inline-flex min-h-9 items-center rounded-[var(--radius-control)] px-2 text-sm font-semibold text-[var(--color-text-secondary)]">
+          Page {safePage} of {pageCount}
+        </span>
+        {canGoNext ? (
+          <a className={cn(buttonClass, enabledClass)} href={getPageHref(safePage + 1)}>
+            Next
+          </a>
+        ) : (
+          <span aria-disabled="true" className={cn(buttonClass, disabledClass)}>
+            Next
+          </span>
+        )}
+      </div>
+    </div>
   );
 }

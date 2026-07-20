@@ -11,6 +11,9 @@ const runId = evidenceRunId(process.env, timestamp);
 const trainingFile =
   process.env.RELEASE_TRAINING_EVIDENCE_FILE ??
   "docs/core/08-knowledge-and-enablement/PHASE1_PHASE1_5_TRAINING_IMPACT_ASSESSMENT.md";
+const phase3TrainingFile =
+  process.env.RELEASE_PHASE3_TRAINING_FILE ??
+  "docs/training/phase-3-finance-workforce-controlled-foundation-quick-start.md";
 const hypercareFile =
   process.env.RELEASE_HYPERCARE_EVIDENCE_FILE ??
   "docs/core/07-quality/PHASE1_PHASE1_5_PILOT_HYPERCARE_AND_DEFECT_RUNBOOK.md";
@@ -19,6 +22,7 @@ const outputFile =
   join(evidenceRoot, "enablement-status", `enablement-status-${timestamp}.txt`);
 
 const trainingContent = readFileSync(trainingFile, "utf8");
+const phase3TrainingContent = readFileSync(phase3TrainingFile, "utf8");
 const hypercareContent = readFileSync(hypercareFile, "utf8");
 
 const training = {
@@ -65,6 +69,15 @@ const invalidRows = [
   ...hypercare.roleRows,
   ...hypercare.dailyRows,
 ].flatMap((row) => row.invalidFields);
+const phase3Coverage = [
+  "Phase 3 finance controlled foundation",
+  "Phase 3 workforce controlled foundation",
+  "Phase 3 deferred blocker review",
+].map((label) => ({
+  label,
+  present: phase3TrainingContent.includes(label),
+}));
+const missingPhase3Coverage = phase3Coverage.filter((item) => !item.present);
 const incompleteOwnerSummary = summarizeByOwner([
   ...incompleteTrainingChecklist.map((item) => ({
     ...item,
@@ -85,7 +98,8 @@ const result =
   training.unresolved.tbd === 0 &&
   training.unresolved.unchecked === 0 &&
   hypercare.unresolved.pending === 0 &&
-  hypercare.unresolved.tbd === 0
+  hypercare.unresolved.tbd === 0 &&
+  missingPhase3Coverage.length === 0
     ? "RESULT | PASS | Enablement, training, and hypercare evidence has no unresolved placeholders."
     : "RESULT | WARN | Enablement, training, and hypercare evidence is incomplete; capture attendance, owners, support routes, daily review evidence, and signoff before GO review.";
 
@@ -94,6 +108,7 @@ const lines = [
   `Generated UTC: ${timestamp}`,
   `Evidence run ID: ${runId}`,
   `Training evidence file: ${trainingFile}`,
+  `Phase 3 training quick-start: ${phase3TrainingFile}`,
   `Hypercare evidence file: ${hypercareFile}`,
   "",
   "This report is advisory. It does not conduct training, run hypercare, or approve release.",
@@ -113,6 +128,13 @@ const lines = [
   `Hypercare daily incomplete rows: ${incompleteDailyRows.length}`,
   `Hypercare Pending tokens: ${hypercare.unresolved.pending}`,
   `Hypercare TBD tokens: ${hypercare.unresolved.tbd}`,
+  `Phase 3 training coverage markers: ${phase3Coverage.length - missingPhase3Coverage.length}/${phase3Coverage.length}`,
+  "",
+  "Phase 3 Enablement Coverage",
+  "OWNER | severity=High | owner=Enablement Owner / Finance Owner / Workforce Owner | evidence=Phase 3 training material covers finance foundation, workforce foundation, and deferred blocker review evidence capture",
+  ...phase3Coverage.map((item) =>
+    `${item.present ? "PASS" : "WARN"} | ${item.label} | ${phase3TrainingFile}`,
+  ),
   "",
   "Incomplete Enablement Owner Summary",
   "OWNER | severity=High | owner=Enablement Owner / Operations Owner | evidence=assign each incomplete training, role, support-route, daily review, and signoff row to its named owner",

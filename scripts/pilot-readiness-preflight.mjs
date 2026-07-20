@@ -39,8 +39,17 @@ const thresholdNames = [
   "PILOT_MIN_PROJECT_BLOCKERS",
   "PILOT_MIN_PROJECT_MILESTONES",
   "PILOT_MIN_PROJECT_RISKS",
-  "PILOT_MIN_PROJECT_RECORD_LINKS"
+  "PILOT_MIN_PROJECT_RECORD_LINKS",
+  "PILOT_MIN_UAT_EVIDENCE_RECORDS",
+  "PILOT_MIN_VERIFIED_UAT_EVIDENCE_RECORDS",
+  "PILOT_MIN_DEPLOYMENT_EVIDENCE_RECORDS",
+  "PILOT_MIN_VERIFIED_DEPLOYMENT_EVIDENCE_RECORDS",
+  "PILOT_MIN_ENABLEMENT_EVIDENCE_RECORDS",
+  "PILOT_MIN_VERIFIED_ENABLEMENT_EVIDENCE_RECORDS",
+  "PILOT_MIN_RELEASE_BOARD_DECISIONS"
 ];
+
+const booleanThresholdNames = ["PILOT_REQUIRE_RELEASE_GATES_READY"];
 
 const invalidThresholds = thresholdNames.filter((name) => {
   const raw = process.env[name];
@@ -50,11 +59,16 @@ const invalidThresholds = thresholdNames.filter((name) => {
   const parsed = Number.parseInt(raw, 10);
   return !Number.isFinite(parsed) || parsed < 0;
 });
+const invalidBooleanThresholds = booleanThresholdNames.filter((name) => {
+  const raw = process.env[name];
+  return Boolean(raw) && !["true", "false"].includes(raw.toLowerCase());
+});
 
 const checks = [
   ["DATABASE_URL configured", Boolean(process.env.DATABASE_URL)],
   ["psql available or PSQL_BIN configured", isPostgresToolAvailable("psql")],
-  ["pilot threshold overrides valid", invalidThresholds.length === 0]
+  ["pilot threshold overrides valid", invalidThresholds.length === 0],
+  ["pilot boolean overrides valid", invalidBooleanThresholds.length === 0]
 ];
 
 const missing = checks.filter(([, passed]) => !passed).map(([label]) => label);
@@ -79,6 +93,11 @@ const lines = [
 if (invalidThresholds.length > 0) {
   lines.push(`Invalid threshold override(s): ${invalidThresholds.join(", ")}`);
 }
+if (invalidBooleanThresholds.length > 0) {
+  lines.push(
+    `Invalid boolean override(s): ${invalidBooleanThresholds.join(", ")}; use true or false.`,
+  );
+}
 if (missing.length > 0) {
   lines.push(`Missing prerequisites: ${missing.join(", ")}`);
 }
@@ -90,7 +109,7 @@ console.log(lines.join("\n"));
 console.log(`Pilot readiness preflight evidence written: ${outputFile}`);
 
 function thresholdSnapshot() {
-  return thresholdNames
+  return [...thresholdNames, ...booleanThresholdNames]
     .map((name) => `${name}=${process.env[name] ?? "default"}`)
     .join(",");
 }
