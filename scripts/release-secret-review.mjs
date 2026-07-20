@@ -12,6 +12,10 @@ const highRiskSecretPattern =
   /(BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]+)/;
 const envAssignmentPattern =
   /(DATABASE_URL|DIRECT_DATABASE_URL|S3_SECRET_ACCESS_KEY|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=([^\s]+)/;
+const placeholderEnvValuePattern =
+  /^<[a-z0-9][a-z0-9-]*>(?:["'`,;)}\]]*)$/i;
+const envKeyReferencePattern =
+  /\.(?:startsWith|slice)\(["'`](?:DATABASE_URL|DIRECT_DATABASE_URL|S3_SECRET_ACCESS_KEY|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=["'`](?:\)|\.length)/;
 
 const trackedFiles = execFileSync("git", ["ls-files"], {
   encoding: "utf8",
@@ -58,7 +62,13 @@ for (const file of trackedFiles) {
       findings.push(`${file}:${index + 1}: high-risk secret pattern`);
     }
 
-    if (!allowedEnvTemplates.has(file) && envAssignmentPattern.test(line)) {
+    const envAssignment = line.match(envAssignmentPattern);
+    if (
+      !allowedEnvTemplates.has(file) &&
+      envAssignment &&
+      !placeholderEnvValuePattern.test(envAssignment[2]) &&
+      !envKeyReferencePattern.test(line)
+    ) {
       findings.push(
         `${file}:${index + 1}: environment-style secret assignment`,
       );

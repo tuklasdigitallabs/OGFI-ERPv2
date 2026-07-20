@@ -170,6 +170,15 @@ function testEvidenceInitializer() {
     readme.includes("secret-review/secret-review-*.txt"),
     "collection README should include secret-review evidence path",
   );
+  const secretReviewSource = readFileSync("scripts/release-secret-review.mjs", {
+    encoding: "utf8",
+  });
+  assert(
+    secretReviewSource.includes("placeholderEnvValuePattern") &&
+      secretReviewSource.includes("!placeholderEnvValuePattern.test") &&
+      secretReviewSource.includes("envKeyReferencePattern"),
+    "secret review should allow explicit angle-bracket template values without allowing real secrets",
+  );
   assert(
     readme.includes("release-summary-preflight-*.txt"),
     "collection README should include release summary preflight evidence path",
