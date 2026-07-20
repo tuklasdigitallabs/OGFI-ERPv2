@@ -67,10 +67,10 @@ const checklist = [
   },
   {
     owner: "DBA / Product Owner / Release Manager",
-    action: "Approve or block destructive or unmatched deltas.",
-    command: "Use RELEASE_DATA_SNAPSHOT_ALLOW_DESTRUCTIVE_DELTAS=yes only with a documented waiver.",
-    artifact: "waiver or mitigation ticket referenced in release evidence",
-    acceptance: "No UNMATCHED or MISSING_AFTER delta proceeds without approved mitigation, owner, date, and release decision.",
+    action: "Block destructive, unmatched, or unexplained deltas.",
+    command: "Unexpected negative, missing, or unmatched deltas cannot be bypassed by an environment variable.",
+    artifact: "corrected migration and a fresh exact-SHA rehearsal evidence packet",
+    acceptance: "No destructive, unmatched, or unexplained delta proceeds; correct the migration or baseline and run a new rehearsal.",
   },
   {
     owner: "DBA / Platform Engineering",

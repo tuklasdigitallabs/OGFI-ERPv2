@@ -47,6 +47,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0036-INDUSTRY-STANDARD-CONFIGURABLE-PILOT-DEFAULTS.md`
 - `DEC-0037-PHASE2-RISK-TIERED-OPERATIONS-LIFECYCLE.md`
 - `DEC-0038-CI-PRODUCTION-BASELINE-GATE.md`
+- `DEC-0039-MIGRATION-DATA-SAFETY-VERIFICATION-GATE.md`
 
 ## Suggested future decision records
 

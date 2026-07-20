@@ -3890,6 +3890,192 @@ async function seedWorkforceDemoData() {
   }
 }
 
+async function seedProjectMigrationRehearsalData() {
+  const projectId = "10000000-0000-4000-8000-000000009001";
+  const taskId = "10000000-0000-4000-8000-000000009002";
+  const requirementId = "10000000-0000-4000-8000-000000009003";
+  const attachmentId = "10000000-0000-4000-8000-000000009004";
+  const projectAttachmentId = "10000000-0000-4000-8000-000000009005";
+  const recordLinkId = "10000000-0000-4000-8000-000000009006";
+  const department = await prisma.department.findFirstOrThrow({
+    where: { tenantId: ids.tenantId, companyId: ids.companyId },
+    select: { id: true },
+  });
+  const costCenter = await prisma.costCenter.upsert({
+    where: { id: "10000000-0000-4000-8000-000000009007" },
+    create: {
+      id: "10000000-0000-4000-8000-000000009007",
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      departmentId: department.id,
+      code: "MIGRATION-REHEARSAL",
+      name: "Migration Rehearsal Cost Center",
+    },
+    update: {
+      departmentId: department.id,
+      status: "ACTIVE",
+    },
+    select: { id: true },
+  });
+
+  await prisma.project.upsert({
+    where: { id: projectId },
+    create: {
+      id: projectId,
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      code: "MIGRATION-REHEARSAL",
+      name: "Migration safety rehearsal fixture",
+      status: "ACTIVE",
+      projectType: "ERP_IMPLEMENTATION",
+      brandId: ids.brandId,
+      locationId: ids.locationId,
+      departmentId: department.id,
+      costCenterId: costCenter.id,
+      sponsorUserId: ids.approverUserId,
+      managerUserId: ids.adminUserId,
+      isRestricted: true,
+      description:
+        "Representative scoped project used by the disposable migration-safety rehearsal.",
+      createdByUserId: ids.adminUserId,
+      updatedByUserId: ids.adminUserId,
+    },
+    update: {
+      brandId: ids.brandId,
+      locationId: ids.locationId,
+      departmentId: department.id,
+      costCenterId: costCenter.id,
+      sponsorUserId: ids.approverUserId,
+      managerUserId: ids.adminUserId,
+      status: "ACTIVE",
+      updatedByUserId: ids.adminUserId,
+    },
+  });
+
+  await prisma.projectTask.upsert({
+    where: { id: taskId },
+    create: {
+      id: taskId,
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      projectId,
+      taskKey: "MIGRATION-SAFETY-001",
+      title: "Verify scoped project requirement migration",
+      status: "IN_PROGRESS",
+      priority: "HIGH",
+      ownerUserId: ids.adminUserId,
+      createdByUserId: ids.adminUserId,
+      updatedByUserId: ids.adminUserId,
+    },
+    update: {
+      projectId,
+      ownerUserId: ids.adminUserId,
+      status: "IN_PROGRESS",
+      updatedByUserId: ids.adminUserId,
+    },
+  });
+
+  await prisma.projectRequirement.upsert({
+    where: { id: requirementId },
+    create: {
+      id: requirementId,
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      projectId,
+      taskId,
+      kind: "EVIDENCE",
+      code: "MIGRATION-SAFETY-EVIDENCE",
+      label: "Scoped migration evidence",
+      evidenceType: "DATABASE_REHEARSAL",
+      evidenceNote: "Fixture proves composite project and task scope survives upgrade.",
+      ownerUserId: ids.adminUserId,
+      reviewerUserId: ids.approverUserId,
+      status: "SUBMITTED",
+      submittedAt: new Date("2026-07-21T00:00:00.000Z"),
+      submittedByUserId: ids.adminUserId,
+      createdByUserId: ids.adminUserId,
+      updatedByUserId: ids.adminUserId,
+    },
+    update: {
+      projectId,
+      taskId,
+      ownerUserId: ids.adminUserId,
+      reviewerUserId: ids.approverUserId,
+      status: "SUBMITTED",
+      updatedByUserId: ids.adminUserId,
+    },
+  });
+
+  await prisma.attachment.upsert({
+    where: { id: attachmentId },
+    create: {
+      id: attachmentId,
+      tenantId: ids.tenantId,
+      storageProvider: "REHEARSAL_FIXTURE",
+      objectKey: "migration-safety/scoped-requirement-evidence.txt",
+      originalFilename: "scoped-requirement-evidence.txt",
+      mimeType: "text/plain",
+      sizeBytes: 64,
+      checksum: "migration-rehearsal-fixture",
+      uploadedByUserId: ids.adminUserId,
+    },
+    update: {
+      objectKey: "migration-safety/scoped-requirement-evidence.txt",
+      checksum: "migration-rehearsal-fixture",
+      status: "ACTIVE",
+    },
+  });
+
+  await prisma.projectAttachment.upsert({
+    where: { id: projectAttachmentId },
+    create: {
+      id: projectAttachmentId,
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      projectId,
+      taskId,
+      requirementId,
+      attachmentId,
+      purpose: "EVIDENCE",
+      caption: "Scoped requirement migration rehearsal evidence",
+      createdByUserId: ids.adminUserId,
+    },
+    update: {
+      projectId,
+      taskId,
+      requirementId,
+      attachmentId,
+      status: "ACTIVE",
+    },
+  });
+
+  await prisma.projectRecordLink.upsert({
+    where: { id: recordLinkId },
+    create: {
+      id: recordLinkId,
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      projectId,
+      taskId,
+      requirementId,
+      sourceRecordType: "INVENTORY_BALANCE",
+      sourceRecordId: requirementId,
+      relationType: "EVIDENCE_FOR",
+      linkLabel: "Migration safety requirement",
+      createdByUserId: ids.adminUserId,
+      updatedByUserId: ids.adminUserId,
+    },
+    update: {
+      projectId,
+      taskId,
+      requirementId,
+      sourceRecordId: requirementId,
+      archivedAt: null,
+      updatedByUserId: ids.adminUserId,
+    },
+  });
+}
+
 const demoBranchLocations = [
   {
     id: ids.locationId,
@@ -4017,6 +4203,7 @@ async function resetDemoData() {
   await prisma.projectRisk.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.projectBlocker.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.projectAttachment.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.projectRequirement.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.projectComment.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.projectTaskChecklistItem.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.projectTaskAssignee.deleteMany({ where: { companyId: ids.companyId } });
@@ -7070,6 +7257,7 @@ async function main() {
   await seedBankCashDemoData();
   await seedPaymentReleaseDemoData();
   await seedWorkforceDemoData();
+  await seedProjectMigrationRehearsalData();
 
   await prisma.role.upsert({
     where: {

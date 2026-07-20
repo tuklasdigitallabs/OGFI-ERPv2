@@ -23,6 +23,8 @@ const outputFile =
   join(outputDir, `data-snapshot-delta-${timestamp}.txt`);
 const allowDestructiveDeltas =
   process.env.RELEASE_DATA_SNAPSHOT_ALLOW_DESTRUCTIVE_DELTAS === "yes";
+const requireUnchanged =
+  process.env.RELEASE_DATA_SNAPSHOT_REQUIRE_UNCHANGED === "yes";
 
 const beforeSnapshot = parseSnapshot(beforeFile);
 const afterSnapshot = parseSnapshot(afterFile);
@@ -33,6 +35,9 @@ const tables = [...new Set([...before.keys(), ...after.keys()])].sort();
 mkdirSync(dirname(outputFile), { recursive: true });
 
 const contractFailures = [];
+if (allowDestructiveDeltas) {
+  contractFailures.push("destructive-delta environment overrides are not permitted");
+}
 if (resolve(beforeFile) === resolve(afterFile)) {
   contractFailures.push("before and after snapshots must be different files");
 }
@@ -68,6 +73,17 @@ if (
 ) {
   contractFailures.push("before and after snapshots must use the same database fingerprint");
 }
+for (const field of ["candidateSha", "predecessorSha"]) {
+  const beforeValue = beforeSnapshot[field];
+  const afterValue = afterSnapshot[field];
+  if (beforeValue !== "not-recorded" || afterValue !== "not-recorded") {
+    if (!/^[a-f0-9]{40}$/i.test(beforeValue) || !/^[a-f0-9]{40}$/i.test(afterValue)) {
+      contractFailures.push(`${field} must be a full 40-character SHA in both snapshots`);
+    } else if (beforeValue !== afterValue) {
+      contractFailures.push(`before and after snapshots must use the same ${field}`);
+    }
+  }
+}
 
 if (contractFailures.length > 0) {
   console.error(`Snapshot comparison input is invalid: ${contractFailures.join(", ")}`);
@@ -79,6 +95,8 @@ const lines = [
   `Generated UTC: ${timestamp}`,
   `Before evidence run ID: ${beforeSnapshot.evidenceRunId}`,
   `After evidence run ID: ${afterSnapshot.evidenceRunId}`,
+  `Candidate SHA: ${beforeSnapshot.candidateSha}`,
+  `Predecessor SHA: ${beforeSnapshot.predecessorSha}`,
   `Before database fingerprint: ${beforeSnapshot.databaseFingerprint}`,
   `After database fingerprint: ${afterSnapshot.databaseFingerprint}`,
   `Before: ${beforeFile}`,
@@ -86,6 +104,7 @@ const lines = [
   `After: ${afterFile}`,
   `After label: ${afterSnapshot.label}`,
   `Allow destructive deltas: ${allowDestructiveDeltas ? "yes" : "no"}`,
+  `Require unchanged snapshots: ${requireUnchanged ? "yes" : "no"}`,
   "",
   "Table | Before | After | Delta",
 ];
@@ -98,11 +117,15 @@ for (const table of tables) {
   const afterValue = after.get(table);
   const delta = computeDelta(beforeValue, afterValue);
 
-  if (delta !== "0") {
+  if (delta !== 0 && delta !== "0") {
     changedTables += 1;
   }
 
-  if (delta === "MISSING_AFTER" || delta === "UNMATCHED") {
+  if (
+    delta === "MISSING_AFTER" ||
+    delta === "UNMATCHED" ||
+    (typeof delta === "number" && (delta < 0 || (requireUnchanged && delta !== 0)))
+  ) {
     blockingDeltas += 1;
   }
 
@@ -111,10 +134,30 @@ for (const table of tables) {
   );
 }
 
-lines.push("");
-if (blockingDeltas > 0 && !allowDestructiveDeltas) {
+const digestTables = [
+  ...new Set([...beforeSnapshot.digests.keys(), ...afterSnapshot.digests.keys()]),
+].sort();
+if (
+  (beforeSnapshot.digests.size > 0 || afterSnapshot.digests.size > 0) &&
+  beforeSnapshot.digests.size !== afterSnapshot.digests.size
+) {
+  blockingDeltas += 1;
+}
+lines.push("", "Table content digest | Before | After | Result");
+for (const table of digestTables) {
+  const beforeDigest = beforeSnapshot.digests.get(table);
+  const afterDigest = afterSnapshot.digests.get(table);
+  const matches = Boolean(beforeDigest) && beforeDigest === afterDigest;
+  if (!matches) blockingDeltas += 1;
   lines.push(
-    `RESULT | FAIL | Snapshot delta found ${blockingDeltas} destructive or unmatched table delta(s). Review before release approval or set RELEASE_DATA_SNAPSHOT_ALLOW_DESTRUCTIVE_DELTAS=yes only with approved migration evidence.`,
+    `${table} | ${beforeDigest ?? "MISSING"} | ${afterDigest ?? "MISSING"} | ${matches ? "MATCH" : "MISMATCH"}`,
+  );
+}
+
+lines.push("");
+if (blockingDeltas > 0) {
+  lines.push(
+    `RESULT | FAIL | Snapshot delta found ${blockingDeltas} destructive, unmatched, or disallowed changed table delta(s).`,
   );
 } else {
   lines.push(
@@ -125,12 +168,13 @@ if (blockingDeltas > 0 && !allowDestructiveDeltas) {
 writeFileSync(outputFile, `${lines.join("\n")}\n`);
 console.log(lines.join("\n"));
 
-if (blockingDeltas > 0 && !allowDestructiveDeltas) {
+if (blockingDeltas > 0) {
   process.exit(1);
 }
 
 function parseSnapshot(filePath) {
   const map = new Map();
+  const digests = new Map();
   const content = readFileSync(filePath, "utf8");
   const label = /^Label: (.+)$/m.exec(content)?.[1]?.trim();
   const evidenceRunId =
@@ -138,6 +182,10 @@ function parseSnapshot(filePath) {
   const databaseFingerprint =
     /^Database URL fingerprint: (.+)$/m.exec(content)?.[1]?.trim() ??
     "not-recorded";
+  const candidateSha =
+    /^Candidate SHA: (.+)$/m.exec(content)?.[1]?.trim() ?? "not-recorded";
+  const predecessorSha =
+    /^Predecessor SHA: (.+)$/m.exec(content)?.[1]?.trim() ?? "not-recorded";
   const failedChecks = [
     [
       "snapshot header present",
@@ -157,6 +205,11 @@ function parseSnapshot(filePath) {
   }
 
   for (const line of content.split(/\r?\n/)) {
+    const digestMatch = /^DIGEST ([A-Za-z][A-Za-z0-9]*) \| ([a-f0-9]{32})$/.exec(line);
+    if (digestMatch) {
+      digests.set(digestMatch[1], digestMatch[2]);
+      continue;
+    }
     const match = /^([A-Za-z][A-Za-z0-9]*) \| ([0-9]+|MISSING)$/.exec(line);
     if (!match) {
       continue;
@@ -170,12 +223,20 @@ function parseSnapshot(filePath) {
     process.exit(2);
   }
 
-  return { counts: map, label, evidenceRunId, databaseFingerprint };
+  return {
+    counts: map,
+    digests,
+    label,
+    evidenceRunId,
+    databaseFingerprint,
+    candidateSha,
+    predecessorSha,
+  };
 }
 
 function computeDelta(beforeValue, afterValue) {
   if (typeof beforeValue === "number" && typeof afterValue === "number") {
-    return String(afterValue - beforeValue);
+    return afterValue - beforeValue;
   }
 
   if (beforeValue === undefined || afterValue === undefined) {

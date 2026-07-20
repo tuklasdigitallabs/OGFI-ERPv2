@@ -1644,7 +1644,7 @@ model UserScopeAssignment {
 }
 
 model HighRiskScopeRequest {
-  id                String      @id @default(uuid()) @db.Uuid
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String      @db.Uuid
   companyId         String      @db.Uuid
   targetUserId      String      @db.Uuid
@@ -1658,7 +1658,7 @@ model HighRiskScopeRequest {
   reviewReason      String?
   createdAt         DateTime    @default(now())
   reviewedAt        DateTime?
-  updatedAt         DateTime    @updatedAt
+  updatedAt         DateTime    @default(now()) @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id])
   company           Company     @relation(fields: [companyId], references: [id])
   targetUser        User        @relation("HighRiskScopeRequestTargetUser", fields: [targetUserId], references: [id])
@@ -1672,7 +1672,7 @@ model HighRiskScopeRequest {
 }
 
 model SensitiveRoleRequest {
-  id                String    @id @default(uuid()) @db.Uuid
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String    @db.Uuid
   companyId         String    @db.Uuid
   targetUserId      String    @db.Uuid
@@ -1685,7 +1685,7 @@ model SensitiveRoleRequest {
   reviewReason      String?
   createdAt         DateTime  @default(now())
   reviewedAt        DateTime?
-  updatedAt         DateTime  @updatedAt
+  updatedAt         DateTime  @default(now()) @updatedAt
   tenant            Tenant    @relation(fields: [tenantId], references: [id])
   company           Company   @relation(fields: [companyId], references: [id])
   targetUser        User      @relation("SensitiveRoleRequestTargetUser", fields: [targetUserId], references: [id])
@@ -1699,7 +1699,7 @@ model SensitiveRoleRequest {
 }
 
 model BreakGlassAccessGrant {
-  id                          String      @id @default(uuid()) @db.Uuid
+  id                          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                    String      @db.Uuid
   companyId                   String      @db.Uuid
   targetUserId                String      @db.Uuid
@@ -1723,7 +1723,7 @@ model BreakGlassAccessGrant {
   postReviewEvidenceReference String?
   postReviewedAt              DateTime?
   createdAt                   DateTime    @default(now())
-  updatedAt                   DateTime    @updatedAt
+  updatedAt                   DateTime    @default(now()) @updatedAt
   tenant                      Tenant      @relation(fields: [tenantId], references: [id])
   company                     Company     @relation(fields: [companyId], references: [id])
   targetUser                  User        @relation("BreakGlassAccessGrantTargetUser", fields: [targetUserId], references: [id])
@@ -1740,7 +1740,7 @@ model BreakGlassAccessGrant {
 }
 
 model PrivilegedMfaEnrollment {
-  id                String    @id @default(uuid()) @db.Uuid
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String    @db.Uuid
   companyId         String    @db.Uuid
   targetUserId      String    @db.Uuid
@@ -1759,7 +1759,7 @@ model PrivilegedMfaEnrollment {
   revokedAt         DateTime?
   sourceDecisionId  String    @default("DEC-0036")
   createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  updatedAt         DateTime  @default(now()) @updatedAt
   tenant            Tenant    @relation(fields: [tenantId], references: [id])
   company           Company   @relation(fields: [companyId], references: [id])
   targetUser        User      @relation("PrivilegedMfaEnrollmentTargetUser", fields: [targetUserId], references: [id])
@@ -1773,7 +1773,7 @@ model PrivilegedMfaEnrollment {
 }
 
 model AuthSessionInvalidation {
-  id                String    @id @default(uuid()) @db.Uuid
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String    @db.Uuid
   companyId         String?   @db.Uuid
   targetUserId      String    @db.Uuid
@@ -1787,7 +1787,7 @@ model AuthSessionInvalidation {
   providerReference String?
   completedAt       DateTime?
   createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  updatedAt         DateTime  @default(now()) @updatedAt
   tenant            Tenant    @relation(fields: [tenantId], references: [id])
   company           Company?  @relation(fields: [companyId], references: [id])
   targetUser        User      @relation("AuthSessionInvalidationTargetUser", fields: [targetUserId], references: [id])
@@ -1799,7 +1799,7 @@ model AuthSessionInvalidation {
 }
 
 model ProjectTemplate {
-  id                    String                @id @default(uuid()) @db.Uuid
+  id                    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId              String                @db.Uuid
   companyId             String                @db.Uuid
   code                  String
@@ -1822,23 +1822,23 @@ model ProjectTemplate {
   updatedAt             DateTime              @updatedAt
   tenant                Tenant                @relation(fields: [tenantId], references: [id])
   company               Company               @relation(fields: [companyId], references: [id])
-  sourceTemplate        ProjectTemplate?      @relation("ProjectTemplateRevisionSource", fields: [sourceTemplateId], references: [id])
+  sourceTemplate        ProjectTemplate?      @relation("ProjectTemplateRevisionSource", fields: [sourceTemplateId], references: [id], onDelete: Restrict)
   derivedRevisions      ProjectTemplate[]     @relation("ProjectTemplateRevisionSource")
-  lineageRootTemplate   ProjectTemplate?      @relation("ProjectTemplateLineageRoot", fields: [lineageRootTemplateId], references: [id])
+  lineageRootTemplate   ProjectTemplate?      @relation("ProjectTemplateLineageRoot", fields: [lineageRootTemplateId], references: [id], onDelete: Restrict)
   lineageRevisions      ProjectTemplate[]     @relation("ProjectTemplateLineageRoot")
   createdBy             User                  @relation("ProjectTemplateCreator", fields: [createdByUserId], references: [id])
   updatedBy             User                  @relation("ProjectTemplateUpdater", fields: [updatedByUserId], references: [id])
   projects              Project[]
 
   @@unique([companyId, code])
-  @@unique([companyId, lineageRootTemplateId, revisionNumber])
+  @@unique([companyId, lineageRootTemplateId, revisionNumber], map: "ProjectTemplate_companyId_lineageRootTemplateId_revisionNumber_")
   @@index([tenantId, companyId, status])
-  @@index([tenantId, companyId, lineageRootTemplateId, revisionNumber])
+  @@index([tenantId, companyId, lineageRootTemplateId, revisionNumber], map: "ProjectTemplate_tenantId_companyId_lineageRootTemplateId_revisi")
   @@index([sourceTemplateId])
 }
 
 model Project {
-  id                   String                     @id @default(uuid()) @db.Uuid
+  id                   String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId             String                     @db.Uuid
   companyId            String                     @db.Uuid
   templateId           String?                    @db.Uuid
@@ -1873,10 +1873,10 @@ model Project {
   tenant               Tenant                     @relation(fields: [tenantId], references: [id])
   company              Company                    @relation(fields: [companyId], references: [id])
   template             ProjectTemplate?           @relation(fields: [templateId], references: [id])
-  brand                Brand?                     @relation(fields: [brandId, tenantId, companyId], references: [id, tenantId, companyId])
-  location             Location?                  @relation(fields: [locationId, tenantId, companyId], references: [id, tenantId, companyId])
-  department           Department?                @relation(fields: [departmentId, tenantId, companyId], references: [id, tenantId, companyId])
-  costCenter           CostCenter?                @relation(fields: [costCenterId, tenantId, companyId], references: [id, tenantId, companyId])
+  brand                Brand?                     @relation(fields: [brandId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict)
+  location             Location?                  @relation(fields: [locationId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict)
+  department           Department?                @relation(fields: [departmentId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict)
+  costCenter           CostCenter?                @relation(fields: [costCenterId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict)
   sponsor              User                       @relation("ProjectSponsor", fields: [sponsorUserId], references: [id])
   manager              User                       @relation("ProjectManager", fields: [managerUserId], references: [id])
   archivedBy           User?                      @relation("ProjectArchiver", fields: [archivedByUserId], references: [id])
@@ -1908,7 +1908,7 @@ model Project {
 }
 
 model ProjectMember {
-  id              String            @id @default(uuid()) @db.Uuid
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId        String            @db.Uuid
   companyId       String            @db.Uuid
   projectId       String            @db.Uuid
@@ -1934,7 +1934,7 @@ model ProjectMember {
 }
 
 model ProjectActivityEvent {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId      String   @db.Uuid
   companyId     String   @db.Uuid
   projectId     String   @db.Uuid
@@ -1954,13 +1954,13 @@ model ProjectActivityEvent {
   project       Project  @relation(fields: [projectId], references: [id])
   actor         User     @relation("ProjectActivityActor", fields: [actorUserId], references: [id])
 
-  @@index([tenantId, companyId, projectId, occurredAt])
-  @@index([tenantId, entityType, entityId, occurredAt])
+  @@index([tenantId, companyId, projectId, occurredAt], map: "ProjectActivityEvent_tenantId_companyId_projectId_occurredAt_id")
+  @@index([tenantId, entityType, entityId, occurredAt], map: "ProjectActivityEvent_tenantId_entityType_entityId_occurredAt_id")
   @@index([actorUserId, occurredAt])
 }
 
 model ProjectTask {
-  id                   String                     @id @default(uuid()) @db.Uuid
+  id                   String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId             String                     @db.Uuid
   companyId            String                     @db.Uuid
   projectId            String                     @db.Uuid
@@ -2021,7 +2021,7 @@ model ProjectTask {
 }
 
 model ProjectTaskAssignee {
-  id               String       @id @default(uuid()) @db.Uuid
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String       @db.Uuid
   companyId        String       @db.Uuid
   projectId        String       @db.Uuid
@@ -2048,7 +2048,7 @@ model ProjectTaskAssignee {
 }
 
 model ProjectTaskChecklistItem {
-  id                String      @id @default(uuid()) @db.Uuid
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String      @db.Uuid
   companyId         String      @db.Uuid
   projectId         String      @db.Uuid
@@ -2067,17 +2067,17 @@ model ProjectTaskChecklistItem {
   tenant            Tenant      @relation(fields: [tenantId], references: [id])
   company           Company     @relation(fields: [companyId], references: [id])
   project           Project     @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
-  task              ProjectTask @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  task              ProjectTask @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId], map: "ProjectTaskChecklistItem_taskId_tenantId_companyId_projectId_fk")
   completedBy       User?       @relation("ProjectChecklistCompleter", fields: [completedByUserId], references: [id])
   createdBy         User        @relation("ProjectChecklistCreator", fields: [createdByUserId], references: [id])
   updatedBy         User        @relation("ProjectChecklistUpdater", fields: [updatedByUserId], references: [id])
 
   @@unique([taskId, position])
-  @@index([tenantId, companyId, projectId, taskId])
+  @@index([tenantId, companyId, projectId, taskId], map: "ProjectTaskChecklistItem_tenantId_companyId_projectId_taskId_id")
 }
 
 model ProjectComment {
-  id               String              @id @default(uuid()) @db.Uuid
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String              @db.Uuid
   companyId        String              @db.Uuid
   projectId        String              @db.Uuid
@@ -2101,12 +2101,12 @@ model ProjectComment {
   archivedBy       User?               @relation("ProjectCommentArchiver", fields: [archivedByUserId], references: [id])
   attachments      ProjectAttachment[]
 
-  @@index([tenantId, companyId, projectId, taskId, createdAt])
+  @@index([tenantId, companyId, projectId, taskId, createdAt], map: "ProjectComment_tenantId_companyId_projectId_taskId_createdAt_id")
   @@index([authorUserId, createdAt])
 }
 
 model ProjectAttachment {
-  id               String          @id @default(uuid()) @db.Uuid
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String          @db.Uuid
   companyId        String          @db.Uuid
   projectId        String          @db.Uuid
@@ -2127,8 +2127,8 @@ model ProjectAttachment {
   company          Company         @relation(fields: [companyId], references: [id])
   project          Project         @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
   task             ProjectTask?    @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
-  comment          ProjectComment? @relation(fields: [commentId], references: [id])
-  requirement      ProjectRequirement? @relation("ProjectRequirementAttachments", fields: [requirementId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  comment          ProjectComment?     @relation(fields: [commentId], references: [id], onDelete: Restrict)
+  requirement      ProjectRequirement? @relation("ProjectRequirementAttachments", fields: [requirementId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId], onDelete: Restrict, map: "ProjectAttachment_requirementId_tenantId_companyId_projectId_fk")
   attachment       Attachment      @relation(fields: [attachmentId], references: [id])
   createdBy        User            @relation("ProjectAttachmentCreator", fields: [createdByUserId], references: [id])
   archivedBy       User?           @relation("ProjectAttachmentArchiver", fields: [archivedByUserId], references: [id])
@@ -2141,7 +2141,7 @@ model ProjectAttachment {
 }
 
 model ProjectBlocker {
-  id               String                 @id @default(uuid()) @db.Uuid
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String                 @db.Uuid
   companyId        String                 @db.Uuid
   projectId        String                 @db.Uuid
@@ -2173,7 +2173,7 @@ model ProjectBlocker {
 }
 
 model ProjectMilestone {
-  id                String                  @id @default(uuid()) @db.Uuid
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String                  @db.Uuid
   companyId         String                  @db.Uuid
   projectId         String                  @db.Uuid
@@ -2216,7 +2216,7 @@ model ProjectMilestone {
 }
 
 model ProjectRisk {
-  id                   String            @id @default(uuid()) @db.Uuid
+  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId             String            @db.Uuid
   companyId            String            @db.Uuid
   projectId            String            @db.Uuid
@@ -2250,7 +2250,7 @@ model ProjectRisk {
   task                 ProjectTask?      @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
   milestone            ProjectMilestone? @relation(fields: [milestoneId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
   owner                User              @relation("ProjectRiskOwner", fields: [ownerUserId], references: [id])
-  resolvedBy           User?             @relation("ProjectRiskResolver", fields: [resolvedByUserId], references: [id])
+  resolvedBy           User?             @relation("ProjectRiskResolver", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
   createdBy            User              @relation("ProjectRiskCreator", fields: [createdByUserId], references: [id])
   updatedBy            User              @relation("ProjectRiskUpdater", fields: [updatedByUserId], references: [id])
 
@@ -2264,7 +2264,7 @@ model ProjectRisk {
 }
 
 model ProjectRecordLink {
-  id               String            @id @default(uuid()) @db.Uuid
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String            @db.Uuid
   companyId        String            @db.Uuid
   projectId        String            @db.Uuid
@@ -2287,22 +2287,22 @@ model ProjectRecordLink {
   project          Project           @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
   task             ProjectTask?      @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
   milestone        ProjectMilestone? @relation(fields: [milestoneId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
-  requirement      ProjectRequirement? @relation("ProjectRequirementRecordLinks", fields: [requirementId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  requirement      ProjectRequirement? @relation("ProjectRequirementRecordLinks", fields: [requirementId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId], onDelete: Restrict, map: "ProjectRecordLink_requirementId_tenantId_companyId_projectId_fk")
   createdBy        User              @relation("ProjectRecordLinkCreator", fields: [createdByUserId], references: [id])
   updatedBy        User              @relation("ProjectRecordLinkUpdater", fields: [updatedByUserId], references: [id])
   archivedBy       User?             @relation("ProjectRecordLinkArchiver", fields: [archivedByUserId], references: [id])
 
   @@unique([id, tenantId, companyId, projectId])
   @@index([tenantId, companyId, projectId, archivedAt])
-  @@index([tenantId, companyId, projectId, taskId, archivedAt])
-  @@index([tenantId, companyId, projectId, milestoneId, archivedAt])
-  @@index([tenantId, companyId, projectId, requirementId, archivedAt])
-  @@index([tenantId, companyId, sourceRecordType, sourceRecordId])
+  @@index([tenantId, companyId, projectId, taskId, archivedAt], map: "ProjectRecordLink_tenantId_companyId_projectId_taskId_archivedA")
+  @@index([tenantId, companyId, projectId, milestoneId, archivedAt], map: "ProjectRecordLink_tenantId_companyId_projectId_milestoneId_arch")
+  @@index([tenantId, companyId, projectId, requirementId, archivedAt], map: "ProjectRecordLink_tenantId_companyId_projectId_requirementId_ar")
+  @@index([tenantId, companyId, sourceRecordType, sourceRecordId], map: "ProjectRecordLink_tenantId_companyId_sourceRecordType_sourceRec")
   @@index([createdByUserId, createdAt])
 }
 
 model ProjectRequirement {
-  id                   String                   @id @default(uuid()) @db.Uuid
+  id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId             String                   @db.Uuid
   companyId            String                   @db.Uuid
   projectId            String                   @db.Uuid
@@ -2330,8 +2330,8 @@ model ProjectRequirement {
   updatedAt            DateTime                 @updatedAt
   tenant               Tenant                   @relation(fields: [tenantId], references: [id])
   company              Company                  @relation(fields: [companyId], references: [id])
-  project              Project                  @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
-  task                 ProjectTask?             @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  project           Project                  @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId], map: "ProjectRequirement_projectId_tenantId_companyId_fkey")
+  task              ProjectTask?             @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId], onDelete: Restrict, map: "ProjectRequirement_taskId_tenantId_companyId_projectId_fkey")
   owner                User                     @relation("ProjectRequirementOwner", fields: [ownerUserId], references: [id])
   reviewer             User?                    @relation("ProjectRequirementReviewer", fields: [reviewerUserId], references: [id])
   submittedBy          User?                    @relation("ProjectRequirementSubmitter", fields: [submittedByUserId], references: [id])
@@ -2349,7 +2349,7 @@ model ProjectRequirement {
 }
 
 model Supplier {
-  id                  String                       @id @default(uuid()) @db.Uuid
+  id                  String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String                       @db.Uuid
   companyId           String                       @db.Uuid
   supplierCode        String
@@ -2360,9 +2360,9 @@ model Supplier {
   accreditationStatus SupplierAccreditationStatus  @default(PENDING_REVIEW)
   paymentTerms        String?
   createdAt           DateTime                     @default(now())
-  updatedAt           DateTime                     @updatedAt
-  tenant              Tenant                       @relation(fields: [tenantId], references: [id])
-  company             Company                      @relation(fields: [companyId], references: [id])
+  updatedAt           DateTime                     @default(now()) @updatedAt
+  tenant              Tenant                       @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company             Company                      @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   contacts            SupplierContact[]
   itemLinks           SupplierItemLink[]
   priceHistory        SupplierPriceHistory[]
@@ -2385,7 +2385,7 @@ model Supplier {
 }
 
 model SupplierContact {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   supplierId String   @db.Uuid
   name       String
   role       String?
@@ -2393,13 +2393,13 @@ model SupplierContact {
   phone      String?
   isPrimary  Boolean  @default(false)
   createdAt  DateTime @default(now())
-  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([supplierId, isPrimary])
 }
 
 model ItemCategory {
-  id                          String         @id @default(uuid()) @db.Uuid
+  id                          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                    String         @db.Uuid
   companyId                   String         @db.Uuid
   parentId                    String?        @db.Uuid
@@ -2411,10 +2411,10 @@ model ItemCategory {
   defaultWastageRequiresPhoto Boolean        @default(false)
   status                      RecordStatus   @default(ACTIVE)
   createdAt                   DateTime       @default(now())
-  updatedAt                   DateTime       @updatedAt
-  tenant                      Tenant         @relation(fields: [tenantId], references: [id])
-  company                     Company        @relation(fields: [companyId], references: [id])
-  parent                      ItemCategory?  @relation("ItemCategoryHierarchy", fields: [parentId], references: [id])
+  updatedAt                   DateTime       @default(now()) @updatedAt
+  tenant                      Tenant         @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company                     Company        @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parent                      ItemCategory?  @relation("ItemCategoryHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   children                    ItemCategory[] @relation("ItemCategoryHierarchy")
   items                       Item[]
 
@@ -2423,7 +2423,7 @@ model ItemCategory {
 }
 
 model Uom {
-  id                            String                         @id @default(uuid()) @db.Uuid
+  id                            String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                      String                         @db.Uuid
   companyId                     String                         @db.Uuid
   uomCode                       String
@@ -2432,9 +2432,9 @@ model Uom {
   decimalPrecision              Int                            @default(0)
   status                        RecordStatus                   @default(ACTIVE)
   createdAt                     DateTime                       @default(now())
-  updatedAt                     DateTime                       @updatedAt
-  tenant                        Tenant                         @relation(fields: [tenantId], references: [id])
-  company                       Company                        @relation(fields: [companyId], references: [id])
+  updatedAt                     DateTime                       @default(now()) @updatedAt
+  tenant                        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company                       Company                        @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   baseItems                     Item[]                         @relation("BaseUom")
   purchaseItems                 Item[]                         @relation("PurchaseUom")
   issueItems                    Item[]                         @relation("IssueUom")
@@ -2463,7 +2463,7 @@ model Uom {
 }
 
 model Item {
-  id                            String                         @id @default(uuid()) @db.Uuid
+  id                            String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                      String                         @db.Uuid
   companyId                     String                         @db.Uuid
   itemCode                      String
@@ -2479,13 +2479,13 @@ model Item {
   requiresReceivingInspection   Boolean                        @default(false)
   status                        RecordStatus                   @default(ACTIVE)
   createdAt                     DateTime                       @default(now())
-  updatedAt                     DateTime                       @updatedAt
-  tenant                        Tenant                         @relation(fields: [tenantId], references: [id])
-  company                       Company                        @relation(fields: [companyId], references: [id])
-  category                      ItemCategory                   @relation(fields: [itemCategoryId], references: [id])
-  baseUom                       Uom                            @relation("BaseUom", fields: [baseUomId], references: [id])
-  purchaseUom                   Uom?                           @relation("PurchaseUom", fields: [purchaseUomId], references: [id])
-  issueUom                      Uom?                           @relation("IssueUom", fields: [issueUomId], references: [id])
+  updatedAt                     DateTime                       @default(now()) @updatedAt
+  tenant                        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  company                       Company                        @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  category                      ItemCategory                   @relation(fields: [itemCategoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  baseUom                       Uom                            @relation("BaseUom", fields: [baseUomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchaseUom                   Uom?                           @relation("PurchaseUom", fields: [purchaseUomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  issueUom                      Uom?                           @relation("IssueUom", fields: [issueUomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   uomConversions                ItemUomConversion[]
   purchaseRequestLines          PurchaseRequestLine[]
   supplierItemLinks             SupplierItemLink[]
@@ -2507,16 +2507,16 @@ model Item {
 }
 
 model ItemUomConversion {
-  id               String   @id @default(uuid()) @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   itemId           String   @db.Uuid
   fromUomId        String   @db.Uuid
   toUomId          String   @db.Uuid
   conversionFactor Decimal  @db.Decimal(18, 6)
   roundingRule     String
   createdAt        DateTime @default(now())
-  item             Item     @relation(fields: [itemId], references: [id])
-  fromUom          Uom      @relation("ConversionFromUom", fields: [fromUomId], references: [id])
-  toUom            Uom      @relation("ConversionToUom", fields: [toUomId], references: [id])
+  item             Item     @relation(fields: [itemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  fromUom          Uom      @relation("ConversionFromUom", fields: [fromUomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  toUom            Uom      @relation("ConversionToUom", fields: [toUomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([itemId, fromUomId, toUomId])
   @@index([itemId])
@@ -2570,7 +2570,7 @@ model SupplierPriceHistory {
   supplierItemLink   SupplierItemLink? @relation(fields: [supplierItemLinkId], references: [id])
   uom                Uom               @relation(fields: [uomId], references: [id])
 
-  @@index([tenantId, companyId, supplierId, itemId, effectiveFrom])
+  @@index([tenantId, companyId, supplierId, itemId, effectiveFrom], map: "SupplierPriceHistory_tenantId_companyId_supplierId_itemId_effec")
   @@index([supplierItemLinkId, effectiveFrom])
 }
 
@@ -2760,8 +2760,8 @@ model MenuPriceDecision {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  @@unique([tenantId, companyId, menuItemId, locationId, idempotencyKey])
-  @@index([tenantId, companyId, brandId, locationId, status])
+  @@unique([tenantId, companyId, menuItemId, locationId, idempotencyKey], map: "MenuPriceDecision_tenantId_companyId_menuItemId_locationId_idem")
+  @@index([tenantId, companyId, brandId, locationId, status], map: "MenuPriceDecision_tenantId_companyId_brandId_locationId_status_")
   @@index([menuItemId, effectiveFrom])
 }
 
@@ -2787,8 +2787,8 @@ model RestaurantSalesImportBatch {
   location         Location                    @relation(fields: [locationId], references: [id])
   lines            RestaurantSalesImportLine[]
 
-  @@unique([companyId, locationId, businessDate, sourceSystem, importRef])
-  @@index([tenantId, companyId, brandId, locationId, businessDate, status])
+  @@unique([companyId, locationId, businessDate, sourceSystem, importRef], map: "RestaurantSalesImportBatch_companyId_locationId_businessDate_so")
+  @@index([tenantId, companyId, brandId, locationId, businessDate, status], map: "RestaurantSalesImportBatch_tenantId_companyId_brandId_locationI")
 }
 
 model RestaurantSalesImportLine {
@@ -2815,7 +2815,7 @@ model RestaurantSalesImportLine {
   menuItem         MenuItem                   @relation(fields: [menuItemId], references: [id])
 
   @@unique([batchId, menuItemId, salesChannel])
-  @@index([tenantId, companyId, brandId, locationId, businessDate])
+  @@index([tenantId, companyId, brandId, locationId, businessDate], map: "RestaurantSalesImportLine_tenantId_companyId_brandId_locationId")
   @@index([menuItemId, businessDate])
 }
 
@@ -2844,8 +2844,8 @@ model BranchOperationalChecklist {
   location          Location                         @relation(fields: [locationId], references: [id])
   lines             BranchOperationalChecklistLine[]
 
-  @@unique([companyId, locationId, businessDate, shiftType])
-  @@index([tenantId, companyId, brandId, locationId, businessDate, status])
+  @@unique([companyId, locationId, businessDate, shiftType], map: "BranchOperationalChecklist_companyId_locationId_businessDate_sh")
+  @@index([tenantId, companyId, brandId, locationId, businessDate, status], map: "BranchOperationalChecklist_tenantId_companyId_brandId_locationI")
 }
 
 model BranchOperationalChecklistLine {
@@ -2873,7 +2873,7 @@ model BranchOperationalChecklistLine {
   checklist         BranchOperationalChecklist @relation(fields: [checklistId], references: [id])
 
   @@unique([checklistId, lineNo])
-  @@index([tenantId, companyId, brandId, locationId])
+  @@index([tenantId, companyId, brandId, locationId], map: "BranchOperationalChecklistLine_tenantId_companyId_brandId_locat")
   @@index([result, severity])
 }
 
@@ -2900,7 +2900,7 @@ model FoodSafetyLog {
   readings         FoodSafetyReading[]
 
   @@unique([companyId, locationId, businessDate, logType])
-  @@index([tenantId, companyId, brandId, locationId, businessDate, status])
+  @@index([tenantId, companyId, brandId, locationId, businessDate, status], map: "FoodSafetyLog_tenantId_companyId_brandId_locationId_businessDat")
 }
 
 model FoodSafetyReading {
@@ -2964,7 +2964,7 @@ model OperationalIncident {
   location          Location  @relation(fields: [locationId], references: [id])
 
   @@unique([companyId, incidentNumber])
-  @@index([tenantId, companyId, brandId, locationId, incidentDate, status])
+  @@index([tenantId, companyId, brandId, locationId, incidentDate, status], map: "OperationalIncident_tenantId_companyId_brandId_locationId_incid")
   @@index([severity, status])
   @@index([sourceRecordType, sourceRecordId])
 }
@@ -3000,7 +3000,7 @@ model MaintenanceTicket {
   location          Location  @relation(fields: [locationId], references: [id])
 
   @@unique([companyId, ticketNumber])
-  @@index([tenantId, companyId, brandId, locationId, requestedAt, status])
+  @@index([tenantId, companyId, brandId, locationId, requestedAt, status], map: "MaintenanceTicket_tenantId_companyId_brandId_locationId_request")
   @@index([priority, status])
   @@index([sourceIncidentId])
 }
@@ -3026,8 +3026,8 @@ model OperationalCorrectionRecord {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  @@unique([tenantId, companyId, targetEntityType, targetEntityId, idempotencyKey])
-  @@index([tenantId, companyId, brandId, locationId, status])
+  @@unique([tenantId, companyId, targetEntityType, targetEntityId, idempotencyKey], map: "OperationalCorrectionRecord_tenantId_companyId_targetEntityType")
+  @@index([tenantId, companyId, brandId, locationId, status], map: "OperationalCorrectionRecord_tenantId_companyId_brandId_location")
   @@index([targetEntityType, targetEntityId])
   @@index([correctionType, status])
 }
@@ -3049,9 +3049,9 @@ model OperationalStatusTransition {
   idempotencyKey    String?
   createdAt         DateTime @default(now())
 
-  @@unique([tenantId, companyId, targetEntityType, targetEntityId, idempotencyKey])
-  @@index([tenantId, companyId, brandId, locationId])
-  @@index([targetEntityType, targetEntityId, createdAt])
+  @@unique([tenantId, companyId, targetEntityType, targetEntityId, idempotencyKey], map: "OperationalStatusTransition_tenantId_companyId_targetEntityType")
+  @@index([tenantId, companyId, brandId, locationId], map: "OperationalStatusTransition_tenantId_companyId_brandId_location")
+  @@index([targetEntityType, targetEntityId, createdAt], map: "OperationalStatusTransition_targetEntityType_targetEntityId_cre")
   @@index([action, fromStatus, toStatus])
 }
 
@@ -3123,7 +3123,7 @@ model PurchaseRequestComment {
   purchaseRequest   PurchaseRequest @relation(fields: [purchaseRequestId], references: [id])
   author            User            @relation(fields: [authorUserId], references: [id])
 
-  @@index([tenantId, companyId, purchaseRequestId, createdAt])
+  @@index([tenantId, companyId, purchaseRequestId, createdAt], map: "PurchaseRequestComment_tenantId_companyId_purchaseRequestId_cre")
 }
 
 model PurchaseRequestLine {
@@ -3141,8 +3141,8 @@ model PurchaseRequestLine {
   purpose            String
   notes              String?
   purchaseRequest    PurchaseRequest         @relation(fields: [purchaseRequestId], references: [id])
-  item               Item?                   @relation(fields: [itemId], references: [id])
-  uom                Uom?                    @relation(fields: [uomId], references: [id])
+  item               Item?                   @relation(fields: [itemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  uom                Uom?                    @relation(fields: [uomId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   budgetLine         BudgetLine?             @relation(fields: [budgetLineId], references: [id])
   supplierQuoteLines SupplierQuotationLine[]
   purchaseOrderLines PurchaseOrderLine[]
@@ -3225,11 +3225,11 @@ model QuotationRecommendation {
   submittedAt                 DateTime?
   approvedAt                  DateTime?
   createdAt                   DateTime          @default(now())
-  updatedAt                   DateTime          @updatedAt
+  updatedAt                   DateTime          @default(now()) @updatedAt
   tenant                      Tenant            @relation(fields: [tenantId], references: [id])
   company                     Company           @relation(fields: [companyId], references: [id])
-  quotationRequest            QuotationRequest  @relation(fields: [quotationRequestId, tenantId, companyId], references: [id, tenantId, companyId])
-  selectedSupplierQuotation   SupplierQuotation @relation(fields: [selectedSupplierQuotationId, quotationRequestId], references: [id, quotationRequestId])
+  quotationRequest            QuotationRequest  @relation(fields: [quotationRequestId, tenantId, companyId], references: [id, tenantId, companyId], map: "QuotationRecommendation_quotationRequest_scope_fkey")
+  selectedSupplierQuotation   SupplierQuotation @relation(fields: [selectedSupplierQuotationId, quotationRequestId], references: [id, quotationRequestId], map: "QuotationRecommendation_selectedQuote_request_fkey")
   preparedBy                  User              @relation(fields: [preparedByUserId], references: [id])
   purchaseOrder               PurchaseOrder?
 
@@ -3294,9 +3294,9 @@ model PurchaseOrder {
   company                     Company                       @relation(fields: [companyId], references: [id])
   brand                       Brand?                        @relation(fields: [brandId], references: [id])
   purchaseRequest             PurchaseRequest               @relation(fields: [purchaseRequestId], references: [id])
-  quotationRequest            QuotationRequest              @relation(fields: [quotationRequestId, tenantId, companyId], references: [id, tenantId, companyId])
+  quotationRequest            QuotationRequest              @relation(fields: [quotationRequestId, tenantId, companyId], references: [id, tenantId, companyId], map: "PurchaseOrder_quotationRequest_scope_fkey")
   quotationRecommendation     QuotationRecommendation       @relation(fields: [quotationRecommendationId], references: [id])
-  selectedSupplierQuotation   SupplierQuotation             @relation(fields: [selectedSupplierQuotationId, quotationRequestId], references: [id, quotationRequestId])
+  selectedSupplierQuotation   SupplierQuotation             @relation(fields: [selectedSupplierQuotationId, quotationRequestId], references: [id, quotationRequestId], map: "PurchaseOrder_selectedQuote_request_fkey")
   supplier                    Supplier                      @relation(fields: [supplierId], references: [id])
   deliveryLocation            Location                      @relation("PurchaseOrderDeliveryLocation", fields: [deliveryLocationId], references: [id])
   department                  Department?                   @relation(fields: [departmentId], references: [id])
@@ -3316,6 +3316,7 @@ model PurchaseOrder {
   @@index([quotationRequestId])
   @@index([selectedSupplierQuotationId])
   @@index([supplierId])
+  @@index([tenantId, companyId, cancellationSubtype], map: "PurchaseOrder_tenantId_companyId_cancellationSubtype_idx")
   @@index([cancelledByUserId])
   @@index([cancelledAt])
 }
@@ -3363,7 +3364,7 @@ model PurchaseOrderLine {
 }
 
 model InventoryLocation {
-  id                                String                  @id @default(uuid()) @db.Uuid
+  id                                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                          String                  @db.Uuid
   companyId                         String                  @db.Uuid
   locationId                        String                  @db.Uuid
@@ -3421,14 +3422,14 @@ model PurchaseOrderBalanceClosure {
   requestedBy                     User          @relation("PurchaseOrderBalanceClosureRequester", fields: [requestedByUserId], references: [id])
   approvedBy                      User?         @relation("PurchaseOrderBalanceClosureApprover", fields: [approvedByUserId], references: [id])
 
-  @@index([tenantId, companyId, status, requestedAt])
+  @@index([tenantId, companyId, status, requestedAt], map: "PurchaseOrderBalanceClosure_tenantId_companyId_status_requested")
   @@index([purchaseOrderId, status])
   @@index([requestedByUserId])
   @@index([approvedByUserId])
 }
 
 model PurchaseOrderAmendment {
-  id                              String        @id @default(uuid()) @db.Uuid
+  id                              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                        String        @db.Uuid
   companyId                       String        @db.Uuid
   purchaseOrderId                 String        @db.Uuid
@@ -3453,14 +3454,14 @@ model PurchaseOrderAmendment {
   requestedBy                     User          @relation("PurchaseOrderAmendmentRequester", fields: [requestedByUserId], references: [id])
   approvedBy                      User?         @relation("PurchaseOrderAmendmentApprover", fields: [approvedByUserId], references: [id])
 
-  @@index([tenantId, companyId, status, requestedAt])
+  @@index([tenantId, companyId, status, requestedAt], map: "PurchaseOrderAmendment_tenantId_companyId_status_requestedAt_id")
   @@index([purchaseOrderId, status])
   @@index([requestedByUserId])
   @@index([approvedByUserId])
 }
 
 model StockCountSession {
-  id                  String            @id @default(uuid()) @db.Uuid
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String            @db.Uuid
   companyId           String            @db.Uuid
   inventoryLocationId String            @db.Uuid
@@ -3494,11 +3495,11 @@ model StockCountSession {
 
   @@unique([companyId, publicReference])
   @@index([tenantId, companyId, status, scheduledDate])
-  @@index([tenantId, companyId, inventoryLocationId, status])
+  @@index([tenantId, companyId, inventoryLocationId, status], map: "StockCountSession_tenantId_companyId_inventoryLocationId_status")
 }
 
 model StockCountLine {
-  id                      String                @id @default(uuid()) @db.Uuid
+  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   stockCountSessionId     String                @db.Uuid
   tenantId                String                @db.Uuid
   companyId               String                @db.Uuid
@@ -3528,12 +3529,12 @@ model StockCountLine {
 
   @@unique([stockCountSessionId, itemId, lotKey])
   @@unique([stockCountSessionId, lineNumber])
-  @@index([tenantId, companyId, stockCountSessionId, itemId])
+  @@index([tenantId, companyId, stockCountSessionId, itemId], map: "StockCountLine_tenantId_companyId_stockCountSessionId_itemId_id")
   @@index([inventoryLocationId, itemId, lotKey])
 }
 
 model WastagePolicy {
-  id                      String             @id @default(uuid()) @db.Uuid
+  id                      String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                String             @db.Uuid
   companyId               String             @db.Uuid
   name                    String
@@ -3556,11 +3557,11 @@ model WastagePolicy {
   inventoryLocation       InventoryLocation? @relation(fields: [inventoryLocationId], references: [id])
 
   @@index([tenantId, companyId, isActive, priority])
-  @@index([tenantId, companyId, inventoryLocationId, wastageType, reasonCode])
+  @@index([tenantId, companyId, inventoryLocationId, wastageType, reasonCode], map: "WastagePolicy_tenantId_companyId_inventoryLocationId_wastageTyp")
 }
 
 model OperationalReasonCode {
-  id               String       @id @default(uuid()) @db.Uuid
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String       @db.Uuid
   companyId        String       @db.Uuid
   workflow         String
@@ -3572,17 +3573,17 @@ model OperationalReasonCode {
   sortOrder        Int          @default(100)
   notes            String?
   createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  updatedAt        DateTime     @default(now()) @updatedAt
   tenant           Tenant       @relation(fields: [tenantId], references: [id])
   company          Company      @relation(fields: [companyId], references: [id])
 
   @@unique([companyId, workflow, code])
-  @@index([tenantId, companyId, workflow, status, sortOrder])
-  @@index([tenantId, companyId, workflow, appliesTo, status])
+  @@index([tenantId, companyId, workflow, status, sortOrder], map: "OperationalReasonCode_tenantId_companyId_workflow_status_sortOr")
+  @@index([tenantId, companyId, workflow, appliesTo, status], map: "OperationalReasonCode_tenantId_companyId_workflow_appliesTo_sta")
 }
 
 model WastageReport {
-  id                  String            @id @default(uuid()) @db.Uuid
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String            @db.Uuid
   companyId           String            @db.Uuid
   inventoryLocationId String            @db.Uuid
@@ -3631,7 +3632,7 @@ model WastageReport {
 }
 
 model WastageLine {
-  id                  String             @id @default(uuid()) @db.Uuid
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   wastageReportId     String             @db.Uuid
   tenantId            String             @db.Uuid
   companyId           String             @db.Uuid
@@ -3664,6 +3665,7 @@ model WastageLine {
   @@unique([wastageReportId, lineNumber])
   @@index([tenantId, companyId, wastageReportId, itemId])
   @@index([inventoryLocationId, itemId])
+  @@index([tenantId, companyId, inventoryLocationId, itemId, createdAt], map: "WastageLine_tenantId_companyId_inventoryLocationId_itemId_creat")
 }
 
 model StockAdjustment {
@@ -3705,7 +3707,7 @@ model StockAdjustment {
 
   @@unique([companyId, publicReference])
   @@index([tenantId, companyId, status, createdAt])
-  @@index([tenantId, companyId, inventoryLocationId, status])
+  @@index([tenantId, companyId, inventoryLocationId, status], map: "StockAdjustment_tenantId_companyId_inventoryLocationId_status_i")
   @@index([requestedByUserId])
   @@index([cancelledByUserId])
   @@index([postedByUserId])
@@ -3745,12 +3747,12 @@ model StockAdjustmentLine {
   sourceStockCountLine   StockCountLine?    @relation(fields: [sourceStockCountLineId], references: [id])
 
   @@unique([stockAdjustmentId, lineNumber])
-  @@index([tenantId, companyId, stockAdjustmentId, itemId])
+  @@index([tenantId, companyId, stockAdjustmentId, itemId], map: "StockAdjustmentLine_tenantId_companyId_stockAdjustmentId_itemId")
   @@index([inventoryLocationId, itemId, lotKey])
 }
 
 model InventoryMovement {
-  id                                 String                        @id @default(uuid()) @db.Uuid
+  id                                 String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                           String                        @db.Uuid
   companyId                          String                        @db.Uuid
   inventoryLocationId                String                        @db.Uuid
@@ -3789,15 +3791,15 @@ model InventoryMovement {
   postedGoodsReceiptLine             GoodsReceiptLine?             @relation("GoodsReceiptLinePostedMovement")
   postedInventoryTransferReceiptLine InventoryTransferReceiptLine? @relation("InventoryTransferReceiptLinePostedMovement")
 
-  @@unique([tenantId, companyId, sourceDocumentType, sourceDocumentId, sourceEventKey])
-  @@index([tenantId, companyId, inventoryLocationId, itemId, occurredAt])
+  @@unique([tenantId, companyId, sourceDocumentType, sourceDocumentId, sourceEventKey], map: "InventoryMovement_tenantId_companyId_sourceDocumentType_sourceD")
+  @@index([tenantId, companyId, inventoryLocationId, itemId, occurredAt], map: "InventoryMovement_tenantId_companyId_inventoryLocationId_itemId")
   @@index([relatedInventoryLocationId])
   @@index([sourceDocumentType, sourceDocumentId])
   @@index([reversalOfMovementId])
 }
 
 model InventoryBalance {
-  id                  String            @id @default(uuid()) @db.Uuid
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String            @db.Uuid
   companyId           String            @db.Uuid
   inventoryLocationId String            @db.Uuid
@@ -3821,7 +3823,7 @@ model InventoryBalance {
 }
 
 model InventoryTransfer {
-  id                    String                         @id @default(uuid()) @db.Uuid
+  id                    String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId              String                         @db.Uuid
   companyId             String                         @db.Uuid
   publicReference       String
@@ -3854,13 +3856,13 @@ model InventoryTransfer {
 
   @@unique([companyId, publicReference])
   @@index([tenantId, companyId, status])
-  @@index([tenantId, companyId, sourceLocationId, status])
-  @@index([tenantId, companyId, destinationLocationId, status])
+  @@index([tenantId, companyId, sourceLocationId, status], map: "InventoryTransfer_tenantId_companyId_sourceLocationId_status_id")
+  @@index([tenantId, companyId, destinationLocationId, status], map: "InventoryTransfer_tenantId_companyId_destinationLocationId_stat")
   @@index([requiredByDate])
 }
 
 model InventoryTransferLine {
-  id                             String                         @id @default(uuid()) @db.Uuid
+  id                             String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   inventoryTransferId            String                         @db.Uuid
   tenantId                       String                         @db.Uuid
   companyId                      String                         @db.Uuid
@@ -3898,7 +3900,7 @@ model InventoryTransferLine {
 }
 
 model InventoryTransferReceipt {
-  id                  String                         @id @default(uuid()) @db.Uuid
+  id                  String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String                         @db.Uuid
   companyId           String                         @db.Uuid
   inventoryTransferId String                         @db.Uuid
@@ -3928,7 +3930,7 @@ model InventoryTransferReceipt {
 }
 
 model InventoryTransferReceiptLine {
-  id                      String                   @id @default(uuid()) @db.Uuid
+  id                      String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   transferReceiptId       String                   @db.Uuid
   inventoryTransferId     String                   @db.Uuid
   inventoryTransferLineId String                   @db.Uuid
@@ -3956,7 +3958,7 @@ model InventoryTransferReceiptLine {
   company                 Company                  @relation(fields: [companyId], references: [id])
   item                    Item                     @relation(fields: [itemId], references: [id])
   uom                     Uom                      @relation(fields: [uomId], references: [id])
-  postedMovement          InventoryMovement?       @relation("InventoryTransferReceiptLinePostedMovement", fields: [postedMovementId], references: [id])
+  postedMovement          InventoryMovement?       @relation("InventoryTransferReceiptLinePostedMovement", fields: [postedMovementId], references: [id], onDelete: Restrict)
 
   @@unique([transferReceiptId, lineNumber])
   @@index([tenantId, companyId])
@@ -3965,7 +3967,7 @@ model InventoryTransferReceiptLine {
 }
 
 model GoodsReceipt {
-  id                            String             @id @default(uuid()) @db.Uuid
+  id                            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                      String             @db.Uuid
   companyId                     String             @db.Uuid
   publicReference               String
@@ -4004,7 +4006,7 @@ model GoodsReceipt {
 }
 
 model GoodsReceiptLine {
-  id                             String                 @id @default(uuid()) @db.Uuid
+  id                             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   goodsReceiptId                 String                 @db.Uuid
   tenantId                       String                 @db.Uuid
   companyId                      String                 @db.Uuid
@@ -4036,7 +4038,7 @@ model GoodsReceiptLine {
   inventoryDestinationLocation   InventoryLocation      @relation(fields: [inventoryDestinationLocationId], references: [id])
   item                           Item                   @relation(fields: [itemId], references: [id])
   uom                            Uom                    @relation(fields: [uomId], references: [id])
-  postedMovement                 InventoryMovement?     @relation("GoodsReceiptLinePostedMovement", fields: [postedMovementId], references: [id])
+  postedMovement                 InventoryMovement?     @relation("GoodsReceiptLinePostedMovement", fields: [postedMovementId], references: [id], onDelete: Restrict)
   apInvoiceLines                 ApInvoiceLine[]
   apInvoiceMatchResults          ApInvoiceMatchResult[]
 
@@ -4047,7 +4049,7 @@ model GoodsReceiptLine {
 }
 
 model CompanyPolicySetting {
-  id               String       @id @default(uuid()) @db.Uuid
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String       @db.Uuid
   companyId        String       @db.Uuid
   key              String
@@ -4073,7 +4075,7 @@ model CompanyPolicySetting {
 }
 
 model FiscalYear {
-  id                String                  @id @default(uuid()) @db.Uuid
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String                  @db.Uuid
   companyId         String                  @db.Uuid
   code              String
@@ -4097,7 +4099,7 @@ model FiscalYear {
 }
 
 model AccountingPeriod {
-  id                         String                      @id @default(uuid()) @db.Uuid
+  id                         String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                   String                      @db.Uuid
   companyId                  String                      @db.Uuid
   fiscalYearId               String                      @db.Uuid
@@ -4133,7 +4135,7 @@ model AccountingPeriod {
 }
 
 model FinanceCloseRun {
-  id                  String                      @id @default(uuid()) @db.Uuid
+  id                  String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String                      @db.Uuid
   companyId           String                      @db.Uuid
   accountingPeriodId  String                      @db.Uuid
@@ -4164,14 +4166,14 @@ model FinanceCloseRun {
   attempts            FinanceCloseAttempt[]
 
   @@unique([companyId, publicReference])
-  @@unique([tenantId, companyId, accountingPeriodId, runType])
+  @@unique([tenantId, companyId, accountingPeriodId, runType], map: "FinanceCloseRun_tenantId_companyId_accountingPeriodId_runType_k")
   @@unique([tenantId, companyId, idempotencyKey])
   @@index([tenantId, companyId, status, createdAt])
-  @@index([tenantId, companyId, accountingPeriodId, status])
+  @@index([tenantId, companyId, accountingPeriodId, status], map: "FinanceCloseRun_tenantId_companyId_accountingPeriodId_status_id")
 }
 
 model FinanceCloseChecklistItem {
-  id                 String                      @id @default(uuid()) @db.Uuid
+  id                 String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                      @db.Uuid
   companyId          String                      @db.Uuid
   accountingPeriodId String                      @db.Uuid
@@ -4202,12 +4204,12 @@ model FinanceCloseChecklistItem {
   reviewedBy         User?                       @relation("FinanceCloseChecklistReviewer", fields: [reviewedByUserId], references: [id])
 
   @@unique([financeCloseRunId, checklistType])
-  @@index([tenantId, companyId, accountingPeriodId, status])
-  @@index([tenantId, companyId, ownerUserId, status])
+  @@index([tenantId, companyId, accountingPeriodId, status], map: "FinanceCloseChecklistItem_tenantId_companyId_accountingPeriodId")
+  @@index([tenantId, companyId, ownerUserId, status], map: "FinanceCloseChecklistItem_tenantId_companyId_ownerUserId_status")
 }
 
 model FinanceCloseException {
-  id                 String                        @id @default(uuid()) @db.Uuid
+  id                 String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                        @db.Uuid
   companyId          String                        @db.Uuid
   accountingPeriodId String                        @db.Uuid
@@ -4239,13 +4241,13 @@ model FinanceCloseException {
   assignedTo         User?                         @relation("FinanceCloseExceptionAssignee", fields: [assignedToUserId], references: [id])
   resolvedBy         User?                         @relation("FinanceCloseExceptionResolver", fields: [resolvedByUserId], references: [id])
 
-  @@index([tenantId, companyId, accountingPeriodId, state, severity])
+  @@index([tenantId, companyId, accountingPeriodId, state, severity], map: "FinanceCloseException_tenantId_companyId_accountingPeriodId_sta")
   @@index([tenantId, companyId, state, dueAt])
-  @@index([tenantId, companyId, sourceEntityType, sourceEntityId])
+  @@index([tenantId, companyId, sourceEntityType, sourceEntityId], map: "FinanceCloseException_tenantId_companyId_sourceEntityType_sourc")
 }
 
 model FinanceCloseAttempt {
-  id                 String                    @id @default(uuid()) @db.Uuid
+  id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                    @db.Uuid
   companyId          String                    @db.Uuid
   accountingPeriodId String                    @db.Uuid
@@ -4265,12 +4267,12 @@ model FinanceCloseAttempt {
   attemptedBy        User                      @relation("FinanceCloseAttemptActor", fields: [attemptedByUserId], references: [id])
 
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, accountingPeriodId, action])
-  @@index([tenantId, companyId, financeCloseRunId, result])
+  @@index([tenantId, companyId, accountingPeriodId, action], map: "FinanceCloseAttempt_tenantId_companyId_accountingPeriodId_actio")
+  @@index([tenantId, companyId, financeCloseRunId, result], map: "FinanceCloseAttempt_tenantId_companyId_financeCloseRunId_result")
 }
 
 model FinanceAccountClass {
-  id               String                         @id @default(uuid()) @db.Uuid
+  id               String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String                         @db.Uuid
   companyId        String                         @db.Uuid
   code             String
@@ -4288,11 +4290,11 @@ model FinanceAccountClass {
 
   @@unique([companyId, code])
   @@index([tenantId, companyId, status])
-  @@index([tenantId, companyId, statementSection, sortOrder])
+  @@index([tenantId, companyId, statementSection, sortOrder], map: "FinanceAccountClass_tenantId_companyId_statementSection_sortOrd")
 }
 
 model ChartOfAccount {
-  id                     String                         @id @default(uuid()) @db.Uuid
+  id                     String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId               String                         @db.Uuid
   companyId              String                         @db.Uuid
   accountClassId         String                         @db.Uuid
@@ -4326,7 +4328,7 @@ model ChartOfAccount {
 }
 
 model FinancePostingRule {
-  id                     String                                   @id @default(uuid()) @db.Uuid
+  id                     String                                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId               String                                   @db.Uuid
   companyId              String                                   @db.Uuid
   code                   String
@@ -4355,13 +4357,13 @@ model FinancePostingRule {
   financeJournals        FinanceJournal[]
 
   @@unique([companyId, code, version])
-  @@index([tenantId, companyId, sourceType, sourceEvent, status])
-  @@index([tenantId, companyId, isExecutionEnabled, status])
+  @@index([tenantId, companyId, sourceType, sourceEvent, status], map: "FinancePostingRule_tenantId_companyId_sourceType_sourceEvent_st")
+  @@index([tenantId, companyId, isExecutionEnabled, status], map: "FinancePostingRule_tenantId_companyId_isExecutionEnabled_status")
   @@index([tenantId, companyId, status, effectiveFrom])
 }
 
 model FinancePostingRuleAccountMap {
-  id              String                 @id @default(uuid()) @db.Uuid
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId        String                 @db.Uuid
   companyId       String                 @db.Uuid
   postingRuleId   String                 @db.Uuid
@@ -4379,13 +4381,13 @@ model FinancePostingRuleAccountMap {
   postingRule     FinancePostingRule     @relation(fields: [postingRuleId], references: [id])
   account         ChartOfAccount         @relation(fields: [accountId], references: [id])
 
-  @@unique([postingRuleId, lineRole, side, accountId])
-  @@index([tenantId, companyId, postingRuleId, status])
-  @@index([tenantId, companyId, accountId, status])
+  @@unique([postingRuleId, lineRole, side, accountId], map: "FinancePostingRuleAccountMap_postingRuleId_lineRole_side_accoun")
+  @@index([tenantId, companyId, postingRuleId, status], map: "FinancePostingRuleAccountMap_tenantId_companyId_postingRuleId_s")
+  @@index([tenantId, companyId, accountId, status], map: "FinancePostingRuleAccountMap_tenantId_companyId_accountId_statu")
 }
 
 model FinancePostingRuleDimensionRequirement {
-  id                String               @id @default(uuid()) @db.Uuid
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String               @db.Uuid
   companyId         String               @db.Uuid
   postingRuleId     String               @db.Uuid
@@ -4401,13 +4403,13 @@ model FinancePostingRuleDimensionRequirement {
   company           Company              @relation(fields: [companyId], references: [id])
   postingRule       FinancePostingRule   @relation(fields: [postingRuleId], references: [id])
 
-  @@unique([postingRuleId, dimensionType])
-  @@index([tenantId, companyId, postingRuleId, status])
-  @@index([tenantId, companyId, dimensionType, required])
+  @@unique([postingRuleId, dimensionType], map: "FinancePostingRuleDimensionRequirement_postingRuleId_dimensionT")
+  @@index([tenantId, companyId, postingRuleId, status], map: "FinancePostingRuleDimensionRequirement_tenantId_companyId_posti")
+  @@index([tenantId, companyId, dimensionType, required], map: "FinancePostingRuleDimensionRequirement_tenantId_companyId_dimen")
 }
 
 model FinanceJournal {
-  id                     String                         @id @default(uuid()) @db.Uuid
+  id                     String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId               String                         @db.Uuid
   companyId              String                         @db.Uuid
   publicReference        String
@@ -4451,7 +4453,7 @@ model FinanceJournal {
   company                Company                        @relation(fields: [companyId], references: [id])
   accountingPeriod       AccountingPeriod               @relation(fields: [accountingPeriodId], references: [id])
   postingRule            FinancePostingRule?            @relation(fields: [postingRuleId], references: [id])
-  reversalOfJournal      FinanceJournal?                @relation("FinanceJournalReversal", fields: [reversalOfJournalId], references: [id])
+  reversalOfJournal      FinanceJournal?                @relation("FinanceJournalReversal", fields: [reversalOfJournalId], references: [id], onDelete: Restrict)
   reversalJournals       FinanceJournal[]               @relation("FinanceJournalReversal")
   lines                  FinanceJournalLine[]
   postingAttempts        FinanceJournalPostingAttempt[]
@@ -4460,14 +4462,14 @@ model FinanceJournal {
   @@unique([companyId, sourceDocumentType, sourceEventKey])
   @@index([tenantId, companyId, status, createdAt])
   @@index([tenantId, companyId, accountingPeriodId, status])
-  @@index([tenantId, companyId, sourceDocumentType, sourceDocumentId])
+  @@index([tenantId, companyId, sourceDocumentType, sourceDocumentId], map: "FinanceJournal_tenantId_companyId_sourceDocumentType_sourceDocu")
   @@index([tenantId, companyId, journalDate])
   @@index([reversalOfJournalId])
   @@index([createdByUserId])
 }
 
 model FinanceJournalLine {
-  id               String                 @id @default(uuid()) @db.Uuid
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   financeJournalId String                 @db.Uuid
   tenantId         String                 @db.Uuid
   companyId        String                 @db.Uuid
@@ -4494,11 +4496,11 @@ model FinanceJournalLine {
   @@unique([financeJournalId, lineNumber])
   @@index([tenantId, companyId, financeJournalId])
   @@index([tenantId, companyId, accountId])
-  @@index([tenantId, companyId, brandId, locationId, departmentId, costCenterId, projectId])
+  @@index([tenantId, companyId, brandId, locationId, departmentId, costCenterId, projectId], map: "FinanceJournalLine_tenantId_companyId_brandId_locationId_depart")
 }
 
 model FinanceJournalPostingAttempt {
-  id                 String                      @id @default(uuid()) @db.Uuid
+  id                 String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                      @db.Uuid
   companyId          String                      @db.Uuid
   financeJournalId   String?                     @db.Uuid
@@ -4517,12 +4519,12 @@ model FinanceJournalPostingAttempt {
   journal            FinanceJournal?             @relation(fields: [financeJournalId], references: [id])
 
   @@unique([companyId, idempotencyKey])
-  @@index([tenantId, companyId, financeJournalId, status])
-  @@index([tenantId, companyId, status, createdAt])
+  @@index([tenantId, companyId, financeJournalId, status], map: "FinanceJournalPostingAttempt_tenantId_companyId_financeJournalI")
+  @@index([tenantId, companyId, status, createdAt], map: "FinanceJournalPostingAttempt_tenantId_companyId_status_createdA")
 }
 
 model Budget {
-  id                  String             @id @default(uuid()) @db.Uuid
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String             @db.Uuid
   companyId           String             @db.Uuid
   publicReference     String
@@ -4573,12 +4575,12 @@ model Budget {
 
   @@unique([companyId, publicReference])
   @@index([tenantId, companyId, status, fiscalYearId])
-  @@index([tenantId, companyId, brandId, locationId, departmentId, costCenterId, projectId])
+  @@index([tenantId, companyId, brandId, locationId, departmentId, costCenterId, projectId], map: "Budget_tenantId_companyId_brandId_locationId_departmentId_costC")
   @@index([ownerUserId])
 }
 
 model BudgetLine {
-  id                   String                @id @default(uuid()) @db.Uuid
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   budgetId             String                @db.Uuid
   tenantId             String                @db.Uuid
   companyId            String                @db.Uuid
@@ -4622,12 +4624,12 @@ model BudgetLine {
   @@unique([budgetId, code])
   @@index([tenantId, companyId, status])
   @@index([tenantId, companyId, accountId])
-  @@index([tenantId, companyId, brandId, locationId, departmentId, costCenterId, projectId])
+  @@index([tenantId, companyId, brandId, locationId, departmentId, costCenterId, projectId], map: "BudgetLine_tenantId_companyId_brandId_locationId_departmentId_c")
   @@index([periodStart, periodEnd])
 }
 
 model BudgetRevision {
-  id                String               @id @default(uuid()) @db.Uuid
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   budgetId          String               @db.Uuid
   tenantId          String               @db.Uuid
   companyId         String               @db.Uuid
@@ -4659,7 +4661,7 @@ model BudgetRevision {
 }
 
 model BudgetCommitment {
-  id                     String                       @id @default(uuid()) @db.Uuid
+  id                     String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   budgetId               String                       @db.Uuid
   budgetLineId           String                       @db.Uuid
   tenantId               String                       @db.Uuid
@@ -4693,22 +4695,22 @@ model BudgetCommitment {
   approvedBy             User?                        @relation("BudgetCommitmentApprover", fields: [approvedByUserId], references: [id])
   consumedBy             User?                        @relation("BudgetCommitmentConsumer", fields: [consumedByUserId], references: [id])
   reversedBy             User?                        @relation("BudgetCommitmentReverser", fields: [reversedByUserId], references: [id])
-  reversalOfCommitment   BudgetCommitment?            @relation("BudgetCommitmentReversal", fields: [reversalOfCommitmentId], references: [id])
+  reversalOfCommitment   BudgetCommitment?            @relation("BudgetCommitmentReversal", fields: [reversalOfCommitmentId], references: [id], onDelete: Restrict)
   reversalCommitments    BudgetCommitment[]           @relation("BudgetCommitmentReversal")
   cashAdvanceRequests    CashAdvanceRequest[]
   cashAdvanceLines       CashAdvanceLiquidationLine[]
   createdAt              DateTime                     @default(now())
   updatedAt              DateTime                     @updatedAt
 
-  @@unique([companyId, sourceType, sourceId, sourceEventKey])
-  @@unique([companyId, budgetLineId, sourceType, sourceId, sourceLineId])
+  @@unique([companyId, sourceType, sourceId, sourceEventKey], map: "BudgetCommitment_companyId_sourceType_sourceId_sourceEventKey_k")
+  @@unique([companyId, budgetLineId, sourceType, sourceId, sourceLineId], map: "BudgetCommitment_companyId_budgetLineId_sourceType_sourceId_sou")
   @@index([tenantId, companyId, status, sourceType])
   @@index([tenantId, companyId, budgetLineId, status])
   @@index([reversalOfCommitmentId])
 }
 
 model ExpenseRequest {
-  id                   String                       @id @default(uuid()) @db.Uuid
+  id                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId             String                       @db.Uuid
   companyId            String                       @db.Uuid
   publicReference      String
@@ -4791,7 +4793,7 @@ model ExpenseRequest {
 }
 
 model ExpenseRequestLine {
-  id                 String                     @id @default(uuid()) @db.Uuid
+  id                 String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   expenseRequestId   String                     @db.Uuid
   tenantId           String                     @db.Uuid
   companyId          String                     @db.Uuid
@@ -4835,7 +4837,7 @@ model ExpenseRequestLine {
 }
 
 model ExpenseRequestSourceLink {
-  id                         String                   @id @default(uuid()) @db.Uuid
+  id                         String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                   String                   @db.Uuid
   companyId                  String                   @db.Uuid
   expenseRequestId           String                   @db.Uuid
@@ -4856,15 +4858,15 @@ model ExpenseRequestSourceLink {
   expenseRequestLine         ExpenseRequestLine?      @relation(fields: [expenseRequestLineId], references: [id])
   createdBy                  User                     @relation("ExpenseRequestSourceLinkCreator", fields: [createdByUserId], references: [id])
 
-  @@unique([tenantId, companyId, sourceDocumentType, sourceDocumentId, sourceEventKey])
-  @@unique([tenantId, companyId, expenseRequestId, sourceEventKey])
-  @@index([tenantId, companyId, expenseRequestId])
-  @@index([tenantId, companyId, expenseRequestLineId])
-  @@index([tenantId, companyId, sourceDocumentType, sourceDocumentId])
+  @@unique([tenantId, companyId, sourceDocumentType, sourceDocumentId, sourceEventKey], map: "ExpenseRequestSourceLink_source_event_key")
+  @@unique([tenantId, companyId, expenseRequestId, sourceEventKey], map: "ExpenseRequestSourceLink_tenant_company_request_event_key")
+  @@index([tenantId, companyId, expenseRequestId], map: "ExpenseRequestSourceLink_request_idx")
+  @@index([tenantId, companyId, expenseRequestLineId], map: "ExpenseRequestSourceLink_request_line_idx")
+  @@index([tenantId, companyId, sourceDocumentType, sourceDocumentId], map: "ExpenseRequestSourceLink_source_document_idx")
 }
 
 model CashAdvanceRequest {
-  id                    String                   @id @default(uuid()) @db.Uuid
+  id                    String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId              String                   @db.Uuid
   companyId             String                   @db.Uuid
   publicReference       String
@@ -4953,7 +4955,7 @@ model CashAdvanceRequest {
 }
 
 model CashAdvanceMovement {
-  id                   String                  @id @default(uuid()) @db.Uuid
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId             String                  @db.Uuid
   companyId            String                  @db.Uuid
   locationId           String                  @db.Uuid
@@ -4977,13 +4979,13 @@ model CashAdvanceMovement {
 
   @@unique([tenantId, companyId, sourceEventKey])
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, locationId, movementType])
-  @@index([tenantId, companyId, cashAdvanceRequestId, createdAt])
-  @@index([tenantId, companyId, liquidationId])
+  @@index([tenantId, companyId, locationId, movementType], map: "CashAdvanceMovement_tenantId_companyId_locationId_movementType_")
+  @@index([tenantId, companyId, cashAdvanceRequestId, createdAt], map: "CashAdvanceMovement_request_created_idx")
+  @@index([tenantId, companyId, liquidationId], map: "CashAdvanceMovement_liquidation_idx")
 }
 
 model CashAdvanceLiquidation {
-  id                   String                       @id @default(uuid()) @db.Uuid
+  id                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId             String                       @db.Uuid
   companyId            String                       @db.Uuid
   locationId           String                       @db.Uuid
@@ -5028,13 +5030,13 @@ model CashAdvanceLiquidation {
 
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, status, createdAt])
-  @@index([tenantId, companyId, locationId, status])
-  @@index([tenantId, companyId, cashAdvanceRequestId, status])
+  @@index([tenantId, companyId, status, createdAt], map: "CashAdvanceLiquidation_status_created_idx")
+  @@index([tenantId, companyId, locationId, status], map: "CashAdvanceLiquidation_location_status_idx")
+  @@index([tenantId, companyId, cashAdvanceRequestId, status], map: "CashAdvanceLiquidation_request_status_idx")
 }
 
 model CashAdvanceLiquidationLine {
-  id                 String                 @id @default(uuid()) @db.Uuid
+  id                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                 @db.Uuid
   companyId          String                 @db.Uuid
   locationId         String                 @db.Uuid
@@ -5066,16 +5068,16 @@ model CashAdvanceLiquidationLine {
   createdBy          User                   @relation("CashAdvanceLiquidationLineCreator", fields: [createdByUserId], references: [id])
 
   @@unique([liquidationId, lineNumber])
-  @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, locationId])
-  @@index([tenantId, companyId, liquidationId])
-  @@index([tenantId, companyId, budgetCommitmentId])
-  @@index([tenantId, companyId, expenseRequestId])
-  @@index([tenantId, companyId, paymentRequestId])
+  @@unique([tenantId, companyId, idempotencyKey], map: "CashAdvanceLiquidationLine_tenantId_companyId_idempotencyKey_ke")
+  @@index([tenantId, companyId, locationId], map: "CashAdvanceLiquidationLine_location_idx")
+  @@index([tenantId, companyId, liquidationId], map: "CashAdvanceLiquidationLine_liquidation_idx")
+  @@index([tenantId, companyId, budgetCommitmentId], map: "CashAdvanceLiquidationLine_budgetCommitment_idx")
+  @@index([tenantId, companyId, expenseRequestId], map: "CashAdvanceLiquidationLine_expenseRequest_idx")
+  @@index([tenantId, companyId, paymentRequestId], map: "CashAdvanceLiquidationLine_paymentRequest_idx")
 }
 
 model PettyCashFund {
-  id                        String                     @id @default(uuid()) @db.Uuid
+  id                        String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                  String                     @db.Uuid
   companyId                 String                     @db.Uuid
   publicReference           String
@@ -5116,12 +5118,12 @@ model PettyCashFund {
   @@unique([companyId, publicReference])
   @@unique([companyId, code])
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, status, locationId])
-  @@index([tenantId, companyId, custodianUserId, status])
+  @@index([tenantId, companyId, status, locationId], map: "PettyCashFund_scope_status_idx")
+  @@index([tenantId, companyId, custodianUserId, status], map: "PettyCashFund_custodian_status_idx")
 }
 
 model PettyCashRequest {
-  id                 String                 @id @default(uuid()) @db.Uuid
+  id                   String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                 @db.Uuid
   companyId          String                 @db.Uuid
   pettyCashFundId    String                 @db.Uuid
@@ -5179,13 +5181,14 @@ model PettyCashRequest {
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, idempotencyKey])
   @@unique([tenantId, companyId, sourceEventKey])
-  @@index([tenantId, companyId, pettyCashFundId, status])
-  @@index([tenantId, companyId, requestType, status])
-  @@index([requestedByUserId, status])
+  @@index([tenantId, companyId, pettyCashFundId, status], map: "PettyCashRequest_fund_status_idx")
+  @@index([tenantId, companyId, requestType, status], map: "PettyCashRequest_type_status_idx")
+  @@index([requestedByUserId, status], map: "PettyCashRequest_requestedBy_status_idx")
+  @@index([tenantId, companyId, locationId, status], map: "PettyCashRequest_location_scope_idx")
 }
 
 model PettyCashLedgerEntry {
-  id                 String                   @id @default(uuid()) @db.Uuid
+  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                   @db.Uuid
   companyId          String                   @db.Uuid
   pettyCashFundId    String                   @db.Uuid
@@ -5216,15 +5219,16 @@ model PettyCashLedgerEntry {
   location           Location?                @relation(fields: [locationId], references: [id])
   locationId         String?                  @db.Uuid
 
-  @@unique([tenantId, companyId, sourceEventKey])
-  @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, pettyCashFundId, postedAt])
-  @@index([tenantId, companyId, pettyCashRequestId, entryType])
-  @@index([tenantId, companyId, liquidationId])
+  @@unique([tenantId, companyId, sourceEventKey], map: "PettyCashLedgerEntry_source_event_key")
+  @@unique([tenantId, companyId, idempotencyKey], map: "PettyCashLedgerEntry_idempotency_key")
+  @@index([tenantId, companyId, pettyCashFundId, postedAt], map: "PettyCashLedgerEntry_fund_posted_idx")
+  @@index([tenantId, companyId, pettyCashRequestId, entryType], map: "PettyCashLedgerEntry_request_type_idx")
+  @@index([tenantId, companyId, liquidationId], map: "PettyCashLedgerEntry_liquidation_idx")
+  @@index([tenantId, companyId, locationId, postedAt], map: "PettyCashLedgerEntry_location_scope_idx")
 }
 
 model PettyCashLiquidation {
-  id                 String                     @id @default(uuid()) @db.Uuid
+  id                 String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                     @db.Uuid
   companyId          String                     @db.Uuid
   pettyCashFundId    String                     @db.Uuid
@@ -5269,12 +5273,13 @@ model PettyCashLiquidation {
 
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, pettyCashFundId, status])
-  @@index([tenantId, companyId, status, createdAt])
+  @@index([tenantId, companyId, pettyCashFundId, status], map: "PettyCashLiquidation_fund_status_idx")
+  @@index([tenantId, companyId, status, createdAt], map: "PettyCashLiquidation_status_created_idx")
+  @@index([tenantId, companyId, locationId, status], map: "PettyCashLiquidation_location_scope_idx")
 }
 
 model PettyCashLiquidationLine {
-  id                 String               @id @default(uuid()) @db.Uuid
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String               @db.Uuid
   companyId          String               @db.Uuid
   pettyCashFundId    String               @db.Uuid
@@ -5305,13 +5310,14 @@ model PettyCashLiquidationLine {
 
   @@unique([liquidationId, lineNumber])
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, pettyCashFundId])
-  @@index([tenantId, companyId, liquidationId])
-  @@index([tenantId, companyId, supplierId])
+  @@index([tenantId, companyId, pettyCashFundId], map: "PettyCashLiquidationLine_fund_idx")
+  @@index([tenantId, companyId, liquidationId], map: "PettyCashLiquidationLine_liquidation_idx")
+  @@index([tenantId, companyId, supplierId], map: "PettyCashLiquidationLine_supplier_idx")
+  @@index([tenantId, companyId, locationId], map: "PettyCashLiquidationLine_location_scope_idx")
 }
 
 model ApInvoice {
-  id                    String                     @id @default(uuid()) @db.Uuid
+  id                    String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId              String                     @db.Uuid
   companyId             String                     @db.Uuid
   publicReference       String
@@ -5366,7 +5372,7 @@ model ApInvoice {
   paymentReleaseLines   PaymentReleaseAllocation[]
 
   @@unique([companyId, publicReference])
-  @@unique([tenantId, companyId, supplierId, supplierInvoiceNumber])
+  @@unique([tenantId, companyId, supplierId, supplierInvoiceNumber], map: "ApInvoice_tenantId_companyId_supplierId_supplierInvoiceNumber_k")
   @@unique([tenantId, companyId, captureIdempotencyKey])
   @@index([tenantId, companyId, status, matchStatus])
   @@index([tenantId, companyId, locationId, status])
@@ -5377,7 +5383,7 @@ model ApInvoice {
 }
 
 model ApInvoiceLine {
-  id                  String                 @id @default(uuid()) @db.Uuid
+  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   apInvoiceId         String                 @db.Uuid
   tenantId            String                 @db.Uuid
   companyId           String                 @db.Uuid
@@ -5411,7 +5417,7 @@ model ApInvoiceLine {
 }
 
 model ApInvoiceMatchResult {
-  id                  String             @id @default(uuid()) @db.Uuid
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String             @db.Uuid
   companyId           String             @db.Uuid
   apInvoiceId         String             @db.Uuid
@@ -5452,7 +5458,7 @@ model ApInvoiceMatchResult {
 }
 
 model ApInvoiceException {
-  id                String            @id @default(uuid()) @db.Uuid
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String            @db.Uuid
   companyId         String            @db.Uuid
   apInvoiceId       String            @db.Uuid
@@ -5481,7 +5487,7 @@ model ApInvoiceException {
 }
 
 model ApInvoiceDuplicateSignal {
-  id                 String                @id @default(uuid()) @db.Uuid
+  id                 String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                @db.Uuid
   companyId          String                @db.Uuid
   apInvoiceId        String                @db.Uuid
@@ -5508,7 +5514,7 @@ model ApInvoiceDuplicateSignal {
 }
 
 model SupplierCreditNote {
-  id                       String                   @id @default(uuid()) @db.Uuid
+  id                       String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                 String                   @db.Uuid
   companyId                String                   @db.Uuid
   supplierId               String                   @db.Uuid
@@ -5539,7 +5545,7 @@ model SupplierCreditNote {
   cancelledBy              User?                    @relation("SupplierCreditNoteCanceller", fields: [cancelledByUserId], references: [id])
 
   @@unique([tenantId, companyId, publicReference])
-  @@unique([tenantId, companyId, supplierId, supplierCreditNoteNumber])
+  @@unique([tenantId, companyId, supplierId, supplierCreditNoteNumber], map: "SupplierCreditNote_tenantId_companyId_supplierId_supplierCredit")
   @@unique([tenantId, companyId, idempotencyKey])
   @@index([tenantId, companyId, status])
   @@index([tenantId, companyId, supplierId, status])
@@ -5617,17 +5623,17 @@ model NonSupplierDisbursementRequest {
   rejectedBy           User?                      @relation("DisbursementRejecter", fields: [rejectedByUserId], references: [id])
   cancelledBy          User?                      @relation("DisbursementCanceller", fields: [cancelledByUserId], references: [id])
 
-  @@unique([tenantId, companyId, publicReference])
-  @@unique([tenantId, companyId, sourceEventKey])
-  @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, locationId, status])
-  @@index([tenantId, companyId, payeeId, status])
-  @@index([tenantId, companyId, cashAdvanceRequestId])
-  @@index([tenantId, companyId, pettyCashRequestId])
+  @@unique([tenantId, companyId, publicReference], map: "NonSupplierDisbursementRequest_tenantId_companyId_publicReferen")
+  @@unique([tenantId, companyId, sourceEventKey], map: "NonSupplierDisbursementRequest_tenantId_companyId_sourceEventKe")
+  @@unique([tenantId, companyId, idempotencyKey], map: "NonSupplierDisbursementRequest_tenantId_companyId_idempotencyKe")
+  @@index([tenantId, companyId, locationId, status], map: "NonSupplierDisbursementRequest_tenantId_companyId_locationId_st")
+  @@index([tenantId, companyId, payeeId, status], map: "NonSupplierDisbursementRequest_tenantId_companyId_payeeId_statu")
+  @@index([tenantId, companyId, cashAdvanceRequestId], map: "NonSupplierDisbursementRequest_tenantId_companyId_cashAdvanceRe")
+  @@index([tenantId, companyId, pettyCashRequestId], map: "NonSupplierDisbursementRequest_tenantId_companyId_pettyCashRequ")
 }
 
 model PaymentRequest {
-  id                   String                       @id @default(uuid()) @db.Uuid
+  id                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId             String                       @db.Uuid
   companyId            String                       @db.Uuid
   locationId           String                       @db.Uuid
@@ -5679,7 +5685,7 @@ model PaymentRequest {
 }
 
 model PaymentRequestLine {
-  id                         String                     @id @default(uuid()) @db.Uuid
+  id                         String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                   String                     @db.Uuid
   companyId                  String                     @db.Uuid
   locationId                 String                     @db.Uuid
@@ -5709,7 +5715,7 @@ model PaymentRequestLine {
 }
 
 model PaymentRelease {
-  id                    String                     @id @default(uuid()) @db.Uuid
+  id                    String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId              String                     @db.Uuid
   companyId             String                     @db.Uuid
   locationId            String                     @db.Uuid
@@ -5772,7 +5778,7 @@ model PaymentRelease {
 }
 
 model PaymentReleaseAllocation {
-  id                         String             @id @default(uuid()) @db.Uuid
+  id                         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                   String             @db.Uuid
   companyId                  String             @db.Uuid
   paymentReleaseId           String             @db.Uuid
@@ -5791,14 +5797,14 @@ model PaymentReleaseAllocation {
   apInvoice                  ApInvoice          @relation(fields: [apInvoiceId], references: [id])
   createdBy                  User               @relation("PaymentReleaseAllocationCreator", fields: [createdByUserId], references: [id])
 
-  @@unique([tenantId, companyId, paymentReleaseId, paymentRequestLineId])
-  @@unique([tenantId, companyId, paymentRequestLineId])
-  @@index([tenantId, companyId, paymentReleaseId])
+  @@unique([tenantId, companyId, paymentReleaseId, paymentRequestLineId], map: "PaymentReleaseAllocation_tenantId_companyId_paymentReleaseId_pa")
+  @@unique([tenantId, companyId, paymentRequestLineId], map: "PaymentReleaseAllocation_tenantId_companyId_paymentRequestLineI")
+  @@index([tenantId, companyId, paymentReleaseId], map: "PaymentReleaseAllocation_tenantId_companyId_paymentReleaseId_id")
   @@index([tenantId, companyId, apInvoiceId])
 }
 
 model PaymentReleaseExecution {
-  id                 String                        @id @default(uuid()) @db.Uuid
+  id                 String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                        @db.Uuid
   companyId          String                        @db.Uuid
   paymentReleaseId   String                        @db.Uuid
@@ -5818,11 +5824,11 @@ model PaymentReleaseExecution {
   actor              User                          @relation("PaymentReleaseExecutionActor", fields: [actorUserId], references: [id])
 
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, paymentReleaseId, status])
+  @@index([tenantId, companyId, paymentReleaseId, status], map: "PaymentReleaseExecution_tenantId_companyId_paymentReleaseId_sta")
 }
 
 model Employee {
-  id                  String                       @id @default(uuid()) @db.Uuid
+  id                  String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String                       @db.Uuid
   companyId           String                       @db.Uuid
   userId              String?                      @db.Uuid
@@ -5863,7 +5869,7 @@ model Employee {
 }
 
 model EmployeeAssignment {
-  id              String                   @id @default(uuid()) @db.Uuid
+  id              String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId        String                   @db.Uuid
   companyId       String                   @db.Uuid
   employeeId      String                   @db.Uuid
@@ -5890,12 +5896,12 @@ model EmployeeAssignment {
   costCenter      CostCenter?              @relation(fields: [costCenterId], references: [id])
   createdBy       User                     @relation("EmployeeAssignmentCreator", fields: [createdByUserId], references: [id])
 
-  @@index([tenantId, companyId, employeeId, status, effectiveFrom])
-  @@index([tenantId, companyId, locationId, status, effectiveFrom])
+  @@index([tenantId, companyId, employeeId, status, effectiveFrom], map: "EmployeeAssignment_tenantId_companyId_employeeId_status_effecti")
+  @@index([tenantId, companyId, locationId, status, effectiveFrom], map: "EmployeeAssignment_tenantId_companyId_locationId_status_effecti")
 }
 
 model EmployeeLeaveRequest {
-  id                 String              @id @default(uuid()) @db.Uuid
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String              @db.Uuid
   companyId          String              @db.Uuid
   employeeId         String              @db.Uuid
@@ -5929,13 +5935,13 @@ model EmployeeLeaveRequest {
   updatedBy          User?               @relation("EmployeeLeaveUpdatedBy", fields: [updatedByUserId], references: [id])
   approvalInstance   ApprovalInstance?   @relation(fields: [approvalInstanceId], references: [id])
 
-  @@index([tenantId, companyId, employeeId, status, startDate])
-  @@index([tenantId, companyId, locationId, status, startDate])
+  @@index([tenantId, companyId, employeeId, status, startDate], map: "EmployeeLeaveRequest_tenantId_companyId_employeeId_status_start")
+  @@index([tenantId, companyId, locationId, status, startDate], map: "EmployeeLeaveRequest_tenantId_companyId_locationId_status_start")
   @@index([tenantId, companyId, sourceEventKey])
 }
 
 model EmployeeOvertimeRecord {
-  id                 String                 @id @default(uuid()) @db.Uuid
+  id                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                 @db.Uuid
   companyId          String                 @db.Uuid
   employeeId         String                 @db.Uuid
@@ -5966,13 +5972,13 @@ model EmployeeOvertimeRecord {
   updatedBy          User?                  @relation("EmployeeOvertimeUpdatedBy", fields: [updatedByUserId], references: [id])
   approvalInstance   ApprovalInstance?      @relation(fields: [approvalInstanceId], references: [id])
 
-  @@index([tenantId, companyId, employeeId, status, workedStartAt])
-  @@index([tenantId, companyId, locationId, status, workedStartAt])
+  @@index([tenantId, companyId, employeeId, status, workedStartAt], map: "EmployeeOvertimeRecord_tenantId_companyId_employeeId_status_wor")
+  @@index([tenantId, companyId, locationId, status, workedStartAt], map: "EmployeeOvertimeRecord_tenantId_companyId_locationId_status_wor")
   @@index([tenantId, companyId, sourceEventKey])
 }
 
 model EmployeeTrainingRecord {
-  id               String                 @id @default(uuid()) @db.Uuid
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String                 @db.Uuid
   companyId        String                 @db.Uuid
   employeeId       String                 @db.Uuid
@@ -5996,13 +6002,13 @@ model EmployeeTrainingRecord {
   createdBy        User                   @relation("EmployeeTrainingCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy        User?                  @relation("EmployeeTrainingUpdatedBy", fields: [updatedByUserId], references: [id])
 
-  @@unique([tenantId, companyId, employeeId, trainingCode])
-  @@index([tenantId, companyId, employeeId, status, validUntil])
+  @@unique([tenantId, companyId, employeeId, trainingCode], map: "EmployeeTrainingRecord_tenantId_companyId_employeeId_trainingCo")
+  @@index([tenantId, companyId, employeeId, status, validUntil], map: "EmployeeTrainingRecord_tenantId_companyId_employeeId_status_val")
   @@index([tenantId, companyId, status, validUntil])
 }
 
 model EmployeeComplianceDocument {
-  id                 String                 @id @default(uuid()) @db.Uuid
+  id                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                 @db.Uuid
   companyId          String                 @db.Uuid
   employeeId         String                 @db.Uuid
@@ -6026,12 +6032,12 @@ model EmployeeComplianceDocument {
   createdBy          User                   @relation("EmployeeDocumentCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy          User?                  @relation("EmployeeDocumentUpdatedBy", fields: [updatedByUserId], references: [id])
 
-  @@index([tenantId, companyId, employeeId, documentType, status])
-  @@index([tenantId, companyId, status, expiryAt])
+  @@index([tenantId, companyId, employeeId, documentType, status], map: "EmployeeComplianceDocument_tenantId_companyId_employeeId_docume")
+  @@index([tenantId, companyId, status, expiryAt], map: "EmployeeComplianceDocument_tenantId_companyId_status_expiryAt_i")
 }
 
 model WorkforceSchedule {
-  id                 String                  @id @default(uuid()) @db.Uuid
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                  @db.Uuid
   companyId          String                  @db.Uuid
   brandId            String?                 @db.Uuid
@@ -6080,12 +6086,12 @@ model WorkforceSchedule {
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, sourceEventKey])
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, locationId, scheduleDate, status])
-  @@index([tenantId, companyId, brandId, scheduleDate, status])
+  @@index([tenantId, companyId, locationId, scheduleDate, status], map: "WorkforceSchedule_tenantId_companyId_locationId_scheduleDate_st")
+  @@index([tenantId, companyId, brandId, scheduleDate, status], map: "WorkforceSchedule_tenantId_companyId_brandId_scheduleDate_statu")
 }
 
 model WorkforceScheduleLine {
-  id                  String                      @id @default(uuid()) @db.Uuid
+  id                  String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String                      @db.Uuid
   companyId           String                      @db.Uuid
   workforceScheduleId String                      @db.Uuid
@@ -6119,13 +6125,13 @@ model WorkforceScheduleLine {
   updatedBy           User?                       @relation("WorkforceScheduleLineUpdater", fields: [updatedByUserId], references: [id])
 
   @@unique([workforceScheduleId, lineNumber])
-  @@index([tenantId, companyId, workforceScheduleId, status])
-  @@index([tenantId, companyId, locationId, plannedStartAt, status])
-  @@index([tenantId, companyId, employeeId, plannedStartAt])
+  @@index([tenantId, companyId, workforceScheduleId, status], map: "WorkforceScheduleLine_tenantId_companyId_workforceScheduleId_st")
+  @@index([tenantId, companyId, locationId, plannedStartAt, status], map: "WorkforceScheduleLine_tenantId_companyId_locationId_plannedStar")
+  @@index([tenantId, companyId, employeeId, plannedStartAt], map: "WorkforceScheduleLine_tenantId_companyId_employeeId_plannedStar")
 }
 
 model AttendanceImportBatch {
-  id                  String                      @id @default(uuid()) @db.Uuid
+  id                  String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String                      @db.Uuid
   companyId           String                      @db.Uuid
   brandId             String?                     @db.Uuid
@@ -6167,12 +6173,12 @@ model AttendanceImportBatch {
 
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, idempotencyKey])
-  @@index([tenantId, companyId, locationId, businessDate, status])
-  @@index([tenantId, companyId, brandId, businessDate, status])
+  @@index([tenantId, companyId, locationId, businessDate, status], map: "AttendanceImportBatch_tenantId_companyId_locationId_businessDat")
+  @@index([tenantId, companyId, brandId, businessDate, status], map: "AttendanceImportBatch_tenantId_companyId_brandId_businessDate_s")
 }
 
 model AttendanceImportLine {
-  id                      String                     @id @default(uuid()) @db.Uuid
+  id                      String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId                String                     @db.Uuid
   companyId               String                     @db.Uuid
   attendanceImportBatchId String                     @db.Uuid
@@ -6198,14 +6204,14 @@ model AttendanceImportLine {
   brand                   Brand?                     @relation(fields: [brandId], references: [id])
   employee                Employee?                  @relation(fields: [employeeId], references: [id])
 
-  @@unique([attendanceImportBatchId, sourceRowNumber])
-  @@index([tenantId, companyId, attendanceImportBatchId, status])
-  @@index([tenantId, companyId, locationId, punchInAt, status])
-  @@index([tenantId, companyId, employeeId, punchInAt])
+  @@unique([attendanceImportBatchId, sourceRowNumber], map: "AttendanceImportLine_attendanceImportBatchId_sourceRowNumber_ke")
+  @@index([tenantId, companyId, attendanceImportBatchId, status], map: "AttendanceImportLine_tenantId_companyId_attendanceImportBatchId")
+  @@index([tenantId, companyId, locationId, punchInAt, status], map: "AttendanceImportLine_tenantId_companyId_locationId_punchInAt_st")
+  @@index([tenantId, companyId, employeeId, punchInAt], map: "AttendanceImportLine_tenantId_companyId_employeeId_punchInAt_id")
 }
 
 model BankAccount {
-  id                  String               @id @default(uuid()) @db.Uuid
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId            String               @db.Uuid
   companyId           String               @db.Uuid
   locationId          String?              @db.Uuid
@@ -6242,7 +6248,7 @@ model BankAccount {
 }
 
 model BranchCashDeposit {
-  id                    String                    @id @default(uuid()) @db.Uuid
+  id                    String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId              String                    @db.Uuid
   companyId             String                    @db.Uuid
   locationId            String                    @db.Uuid
@@ -6272,12 +6278,12 @@ model BranchCashDeposit {
 
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, sourceEventKey])
-  @@index([tenantId, companyId, locationId, status, depositDate])
+  @@index([tenantId, companyId, locationId, status, depositDate], map: "BranchCashDeposit_tenantId_companyId_locationId_status_depositD")
   @@index([tenantId, companyId, bankAccountId, status])
 }
 
 model BankStatement {
-  id               String               @id @default(uuid()) @db.Uuid
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String               @db.Uuid
   companyId        String               @db.Uuid
   bankAccountId    String               @db.Uuid
@@ -6306,12 +6312,12 @@ model BankStatement {
 
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, sourceEventKey])
-  @@index([tenantId, companyId, bankAccountId, status, statementDate])
+  @@index([tenantId, companyId, bankAccountId, status, statementDate], map: "BankStatement_tenantId_companyId_bankAccountId_status_statement")
   @@index([sourceReference])
 }
 
 model BankStatementLine {
-  id              String                    @id @default(uuid()) @db.Uuid
+  id              String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId        String                    @db.Uuid
   companyId       String                    @db.Uuid
   bankStatementId String                    @db.Uuid
@@ -6336,12 +6342,12 @@ model BankStatementLine {
   matches         BankReconciliationMatch[]
 
   @@unique([tenantId, companyId, sourceEventKey])
-  @@index([tenantId, companyId, bankStatementId, transactionDate])
+  @@index([tenantId, companyId, bankStatementId, transactionDate], map: "BankStatementLine_tenantId_companyId_bankStatementId_transactio")
   @@index([tenantId, companyId, bankAccountId, status])
 }
 
 model BankReconciliation {
-  id                 String                    @id @default(uuid()) @db.Uuid
+  id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String                    @db.Uuid
   companyId          String                    @db.Uuid
   bankAccountId      String                    @db.Uuid
@@ -6373,11 +6379,11 @@ model BankReconciliation {
 
   @@unique([companyId, publicReference])
   @@index([tenantId, companyId, bankAccountId, status])
-  @@index([tenantId, companyId, accountingPeriodId, status])
+  @@index([tenantId, companyId, accountingPeriodId, status], map: "BankReconciliation_tenantId_companyId_accountingPeriodId_status")
 }
 
 model BankReconciliationMatch {
-  id                     String                        @id @default(uuid()) @db.Uuid
+  id                     String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId               String                        @db.Uuid
   companyId              String                        @db.Uuid
   reconciliationId       String                        @db.Uuid
@@ -6405,15 +6411,15 @@ model BankReconciliationMatch {
   matchedBy              User?                         @relation("BankReconciliationMatchMatcher", fields: [matchedByUserId], references: [id])
 
   @@unique([tenantId, companyId, idempotencyKey])
-  @@unique([reconciliationId, statementLineId, sourceType, sourceDocumentId])
-  @@index([tenantId, companyId, reconciliationId, status])
-  @@index([tenantId, companyId, sourceType, sourceDocumentId])
-  @@index([tenantId, companyId, branchCashDepositId])
+  @@unique([reconciliationId, statementLineId, sourceType, sourceDocumentId], map: "BankReconciliationMatch_reconciliationId_statementLineId_source")
+  @@index([tenantId, companyId, reconciliationId, status], map: "BankReconciliationMatch_tenantId_companyId_reconciliationId_sta")
+  @@index([tenantId, companyId, sourceType, sourceDocumentId], map: "BankReconciliationMatch_tenantId_companyId_sourceType_sourceDoc")
+  @@index([tenantId, companyId, branchCashDepositId], map: "BankReconciliationMatch_tenantId_companyId_branchCashDepositId_")
   @@index([tenantId, companyId, paymentReleaseId])
 }
 
 model ReleaseReadinessGate {
-  id                String    @id @default(uuid()) @db.Uuid
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String    @db.Uuid
   companyId         String    @db.Uuid
   gateKey           String
@@ -6440,7 +6446,7 @@ model ReleaseReadinessGate {
 }
 
 model DeploymentEvidenceRecord {
-  id                 String    @id @default(uuid()) @db.Uuid
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String    @db.Uuid
   companyId          String    @db.Uuid
   evidenceType       String
@@ -6462,15 +6468,15 @@ model DeploymentEvidenceRecord {
   tenant             Tenant    @relation(fields: [tenantId], references: [id])
   company            Company   @relation(fields: [companyId], references: [id])
   createdByUser      User      @relation("DeploymentEvidenceCreatedBy", fields: [createdByUserId], references: [id])
-  verifiedByUser     User?     @relation("DeploymentEvidenceVerifiedBy", fields: [verifiedByUserId], references: [id])
-  rejectedByUser     User?     @relation("DeploymentEvidenceRejectedBy", fields: [rejectedByUserId], references: [id])
+  verifiedByUser     User?     @relation("DeploymentEvidenceVerifiedBy", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+  rejectedByUser     User?     @relation("DeploymentEvidenceRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: Restrict)
 
-  @@index([tenantId, companyId, evidenceType, verificationStatus])
+  @@index([tenantId, companyId, evidenceType, verificationStatus], map: "DeploymentEvidenceRecord_tenantId_companyId_evidenceType_verifi")
   @@index([tenantId, companyId, performedAt])
 }
 
 model EnablementEvidenceRecord {
-  id                     String    @id @default(uuid()) @db.Uuid
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId               String    @db.Uuid
   companyId              String    @db.Uuid
   evidenceType           String
@@ -6494,15 +6500,15 @@ model EnablementEvidenceRecord {
   tenant                 Tenant    @relation(fields: [tenantId], references: [id])
   company                Company   @relation(fields: [companyId], references: [id])
   createdByUser          User      @relation("EnablementEvidenceCreatedBy", fields: [createdByUserId], references: [id])
-  verifiedByUser         User?     @relation("EnablementEvidenceVerifiedBy", fields: [verifiedByUserId], references: [id])
-  rejectedByUser         User?     @relation("EnablementEvidenceRejectedBy", fields: [rejectedByUserId], references: [id])
+  verifiedByUser         User?     @relation("EnablementEvidenceVerifiedBy", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+  rejectedByUser         User?     @relation("EnablementEvidenceRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: Restrict)
 
-  @@index([tenantId, companyId, evidenceType, verificationStatus])
+  @@index([tenantId, companyId, evidenceType, verificationStatus], map: "EnablementEvidenceRecord_tenantId_companyId_evidenceType_verifi")
   @@index([tenantId, companyId, completedAt])
 }
 
 model UatEvidenceRecord {
-  id                 String    @id @default(uuid()) @db.Uuid
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId           String    @db.Uuid
   companyId          String    @db.Uuid
   evidenceType       String
@@ -6528,16 +6534,16 @@ model UatEvidenceRecord {
   tenant             Tenant    @relation(fields: [tenantId], references: [id])
   company            Company   @relation(fields: [companyId], references: [id])
   createdByUser      User      @relation("UatEvidenceCreatedBy", fields: [createdByUserId], references: [id])
-  verifiedByUser     User?     @relation("UatEvidenceVerifiedBy", fields: [verifiedByUserId], references: [id])
-  rejectedByUser     User?     @relation("UatEvidenceRejectedBy", fields: [rejectedByUserId], references: [id])
+  verifiedByUser     User?     @relation("UatEvidenceVerifiedBy", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+  rejectedByUser     User?     @relation("UatEvidenceRejectedBy", fields: [rejectedByUserId], references: [id], onDelete: Restrict)
 
-  @@index([tenantId, companyId, evidenceType, verificationStatus])
+  @@index([tenantId, companyId, evidenceType, verificationStatus], map: "UatEvidenceRecord_tenantId_companyId_evidenceType_verificationS")
   @@index([tenantId, companyId, workflowArea, result])
   @@index([tenantId, companyId, executedAt])
 }
 
 model ReleaseBoardDecision {
-  id                String   @id @default(uuid()) @db.Uuid
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String   @db.Uuid
   companyId         String   @db.Uuid
   decision          String
@@ -6627,6 +6633,7 @@ model ApprovalInstanceStep {
   approvalInstance    ApprovalInstance   @relation(fields: [approvalInstanceId], references: [id])
 
   @@unique([approvalInstanceId, stepOrder])
+  @@index([actedByUserId], map: "ApprovalInstanceStep_actedByUserId_idx")
 }
 
 model Attachment {
@@ -6649,7 +6656,7 @@ model Attachment {
 }
 
 model ControlledEvidenceAttachment {
-  id                String       @id @default(uuid()) @db.Uuid
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String       @db.Uuid
   companyId         String       @db.Uuid
   sourceType        String
@@ -6673,9 +6680,9 @@ model ControlledEvidenceAttachment {
   createdBy         User         @relation("ControlledEvidenceAttachmentCreator", fields: [createdByUserId], references: [id])
   archivedBy        User?        @relation("ControlledEvidenceAttachmentArchiver", fields: [archivedByUserId], references: [id])
 
-  @@unique([tenantId, companyId, sourceType, sourceKey, attachmentId])
-  @@index([tenantId, companyId, sourceType, sourceRecordId, status])
-  @@index([tenantId, companyId, sourceLineId, status])
+  @@unique([tenantId, companyId, sourceType, sourceKey, attachmentId], map: "ControlledEvidenceAttachment_sourceKey_attachment_key")
+  @@index([tenantId, companyId, sourceType, sourceRecordId, status], map: "ControlledEvidenceAttachment_sourceRecord_status_idx")
+  @@index([tenantId, companyId, sourceLineId, status], map: "ControlledEvidenceAttachment_sourceLine_status_idx")
   @@index([attachmentId, status])
   @@index([createdByUserId, createdAt])
 }
@@ -6702,7 +6709,7 @@ model AuditEvent {
 }
 
 model Notification {
-  id               String    @id @default(uuid()) @db.Uuid
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String    @db.Uuid
   companyId        String?   @db.Uuid
   locationId       String?   @db.Uuid

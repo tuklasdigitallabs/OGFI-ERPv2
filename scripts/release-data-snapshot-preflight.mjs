@@ -23,8 +23,6 @@ const label = process.env.RELEASE_DATA_SNAPSHOT_LABEL ?? "snapshot";
 const runId = evidenceRunId(process.env, timestamp);
 const allowMissingTables =
   process.env.RELEASE_DATA_SNAPSHOT_ALLOW_MISSING_TABLES === "yes";
-const allowDestructiveDeltas =
-  process.env.RELEASE_DATA_SNAPSHOT_ALLOW_DESTRUCTIVE_DELTAS === "yes";
 const validLabel = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/.test(label);
 
 const checks = [
@@ -37,9 +35,8 @@ const checks = [
       process.env.RELEASE_DATA_SNAPSHOT_ALLOW_MISSING_TABLES === "yes",
   ],
   [
-    "destructive-delta override explicit",
-    !process.env.RELEASE_DATA_SNAPSHOT_ALLOW_DESTRUCTIVE_DELTAS ||
-      process.env.RELEASE_DATA_SNAPSHOT_ALLOW_DESTRUCTIVE_DELTAS === "yes",
+    "destructive-delta override disabled",
+    !process.env.RELEASE_DATA_SNAPSHOT_ALLOW_DESTRUCTIVE_DELTAS,
   ],
 ];
 
@@ -57,7 +54,7 @@ const lines = [
   "No database URLs, credentials, or raw command outputs are recorded by this preflight.",
   `Snapshot label: ${validLabel ? label : "INVALID"}`,
   `Allow missing tables: ${allowMissingTables ? "yes" : "no"}`,
-  `Allow destructive deltas: ${allowDestructiveDeltas ? "yes" : "no"}`,
+  "Allow destructive deltas: no",
   "",
   ...checks.map(([label, passed]) => `${passed ? "PASS" : "WARN"} | ${label}`),
   "",

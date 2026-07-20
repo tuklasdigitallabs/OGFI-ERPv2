@@ -61,6 +61,7 @@ try {
   testReleaseEvidenceRunIdLoadsLocalEnvFile();
   testBackupSummary();
   testRestoreTargetSafety();
+  testRestoreRejectsChecksumMismatch();
   testRestoreSummary();
   testRollbackSummary();
   testBackupRestoreStatus();
@@ -68,6 +69,8 @@ try {
   testDeploymentStatus();
   testDeploymentChecklist();
   testLatestDataSnapshotCompare();
+  testMigrationReviewInventory();
+  testDataEquivalenceFailsClosed();
   testDataSnapshotStatus();
   testDataSnapshotChecklist();
   testUatStatus();
@@ -114,6 +117,12 @@ function testEvidenceInitializer() {
     "build-check",
     "secret-review",
     "data-snapshots",
+    "migration-review",
+    "predecessor-baseline",
+    "migration-execution",
+    "schema-drift",
+    "data-invariants",
+    "data-equivalence",
     "data-snapshot-checklist",
     "data-snapshot-status",
     "backups",
@@ -699,6 +708,53 @@ function testPostgresToolEnvValidation() {
     "PostgreSQL client resolver should reject env overrides that are not named psql",
   );
   evidenceLines.push("PASS | PostgreSQL client env override rejects non-psql executables.");
+}
+
+function testRestoreRejectsChecksumMismatch() {
+  evidenceLines.push("CHECK | Restore backup checksum verification");
+  if (process.platform === "win32") {
+    evidenceLines.push(
+      "PASS | Restore checksum mismatch execution is exercised on POSIX CI; Windows cannot create a safe executable stub in this self-test.",
+    );
+    return;
+  }
+  const toolDir = join(tempRoot, "restore-checksum-tools");
+  mkdirSync(toolDir, { recursive: true });
+  const psql = join(toolDir, process.platform === "win32" ? "psql.cmd" : "psql");
+  const pgRestore = join(
+    toolDir,
+    process.platform === "win32" ? "pg_restore.cmd" : "pg_restore",
+  );
+  const stub = process.platform === "win32" ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n";
+  writeFileSync(psql, stub);
+  writeFileSync(pgRestore, stub);
+  if (process.platform !== "win32") {
+    chmodSync(psql, 0o755);
+    chmodSync(pgRestore, 0o755);
+  }
+  const backup = join(tempRoot, "checksum-mismatch.dump");
+  writeFileSync(backup, "backup-content");
+  writeFileSync(`${backup}.sha256`, `${"0".repeat(64)}  checksum-mismatch.dump\n`);
+
+  const result = spawnSync(process.execPath, ["scripts/db-restore-check.mjs"], {
+    cwd: workspaceRoot,
+    env: childProcessEnv({
+      DATABASE_URL: "postgresql://user:secret@localhost:5432/source_test",
+      RESTORE_DATABASE_URL: "postgresql://user:secret@localhost:5432/restore_test",
+      BACKUP_FILE: backup,
+      PSQL_BIN: psql,
+      PG_RESTORE_BIN: pgRestore,
+    }),
+    encoding: "utf8",
+  });
+  assert(
+    result.status !== 0 &&
+      `${result.stdout}${result.stderr}`.includes(
+        "Backup checksum verification failed; restore was not attempted.",
+      ),
+    `restore check should reject a backup whose SHA-256 sidecar does not match: ${result.stdout}${result.stderr}`,
+  );
+  evidenceLines.push("PASS | Restore check recomputes SHA-256 before invoking restore.");
 }
 
 function testEvidenceCollectionGuide() {
@@ -1901,8 +1957,11 @@ function testLatestDataSnapshotCompare() {
       "Database URL fingerprint: selftestdb",
       "Label: pre-migration-rehearsal",
       "Tenant | 1",
+      "DIGEST Tenant | d41d8cd98f00b204e9800998ecf8427e",
       "Company | 1",
+      "DIGEST Company | d41d8cd98f00b204e9800998ecf8427e",
       "PurchaseRequest | 2",
+      "DIGEST PurchaseRequest | d41d8cd98f00b204e9800998ecf8427e",
       "RESULT | PASS | Data snapshot captured.",
       "",
     ].join("\n"),
@@ -1916,8 +1975,11 @@ function testLatestDataSnapshotCompare() {
       "Database URL fingerprint: selftestdb",
       "Label: post-migration-rehearsal",
       "Tenant | 1",
+      "DIGEST Tenant | d41d8cd98f00b204e9800998ecf8427e",
       "Company | 1",
-      "PurchaseRequest | 3",
+      "DIGEST Company | d41d8cd98f00b204e9800998ecf8427e",
+      "PurchaseRequest | 2",
+      "DIGEST PurchaseRequest | d41d8cd98f00b204e9800998ecf8427e",
       "RESULT | PASS | Data snapshot captured.",
       "",
     ].join("\n"),
@@ -2033,6 +2095,232 @@ function testLatestDataSnapshotCompare() {
     "data snapshot compare should reject mismatched evidence run IDs",
   );
   rmSync(mismatchedRunSnapshot);
+
+  const changedContentSnapshot = join(
+    snapshotDir,
+    "data-post-migration-rehearsal-content-change-self-test.txt",
+  );
+  writeFileSync(
+    changedContentSnapshot,
+    [
+      "OGFI ERP Phase I / Phase 1.5 release data snapshot",
+      "Generated UTC: 20260701T035000Z",
+      "Evidence run ID: self-test-run",
+      "Database URL fingerprint: selftestdb",
+      "Label: post-migration-rehearsal",
+      "Tenant | 1",
+      "DIGEST Tenant | d41d8cd98f00b204e9800998ecf8427e",
+      "Company | 1",
+      "DIGEST Company | d41d8cd98f00b204e9800998ecf8427e",
+      "PurchaseRequest | 2",
+      "DIGEST PurchaseRequest | 0cc175b9c0f1b6a831c399e269772661",
+      "RESULT | PASS | Data snapshot captured.",
+      "",
+    ].join("\n"),
+  );
+  const changedContentResult = spawnSync(
+    process.execPath,
+    ["scripts/release-data-snapshot-compare.mjs"],
+    {
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        RELEASE_DATA_SNAPSHOT_BEFORE: join(
+          snapshotDir,
+          "data-pre-migration-rehearsal-self-test.txt",
+        ),
+        RELEASE_DATA_SNAPSHOT_AFTER: changedContentSnapshot,
+        RELEASE_DATA_SNAPSHOT_COMPARE_OUTPUT_FILE: join(
+          tempRoot,
+          "changed-content-delta.txt",
+        ),
+      },
+      encoding: "utf8",
+    },
+  );
+  assert(
+    changedContentResult.status !== 0 &&
+      `${changedContentResult.stdout}${changedContentResult.stderr}`.includes(
+        "MISMATCH",
+      ),
+    "data snapshot compare should reject changed table content digests",
+  );
+  rmSync(changedContentSnapshot);
+
+  const negativeDeltaSnapshot = join(
+    snapshotDir,
+    "data-post-migration-rehearsal-negative-delta-self-test.txt",
+  );
+  writeFileSync(
+    negativeDeltaSnapshot,
+    [
+      "OGFI ERP Phase I / Phase 1.5 release data snapshot",
+      "Generated UTC: 20260701T040000Z",
+      "Evidence run ID: self-test-run",
+      "Database URL fingerprint: selftestdb",
+      "Label: post-migration-rehearsal",
+      "Tenant | 1",
+      "Company | 1",
+      "PurchaseRequest | 1",
+      "RESULT | PASS | Data snapshot captured.",
+      "",
+    ].join("\n"),
+  );
+  const negativeDeltaResult = spawnSync(
+    process.execPath,
+    ["scripts/release-data-snapshot-compare.mjs"],
+    {
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        RELEASE_DATA_SNAPSHOT_BEFORE: join(
+          snapshotDir,
+          "data-pre-migration-rehearsal-self-test.txt",
+        ),
+        RELEASE_DATA_SNAPSHOT_AFTER: negativeDeltaSnapshot,
+        RELEASE_DATA_SNAPSHOT_COMPARE_OUTPUT_FILE: join(
+          tempRoot,
+          "negative-count-delta.txt",
+        ),
+      },
+      encoding: "utf8",
+    },
+  );
+  assert(
+    negativeDeltaResult.status !== 0 &&
+      `${negativeDeltaResult.stdout}${negativeDeltaResult.stderr}`.includes(
+        "disallowed changed table delta",
+      ),
+    "data snapshot compare should reject negative row-count deltas",
+  );
+  rmSync(negativeDeltaSnapshot);
+}
+
+function testMigrationReviewInventory() {
+  evidenceLines.push("CHECK | Migration review inventory");
+  const fixtureRoot = join(tempRoot, "migration-review-fixture");
+  const migrationsDir = join(fixtureRoot, "migrations");
+  const additiveDir = join(migrationsDir, "0001_additive");
+  const destructiveDir = join(migrationsDir, "0002_destructive");
+  const registerFile = join(fixtureRoot, "register.md");
+  const outputFile = join(fixtureRoot, "inventory.json");
+  const destructiveSql = 'ALTER TABLE "Example" DROP CONSTRAINT "Example_code_key";\n';
+  mkdirSync(additiveDir, { recursive: true });
+  mkdirSync(destructiveDir, { recursive: true });
+  writeFileSync(join(migrationsDir, "migration_lock.toml"), 'provider = "postgresql"\n');
+  writeFileSync(join(additiveDir, "migration.sql"), 'CREATE TABLE "Example" ("id" UUID PRIMARY KEY);\n');
+  writeFileSync(join(destructiveDir, "migration.sql"), destructiveSql);
+  const hash = createHash("sha256").update(destructiveSql).digest("hex");
+  writeFileSync(
+    registerFile,
+    [
+      "<!-- MIGRATION_SAFETY_REGISTER_JSON_START -->",
+      "```json",
+      JSON.stringify([
+        {
+          migration: "0002_destructive",
+          sha256: hash,
+          risk: "Constraint removal can weaken integrity.",
+          expectedDataEffect: "No row mutation.",
+          recovery: "Restore the constraint through a reviewed forward fix.",
+          failurePoint: "Constraint removal can weaken integrity.",
+          transactionBehavior: "No explicit transaction; inspect partial state.",
+          reversibility: "Use a forward fix or restore backup.",
+          decisionTrigger: "Stop on any failed release gate.",
+          owner: "Database Engineering / Release Manager.",
+          verification: "Verify migration journal, schema, data, and invariants.",
+          expectedRecoveryTime: "Measure during rehearsal against approved RTO/RPO.",
+          reviewerStatus: "PENDING",
+        },
+      ]),
+      "```",
+      "<!-- MIGRATION_SAFETY_REGISTER_JSON_END -->",
+      "",
+    ].join("\n"),
+  );
+
+  runNodeScript("scripts/release-migration-review.mjs", {
+    RELEASE_MIGRATION_REVIEW_MIGRATIONS_DIR: migrationsDir,
+    RELEASE_MIGRATION_REVIEW_REGISTER: registerFile,
+    RELEASE_MIGRATION_REVIEW_OUTPUT_FILE: outputFile,
+    RELEASE_MIGRATION_REVIEW_TIMESTAMP: "2026-07-21T00:00:00Z",
+    RELEASE_MIGRATION_REVIEW_REQUIRE_APPROVED: "no",
+  });
+  const inventory = JSON.parse(readFileSync(outputFile, "utf8"));
+  assert(inventory.summary.migrationCount === 2, "migration inventory should include every migration");
+  assert(inventory.summary.destructiveMigrationCount === 1, "migration inventory should classify dropped constraints as destructive");
+
+  const approvalResult = spawnSync(
+    process.execPath,
+    ["scripts/release-migration-review.mjs"],
+    {
+      cwd: workspaceRoot,
+      env: childProcessEnv({
+        RELEASE_MIGRATION_REVIEW_MIGRATIONS_DIR: migrationsDir,
+        RELEASE_MIGRATION_REVIEW_REGISTER: registerFile,
+        RELEASE_MIGRATION_REVIEW_OUTPUT_FILE: outputFile,
+        RELEASE_MIGRATION_REVIEW_TIMESTAMP: "2026-07-21T00:00:00Z",
+        RELEASE_MIGRATION_REVIEW_REQUIRE_APPROVED: "yes",
+        RELEASE_CANDIDATE_SHA: "1234567890abcdef1234567890abcdef12345678",
+        RELEASE_EVIDENCE_RUN_ID: "self-test-run",
+      }),
+      encoding: "utf8",
+    },
+  );
+  assert(
+    approvalResult.status !== 0 &&
+      `${approvalResult.stdout}${approvalResult.stderr}`.includes(
+        "requires APPROVED safety dispositions",
+      ),
+    "migration review release mode should reject pending dispositions",
+  );
+  evidenceLines.push("PASS | Migration inventory is hash-bound and fails closed on pending destructive review.");
+}
+
+function testDataEquivalenceFailsClosed() {
+  evidenceLines.push("CHECK | Restore data equivalence");
+  const outputFile = join(tempRoot, "data-equivalence-fail.txt");
+  const result = spawnSync(process.execPath, ["scripts/release-data-equivalence.mjs"], {
+    cwd: workspaceRoot,
+    env: childProcessEnv({
+      SOURCE_DATABASE_URL: undefined,
+      TARGET_DATABASE_URL: undefined,
+      RELEASE_DATA_EQUIVALENCE_OUTPUT_FILE: outputFile,
+    }),
+    encoding: "utf8",
+  });
+  assert(result.status !== 0, "data equivalence should fail without separate database URLs");
+  const artifact = readFileSync(outputFile, "utf8");
+  assert(artifact.includes("RESULT | FAIL |"), "data equivalence should write fail evidence");
+  assert(!artifact.includes("postgresql://"), "data equivalence evidence must not expose database URLs");
+  const sameDatabaseOutput = join(tempRoot, "data-equivalence-same-db.txt");
+  const sameDatabaseResult = spawnSync(
+    process.execPath,
+    ["scripts/release-data-equivalence.mjs"],
+    {
+      cwd: workspaceRoot,
+      env: childProcessEnv({
+        SOURCE_DATABASE_URL: "postgresql://user:secret@localhost:5432/same_test",
+        TARGET_DATABASE_URL: "postgresql://user:secret@localhost:5432/same_test",
+        RELEASE_CANDIDATE_SHA: "1234567890abcdef1234567890abcdef12345678",
+        RELEASE_PREDECESSOR_SHA: "abcdef1234567890abcdef1234567890abcdef12",
+        RELEASE_DATA_EQUIVALENCE_OUTPUT_FILE: sameDatabaseOutput,
+      }),
+      encoding: "utf8",
+    },
+  );
+  assert(
+    sameDatabaseResult.status !== 0 &&
+      `${sameDatabaseResult.stdout}${sameDatabaseResult.stderr}`.includes(
+        "fingerprints must be different",
+      ),
+    "data equivalence should reject the same source and target database",
+  );
+  assert(
+    !readFileSync(sameDatabaseOutput, "utf8").includes("secret"),
+    "same-database failure evidence must redact credentials",
+  );
+  evidenceLines.push("PASS | Restore equivalence fails closed and writes sanitized evidence.");
 }
 
 function testDataSnapshotStatus() {
@@ -2134,8 +2422,8 @@ function testDataSnapshotChecklist() {
     "data snapshot checklist should require PASS preflight for critical release review",
   );
   assert(
-    output.includes("Use RELEASE_DATA_SNAPSHOT_ALLOW_DESTRUCTIVE_DELTAS=yes only with a documented waiver"),
-    "data snapshot checklist should guard destructive delta override use",
+    output.includes("Unexpected negative, missing, or unmatched deltas cannot be bypassed"),
+    "data snapshot checklist should prohibit destructive delta override use",
   );
   assert(
     output.includes("final manifest checksum lines"),
@@ -3688,7 +3976,7 @@ function testEvidenceRunConsistencyContract() {
   });
   assert(
     completeResult.pass,
-    "evidence run consistency should pass when all required artifacts share the approved run ID",
+    `evidence run consistency should pass when all required artifacts share the approved run ID: ${completeResult.detail}`,
   );
 
   const metadataFile = join(tempRoot, "evidence-run-consistency.env");
@@ -3774,6 +4062,12 @@ function writeEvidenceRunConsistencyArtifacts(root, evidenceRunId) {
   for (const directory of [
     ".",
     "data-snapshots",
+    "migration-review",
+    "predecessor-baseline",
+    "migration-execution",
+    "schema-drift",
+    "data-invariants",
+    "data-equivalence",
     "backups",
     "staging-rollback",
     "deployment-status",
@@ -3810,6 +4104,44 @@ function writeEvidenceRunConsistencyArtifacts(root, evidenceRunId) {
   writeFileSync(
     join(root, "data-snapshots", "data-snapshot-delta-self-test.txt"),
     `Before evidence run ID: ${evidenceRunId}\nAfter evidence run ID: ${evidenceRunId}\n`,
+  );
+  writeFileSync(
+    join(root, "migration-review", "migration-review-self-test.json"),
+    JSON.stringify(
+      { releaseEvidenceRunId: evidenceRunId, requireApproved: true },
+      null,
+      2,
+    ),
+  );
+  writeFileSync(
+    join(root, "predecessor-baseline", "predecessor-baseline-self-test.txt"),
+    `Evidence run ID: ${evidenceRunId}\nRESULT | PASS | Populated predecessor baseline captured.\n`,
+  );
+  writeFileSync(
+    join(root, "migration-execution", "first-deploy.txt"),
+    `Evidence run ID: ${evidenceRunId}\nRESULT | PASS | Reviewed candidate migrations applied.\n`,
+  );
+  writeFileSync(
+    join(root, "migration-execution", "second-deploy.txt"),
+    `Evidence run ID: ${evidenceRunId}\nRESULT | PASS | Idempotent migration deployment verified.\n`,
+  );
+  writeFileSync(
+    join(root, "schema-drift", "zero-drift.txt"),
+    `Evidence run ID: ${evidenceRunId}\nRESULT | PASS | Zero schema drift verified.\n`,
+  );
+  for (const label of [
+    "pre-migration-rehearsal",
+    "post-migration-rehearsal",
+    "restored-predecessor",
+  ]) {
+    writeFileSync(
+      join(root, "data-invariants", `data-invariants-${label}-self-test.txt`),
+      `Evidence run ID: ${evidenceRunId}\nRESULT | PASS | Invariants passed.\n`,
+    );
+  }
+  writeFileSync(
+    join(root, "data-equivalence", "data-equivalence-self-test.txt"),
+    `Evidence run ID: ${evidenceRunId}\nRESULT | PASS | Equivalence passed.\n`,
   );
   writeFileSync(
     join(root, "backups", "backup-summary.txt"),

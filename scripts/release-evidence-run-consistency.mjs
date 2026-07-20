@@ -25,6 +25,33 @@ const requiredSources = [
   source("Data snapshot delta after", "data-snapshots", /^data-snapshot-delta-.*\.txt$/, [
     /^After evidence run ID: (.+)$/m,
   ]),
+  source("Migration review", "migration-review", /^migration-review-.*\.json$/, [
+    /"releaseEvidenceRunId":\s*"([^"]+)"/m,
+  ], ['"requireApproved": true']),
+  source("Predecessor baseline", "predecessor-baseline", /^predecessor-baseline-.*\.txt$/, [
+    /^Evidence run ID: (.+)$/m,
+  ], ["RESULT | PASS | Populated predecessor baseline captured."]),
+  source("Migration first deploy", "migration-execution", /^first-deploy\.txt$/, [
+    /^Evidence run ID: (.+)$/m,
+  ], ["RESULT | PASS | Reviewed candidate migrations applied."]),
+  source("Migration second deploy", "migration-execution", /^second-deploy\.txt$/, [
+    /^Evidence run ID: (.+)$/m,
+  ], ["RESULT | PASS | Idempotent migration deployment verified."]),
+  source("Schema drift", "schema-drift", /^zero-drift\.txt$/, [
+    /^Evidence run ID: (.+)$/m,
+  ], ["RESULT | PASS | Zero schema drift verified."]),
+  source("Pre-migration invariants", "data-invariants", /^data-invariants-pre-migration-rehearsal-.*\.txt$/, [
+    /^Evidence run ID: (.+)$/m,
+  ], ["RESULT | PASS |"]),
+  source("Post-migration invariants", "data-invariants", /^data-invariants-post-migration-rehearsal-.*\.txt$/, [
+    /^Evidence run ID: (.+)$/m,
+  ], ["RESULT | PASS |"]),
+  source("Restored predecessor invariants", "data-invariants", /^data-invariants-restored-predecessor-.*\.txt$/, [
+    /^Evidence run ID: (.+)$/m,
+  ], ["RESULT | PASS |"]),
+  source("Restore data equivalence", "data-equivalence", /^data-equivalence-.*\.txt$/, [
+    /^Evidence run ID: (.+)$/m,
+  ], ["RESULT | PASS |"]),
   source("Backup summary", "backups", /^backup-summary\.txt$/, [
     /^evidence_run_id=(.+)$/m,
   ]),
