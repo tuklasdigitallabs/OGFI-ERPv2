@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { requirePostgresTool } from "./postgres-client-tools.mjs";
+import {
+  postgresClientConnectionUrl,
+  requirePostgresTool,
+} from "./postgres-client-tools.mjs";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -26,7 +29,7 @@ mkdirSync(dirname(backupFile), { recursive: true });
 execFileSync(
   pgDump,
   [
-    databaseUrl,
+    postgresClientConnectionUrl(databaseUrl),
     "--format=custom",
     "--no-owner",
     "--no-privileges",

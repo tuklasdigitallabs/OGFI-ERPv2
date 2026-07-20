@@ -39,13 +39,21 @@ export function requirePostgresTool(command, context) {
   process.exit(1);
 }
 
+export function postgresClientConnectionUrl(databaseUrl) {
+  try {
+    const parsed = new URL(databaseUrl);
+    parsed.searchParams.delete("schema");
+    return parsed.toString();
+  } catch {
+    return databaseUrl;
+  }
+}
+
 function isExpectedTool(command, candidate) {
   const normalized = candidate.replaceAll("\\", "/");
   const name = basename(normalized).toLowerCase();
   return (
-    name === command ||
-    name === `${command}.exe` ||
-    name === `${command}.cmd`
+    name === command || name === `${command}.exe` || name === `${command}.cmd`
   );
 }
 

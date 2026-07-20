@@ -1,7 +1,15 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  appendFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
-import { requirePostgresTool } from "./postgres-client-tools.mjs";
+import {
+  postgresClientConnectionUrl,
+  requirePostgresTool,
+} from "./postgres-client-tools.mjs";
 import {
   databaseUrlFingerprint,
   evidenceRunId,
@@ -15,6 +23,7 @@ if (!databaseUrl) {
 }
 
 const psql = requirePostgresTool("psql", "the release data snapshot");
+const psqlDatabaseUrl = postgresClientConnectionUrl(databaseUrl);
 
 const timestamp = new Date()
   .toISOString()
@@ -122,9 +131,13 @@ const primaryTableGroups = [
     ],
   ],
 ];
-const primaryTables = new Set(primaryTableGroups.flatMap(([, tables]) => tables));
+const primaryTables = new Set(
+  primaryTableGroups.flatMap(([, tables]) => tables),
+);
 const schemaTables = readPrismaModelTables(prismaSchemaFile);
-const additionalTables = schemaTables.filter((table) => !primaryTables.has(table));
+const additionalTables = schemaTables.filter(
+  (table) => !primaryTables.has(table),
+);
 const tableGroups = [
   ...primaryTableGroups,
   ["Additional schema models", additionalTables],
@@ -170,7 +183,7 @@ function queryCount(sql) {
   try {
     output = execFileSync(
       psql,
-      [databaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
+      [psqlDatabaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
@@ -206,11 +219,13 @@ function queryDigest(table) {
   ].join("\n");
   const output = execFileSync(
     psql,
-    [databaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
+    [psqlDatabaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
     { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
   ).trim();
   if (!/^[a-f0-9]{32}$/.test(output)) {
-    console.error(`Release data snapshot returned an invalid digest for ${table}.`);
+    console.error(
+      `Release data snapshot returned an invalid digest for ${table}.`,
+    );
     process.exit(2);
   }
   return output;
@@ -236,9 +251,13 @@ function readPrismaModelTables(schemaFile) {
     process.exit(2);
   }
 
-  const duplicates = tables.filter((table, index) => tables.indexOf(table) !== index);
+  const duplicates = tables.filter(
+    (table, index) => tables.indexOf(table) !== index,
+  );
   if (duplicates.length > 0) {
-    console.error(`Duplicate Prisma table mappings found: ${[...new Set(duplicates)].join(", ")}`);
+    console.error(
+      `Duplicate Prisma table mappings found: ${[...new Set(duplicates)].join(", ")}`,
+    );
     process.exit(2);
   }
 

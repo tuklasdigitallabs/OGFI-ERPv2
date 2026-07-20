@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { requirePostgresTool } from "./postgres-client-tools.mjs";
+import {
+  postgresClientConnectionUrl,
+  requirePostgresTool,
+} from "./postgres-client-tools.mjs";
 import { loadLocalEnvValue } from "./local-env.mjs";
 import {
   databaseUrlFingerprint,
@@ -37,6 +40,7 @@ if (!candidateSha || !/^[a-f0-9]{40}$/i.test(candidateSha)) {
 }
 
 const psql = requirePostgresTool("psql", "release data invariant verification");
+const psqlDatabaseUrl = postgresClientConnectionUrl(databaseUrl);
 const checks = [
   populationCheck(
     "ProjectRequirement population",
@@ -146,7 +150,7 @@ function queryCount(sql) {
   try {
     output = execFileSync(
       psql,
-      [databaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
+      [psqlDatabaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     ).trim();
   } catch {

@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { resolvePostgresTool } from "./postgres-client-tools.mjs";
+import {
+  postgresClientConnectionUrl,
+  resolvePostgresTool,
+} from "./postgres-client-tools.mjs";
 import {
   databaseUrlFingerprint,
   evidenceRunId,
@@ -125,7 +128,16 @@ function queryTableDigest(psql, databaseUrl, table, side) {
   try {
     output = execFileSync(
       psql,
-      [databaseUrl, "-v", "ON_ERROR_STOP=1", "-At", "-F", "\t", "-c", sql],
+      [
+        postgresClientConnectionUrl(databaseUrl),
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-At",
+        "-F",
+        "\t",
+        "-c",
+        sql,
+      ],
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],

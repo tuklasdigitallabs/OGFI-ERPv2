@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { requirePostgresTool } from "./postgres-client-tools.mjs";
+import {
+  postgresClientConnectionUrl,
+  requirePostgresTool,
+} from "./postgres-client-tools.mjs";
 import { loadLocalEnvValue } from "./local-env.mjs";
 import {
   databaseUrlFingerprint,
@@ -43,6 +46,7 @@ if (predecessorSha === candidateSha)
   fail("Predecessor and candidate SHAs must differ.");
 
 const psql = requirePostgresTool("psql", "the predecessor baseline fixture");
+const psqlDatabaseUrl = postgresClientConnectionUrl(databaseUrl);
 const fixtureSql = `
 BEGIN;
 
@@ -162,9 +166,13 @@ COMMIT;
 `;
 
 try {
-  execFileSync(psql, [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", fixtureSql], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  execFileSync(
+    psql,
+    [psqlDatabaseUrl, "-v", "ON_ERROR_STOP=1", "-c", fixtureSql],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   const population = queryPopulation(psql);
   const missing = population.filter((row) => row.count < 1);
   if (missing.length > 0)
@@ -213,7 +221,7 @@ function queryPopulation(tool) {
     const output = execFileSync(
       tool,
       [
-        databaseUrl,
+        psqlDatabaseUrl,
         "-v",
         "ON_ERROR_STOP=1",
         "-At",

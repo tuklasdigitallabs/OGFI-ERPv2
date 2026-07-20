@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { finalManifestRequiredPatterns } from "./release-evidence-contract.mjs";
 import { evaluateManifestFreshness } from "./release-evidence-freshness.mjs";
 import { evaluateEvidenceRunConsistency } from "./release-evidence-run-consistency.mjs";
+import { postgresClientConnectionUrl } from "./postgres-client-tools.mjs";
 import { evaluateRestoreTargetSafety } from "./restore-target-safety.mjs";
 
 const workspaceRoot = process.cwd();
@@ -53,6 +54,7 @@ try {
   testEvidenceInitializer();
   testReleaseReadinessRegisterExport();
   testPostgresToolEnvValidation();
+  testPostgresClientConnectionUrl();
   testEvidenceCollectionGuide();
   testExternalEvidenceGuide();
   testRehearsalCommandPlan();
@@ -708,6 +710,19 @@ function testPostgresToolEnvValidation() {
     "PostgreSQL client resolver should reject env overrides that are not named psql",
   );
   evidenceLines.push("PASS | PostgreSQL client env override rejects non-psql executables.");
+}
+
+function testPostgresClientConnectionUrl() {
+  evidenceLines.push("CHECK | PostgreSQL client connection URL normalization");
+  assert(
+    postgresClientConnectionUrl(
+      "postgresql://user:example@localhost:5432/ogfi?schema=public&sslmode=require",
+    ) === "postgresql://user:example@localhost:5432/ogfi?sslmode=require",
+    "PostgreSQL client URL should remove only the Prisma schema parameter",
+  );
+  evidenceLines.push(
+    "PASS | PostgreSQL client URLs remove Prisma-only schema parameters.",
+  );
 }
 
 function testRestoreRejectsChecksumMismatch() {

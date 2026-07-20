@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
-import { requirePostgresTool } from "./postgres-client-tools.mjs";
+import {
+  postgresClientConnectionUrl,
+  requirePostgresTool,
+} from "./postgres-client-tools.mjs";
 import {
   evaluateRestoreTargetSafety,
   formatRestoreTargetSafetyLines,
@@ -35,14 +38,18 @@ if (!existsSync(checksumFile)) {
   console.error(`Backup checksum file not found: ${checksumFile}`);
   process.exit(1);
 }
-const expectedChecksum = readFileSync(checksumFile, "utf8").trim().split(/\s+/)[0];
+const expectedChecksum = readFileSync(checksumFile, "utf8")
+  .trim()
+  .split(/\s+/)[0];
 if (!/^[a-f0-9]{64}$/i.test(expectedChecksum ?? "")) {
   console.error(`Backup checksum file is invalid: ${checksumFile}`);
   process.exit(1);
 }
 const actualChecksum = await sha256File(backupFile);
 if (actualChecksum !== expectedChecksum.toLowerCase()) {
-  console.error("Backup checksum verification failed; restore was not attempted.");
+  console.error(
+    "Backup checksum verification failed; restore was not attempted.",
+  );
   process.exit(1);
 }
 
@@ -51,6 +58,7 @@ if (!restoreTargetSafety.pass) {
   console.error(formatRestoreTargetSafetyLines(restoreTargetSafety).join("\n"));
   process.exit(1);
 }
+const restoreClientUrl = postgresClientConnectionUrl(restoreDatabaseUrl);
 
 execFileSync(
   pgRestore,
@@ -59,7 +67,7 @@ execFileSync(
     "--if-exists",
     "--no-owner",
     "--no-privileges",
-    `--dbname=${restoreDatabaseUrl}`,
+    `--dbname=${restoreClientUrl}`,
     backupFile,
   ],
   { stdio: "inherit" },
@@ -68,7 +76,7 @@ execFileSync(
 execFileSync(
   psql,
   [
-    restoreDatabaseUrl,
+    restoreClientUrl,
     "--set=ON_ERROR_STOP=1",
     "--command=select current_database() as restored_database, now() as verified_at;",
   ],
