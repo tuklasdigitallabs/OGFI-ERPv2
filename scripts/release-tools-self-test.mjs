@@ -1190,6 +1190,8 @@ function testReleaseSummaryLoadsLocalEnvFile() {
     {
       LOCAL_ENV_FILES: metadataFile,
       RELEASE_EVIDENCE_ROOT: evidenceRoot,
+      GITHUB_RUN_ID: undefined,
+      GITHUB_SHA: undefined,
     },
   );
   assert(
@@ -1206,6 +1208,8 @@ function testReleaseSummaryLoadsLocalEnvFile() {
   const output = runNodeScript("scripts/release-summary.mjs", {
     LOCAL_ENV_FILES: metadataFile,
     RELEASE_SUMMARY_OUTPUT_FILE: outputFile,
+    GITHUB_RUN_ID: undefined,
+    GITHUB_SHA: undefined,
   });
   assert(
     output.includes("Release candidate summary written:"),
@@ -1336,6 +1340,8 @@ function testBackupSummary() {
     RELEASE_BACKUP_SUMMARY_OUTPUT_FILE: localEnvOutputFile,
     BACKUP_FILE: backupFile,
     DATABASE_URL: "postgres://self-test:secret@localhost:5432/ogfi_self_test",
+    GITHUB_RUN_ID: undefined,
+    GITHUB_SHA: undefined,
   });
   const localEnvSummary = readFileSync(localEnvOutputFile, {
     encoding: "utf8",
@@ -5271,7 +5277,7 @@ async function testSmokeReport() {
 function runNodeScript(scriptPath, env) {
   const result = spawnSync(process.execPath, [scriptPath], {
     cwd: workspaceRoot,
-    env: { ...process.env, ...env },
+    env: childProcessEnv(env),
     encoding: "utf8",
   });
 
@@ -5326,7 +5332,7 @@ function runNodeScriptAsync(scriptPath, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [scriptPath], {
       cwd: workspaceRoot,
-      env: { ...process.env, ...env },
+      env: childProcessEnv(env),
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -5352,6 +5358,18 @@ function runNodeScriptAsync(scriptPath, env) {
       );
     });
   });
+}
+
+function childProcessEnv(overrides) {
+  const env = { ...process.env };
+  for (const [name, value] of Object.entries(overrides ?? {})) {
+    if (value === undefined) {
+      delete env[name];
+    } else {
+      env[name] = value;
+    }
+  }
+  return env;
 }
 
 function assert(condition, message) {
