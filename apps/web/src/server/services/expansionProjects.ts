@@ -9,7 +9,10 @@ import { requireSessionContext, type SessionContext } from "./context";
 import type { CsvRow } from "./csv";
 import { dateOnlyString, isProjectTaskOverdue } from "./projectDates";
 import { notifyProjectTaskAssigned } from "./projectNotifications";
-import { transitionProjectTask } from "./projectTasks";
+import {
+  transitionProjectTask,
+  type ProjectTaskStatus
+} from "./projectTasks";
 import {
   expansionProjectTypes,
   type ExpansionProjectType
@@ -156,7 +159,7 @@ export type ExpansionFeasibilityRow = {
   siteName: string;
   title: string;
   modelType: string;
-  status: string;
+  status: ProjectTaskStatus;
   priority: string;
   ownerName: string;
   dueDate: string | null;
@@ -203,7 +206,7 @@ export type ExpansionCapexProcurementRow = {
   title: string;
   packageType: string;
   costCategory: string;
-  status: string;
+  status: ProjectTaskStatus;
   priority: string;
   ownerName: string;
   dueDate: string | null;
@@ -249,7 +252,7 @@ export type ExpansionPostOpeningReviewRow = {
   siteName: string;
   title: string;
   reviewPeriod: string;
-  status: string;
+  status: ProjectTaskStatus;
   priority: string;
   ownerName: string;
   dueDate: string | null;
@@ -300,7 +303,7 @@ export type ExpansionPermitDocumentRow = {
   trackerType: string;
   authority: string | null;
   referenceNumber: string | null;
-  status: string;
+  status: ProjectTaskStatus;
   priority: string;
   ownerName: string;
   dueDate: string | null;
@@ -340,7 +343,7 @@ export type ExpansionConstructionTaskRow = {
   workstream: string;
   area: string | null;
   contractorName: string | null;
-  status: string;
+  status: ProjectTaskStatus;
   priority: string;
   ownerName: string;
   dueDate: string | null;
@@ -382,7 +385,7 @@ export type ExpansionOpeningReadinessRow = {
   title: string;
   readinessArea: string;
   ownerName: string;
-  status: string;
+  status: ProjectTaskStatus;
   priority: string;
   dueDate: string | null;
   isOverdue: boolean;
@@ -434,7 +437,7 @@ export type ExpansionPunchListRow = {
   impactSummary: string;
   escalationOwner: string | null;
   independentReviewerName: string | null;
-  status: string;
+  status: ProjectTaskStatus;
   priority: string;
   ownerName: string;
   dueDate: string | null;
