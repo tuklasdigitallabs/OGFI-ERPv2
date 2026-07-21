@@ -4,6 +4,8 @@ import type { SessionContext } from "./context";
 export const permissions = {
   coreAdminister: "core.administer",
   tenantRoleAdminister: "core.tenant_role_administer",
+  evidenceLegalHoldSet: "evidence.legal_hold.set",
+  evidenceRetentionView: "evidence.retention.view",
   purchaseRequestCreate: "purchasing.purchase_request.create",
   purchaseRequestSubmit: "purchasing.purchase_request.submit",
   purchaseRequestApprove: "purchasing.purchase_request.approve",

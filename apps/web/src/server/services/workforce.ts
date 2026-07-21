@@ -4,7 +4,7 @@ import {
   permissions,
   requireAnyPermission,
   requirePermission,
-  requireWorkforceAccess,
+  requireWorkforceAccess
 } from "./authorization";
 import type { SessionContext } from "./context";
 import type { CsvRow } from "./csv";
@@ -106,6 +106,22 @@ export type AttendanceImportBatchRow = {
   duplicateCount: number;
   lineCount: number;
 };
+
+export const workforceEvidenceSourceTypes = [
+  "WORKFORCE_EMPLOYEE",
+  "WORKFORCE_ASSIGNMENT",
+  "WORKFORCE_LEAVE",
+  "WORKFORCE_OVERTIME",
+  "WORKFORCE_SCHEDULE",
+  "WORKFORCE_ATTENDANCE_IMPORT"
+] as const;
+
+export type WorkforceEvidenceSourceType =
+  (typeof workforceEvidenceSourceTypes)[number];
+
+export type WorkforceEvidenceSourceBatchRequest = Partial<
+  Record<WorkforceEvidenceSourceType, readonly string[]>
+>;
 
 export type WorkforceReadinessRow = {
   id: string;
@@ -387,7 +403,7 @@ async function requireWorkforcePermission(
 ) {
   await requireAnyPermission(session, [
     permissions.coreAdminister,
-    permissionCode,
+    permissionCode
   ]);
 }
 
@@ -406,9 +422,9 @@ async function loadWorkforceScopeSnapshot(session: SessionContext) {
       scopeType: { in: ["LOCATION", "COMPANY"] },
       status: "ACTIVE",
       startsAt: { lte: now },
-      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }]
     },
-    select: { scopeType: true, scopeId: true, accessLevel: true },
+    select: { scopeType: true, scopeId: true, accessLevel: true }
   });
   const locationScopeIds = assignments
     .filter((assignment) => assignment.scopeType === "LOCATION")
@@ -418,28 +434,30 @@ async function loadWorkforceScopeSnapshot(session: SessionContext) {
       id: { in: locationScopeIds },
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      status: "ACTIVE",
+      status: "ACTIVE"
     },
-    select: { id: true, brandId: true, name: true },
+    select: { id: true, brandId: true, name: true }
   });
   const departments = await prisma.department.findMany({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      status: "ACTIVE",
+      status: "ACTIVE"
     },
-    select: { id: true },
+    select: { id: true }
   });
   return {
     locationIds: locations.map((location) => location.id),
-    locationsById: new Map(locations.map((location) => [location.id, location])),
+    locationsById: new Map(
+      locations.map((location) => [location.id, location])
+    ),
     departmentIds: new Set(departments.map((department) => department.id)),
     hasCompanyManage: assignments.some(
       (assignment) =>
         assignment.scopeType === "COMPANY" &&
         assignment.scopeId === session.context.companyId &&
-        assignment.accessLevel === "MANAGE",
-    ),
+        assignment.accessLevel === "MANAGE"
+    )
   };
 }
 
@@ -449,7 +467,7 @@ function workforceDimensionsMatch(
     locationId: string;
     brandId?: string | null;
     departmentId?: string | null;
-  },
+  }
 ) {
   const location = scope.locationsById.get(input.locationId);
   if (!location) return false;
@@ -461,13 +479,224 @@ function workforceDimensionsMatch(
   return true;
 }
 
+export function workforceEvidenceViewPermissions(
+  sourceType: WorkforceEvidenceSourceType
+) {
+  switch (sourceType) {
+    case "WORKFORCE_EMPLOYEE":
+    case "WORKFORCE_ASSIGNMENT":
+      return [
+        permissions.workforceView,
+        permissions.workforceManage,
+        permissions.coreAdminister
+      ];
+    case "WORKFORCE_LEAVE":
+      return [
+        permissions.workforceView,
+        permissions.workforceManage,
+        permissions.workforceLeaveApprove,
+        permissions.coreAdminister
+      ];
+    case "WORKFORCE_OVERTIME":
+      return [
+        permissions.workforceView,
+        permissions.workforceManage,
+        permissions.workforceOvertimeApprove,
+        permissions.coreAdminister
+      ];
+    case "WORKFORCE_SCHEDULE":
+      return [
+        permissions.workforceScheduleView,
+        permissions.workforceScheduleManage,
+        permissions.workforceView,
+        permissions.coreAdminister
+      ];
+    case "WORKFORCE_ATTENDANCE_IMPORT":
+      return [
+        permissions.workforceAttendanceImportView,
+        permissions.workforceAttendanceImportManage,
+        permissions.coreAdminister
+      ];
+  }
+}
+
+export async function assertWorkforceEvidenceSourceBatchAccess(
+  session: SessionContext,
+  input: WorkforceEvidenceSourceBatchRequest
+) {
+  const grantedPermissionCodes = await requireWorkforceAccess(session);
+  for (const sourceType of workforceEvidenceSourceTypes) {
+    if (!(input[sourceType]?.length ?? 0)) continue;
+    if (
+      !workforceEvidenceViewPermissions(sourceType).some((permissionCode) =>
+        grantedPermissionCodes.includes(permissionCode)
+      )
+    ) {
+      throw new Error("PERMISSION_DENIED");
+    }
+  }
+
+  const scope = await loadWorkforceScopeSnapshot(session);
+  const baseWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId
+  };
+  const ids = (sourceType: WorkforceEvidenceSourceType) => [
+    ...new Set(input[sourceType] ?? [])
+  ];
+  const employeeIds = ids("WORKFORCE_EMPLOYEE");
+  const assignmentIds = ids("WORKFORCE_ASSIGNMENT");
+  const leaveIds = ids("WORKFORCE_LEAVE");
+  const overtimeIds = ids("WORKFORCE_OVERTIME");
+  const scheduleIds = ids("WORKFORCE_SCHEDULE");
+  const attendanceImportIds = ids("WORKFORCE_ATTENDANCE_IMPORT");
+
+  const [
+    employees,
+    assignments,
+    leaveRequests,
+    overtimeRecords,
+    schedules,
+    attendanceImports
+  ] = await Promise.all([
+    employeeIds.length
+      ? prisma.employee.findMany({
+          where: {
+            ...baseWhere,
+            id: { in: employeeIds },
+            OR: [
+              { homeLocationId: { in: scope.locationIds } },
+              {
+                assignments: {
+                  some: {
+                    ...baseWhere,
+                    locationId: { in: scope.locationIds }
+                  }
+                }
+              },
+              ...(scope.hasCompanyManage ? [{ homeLocationId: null }] : [])
+            ]
+          },
+          select: { id: true }
+        })
+      : Promise.resolve([]),
+    assignmentIds.length
+      ? prisma.employeeAssignment.findMany({
+          where: { ...baseWhere, id: { in: assignmentIds } },
+          select: {
+            id: true,
+            locationId: true,
+            brandId: true,
+            departmentId: true
+          }
+        })
+      : Promise.resolve([]),
+    leaveIds.length
+      ? prisma.employeeLeaveRequest.findMany({
+          where: { ...baseWhere, id: { in: leaveIds } },
+          select: { id: true, locationId: true }
+        })
+      : Promise.resolve([]),
+    overtimeIds.length
+      ? prisma.employeeOvertimeRecord.findMany({
+          where: { ...baseWhere, id: { in: overtimeIds } },
+          select: { id: true, locationId: true }
+        })
+      : Promise.resolve([]),
+    scheduleIds.length
+      ? prisma.workforceSchedule.findMany({
+          where: { ...baseWhere, id: { in: scheduleIds } },
+          select: {
+            id: true,
+            locationId: true,
+            brandId: true,
+            departmentId: true
+          }
+        })
+      : Promise.resolve([]),
+    attendanceImportIds.length
+      ? prisma.attendanceImportBatch.findMany({
+          where: { ...baseWhere, id: { in: attendanceImportIds } },
+          select: { id: true, locationId: true, brandId: true }
+        })
+      : Promise.resolve([])
+  ]);
+
+  const accessibleIds = new Map<WorkforceEvidenceSourceType, Set<string>>([
+    ["WORKFORCE_EMPLOYEE", new Set(employees.map((row) => row.id))],
+    [
+      "WORKFORCE_ASSIGNMENT",
+      new Set(
+        assignments
+          .filter((row) => workforceDimensionsMatch(scope, row))
+          .map((row) => row.id)
+      )
+    ],
+    [
+      "WORKFORCE_LEAVE",
+      new Set(
+        leaveRequests
+          .filter(
+            (row) =>
+              (row.locationId === null && scope.hasCompanyManage) ||
+              (row.locationId !== null &&
+                workforceDimensionsMatch(scope, {
+                  locationId: row.locationId
+                }))
+          )
+          .map((row) => row.id)
+      )
+    ],
+    [
+      "WORKFORCE_OVERTIME",
+      new Set(
+        overtimeRecords
+          .filter(
+            (row) =>
+              (row.locationId === null && scope.hasCompanyManage) ||
+              (row.locationId !== null &&
+                workforceDimensionsMatch(scope, {
+                  locationId: row.locationId
+                }))
+          )
+          .map((row) => row.id)
+      )
+    ],
+    [
+      "WORKFORCE_SCHEDULE",
+      new Set(
+        schedules
+          .filter((row) => workforceDimensionsMatch(scope, row))
+          .map((row) => row.id)
+      )
+    ],
+    [
+      "WORKFORCE_ATTENDANCE_IMPORT",
+      new Set(
+        attendanceImports
+          .filter((row) => workforceDimensionsMatch(scope, row))
+          .map((row) => row.id)
+      )
+    ]
+  ]);
+
+  for (const sourceType of workforceEvidenceSourceTypes) {
+    const allowed = accessibleIds.get(sourceType) ?? new Set<string>();
+    if (
+      ids(sourceType).some((sourceRecordId) => !allowed.has(sourceRecordId))
+    ) {
+      throw new Error("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    }
+  }
+}
+
 export async function assertWorkforceSourceScopeAccess(
   session: SessionContext,
   input: {
     locationId?: string | null;
     brandId?: string | null;
     departmentId?: string | null;
-  },
+  }
 ) {
   await requireWorkforceAccess(session);
   const scope = await loadWorkforceScopeSnapshot(session);
@@ -481,14 +710,18 @@ export async function assertWorkforceSourceScopeAccess(
     !workforceDimensionsMatch(scope, {
       locationId: input.locationId,
       brandId: input.brandId ?? null,
-      departmentId: input.departmentId ?? null,
+      departmentId: input.departmentId ?? null
     })
   ) {
     throw new Error("WORKFORCE_SOURCE_NOT_AVAILABLE");
   }
 }
 
-function assertStatusAllowed(status: string, allowed: string[], errorCode: string) {
+function assertStatusAllowed(
+  status: string,
+  allowed: string[],
+  errorCode: string
+) {
   if (!allowed.includes(status)) {
     throw new Error(errorCode);
   }
@@ -505,7 +738,10 @@ function assertOneOf<T extends string>(
   return value as T;
 }
 
-async function assertScopedLocation(session: SessionContext, locationId: string) {
+async function assertScopedLocation(
+  session: SessionContext,
+  locationId: string
+) {
   if (!locationId.trim()) {
     throw new Error("WORKFORCE_EMPLOYEE_HOME_LOCATION_REQUIRED");
   }
@@ -566,7 +802,7 @@ async function getScopedLeaveOrThrow(
     where: {
       id: leaveRequestId,
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
+      companyId: session.context.companyId
     }
   });
   if (
@@ -670,7 +906,7 @@ async function getScopedOvertimeOrThrow(
     where: {
       id: overtimeRecordId,
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
+      companyId: session.context.companyId
     }
   });
   if (
@@ -706,7 +942,7 @@ async function getScopedScheduleOrThrow(
     !workforceDimensionsMatch(scope, {
       locationId: schedule.locationId,
       brandId: schedule.brandId,
-      departmentId: schedule.departmentId,
+      departmentId: schedule.departmentId
     })
   ) {
     throw new Error("WORKFORCE_SCHEDULE_NOT_FOUND");
@@ -735,7 +971,7 @@ async function getScopedAttendanceBatchOrThrow(
   if (
     !workforceDimensionsMatch(scope, {
       locationId: batch.locationId,
-      brandId: batch.brandId,
+      brandId: batch.brandId
     })
   ) {
     throw new Error("WORKFORCE_ATTENDANCE_BATCH_NOT_FOUND");
@@ -781,7 +1017,9 @@ export function buildWorkforceReportRows(input: {
       locationName: schedule.locationName,
       status: schedule.status,
       issueState:
-        schedule.coverageGapCount > 0 ? ("NEEDS_REVIEW" as const) : ("CLEAN" as const),
+        schedule.coverageGapCount > 0
+          ? ("NEEDS_REVIEW" as const)
+          : ("CLEAN" as const),
       issueCount: schedule.coverageGapCount,
       issueLabels,
       businessDate: schedule.scheduleDate,
@@ -811,7 +1049,8 @@ export function buildWorkforceReportRows(input: {
       publicReference: batch.publicReference,
       locationName: batch.locationName,
       status: batch.status,
-      issueState: issueCount > 0 ? ("NEEDS_REVIEW" as const) : ("CLEAN" as const),
+      issueState:
+        issueCount > 0 ? ("NEEDS_REVIEW" as const) : ("CLEAN" as const),
       issueCount,
       issueLabels,
       businessDate: batch.businessDate,
@@ -848,7 +1087,10 @@ export function buildWorkforceProductionReadinessRows(input: {
       sourceType: row.sourceType,
       reference: row.publicReference,
       locationOrEmployee: row.locationName,
-      severity: row.sourceType === "Attendance Import" ? "HIGH" as const : "MEDIUM" as const,
+      severity:
+        row.sourceType === "Attendance Import"
+          ? ("HIGH" as const)
+          : ("MEDIUM" as const),
       issueLabel:
         row.sourceType === "Attendance Import"
           ? "Attendance import has exceptions or duplicates"
@@ -869,7 +1111,7 @@ export function buildWorkforceProductionReadinessRows(input: {
       sourceType: row.type,
       reference: row.label,
       locationOrEmployee: row.employeeName,
-      severity: row.requiredForScope ? "HIGH" as const : "LOW" as const,
+      severity: row.requiredForScope ? ("HIGH" as const) : ("LOW" as const),
       issueLabel: `${row.type} readiness is ${row.status.toLowerCase()}`,
       issueCount: 1,
       nextAction:
@@ -915,7 +1157,8 @@ function parseDateTime(value: string, errorCode: string) {
 
 function inclusiveWorkdayMinutes(startDate: Date, endDate: Date) {
   const dayMs = 24 * 60 * 60 * 1000;
-  const dayCount = Math.floor((endDate.getTime() - startDate.getTime()) / dayMs) + 1;
+  const dayCount =
+    Math.floor((endDate.getTime() - startDate.getTime()) / dayMs) + 1;
   return Math.max(dayCount, 1) * 8 * 60;
 }
 
@@ -931,7 +1174,10 @@ function nextWorkforceScheduleReference(input: {
   scheduleDate: Date;
   locationName: string;
 }) {
-  const dateToken = input.scheduleDate.toISOString().slice(0, 10).replaceAll("-", "");
+  const dateToken = input.scheduleDate
+    .toISOString()
+    .slice(0, 10)
+    .replaceAll("-", "");
   const locationToken = input.locationName
     .replace(/[^A-Za-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
@@ -1039,8 +1285,8 @@ async function getScopedEmployeeForDraftOrThrow(
     workforceDimensionsMatch(scope, {
       locationId: assignment.locationId,
       brandId: assignment.brandId,
-      departmentId: assignment.departmentId,
-    }),
+      departmentId: assignment.departmentId
+    })
   );
   const assignmentLocationId = authorizedAssignment?.locationId;
   const homeLocationId = employee.homeLocationId;
@@ -1103,8 +1349,8 @@ async function getScopedEmployeeForManagementOrThrow(
     workforceDimensionsMatch(scope, {
       locationId: assignment.locationId,
       brandId: assignment.brandId,
-      departmentId: assignment.departmentId,
-    }),
+      departmentId: assignment.departmentId
+    })
   );
   if (!homeLocationAuthorized && !assignmentAuthorized) {
     throw new Error("WORKFORCE_EMPLOYEE_NOT_FOUND");
@@ -1137,7 +1383,7 @@ async function getScopedAssignmentForManagementOrThrow(
     !workforceDimensionsMatch(scope, {
       locationId: assignment.locationId,
       brandId: assignment.brandId,
-      departmentId: assignment.departmentId,
+      departmentId: assignment.departmentId
     })
   ) {
     throw new Error("WORKFORCE_ASSIGNMENT_NOT_FOUND");
@@ -1168,7 +1414,10 @@ export async function createEmployee(
     "WORKFORCE_EMPLOYMENT_TYPE_INVALID"
   );
   await assertScopedLocation(session, input.homeLocationId);
-  const hireDate = parseDateOnly(input.hireDate, "WORKFORCE_EMPLOYEE_HIRE_DATE_INVALID");
+  const hireDate = parseDateOnly(
+    input.hireDate,
+    "WORKFORCE_EMPLOYEE_HIRE_DATE_INVALID"
+  );
   const assignmentEffectiveFrom = parseDateOnly(
     input.assignmentEffectiveFrom?.trim() || input.hireDate,
     "WORKFORCE_EMPLOYEE_ASSIGNMENT_DATE_INVALID"
@@ -1381,9 +1630,9 @@ export async function createEmployeeAssignment(
     if (duplicate) {
       throw new Error("WORKFORCE_ASSIGNMENT_DUPLICATE_ACTIVE_ROLE");
     }
-    let replacedPrimary:
-      | Awaited<ReturnType<typeof tx.employeeAssignment.findFirst>>
-      | null = null;
+    let replacedPrimary: Awaited<
+      ReturnType<typeof tx.employeeAssignment.findFirst>
+    > | null = null;
 
     if (isPrimary) {
       const activePrimary = await tx.employeeAssignment.findFirst({
@@ -1569,12 +1818,18 @@ export async function createDraftLeaveRequest(
   if (!leaveTypes.includes(input.leaveType)) {
     throw new Error("WORKFORCE_LEAVE_TYPE_INVALID");
   }
-  const reason = requireWorkforceReason(input.reason, "WORKFORCE_LEAVE_REASON_REQUIRED");
+  const reason = requireWorkforceReason(
+    input.reason,
+    "WORKFORCE_LEAVE_REASON_REQUIRED"
+  );
   const startDate = parseDateOnly(
     input.startDate,
     "WORKFORCE_LEAVE_START_DATE_INVALID"
   );
-  const endDate = parseDateOnly(input.endDate, "WORKFORCE_LEAVE_END_DATE_INVALID");
+  const endDate = parseDateOnly(
+    input.endDate,
+    "WORKFORCE_LEAVE_END_DATE_INVALID"
+  );
   if (endDate < startDate) {
     throw new Error("WORKFORCE_LEAVE_DATE_RANGE_INVALID");
   }
@@ -1783,14 +2038,13 @@ export async function createDraftWorkforceSchedule(
       return existing;
     }
 
-    const assigned =
-      input.assignedEmployeeId?.trim()
-        ? await getScopedEmployeeForDraftOrThrow(
-            tx,
-            session,
-            input.assignedEmployeeId.trim()
-          )
-        : null;
+    const assigned = input.assignedEmployeeId?.trim()
+      ? await getScopedEmployeeForDraftOrThrow(
+          tx,
+          session,
+          input.assignedEmployeeId.trim()
+        )
+      : null;
     if (assigned && assigned.locationId !== session.context.locationId) {
       throw new Error("WORKFORCE_SCHEDULE_EMPLOYEE_LOCATION_MISMATCH");
     }
@@ -1843,11 +2097,7 @@ export async function createDraftWorkforceSchedule(
             plannedEndAt,
             plannedMinutes: plannedMinutesPerHead * plannedHeadcount,
             status:
-              coverageGapCount > 0
-                ? "GAP"
-                : assigned
-                  ? "ASSIGNED"
-                  : "PLANNED",
+              coverageGapCount > 0 ? "GAP" : assigned ? "ASSIGNED" : "PLANNED",
             coverageGapReason: coverageGapCount > 0 ? reason : null,
             evidenceReference,
             createdByUserId: session.user.id
@@ -1885,11 +2135,19 @@ export async function submitLeaveRequest(
 ) {
   await requirePermission(session, permissions.workforceManage);
   return prisma.$transaction(async (tx) => {
-    const request = await getScopedLeaveOrThrow(tx, session, input.leaveRequestId);
+    const request = await getScopedLeaveOrThrow(
+      tx,
+      session,
+      input.leaveRequestId
+    );
     if (request.status === "SUBMITTED") {
       return request;
     }
-    assertStatusAllowed(request.status, ["DRAFT", "RETURNED_FOR_REVISION"], "WORKFORCE_LEAVE_INVALID_SUBMIT_STATUS");
+    assertStatusAllowed(
+      request.status,
+      ["DRAFT", "RETURNED_FOR_REVISION"],
+      "WORKFORCE_LEAVE_INVALID_SUBMIT_STATUS"
+    );
     const approvalRule = await findEmployeeLeaveApprovalRule(tx, session);
     if (!approvalRule || approvalRule.steps.length === 0) {
       throw new Error("WORKFORCE_LEAVE_APPROVAL_RULE_NOT_CONFIGURED");
@@ -2021,8 +2279,16 @@ export async function approveLeaveRequest(
 ) {
   await requireWorkforcePermission(session, permissions.workforceLeaveApprove);
   return prisma.$transaction(async (tx) => {
-    const request = await getScopedLeaveOrThrow(tx, session, input.leaveRequestId);
-    assertStatusAllowed(request.status, ["SUBMITTED", "UNDER_REVIEW"], "WORKFORCE_LEAVE_INVALID_APPROVAL_STATUS");
+    const request = await getScopedLeaveOrThrow(
+      tx,
+      session,
+      input.leaveRequestId
+    );
+    assertStatusAllowed(
+      request.status,
+      ["SUBMITTED", "UNDER_REVIEW"],
+      "WORKFORCE_LEAVE_INVALID_APPROVAL_STATUS"
+    );
     if (request.requestedByUserId === session.user.id) {
       throw new Error("WORKFORCE_LEAVE_SELF_APPROVAL_BLOCKED");
     }
@@ -2060,8 +2326,16 @@ export async function returnLeaveRequestForRevision(
     "WORKFORCE_LEAVE_RETURN_REASON_REQUIRED"
   );
   return prisma.$transaction(async (tx) => {
-    const request = await getScopedLeaveOrThrow(tx, session, input.leaveRequestId);
-    assertStatusAllowed(request.status, ["SUBMITTED", "UNDER_REVIEW"], "WORKFORCE_LEAVE_INVALID_RETURN_STATUS");
+    const request = await getScopedLeaveOrThrow(
+      tx,
+      session,
+      input.leaveRequestId
+    );
+    assertStatusAllowed(
+      request.status,
+      ["SUBMITTED", "UNDER_REVIEW"],
+      "WORKFORCE_LEAVE_INVALID_RETURN_STATUS"
+    );
     const updated = await tx.employeeLeaveRequest.update({
       where: { id: request.id },
       data: {
@@ -2095,8 +2369,16 @@ export async function rejectLeaveRequest(
     "WORKFORCE_LEAVE_REJECTION_REASON_REQUIRED"
   );
   return prisma.$transaction(async (tx) => {
-    const request = await getScopedLeaveOrThrow(tx, session, input.leaveRequestId);
-    assertStatusAllowed(request.status, ["SUBMITTED", "UNDER_REVIEW"], "WORKFORCE_LEAVE_INVALID_REJECTION_STATUS");
+    const request = await getScopedLeaveOrThrow(
+      tx,
+      session,
+      input.leaveRequestId
+    );
+    assertStatusAllowed(
+      request.status,
+      ["SUBMITTED", "UNDER_REVIEW"],
+      "WORKFORCE_LEAVE_INVALID_REJECTION_STATUS"
+    );
     const updated = await tx.employeeLeaveRequest.update({
       where: { id: request.id },
       data: {
@@ -2130,8 +2412,22 @@ export async function cancelLeaveRequest(
     "WORKFORCE_LEAVE_CANCELLATION_REASON_REQUIRED"
   );
   return prisma.$transaction(async (tx) => {
-    const request = await getScopedLeaveOrThrow(tx, session, input.leaveRequestId);
-    assertStatusAllowed(request.status, ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "RETURNED_FOR_REVISION", "APPROVED"], "WORKFORCE_LEAVE_INVALID_CANCEL_STATUS");
+    const request = await getScopedLeaveOrThrow(
+      tx,
+      session,
+      input.leaveRequestId
+    );
+    assertStatusAllowed(
+      request.status,
+      [
+        "DRAFT",
+        "SUBMITTED",
+        "UNDER_REVIEW",
+        "RETURNED_FOR_REVISION",
+        "APPROVED"
+      ],
+      "WORKFORCE_LEAVE_INVALID_CANCEL_STATUS"
+    );
     const updated = await tx.employeeLeaveRequest.update({
       where: { id: request.id },
       data: {
@@ -2161,11 +2457,19 @@ export async function submitOvertimeRecord(
 ) {
   await requirePermission(session, permissions.workforceManage);
   return prisma.$transaction(async (tx) => {
-    const record = await getScopedOvertimeOrThrow(tx, session, input.overtimeRecordId);
+    const record = await getScopedOvertimeOrThrow(
+      tx,
+      session,
+      input.overtimeRecordId
+    );
     if (record.status === "SUBMITTED") {
       return record;
     }
-    assertStatusAllowed(record.status, ["DRAFT"], "WORKFORCE_OVERTIME_INVALID_SUBMIT_STATUS");
+    assertStatusAllowed(
+      record.status,
+      ["DRAFT"],
+      "WORKFORCE_OVERTIME_INVALID_SUBMIT_STATUS"
+    );
     const approvalRule = await findEmployeeOvertimeApprovalRule(tx, session);
     if (!approvalRule || approvalRule.steps.length === 0) {
       throw new Error("WORKFORCE_OVERTIME_APPROVAL_RULE_NOT_CONFIGURED");
@@ -2293,10 +2597,21 @@ export async function approveOvertimeRecord(
   session: SessionContext,
   input: OvertimeActionInput
 ) {
-  await requireWorkforcePermission(session, permissions.workforceOvertimeApprove);
+  await requireWorkforcePermission(
+    session,
+    permissions.workforceOvertimeApprove
+  );
   return prisma.$transaction(async (tx) => {
-    const record = await getScopedOvertimeOrThrow(tx, session, input.overtimeRecordId);
-    assertStatusAllowed(record.status, ["SUBMITTED", "UNDER_REVIEW"], "WORKFORCE_OVERTIME_INVALID_APPROVAL_STATUS");
+    const record = await getScopedOvertimeOrThrow(
+      tx,
+      session,
+      input.overtimeRecordId
+    );
+    assertStatusAllowed(
+      record.status,
+      ["SUBMITTED", "UNDER_REVIEW"],
+      "WORKFORCE_OVERTIME_INVALID_APPROVAL_STATUS"
+    );
     if (record.requestedByUserId === session.user.id) {
       throw new Error("WORKFORCE_OVERTIME_SELF_APPROVAL_BLOCKED");
     }
@@ -2326,14 +2641,25 @@ export async function rejectOvertimeRecord(
   session: SessionContext,
   input: OvertimeActionInput
 ) {
-  await requireWorkforcePermission(session, permissions.workforceOvertimeApprove);
+  await requireWorkforcePermission(
+    session,
+    permissions.workforceOvertimeApprove
+  );
   const reason = requireWorkforceReason(
     input.reason,
     "WORKFORCE_OVERTIME_REJECTION_REASON_REQUIRED"
   );
   return prisma.$transaction(async (tx) => {
-    const record = await getScopedOvertimeOrThrow(tx, session, input.overtimeRecordId);
-    assertStatusAllowed(record.status, ["SUBMITTED", "UNDER_REVIEW"], "WORKFORCE_OVERTIME_INVALID_REJECTION_STATUS");
+    const record = await getScopedOvertimeOrThrow(
+      tx,
+      session,
+      input.overtimeRecordId
+    );
+    assertStatusAllowed(
+      record.status,
+      ["SUBMITTED", "UNDER_REVIEW"],
+      "WORKFORCE_OVERTIME_INVALID_REJECTION_STATUS"
+    );
     const updated = await tx.employeeOvertimeRecord.update({
       where: { id: record.id },
       data: {
@@ -2365,8 +2691,16 @@ export async function cancelOvertimeRecord(
     "WORKFORCE_OVERTIME_CANCELLATION_REASON_REQUIRED"
   );
   return prisma.$transaction(async (tx) => {
-    const record = await getScopedOvertimeOrThrow(tx, session, input.overtimeRecordId);
-    assertStatusAllowed(record.status, ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED"], "WORKFORCE_OVERTIME_INVALID_CANCEL_STATUS");
+    const record = await getScopedOvertimeOrThrow(
+      tx,
+      session,
+      input.overtimeRecordId
+    );
+    assertStatusAllowed(
+      record.status,
+      ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED"],
+      "WORKFORCE_OVERTIME_INVALID_CANCEL_STATUS"
+    );
     const updated = await tx.employeeOvertimeRecord.update({
       where: { id: record.id },
       data: {
@@ -2394,8 +2728,16 @@ export async function submitWorkforceSchedule(
 ) {
   await requirePermission(session, permissions.workforceScheduleManage);
   return prisma.$transaction(async (tx) => {
-    const schedule = await getScopedScheduleOrThrow(tx, session, input.scheduleId);
-    assertStatusAllowed(schedule.status, ["DRAFT", "RETURNED_FOR_REVISION"], "WORKFORCE_SCHEDULE_INVALID_SUBMIT_STATUS");
+    const schedule = await getScopedScheduleOrThrow(
+      tx,
+      session,
+      input.scheduleId
+    );
+    assertStatusAllowed(
+      schedule.status,
+      ["DRAFT", "RETURNED_FOR_REVISION"],
+      "WORKFORCE_SCHEDULE_INVALID_SUBMIT_STATUS"
+    );
     if (schedule.lines.length === 0) {
       throw new Error("WORKFORCE_SCHEDULE_LINES_REQUIRED");
     }
@@ -2448,7 +2790,8 @@ export async function submitWorkforceSchedule(
         submittedByUserId: session.user.id,
         submittedAt,
         reason: input.reason?.trim() ?? schedule.reason,
-        evidenceReference: input.evidenceReference?.trim() ?? schedule.evidenceReference
+        evidenceReference:
+          input.evidenceReference?.trim() ?? schedule.evidenceReference
       }
     });
     const auditEvent = await tx.auditEvent.create({
@@ -2535,9 +2878,20 @@ export async function approveWorkforceSchedule(
 ) {
   await requirePermission(session, permissions.workforceScheduleManage);
   return prisma.$transaction(async (tx) => {
-    const schedule = await getScopedScheduleOrThrow(tx, session, input.scheduleId);
-    assertStatusAllowed(schedule.status, ["SUBMITTED", "UNDER_REVIEW"], "WORKFORCE_SCHEDULE_INVALID_APPROVAL_STATUS");
-    if (schedule.createdByUserId === session.user.id || schedule.submittedByUserId === session.user.id) {
+    const schedule = await getScopedScheduleOrThrow(
+      tx,
+      session,
+      input.scheduleId
+    );
+    assertStatusAllowed(
+      schedule.status,
+      ["SUBMITTED", "UNDER_REVIEW"],
+      "WORKFORCE_SCHEDULE_INVALID_APPROVAL_STATUS"
+    );
+    if (
+      schedule.createdByUserId === session.user.id ||
+      schedule.submittedByUserId === session.user.id
+    ) {
       throw new Error("WORKFORCE_SCHEDULE_SELF_APPROVAL_BLOCKED");
     }
     const updated = await tx.workforceSchedule.update({
@@ -2547,7 +2901,8 @@ export async function approveWorkforceSchedule(
         approvedByUserId: session.user.id,
         approvedAt: new Date(),
         reason: input.reason?.trim() ?? schedule.reason,
-        evidenceReference: input.evidenceReference?.trim() ?? schedule.evidenceReference
+        evidenceReference:
+          input.evidenceReference?.trim() ?? schedule.evidenceReference
       }
     });
     await writeWorkforceAudit(tx, {
@@ -2573,14 +2928,23 @@ export async function rejectWorkforceSchedule(
     "WORKFORCE_SCHEDULE_REJECTION_REASON_REQUIRED"
   );
   return prisma.$transaction(async (tx) => {
-    const schedule = await getScopedScheduleOrThrow(tx, session, input.scheduleId);
-    assertStatusAllowed(schedule.status, ["SUBMITTED", "UNDER_REVIEW"], "WORKFORCE_SCHEDULE_INVALID_REJECTION_STATUS");
+    const schedule = await getScopedScheduleOrThrow(
+      tx,
+      session,
+      input.scheduleId
+    );
+    assertStatusAllowed(
+      schedule.status,
+      ["SUBMITTED", "UNDER_REVIEW"],
+      "WORKFORCE_SCHEDULE_INVALID_REJECTION_STATUS"
+    );
     const updated = await tx.workforceSchedule.update({
       where: { id: schedule.id },
       data: {
         status: "REJECTED",
         reason,
-        evidenceReference: input.evidenceReference?.trim() ?? schedule.evidenceReference
+        evidenceReference:
+          input.evidenceReference?.trim() ?? schedule.evidenceReference
       }
     });
     await writeWorkforceAudit(tx, {
@@ -2603,22 +2967,30 @@ export async function publishWorkforceSchedule(
 ) {
   await requirePermission(session, permissions.workforceScheduleManage);
   return prisma.$transaction(async (tx) => {
-    const schedule = await getScopedScheduleOrThrow(tx, session, input.scheduleId);
-    assertStatusAllowed(schedule.status, ["APPROVED"], "WORKFORCE_SCHEDULE_INVALID_PUBLISH_STATUS");
+    const schedule = await getScopedScheduleOrThrow(
+      tx,
+      session,
+      input.scheduleId
+    );
+    assertStatusAllowed(
+      schedule.status,
+      ["APPROVED"],
+      "WORKFORCE_SCHEDULE_INVALID_PUBLISH_STATUS"
+    );
     const coverageGapWaiverReason =
       schedule.coverageGapCount > 0
         ? requireWorkforceReason(
             input.reason,
             "WORKFORCE_SCHEDULE_COVERAGE_GAP_WAIVER_REASON_REQUIRED"
           )
-        : input.reason?.trim() ?? null;
+        : (input.reason?.trim() ?? null);
     const coverageGapWaiverEvidence =
       schedule.coverageGapCount > 0
         ? requireWorkforceReason(
             input.evidenceReference,
             "WORKFORCE_SCHEDULE_COVERAGE_GAP_WAIVER_EVIDENCE_REQUIRED"
           )
-        : input.evidenceReference?.trim() ?? schedule.evidenceReference;
+        : (input.evidenceReference?.trim() ?? schedule.evidenceReference);
     const updated = await tx.workforceSchedule.update({
       where: { id: schedule.id },
       data: {
@@ -2626,7 +2998,8 @@ export async function publishWorkforceSchedule(
         publishedByUserId: session.user.id,
         publishedAt: new Date(),
         reason: coverageGapWaiverReason ?? schedule.reason,
-        evidenceReference: coverageGapWaiverEvidence ?? schedule.evidenceReference
+        evidenceReference:
+          coverageGapWaiverEvidence ?? schedule.evidenceReference
       }
     });
     await writeWorkforceAudit(tx, {
@@ -2657,8 +3030,16 @@ export async function cancelWorkforceSchedule(
     "WORKFORCE_SCHEDULE_CANCELLATION_REASON_REQUIRED"
   );
   return prisma.$transaction(async (tx) => {
-    const schedule = await getScopedScheduleOrThrow(tx, session, input.scheduleId);
-    assertStatusAllowed(schedule.status, ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "PUBLISHED"], "WORKFORCE_SCHEDULE_INVALID_CANCEL_STATUS");
+    const schedule = await getScopedScheduleOrThrow(
+      tx,
+      session,
+      input.scheduleId
+    );
+    assertStatusAllowed(
+      schedule.status,
+      ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "PUBLISHED"],
+      "WORKFORCE_SCHEDULE_INVALID_CANCEL_STATUS"
+    );
     const updated = await tx.workforceSchedule.update({
       where: { id: schedule.id },
       data: {
@@ -2666,7 +3047,8 @@ export async function cancelWorkforceSchedule(
         cancelledByUserId: session.user.id,
         cancelledAt: new Date(),
         reason,
-        evidenceReference: input.evidenceReference?.trim() ?? schedule.evidenceReference
+        evidenceReference:
+          input.evidenceReference?.trim() ?? schedule.evidenceReference
       }
     });
     await writeWorkforceAudit(tx, {
@@ -2689,12 +3071,23 @@ export async function reviewAttendanceImportBatch(
 ) {
   await requirePermission(session, permissions.workforceAttendanceImportManage);
   return prisma.$transaction(async (tx) => {
-    const batch = await getScopedAttendanceBatchOrThrow(tx, session, input.batchId);
-    assertStatusAllowed(batch.status, ["IMPORTED", "VALIDATING", "REVIEW_READY", "EXCEPTION_LIST"], "WORKFORCE_ATTENDANCE_IMPORT_INVALID_REVIEW_STATUS");
+    const batch = await getScopedAttendanceBatchOrThrow(
+      tx,
+      session,
+      input.batchId
+    );
+    assertStatusAllowed(
+      batch.status,
+      ["IMPORTED", "VALIDATING", "REVIEW_READY", "EXCEPTION_LIST"],
+      "WORKFORCE_ATTENDANCE_IMPORT_INVALID_REVIEW_STATUS"
+    );
     const reason =
       input.verdict === "REJECT"
-        ? requireWorkforceReason(input.reason, "WORKFORCE_ATTENDANCE_IMPORT_REJECTION_REASON_REQUIRED")
-        : input.reason?.trim() ?? null;
+        ? requireWorkforceReason(
+            input.reason,
+            "WORKFORCE_ATTENDANCE_IMPORT_REJECTION_REASON_REQUIRED"
+          )
+        : (input.reason?.trim() ?? null);
     const approvalRequired =
       input.verdict === "REJECT" ||
       input.verdict === "EXCEPTION_LIST" ||
@@ -2703,11 +3096,15 @@ export async function reviewAttendanceImportBatch(
     if (approvalRequired) {
       const approvalRule = await findAttendanceImportApprovalRule(tx, session);
       if (!approvalRule || approvalRule.steps.length === 0) {
-        throw new Error("WORKFORCE_ATTENDANCE_IMPORT_APPROVAL_RULE_NOT_CONFIGURED");
+        throw new Error(
+          "WORKFORCE_ATTENDANCE_IMPORT_APPROVAL_RULE_NOT_CONFIGURED"
+        );
       }
       const firstStep = approvalRule.steps[0];
       if (!firstStep) {
-        throw new Error("WORKFORCE_ATTENDANCE_IMPORT_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+        throw new Error(
+          "WORKFORCE_ATTENDANCE_IMPORT_APPROVAL_RULE_STEP_NOT_CONFIGURED"
+        );
       }
       const existingApproval = await tx.approvalInstance.findFirst({
         where: {
@@ -2748,8 +3145,10 @@ export async function reviewAttendanceImportBatch(
           approvalInstanceId: approvalInstance.id,
           reviewedByUserId: session.user.id,
           reviewedAt: new Date(),
-          rejectionReason: input.verdict === "REJECT" ? reason : batch.rejectionReason,
-          evidenceReference: input.evidenceReference?.trim() ?? batch.evidenceReference,
+          rejectionReason:
+            input.verdict === "REJECT" ? reason : batch.rejectionReason,
+          evidenceReference:
+            input.evidenceReference?.trim() ?? batch.evidenceReference,
           validationSummary: {
             verdict: input.verdict,
             approvalRequested: true,
@@ -2848,7 +3247,9 @@ export async function reviewAttendanceImportBatch(
     const nextStatus =
       input.verdict === "REJECT"
         ? "REJECTED"
-        : input.verdict === "EXCEPTION_LIST" || batch.exceptionCount > 0 || batch.duplicateCount > 0
+        : input.verdict === "EXCEPTION_LIST" ||
+            batch.exceptionCount > 0 ||
+            batch.duplicateCount > 0
           ? "EXCEPTION_LIST"
           : "REVIEW_READY";
     const updated = await tx.attendanceImportBatch.update({
@@ -2857,8 +3258,10 @@ export async function reviewAttendanceImportBatch(
         status: nextStatus,
         reviewedByUserId: session.user.id,
         reviewedAt: new Date(),
-        rejectionReason: nextStatus === "REJECTED" ? reason : batch.rejectionReason,
-        evidenceReference: input.evidenceReference?.trim() ?? batch.evidenceReference,
+        rejectionReason:
+          nextStatus === "REJECTED" ? reason : batch.rejectionReason,
+        evidenceReference:
+          input.evidenceReference?.trim() ?? batch.evidenceReference,
         validationSummary: {
           verdict: input.verdict,
           reviewedLineCount: batch.lines.length,
@@ -2898,8 +3301,23 @@ export async function voidAttendanceImportBatch(
     "WORKFORCE_ATTENDANCE_IMPORT_VOID_REASON_REQUIRED"
   );
   return prisma.$transaction(async (tx) => {
-    const batch = await getScopedAttendanceBatchOrThrow(tx, session, input.batchId);
-    assertStatusAllowed(batch.status, ["DRAFT", "IMPORTED", "VALIDATING", "REVIEW_READY", "EXCEPTION_LIST", "REJECTED"], "WORKFORCE_ATTENDANCE_IMPORT_INVALID_VOID_STATUS");
+    const batch = await getScopedAttendanceBatchOrThrow(
+      tx,
+      session,
+      input.batchId
+    );
+    assertStatusAllowed(
+      batch.status,
+      [
+        "DRAFT",
+        "IMPORTED",
+        "VALIDATING",
+        "REVIEW_READY",
+        "EXCEPTION_LIST",
+        "REJECTED"
+      ],
+      "WORKFORCE_ATTENDANCE_IMPORT_INVALID_VOID_STATUS"
+    );
     const updated = await tx.attendanceImportBatch.update({
       where: { id: batch.id },
       data: {
@@ -2907,7 +3325,8 @@ export async function voidAttendanceImportBatch(
         voidedByUserId: session.user.id,
         voidedAt: new Date(),
         voidReason: reason,
-        evidenceReference: input.evidenceReference?.trim() ?? batch.evidenceReference
+        evidenceReference:
+          input.evidenceReference?.trim() ?? batch.evidenceReference
       }
     });
     await tx.attendanceImportLine.updateMany({
@@ -3004,7 +3423,7 @@ export async function getWorkforceDashboard(
         ...baseWhere,
         OR: [
           { locationId: { in: allowedLocationIds } },
-          ...(scope.hasCompanyManage ? [{ locationId: null }] : []),
+          ...(scope.hasCompanyManage ? [{ locationId: null }] : [])
         ]
       },
       include: {
@@ -3019,7 +3438,7 @@ export async function getWorkforceDashboard(
         ...baseWhere,
         OR: [
           { locationId: { in: allowedLocationIds } },
-          ...(scope.hasCompanyManage ? [{ locationId: null }] : []),
+          ...(scope.hasCompanyManage ? [{ locationId: null }] : [])
         ]
       },
       include: {
@@ -3035,7 +3454,9 @@ export async function getWorkforceDashboard(
         employee: {
           OR: [
             { homeLocationId: { in: allowedLocationIds } },
-            { assignments: { some: { locationId: { in: allowedLocationIds } } } }
+            {
+              assignments: { some: { locationId: { in: allowedLocationIds } } }
+            }
           ]
         }
       },
@@ -3051,7 +3472,9 @@ export async function getWorkforceDashboard(
         employee: {
           OR: [
             { homeLocationId: { in: allowedLocationIds } },
-            { assignments: { some: { locationId: { in: allowedLocationIds } } } }
+            {
+              assignments: { some: { locationId: { in: allowedLocationIds } } }
+            }
           ]
         }
       },
@@ -3102,43 +3525,47 @@ export async function getWorkforceDashboard(
     .map((employee) => ({
       ...employee,
       assignments: employee.assignments.filter((assignment) =>
-        workforceDimensionsMatch(scope, assignment),
-      ),
+        workforceDimensionsMatch(scope, assignment)
+      )
     }))
     .filter(
       (employee) =>
         (employee.homeLocationId !== null &&
           scope.locationIds.includes(employee.homeLocationId)) ||
-        employee.assignments.length > 0,
+        employee.assignments.length > 0
     );
-  const scopedEmployeeIds = new Set(scopedEmployees.map((employee) => employee.id));
+  const scopedEmployeeIds = new Set(
+    scopedEmployees.map((employee) => employee.id)
+  );
   const scopedLeaveRequests = leaveRequests.filter((record) =>
     record.locationId
       ? scope.locationIds.includes(record.locationId)
-      : scope.hasCompanyManage,
+      : scope.hasCompanyManage
   );
   const scopedOvertimeRecords = overtimeRecords.filter((record) =>
     record.locationId
       ? scope.locationIds.includes(record.locationId)
-      : scope.hasCompanyManage,
+      : scope.hasCompanyManage
   );
   const scopedTrainingRecords = trainingRecords.filter((record) =>
-    scopedEmployeeIds.has(record.employeeId),
+    scopedEmployeeIds.has(record.employeeId)
   );
   const scopedComplianceDocuments = complianceDocuments.filter((record) =>
-    scopedEmployeeIds.has(record.employeeId),
+    scopedEmployeeIds.has(record.employeeId)
   );
   const scopedAssignments = assignments.filter((assignment) =>
-    workforceDimensionsMatch(scope, assignment),
+    workforceDimensionsMatch(scope, assignment)
   );
   const scopedSchedules = schedules.filter((schedule) =>
-    workforceDimensionsMatch(scope, schedule),
+    workforceDimensionsMatch(scope, schedule)
   );
   const scopedAttendanceImports = attendanceImports.filter((batch) =>
-    workforceDimensionsMatch(scope, batch),
+    workforceDimensionsMatch(scope, batch)
   );
   const pendingLeaveCount = scopedLeaveRequests.filter((record) =>
-    pendingLeaveStatuses.includes(record.status as (typeof pendingLeaveStatuses)[number])
+    pendingLeaveStatuses.includes(
+      record.status as (typeof pendingLeaveStatuses)[number]
+    )
   ).length;
   const pendingOvertimeCount = scopedOvertimeRecords.filter((record) =>
     pendingOvertimeStatuses.includes(
@@ -3146,8 +3573,10 @@ export async function getWorkforceDashboard(
     )
   ).length;
   const readinessIssueCount =
-    scopedTrainingRecords.filter((record) => record.status === "EXPIRED").length +
-    scopedComplianceDocuments.filter((record) => record.status === "EXPIRED").length;
+    scopedTrainingRecords.filter((record) => record.status === "EXPIRED")
+      .length +
+    scopedComplianceDocuments.filter((record) => record.status === "EXPIRED")
+      .length;
   const coverageGapCount = scopedSchedules.reduce(
     (total, schedule) => total + schedule.coverageGapCount,
     0
@@ -3157,26 +3586,28 @@ export async function getWorkforceDashboard(
     0
   );
   const showConfidentialNames = canViewConfidentialWorkforce(
-    grantedPermissionCodes,
+    grantedPermissionCodes
   );
-  const scheduleRows: WorkforceScheduleRow[] = scopedSchedules.map((schedule) => ({
-    id: schedule.id,
-    publicReference: schedule.publicReference,
-    locationName: schedule.location.name,
-    scheduleDate: schedule.scheduleDate.toISOString().slice(0, 10),
-    shiftType: schedule.shiftType,
-    status: schedule.status,
-    plannedHeadcount: schedule.plannedHeadcount,
-    assignedHeadcount: schedule.assignedHeadcount,
-    coverageGapCount: schedule.coverageGapCount,
-    plannedHours: minutesToDisplayHours(schedule.plannedMinutes),
-    lineCount: schedule.lines.length,
-    gapStations: schedule.lines
-      .filter((line) => line.status === "GAP")
-      .map((line) => `${line.stationCode} / ${line.roleLabel}`)
-  }));
-  const attendanceImportRows: AttendanceImportBatchRow[] = scopedAttendanceImports.map(
-    (batch) => ({
+  const scheduleRows: WorkforceScheduleRow[] = scopedSchedules.map(
+    (schedule) => ({
+      id: schedule.id,
+      publicReference: schedule.publicReference,
+      locationName: schedule.location.name,
+      scheduleDate: schedule.scheduleDate.toISOString().slice(0, 10),
+      shiftType: schedule.shiftType,
+      status: schedule.status,
+      plannedHeadcount: schedule.plannedHeadcount,
+      assignedHeadcount: schedule.assignedHeadcount,
+      coverageGapCount: schedule.coverageGapCount,
+      plannedHours: minutesToDisplayHours(schedule.plannedMinutes),
+      lineCount: schedule.lines.length,
+      gapStations: schedule.lines
+        .filter((line) => line.status === "GAP")
+        .map((line) => `${line.stationCode} / ${line.roleLabel}`)
+    })
+  );
+  const attendanceImportRows: AttendanceImportBatchRow[] =
+    scopedAttendanceImports.map((batch) => ({
       id: batch.id,
       publicReference: batch.publicReference,
       locationName: batch.location.name,
@@ -3189,8 +3620,7 @@ export async function getWorkforceDashboard(
       exceptionCount: batch.exceptionCount,
       duplicateCount: batch.duplicateCount,
       lineCount: batch._count.lines
-    })
-  );
+    }));
   const reportRows = buildWorkforceReportRows({
     schedules: scheduleRows,
     attendanceImports: attendanceImportRows
@@ -3230,7 +3660,8 @@ export async function getWorkforceDashboard(
         id: "active-employees",
         label: "Active employees",
         displayValue: String(
-          scopedEmployees.filter((employee) => employee.status === "ACTIVE").length
+          scopedEmployees.filter((employee) => employee.status === "ACTIVE")
+            .length
         ),
         detail: "Scoped employees with active operational records.",
         tone: "success"
@@ -3239,9 +3670,12 @@ export async function getWorkforceDashboard(
         id: "active-assignments",
         label: "Active assignments",
         displayValue: String(
-          scopedAssignments.filter((assignment) => assignment.status === "ACTIVE").length
+          scopedAssignments.filter(
+            (assignment) => assignment.status === "ACTIVE"
+          ).length
         ),
-        detail: "Effective branch or department coverage within your locations.",
+        detail:
+          "Effective branch or department coverage within your locations.",
         tone: "info"
       },
       {
@@ -3249,7 +3683,8 @@ export async function getWorkforceDashboard(
         label: "Pending leave/OT",
         displayValue: String(pendingLeaveCount + pendingOvertimeCount),
         detail: "Submitted workforce requests awaiting governed review.",
-        tone: pendingLeaveCount + pendingOvertimeCount > 0 ? "warning" : "success"
+        tone:
+          pendingLeaveCount + pendingOvertimeCount > 0 ? "warning" : "success"
       },
       {
         id: "readiness-issues",
@@ -3340,7 +3775,9 @@ export async function getWorkforceDashboard(
       locations: [...scope.locationsById.values()].map((location) => ({
         id: location.id,
         label: location.name,
-        detail: location.brandId ? "Assigned brand location" : "Company location"
+        detail: location.brandId
+          ? "Assigned brand location"
+          : "Company location"
       })),
       employees: scopedEmployees
         .filter((employee) => employee.status === "ACTIVE")

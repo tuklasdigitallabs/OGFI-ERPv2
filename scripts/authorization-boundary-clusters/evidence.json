@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "cluster": "controlled-evidence",
+  "testFiles": [
+    "apps/web/tests/evidenceAuthorization.integration.test.ts"
+  ],
+  "cases": [
+    {
+      "id": "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+      "testName": "keeps tenant and company boundaries non-enumerating",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "tenant and company source predicates",
+        "foreign-tenant and adjacent-company denial",
+        "upload-intent no mutation",
+        "non-enumerating source response"
+      ]
+    },
+    {
+      "id": "AUTHZ-EVIDENCE-LOCATION-DEPARTMENT-RESTRICTED-PROJECT-NO-MUTATION",
+      "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+      "testName": "enforces restricted-project authorization for project requirement evidence",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "restricted project active membership",
+        "project requirement owner and evidence type",
+        "no attachment, project attachment, intent, or quota mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION",
+      "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+      "testName": "rejects caller-selected view authority for evidence writes without leaving metadata, binary, or source mutations",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": [
+        "canonical live write permission",
+        "caller-selected view permission cannot authorize writes",
+        "no source, attachment, link, or private-byte mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-EVIDENCE-UPLOAD-CONTENT-LIVE-REVOCATION-NO-MUTATION",
+      "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+      "testName": "rechecks live source authority before accepting upload content and leaves quarantine metadata unchanged",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live permission revalidation at content upload",
+        "one-time intent remains unconsumed",
+        "quota reservation and quarantine metadata unchanged",
+        "no private bytes written"
+      ]
+    },
+    {
+      "id": "AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING",
+      "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+      "testName": "requires a live confidential capability to download workforce evidence",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live confidential workforce capability",
+        "known and unknown identifiers return the same denial",
+        "no download audit or evidence mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION",
+      "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+      "testName": "AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live legal-hold permission",
+        "live confidential retention-register permission",
+        "stale session denial",
+        "no attachment or audit mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-EVIDENCE-REQUIRED-AND-LEGAL-HOLD-ARCHIVE-NO-MUTATION",
+      "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+      "testName": "keeps required and legal-hold evidence immutable with non-enumerating archive denials",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "required evidence archive denial",
+        "legal hold archive denial",
+        "known and unknown identifiers return the same denial",
+        "no link or hold mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION",
+      "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+      "testName": "AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": [
+        "system-only scan and reconciliation entrypoints",
+        "terminal clean version is idempotent",
+        "unexpired absent intent is not recovered or expired",
+        "local provider disables hosted reconciliation",
+        "no attachment, intent, quota, link, or audit mutation"
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "surfaceId": "server/services/attachments.ts#authorizeControlledEvidenceSourceAction",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["canonical live permission", "assertControlledEvidenceSourceAccess", "denial audit"],
+      "caseIds": ["AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION", "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION"],
+      "noMutationControls": ["source record", "attachment", "controlled link"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceRetention.ts#listEvidenceRetentionRegister",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "live evidence.retention.view permission", "tenant-company query"],
+      "caseIds": ["AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"],
+      "noMutationControls": ["attachment", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceRetention.ts#listEvidenceRetentionRegisterForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live evidence.retention.view permission", "tenant-company query", "no file bytes"],
+      "caseIds": ["AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"],
+      "noMutationControls": ["attachment", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/attachments.ts#listWorkforceControlledEvidenceAttachmentsBatch",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live category permission", "single workforce scope snapshot", "bulk tenant-company-source validation", "bounded lateral evidence query", "denial audit"],
+      "caseIds": ["AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION", "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION", "AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"],
+      "noMutationControls": ["workforce source record", "attachment", "controlled link", "no unauthorized evidence bytes"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/attachments.ts#listControlledEvidenceAttachmentPage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "canonical source view permission", "tenant-company-source authorization", "bounded server pagination"],
+      "caseIds": ["AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION", "AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"],
+      "noMutationControls": ["source record", "attachment", "controlled link", "no unauthorized evidence metadata or bytes"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceRetention.ts#setEvidenceLegalHold",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "live evidence.legal_hold.set permission", "privileged MFA", "tenant-company CAS"],
+      "caseIds": ["AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"],
+      "noMutationControls": ["attachment legal hold", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceRetention.ts#setEvidenceLegalHoldForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live evidence.legal_hold.set permission", "privileged MFA", "tenant-company CAS"],
+      "caseIds": ["AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"],
+      "noMutationControls": ["attachment legal hold", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceScanLifecycle.ts#processEvidenceScan",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["system reconciler caller", "exact object version", "terminal scan state CAS"],
+      "caseIds": ["AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"],
+      "noMutationControls": ["clean attachment", "scan attempts", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceScanLifecycle.ts#readAvailableEvidenceAttachmentForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["tenant-company link predicate", "source action authorization", "exact available version verification"],
+      "caseIds": ["AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION", "AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"],
+      "noMutationControls": ["source record", "attachment", "no unauthorized download audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceScanLifecycle.ts#reconcileEvidenceScans",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["systemd-only runner", "hosted provider enablement", "advisory lock and lease"],
+      "caseIds": ["AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"],
+      "noMutationControls": ["local environment attachment", "intent", "quota", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceUploads.ts#expireEvidenceUploadIntents",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["system reconciler caller", "expired status predicate", "exact object recovery before expiry"],
+      "caseIds": ["AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"],
+      "noMutationControls": ["unexpired intent", "attachment", "quota", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceUploads.ts#issueEvidenceUploadIntent",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "canonical source write permission", "source record scope", "quota transaction"],
+      "caseIds": ["AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION", "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION", "AUTHZ-EVIDENCE-LOCATION-DEPARTMENT-RESTRICTED-PROJECT-NO-MUTATION"],
+      "noMutationControls": ["source record", "attachment", "controlled link", "project link", "intent", "quota"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceUploads.ts#issueEvidenceUploadIntentForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["canonical live source write permission", "source record scope", "restricted project membership", "quota transaction"],
+      "caseIds": ["AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION", "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION", "AUTHZ-EVIDENCE-LOCATION-DEPARTMENT-RESTRICTED-PROJECT-NO-MUTATION"],
+      "noMutationControls": ["source record", "attachment", "controlled link", "project link", "intent", "quota"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceUploads.ts#recoverDurableEvidenceUploads",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["system reconciler caller", "exact object version", "issued intent CAS", "quota transaction"],
+      "caseIds": ["AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"],
+      "noMutationControls": ["absent-object intent", "attachment", "quota", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/evidenceUploads.ts#storeEvidenceUploadContent",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "one-time intent token", "live source write permission", "exact object version", "quota transaction"],
+      "caseIds": ["AUTHZ-EVIDENCE-UPLOAD-CONTENT-LIVE-REVOCATION-NO-MUTATION"],
+      "noMutationControls": ["intent", "attachment", "quota", "source record", "private bytes"],
+      "status": "COVERED"
+    }
+  ]
+}

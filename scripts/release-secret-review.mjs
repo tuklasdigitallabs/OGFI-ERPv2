@@ -11,11 +11,11 @@ const allowedEnvTemplates = new Set([
 const highRiskSecretPattern =
   /(BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY|AKIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]+)/;
 const envAssignmentPattern =
-  /(DATABASE_URL|DIRECT_DATABASE_URL|S3_SECRET_ACCESS_KEY|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=([^\s]+)/;
+  /(DATABASE_URL|DIRECT_DATABASE_URL|EVIDENCE_BROKER_SHARED_SECRET|EVIDENCE_BROKER_KEYS_JSON|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=([^\s]+)/;
 const placeholderEnvValuePattern =
   /^<[a-z0-9][a-z0-9-]*>(?:["'`,;)}\]]*)$/i;
 const envKeyReferencePattern =
-  /\.(?:startsWith|slice)\(["'`](?:DATABASE_URL|DIRECT_DATABASE_URL|S3_SECRET_ACCESS_KEY|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=["'`](?:\)|\.length)/;
+  /\.(?:startsWith|slice)\(["'`](?:DATABASE_URL|DIRECT_DATABASE_URL|EVIDENCE_BROKER_SHARED_SECRET|EVIDENCE_BROKER_KEYS_JSON|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=["'`](?:\)|\.length)/;
 
 const trackedFiles = execFileSync("git", ["ls-files"], {
   encoding: "utf8",

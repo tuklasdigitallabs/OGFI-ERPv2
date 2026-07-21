@@ -1608,7 +1608,10 @@ export async function archiveProjectTaskAttachment(formData: FormData) {
       status: "ACTIVE",
       archivedAt: null
     },
-    include: { attachment: true }
+    include: {
+      attachment: true,
+      requirement: { select: { isRequired: true } }
+    }
   });
   if (!link || !link.taskId) {
     await logProjectAttachmentDenied({
@@ -1621,9 +1624,41 @@ export async function archiveProjectTaskAttachment(formData: FormData) {
     });
     throw new Error("PROJECT_ATTACHMENT_NOT_FOUND");
   }
+  if (link.attachment.legalHold || link.requirement?.isRequired) {
+    await logProjectAttachmentDenied({
+      session,
+      reasonCode: link.attachment.legalHold
+        ? "PROJECT_ATTACHMENT_LEGAL_HOLD_ARCHIVE_DENIED"
+        : "PROJECT_REQUIRED_EVIDENCE_ARCHIVE_DENIED",
+      attemptedAction: "ARCHIVE",
+      taskId: link.taskId,
+      projectId: link.projectId,
+      attachmentId: link.attachmentId
+    });
+    throw new Error("PROJECT_ATTACHMENT_NOT_FOUND");
+  }
   const task = await findMutableTask(session, link.taskId);
 
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "Attachment"
+      WHERE "id" = ${link.attachmentId}::uuid
+        AND "tenantId" = ${link.tenantId}::uuid
+        AND "companyId" = ${link.companyId}::uuid
+      FOR UPDATE
+    `;
+    const preservationState = await tx.attachment.findFirst({
+      where: {
+        id: link.attachmentId,
+        tenantId: link.tenantId,
+        companyId: link.companyId
+      },
+      select: { legalHold: true }
+    });
+    if (!preservationState || preservationState.legalHold) {
+      throw new Error("PROJECT_ATTACHMENT_NOT_FOUND");
+    }
     const archived = await tx.projectAttachment.update({
       where: { id: link.id },
       data: {

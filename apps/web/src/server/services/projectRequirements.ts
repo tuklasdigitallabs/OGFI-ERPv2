@@ -8,7 +8,7 @@ import {
   hasCompanyManageScope,
   listAuthorizedProjectAccess
 } from "./projects";
-import { createControlledEvidenceAttachmentUploadLink } from "./attachments";
+import type { ControlledEvidenceAttachmentRow } from "./attachments";
 
 export type ProjectRequirementKind = "EVIDENCE" | "SIGNOFF";
 export type ProjectRequirementStatus =
@@ -48,6 +48,8 @@ export type ProjectRequirementRow = {
   decidedByName: string | null;
   decisionReason: string | null;
   attachmentCount: number;
+  availableAttachmentCount: number;
+  evidenceAttachments: ControlledEvidenceAttachmentRow[];
   sourceRecordLinkCount: number;
   version: number;
   canSubmit: boolean;
@@ -64,7 +66,15 @@ const requirementInclude = {
   decidedBy: true,
   attachments: {
     where: { status: "ACTIVE" as const, archivedAt: null },
-    include: { attachment: true }
+    include: {
+      attachment: {
+        include: {
+          controlledEvidenceLinks: {
+            where: { status: "ACTIVE" as const, archivedAt: null }
+          }
+        }
+      }
+    }
   },
   recordLinks: {
     where: { archivedAt: null }
@@ -110,11 +120,6 @@ const resolveRequirementExceptionSchema = z.object({
   expectedVersion: z.coerce.number().int().positive(),
   resolution: z.enum(["WAIVED", "CANCELLED"]),
   reason: z.string().trim().min(5).max(1000)
-});
-
-const uploadRequirementEvidenceSchema = z.object({
-  requirementId: z.string().uuid(),
-  caption: z.string().trim().max(500).optional()
 });
 
 type SubmitRequirementInput = z.input<typeof submitRequirementSchema>;
@@ -238,6 +243,43 @@ export function toProjectRequirementRow(
     decidedByName: requirement.decidedBy?.displayName ?? null,
     decisionReason: requirement.decisionReason,
     attachmentCount: requirement.attachments.length,
+    availableAttachmentCount: requirement.attachments.filter(
+      (projectLink) =>
+        projectLink.attachment.uploadState === "VERIFIED" &&
+        projectLink.attachment.physicalState === "DURABLE" &&
+        projectLink.attachment.scanState === "CLEAN" &&
+        projectLink.attachment.availabilityState === "AVAILABLE"
+    ).length,
+    evidenceAttachments: requirement.attachments.flatMap((projectLink) =>
+      projectLink.attachment.controlledEvidenceLinks
+        .filter(
+          (controlledLink) =>
+            controlledLink.sourceType === "PROJECT_REQUIREMENT" &&
+            controlledLink.sourceRecordId === requirement.id
+        )
+        .map((controlledLink) => ({
+          id: controlledLink.id,
+          sourceType: "PROJECT_REQUIREMENT" as const,
+          sourceRecordId: controlledLink.sourceRecordId,
+          sourceLineId: controlledLink.sourceLineId,
+          sourceKey: controlledLink.sourceKey,
+          attachmentId: controlledLink.attachmentId,
+          purpose: controlledLink.purpose as ControlledEvidenceAttachmentRow["purpose"],
+          caption: controlledLink.caption,
+          requiredForAction: controlledLink.requiredForAction,
+          legalHold: projectLink.attachment.legalHold,
+          originalFilename: projectLink.attachment.originalFilename,
+          mimeType: projectLink.attachment.mimeType,
+          sizeBytes: projectLink.attachment.sizeBytes,
+          storageProvider: projectLink.attachment.storageProvider,
+          uploadState: projectLink.attachment.uploadState,
+          scanState: projectLink.attachment.scanState,
+          availabilityState: projectLink.attachment.availabilityState,
+          status: controlledLink.status,
+          createdByUserId: controlledLink.createdByUserId,
+          createdAt: controlledLink.createdAt.toISOString()
+        }))
+    ),
     sourceRecordLinkCount: requirement.recordLinks.length,
     version: requirement.version,
     canSubmit:
@@ -421,7 +463,13 @@ export async function submitProjectRequirementForSession(
           requirementId: requirement.id,
           status: "ACTIVE",
           archivedAt: null,
-          attachment: { status: "ACTIVE" }
+          attachment: {
+            status: "ACTIVE",
+            uploadState: "VERIFIED",
+            physicalState: "DURABLE",
+            scanState: "CLEAN",
+            availabilityState: "AVAILABLE"
+          }
         },
         include: { attachment: true }
       }),
@@ -708,111 +756,4 @@ export async function resolveProjectRequirementException(formData: FormData) {
     resolution: String(formData.get("resolution") ?? "") as "WAIVED" | "CANCELLED",
     reason: String(formData.get("reason") ?? "")
   });
-}
-
-export async function uploadProjectRequirementEvidence(formData: FormData) {
-  const session = await requireSessionContext();
-  const values = uploadRequirementEvidenceSchema.parse({
-    requirementId: formData.get("requirementId"),
-    caption: formData.get("caption") || undefined
-  });
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("PROJECT_REQUIREMENT_EVIDENCE_FILE_REQUIRED");
-  }
-  const requirement = await findRequirementForAction(session, values.requirementId);
-  if (requirement.ownerUserId !== session.user.id) {
-    throw new Error("PROJECT_REQUIREMENT_SUBMISSION_OWNER_REQUIRED");
-  }
-  if (
-    requirement.kind !== "EVIDENCE" ||
-    !["DOCUMENT", "PHOTO"].includes(requirement.evidenceType ?? "") ||
-    !["PENDING", "RETURNED"].includes(requirement.status)
-  ) {
-    throw new Error("PROJECT_REQUIREMENT_ATTACHMENT_NOT_ALLOWED");
-  }
-
-  const expectedEvidenceType = requirement.evidenceType as "DOCUMENT" | "PHOTO";
-  if (!mimeMatchesProjectRequirementEvidence(expectedEvidenceType, file.type)) {
-    throw new Error("PROJECT_REQUIREMENT_EVIDENCE_MIME_MISMATCH");
-  }
-  const stored = await createControlledEvidenceAttachmentUploadLink({
-    sourceType: "PROJECT_REQUIREMENT",
-    sourceRecordId: requirement.id,
-    file,
-    caption: values.caption ?? null,
-    purpose: "EVIDENCE",
-    requiredForAction: "project-requirement-submit",
-    requiredPermissionCode: permissions.projectView
-  });
-
-  await prisma.$transaction(async (tx) => {
-    const current = await tx.projectRequirement.findFirst({
-      where: {
-        id: requirement.id,
-        tenantId: requirement.tenantId,
-        companyId: requirement.companyId,
-        projectId: requirement.projectId,
-        archivedAt: null,
-        status: { in: ["PENDING", "RETURNED"] }
-      },
-      select: { id: true }
-    });
-    if (!current) {
-      throw new Error("PROJECT_REQUIREMENT_ATTACHMENT_NOT_ALLOWED");
-    }
-    const existing = await tx.projectAttachment.findFirst({
-      where: {
-        tenantId: requirement.tenantId,
-        companyId: requirement.companyId,
-        projectId: requirement.projectId,
-        requirementId: requirement.id,
-        attachmentId: stored.attachmentId,
-        status: "ACTIVE",
-        archivedAt: null
-      },
-      select: { id: true }
-    });
-    if (existing) {
-      return;
-    }
-    const link = await tx.projectAttachment.create({
-      data: {
-        tenantId: requirement.tenantId,
-        companyId: requirement.companyId,
-        projectId: requirement.projectId,
-        taskId: requirement.taskId,
-        requirementId: requirement.id,
-        attachmentId: stored.attachmentId,
-        purpose: "EVIDENCE",
-        caption: values.caption ?? null,
-        createdByUserId: session.user.id
-      }
-    });
-    await writeRequirementHistory(tx, {
-      requirement,
-      actorUserId: session.user.id,
-      eventType: "project_requirement.evidence_attached",
-      beforeData: { attachmentCount: 0, version: requirement.version },
-      afterData: { attachmentCount: 1, version: requirement.version }
-    });
-    await tx.projectActivityEvent.create({
-      data: {
-        tenantId: requirement.tenantId,
-        companyId: requirement.companyId,
-        projectId: requirement.projectId,
-        actorUserId: session.user.id,
-        eventType: "project_attachment.added",
-        entityType: "ProjectAttachment",
-        entityId: link.id,
-        afterData: {
-          requirementId: requirement.id,
-          purpose: link.purpose,
-          source: "project-requirement-evidence"
-        },
-        metadata: { source: "project-requirements" }
-      }
-    });
-  });
-  return requirement.id;
 }

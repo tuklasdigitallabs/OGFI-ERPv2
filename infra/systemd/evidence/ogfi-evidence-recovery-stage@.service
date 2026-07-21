@@ -1,0 +1,43 @@
+[Unit]
+Description=OGFI ERP encrypted paired evidence recovery staging (%i)
+Documentation=file:/opt/ogfi/current/infra/systemd/evidence/README.md
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/run/ogfi/evidence-write-freeze.confirmed
+
+[Service]
+Type=oneshot
+User=ogfi-evidence
+Group=ogfi-evidence
+WorkingDirectory=/opt/ogfi/current
+EnvironmentFile=/etc/ogfi/evidence-recovery/%i.env
+LoadCredential=database_url:/etc/ogfi/secrets/recovery-database-url
+LoadCredential=age_recipient:/etc/ogfi/evidence-recovery/age-recipient
+Environment=DATABASE_URL_FILE=%d/database_url
+Environment=EVIDENCE_RECOVERY_AGE_RECIPIENT_FILE=%d/age_recipient
+Environment=EVIDENCE_RECOVERY_WRITE_FREEZE_CONFIRMED=true
+UMask=0077
+TimeoutStartSec=4h
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/srv/ogfi/evidence
+ReadWritePaths=/var/lib/ogfi/recovery-staging
+RestrictSUIDSGID=true
+LockPersonality=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+ExecStart=/usr/bin/node /opt/ogfi/current/scripts/evidence-recovery-create.mjs
+
+# Install age, PostgreSQL client tools, and GNU tar from reviewed OS packages.
+# The host service account maps to the broker's configured numeric UID:GID and
+# receives no access to the broker encryption keyring. This unit stages a set
+# on the source host; it never claims
+# RECOVERABLE and must not be scheduled without an independently reviewed freeze.

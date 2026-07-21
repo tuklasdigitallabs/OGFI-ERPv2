@@ -23,6 +23,8 @@ const ids = {
   adminRoleId: "00000000-0000-4000-8000-000000000015",
   administerPermissionId: "00000000-0000-4000-8000-000000000016",
   tenantRoleAdministerPermissionId: "00000000-0000-4000-8000-000000000998",
+  evidenceLegalHoldSetPermissionId: "00000000-0000-4000-8000-000000000995",
+  evidenceRetentionViewPermissionId: "00000000-0000-4000-8000-000000000996",
   secondaryAdminUserId: "00000000-0000-4000-8000-000000000901",
   superUserId: "00000000-0000-4000-8000-000000000991",
   superRoleId: "00000000-0000-4000-8000-000000000992",
@@ -506,16 +508,16 @@ const dec0036CompanyPolicyDefaults = [
     category: "security",
     label: "Controlled evidence storage policy",
     description:
-      "Private evidence upload defaults for storage provider, MIME allowlist, scan-waiver mode, retention, recovery, and download-audit expectations.",
+      "Private evidence upload defaults for environment isolation, MIME allowlist, required hosted scanning, preservation, paired recovery, and download auditing.",
     value: {
-      storageProvider: "local-private",
+      storageProvider: "environment-isolated",
       uploadLimitMb: 10,
       allowedMimePolicy: "allowlist",
-      malwareScanMode: "scan_waived_for_local_private_uat",
+      malwareScanMode: "required_before_availability",
       malwareScanWaiverReason:
-        "Pilot local-private storage has no malware scanner configured; UAT must confirm scan waiver or production scanner before go-live.",
-      retentionPolicy: "follow_transaction_retention",
-      recoveryPolicy: "covered_by_backup_restore_policy",
+        "Only local development may use an explicit test scan result; every hosted upload must pass the private ClamAV boundary before availability.",
+      retentionPolicy: "preserve_until_approved_transaction_retention",
+      recoveryPolicy: "paired_database_evidence_restore_required",
       downloadAuditRequired: true,
     },
     valueType: "JSON",
@@ -573,6 +575,10 @@ const dec0036CompanyPolicyDefaults = [
 
 async function seedDec0036CompanyPolicyDefaults() {
   for (const setting of dec0036CompanyPolicyDefaults) {
+    const sourceDecisionId =
+      setting.key === "security.evidence_storage.default_policy"
+        ? "DEC-0046"
+        : "DEC-0036";
     await prisma.companyPolicySetting.upsert({
       where: {
         companyId_key: {
@@ -592,7 +598,7 @@ async function seedDec0036CompanyPolicyDefaults() {
         valueType: setting.valueType,
         unit: "unit" in setting ? setting.unit : null,
         ...("options" in setting ? { options: [...setting.options] } : {}),
-        sourceDecisionId: "DEC-0036",
+        sourceDecisionId,
         isDefault: true,
         status: "ACTIVE",
         updatedByUserId: ids.adminUserId,
@@ -605,7 +611,7 @@ async function seedDec0036CompanyPolicyDefaults() {
         valueType: setting.valueType,
         unit: "unit" in setting ? setting.unit : null,
         ...("options" in setting ? { options: [...setting.options] } : {}),
-        sourceDecisionId: "DEC-0036",
+        sourceDecisionId,
         status: "ACTIVE",
       },
     });
@@ -4010,6 +4016,7 @@ async function seedProjectMigrationRehearsalData() {
     create: {
       id: attachmentId,
       tenantId: ids.tenantId,
+      companyId: ids.companyId,
       storageProvider: "REHEARSAL_FIXTURE",
       objectKey: "migration-safety/scoped-requirement-evidence.txt",
       originalFilename: "scoped-requirement-evidence.txt",
@@ -4019,6 +4026,7 @@ async function seedProjectMigrationRehearsalData() {
       uploadedByUserId: ids.adminUserId,
     },
     update: {
+      companyId: ids.companyId,
       objectKey: "migration-safety/scoped-requirement-evidence.txt",
       checksum: "migration-rehearsal-fixture",
       status: "ACTIVE",
@@ -7717,6 +7725,42 @@ async function main() {
   });
 
   await prisma.permission.upsert({
+    where: { code: "evidence.legal_hold.set" },
+    create: {
+      id: ids.evidenceLegalHoldSetPermissionId,
+      code: "evidence.legal_hold.set",
+      module: "evidence",
+      action: "legal_hold.set",
+      description:
+        "Place a preservation-only legal hold on company-scoped controlled evidence.",
+    },
+    update: {
+      module: "evidence",
+      action: "legal_hold.set",
+      description:
+        "Place a preservation-only legal hold on company-scoped controlled evidence.",
+    },
+  });
+
+  await prisma.permission.upsert({
+    where: { code: "evidence.retention.view" },
+    create: {
+      id: ids.evidenceRetentionViewPermissionId,
+      code: "evidence.retention.view",
+      module: "evidence",
+      action: "retention.view",
+      description:
+        "View the confidential company evidence retention and legal-hold metadata register.",
+    },
+    update: {
+      module: "evidence",
+      action: "retention.view",
+      description:
+        "View the confidential company evidence retention and legal-hold metadata register.",
+    },
+  });
+
+  await prisma.permission.upsert({
     where: { code: "purchasing.purchase_request.create" },
     create: {
       id: ids.createPermissionId,
@@ -8942,6 +8986,14 @@ async function main() {
       {
         roleId: ids.adminRoleId,
         permissionId: ids.tenantRoleAdministerPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.evidenceLegalHoldSetPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.evidenceRetentionViewPermissionId,
       },
       {
         roleId: ids.adminRoleId,

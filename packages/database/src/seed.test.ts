@@ -12,7 +12,9 @@ describe("database seed DEC-0036 policy defaults", () => {
     expect(seedSource).toContain("dec0036CompanyPolicyDefaults");
     expect(seedSource).toContain("seedDec0036CompanyPolicyDefaults");
     expect(seedSource).toContain("prisma.companyPolicySetting.upsert");
-    expect(seedSource).toContain('sourceDecisionId: "DEC-0036"');
+    expect(seedSource).toContain("const sourceDecisionId =");
+    expect(seedSource).toContain('? "DEC-0046"');
+    expect(seedSource).toContain(': "DEC-0036"');
 
     for (const key of [
       "purchasing.approval.standard_threshold_php",

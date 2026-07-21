@@ -8,4 +8,4 @@ Current articles:
 - [Reviewing Bank And Cash Readiness](./reviewing-bank-and-cash-readiness.md)
 - [Reviewing Workforce Readiness](./reviewing-workforce-readiness.md)
 
-Important boundary: Phase 3 finance and workforce workflows are not production go-live approval by themselves. Some settlement, binary evidence, budget hard-block, bank/cash close, and workforce transfer items remain tracked in the Phase 3 deferred blocker register until UAT resolves or waives them.
+Important boundary: Phase 3 finance and workforce workflows are not production go-live approval by themselves. Controlled binary evidence is available in the current build for supported records, but hosted activation evidence and owner signoff remain pending. Settlement, budget hard-block, bank/cash close, and workforce transfer items remain tracked in the Phase 3 deferred blocker register until UAT resolves or waives them.

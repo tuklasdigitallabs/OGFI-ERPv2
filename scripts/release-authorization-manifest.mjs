@@ -1121,12 +1121,70 @@ export function buildAuthorizationSurfaceManifest() {
     "app/health/route.ts",
     "app/readiness/route.ts",
   ]);
+  const controlledEvidenceRoutes = new Map([
+    [
+      "app/api/evidence/uploads/route.ts",
+      {
+        permission: "SERVICE_ENFORCED",
+        dimensions: ["TENANT", "COMPANY", "SOURCE_RECORD"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "session",
+          "live-permission",
+          "source-record-scope",
+          "company-quota",
+          "quarantine",
+        ],
+        denialContract: "SAFE_UPLOAD_ERROR_NO_SOURCE_MUTATION",
+      },
+    ],
+    [
+      "app/api/evidence/uploads/content/route.ts",
+      {
+        permission: "SERVICE_ENFORCED",
+        dimensions: ["TENANT", "COMPANY", "SOURCE_RECORD"],
+        guardChain: [
+          "trusted-mutation-origin",
+          "session",
+          "live-permission",
+          "source-record-scope",
+          "one-time-intent-token",
+          "exact-version-stream",
+          "durable-quarantine",
+        ],
+        denialContract: "SAFE_UPLOAD_ERROR_NO_SOURCE_MUTATION",
+      },
+    ],
+  ]);
   for (const routeFile of allRouteFiles) {
     if (routeFile.startsWith(`${protectedAppRoot}${path.sep}`)) continue;
     const relativePath = path
       .relative(webSourceRoot, routeFile)
       .replaceAll(path.sep, "/");
     if (publicRouteAllowlist.has(relativePath)) continue;
+    const controlledEvidencePolicy = controlledEvidenceRoutes.get(relativePath);
+    if (controlledEvidencePolicy) {
+      const source = readFileSync(routeFile, "utf8");
+      const routeDelegations = analyzeServerActionDelegations(
+        source,
+        relativePath,
+        knownServiceIds,
+        knownServiceSymbols,
+        ["POST"],
+      ).get("POST");
+      entries.push(
+        entry({
+          id: `${relativePath}#POST`,
+          surfaceType: "ROUTE_HANDLER",
+          ...controlledEvidencePolicy,
+          riskTier: "HIGH",
+          testIds: ["AUTHZ-EVIDENCE-001"],
+          delegatedServiceIds: routeDelegations.delegatedServiceIds,
+          callChains: routeDelegations.callChains,
+        }),
+      );
+      continue;
+    }
     if (relativePath !== "app/(auth)/sign-out/route.ts") {
       throw new Error(`AUTHORIZATION_ROUTE_UNCLASSIFIED:${relativePath}`);
     }
@@ -1597,6 +1655,11 @@ export function authorizationBoundaryCoverageReport(manifest) {
     .filter((surface) =>
       surface.id === "app/(auth)/sign-out/route.ts#POST"
         ? !surface.executableTestIds.includes("AUTHZ-SIGNOUT-ROUTE-001")
+        : [
+              "app/api/evidence/uploads/route.ts#POST",
+              "app/api/evidence/uploads/content/route.ts#POST",
+            ].includes(surface.id)
+          ? !surface.executableTestIds.includes("AUTHZ-EVIDENCE-001")
         : surface.surfaceType === "EVIDENCE_DOWNLOAD"
         ? !surface.executableTestIds.includes("AUTHZ-EVIDENCE-001")
         : !surface.executableTestIds.includes("AUTHZ-ROUTE-MATRIX-001"),

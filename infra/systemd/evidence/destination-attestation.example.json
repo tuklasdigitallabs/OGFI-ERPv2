@@ -1,0 +1,12 @@
+{
+  "schema": "ogfi-evidence-recovery-v1",
+  "sourceHostId": "<source-host-id>",
+  "sourceFailureDomain": "<source-host-and-disk-failure-domain>",
+  "destinationId": "<approved-independent-destination-id>",
+  "destinationFailureDomain": "<approved-independent-failure-domain>",
+  "independentFailureDomain": false,
+  "readBackMethod": "<full-ciphertext-read-back-method>",
+  "verifiedAtUtc": "<verified-at-utc>",
+  "verifiedBy": "<independent-reviewer>",
+  "evidenceReference": "<provider-or-vault-evidence-reference>"
+}

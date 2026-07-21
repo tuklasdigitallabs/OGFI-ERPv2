@@ -81,7 +81,8 @@ services:
       - private
 
   minio:
-    image: ${MINIO_IMAGE:?Set a reviewed MinIO image tag or digest}
+    # Local-development service only. Hosted overlays disable it explicitly.
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-04-22T22-12-26Z}
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}

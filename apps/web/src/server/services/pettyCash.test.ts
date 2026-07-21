@@ -279,10 +279,11 @@ describe("petty cash foundation", () => {
     expect(serviceSource).not.toContain("bankTransaction.create");
   });
 
-  it("exposes petty-cash evidence upload links without source mutation", () => {
+  it("exposes petty-cash controlled evidence panels without source mutation", () => {
     expect(pageSource).toContain("listControlledEvidenceAttachments");
-    expect(pageSource).toContain("createControlledEvidenceAttachmentMetadataLink");
-    expect(pageSource).toContain("createControlledEvidenceAttachmentUploadLink");
+    expect(pageSource).toContain("ControlledEvidencePanel");
+    expect(pageSource).not.toContain("createControlledEvidenceAttachmentMetadataLink");
+    expect(pageSource).not.toContain("createControlledEvidenceAttachmentUploadLink");
     expect(pageSource).toContain("archiveControlledEvidenceAttachment");
     expect(pageSource).toContain("PETTY_CASH_FUND");
     expect(pageSource).toContain("PETTY_CASH_REQUEST");
@@ -291,11 +292,8 @@ describe("petty cash foundation", () => {
     expect(pageSource).toContain("Add Request Evidence");
     expect(pageSource).toContain("Add Liquidation Evidence");
     expect(pageSource).toContain("archivePettyCashEvidenceMetadata");
-    expect(pageSource).toContain("Archive Evidence Link");
-    expect(pageSource).toContain('name="evidenceFile"');
-    expect(pageSource).toContain("Upload Evidence");
-    expect(pageSource).toContain('storageProvider === "local-private"');
-    expect(pageSource).toContain("href={`/evidence/${attachment.id}/download`}");
+    expect(pageSource).not.toContain('name="objectKey"');
+    expect(pageSource).not.toContain('name="storageProvider"');
     expect(pageSource).not.toContain("Binary upload");
     expect(pageSource).not.toContain("P3-BLOCK-002");
     expect(pageSource).not.toContain("Save Evidence Metadata");

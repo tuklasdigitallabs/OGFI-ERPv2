@@ -53,11 +53,13 @@ Real `.env`, `.env.staging`, `.env.production`, secret files, backups, and attac
 | `AUTH_BOOTSTRAP_AUTHORIZATION_REFERENCE` | First-admin ceremony only | Approved security/change reference recorded in the immutable bootstrap and audit records. |
 | `AUTH_BOOTSTRAP_OUTPUT_FILE` | First-admin ceremony only | Absolute path to a new restricted file for the bearer URL; the URL is never printed to stdout. |
 | `AUTH_ENCRYPTION_ROTATION_BATCH_SIZE` | During reviewed rotation only | Resumable MFA re-encryption batch size, clamped to `1..500`; current default `100`. |
-| `S3_ENDPOINT`          |                                     Yes | S3-compatible endpoint.                                                                                      |
-| `S3_REGION`            |                                     Yes | Region/provider value.                                                                                       |
-| `S3_BUCKET`            |                                     Yes | Environment-specific bucket.                                                                                 |
-| `S3_ACCESS_KEY_ID`     |                                     Yes | Object-storage credential.                                                                                   |
-| `S3_SECRET_ACCESS_KEY` |                                     Yes | Object-storage secret.                                                                                       |
+| `EVIDENCE_STORAGE_PROVIDER` | Hosted evidence only | Must be `hostinger-local` in hosted staging/production; `local-private` is limited to local development/test. |
+| `EVIDENCE_BROKER_URL` | Hosted evidence only | Must resolve to the private Compose service URL `http://evidence-broker:3010`; public/external broker URLs fail closed. |
+| `EVIDENCE_BROKER_SHARED_SECRET_FILE` | Hosted evidence only | In-container path to the mounted broker-auth secret; never store the secret value in an environment file. |
+| `EVIDENCE_DEFAULT_COMPANY_QUOTA_BYTES` | Hosted evidence only | Reviewed per-company byte quota. Blank placeholders are activation blockers. |
+| `EVIDENCE_BROKER_MINIMUM_FREE_BYTES` | Hosted evidence only | Reserved filesystem bytes below which the broker rejects new writes. |
+| `EVIDENCE_BROKER_MINIMUM_FREE_PERCENT` | Hosted evidence only | Reserved filesystem percentage below which the broker rejects new writes. |
+| `EVIDENCE_BROKER_MINIMUM_FREE_INODE_PERCENT` | Hosted evidence only | Reserved inode percentage below which the broker rejects new writes. |
 | `SMTP_HOST`            |                                     Yes | Approved provider host used for direct activation and recovery delivery.                                     |
 | `SMTP_PORT`            |                                     Yes | Provider port; port `465` uses implicit TLS.                                                                 |
 | `SMTP_USERNAME`        |                                     Yes | Provider credential.                                                                                         |
@@ -77,6 +79,15 @@ Real `.env`, `.env.staging`, `.env.production`, secret files, backups, and attac
 | `MINIO_ROOT_PASSWORD` | Local/test object storage administrator.  |
 | `MAIL_CAPTURE_URL`    | Local email capture service when used.    |
 | `SEED_MODE`           | Controls idempotent synthetic data setup. |
+
+The complete Hostinger broker, ClamAV, encryption-key-file, resource-limit,
+reconciliation, and upload-control variable set is maintained in
+`.env.staging.example`, `.env.production.example`, and
+`infra/hostinger/evidence/README.md`. Staging and production must use distinct
+`COMPOSE_PROJECT_NAME`, paths, secrets, keys, databases, and signature volumes.
+There are no required AWS, S3, GuardDuty, KMS, or EventBridge variables in the
+current deployment. Those providers may be considered only under a future
+approved migration decision.
 
 ---
 

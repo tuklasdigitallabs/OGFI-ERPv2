@@ -164,6 +164,10 @@ describe("project requirement controls", () => {
     expect(source.match(/prisma\.\$transaction/g)?.length).toBeGreaterThanOrEqual(4);
     expect(source).toContain("await tx.projectActivityEvent.create");
     expect(source).toContain("await tx.auditEvent.create");
+    expect(source).toContain('uploadState: "VERIFIED"');
+    expect(source).toContain('physicalState: "DURABLE"');
+    expect(source).toContain('scanState: "CLEAN"');
+    expect(source).toContain('availabilityState: "AVAILABLE"');
     expect(source).not.toMatch(/tx\.(projectRecordLink|projectAttachment|purchaseRequest|purchaseOrder|inventoryMovement)\.(update|updateMany|delete|deleteMany)/);
   });
 });

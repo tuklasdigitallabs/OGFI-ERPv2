@@ -878,6 +878,67 @@
     ]
   },
   {
+    "id": "admin/evidence-retention/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "admin/evidence-retention/page.tsx#placeLegalHoldAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "server/services/evidenceRetention.ts#setEvidenceLegalHold"
+    ],
+    "callChains": [
+      "placeLegalHoldAction -> server/services/authentication.ts#assertTrustedServerActionOrigin",
+      "placeLegalHoldAction -> server/services/evidenceRetention.ts#setEvidenceLegalHold"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live evidence.legal_hold.set permission",
+      "privileged MFA",
+      "tenant-company CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "attachment legal hold",
+      "audit"
+    ]
+  },
+  {
     "id": "admin/locations/[id]/page.tsx#page",
     "surfaceType": "PAGE",
     "permission": "core.administer",
@@ -2782,6 +2843,107 @@
     ]
   },
   {
+    "id": "app/api/evidence/uploads/content/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "SOURCE_RECORD"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "session",
+      "live-permission",
+      "source-record-scope",
+      "one-time-intent-token",
+      "exact-version-stream",
+      "durable-quarantine"
+    ],
+    "denialContract": "SAFE_UPLOAD_ERROR_NO_SOURCE_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-EVIDENCE-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/evidenceUploads.ts#storeEvidenceUploadContent"
+    ],
+    "callChains": [
+      "POST -> server/services/evidenceUploads.ts#storeEvidenceUploadContent"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "one-time intent token",
+      "live source write permission",
+      "exact object version",
+      "quota transaction"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-UPLOAD-CONTENT-LIVE-REVOCATION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "intent",
+      "attachment",
+      "quota",
+      "source record",
+      "private bytes"
+    ]
+  },
+  {
+    "id": "app/api/evidence/uploads/route.ts#POST",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "SOURCE_RECORD"
+    ],
+    "guardChain": [
+      "trusted-mutation-origin",
+      "session",
+      "live-permission",
+      "source-record-scope",
+      "company-quota",
+      "quarantine"
+    ],
+    "denialContract": "SAFE_UPLOAD_ERROR_NO_SOURCE_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-EVIDENCE-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/evidenceUploads.ts#issueEvidenceUploadIntent"
+    ],
+    "callChains": [
+      "POST -> server/services/evidenceUploads.ts#issueEvidenceUploadIntent"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "canonical source write permission",
+      "source record scope",
+      "quota transaction"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION",
+      "AUTHZ-EVIDENCE-LOCATION-DEPARTMENT-RESTRICTED-PROJECT-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "source record",
+      "attachment",
+      "controlled link",
+      "project link",
+      "intent",
+      "quota"
+    ]
+  },
+  {
     "id": "approvals/[id]/page.tsx#addComment",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -3245,186 +3407,6 @@
     ],
     "noMutationControls": [
       "invalid or stale session cannot authorize protected mutation"
-    ]
-  },
-  {
-    "id": "components/FinanceSubworkspace.tsx#addBankReconciliationEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "server-action",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "callChains": [
-      "addBankReconciliationEvidenceMetadata -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addBankReconciliationEvidenceMetadata -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001"
-    ],
-    "noMutationControls": [
-      "source-record"
-    ]
-  },
-  {
-    "id": "components/FinanceSubworkspace.tsx#addBranchCashDepositEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "server-action",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "callChains": [
-      "addBranchCashDepositEvidenceMetadata -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addBranchCashDepositEvidenceMetadata -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001"
-    ],
-    "noMutationControls": [
-      "source-record"
-    ]
-  },
-  {
-    "id": "components/FinanceSubworkspace.tsx#addPayablesEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "server-action",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "callChains": [
-      "addPayablesEvidenceMetadata -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addPayablesEvidenceMetadata -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001"
-    ],
-    "noMutationControls": [
-      "source-record"
-    ]
-  },
-  {
-    "id": "components/FinanceSubworkspace.tsx#addPaymentReleaseEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "server-action",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "callChains": [
-      "addPaymentReleaseEvidenceMetadata -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addPaymentReleaseEvidenceMetadata -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001"
-    ],
-    "noMutationControls": [
-      "source-record"
     ]
   },
   {
@@ -4523,6 +4505,78 @@
     ],
     "noMutationControls": [
       "source-record"
+    ]
+  },
+  {
+    "id": "evidence/page.tsx#archiveEvidenceFromRegisterAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT",
+      "PROJECT",
+      "MEMBERSHIP",
+      "RESTRICTED_PROJECT"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/attachments.ts#archiveControlledEvidenceAttachment",
+      "server/services/authentication.ts#assertTrustedServerActionOrigin"
+    ],
+    "callChains": [
+      "archiveEvidenceFromRegisterAction -> server/services/attachments.ts#archiveControlledEvidenceAttachment",
+      "archiveEvidenceFromRegisterAction -> server/services/authentication.ts#assertTrustedServerActionOrigin"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authorizeControlledEvidenceSourceAction",
+      "assertControlledEvidenceSourceAccess"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
+      "FIN-AUTHZ-EVIDENCE-001"
+    ],
+    "noMutationControls": [
+      "source-record",
+      "binary"
+    ]
+  },
+  {
+    "id": "evidence/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT",
+      "PROJECT",
+      "MEMBERSHIP",
+      "RESTRICTED_PROJECT"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
     ]
   },
   {
@@ -6189,6 +6243,48 @@
     ]
   },
   {
+    "id": "expansion/sites/[id]/page.tsx#archiveRequirementEvidenceAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/attachments.ts#archiveControlledEvidenceAttachment"
+    ],
+    "callChains": [
+      "archiveRequirementEvidenceAction -> server/services/attachments.ts#archiveControlledEvidenceAttachment"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authorizeControlledEvidenceSourceAction",
+      "assertControlledEvidenceSourceAccess"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
+      "FIN-AUTHZ-EVIDENCE-001"
+    ],
+    "noMutationControls": [
+      "source-record",
+      "binary"
+    ]
+  },
+  {
     "id": "expansion/sites/[id]/page.tsx#decideRequirementAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -6549,51 +6645,6 @@
     "noMutationControls": [
       "project",
       "project-member",
-      "activity",
-      "audit"
-    ]
-  },
-  {
-    "id": "expansion/sites/[id]/page.tsx#uploadRequirementEvidenceAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/projectRequirements.ts#uploadProjectRequirementEvidence"
-    ],
-    "callChains": [
-      "uploadRequirementEvidenceAction -> server/services/projectRequirements.ts#uploadProjectRequirementEvidence"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "server/services/projectRequirements.ts#uploadProjectRequirementEvidence",
-      "server/services/projects.ts#findAuthorizedProject"
-    ],
-    "boundaryCaseIds": [
-      "PROJECT_OPS_RESTRICTED_REVOCATION",
-      "CORE_RESTRICTED_PROJECT_ADAPTER"
-    ],
-    "noMutationControls": [
-      "requirement",
-      "attachment",
-      "project-attachment",
       "activity",
       "audit"
     ]
@@ -7038,51 +7089,6 @@
     ]
   },
   {
-    "id": "finance/cash-advances/page.tsx#addCashAdvanceEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "callChains": [
-      "addCashAdvanceEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addCashAdvanceEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001"
-    ],
-    "noMutationControls": [
-      "source-record"
-    ]
-  },
-  {
     "id": "finance/cash-advances/page.tsx#archiveCashAdvanceEvidenceMetadata",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -7442,51 +7448,6 @@
       "movement",
       "audit",
       "invalid or stale session cannot authorize protected mutation"
-    ]
-  },
-  {
-    "id": "finance/expense-requests/page.tsx#addExpenseEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "callChains": [
-      "addExpenseEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addExpenseEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001"
-    ],
-    "noMutationControls": [
-      "source-record"
     ]
   },
   {
@@ -8012,58 +7973,6 @@
     ]
   },
   {
-    "id": "finance/period-close/page.tsx#addPeriodCloseEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
-      "server/services/context.ts#getSessionContext"
-    ],
-    "callChains": [
-      "addPeriodCloseEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addPeriodCloseEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
-      "addPeriodCloseEvidenceMetadata -> server/services/context.ts#getSessionContext"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy",
-      "authentication cookie",
-      "session validation",
-      "live context resolution"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001",
-      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "source-record",
-      "invalid or stale session cannot authorize protected mutation"
-    ]
-  },
-  {
     "id": "finance/period-close/page.tsx#archivePeriodCloseEvidenceMetadata",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -8366,51 +8275,6 @@
       "close-run",
       "period",
       "journal"
-    ]
-  },
-  {
-    "id": "finance/petty-cash/page.tsx#addPettyCashEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "callChains": [
-      "addPettyCashEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addPettyCashEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001"
-    ],
-    "noMutationControls": [
-      "source-record"
     ]
   },
   {
@@ -14596,7 +14460,7 @@
   {
     "id": "server/services/attachments.ts#archiveControlledEvidenceAttachment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceScheduleView | permissions.workforceView | permissions.workforceAttendanceImportManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -14654,9 +14518,71 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
+    "id": "server/services/attachments.ts#authorizeControlledEvidenceSourceAction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "canonical live permission",
+      "assertControlledEvidenceSourceAccess",
+      "denial audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "source record",
+      "attachment",
+      "controlled link"
+    ]
+  },
+  {
+    "id": "server/services/attachments.ts#canArchiveControlledEvidenceSource",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.financePeriodCloseManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceScheduleView | permissions.workforceView | permissions.workforceAttendanceImportManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -14694,7 +14620,7 @@
   {
     "id": "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceScheduleView | permissions.workforceView | permissions.workforceAttendanceImportManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -14733,7 +14659,7 @@
   {
     "id": "server/services/attachments.ts#downloadControlledEvidenceAttachment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceScheduleView | permissions.workforceView | permissions.workforceAttendanceImportManage | permissions.projectView",
+    "permission": "DELEGATED_INTERNAL_GUARD",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -14752,7 +14678,7 @@
       "BOUNDARY_CASE:FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
       "BOUNDARY_CASE:FIN-AUTHZ-EVIDENCE-001"
     ],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "permissionSource": "REVIEWED_DELEGATION",
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
     ],
@@ -14771,7 +14697,7 @@
   {
     "id": "server/services/attachments.ts#downloadControlledEvidenceAttachmentForSession",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceScheduleView | permissions.workforceView | permissions.workforceAttendanceImportManage | permissions.projectView",
+    "permission": "DELEGATED_INTERNAL_GUARD",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -14790,7 +14716,7 @@
       "BOUNDARY_CASE:FIN-AUTHZ-EVIDENCE-001",
       "BOUNDARY_CASE:FIN-AUTHZ-EVIDENCE-ADAPTER-001"
     ],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "permissionSource": "REVIEWED_DELEGATION",
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
     ],
@@ -14810,7 +14736,7 @@
   {
     "id": "server/services/attachments.ts#linkControlledEvidenceAttachment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceScheduleView | permissions.workforceView | permissions.workforceAttendanceImportManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -14846,9 +14772,52 @@
     ]
   },
   {
+    "id": "server/services/attachments.ts#listControlledEvidenceAttachmentPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "canonical source view permission",
+      "tenant-company-source authorization",
+      "bounded server pagination"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"
+    ],
+    "noMutationControls": [
+      "source record",
+      "attachment",
+      "controlled link",
+      "no unauthorized evidence metadata or bytes"
+    ]
+  },
+  {
     "id": "server/services/attachments.ts#listControlledEvidenceAttachments",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.workforceManage | permissions.coreAdminister | permissions.workforceScheduleView | permissions.workforceView | permissions.workforceAttendanceImportManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.projectManage",
+    "permission": "permissions.financePayablesView | permissions.financeView | permissions.financeExpenseRequestView | permissions.financeCashAdvanceView | permissions.financePettyCashView | permissions.financeReconciliationView | permissions.financePeriodCloseManage | permissions.projectView | permissions.financeApInvoiceCreate | permissions.financeSupplierCreditCreate | permissions.financePaymentRequestCreate | permissions.financePaymentRelease | permissions.financeCashDepositCreate | permissions.financeReconciliationMatch | permissions.financeExpenseRequestCreate | permissions.financeCashAdvanceCreate | permissions.financeCashAdvanceLiquidate | permissions.financePettyCashCreate | permissions.financePettyCashLiquidate | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.projectManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -14881,6 +14850,52 @@
     ],
     "noMutationControls": [
       "read-only"
+    ]
+  },
+  {
+    "id": "server/services/attachments.ts#listWorkforceControlledEvidenceAttachmentsBatch",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live category permission",
+      "single workforce scope snapshot",
+      "bulk tenant-company-source validation",
+      "bounded lateral evidence query",
+      "denial audit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION",
+      "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"
+    ],
+    "noMutationControls": [
+      "workforce source record",
+      "attachment",
+      "controlled link",
+      "no unauthorized evidence bytes"
     ]
   },
   {
@@ -19546,6 +19561,497 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/evidenceRetention.ts#listEvidenceRetentionRegister",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.evidenceRetentionView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live evidence.retention.view permission",
+      "tenant-company query"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "attachment",
+      "audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceRetention.ts#listEvidenceRetentionRegisterForSession",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.evidenceRetentionView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live evidence.retention.view permission",
+      "tenant-company query",
+      "no file bytes"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "attachment",
+      "audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceRetention.ts#setEvidenceLegalHold",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.evidenceLegalHoldSet",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live evidence.legal_hold.set permission",
+      "privileged MFA",
+      "tenant-company CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "attachment legal hold",
+      "audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceRetention.ts#setEvidenceLegalHoldForSession",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.evidenceLegalHoldSet",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live evidence.legal_hold.set permission",
+      "privileged MFA",
+      "tenant-company CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "attachment legal hold",
+      "audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceScanLifecycle.ts#processEvidenceScan",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "system reconciler caller",
+      "exact object version",
+      "terminal scan state CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "clean attachment",
+      "scan attempts",
+      "audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceScanLifecycle.ts#readAvailableEvidenceAttachmentForSession",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "tenant-company link predicate",
+      "source action authorization",
+      "exact available version verification"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "AUTHZ-EVIDENCE-CONFIDENTIAL-WORKFORCE-NON-ENUMERATING"
+    ],
+    "noMutationControls": [
+      "source record",
+      "attachment",
+      "no unauthorized download audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceScanLifecycle.ts#reconcileEvidenceScans",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "systemd-only runner",
+      "hosted provider enablement",
+      "advisory lock and lease"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "local environment attachment",
+      "intent",
+      "quota",
+      "audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceUploads.ts#expireEvidenceUploadIntents",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "system reconciler caller",
+      "expired status predicate",
+      "exact object recovery before expiry"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "unexpired intent",
+      "attachment",
+      "quota",
+      "audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceUploads.ts#issueEvidenceUploadIntent",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-LOCATION-DEPARTMENT-RESTRICTED-PROJECT-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "canonical source write permission",
+      "source record scope",
+      "quota transaction"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION",
+      "AUTHZ-EVIDENCE-LOCATION-DEPARTMENT-RESTRICTED-PROJECT-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "source record",
+      "attachment",
+      "controlled link",
+      "project link",
+      "intent",
+      "quota"
+    ]
+  },
+  {
+    "id": "server/services/evidenceUploads.ts#issueEvidenceUploadIntentForSession",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION",
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-LOCATION-DEPARTMENT-RESTRICTED-PROJECT-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "canonical live source write permission",
+      "source record scope",
+      "restricted project membership",
+      "quota transaction"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-SOURCE-SCOPE-NO-MUTATION",
+      "AUTHZ-EVIDENCE-LIVE-WRITE-PERMISSION-NO-MUTATION",
+      "AUTHZ-EVIDENCE-LOCATION-DEPARTMENT-RESTRICTED-PROJECT-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "source record",
+      "attachment",
+      "controlled link",
+      "project link",
+      "intent",
+      "quota"
+    ]
+  },
+  {
+    "id": "server/services/evidenceUploads.ts#recoverDurableEvidenceUploads",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "system reconciler caller",
+      "exact object version",
+      "issued intent CAS",
+      "quota transaction"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "absent-object intent",
+      "attachment",
+      "quota",
+      "audit"
+    ]
+  },
+  {
+    "id": "server/services/evidenceUploads.ts#storeEvidenceUploadContent",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-EVIDENCE-UPLOAD-CONTENT-LIVE-REVOCATION-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "one-time intent token",
+      "live source write permission",
+      "exact object version",
+      "quota transaction"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-EVIDENCE-UPLOAD-CONTENT-LIVE-REVOCATION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "intent",
+      "attachment",
+      "quota",
+      "source record",
+      "private bytes"
+    ]
   },
   {
     "id": "server/services/expansionProjects.ts#buildExpansionPortfolioExportRows",
@@ -27544,48 +28050,6 @@
     ]
   },
   {
-    "id": "server/services/projectRequirements.ts#uploadProjectRequirementEvidence",
-    "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.projectView",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "PROJECT",
-      "MEMBERSHIP",
-      "RESTRICTED_PROJECT"
-    ],
-    "guardChain": [
-      "session",
-      "service-policy-helper",
-      "tenant-company-scope-query"
-    ],
-    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "BOUNDARY_CASE:PROJECT_OPS_RESTRICTED_REVOCATION",
-      "BOUNDARY_CASE:CORE_RESTRICTED_PROJECT_ADAPTER"
-    ],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "server/services/projectRequirements.ts#uploadProjectRequirementEvidence",
-      "server/services/projects.ts#findAuthorizedProject"
-    ],
-    "boundaryCaseIds": [
-      "PROJECT_OPS_RESTRICTED_REVOCATION",
-      "CORE_RESTRICTED_PROJECT_ADAPTER"
-    ],
-    "noMutationControls": [
-      "requirement",
-      "attachment",
-      "project-attachment",
-      "activity",
-      "audit"
-    ]
-  },
-  {
     "id": "server/services/projectRisks.ts#createProjectRisk",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.projectRiskCreate",
@@ -32923,6 +33387,27 @@
     ]
   },
   {
+    "id": "server/services/workforce.ts#assertWorkforceEvidenceSourceBatchAccess",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.workforceView | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleView | permissions.workforceScheduleManage | permissions.workforceAttendanceImportView | permissions.workforceAttendanceImportManage",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/workforce.ts#assertWorkforceSourceScopeAccess",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -35146,58 +35631,6 @@
       "failure audit only after an authenticated authorized export attempt",
       "no money or workflow mutation",
       "export denial and global workforce snapshot"
-    ]
-  },
-  {
-    "id": "workforce/page.tsx#addWorkforceEvidenceMetadata",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
-      "server/services/context.ts#getSessionContext"
-    ],
-    "callChains": [
-      "addWorkforceEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-      "addWorkforceEvidenceMetadata -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
-      "addWorkforceEvidenceMetadata -> server/services/context.ts#getSessionContext"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "authorizeControlledEvidenceSourceAction",
-      "assertControlledEvidenceSourceAccess",
-      "private-storage-policy",
-      "authentication cookie",
-      "session validation",
-      "live context resolution"
-    ],
-    "boundaryCaseIds": [
-      "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
-      "FIN-AUTHZ-EVIDENCE-001",
-      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "source-record",
-      "invalid or stale session cannot authorize protected mutation"
     ]
   },
   {

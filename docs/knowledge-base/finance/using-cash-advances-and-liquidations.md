@@ -32,7 +32,7 @@ Use Cash Advances to control advances issued to employees or branch custodians, 
 7. For an approved advance, record the offline issue marker with amount, reference, reason, and evidence reference.
 8. Submit liquidation lines after the advance has been issued. Enter each receipt or liquidation line separately with amount and evidence support.
 9. As a liquidation reviewer, approve, return, reject, cancel, mark closure ready, reverse, or close only when the status allows the action.
-10. Add evidence metadata links when supporting documents exist in the approved evidence repository.
+10. Where the controlled-evidence panel is available, upload supporting documents and wait for `Available` before downloading them. Keep any separately required evidence reference accurate.
 11. Use the report preview or export to review outstanding exposure and evidence readiness.
 
 ## Expected Result
@@ -49,7 +49,7 @@ Use Cash Advances to control advances issued to employees or branch custodians, 
 - Cash advances are scoped by company, brand, location, requester, beneficiary, and custodian context.
 - Users cannot act outside assigned scope.
 - Requesters cannot approve their own controlled money request.
-- Evidence metadata links do not upload binary files yet. Production binary upload, download, scanning, retention, and download audit remain deferred by `P3-BLOCK-002`.
+- Supported cash-advance and liquidation records now accept controlled binary evidence in the current build. Files remain unavailable until safety checks pass; hosted production activation and owner signoff remain gated.
 - Current cash-advance actions do not create payment releases, supplier AP requests, bank reconciliation entries, official journals, or supplier-ledger settlement.
 - Employee and custodian payment handoff is waiting for the open `III-009` architecture decision. Treating employees as suppliers only to reuse AP payment requests is not approved.
 - Reversals and voids preserve audit history. Do not ask an administrator to delete records to “clean up” mistakes.
@@ -57,7 +57,7 @@ Use Cash Advances to control advances issued to employees or branch custodians, 
 ## Related Records Or Next Action
 
 - Use approval inbox records to review submitted advances.
-- Use evidence metadata links to point to receipts, issue proof, liquidation packs, or closure support.
+- Use controlled evidence for receipts, issue proof, liquidation packs, or closure support where the panel is available.
 - Use finance reports or exports for outstanding exposure review.
 - Use Release Readiness UAT evidence when proving Phase 3 controlled-foundation scenarios.
 

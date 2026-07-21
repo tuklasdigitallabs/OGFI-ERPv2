@@ -1,65 +1,64 @@
-# How To Attach Supporting Documents Or Photo Evidence
+# Uploading Supporting Documents Or Photo Evidence
 
-**Audience / required role:** Requesters, receiving users, warehouse users, branch managers, approvers, and support administrators
-**Applies to:** Purchase requests, supplier communication, receiving discrepancies, transfers, wastage, stock adjustments, projects, and approval support
-**Related phase/module:** Phase I / Evidence, Audit, and Attachments
-**Last verified against:** implemented evidence-reference fields, discrepancy evidence controls, wastage/adjustment evidence references, canonical controlled-evidence write authorization, controlled private-download authorization, and shared attachment design
+**Audience / required role:** Users who can update the supported source record; project-requirement owners who meet the project access checks; authorized reviewers and support administrators
+**Applies to:** The current company and the exact finance, workforce, or project-requirement record shown on screen
+**Related phase/module:** Shared controlled evidence uploads
+**Last verified against:** implemented `Upload Evidence` dialog, controlled-evidence list, upload authorization, scan lifecycle, download authorization, and archive controls (2026-07-21)
 
 ## Purpose
 
-Use this article when a workflow asks for supporting evidence, supplier communication, discrepancy proof, or photo reference.
+Upload a private supporting file to an authorized record and understand when it can be downloaded, archived, or used as evidence.
 
-In the current operational workflows, many screens collect an evidence reference such as a file name, receipt number, photo reference, supplier email reference, or document ID. Full binary upload/download is part of the shared attachment service direction and is not the controlling evidence behavior on every Phase I operational screen yet.
+## Before you begin
 
-## Where Evidence Appears Today
+- Open the correct source record in the correct company, brand, location, department, or project scope.
+- You must have the current source-record authority required to add evidence. View access alone normally does not allow upload.
+- Prepare a non-empty PDF, JPG/JPEG, PNG, WebP, or plain-text file no larger than 25 MB.
+- Do not put confidential documents in comments or paste private links into broad discussions.
 
-- Purchase Order cancellation after supplier issue may require supplier notice evidence or an explanation.
-- Receiving discrepancies can require discrepancy reason and evidence reference.
-- Transfer receipt lines with rejected, damaged, or short/discrepant quantity require evidence reference.
-- Wastage reports can require evidence reference based on policy flags.
-- Stock Adjustments collect evidence reference where policy requires it.
-- Project tracker attachments use authorized metadata links; source records remain protected by their own permissions.
-- Creating an attachment link, uploading a file, adding attachment metadata, or archiving a link normally requires the current write permission for the source record. A project-requirement owner may use the controlled owner path only when live project-view, requirement ownership, and project-scope checks all pass. A permission name supplied by the screen cannot replace or weaken the canonical source policy.
-- Finance period-close evidence requires `Manage Period Close` access. Core Administration access by itself does not authorize period-close evidence changes.
-- Where a controlled attachment download is available, the ERP rechecks the user's current permission and the company, brand, location, department, project, membership, and restricted-project rules of the linked source record before sending file bytes.
+## Navigation path
 
-## How To Enter Evidence References
+`Supported source record` → `Controlled evidence` → `Upload Evidence`
 
-1. Open the source record or workflow form.
-2. Find the evidence, supplier notice, discrepancy evidence, or supporting reference field.
-3. Enter a clear reference that another authorized user can locate later.
-4. Use a consistent naming convention when referencing files stored outside the ERP, such as date, location, document type, and record number.
-5. Save, submit, post, or request approval through the normal workflow.
+## Steps
 
-## Good Evidence Reference Examples
+1. Open the record that the evidence supports.
+2. In its controlled-evidence area, select `Upload Evidence`.
+3. Choose the evidence file. On supported mobile devices, the chooser may also offer the camera.
+4. Review any `required for` notice shown by the record, then add a clear `Caption` if helpful.
+5. Select the upload action and leave the dialog open while the file is prepared and uploaded.
+6. When `Upload received` appears, close the dialog if needed and refresh the record later to check the result.
+7. Wait for `Available` before attempting a download. `Safety check in progress` means the file remains private and unavailable while scanning runs.
 
-- `2026-06-30-BGC-DR-4481-photo-01`
-- `Supplier email from acct@example.com / 2026-06-30 / PO-1024`
-- `Receiving photo set RR-2026-004 / freezer damage`
-- `Transfer receipt photo TRF-2026-011-short-2kg`
-- `Wastage photo WST-2026-008-expired-lot-A17`
+## Expected result
 
-## Important Controls And Warnings
+The file appears on the same source record. A clean file shows `Available` and a `Download` action. Uploading evidence does not approve, post, pay, close, or otherwise change the source record, inventory, or financial balances.
 
-- Do not store confidential supplier, finance, or employee documents in comments.
-- Do not paste private file links into broad comments unless every viewer is authorized.
-- Evidence references do not replace required approval, posting, receiving, reversal, or audit actions.
-- Do not use project tasks to expose protected PO, receiving, inventory, approval, or finance attachments to users who lack source-record access.
-- A copied attachment link or identifier does not grant access. If the related role, scope, or project membership is removed, the download becomes unavailable on the next request.
-- Being able to view a source record or download its evidence does not automatically allow you to add, upload, or archive evidence. Those actions recheck the source record's canonical mutation authority; the only current view-based exception is the controlled project-requirement owner path, which also requires ownership and project scope.
-- Keep original evidence in the approved storage location until the shared attachment service is fully released for that workflow.
+## Important controls and warnings
 
-## What To Check
+- Every upload starts unavailable. Only a clean safety result for the exact uploaded file makes it `Available`.
+- `File rejected` means the file cannot be downloaded; upload a different file or contact support. `Processing failed` means retry or contact support. `Upload expired` means upload the file again. `Not yet verified` remains unavailable.
+- Download access is checked again against the live source-record permission and company, brand, location, department, project-membership, and restricted-project rules. A copied link does not grant access.
+- `Archive Evidence Link` removes the active link from the source record; it does not delete the stored file. A reason is required and the action is audited.
+- A link marked required for an action cannot be archived. Evidence under a legal hold cannot be archived.
+- Upload, scan outcome, download, archive, and denied actions are recorded in the audit history. File bytes are not written into the audit log.
+- Keep external evidence references accurate where a workflow still requests them separately.
 
-- The evidence reference is specific enough for an authorized reviewer to locate.
-- The related record shows the correct location, item, quantity, reason, and status.
-- Required evidence fields are completed before submission or posting.
-- Audit history shows the action that used the evidence reference.
+## If the upload needs attention
 
-## Related Articles
+1. For a type or size message, choose one of the listed file types and keep it at 25 MB or less.
+2. For an interrupted upload, check your connection and retry. The selected file remains in the dialog when possible.
+3. For an expired upload window, choose Retry or start the upload again.
+4. For a storage-limit message, stop retrying and contact an administrator.
+5. For a permission message, refresh the page and confirm your current company and source-record scope. Ask an administrator to review access if it still fails.
+6. If `Safety check in progress` remains unchanged after refreshing later, or `Processing failed` continues after retry, give support the source record number, time of attempt, visible status, and your company/location. Do not send the confidential file through an unapproved support channel.
 
-- Receiving a partial, short, damaged, or rejected delivery
-- Receiving a warehouse transfer
-- Logging wastage
-- Understanding Stock Adjustments
-- Why can't I see my branch, warehouse, or request?
+## What happens next
+
+An authorized user can download the file only after it becomes `Available`. Reviewers continue the source workflow separately. Administrators with the dedicated confidential-register permission can review its retention metadata, but that workspace does not expose file bytes.
+
+## Related articles
+
+- [Managing Evidence Retention And Placing A Legal Hold](../administration/managing-evidence-retention-and-legal-holds.md)
+- [Understanding Statuses, Audit History, And Attachments](../getting-started/understanding-statuses-audit-history-and-attachments.md)
+- [Why Can't I See My Branch, Warehouse, Or Request?](./why-cant-i-see-my-branch-warehouse-or-request.md)

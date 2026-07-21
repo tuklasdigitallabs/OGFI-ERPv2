@@ -5,6 +5,16 @@ export type ActionFeedback = {
 };
 
 const actionFeedbackMessages: Record<string, string> = {
+  EVIDENCE_LEGAL_HOLD_PLACED:
+    "The preservation legal hold was placed and recorded in the audit history.",
+  EVIDENCE_ATTACHMENT_NOT_FOUND:
+    "This evidence record is no longer available in the selected company.",
+  EVIDENCE_LEGAL_HOLD_CONFLICT:
+    "A different legal hold is already active for this evidence record.",
+  EVIDENCE_LEGAL_HOLD_BYTES_NOT_PRESERVABLE:
+    "A legal hold cannot be placed because the evidence bytes were already purged.",
+  EVIDENCE_LEGAL_HOLD_CONCURRENT_CHANGE:
+    "This evidence record changed while the hold was being placed. Refresh and try again.",
   EXPANSION_GATE_EVIDENCE_REQUIRED:
     "Provide a clear evidence or decision reason before changing this expansion gate.",
   EXPANSION_GATE_ACHIEVEMENT_REASON_REQUIRED:

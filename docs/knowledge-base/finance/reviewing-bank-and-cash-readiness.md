@@ -33,7 +33,7 @@ Use Bank & Cash to review deposit evidence, imported statement lines, reconcilia
 8. Review statement-line count and unmatched count.
 9. Review reconciliation batch count and variance.
 10. Open or export the detailed rows when a reviewer needs the evidence pack.
-11. Add evidence metadata links where allowed, but keep the actual binary evidence in the approved evidence repository until production upload/download controls are implemented.
+11. Where the controlled-evidence panel is available, upload an allowed supporting file and wait for `Available` before downloading it. Continue recording a separate evidence reference when the workflow requests one.
 
 ## Expected Result
 
@@ -49,7 +49,7 @@ Use Bank & Cash to review deposit evidence, imported statement lines, reconcilia
 - The readiness issue list is a review aid, not an automatic correction.
 - Declaring a branch cash deposit records intake/evidence only. It does not update bank balances.
 - Reconciliation readiness does not release payments, settle supplier AP, create official journal entries, close an accounting period, or mutate source records.
-- Evidence metadata links do not upload binary files yet. Production binary upload, download, scanning, retention, and download audit remain deferred by `P3-BLOCK-002`.
+- Supported records now accept controlled binary evidence in the current build. Every upload remains unavailable until its safety check passes, and production activation still depends on hosted storage, scanning, retention, recovery, monitoring, UAT, and owner signoff.
 - Production close exception signoff and broader reconciliation UAT remain tracked by `P3-BLOCK-006`.
 
 ## Related Records Or Next Action

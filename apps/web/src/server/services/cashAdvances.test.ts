@@ -235,22 +235,19 @@ describe("cash advance foundation", () => {
     expect(serviceSource).toContain("noBankMutation");
   });
 
-  it("exposes cash-advance evidence metadata links without source mutation", () => {
+  it("exposes cash-advance controlled evidence panels without source mutation", () => {
     expect(pageSource).toContain("listControlledEvidenceAttachments");
-    expect(pageSource).toContain("createControlledEvidenceAttachmentMetadataLink");
+    expect(pageSource).toContain("ControlledEvidencePanel");
+    expect(pageSource).not.toContain("createControlledEvidenceAttachmentMetadataLink");
     expect(pageSource).toContain("archiveControlledEvidenceAttachment");
     expect(pageSource).toContain("CASH_ADVANCE_REQUEST");
     expect(pageSource).toContain("CASH_ADVANCE_LIQUIDATION");
     expect(pageSource).toContain("Add Advance Evidence");
     expect(pageSource).toContain("Add Liquidation Evidence");
     expect(pageSource).toContain("archiveCashAdvanceEvidenceMetadata");
-    expect(pageSource).toContain("Archive Evidence Link");
-    expect(pageSource).toContain("createControlledEvidenceAttachmentUploadLink");
-    expect(pageSource).toContain('name="evidenceFile"');
-    expect(pageSource).toContain("/evidence/${attachment.id}/download");
-    expect(pageSource).toContain("Upload Evidence");
-    expect(pageSource).toContain("metadata-only evidence");
-    expect(pageSource).toContain("evidence link");
+    expect(pageSource).not.toContain("createControlledEvidenceAttachmentUploadLink");
+    expect(pageSource).not.toContain('name="objectKey"');
+    expect(pageSource).not.toContain('name="storageProvider"');
     expect(pageSource).toContain("permissions.financeCashAdvanceCreate");
     expect(pageSource).toContain("permissions.financeCashAdvanceLiquidate");
     expect(pageSource).not.toContain("createPaymentRequest(");

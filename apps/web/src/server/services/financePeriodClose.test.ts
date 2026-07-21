@@ -300,24 +300,18 @@ describe("period close readiness foundation", () => {
     expect(exportRouteSource).toContain("checksumHeader: true");
   });
 
-  it("exposes period-close private evidence upload/download links without close source mutation", () => {
+  it("exposes period-close controlled evidence panels without close source mutation", () => {
     expect(pageSource).toContain("listControlledEvidenceAttachments");
-    expect(pageSource).toContain("createControlledEvidenceAttachmentMetadataLink");
-    expect(pageSource).toContain("createControlledEvidenceAttachmentUploadLink");
-    expect(pageSource).toContain('name="evidenceFile"');
-    expect(pageSource).toContain('type="file"');
-    expect(pageSource).toContain('href={`/evidence/${attachment.id}/download`}');
+    expect(pageSource).toContain("ControlledEvidencePanel");
+    expect(pageSource).not.toContain("createControlledEvidenceAttachmentMetadataLink");
+    expect(pageSource).not.toContain("createControlledEvidenceAttachmentUploadLink");
+    expect(pageSource).not.toContain('name="objectKey"');
+    expect(pageSource).not.toContain('name="storageProvider"');
     expect(pageSource).toContain("archiveControlledEvidenceAttachment");
     expect(pageSource).toContain("FINANCE_CLOSE_RUN");
     expect(pageSource).toContain("FINANCE_CLOSE_ITEM");
-    expect(pageSource).toContain("Upload Close Evidence");
     expect(pageSource).toContain("Add Close Evidence");
-    expect(pageSource).toContain("Upload Evidence");
-    expect(pageSource).toContain("Link metadata-only evidence instead");
     expect(pageSource).toContain("archivePeriodCloseEvidenceMetadata");
-    expect(pageSource).toContain("Archive Evidence Link");
-    expect(pageSource).toContain("Files stay private");
-    expect(pageSource).toContain("downloads are audited");
     expect(pageSource).not.toContain("Save Evidence Metadata");
     expect(pageSource).not.toContain("Binary upload");
     expect(pageSource).not.toContain("P3-BLOCK-002");

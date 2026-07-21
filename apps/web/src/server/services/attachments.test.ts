@@ -27,6 +27,26 @@ function functionSlice(source: string, functionName: string) {
 }
 
 describe("attachment evidence foundation", () => {
+  it("loads workforce evidence through a scope-checked bounded batch", () => {
+    const batchSlice = functionSlice(
+      serviceSource,
+      "listWorkforceControlledEvidenceAttachmentsBatch",
+    );
+
+    expect(batchSlice).toContain(
+      "assertWorkforceEvidenceSourceBatchAccess(session, normalized)",
+    );
+    expect(batchSlice).toContain("requestedSources.length > 200");
+    expect(batchSlice).toContain("sourceRecordIds.length > 50");
+    expect(batchSlice).toContain("CROSS JOIN LATERAL");
+    expect(batchSlice).toContain("LIMIT 11");
+    expect(batchSlice).toContain(
+      'ORDER BY evidence."createdAt" DESC, evidence."id" DESC',
+    );
+    expect(batchSlice).toContain('evidence."tenantId" = $2::uuid');
+    expect(batchSlice).toContain('evidence."companyId" = $3::uuid');
+  });
+
   it("requires an exact active organizational scope for source evidence", () => {
     const source = {
       tenantId: "tenant-a",
@@ -272,9 +292,7 @@ describe("attachment evidence foundation", () => {
     expect(createMetadataLinkSlice).toContain("metadataOnly: true");
     expect(createMetadataLinkSlice).toContain("noSourceMutation");
     expect(createMetadataLinkSlice).toContain("noBinaryUpload");
-    expect(createMetadataLinkSlice).toContain(
-      "phase3EvidenceUploadBlockerId",
-    );
+    expect(createMetadataLinkSlice).toContain("phase3EvidenceUploadBlockerId");
     expect(createMetadataLinkSlice).not.toContain("writeFile");
     expect(createMetadataLinkSlice).not.toContain("createWriteStream");
   });
@@ -305,13 +323,12 @@ describe("attachment evidence foundation", () => {
     expect(uploadSlice).toContain("retentionPolicy");
     expect(uploadSlice).toContain("recoveryPolicy");
     expect(uploadSlice).toContain("noSourceMutation");
-    expect(downloadSlice).toContain("requireAnyPermission");
-    expect(downloadSlice).toContain("requiredViewPermissionsForSourceType");
-    expect(downloadSlice).toContain("assertControlledEvidenceSourceAccess");
-    expect(downloadSlice).toContain("readFile");
     expect(downloadSlice).toContain(
-      'eventType: "controlled_evidence_attachment.downloaded"',
+      "readAvailableEvidenceAttachmentForSession",
     );
-    expect(downloadSlice).toContain("checksumVerified");
+    expect(downloadSlice).toContain(
+      "CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE",
+    );
+    expect(downloadSlice).toContain("logControlledEvidenceAttachmentDenied");
   });
 });

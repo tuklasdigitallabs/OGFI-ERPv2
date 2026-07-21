@@ -13,8 +13,10 @@ This directory contains role-based, user-facing guidance for using the OGFI ERP.
 - `approvals/` — review, approval, rejection, and return-for-revision guidance
 - `branch-operations/` — branch-facing operational tasks as later phases are released
 - `administration/` — user, role, scope, release-readiness, privileged MFA, session invalidation, break-glass, and master-data guidance for authorized administrators
+- `administration/managing-evidence-retention-and-legal-holds.md` — confidential company evidence register and preservation-only legal-hold placement
 - `reports/` — filters, exports, saved views, and report interpretation
 - `troubleshooting/` — known issues and safe recovery steps
+- `troubleshooting/how-to-attach-supporting-documents-or-photo-evidence.md` — controlled upload requirements, safety-check states, download controls, and support recovery
 - `glossary/` — approved ERP terms
 
 ## Writing rule

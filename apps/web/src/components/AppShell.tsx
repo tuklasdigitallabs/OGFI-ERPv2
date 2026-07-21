@@ -77,6 +77,9 @@ export function AppShell({
   activeNav?: ShellActiveNav;
 }) {
   const canAdminister = session.permissionCodes.includes("core.administer");
+  const canViewEvidenceRetention = session.permissionCodes.includes(
+    permissions.evidenceRetentionView,
+  );
   const canManageQuotes = session.permissionCodes.includes(
     permissions.quoteManage,
   );
@@ -119,6 +122,7 @@ export function AppShell({
     <ShellNavigation
       activeNav={activeNav}
       canAdminister={canAdminister}
+      canViewEvidenceRetention={canViewEvidenceRetention}
       canManageQuotes={canManageQuotes}
       canUsePurchaseRequests={canAccessPurchaseRequests}
       canUseApprovals={canAccessApprovals}

@@ -30,7 +30,7 @@ Use Workforce Operations to review employee records, assignments, schedule cover
 5. Check `Issues`.
 6. Read the issue labels under the badge. Schedule rows can show coverage gaps and the affected stations. Attendance import rows can show attendance exceptions and duplicate rows.
 7. Open the related schedule or attendance action section when follow-up is needed.
-8. Add evidence metadata links where allowed, but keep actual binary files in the approved evidence repository until production upload/download controls are implemented.
+8. Where the controlled-evidence panel is available, upload an allowed supporting file and wait for `Available` before downloading it. Keep any separately required evidence reference accurate.
 9. Export workforce reports when a reviewer needs a scoped evidence pack.
 
 ## Expected Result
@@ -49,7 +49,7 @@ Use Workforce Operations to review employee records, assignments, schedule cover
 - Publishing a schedule with open coverage gaps requires a waiver reason and evidence reference.
 - Attendance imports are evidence records. They do not become the attendance-device source of truth in this foundation slice.
 - The workspace does not calculate wages, statutory deductions, payroll, payment requests, or finance journals.
-- Evidence metadata links do not upload binary files yet. Production binary upload, download, scanning, retention, and download audit remain deferred by `P3-BLOCK-002`.
+- Supported workforce records now accept controlled binary evidence in the current build. Files remain unavailable until safety checks pass; hosted production activation and owner signoff remain gated.
 - Full employee transfer workflow and document retention remain deferred by `P3-BLOCK-007`.
 
 ## Related Records Or Next Action

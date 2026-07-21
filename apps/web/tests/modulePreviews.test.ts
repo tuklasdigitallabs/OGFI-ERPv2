@@ -234,6 +234,40 @@ describe("module preview navigation", () => {
     ]);
   });
 
+  it("gives evidence-register users a dedicated admin route without core admin", () => {
+    const sections = getNavigationSections(
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+    );
+    const admin = sections.find((section) => section.id === "admin");
+    expect(admin?.items).toEqual([
+      expect.objectContaining({
+        href: "/admin/evidence-retention",
+        activeKey: "admin-evidence-retention",
+      }),
+    ]);
+  });
+
   it("keeps every enabled admin navigation link pointed at a route page", () => {
     const sections = getNavigationSections(
       true,

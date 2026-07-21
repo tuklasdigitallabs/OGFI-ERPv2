@@ -11,7 +11,7 @@
 
 OGFI ERP will be built as a TypeScript modular monolith, initially deployed to the Hostinger VPS through Docker Compose.
 
-The application will use a single Next.js web application for the Modern SaaS interface and Phase I API surface, a PostgreSQL transactional database, and provider-neutral attachment-storage and malware-scan interfaces. Under `DEC-0045`, the production implementation is AWS S3 with GuardDuty Malware Protection; local-private storage is limited to local development and controlled UAT. The platform must remain tenant-ready for future sale to other restaurant groups. Redis-backed workers are a future capability only and are not part of the current Phase I / Phase 1.5 no-queueing release scope.
+The application will use a single Next.js web application for the Modern SaaS interface and Phase I API surface, a PostgreSQL transactional database, and provider-neutral attachment-storage and malware-scan interfaces. Under `DEC-0046`, the initial production implementation is a dedicated internal minimal storage broker and private ClamAV service on the same Hostinger VPS. The broker alone owns the absolute private evidence mount and versioned AES-256-GCM evidence key; web, Caddy, and ClamAV have no evidence mount. The platform must remain tenant-ready for future sale to other restaurant groups. Redis-backed workers are a future capability only and are not part of the current Phase I / Phase 1.5 no-queueing release scope.
 
 ```text
 Browser: desktop / tablet / mobile
@@ -21,7 +21,8 @@ Caddy reverse proxy + HTTPS
         │
         ├── Next.js web application
         ├── PostgreSQL
-        └── AWS S3 + GuardDuty Malware Protection (production)
+        ├── internal evidence storage broker
+        └── private ClamAV `INSTREAM` scanner
 ```
 
 This is intentionally a modular monolith, not microservices. Purchasing, approval, receiving, transfer, and inventory posting need reliable, low-latency transactional behavior. Separate services will be considered only when a proven operational reason exists.
@@ -43,7 +44,7 @@ This is intentionally a modular monolith, not microservices. Purchasing, approva
 | Authentication | Provider-neutral application identity boundary with tenant-qualified local credentials, `@node-rs/argon2` Argon2id hashing, `otpauth` runtime TOTP, and opaque PostgreSQL-backed sessions under `DEC-0040`; keep the session contract Auth.js-compatible for optional later OIDC | ERP roles and scopes remain custom server-side authorization. Raw passwords, TOTP secrets, recovery codes, and session tokens are never stored or logged; `qrcode` renders the local authenticator enrollment URI only. |
 | Authorization | Custom RBAC + scoped assignments | Role controls capability; assignments control tenant/company/brand/location/department/project reach. |
 | Background jobs | Deferred Redis + BullMQ capability | Not included in the current Phase I / Phase 1.5 release. Current release uses in-app notifications and manual reminder scans without worker, scheduler, Redis, or queue-dependent acceptance criteria. |
-| File storage and malware scanning | Provider-neutral `ObjectStorageAdapter` and `MalwareScanAdapter`; AWS S3 + GuardDuty Malware Protection in production under `DEC-0045` | Use one private protected bucket per environment, opaque quarantine keys, immutable exact versions, S3 Versioning, SSE-KMS, Object Lock Governance, dual tag/database availability state, and cross-account replication/backup. Store metadata and scan/workflow state in PostgreSQL, not file bytes. |
+| File storage and malware scanning | Provider-neutral `ObjectStorageAdapter` and `MalwareScanAdapter`; dedicated internal storage broker plus private ClamAV on the same Hostinger VPS under `DEC-0046` | Broker-exclusive absolute private bind mount and versioned AES-256-GCM key; application-proxied streaming; opaque immutable key/version; PostgreSQL authorization, idempotency, quota, quarantine, CAS, and audit; private `INSTREAM` scanning; bounded systemd reconciliation; independent encrypted backup and paired restore proof. Same-VPS storage is not WORM/Object Lock. |
 | Reverse proxy | Caddy | TLS termination, domain routing, and proxying to internal containers. |
 | Containers | Docker Compose | Separate services, volumes, internal networking, repeatable deployments. |
 | Testing | Vitest + Playwright | Unit/integration testing plus end-to-end tests for critical Phase I workflows. |
@@ -120,7 +121,7 @@ Create a separate staging deployment before production:
 staging-erp.<approved-domain>
 ```
 
-Staging must have a separate database, private S3 bucket, KMS key/grants, GuardDuty protection plan, credentials, and environment file from production. It may share a sufficiently sized VPS initially, but application services and volumes must remain isolated. If a future approved release activates Redis, staging must also use a separate Redis namespace or instance.
+Staging must have a separate database, evidence bind mount, evidence encryption key/version, broker identity, ClamAV instance or isolated scan boundary, credentials, and environment file from production. It may share a sufficiently sized VPS initially, but application services, mounts, secrets, and volumes must remain isolated. If a future approved release activates Redis, staging must also use a separate Redis namespace or instance.
 
 ### 4.3 Production
 
@@ -128,7 +129,7 @@ Staging must have a separate database, private S3 bucket, KMS key/grants, GuardD
 erp.<approved-domain>
 ```
 
-Production services are private except Caddy’s HTTPS entry points. PostgreSQL must not be exposed publicly. Production evidence uses private AWS S3 access through application-issued exact-key intents and authorized exact-version reads; there is no public storage administration surface. If a future approved release activates Redis or workers, Redis and internal worker ports must also remain private.
+Production services are private except Caddy’s HTTPS entry points. PostgreSQL, the evidence broker, and ClamAV must not be exposed publicly. Evidence upload and download bytes are streamed through the authorized application path; clients never receive filesystem paths or broker/scanner access. If a future approved release activates Redis or workers, Redis and internal worker ports must also remain private.
 
 ---
 
@@ -142,8 +143,9 @@ Initial service layout:
 Caddy
 ├── ogfi-erp-web
 ├── postgres
-├── local-private object storage (development / controlled UAT only)
-├── AWS S3 + GuardDuty (external production evidence service)
+├── evidence storage broker with exclusive private bind mount
+├── private ClamAV scanner with no evidence mount
+├── bounded systemd scan-reconciliation timer
 └── backup process
 ```
 
@@ -154,7 +156,7 @@ Required practices:
 - SSH key access only; disable password login after recovery access is confirmed.
 - Firewall permits only SSH from trusted IPs plus HTTP/HTTPS.
 - Database ports are private to the Docker network. Future approved Redis ports must also remain private.
-- Production database and attachment backups run automatically and are copied off the VPS.
+- Production database and evidence backups run automatically and are provider-managed or copied to an independently recoverable encrypted destination outside the VPS/disk failure domain.
 - Staging is separate from production at the environment, database, volume, and domain level.
 - Never commit `.env` files, production credentials, private keys, backups, or attachment exports to Git.
 
@@ -163,9 +165,10 @@ Required practices:
 ## 6. Data, security, and operational decisions
 
 - PostgreSQL stores structured business data, audit references, and attachment metadata; it does not store the attachment binaries.
-- Production evidence objects use opaque quarantine keys and immutable exact S3 versions. A file becomes available only when the exact version has the GuardDuty `NO_THREATS_FOUND` tag and PostgreSQL records matching clean/available state.
-- EventBridge/API Destination delivery is a non-authoritative scan wake-up. The application revalidates the exact object version/tag and uses idempotent compare-and-set; bounded database-backed cron reconciliation handles missed or duplicate delivery without Redis or a queue.
-- Production evidence storage uses SSE-KMS, Object Lock Governance, and cross-account replication/backup. Object Lock Compliance mode requires explicit Legal approval and a new or supplemental material decision.
+- Production evidence uses server-issued opaque immutable keys/versions. The application proxies bounded streams to the broker, and only a `CLEAN` ClamAV result tied to the exact version and an accepted signature-freshness state may enter PostgreSQL clean/available state.
+- PostgreSQL is authoritative for source-record authorization, idempotency, quota, quarantine, leases/retries, compare-and-set release, retention/legal hold, and audit. A bounded systemd timer reconciles pending scans; detached post-response work, Redis, and a queue are not used for this release.
+- Evidence bytes are encrypted with AES-256-GCM under a versioned broker-only key. Same-VPS filesystem retention is application-enforced and is not WORM or Object Lock; independently recoverable encrypted backup and paired database/evidence restore proof are production gates.
+- Root/host compromise and same-disk loss remain honest residual risks of the initial topology. External object storage is reconsidered when capacity, multi-host deployment, stronger RPO/RTO, legal WORM, or tenant scale requires a controlled copy-verify-cutover migration.
 - All timestamps are stored in UTC. Operational display defaults to `Asia/Manila` for OGFI.
 - Tenant isolation begins in Phase I: tenant/company/scope filtering must be implemented at the database access boundary.
 - All controlled workflow actions use service-layer authorization, validation, transaction handling, audit logging, and idempotency protections where retries may occur.
@@ -181,7 +184,7 @@ These do not block Phase I scaffold, but must be finalized before production go-
 
 1. Approved production domain and DNS management owner.
 2. Email provider and sender domain for notification delivery.
-3. AWS evidence activation values under `DEC-0045`: account, Region/data residency, environment buckets, KMS/IAM/GuardDuty/backup/recovery/incident owners, budget and alarms, retention/legal-hold and governance-bypass authority, quotas, RPO/RTO, recovery procedures, and hosted staging/restore proof.
+3. Same-VPS evidence activation values under `DEC-0046`: actual VPS size/utilization and headroom; per-tenant/company quota, upload and disk high-water thresholds; encryption-key custody/recovery/rotation; Hostinger daily-backup entitlement, location, encryption, retention, restore granularity, and independence; evidence/database RPO/RTO; retention/legal-hold authority and policy; pinned ClamAV image/digest, resources, signature freshness, and scan limits; recovery procedures; and hosted paired restore proof.
 4. Error-monitoring provider and alert recipients.
 5. Exact VPS specification and whether staging will use a separate VPS before pilot rollout.
 6. Backup destination, retention period, restore owner, and restore-test schedule.
@@ -211,4 +214,5 @@ Review this decision when any of the following becomes true:
 - Background jobs or reporting exhaust the initial VPS capacity.
 - POS/accounting/biometric integrations require independently scalable processing.
 - Production availability, backups, or compliance needs exceed one-VPS operational safety.
+- Evidence capacity, multi-host deployment, stronger RPO/RTO, legal WORM, or tenant scale triggers the external-storage migration review defined by `DEC-0046`.
 - The web application needs independent API scaling or public partner APIs.

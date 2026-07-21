@@ -26,9 +26,9 @@ if git grep -n -I -E '(BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY|AKIA[0-9A-Z]{16}|xo
   fail "high-risk secret pattern found in tracked files"
 fi
 
-if git grep -n -I -E '(DATABASE_URL|DIRECT_DATABASE_URL|S3_SECRET_ACCESS_KEY|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=([^[:space:]]+)' -- ':!.env.example' ':!.env.staging.example' ':!.env.production.example' ':!pnpm-lock.yaml' >/tmp/ogfi-secret-review.txt; then
-  grep -E -v '(DATABASE_URL|DIRECT_DATABASE_URL|S3_SECRET_ACCESS_KEY|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=<[A-Za-z0-9][A-Za-z0-9-]*>([[:space:]]|["'"'"'`,;)}\]]|$)' /tmp/ogfi-secret-review.txt >/tmp/ogfi-secret-review-findings.txt || true
-  grep -E -v '\.(startsWith|slice)\(["'"'"'`](DATABASE_URL|DIRECT_DATABASE_URL|S3_SECRET_ACCESS_KEY|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=["'"'"'`]' /tmp/ogfi-secret-review-findings.txt >/tmp/ogfi-secret-review-filtered.txt || true
+if git grep -n -I -E '(DATABASE_URL|DIRECT_DATABASE_URL|EVIDENCE_BROKER_SHARED_SECRET|EVIDENCE_BROKER_KEYS_JSON|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=([^[:space:]]+)' -- ':!.env.example' ':!.env.staging.example' ':!.env.production.example' ':!pnpm-lock.yaml' >/tmp/ogfi-secret-review.txt; then
+  grep -E -v '(DATABASE_URL|DIRECT_DATABASE_URL|EVIDENCE_BROKER_SHARED_SECRET|EVIDENCE_BROKER_KEYS_JSON|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=<[A-Za-z0-9][A-Za-z0-9-]*>([[:space:]]|["'"'"'`,;)}\]]|$)' /tmp/ogfi-secret-review.txt >/tmp/ogfi-secret-review-findings.txt || true
+  grep -E -v '\.(startsWith|slice)\(["'"'"'`](DATABASE_URL|DIRECT_DATABASE_URL|EVIDENCE_BROKER_SHARED_SECRET|EVIDENCE_BROKER_KEYS_JSON|AUTH_SECRET|APP_ENCRYPTION_KEY|ERROR_MONITORING_DSN)=["'"'"'`]' /tmp/ogfi-secret-review-findings.txt >/tmp/ogfi-secret-review-filtered.txt || true
   mv /tmp/ogfi-secret-review-filtered.txt /tmp/ogfi-secret-review-findings.txt
   if [ -s /tmp/ogfi-secret-review-findings.txt ]; then
     cat /tmp/ogfi-secret-review-findings.txt >&2

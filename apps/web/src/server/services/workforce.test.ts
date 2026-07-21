@@ -55,20 +55,22 @@ describe("workforce foundation controls", () => {
     expect(reportRows).toHaveLength(2);
     expect(reportRows[0]?.issueState).toBe("NEEDS_REVIEW");
     expect(reportRows.some((row) => row.issueLabels.length > 0)).toBe(true);
-    expect(reportRows.some((row) => row.issueLabels.includes("1 coverage gap"))).toBe(
-      true
-    );
     expect(
-      reportRows.some((row) => row.issueLabels.includes("Gap stations: GRILL / Cook"))
+      reportRows.some((row) => row.issueLabels.includes("1 coverage gap"))
+    ).toBe(true);
+    expect(
+      reportRows.some((row) =>
+        row.issueLabels.includes("Gap stations: GRILL / Cook")
+      )
     ).toBe(true);
     expect(
       reportRows.some((row) =>
         row.issueLabels.includes("1 attendance exception")
       )
     ).toBe(true);
-    expect(reportRows.some((row) => row.issueLabels.includes("1 duplicate row"))).toBe(
-      true
-    );
+    expect(
+      reportRows.some((row) => row.issueLabels.includes("1 duplicate row"))
+    ).toBe(true);
     expect(
       reportRows.some((row) =>
         row.exportSafeSummary.includes("attendance exception")
@@ -183,7 +185,9 @@ describe("workforce foundation controls", () => {
     expect(workforceServiceSource).toContain("loadWorkforceScopeSnapshot");
     expect(workforceServiceSource).toContain("userScopeAssignment.findMany");
     expect(workforceServiceSource).not.toContain("session.authorizedLocations");
-    expect(workforceServiceSource).toContain("locationId: { in: allowedLocationIds }");
+    expect(workforceServiceSource).toContain(
+      "locationId: { in: allowedLocationIds }"
+    );
   });
 
   it("keeps payroll and sensitive document details out of the foundation workspace", () => {
@@ -191,7 +195,9 @@ describe("workforce foundation controls", () => {
     expect(workforcePageSource).toContain("payroll exports");
     expect(workforcePageSource).toContain("journal posting");
     expect(workforceServiceSource).toContain("showConfidentialNames");
-    expect(workforceServiceSource).toContain("assignment.employee.employeeCode");
+    expect(workforceServiceSource).toContain(
+      "assignment.employee.employeeCode"
+    );
     expect(workforceServiceSource).toContain("request.employee.employeeCode");
     expect(workforceServiceSource).toContain("record.employee.employeeCode");
     expect(workforceServiceSource).not.toContain("salary");
@@ -209,7 +215,9 @@ describe("workforce foundation controls", () => {
       "buildWorkforceProductionReadinessRows"
     );
     expect(workforceServiceSource).toContain("exportSafeSummary");
-    expect(workforceServiceSource).toContain("locationId: { in: allowedLocationIds }");
+    expect(workforceServiceSource).toContain(
+      "locationId: { in: allowedLocationIds }"
+    );
     expect(workforcePageSource).toContain("Schedules And Coverage");
     expect(workforcePageSource).toContain("Attendance Import Evidence");
     expect(workforcePageSource).toContain("Workforce Production Readiness");
@@ -235,19 +243,33 @@ describe("workforce foundation controls", () => {
     expect(workforceServiceSource).toContain("publishWorkforceSchedule");
     expect(workforceServiceSource).toContain("reviewAttendanceImportBatch");
     expect(workforceServiceSource).toContain("voidAttendanceImportBatch");
-    expect(workforceServiceSource).toContain("WORKFORCE_LEAVE_SELF_APPROVAL_BLOCKED");
-    expect(workforceServiceSource).toContain("WORKFORCE_OVERTIME_SELF_APPROVAL_BLOCKED");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_SELF_APPROVAL_BLOCKED");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_COVERAGE_GAP_WAIVER_REASON_REQUIRED");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_COVERAGE_GAP_WAIVER_EVIDENCE_REQUIRED");
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_LEAVE_SELF_APPROVAL_BLOCKED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_OVERTIME_SELF_APPROVAL_BLOCKED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_SELF_APPROVAL_BLOCKED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_COVERAGE_GAP_WAIVER_REASON_REQUIRED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_COVERAGE_GAP_WAIVER_EVIDENCE_REQUIRED"
+    );
     expect(workforceServiceSource).toContain("coverageGapWaiverRequired");
     expect(workforceServiceSource).toContain("writeWorkforceAudit");
   });
 
   it("uses granular workforce approval permissions for request decisions", () => {
     expect(workforceServiceSource).toContain("requireWorkforcePermission");
-    expect(workforceServiceSource).toContain("permissions.workforceLeaveApprove");
-    expect(workforceServiceSource).toContain("permissions.workforceOvertimeApprove");
+    expect(workforceServiceSource).toContain(
+      "permissions.workforceLeaveApprove"
+    );
+    expect(workforceServiceSource).toContain(
+      "permissions.workforceOvertimeApprove"
+    );
     expect(workforcePageSource).toContain("canApproveLeave");
     expect(workforcePageSource).toContain("canApproveOvertime");
   });
@@ -265,13 +287,23 @@ describe("workforce foundation controls", () => {
 
   it("routes submitted leave through approval instances without payroll or finance effects", () => {
     expect(workforceServiceSource).toContain("findEmployeeLeaveApprovalRule");
-    expect(workforceServiceSource).toContain('documentType: "EmployeeLeaveRequest"');
+    expect(workforceServiceSource).toContain(
+      'documentType: "EmployeeLeaveRequest"'
+    );
     expect(workforceServiceSource).toContain("approvalInstance.create");
-    expect(workforceServiceSource).toContain("approvalInstanceId: approvalInstance.id");
-    expect(workforceServiceSource).toContain("resolveScopedNotificationRecipients");
+    expect(workforceServiceSource).toContain(
+      "approvalInstanceId: approvalInstance.id"
+    );
+    expect(workforceServiceSource).toContain(
+      "resolveScopedNotificationRecipients"
+    );
     expect(workforceServiceSource).toContain("APPROVE_WORKFORCE_LEAVE");
-    expect(workforceServiceSource).toContain("WORKFORCE_LEAVE_APPROVAL_RULE_NOT_CONFIGURED");
-    expect(workforceServiceSource).toContain("WORKFORCE_LEAVE_ALREADY_SUBMITTED");
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_LEAVE_APPROVAL_RULE_NOT_CONFIGURED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_LEAVE_ALREADY_SUBMITTED"
+    );
     expect(workforceServiceSource).toContain("workforce.leave_approval_routed");
     expect(workforceServiceSource).toContain("noPayrollComputation");
     expect(workforceServiceSource).toContain("noPaymentRequest");
@@ -279,39 +311,73 @@ describe("workforce foundation controls", () => {
   });
 
   it("routes submitted overtime through approval instances without payroll or finance effects", () => {
-    expect(workforceServiceSource).toContain("findEmployeeOvertimeApprovalRule");
-    expect(workforceServiceSource).toContain('documentType: "EmployeeOvertimeRecord"');
+    expect(workforceServiceSource).toContain(
+      "findEmployeeOvertimeApprovalRule"
+    );
+    expect(workforceServiceSource).toContain(
+      'documentType: "EmployeeOvertimeRecord"'
+    );
     expect(workforceServiceSource).toContain("APPROVE_WORKFORCE_OVERTIME");
-    expect(workforceServiceSource).toContain("WORKFORCE_OVERTIME_APPROVAL_RULE_NOT_CONFIGURED");
-    expect(workforceServiceSource).toContain("WORKFORCE_OVERTIME_ALREADY_SUBMITTED");
-    expect(workforceServiceSource).toContain("workforce.overtime_approval_routed");
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_OVERTIME_APPROVAL_RULE_NOT_CONFIGURED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_OVERTIME_ALREADY_SUBMITTED"
+    );
+    expect(workforceServiceSource).toContain(
+      "workforce.overtime_approval_routed"
+    );
     expect(workforceServiceSource).toContain("noPayrollComputation");
     expect(workforceServiceSource).toContain("noPaymentRequest");
     expect(workforceServiceSource).toContain("noFinanceJournal");
   });
 
   it("routes submitted schedules through approval instances before publication", () => {
-    expect(workforceServiceSource).toContain("findWorkforceScheduleApprovalRule");
-    expect(workforceServiceSource).toContain('documentType: "WorkforceSchedule"');
+    expect(workforceServiceSource).toContain(
+      "findWorkforceScheduleApprovalRule"
+    );
+    expect(workforceServiceSource).toContain(
+      'documentType: "WorkforceSchedule"'
+    );
     expect(workforceServiceSource).toContain("APPROVE_WORKFORCE_SCHEDULE");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_APPROVAL_RULE_NOT_CONFIGURED");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_ALREADY_SUBMITTED");
-    expect(workforceServiceSource).toContain("workforce.schedule_approval_routed");
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_APPROVAL_RULE_NOT_CONFIGURED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_ALREADY_SUBMITTED"
+    );
+    expect(workforceServiceSource).toContain(
+      "workforce.schedule_approval_routed"
+    );
     expect(workforceServiceSource).toContain("noSchedulePublication");
     expect(workforceServiceSource).toContain("coverageGapCount");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_COVERAGE_GAP_WAIVER_REASON_REQUIRED");
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_COVERAGE_GAP_WAIVER_REASON_REQUIRED"
+    );
     expect(workforceServiceSource).toContain("noPayrollComputation");
     expect(workforceServiceSource).toContain("noPaymentRequest");
     expect(workforceServiceSource).toContain("noFinanceJournal");
   });
 
   it("routes attendance import exceptions through approval without payroll effects", () => {
-    expect(workforceServiceSource).toContain("findAttendanceImportApprovalRule");
-    expect(workforceServiceSource).toContain('documentType: "AttendanceImportBatch"');
-    expect(workforceServiceSource).toContain("APPROVE_ATTENDANCE_IMPORT_REVIEW");
-    expect(workforceServiceSource).toContain("WORKFORCE_ATTENDANCE_IMPORT_APPROVAL_RULE_NOT_CONFIGURED");
-    expect(workforceServiceSource).toContain("WORKFORCE_ATTENDANCE_IMPORT_ALREADY_SUBMITTED");
-    expect(workforceServiceSource).toContain("workforce.attendance_import_approval_routed");
+    expect(workforceServiceSource).toContain(
+      "findAttendanceImportApprovalRule"
+    );
+    expect(workforceServiceSource).toContain(
+      'documentType: "AttendanceImportBatch"'
+    );
+    expect(workforceServiceSource).toContain(
+      "APPROVE_ATTENDANCE_IMPORT_REVIEW"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_ATTENDANCE_IMPORT_APPROVAL_RULE_NOT_CONFIGURED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_ATTENDANCE_IMPORT_ALREADY_SUBMITTED"
+    );
+    expect(workforceServiceSource).toContain(
+      "workforce.attendance_import_approval_routed"
+    );
     expect(workforceServiceSource).toContain("approvalRequested: true");
     expect(workforceServiceSource).toContain("noPayrollExport");
     expect(workforceServiceSource).toContain("noAttendanceDeviceAuthority");
@@ -320,19 +386,41 @@ describe("workforce foundation controls", () => {
   });
 
   it("creates draft-only workforce entries from scoped employees", () => {
-    expect(workforceServiceSource).toContain("getScopedEmployeeForDraftOrThrow");
-    expect(workforceServiceSource).toContain("status: \"DRAFT\"");
+    expect(workforceServiceSource).toContain(
+      "getScopedEmployeeForDraftOrThrow"
+    );
+    expect(workforceServiceSource).toContain('status: "DRAFT"');
     expect(workforceServiceSource).toContain("workforce.leave_draft_created");
-    expect(workforceServiceSource).toContain("workforce.overtime_draft_created");
-    expect(workforceServiceSource).toContain("workforce.schedule_draft_created");
-    expect(workforceServiceSource).toContain("requestedMinutes: inclusiveWorkdayMinutes");
-    expect(workforceServiceSource).toContain("WORKFORCE_EMPLOYEE_LOCATION_SCOPE_REQUIRED");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_EMPLOYEE_LOCATION_MISMATCH");
-    expect(workforceServiceSource).toContain("assertNoWorkforceScheduleConflicts");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_EMPLOYEE_TIME_CONFLICT");
-    expect(workforceServiceSource).toContain("WORKFORCE_SCHEDULE_STATION_TIME_CONFLICT");
-    expect(workforceServiceSource).toContain("plannedStartAt: { lt: input.plannedEndAt }");
-    expect(workforceServiceSource).toContain("plannedEndAt: { gt: input.plannedStartAt }");
+    expect(workforceServiceSource).toContain(
+      "workforce.overtime_draft_created"
+    );
+    expect(workforceServiceSource).toContain(
+      "workforce.schedule_draft_created"
+    );
+    expect(workforceServiceSource).toContain(
+      "requestedMinutes: inclusiveWorkdayMinutes"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_EMPLOYEE_LOCATION_SCOPE_REQUIRED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_EMPLOYEE_LOCATION_MISMATCH"
+    );
+    expect(workforceServiceSource).toContain(
+      "assertNoWorkforceScheduleConflicts"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_EMPLOYEE_TIME_CONFLICT"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_SCHEDULE_STATION_TIME_CONFLICT"
+    );
+    expect(workforceServiceSource).toContain(
+      "plannedStartAt: { lt: input.plannedEndAt }"
+    );
+    expect(workforceServiceSource).toContain(
+      "plannedEndAt: { gt: input.plannedStartAt }"
+    );
     expect(workforceServiceSource).toContain("conflictChecked: true");
     expect(workforceServiceSource).toContain("plannedHeadcount > 100");
     expect(workforceServiceSource).toContain("noSchedulePublication");
@@ -342,10 +430,18 @@ describe("workforce foundation controls", () => {
   it("supports scoped employee master create and update modals without payroll effects", () => {
     expect(workforceServiceSource).toContain("createEmployee");
     expect(workforceServiceSource).toContain("updateEmployee");
-    expect(workforceServiceSource).toContain("getScopedEmployeeForManagementOrThrow");
-    expect(workforceServiceSource).toContain("WORKFORCE_EMPLOYEE_CREATE_REASON_REQUIRED");
-    expect(workforceServiceSource).toContain("WORKFORCE_EMPLOYEE_UPDATE_REASON_REQUIRED");
-    expect(workforceServiceSource).toContain("WORKFORCE_EMPLOYEE_CODE_ALREADY_EXISTS");
+    expect(workforceServiceSource).toContain(
+      "getScopedEmployeeForManagementOrThrow"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_EMPLOYEE_CREATE_REASON_REQUIRED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_EMPLOYEE_UPDATE_REASON_REQUIRED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_EMPLOYEE_CODE_ALREADY_EXISTS"
+    );
     expect(workforceServiceSource).toContain("WORKFORCE_LOCATION_SCOPE_DENIED");
     expect(workforceServiceSource).toContain("workforce.employee_created");
     expect(workforceServiceSource).toContain("workforce.employee_updated");
@@ -354,23 +450,41 @@ describe("workforce foundation controls", () => {
     expect(workforcePageSource).toContain("runUpdateEmployee");
     expect(workforcePageSource).toContain("Add Employee");
     expect(workforcePageSource).toContain("Edit Employee");
-    expect(workforcePageSource).toContain("Employee code is controlled at creation");
+    expect(workforcePageSource).toContain(
+      "Employee code is controlled at creation"
+    );
   });
 
   it("supports scoped assignment create and end controls without payroll effects", () => {
     expect(workforceServiceSource).toContain("createEmployeeAssignment");
     expect(workforceServiceSource).toContain("endEmployeeAssignment");
-    expect(workforceServiceSource).toContain("getScopedAssignmentForManagementOrThrow");
-    expect(workforceServiceSource).toContain("WORKFORCE_ASSIGNMENT_CREATE_REASON_REQUIRED");
-    expect(workforceServiceSource).toContain("WORKFORCE_ASSIGNMENT_END_REASON_REQUIRED");
-    expect(workforceServiceSource).toContain("WORKFORCE_ASSIGNMENT_DUPLICATE_ACTIVE_ROLE");
-    expect(workforceServiceSource).toContain("WORKFORCE_ASSIGNMENT_ACTIVE_PRIMARY_EXISTS");
+    expect(workforceServiceSource).toContain(
+      "getScopedAssignmentForManagementOrThrow"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_ASSIGNMENT_CREATE_REASON_REQUIRED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_ASSIGNMENT_END_REASON_REQUIRED"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_ASSIGNMENT_DUPLICATE_ACTIVE_ROLE"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_ASSIGNMENT_ACTIVE_PRIMARY_EXISTS"
+    );
     expect(workforceServiceSource).toContain("replacesAssignmentId");
-    expect(workforceServiceSource).toContain("WORKFORCE_ASSIGNMENT_REPLACEMENT_PRIMARY_INVALID");
-    expect(workforceServiceSource).toContain("WORKFORCE_ASSIGNMENT_REPLACEMENT_DATE_INVALID");
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_ASSIGNMENT_REPLACEMENT_PRIMARY_INVALID"
+    );
+    expect(workforceServiceSource).toContain(
+      "WORKFORCE_ASSIGNMENT_REPLACEMENT_DATE_INVALID"
+    );
     expect(workforceServiceSource).toContain("workforce.assignment_created");
     expect(workforceServiceSource).toContain("workforce.assignment_ended");
-    expect(workforceServiceSource).toContain("workforce.assignment_replaced_by_primary");
+    expect(workforceServiceSource).toContain(
+      "workforce.assignment_replaced_by_primary"
+    );
     expect(workforceServiceSource).toContain("controlledPrimaryHandoff");
     expect(workforceServiceSource).toContain("fullTransferWorkflowDeferred");
     expect(workforcePageSource).toContain("runCreateEmployeeAssignment");
@@ -398,41 +512,56 @@ describe("workforce foundation controls", () => {
     expect(workforcePageSource).toContain("Void Batch");
   });
 
-  it("exposes workforce private evidence upload/download links without payroll or finance mutation", () => {
-    expect(workforcePageSource).toContain("listControlledEvidenceAttachments");
+  it("exposes workforce controlled evidence panels without payroll or finance mutation", () => {
     expect(workforcePageSource).toContain(
+      "listWorkforceControlledEvidenceAttachmentsBatch"
+    );
+    expect(workforcePageSource).not.toContain(
+      "listControlledEvidenceAttachments"
+    );
+    expect(workforcePageSource).toContain("ControlledEvidencePanel");
+    expect(workforcePageSource).not.toContain(
       "createControlledEvidenceAttachmentMetadataLink"
     );
-    expect(workforcePageSource).toContain(
+    expect(workforcePageSource).not.toContain(
       "createControlledEvidenceAttachmentUploadLink"
     );
-    expect(workforcePageSource).toContain('name="evidenceFile"');
-    expect(workforcePageSource).toContain('type="file"');
+    expect(workforcePageSource).not.toContain('name="objectKey"');
+    expect(workforcePageSource).not.toContain('name="storageProvider"');
     expect(workforcePageSource).toContain(
-      'href={`/evidence/${attachment.id}/download`}'
+      "archiveControlledEvidenceAttachment"
     );
-    expect(workforcePageSource).toContain("archiveControlledEvidenceAttachment");
     expect(workforcePageSource).toContain("WORKFORCE_EMPLOYEE");
     expect(workforcePageSource).toContain("WORKFORCE_ASSIGNMENT");
     expect(workforcePageSource).toContain("WORKFORCE_LEAVE");
     expect(workforcePageSource).toContain("WORKFORCE_OVERTIME");
     expect(workforcePageSource).toContain("WORKFORCE_SCHEDULE");
     expect(workforcePageSource).toContain("WORKFORCE_ATTENDANCE_IMPORT");
-    expect(workforcePageSource).toContain("Upload Workforce Evidence");
-    expect(workforcePageSource).toContain("Upload Evidence");
-    expect(workforcePageSource).toContain("Link metadata-only evidence instead");
     expect(workforcePageSource).toContain("archiveWorkforceEvidenceMetadata");
-    expect(workforcePageSource).toContain("Archive Evidence Link");
-    expect(workforcePageSource).toContain("Files stay private");
-    expect(workforcePageSource).toContain("downloads are audited");
     expect(workforcePageSource).not.toContain("Save Evidence Metadata");
     expect(workforcePageSource).not.toContain("Binary upload");
     expect(workforcePageSource).not.toContain("P3-BLOCK-002");
     expect(workforcePageSource).toContain("permissions.workforceLeaveApprove");
-    expect(workforcePageSource).toContain("permissions.workforceOvertimeApprove");
-    expect(workforcePageSource).toContain("permissions.workforceScheduleManage");
+    expect(workforcePageSource).toContain(
+      "permissions.workforceOvertimeApprove"
+    );
+    expect(workforcePageSource).toContain(
+      "permissions.workforceScheduleManage"
+    );
     expect(workforcePageSource).toContain(
       "permissions.workforceAttendanceImportManage"
+    );
+    expect(workforcePageSource).toContain("canViewWorkforceRegistry");
+    expect(workforcePageSource).toContain("canViewSchedules");
+    expect(workforcePageSource).toContain("canViewAttendance");
+    expect(workforcePageSource).toContain(
+      "WORKFORCE_EMPLOYEE: canViewWorkforceRegistry"
+    );
+    expect(workforcePageSource).toContain(
+      "WORKFORCE_SCHEDULE: canViewSchedules"
+    );
+    expect(workforcePageSource).toContain(
+      "WORKFORCE_ATTENDANCE_IMPORT: canViewAttendance"
     );
     expect(workforcePageSource).not.toContain("paymentRequest.create");
     expect(workforcePageSource).not.toContain("financeJournal.create");

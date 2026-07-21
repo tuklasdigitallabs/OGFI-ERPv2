@@ -912,6 +912,9 @@ model Tenant {
   notifications                           Notification[]
   auditEvents                             AuditEvent[]
   attachments                             Attachment[]
+  attachmentUploadIntents                 AttachmentUploadIntent[]
+  attachmentScanAttempts                  AttachmentScanAttempt[]
+  attachmentCompanyQuotaUsage             AttachmentCompanyQuotaUsage[]
   controlledEvidenceAttachments           ControlledEvidenceAttachment[]
   companyPolicySettings                   CompanyPolicySetting[]
   releaseReadinessGates                   ReleaseReadinessGate[]
@@ -1072,6 +1075,10 @@ model Company {
   notifications                           Notification[]
   auditEvents                             AuditEvent[]
   controlledEvidenceAttachments           ControlledEvidenceAttachment[]
+  attachments                             Attachment[]
+  attachmentUploadIntents                 AttachmentUploadIntent[]
+  attachmentScanAttempts                  AttachmentScanAttempt[]
+  attachmentQuotaUsage                    AttachmentCompanyQuotaUsage[]
   policySettings                          CompanyPolicySetting[]
   releaseReadinessGates                   ReleaseReadinessGate[]
   deploymentEvidenceRecords               DeploymentEvidenceRecord[]
@@ -1570,6 +1577,10 @@ model User {
   updatedEmployeeTrainingRecords      EmployeeTrainingRecord[]         @relation("EmployeeTrainingUpdatedBy")
   createdEmployeeDocuments            EmployeeComplianceDocument[]     @relation("EmployeeDocumentCreatedBy")
   updatedEmployeeDocuments            EmployeeComplianceDocument[]     @relation("EmployeeDocumentUpdatedBy")
+  uploadedAttachments                 Attachment[]                     @relation("AttachmentUploader")
+  attachmentLegalHolds                Attachment[]                     @relation("AttachmentLegalHoldSetter")
+  purgedAttachments                   Attachment[]                     @relation("AttachmentPurger")
+  createdAttachmentUploadIntents      AttachmentUploadIntent[]         @relation("AttachmentUploadIntentCreator")
   createdWorkforceSchedules           WorkforceSchedule[]              @relation("WorkforceScheduleCreator")
   submittedWorkforceSchedules         WorkforceSchedule[]              @relation("WorkforceScheduleSubmitter")
   approvedWorkforceSchedules          WorkforceSchedule[]              @relation("WorkforceScheduleApprover")
@@ -2320,7 +2331,7 @@ model ProjectAttachment {
   task             ProjectTask?        @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
   comment          ProjectComment?     @relation(fields: [commentId], references: [id], onDelete: Restrict)
   requirement      ProjectRequirement? @relation("ProjectRequirementAttachments", fields: [requirementId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId], onDelete: Restrict, map: "ProjectAttachment_requirementId_tenantId_companyId_projectId_fk")
-  attachment       Attachment          @relation(fields: [attachmentId], references: [id])
+  attachment       Attachment          @relation(fields: [attachmentId, tenantId, companyId], references: [id, tenantId, companyId], map: "ProjectAttachment_attachment_scope_fkey")
   createdBy        User                @relation("ProjectAttachmentCreator", fields: [createdByUserId], references: [id])
   archivedBy       User?               @relation("ProjectAttachmentArchiver", fields: [archivedByUserId], references: [id])
 
@@ -6189,7 +6200,7 @@ model EmployeeTrainingRecord {
   tenant           Tenant                 @relation(fields: [tenantId], references: [id])
   company          Company                @relation(fields: [companyId], references: [id])
   employee         Employee               @relation(fields: [employeeId], references: [id])
-  certificate      Attachment?            @relation("EmployeeTrainingCertificate", fields: [attachmentId], references: [id])
+  certificate      Attachment?            @relation("EmployeeTrainingCertificate", fields: [attachmentId, tenantId, companyId], references: [id, tenantId, companyId], map: "EmployeeTrainingRecord_attachment_scope_fkey")
   createdBy        User                   @relation("EmployeeTrainingCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy        User?                  @relation("EmployeeTrainingUpdatedBy", fields: [updatedByUserId], references: [id])
 
@@ -6219,7 +6230,7 @@ model EmployeeComplianceDocument {
   tenant             Tenant                 @relation(fields: [tenantId], references: [id])
   company            Company                @relation(fields: [companyId], references: [id])
   employee           Employee               @relation(fields: [employeeId], references: [id])
-  attachment         Attachment?            @relation("EmployeeComplianceDocumentAttachment", fields: [attachmentId], references: [id])
+  attachment         Attachment?            @relation("EmployeeComplianceDocumentAttachment", fields: [attachmentId, tenantId, companyId], references: [id, tenantId, companyId], map: "EmployeeComplianceDocument_attachment_scope_fkey")
   createdBy          User                   @relation("EmployeeDocumentCreatedBy", fields: [createdByUserId], references: [id])
   updatedBy          User?                  @relation("EmployeeDocumentUpdatedBy", fields: [updatedByUserId], references: [id])
 
@@ -6827,23 +6838,222 @@ model ApprovalInstanceStep {
   @@index([actedByUserId], map: "ApprovalInstanceStep_actedByUserId_idx")
 }
 
+enum AttachmentStorageEnvironment {
+  LEGACY_UNVERIFIED
+  LOCAL_DEVELOPMENT
+  CONTROLLED_UAT
+  STAGING
+  PRODUCTION
+}
+
+enum AttachmentUploadState {
+  LEGACY_UNVERIFIED
+  PENDING
+  INTENT_ISSUED
+  UPLOADING
+  UPLOADED
+  VERIFIED
+  EXPIRED
+  FAILED
+}
+
+enum AttachmentScanState {
+  LEGACY_UNVERIFIED
+  PENDING
+  CLEAN
+  THREAT_FOUND
+  UNSUPPORTED
+  ACCESS_DENIED
+  FAILED
+  TIMED_OUT
+  WAIVED_LOCAL
+}
+
+enum AttachmentAvailabilityState {
+  QUARANTINED
+  AVAILABLE
+  REJECTED
+  REMOVED
+  EXPIRED
+}
+
+enum AttachmentPhysicalState {
+  LEGACY_UNVERIFIED
+  ABSENT
+  STAGING
+  DURABLE
+  MISSING
+  PURGED
+}
+
+enum AttachmentUploadIntentStatus {
+  ISSUED
+  UPLOADING
+  CONSUMED
+  EXPIRED
+  INVALIDATED
+}
+
 model Attachment {
   id                           String                         @id @default(uuid()) @db.Uuid
   tenantId                     String                         @db.Uuid
+  companyId                    String                         @db.Uuid
+  storageEnvironment           AttachmentStorageEnvironment   @default(LEGACY_UNVERIFIED)
   storageProvider              String
   objectKey                    String
+  objectVersionId              String?
   originalFilename             String
   mimeType                     String
+  detectedMimeType             String?
   sizeBytes                    Int
   checksum                     String?
+  detectedChecksum             String?
+  uploadState                  AttachmentUploadState          @default(LEGACY_UNVERIFIED)
+  scanState                    AttachmentScanState            @default(LEGACY_UNVERIFIED)
+  availabilityState            AttachmentAvailabilityState    @default(QUARANTINED)
+  physicalState                AttachmentPhysicalState        @default(LEGACY_UNVERIFIED)
+  storedChecksum               String?
+  encryptionAlgorithm          String?
+  encryptionKeyId              String?
+  encryptedAt                  DateTime?
+  scanVerifiedObjectVersionId  String?
+  uploadIntentIssuedAt         DateTime?
+  uploadIntentExpiresAt        DateTime?
+  uploadConfirmedAt            DateTime?
+  uploadVerifiedAt             DateTime?
+  scanRequestedAt              DateTime?
+  scanCompletedAt              DateTime?
+  availableAt                  DateTime?
+  rejectedAt                   DateTime?
+  removedAt                    DateTime?
+  removalReason                String?
+  purgedAt                     DateTime?
+  purgeReason                  String?
+  purgedByUserId               String?                        @db.Uuid
+  retentionClass               String?
+  retainUntil                  DateTime?
+  legalHold                    Boolean                        @default(false)
+  legalHoldSetAt               DateTime?
+  legalHoldSetByUserId         String?                        @db.Uuid
+  legalHoldAuthority           String?
+  legalHoldCaseReference       String?
+  legalHoldReason              String?
+  replacesAttachmentId         String?                        @db.Uuid
+  reconciliationLeaseOwner     String?
+  reconciliationLeaseExpiresAt DateTime?
+  reconciliationAttemptCount   Int                            @default(0)
+  reconciliationNextAttemptAt  DateTime?
+  lastReconciledAt             DateTime?
   uploadedByUserId             String?                        @db.Uuid
   status                       RecordStatus                   @default(ACTIVE)
+  rowVersion                   Int                            @default(1)
   createdAt                    DateTime                       @default(now())
+  updatedAt                    DateTime                       @updatedAt
   tenant                       Tenant                         @relation(fields: [tenantId], references: [id])
+  company                      Company                        @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "Attachment_company_scope_fkey")
+  uploadedBy                   User?                          @relation("AttachmentUploader", fields: [uploadedByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "Attachment_uploadedBy_scope_fkey")
+  legalHoldSetBy               User?                          @relation("AttachmentLegalHoldSetter", fields: [legalHoldSetByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "Attachment_legalHoldSetBy_scope_fkey")
+  purgedBy                     User?                          @relation("AttachmentPurger", fields: [purgedByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "Attachment_purgedBy_scope_fkey")
+  replacesAttachment           Attachment?                    @relation("AttachmentReplacement", fields: [replacesAttachmentId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "Attachment_replacement_scope_fkey")
+  replacedBy                   Attachment?                    @relation("AttachmentReplacement")
+  uploadIntents                AttachmentUploadIntent[]
+  scanAttempts                 AttachmentScanAttempt[]
   projectLinks                 ProjectAttachment[]
   controlledEvidenceLinks      ControlledEvidenceAttachment[]
   employeeTrainingCertificates EmployeeTrainingRecord[]       @relation("EmployeeTrainingCertificate")
   employeeComplianceDocuments  EmployeeComplianceDocument[]   @relation("EmployeeComplianceDocumentAttachment")
+
+  @@unique([id, tenantId, companyId])
+  @@unique([replacesAttachmentId, tenantId, companyId], map: "Attachment_replacement_scope_key")
+  @@unique([id, tenantId, companyId, storageEnvironment, storageProvider, objectKey], map: "Attachment_intent_scope_key")
+  @@unique([id, tenantId, companyId, objectVersionId], map: "Attachment_exact_version_key")
+  @@unique([storageProvider, storageEnvironment, objectKey], map: "Attachment_provider_environment_object_key")
+  @@index([tenantId, companyId, availabilityState, createdAt], map: "Attachment_scope_availability_created_idx")
+  @@index([tenantId, companyId, scanState, reconciliationNextAttemptAt], map: "Attachment_scope_scan_retry_idx")
+  @@index([tenantId, companyId, legalHold, legalHoldSetAt], map: "Attachment_scope_legal_hold_idx")
+  @@index([reconciliationLeaseExpiresAt, reconciliationNextAttemptAt], map: "Attachment_reconcile_lease_retry_idx")
+}
+
+model AttachmentUploadIntent {
+  id                      String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String                       @db.Uuid
+  companyId               String                       @db.Uuid
+  attachmentId            String                       @db.Uuid
+  storageEnvironment      AttachmentStorageEnvironment
+  storageProvider         String
+  objectKey               String
+  intentTokenHash         String                       @unique
+  idempotencyKey          String
+  requestHash             String
+  expectedMimeType        String
+  expectedSizeBytes       Int
+  expectedChecksum        String?
+  expectedObjectVersionId String
+  status                  AttachmentUploadIntentStatus @default(ISSUED)
+  expiresAt               DateTime
+  uploadStartedAt         DateTime?
+  uploadLeaseOwner        String?
+  uploadLeaseExpiresAt    DateTime?
+  consumedAt              DateTime?
+  invalidatedAt           DateTime?
+  invalidationReason      String?
+  completedVersionId      String?
+  createdByUserId         String                       @db.Uuid
+  createdAt               DateTime                     @default(now())
+  rowVersion              Int                          @default(1)
+  tenant                  Tenant                       @relation(fields: [tenantId], references: [id])
+  company                 Company                      @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "AttachmentUploadIntent_company_scope_fkey")
+  attachment              Attachment                   @relation(fields: [attachmentId, tenantId, companyId, storageEnvironment, storageProvider, objectKey], references: [id, tenantId, companyId, storageEnvironment, storageProvider, objectKey], onDelete: Restrict, map: "AttachmentUploadIntent_attachment_exact_key_fkey")
+  createdBy               User                         @relation("AttachmentUploadIntentCreator", fields: [createdByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "AttachmentUploadIntent_createdBy_scope_fkey")
+
+  @@unique([tenantId, companyId, idempotencyKey], map: "AttachmentUploadIntent_scope_idempotency_key")
+  @@index([tenantId, companyId, status, expiresAt], map: "AttachmentUploadIntent_scope_status_expiry_idx")
+  @@index([status, uploadLeaseExpiresAt], map: "AttachmentUploadIntent_status_uploadLease_idx")
+  @@index([attachmentId, status, createdAt], map: "AttachmentUploadIntent_attachment_status_created_idx")
+  @@index([tenantId, companyId, createdByUserId, createdAt], map: "AttachmentUploadIntent_scope_creator_created_idx")
+  @@index([tenantId, companyId, createdAt], map: "AttachmentUploadIntent_scope_created_idx")
+}
+
+model AttachmentScanAttempt {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String              @db.Uuid
+  companyId            String              @db.Uuid
+  attachmentId         String              @db.Uuid
+  objectVersionId      String
+  scanProvider         String
+  scannerEngineVersion String
+  signatureVersion     String
+  signaturePublishedAt DateTime?
+  startedAt            DateTime
+  completedAt          DateTime
+  result               AttachmentScanState
+  safeFailureCode      String?
+  plaintextChecksum    String
+  createdAt            DateTime            @default(now())
+  tenant               Tenant              @relation(fields: [tenantId], references: [id])
+  company              Company             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "AttachmentScanAttempt_company_scope_fkey")
+  attachment           Attachment          @relation(fields: [attachmentId, tenantId, companyId, objectVersionId], references: [id, tenantId, companyId, objectVersionId], onDelete: Restrict, map: "AttachmentScanAttempt_attachment_exact_version_fkey")
+
+  @@index([tenantId, companyId, attachmentId, completedAt], map: "AttachmentScanAttempt_scope_attachment_completed_idx")
+  @@index([result, completedAt], map: "AttachmentScanAttempt_result_completed_idx")
+}
+
+model AttachmentCompanyQuotaUsage {
+  id                 String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                       @db.Uuid
+  companyId          String                       @db.Uuid
+  storageEnvironment AttachmentStorageEnvironment
+  quotaLimitBytes    BigInt?
+  usedBytes          BigInt                       @default(0)
+  reservedBytes      BigInt                       @default(0)
+  rowVersion         Int                          @default(1)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  tenant             Tenant                       @relation(fields: [tenantId], references: [id])
+  company            Company                      @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "AttachmentCompanyQuotaUsage_company_scope_fkey")
+
+  @@unique([tenantId, companyId, storageEnvironment], map: "AttachmentCompanyQuotaUsage_scope_environment_key")
+  @@index([storageEnvironment, updatedAt], map: "AttachmentCompanyQuotaUsage_environment_updated_idx")
 }
 
 model ControlledEvidenceAttachment {
@@ -6867,7 +7077,7 @@ model ControlledEvidenceAttachment {
   updatedAt         DateTime     @updatedAt
   tenant            Tenant       @relation(fields: [tenantId], references: [id])
   company           Company      @relation(fields: [companyId], references: [id])
-  attachment        Attachment   @relation(fields: [attachmentId], references: [id])
+  attachment        Attachment   @relation(fields: [attachmentId, tenantId, companyId], references: [id, tenantId, companyId], map: "ControlledEvidenceAttachment_attachment_scope_fkey")
   createdBy         User         @relation("ControlledEvidenceAttachmentCreator", fields: [createdByUserId], references: [id])
   archivedBy        User?        @relation("ControlledEvidenceAttachmentArchiver", fields: [archivedByUserId], references: [id])
 

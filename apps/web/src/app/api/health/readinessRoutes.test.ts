@@ -12,7 +12,11 @@ describe("health and readiness routes", () => {
   beforeEach(() => {
     queryRawMock.mockReset();
     process.env.DATABASE_URL = "postgresql://test";
-    process.env.S3_ENDPOINT = "http://storage.local";
+    process.env.APP_ENV = "development";
+    process.env.EVIDENCE_STORAGE_PROVIDER = "local-private";
+    process.env.EVIDENCE_LOCAL_STORAGE_ROOT = ".local/test-evidence";
+    process.env.EVIDENCE_LOCAL_SCAN_MODE = "explicit-test-clean";
+    process.env.EVIDENCE_READINESS_LIVE_CHECK = "false";
     delete process.env.ERROR_MONITORING_DSN;
   });
 
@@ -30,7 +34,7 @@ describe("health and readiness routes", () => {
       checks: {
         app: "ok",
         databaseUrlConfigured: true,
-        storageEndpointConfigured: true,
+        evidenceProviderConfigured: true,
         errorMonitoringConfigured: false,
       },
     });
@@ -59,24 +63,29 @@ describe("health and readiness routes", () => {
       releaseScope: "phase-i-phase-1-5-no-queueing",
       checks: {
         database: "ok",
-        requiredConfig: "ok",
-        missingConfig: [],
+        evidenceConfiguration: "ok",
+        evidenceProviderClass: "local-development-storage",
+        evidenceProductionSafe: false,
+        objectStorage: "ok",
+        malwareScan: "ok",
+        liveProviderChecks: "not_checked",
       },
+      issueCodes: [],
     });
   });
 
   test("returns degraded readiness when required config is missing", async () => {
-    delete process.env.S3_ENDPOINT;
+    delete process.env.EVIDENCE_STORAGE_PROVIDER;
     queryRawMock.mockResolvedValueOnce([{ "?column?": 1 }]);
     const { GET } = await import("../readiness/route");
 
     const response = await GET();
     const body = await response.json();
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     expect(body.status).toBe("degraded");
-    expect(body.checks.requiredConfig).toBe("missing");
-    expect(body.checks.missingConfig).toContain("S3_ENDPOINT");
+    expect(body.checks.evidenceConfiguration).toBe("degraded");
+    expect(body.issueCodes).toContain("EVIDENCE_STORAGE_PROVIDER_INVALID");
   });
 
   test("returns user-safe readiness failure when database is unavailable", async () => {
@@ -87,14 +96,32 @@ describe("health and readiness routes", () => {
     const body = await response.json();
 
     expect(response.status).toBe(503);
-    expect(body).toEqual({
-      status: "error",
+    expect(body).toMatchObject({
+      status: "degraded",
       service: "web",
       checks: {
         database: "unavailable",
-        requiredConfig: "ok",
+        evidenceConfiguration: "ok",
       },
     });
+  });
+
+  test("fails closed in production without revealing storage identifiers", async () => {
+    process.env.APP_ENV = "production";
+    process.env.EVIDENCE_STORAGE_PROVIDER = "local-private";
+    queryRawMock.mockResolvedValueOnce([{ "?column?": 1 }]);
+    const { GET } = await import("../readiness/route");
+
+    const response = await GET();
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    expect(response.status).toBe(503);
+    expect(body.status).toBe("degraded");
+    expect(body.issueCodes).toContain(
+      "EVIDENCE_STORAGE_PROVIDER_HOSTED_INVALID",
+    );
+    expect(serialized).not.toContain(process.env.EVIDENCE_LOCAL_STORAGE_ROOT);
   });
 
   test("top-level readiness route reuses the API readiness handler and dynamic mode", async () => {

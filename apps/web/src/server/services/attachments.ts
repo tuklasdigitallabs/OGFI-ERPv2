@@ -1,6 +1,6 @@
 import { prisma } from "@ogfi/database";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -9,9 +9,17 @@ import {
   requirePermission,
 } from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
+import { readEvidenceStorageConfig } from "./evidenceStorageConfig";
 import { getControlledEvidenceStoragePolicy } from "./policySettings";
 import { findAuthorizedProject } from "./projects";
-import { assertWorkforceSourceScopeAccess } from "./workforce";
+import {
+  assertWorkforceEvidenceSourceBatchAccess,
+  assertWorkforceSourceScopeAccess,
+  workforceEvidenceSourceTypes,
+  workforceEvidenceViewPermissions,
+  type WorkforceEvidenceSourceBatchRequest,
+  type WorkforceEvidenceSourceType,
+} from "./workforce";
 
 export const phase3EvidenceUploadBlockerId = "P3-BLOCK-002";
 export const attachmentMaxSizeBytes = 25 * 1024 * 1024;
@@ -60,10 +68,7 @@ const allowedAttachmentMimeTypes = [
   "image/jpeg",
   "image/png",
   "image/webp",
-  "text/csv",
   "text/plain",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ] as const;
 
 export type EvidenceState = "COMPLETE" | "MISSING";
@@ -124,10 +129,14 @@ export type ControlledEvidenceAttachmentRow = {
   purpose: EvidenceAttachmentPurpose;
   caption: string | null;
   requiredForAction: string | null;
+  legalHold: boolean;
   originalFilename: string;
   mimeType: string;
   sizeBytes: number;
   storageProvider: string;
+  uploadState: string;
+  scanState: string;
+  availabilityState: string;
   status: string;
   createdByUserId: string;
   createdAt: string;
@@ -146,6 +155,20 @@ export type ListControlledEvidenceAttachmentInput = {
   sourceLineId?: string | null | undefined;
   requiredPermissionCode: string;
 };
+
+export type ListControlledEvidenceAttachmentPageInput =
+  ListControlledEvidenceAttachmentInput & {
+    page: number;
+    pageSize?: number | undefined;
+  };
+
+export type ListWorkforceControlledEvidenceAttachmentBatchInput =
+  WorkforceEvidenceSourceBatchRequest;
+
+export type WorkforceControlledEvidenceAttachmentBatch = Record<
+  WorkforceEvidenceSourceType,
+  Map<string, ControlledEvidenceAttachmentRow[]>
+>;
 
 export type ArchiveControlledEvidenceAttachmentInput = {
   controlledEvidenceAttachmentId: string;
@@ -172,7 +195,7 @@ export type DownloadControlledEvidenceAttachmentInput = {
 };
 
 export type ControlledEvidenceAttachmentDownload = {
-  buffer: Buffer;
+  body: AsyncIterable<Uint8Array>;
   originalFilename: string;
   mimeType: string;
   sizeBytes: number;
@@ -422,6 +445,10 @@ function controlledEvidenceAttachmentRow(link: {
     mimeType: string;
     sizeBytes: number;
     storageProvider: string;
+    uploadState?: string;
+    scanState?: string;
+    availabilityState?: string;
+    legalHold?: boolean;
   };
 }): ControlledEvidenceAttachmentRow {
   return {
@@ -434,10 +461,14 @@ function controlledEvidenceAttachmentRow(link: {
     purpose: link.purpose as EvidenceAttachmentPurpose,
     caption: link.caption,
     requiredForAction: link.requiredForAction,
+    legalHold: link.attachment.legalHold ?? false,
     originalFilename: link.attachment.originalFilename,
     mimeType: link.attachment.mimeType,
     sizeBytes: link.attachment.sizeBytes,
     storageProvider: link.attachment.storageProvider,
+    uploadState: link.attachment.uploadState ?? "LEGACY_UNVERIFIED",
+    scanState: link.attachment.scanState ?? "LEGACY_UNVERIFIED",
+    availabilityState: link.attachment.availabilityState ?? "QUARANTINED",
     status: link.status,
     createdByUserId: link.createdByUserId,
     createdAt: link.createdAt.toISOString(),
@@ -452,7 +483,10 @@ function getPrivateAttachmentRoot() {
 }
 
 function sanitizeEvidenceFilename(filename: string) {
-  const base = path.basename(filename).replace(/[^a-zA-Z0-9._ -]/g, "_").trim();
+  const base = path
+    .basename(filename)
+    .replace(/[^a-zA-Z0-9._ -]/g, "_")
+    .trim();
   return base || "evidence-file";
 }
 
@@ -511,14 +545,9 @@ function requiredViewPermissionsForSourceType(
     case "WORKFORCE_ASSIGNMENT":
     case "WORKFORCE_LEAVE":
     case "WORKFORCE_OVERTIME":
-      return [permissions.workforceManage, permissions.coreAdminister];
     case "WORKFORCE_SCHEDULE":
-      return [permissions.workforceScheduleView, permissions.workforceView];
     case "WORKFORCE_ATTENDANCE_IMPORT":
-      return [
-        permissions.workforceAttendanceImportManage,
-        permissions.coreAdminister,
-      ];
+      return workforceEvidenceViewPermissions(sourceType);
     case "PROJECT_REQUIREMENT":
       return [permissions.projectView];
     default:
@@ -755,7 +784,11 @@ async function evidenceSourceDimensionsMatchActiveCompany(
   if (source.locationId && !location) return false;
   if (source.brandId && !brand) return false;
   if (source.departmentId && !department) return false;
-  if (source.brandId && source.locationId && location?.brandId !== source.brandId) {
+  if (
+    source.brandId &&
+    source.locationId &&
+    location?.brandId !== source.brandId
+  ) {
     return false;
   }
   return true;
@@ -851,14 +884,17 @@ async function logControlledEvidenceAttachmentDenied(input: {
   });
 }
 
-async function authorizeControlledEvidenceSourceAction(input: {
+export async function authorizeControlledEvidenceSourceAction(input: {
   session: SessionContext;
   sourceType: EvidenceAttachmentSourceType;
   sourceRecordId: string;
-  attemptedAction: "LINK" | "ARCHIVE" | "LIST";
+  attemptedAction: "LINK" | "ARCHIVE" | "LIST" | "DOWNLOAD";
 }) {
   try {
-    if (input.attemptedAction === "LIST") {
+    if (
+      input.attemptedAction === "LIST" ||
+      input.attemptedAction === "DOWNLOAD"
+    ) {
       await requireAnyPermission(
         input.session,
         requiredViewPermissionsForSourceType(input.sourceType),
@@ -877,7 +913,9 @@ async function authorizeControlledEvidenceSourceAction(input: {
       sourceType: input.sourceType,
       sourceRecordId: input.sourceRecordId,
       reasonCode:
-        error instanceof Error ? error.message : "CONTROLLED_EVIDENCE_ACCESS_DENIED",
+        error instanceof Error
+          ? error.message
+          : "CONTROLLED_EVIDENCE_ACCESS_DENIED",
       attemptedAction: input.attemptedAction,
     });
     throw error;
@@ -915,17 +953,250 @@ export async function listControlledEvidenceAttachments(
     include: {
       attachment: {
         select: {
-        originalFilename: true,
-        mimeType: true,
-        sizeBytes: true,
-        storageProvider: true,
+          originalFilename: true,
+          mimeType: true,
+          sizeBytes: true,
+          storageProvider: true,
+          legalHold: true,
+          uploadState: true,
+          scanState: true,
+          availabilityState: true,
+        },
       },
     },
-    },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 11,
   });
 
   return rows.map(controlledEvidenceAttachmentRow);
+}
+
+export async function canArchiveControlledEvidenceSource(
+  session: SessionContext,
+  sourceType: EvidenceAttachmentSourceType,
+  sourceRecordId: string
+) {
+  try {
+    await requireCanonicalEvidenceWritePermission({
+      session,
+      sourceType,
+      sourceRecordId
+    });
+    await assertControlledEvidenceSourceAccess(
+      session,
+      sourceType,
+      sourceRecordId
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function listWorkforceControlledEvidenceAttachmentsBatch(
+  input: ListWorkforceControlledEvidenceAttachmentBatchInput,
+): Promise<WorkforceControlledEvidenceAttachmentBatch> {
+  const session = await requireSessionContext();
+  const normalized = {} as Record<WorkforceEvidenceSourceType, string[]>;
+  const requestedSources: Array<{
+    sourceType: WorkforceEvidenceSourceType;
+    sourceRecordId: string;
+  }> = [];
+
+  for (const sourceType of workforceEvidenceSourceTypes) {
+    const sourceRecordIds = [...new Set(input[sourceType] ?? [])];
+    if (sourceRecordIds.length > 50) {
+      throw new Error("CONTROLLED_EVIDENCE_BATCH_SOURCE_LIMIT_EXCEEDED");
+    }
+    for (const sourceRecordId of sourceRecordIds) {
+      if (!z.string().uuid().safeParse(sourceRecordId).success) {
+        throw new Error("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+      }
+      requestedSources.push({ sourceType, sourceRecordId });
+    }
+    normalized[sourceType] = sourceRecordIds;
+  }
+  if (requestedSources.length > 200) {
+    throw new Error("CONTROLLED_EVIDENCE_BATCH_LIMIT_EXCEEDED");
+  }
+
+  try {
+    await assertWorkforceEvidenceSourceBatchAccess(session, normalized);
+  } catch (error) {
+    const attemptedSource = requestedSources[0];
+    await logControlledEvidenceAttachmentDenied({
+      session,
+      ...(attemptedSource
+        ? {
+            sourceType: attemptedSource.sourceType,
+            sourceRecordId: attemptedSource.sourceRecordId
+          }
+        : {}),
+      reasonCode:
+        error instanceof Error
+          ? error.message
+          : "CONTROLLED_EVIDENCE_ACCESS_DENIED",
+      attemptedAction: "LIST",
+    });
+    throw error;
+  }
+  const companyId = assertCompanySession(session);
+  const emptyRowsById = (sourceType: WorkforceEvidenceSourceType) =>
+    new Map<string, ControlledEvidenceAttachmentRow[]>(
+      normalized[sourceType].map((sourceRecordId) => [sourceRecordId, []]),
+    );
+  const result: WorkforceControlledEvidenceAttachmentBatch = {
+    WORKFORCE_EMPLOYEE: emptyRowsById("WORKFORCE_EMPLOYEE"),
+    WORKFORCE_ASSIGNMENT: emptyRowsById("WORKFORCE_ASSIGNMENT"),
+    WORKFORCE_LEAVE: emptyRowsById("WORKFORCE_LEAVE"),
+    WORKFORCE_OVERTIME: emptyRowsById("WORKFORCE_OVERTIME"),
+    WORKFORCE_SCHEDULE: emptyRowsById("WORKFORCE_SCHEDULE"),
+    WORKFORCE_ATTENDANCE_IMPORT: emptyRowsById(
+      "WORKFORCE_ATTENDANCE_IMPORT",
+    ),
+  };
+
+  if (requestedSources.length === 0) return result;
+
+  type BatchEvidenceRow = Parameters<typeof controlledEvidenceAttachmentRow>[0];
+  const rows = await prisma.$queryRawUnsafe<BatchEvidenceRow[]>(
+    `SELECT
+       link."id",
+       link."sourceType",
+       link."sourceRecordId",
+       link."sourceLineId",
+       link."sourceKey",
+       link."attachmentId",
+       link."purpose",
+       link."caption",
+       link."requiredForAction",
+       link."status",
+       link."createdByUserId",
+       link."createdAt",
+       attachment."originalFilename",
+       attachment."mimeType",
+       attachment."sizeBytes",
+       attachment."storageProvider",
+       attachment."legalHold",
+       attachment."uploadState",
+       attachment."scanState",
+       attachment."availabilityState"
+     FROM jsonb_to_recordset($1::jsonb)
+       AS requested("sourceType" text, "sourceRecordId" uuid)
+     CROSS JOIN LATERAL (
+       SELECT evidence.*
+       FROM "ControlledEvidenceAttachment" evidence
+       WHERE evidence."tenantId" = $2::uuid
+         AND evidence."companyId" = $3::uuid
+         AND evidence."sourceType" = requested."sourceType"
+         AND evidence."sourceRecordId" = requested."sourceRecordId"
+         AND evidence."status" = 'ACTIVE'
+         AND evidence."archivedAt" IS NULL
+       ORDER BY evidence."createdAt" DESC, evidence."id" DESC
+       LIMIT 11
+     ) link
+     JOIN "Attachment" attachment
+       ON attachment."id" = link."attachmentId"
+      AND attachment."tenantId" = $2::uuid
+      AND attachment."companyId" = $3::uuid
+     ORDER BY requested."sourceType" ASC,
+              requested."sourceRecordId" ASC,
+              link."createdAt" DESC,
+              link."id" DESC`,
+    JSON.stringify(requestedSources),
+    session.context.tenantId,
+    companyId,
+  );
+
+  for (const rawRow of rows) {
+    const row = controlledEvidenceAttachmentRow({
+      ...rawRow,
+      attachment: {
+        originalFilename: (rawRow as unknown as { originalFilename: string })
+          .originalFilename,
+        mimeType: (rawRow as unknown as { mimeType: string }).mimeType,
+        sizeBytes: (rawRow as unknown as { sizeBytes: number }).sizeBytes,
+        storageProvider: (rawRow as unknown as { storageProvider: string })
+          .storageProvider,
+        legalHold: (rawRow as unknown as { legalHold: boolean }).legalHold,
+        uploadState: (rawRow as unknown as { uploadState: string }).uploadState,
+        scanState: (rawRow as unknown as { scanState: string }).scanState,
+        availabilityState: (rawRow as unknown as { availabilityState: string })
+          .availabilityState,
+      },
+    });
+    result[row.sourceType as WorkforceEvidenceSourceType]
+      .get(row.sourceRecordId)
+      ?.push(row);
+  }
+
+  return result;
+}
+
+export async function listControlledEvidenceAttachmentPage(
+  input: ListControlledEvidenceAttachmentPageInput,
+) {
+  const session = await requireSessionContext();
+  await authorizeControlledEvidenceSourceAction({
+    session,
+    sourceType: input.sourceType,
+    sourceRecordId: input.sourceRecordId,
+    attemptedAction: "LIST",
+  });
+  const companyId = assertCompanySession(session);
+  const page = Number.isInteger(input.page) && input.page > 0 ? input.page : 1;
+  const pageSize = Math.min(
+    25,
+    Math.max(
+      1,
+      Number.isInteger(input.pageSize) ? (input.pageSize as number) : 10,
+    ),
+  );
+  const sourceKey = input.sourceLineId
+    ? buildEvidenceSourceKey({
+        sourceRecordId: input.sourceRecordId,
+        sourceLineId: input.sourceLineId,
+      })
+    : null;
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId,
+    sourceType: input.sourceType,
+    sourceRecordId: input.sourceRecordId,
+    ...(sourceKey ? { sourceKey } : {}),
+    status: "ACTIVE" as const,
+    archivedAt: null,
+  };
+  const [totalCount, rows] = await prisma.$transaction([
+    prisma.controlledEvidenceAttachment.count({ where }),
+    prisma.controlledEvidenceAttachment.findMany({
+      where,
+      include: {
+        attachment: {
+          select: {
+            originalFilename: true,
+            mimeType: true,
+            sizeBytes: true,
+            storageProvider: true,
+            legalHold: true,
+            uploadState: true,
+            scanState: true,
+            availabilityState: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+  return {
+    rows: rows.map(controlledEvidenceAttachmentRow),
+    page,
+    pageSize,
+    totalCount,
+    totalPages: Math.ceil(totalCount / pageSize),
+  };
 }
 
 export async function linkControlledEvidenceAttachment(
@@ -1106,6 +1377,9 @@ export async function createControlledEvidenceAttachmentMetadataLink(
   input: CreateControlledEvidenceAttachmentMetadataLinkInput,
 ) {
   const session = await requireSessionContext();
+  if (readEvidenceStorageConfig().production) {
+    throw new Error("CONTROLLED_EVIDENCE_LEGACY_METADATA_DISABLED");
+  }
   await authorizeControlledEvidenceSourceAction({
     session,
     sourceType: input.sourceType,
@@ -1157,6 +1431,7 @@ export async function createControlledEvidenceAttachmentMetadataLink(
       data: {
         id: attachmentId,
         tenantId: session.context.tenantId,
+        companyId,
         storageProvider: attachmentValues.storageProvider,
         objectKey: attachmentValues.objectKey,
         originalFilename: attachmentValues.originalFilename,
@@ -1233,6 +1508,9 @@ export async function createControlledEvidenceAttachmentUploadLink(
   input: CreateControlledEvidenceAttachmentUploadLinkInput,
 ) {
   const session = await requireSessionContext();
+  if (readEvidenceStorageConfig().production) {
+    throw new Error("CONTROLLED_EVIDENCE_LEGACY_UPLOAD_DISABLED");
+  }
   await authorizeControlledEvidenceSourceAction({
     session,
     sourceType: input.sourceType,
@@ -1240,7 +1518,8 @@ export async function createControlledEvidenceAttachmentUploadLink(
     attemptedAction: "LINK",
   });
   const companyId = assertCompanySession(session);
-  const evidenceStoragePolicy = await getControlledEvidenceStoragePolicy(session);
+  const evidenceStoragePolicy =
+    await getControlledEvidenceStoragePolicy(session);
   const policyMaxSizeBytes =
     evidenceStoragePolicy.policy.uploadLimitMb * 1024 * 1024;
   if (input.file.size > policyMaxSizeBytes) {
@@ -1335,6 +1614,7 @@ export async function createControlledEvidenceAttachmentUploadLink(
         data: {
           id: attachmentId,
           tenantId: session.context.tenantId,
+          companyId,
           storageProvider: attachmentValues.storageProvider,
           objectKey: attachmentValues.objectKey,
           originalFilename: attachmentValues.originalFilename,
@@ -1401,10 +1681,8 @@ export async function createControlledEvidenceAttachmentUploadLink(
             storagePolicySourceDecisionId:
               evidenceStoragePolicy.sourceDecisionId,
             storagePolicyOverridden: evidenceStoragePolicy.isOverridden,
-            configuredUploadLimitMb:
-              evidenceStoragePolicy.policy.uploadLimitMb,
-            allowedMimePolicy:
-              evidenceStoragePolicy.policy.allowedMimePolicy,
+            configuredUploadLimitMb: evidenceStoragePolicy.policy.uploadLimitMb,
+            allowedMimePolicy: evidenceStoragePolicy.policy.allowedMimePolicy,
             downloadAuditRequired:
               evidenceStoragePolicy.policy.downloadAuditRequired,
             malwareScanMode: evidenceStoragePolicy.policy.malwareScanMode,
@@ -1440,7 +1718,8 @@ function controlledEvidenceDownloadDenialReason(error: unknown) {
     return "CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE";
   }
   if (error.message.includes("CHECKSUM")) return "ATTACHMENT_INTEGRITY_DENIED";
-  if (error.message.includes("SIZE_MISMATCH")) return "ATTACHMENT_INTEGRITY_DENIED";
+  if (error.message.includes("SIZE_MISMATCH"))
+    return "ATTACHMENT_INTEGRITY_DENIED";
   return "CONTROLLED_EVIDENCE_DOWNLOAD_DENIED";
 }
 
@@ -1448,105 +1727,21 @@ export async function downloadControlledEvidenceAttachmentForSession(
   session: SessionContext,
   input: DownloadControlledEvidenceAttachmentInput,
 ): Promise<ControlledEvidenceAttachmentDownload> {
-  const companyId = assertCompanySession(session);
-  const link = await prisma.controlledEvidenceAttachment.findFirst({
-    where: {
-      id: input.controlledEvidenceAttachmentId,
-      tenantId: session.context.tenantId,
-      companyId,
-      status: "ACTIVE",
-      archivedAt: null,
-    },
-    include: {
-      attachment: {
-        select: {
-          id: true,
-          storageProvider: true,
-          objectKey: true,
-          originalFilename: true,
-          mimeType: true,
-          sizeBytes: true,
-          checksum: true,
-          status: true,
-        },
-      },
-    },
-  });
-
-  if (!link || link.attachment.status !== "ACTIVE") {
-    await logControlledEvidenceAttachmentDenied({
-      session,
-      reasonCode: "CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND",
-      attemptedAction: "DOWNLOAD",
-    });
-    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND");
-  }
-
-  const sourceType = link.sourceType as EvidenceAttachmentSourceType;
-  let buffer: Buffer;
   try {
-    await requireAnyPermission(
+    const { readAvailableEvidenceAttachmentForSession } =
+      await import("./evidenceScanLifecycle");
+    return await readAvailableEvidenceAttachmentForSession(
       session,
-      requiredViewPermissionsForSourceType(sourceType),
+      input.controlledEvidenceAttachmentId,
     );
-    await assertControlledEvidenceSourceAccess(
-      session,
-      sourceType,
-      link.sourceRecordId,
-    );
-
-    if (link.attachment.storageProvider !== privateAttachmentStorageProvider) {
-      throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_BINARY_NOT_AVAILABLE");
-    }
-
-    const filePath = resolvePrivateAttachmentPath(link.attachment.objectKey);
-    buffer = await readFile(filePath);
-    if (buffer.byteLength !== link.attachment.sizeBytes) {
-      throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_SIZE_MISMATCH");
-    }
-
-    const checksum = `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
-    if (link.attachment.checksum && link.attachment.checksum !== checksum) {
-      throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_CHECKSUM_MISMATCH");
-    }
   } catch (error) {
     await logControlledEvidenceAttachmentDenied({
       session,
-      sourceType: link.sourceType,
-      sourceRecordId: link.sourceRecordId,
-      attachmentId: link.attachmentId,
       reasonCode: controlledEvidenceDownloadDenialReason(error),
       attemptedAction: "DOWNLOAD",
     });
-    throw error;
+    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
   }
-
-  await prisma.auditEvent.create({
-    data: {
-      tenantId: link.tenantId,
-      companyId: link.companyId,
-      actorUserId: session.user.id,
-      eventType: "controlled_evidence_attachment.downloaded",
-      entityType: "ControlledEvidenceAttachment",
-      entityId: link.id,
-      metadata: {
-        source: "phase3-controlled-evidence",
-        sourceType: link.sourceType,
-        sourceRecordId: link.sourceRecordId,
-        sourceLineId: link.sourceLineId,
-        attachmentId: link.attachmentId,
-        storageProvider: link.attachment.storageProvider,
-        checksumVerified: Boolean(link.attachment.checksum),
-      },
-    },
-  });
-
-  return {
-    buffer,
-    originalFilename: link.attachment.originalFilename,
-    mimeType: link.attachment.mimeType,
-    sizeBytes: link.attachment.sizeBytes,
-  };
 }
 
 export async function archiveControlledEvidenceAttachment(
@@ -1570,6 +1765,7 @@ export async function archiveControlledEvidenceAttachment(
           mimeType: true,
           sizeBytes: true,
           storageProvider: true,
+          legalHold: true,
         },
       },
     },
@@ -1579,6 +1775,19 @@ export async function archiveControlledEvidenceAttachment(
     await logControlledEvidenceAttachmentDenied({
       session,
       reasonCode: "CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND",
+      attemptedAction: "ARCHIVE",
+    });
+    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
+  }
+  if (link.attachment.legalHold || link.requiredForAction) {
+    await logControlledEvidenceAttachmentDenied({
+      session,
+      sourceType: link.sourceType,
+      sourceRecordId: link.sourceRecordId,
+      attachmentId: link.attachmentId,
+      reasonCode: link.attachment.legalHold
+        ? "CONTROLLED_EVIDENCE_LEGAL_HOLD_ARCHIVE_DENIED"
+        : "CONTROLLED_EVIDENCE_REQUIRED_LINK_ARCHIVE_DENIED",
       attemptedAction: "ARCHIVE",
     });
     throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
@@ -1595,6 +1804,25 @@ export async function archiveControlledEvidenceAttachment(
   }
 
   const archived = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "Attachment"
+      WHERE "id" = ${link.attachmentId}::uuid
+        AND "tenantId" = ${link.tenantId}::uuid
+        AND "companyId" = ${link.companyId}::uuid
+      FOR UPDATE
+    `;
+    const preservationState = await tx.attachment.findFirst({
+      where: {
+        id: link.attachmentId,
+        tenantId: link.tenantId,
+        companyId: link.companyId,
+      },
+      select: { legalHold: true },
+    });
+    if (!preservationState || preservationState.legalHold) {
+      throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
+    }
     const saved = await tx.controlledEvidenceAttachment.update({
       where: { id: link.id },
       data: {
@@ -1614,6 +1842,52 @@ export async function archiveControlledEvidenceAttachment(
         },
       },
     });
+
+    if (link.sourceType === "PROJECT_REQUIREMENT") {
+      const projectLink = await tx.projectAttachment.findFirst({
+        where: {
+          tenantId: link.tenantId,
+          companyId: link.companyId,
+          requirementId: link.sourceRecordId,
+          attachmentId: link.attachmentId,
+          status: "ACTIVE",
+          archivedAt: null,
+        },
+        select: { id: true, projectId: true },
+      });
+      if (projectLink) {
+        await tx.projectAttachment.update({
+          where: { id: projectLink.id },
+          data: {
+            status: "ARCHIVED",
+            archivedAt: new Date(),
+            archivedByUserId: session.user.id,
+            archiveReason: values.archiveReason,
+          },
+        });
+        await tx.projectActivityEvent.create({
+          data: {
+            tenantId: link.tenantId,
+            companyId: link.companyId,
+            projectId: projectLink.projectId,
+            actorUserId: session.user.id,
+            eventType: "project_attachment.archived",
+            entityType: "ProjectAttachment",
+            entityId: projectLink.id,
+            reason: values.archiveReason,
+            afterData: {
+              requirementId: link.sourceRecordId,
+              controlledEvidenceAttachmentId: link.id,
+              status: "ARCHIVED",
+            },
+            metadata: {
+              source: "controlled-evidence-archive",
+              noBinaryDelete: true,
+            },
+          },
+        });
+      }
+    }
 
     await tx.auditEvent.create({
       data: {

@@ -6,6 +6,7 @@ Use `docs/templates/TRAINING_MODULE_TEMPLATE.md`. Do not use training materials 
 
 ## Current modules
 
+- `docs/training/controlled-evidence-and-retention-training.md` — controlled upload, safety-check states, source authorization, archive/preservation behavior, confidential register review, privileged-MFA legal holds, and support recovery
 - `docs/training/phase-4-expansion-projects-quick-start.md` — branch expansion portfolio, lifecycle gates, permits/documents, construction, opening readiness, punch-list closure, report rollups, and source-record boundary walkthrough
 - `docs/training/phase-3-finance-workforce-controlled-foundation-quick-start.md` — finance and workforce controlled-foundation UAT walkthrough, approval checks, evidence recording, and deferred blocker review
 - `docs/training/phase-i-branch-manager-quick-start.md`

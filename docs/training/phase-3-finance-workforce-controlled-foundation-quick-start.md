@@ -50,7 +50,7 @@ Each participant should complete the exercises that match their role:
 | Approval is missing from inbox | Confirm the record was submitted, the approver is not the requester, and the approver has matching role and location scope. |
 | A finance row shows an issue label | Open the source detail or report preview and resolve the evidence, match, variance, or close-readiness item in the proper workflow. |
 | A workforce row shows a coverage or attendance issue | Review the schedule line, attendance import batch, exception list, or duplicate row before recording UAT pass evidence. |
-| Evidence cannot be uploaded as a binary file | Use the configured evidence reference or metadata-link behavior. Binary upload/download is deferred until the attachment-service blocker is resolved or waived. |
+| Evidence remains unavailable after upload | Read the visible safety state. Refresh later while checks are in progress; retry an expired or failed upload; upload a different file after rejection; contact support if the state does not resolve. Production activation remains gated. |
 | Payment release does not reduce AP or bank balances | This is expected in the controlled foundation. Settlement, bank API, supplier-ledger reduction, and official journal posting are deferred. |
 | Cash advance cannot create a supplier-style payment request | This is expected until the employee/custodian payee handoff decision is approved. |
 | Budget warning does not hard-block the source record | This is expected unless a specific hard-block rollout has been approved and proven by UAT. |

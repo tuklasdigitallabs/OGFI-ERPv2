@@ -3,7 +3,7 @@
 **Audience:** System administrators and authorized implementation leads  
 **Duration:** 60-90 minutes  
 **Prerequisites:** Core administration permission, user/role/scope setup access, approval-rule visibility, release-readiness access, master-data access, reports, and audit export access as assigned  
-**Related knowledge-base articles:** Signing in and selecting your location; Managing user access and controlled scopes; Managing privileged MFA evidence; Session invalidation and reauthentication; Managing break-glass access; Managing Release Readiness Gates; Why can't I see my branch, warehouse, or request?; Why can't I approve this request?; How to attach supporting documents or photo evidence; How to export a report
+**Related knowledge-base articles:** Signing in and selecting your location; Managing user access and controlled scopes; Managing privileged MFA evidence; Managing Evidence Retention And Placing A Legal Hold; Session invalidation and reauthentication; Managing break-glass access; Managing Release Readiness Gates; Why can't I see my branch, warehouse, or request?; Why can't I approve this request?; Uploading supporting documents or photo evidence; How to export a report
 
 ## Learning objectives
 
@@ -14,6 +14,7 @@ By the end of this module, participants can:
 - Check approval assignment and self-approval blockers.
 - Review audit events and export permitted audit data.
 - Support evidence-reference practices without bypassing source-record controls.
+- Distinguish confidential evidence-register view access from privileged legal-hold placement.
 - Review release-readiness gates, security counters, and external-security proof references without treating the ERP page as release approval.
 
 ## Demonstration flow
@@ -39,6 +40,8 @@ By the end of this module, participants can:
     - `external-security/vault-or-artifact-storage-index.*`
     - `external-security/break-glass-review-and-revocation-proof.*`
 17. Export permitted audit events and the readiness register as CSV. Confirm the CSV metadata includes report ID, selected scope, trust-gate mode, and `DEC-0036`.
+18. Open **Admin > Evidence Retention**, confirm the company-scoped metadata-only boundary, and compare view-only access with the separately authorized `Place Legal Hold` action.
+19. Explain the current privileged-MFA requirement and the preservation-only boundary: no hold release or physical purge is available.
 
 ## Practice exercise
 
@@ -54,6 +57,7 @@ Then review a release-readiness security tab with one unresolved item. Decide wh
 - Sharing exports broadly: exports inherit source-record sensitivity.
 - Marking a security gate ready because the ERP counter looks acceptable but the external MFA, identity-provider, vault, or break-glass proof reference has not been collected.
 - Treating GO / NO-GO reports as approval: they are evidence summaries and still need named Release Board decision records.
+- Treating evidence-register access as file access or hold authority: the register is metadata-only, and hold placement needs a separate permission plus current privileged MFA assurance.
 - Reading a CSV without checking the metadata rows: always confirm the report ID, selected scope, trust-gate mode, and source decision before using the data.
 
 ## Completion check

@@ -21,6 +21,18 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     group: "Administration",
     sensitive: true
   },
+  [permissions.evidenceLegalHoldSet]: {
+    label: "Place evidence legal holds",
+    description: "Place preservation-only legal holds on company-scoped evidence. Hold release and physical purge are not granted.",
+    group: "Evidence Governance",
+    sensitive: true
+  },
+  [permissions.evidenceRetentionView]: {
+    label: "View evidence retention register",
+    description: "View confidential company-wide evidence retention and legal-hold metadata without accessing file bytes.",
+    group: "Evidence Governance",
+    sensitive: true
+  },
   [permissions.purchaseRequestCreate]: {
     label: "Create purchase requests",
     description: "Create draft requests for needed goods or services.",

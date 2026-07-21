@@ -11,6 +11,7 @@ import {
 import { Badge, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { ControlledEvidencePanel } from "@/components/evidence/ControlledEvidencePanel";
 import {
   FinancePagination,
   getPaginationState
@@ -22,10 +23,7 @@ import {
 } from "@/server/services/authorization";
 import {
   archiveControlledEvidenceAttachment,
-  createControlledEvidenceAttachmentMetadataLink,
-  createControlledEvidenceAttachmentUploadLink,
-  listControlledEvidenceAttachments,
-  type ControlledEvidenceAttachmentRow
+  listControlledEvidenceAttachments
 } from "@/server/services/attachments";
 import { getSessionContext } from "@/server/services/context";
 import {
@@ -138,210 +136,6 @@ const pettyCashLiquidationActionLabels = {
   reverse: "Reverse",
   close: "Close"
 } as const;
-
-function EvidenceMetadataPanel({
-  action,
-  archiveAction,
-  attachments,
-  canAdd,
-  objectKeyPlaceholder,
-  recordId,
-  sourceType,
-  triggerLabel
-}: {
-  action: (formData: FormData) => Promise<void>;
-  archiveAction?: (formData: FormData) => Promise<void>;
-  attachments: ControlledEvidenceAttachmentRow[];
-  canAdd: boolean;
-  objectKeyPlaceholder: string;
-  recordId: string;
-  sourceType: "PETTY_CASH_FUND" | "PETTY_CASH_REQUEST" | "PETTY_CASH_LIQUIDATION";
-  triggerLabel: string;
-}) {
-  return (
-    <div className="mt-3 space-y-3">
-      {attachments.length > 0 ? (
-        <div className="grid gap-2">
-          {attachments.slice(0, 3).map((attachment) => (
-            <div
-              key={attachment.id}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-            >
-              <p className="text-xs font-bold text-slate-950">
-                {attachment.originalFilename}
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {attachment.mimeType} /{" "}
-                {(attachment.sizeBytes / 1024).toLocaleString("en-PH", {
-                  maximumFractionDigits: 1
-                })}{" "}
-                KB
-              </p>
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                {attachment.caption ? (
-                  <p className="text-[11px] text-slate-600">
-                    {attachment.caption}
-                  </p>
-                ) : (
-                  <span />
-                )}
-                <div className="flex flex-wrap items-center gap-2">
-                  {attachment.storageProvider === "local-private" ? (
-                    <a
-                      className="inline-flex min-h-8 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-bold text-blue-700 hover:bg-blue-50"
-                      href={`/evidence/${attachment.id}/download`}
-                    >
-                      Download
-                    </a>
-                  ) : null}
-                  {archiveAction && canAdd ? (
-                    <EntryModal
-                      title="Archive Evidence Link"
-                      triggerLabel="Archive"
-                      triggerClassName="border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    >
-                      <form action={archiveAction} className="grid gap-4">
-                        <input
-                          name="controlledEvidenceAttachmentId"
-                          type="hidden"
-                          value={attachment.id}
-                        />
-                        <input name="sourceType" type="hidden" value={sourceType} />
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                          This archives the evidence link only. The private file
-                          metadata remains preserved for audit and recovery; no
-                          petty-cash fund, request, liquidation, or custody
-                          movement is changed.
-                        </div>
-                        <label className="grid gap-1 text-sm font-medium text-slate-700">
-                          Archive reason
-                          <textarea
-                            className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                            name="archiveReason"
-                            placeholder="Duplicate link, wrong fund/request, superseded receipt, etc."
-                            required
-                          />
-                        </label>
-                        <button className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                          Archive Evidence Link
-                        </button>
-                      </form>
-                    </EntryModal>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          ))}
-          {attachments.length > 3 ? (
-            <p className="text-xs font-semibold text-slate-500">
-              +{attachments.length - 3} more evidence link
-              {attachments.length - 3 === 1 ? "" : "s"}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {canAdd ? (
-        <EntryModal
-          title="Add Evidence"
-          triggerLabel={triggerLabel}
-          triggerClassName="border border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-        >
-          <form action={action} encType="multipart/form-data" className="grid gap-4">
-            <input name="sourceRecordId" type="hidden" value={recordId} />
-            <input name="sourceType" type="hidden" value={sourceType} />
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-              Upload petty-cash evidence. Files stay private, source records are
-              not mutated, and downloads are audited.
-            </div>
-            <label className="grid gap-1 text-sm font-medium text-slate-700">
-              Evidence file
-              <input
-                accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.xlsx,.docx,application/pdf,image/jpeg,image/png,image/webp,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
-                name="evidenceFile"
-                type="file"
-              />
-            </label>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Required for action
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="requiredForAction"
-                  placeholder="Fulfillment, liquidation, closure"
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Caption
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="caption"
-                  placeholder="What this evidence proves"
-                />
-              </label>
-            </div>
-            <details className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              <summary className="cursor-pointer font-bold text-slate-900">
-                Link metadata-only evidence instead
-              </summary>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="originalFilename"
-                  placeholder="petty-cash-proof.pdf"
-                />
-                <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="mimeType"
-                >
-                  <option value="">Select MIME type</option>
-                  <option value="application/pdf">PDF</option>
-                  <option value="image/jpeg">JPEG image</option>
-                  <option value="image/png">PNG image</option>
-                  <option value="image/webp">WebP image</option>
-                  <option value="text/csv">CSV</option>
-                  <option value="text/plain">Text</option>
-                  <option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                    Excel workbook
-                  </option>
-                  <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                    Word document
-                  </option>
-                </select>
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  min="1"
-                  name="sizeBytes"
-                  placeholder="Size in bytes"
-                  step="1"
-                  type="number"
-                />
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="storageProvider"
-                  placeholder="manual-private-reference"
-                />
-              </div>
-              <input
-                className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                name="objectKey"
-                placeholder={objectKeyPlaceholder}
-              />
-              <input
-                className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                name="checksum"
-                placeholder="Optional checksum"
-              />
-            </details>
-            <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Upload Evidence
-            </button>
-          </form>
-        </EntryModal>
-      ) : null}
-    </div>
-  );
-}
 
 function optionalNumber(formData: FormData, key: string) {
   const raw = String(formData.get(key) ?? "").trim();
@@ -706,66 +500,6 @@ async function runPettyCashLiquidationAction(formData: FormData) {
   revalidatePath("/finance/petty-cash");
 }
 
-async function addPettyCashEvidenceMetadata(formData: FormData) {
-  "use server";
-
-  const sourceType = String(formData.get("sourceType") ?? "").trim();
-  if (
-    sourceType !== "PETTY_CASH_FUND" &&
-    sourceType !== "PETTY_CASH_REQUEST" &&
-    sourceType !== "PETTY_CASH_LIQUIDATION"
-  ) {
-    throw new Error("PETTY_CASH_EVIDENCE_SOURCE_INVALID");
-  }
-
-  const requiredPermissionCode =
-    sourceType === "PETTY_CASH_LIQUIDATION"
-      ? permissions.financePettyCashLiquidate
-      : permissions.financePettyCashCreate;
-  const evidenceFile = formData.get("evidenceFile");
-  if (evidenceFile instanceof File && evidenceFile.size > 0) {
-    await createControlledEvidenceAttachmentUploadLink({
-      sourceType,
-      sourceRecordId: String(formData.get("sourceRecordId") ?? ""),
-      purpose: "EVIDENCE",
-      caption: String(formData.get("caption") ?? "").trim() || null,
-      requiredForAction:
-        String(formData.get("requiredForAction") ?? "").trim() || null,
-      requiredPermissionCode,
-      file: evidenceFile
-    });
-
-    revalidatePath("/finance/petty-cash");
-    return;
-  }
-
-  await createControlledEvidenceAttachmentMetadataLink({
-    sourceType,
-    sourceRecordId: String(formData.get("sourceRecordId") ?? ""),
-    purpose: "EVIDENCE",
-    caption: String(formData.get("caption") ?? "").trim() || null,
-    requiredForAction:
-      String(formData.get("requiredForAction") ?? "").trim() || null,
-    requiredPermissionCode,
-    attachment: {
-      originalFilename: String(formData.get("originalFilename") ?? ""),
-      mimeType: String(formData.get("mimeType") ?? ""),
-      sizeBytes: requiredNumber(
-        formData,
-        "sizeBytes",
-        "PETTY_CASH_EVIDENCE_SIZE_REQUIRED"
-      ),
-      storageProvider:
-        String(formData.get("storageProvider") ?? "").trim() ||
-        "manual-private-reference",
-      objectKey: String(formData.get("objectKey") ?? ""),
-      checksum: String(formData.get("checksum") ?? "").trim() || null
-    }
-  });
-
-  revalidatePath("/finance/petty-cash");
-}
-
 async function archivePettyCashEvidenceMetadata(formData: FormData) {
   "use server";
 
@@ -1105,7 +839,7 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                     </label>
                   </div>
                   <label className="grid gap-1 text-sm font-medium">
-                    Evidence reference
+                    External evidence reference
                     <input
                       name="evidenceReference"
                       required
@@ -1233,7 +967,7 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
               </label>
               <label className="block lg:col-span-2">
                 <span className="text-xs font-semibold uppercase text-slate-500">
-                  Evidence reference
+                  External evidence reference
                 </span>
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -1409,7 +1143,7 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
               </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase text-slate-500">
-                  Evidence reference
+                  External evidence reference
                 </span>
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -1851,13 +1585,11 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                       {request.disbursementHandoffReference}
                     </p>
                   ) : null}
-                  <EvidenceMetadataPanel
-                    action={addPettyCashEvidenceMetadata}
+                  <ControlledEvidencePanel
                     archiveAction={archivePettyCashEvidenceMetadata}
                     attachments={requestEvidenceById.get(request.id) ?? []}
                     canAdd={dashboard.permissions.canCreate}
-                    objectKeyPlaceholder="finance/evidence/petty-cash/requests/voucher.pdf"
-                    recordId={request.id}
+                    sourceRecordId={request.id}
                     sourceType="PETTY_CASH_REQUEST"
                     triggerLabel="Add Request Evidence"
                   />
@@ -1908,7 +1640,7 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                           </label>
                           <label className="block">
                             <span className="text-xs font-semibold uppercase text-slate-500">
-                              Evidence reference
+                              External evidence reference
                             </span>
                             <input
                               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2057,13 +1789,11 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                     Shortage {formatMoney(liquidation.shortageAmountPhp)} /
                     overage {formatMoney(liquidation.overageAmountPhp)}
                   </p>
-                  <EvidenceMetadataPanel
-                    action={addPettyCashEvidenceMetadata}
+                  <ControlledEvidencePanel
                     archiveAction={archivePettyCashEvidenceMetadata}
                     attachments={liquidationEvidenceById.get(liquidation.id) ?? []}
                     canAdd={dashboard.permissions.canLiquidate}
-                    objectKeyPlaceholder="finance/evidence/petty-cash/liquidations/receipt-pack.pdf"
-                    recordId={liquidation.id}
+                    sourceRecordId={liquidation.id}
                     sourceType="PETTY_CASH_LIQUIDATION"
                     triggerLabel="Add Liquidation Evidence"
                   />
@@ -2109,7 +1839,7 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                           </label>
                           <label className="block">
                             <span className="text-xs font-semibold uppercase text-slate-500">
-                              Evidence reference
+                              External evidence reference
                             </span>
                             <input
                               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2324,13 +2054,11 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                       <p className="mt-1 text-xs text-slate-500">
                         Top-up needed {formatMoney(fund.availableToTargetPhp)}
                       </p>
-                      <EvidenceMetadataPanel
-                        action={addPettyCashEvidenceMetadata}
+                      <ControlledEvidencePanel
                         archiveAction={archivePettyCashEvidenceMetadata}
                         attachments={fundEvidenceById.get(fund.id) ?? []}
                         canAdd={dashboard.permissions.canCreate}
-                        objectKeyPlaceholder="finance/evidence/petty-cash/funds/opening-balance.pdf"
-                        recordId={fund.id}
+                        sourceRecordId={fund.id}
                         sourceType="PETTY_CASH_FUND"
                         triggerLabel="Add Fund Evidence"
                       />

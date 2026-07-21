@@ -12,14 +12,13 @@ import {
 import { Badge, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { ControlledEvidencePanel } from "@/components/evidence/ControlledEvidencePanel";
 import {
   FinancePagination,
   getPaginationState
 } from "@/components/FinancePagination";
 import {
   archiveControlledEvidenceAttachment,
-  createControlledEvidenceAttachmentMetadataLink,
-  createControlledEvidenceAttachmentUploadLink,
   listControlledEvidenceAttachments
 } from "@/server/services/attachments";
 import {
@@ -86,11 +85,6 @@ function parseDateField(formData: FormData, key: string) {
 function parseOptionalDateField(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   return value ? new Date(`${value}T00:00:00.000Z`) : null;
-}
-
-function parseNumberField(formData: FormData, key: string) {
-  const raw = String(formData.get(key) ?? "").replaceAll(",", "");
-  return raw ? Number(raw) : Number.NaN;
 }
 
 function optionalNumberField(formData: FormData, key: string) {
@@ -328,49 +322,6 @@ async function runExpenseRequestAction(formData: FormData) {
     default:
       throw new Error("EXPENSE_REQUEST_ACTION_NOT_SUPPORTED");
   }
-
-  revalidatePath("/finance/expense-requests");
-}
-
-async function addExpenseEvidenceMetadata(formData: FormData) {
-  "use server";
-
-  const evidenceFile = formData.get("evidenceFile");
-  if (evidenceFile instanceof File && evidenceFile.size > 0) {
-    await createControlledEvidenceAttachmentUploadLink({
-      sourceType: "EXPENSE_REQUEST",
-      sourceRecordId: String(formData.get("expenseRequestId") ?? ""),
-      purpose: "EVIDENCE",
-      caption: String(formData.get("caption") ?? "").trim() || null,
-      requiredForAction:
-        String(formData.get("requiredForAction") ?? "").trim() || null,
-      requiredPermissionCode: permissions.financeExpenseRequestCreate,
-      file: evidenceFile
-    });
-
-    revalidatePath("/finance/expense-requests");
-    return;
-  }
-
-  await createControlledEvidenceAttachmentMetadataLink({
-    sourceType: "EXPENSE_REQUEST",
-    sourceRecordId: String(formData.get("expenseRequestId") ?? ""),
-    purpose: "EVIDENCE",
-    caption: String(formData.get("caption") ?? "").trim() || null,
-    requiredForAction:
-      String(formData.get("requiredForAction") ?? "").trim() || null,
-    requiredPermissionCode: permissions.financeExpenseRequestCreate,
-    attachment: {
-      originalFilename: String(formData.get("originalFilename") ?? ""),
-      mimeType: String(formData.get("mimeType") ?? ""),
-      sizeBytes: parseNumberField(formData, "sizeBytes"),
-      storageProvider:
-        String(formData.get("storageProvider") ?? "").trim() ||
-        "manual-private-reference",
-      objectKey: String(formData.get("objectKey") ?? ""),
-      checksum: String(formData.get("checksum") ?? "").trim() || null
-    }
-  });
 
   revalidatePath("/finance/expense-requests");
 }
@@ -846,7 +797,7 @@ export default async function ExpenseRequestsPage({
             <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
               <label className="block">
                 <span className="text-xs font-semibold uppercase text-slate-500">
-                  Evidence reference
+                  External evidence reference
                 </span>
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -1265,7 +1216,7 @@ export default async function ExpenseRequestsPage({
                             </label>
                             <label className="block">
                               <span className="text-xs font-semibold uppercase text-slate-500">
-                                Evidence reference
+                                External evidence reference
                               </span>
                               <input
                                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -1438,207 +1389,15 @@ export default async function ExpenseRequestsPage({
                       <p className="mt-1 text-xs text-slate-500">
                         {request.lineCount} line(s), {request.sourceLinkCount} source link(s)
                       </p>
-                      {evidenceAttachments.length > 0 ? (
-                        <div className="mt-3 grid gap-2">
-                          {evidenceAttachments.slice(0, 3).map((attachment) => (
-                            <div
-                              key={attachment.id}
-                              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                            >
-                              <p className="text-xs font-bold text-slate-950">
-                                {attachment.originalFilename}
-                              </p>
-                              <p className="mt-1 text-[11px] text-slate-500">
-                                {attachment.mimeType} /{" "}
-                                {(attachment.sizeBytes / 1024).toLocaleString(
-                                  "en-PH",
-                                  { maximumFractionDigits: 1 }
-                                )}{" "}
-                                KB
-                              </p>
-                              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                                {attachment.caption ? (
-                                  <p className="text-[11px] text-slate-600">
-                                    {attachment.caption}
-                                  </p>
-                                ) : (
-                                  <span />
-                                )}
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {attachment.storageProvider ===
-                                  "local-private" ? (
-                                    <a
-                                      className="inline-flex min-h-8 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-bold text-blue-700 hover:bg-blue-50"
-                                      href={`/evidence/${attachment.id}/download`}
-                                    >
-                                      Download
-                                    </a>
-                                  ) : null}
-                                  {dashboard.permissions.canCreate ? (
-                                  <EntryModal
-                                    title="Archive Evidence Link"
-                                    triggerLabel="Archive"
-                                    triggerClassName="border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                                  >
-                                    <form
-                                      action={archiveExpenseEvidenceMetadata}
-                                      className="grid gap-4"
-                                    >
-                                      <input
-                                        name="controlledEvidenceAttachmentId"
-                                        type="hidden"
-                                        value={attachment.id}
-                                      />
-                                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                                        This archives the evidence link only.
-                                        The private file metadata remains
-                                        preserved for audit and recovery; no
-                                        expense request status, amount, AP
-                                        handoff, payment, or journal record is
-                                        changed.
-                                      </div>
-                                      <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                        Archive reason
-                                        <textarea
-                                          className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                          name="archiveReason"
-                                          placeholder="Duplicate link, wrong request, superseded receipt, etc."
-                                          required
-                                        />
-                                      </label>
-                                      <button className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                                        Archive Evidence Link
-                                      </button>
-                                    </form>
-                                  </EntryModal>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          {evidenceAttachments.length > 3 ? (
-                            <p className="text-xs font-semibold text-slate-500">
-                              +{evidenceAttachments.length - 3} more evidence
-                              link
-                              {evidenceAttachments.length - 3 === 1 ? "" : "s"}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {dashboard.permissions.canCreate ? (
-                        <div className="mt-3">
-                          <EntryModal
-                            title="Add Evidence Metadata"
-                            triggerLabel="Add Evidence"
-                            triggerClassName="border border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-                          >
-                            <form
-                              action={addExpenseEvidenceMetadata}
-                              encType="multipart/form-data"
-                              className="grid gap-4"
-                            >
-                              <input
-                                name="expenseRequestId"
-                                type="hidden"
-                                value={request.id}
-                              />
-                              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-                                Upload receipt, approval, supplier, or payment
-                                support files here. Files stay private, are
-                                linked to this expense request only, and each
-                                download is audited.
-                              </div>
-                              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                Evidence file
-                                <input
-                                  accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.xlsx,.docx,application/pdf,image/jpeg,image/png,image/webp,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
-                                  name="evidenceFile"
-                                  type="file"
-                                />
-                                <span className="text-xs font-normal text-slate-500">
-                                  PDF, image, CSV, text, Excel, or Word file.
-                                  Maximum 25 MB.
-                                </span>
-                              </label>
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                  Required for action
-                                  <input
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                    name="requiredForAction"
-                                    placeholder="Approval, completion, AP handoff"
-                                  />
-                                </label>
-                                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                  Caption
-                                  <input
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                    name="caption"
-                                    placeholder="What this evidence proves"
-                                  />
-                                </label>
-                              </div>
-                              <details className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                                <summary className="cursor-pointer font-bold text-slate-900">
-                                  Link metadata-only evidence instead
-                                </summary>
-                                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                  <input
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                    name="originalFilename"
-                                    placeholder="receipt-001.pdf"
-                                  />
-                                  <select
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                    name="mimeType"
-                                  >
-                                    <option value="">Select MIME type</option>
-                                    <option value="application/pdf">PDF</option>
-                                    <option value="image/jpeg">JPEG image</option>
-                                    <option value="image/png">PNG image</option>
-                                    <option value="image/webp">WebP image</option>
-                                    <option value="text/csv">CSV</option>
-                                    <option value="text/plain">Text</option>
-                                    <option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                                      Excel workbook
-                                    </option>
-                                    <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                                      Word document
-                                    </option>
-                                  </select>
-                                  <input
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                    min="1"
-                                    name="sizeBytes"
-                                    placeholder="Size in bytes"
-                                    step="1"
-                                    type="number"
-                                  />
-                                  <input
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                    name="storageProvider"
-                                    placeholder="manual-private-reference"
-                                  />
-                                </div>
-                                <input
-                                  className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                  name="objectKey"
-                                  placeholder="finance/evidence/expense/receipt-001.pdf"
-                                />
-                                <input
-                                  className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                  name="checksum"
-                                  placeholder="Optional checksum"
-                                />
-                              </details>
-                              <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                                Upload Evidence
-                              </button>
-                            </form>
-                          </EntryModal>
-                        </div>
-                      ) : null}
+                      <ControlledEvidencePanel
+                        archiveAction={archiveExpenseEvidenceMetadata}
+                        archiveImpact="This archives the evidence link only. The file remains preserved for audit and recovery; no expense request status, amount, AP handoff, payment, or journal record is changed."
+                        attachments={evidenceAttachments}
+                        canAdd={dashboard.permissions.canCreate}
+                        requiredForAction="EXPENSE_REVIEW"
+                        sourceRecordId={request.id}
+                        sourceType="EXPENSE_REQUEST"
+                      />
                     </td>
                     <td className="px-5 py-4 text-slate-700">
                       {formatDate(request.requiredByDate)}

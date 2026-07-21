@@ -1,0 +1,26 @@
+[Unit]
+Description=OGFI ERP bounded controlled-evidence scan reconciliation
+Documentation=/opt/ogfi/current/infra/hostinger/evidence/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ogfi-runtime
+Group=ogfi-runtime
+WorkingDirectory=/opt/ogfi/current
+RuntimeDirectory=ogfi-evidence-reconcile
+RuntimeDirectoryMode=0750
+UMask=0027
+TimeoutStartSec=45s
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ExecStart=/usr/bin/flock --nonblock /run/ogfi-evidence-reconcile/host.lock /usr/bin/docker compose -f docker-compose.yml -f infra/hostinger/evidence/compose.production.yaml run --rm --no-deps web pnpm evidence:scan:reconcile
+
+# This template requires rootless Docker owned by ogfi-runtime. Membership in a
+# rootful docker group is root-equivalent and is outside this contract.

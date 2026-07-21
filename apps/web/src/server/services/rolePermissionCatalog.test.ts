@@ -31,6 +31,16 @@ describe("role permission catalog metadata", () => {
       group: "Restaurant Operations",
       sensitive: true
     });
+    expect(getPermissionPresentation(permissions.evidenceLegalHoldSet)).toMatchObject({
+      label: "Place evidence legal holds",
+      group: "Evidence Governance",
+      sensitive: true
+    });
+    expect(getPermissionPresentation(permissions.evidenceRetentionView)).toMatchObject({
+      label: "View evidence retention register",
+      group: "Evidence Governance",
+      sensitive: true
+    });
   });
 
   test("defines recommended defaults for configured roles", () => {
@@ -80,6 +90,8 @@ describe("role permission catalog metadata", () => {
     expect(isSensitivePermissionCode(permissions.foodSafetyCorrect)).toBe(true);
     expect(isSensitivePermissionCode(permissions.recipePublish)).toBe(true);
     expect(isSensitivePermissionCode(permissions.menuPriceDecide)).toBe(true);
+    expect(isSensitivePermissionCode(permissions.evidenceLegalHoldSet)).toBe(true);
+    expect(isSensitivePermissionCode(permissions.evidenceRetentionView)).toBe(true);
     expect(isSensitivePermissionCode(permissions.inventoryBalanceView)).toBe(false);
   });
 

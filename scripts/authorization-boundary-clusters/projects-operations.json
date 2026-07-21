@@ -990,26 +990,6 @@
       "status": "COVERED"
     },
     {
-      "surfaceId": "server/services/projectRequirements.ts#uploadProjectRequirementEvidence",
-      "classification": "PUBLIC_BOUNDARY",
-      "adapterIds": [
-        "server/services/projectRequirements.ts#uploadProjectRequirementEvidence",
-        "server/services/projects.ts#findAuthorizedProject"
-      ],
-      "caseIds": [
-        "PROJECT_OPS_RESTRICTED_REVOCATION",
-        "CORE_RESTRICTED_PROJECT_ADAPTER"
-      ],
-      "noMutationControls": [
-        "requirement",
-        "attachment",
-        "project-attachment",
-        "activity",
-        "audit"
-      ],
-      "status": "COVERED"
-    },
-    {
       "surfaceId": "server/services/projectRisks.ts#createProjectRisk",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": [

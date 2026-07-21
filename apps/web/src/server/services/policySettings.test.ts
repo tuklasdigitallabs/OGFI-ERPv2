@@ -270,12 +270,12 @@ describe("DEC-0036 policy setting registry", () => {
           category: "security",
           valueType: "JSON",
           defaultValue: expect.objectContaining({
-            storageProvider: "local-private",
+            storageProvider: "environment-isolated",
             uploadLimitMb: 10,
             allowedMimePolicy: "allowlist",
-            malwareScanMode: "scan_waived_for_local_private_uat",
-            retentionPolicy: "follow_transaction_retention",
-            recoveryPolicy: "covered_by_backup_restore_policy",
+            malwareScanMode: "required_before_availability",
+            retentionPolicy: "preserve_until_approved_transaction_retention",
+            recoveryPolicy: "paired_database_evidence_restore_required",
             downloadAuditRequired: true
           })
         }),
@@ -311,8 +311,12 @@ describe("DEC-0036 policy setting registry", () => {
     expect(serviceSource).toContain("resetCompanyPolicySetting");
     expect(serviceSource).toContain("company_policy_setting.reset_to_default");
     expect(serviceSource).toContain(
-      "Reset to DEC-0036 recommended default from Admin Settings."
+      "Reset to ${sourceDecisionForPolicy(definition.key)} recommended default from Admin Settings."
     );
+    expect(serviceSource).toContain(
+      'key === "security.evidence_storage.default_policy"'
+    );
+    expect(serviceSource).toContain('? "DEC-0046"');
     expect(pageSource).toContain("resetCompanyPolicySetting");
     expect(pageSource).toContain("resetPolicySettingAction");
     expect(pageSource).toContain("Use Recommended");

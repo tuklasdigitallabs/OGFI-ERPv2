@@ -13,6 +13,7 @@ import {
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { ControlledEvidencePanel } from "@/components/evidence/ControlledEvidencePanel";
 import {
   canUseWorkforce,
   getDefaultAppRoute,
@@ -20,11 +21,7 @@ import {
 } from "@/server/services/authorization";
 import {
   archiveControlledEvidenceAttachment,
-  createControlledEvidenceAttachmentMetadataLink,
-  createControlledEvidenceAttachmentUploadLink,
-  listControlledEvidenceAttachments,
-  type ControlledEvidenceAttachmentRow,
-  type EvidenceAttachmentSourceType
+  listWorkforceControlledEvidenceAttachmentsBatch
 } from "@/server/services/attachments";
 import { getSessionContext } from "@/server/services/context";
 import { canExportWorkforce } from "@/server/services/exportAuthorization";
@@ -77,13 +74,10 @@ function humanize(value: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function parseNumberField(formData: FormData, key: string) {
-  const raw = String(formData.get(key) ?? "").replaceAll(",", "");
-  return raw ? Number(raw) : Number.NaN;
-}
-
 function issueStateTone(issueState: string) {
-  return issueState === "NEEDS_REVIEW" ? ("warning" as const) : ("success" as const);
+  return issueState === "NEEDS_REVIEW"
+    ? ("warning" as const)
+    : ("success" as const);
 }
 
 function workforceReadinessTone(severity: string) {
@@ -144,9 +138,13 @@ function workforceRequestActions(status: string) {
     actions.push("approve", "return", "reject");
   }
   if (
-    ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "RETURNED_FOR_REVISION", "APPROVED"].includes(
-      status
-    )
+    [
+      "DRAFT",
+      "SUBMITTED",
+      "UNDER_REVIEW",
+      "RETURNED_FOR_REVISION",
+      "APPROVED"
+    ].includes(status)
   ) {
     actions.push("cancel");
   }
@@ -178,222 +176,14 @@ function workforceScheduleActions(status: string) {
   if (status === "APPROVED") {
     actions.push("publish");
   }
-  if (["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "PUBLISHED"].includes(status)) {
+  if (
+    ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "PUBLISHED"].includes(
+      status
+    )
+  ) {
     actions.push("cancel");
   }
   return actions;
-}
-
-function EvidenceMetadataPanel({
-  action,
-  archiveAction,
-  attachments,
-  canAdd,
-  objectKeyPlaceholder,
-  recordId,
-  sourceType,
-  triggerLabel
-}: {
-  action: (formData: FormData) => Promise<void>;
-  archiveAction?: (formData: FormData) => Promise<void>;
-  attachments: ControlledEvidenceAttachmentRow[];
-  canAdd: boolean;
-  objectKeyPlaceholder: string;
-  recordId: string;
-  sourceType: Extract<
-    EvidenceAttachmentSourceType,
-    | "WORKFORCE_EMPLOYEE"
-    | "WORKFORCE_ASSIGNMENT"
-    | "WORKFORCE_LEAVE"
-    | "WORKFORCE_OVERTIME"
-    | "WORKFORCE_SCHEDULE"
-    | "WORKFORCE_ATTENDANCE_IMPORT"
-  >;
-  triggerLabel: string;
-}) {
-  return (
-    <div className="mt-3 space-y-3">
-      {attachments.length > 0 ? (
-        <div className="grid gap-2">
-          {attachments.slice(0, 3).map((attachment) => (
-            <div
-              key={attachment.id}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-            >
-              <p className="text-xs font-bold text-slate-950">
-                {attachment.originalFilename}
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {attachment.mimeType} /{" "}
-                {(attachment.sizeBytes / 1024).toLocaleString("en-PH", {
-                  maximumFractionDigits: 1
-                })}{" "}
-                KB
-              </p>
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                {attachment.caption ? (
-                  <p className="text-[11px] text-slate-600">
-                    {attachment.caption}
-                  </p>
-                ) : (
-                  <span />
-                )}
-                <div className="flex flex-wrap items-center gap-2">
-                  {attachment.storageProvider === "local-private" ? (
-                    <a
-                      className="inline-flex min-h-8 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-bold text-blue-700 hover:bg-blue-50"
-                      href={`/evidence/${attachment.id}/download`}
-                    >
-                      Download
-                    </a>
-                  ) : null}
-                  {archiveAction && canAdd ? (
-                    <EntryModal
-                      title="Archive Evidence Link"
-                      triggerLabel="Archive"
-                      triggerClassName="border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    >
-                      <form action={archiveAction} className="grid gap-4">
-                        <input
-                          name="controlledEvidenceAttachmentId"
-                          type="hidden"
-                          value={attachment.id}
-                        />
-                        <input name="sourceType" type="hidden" value={sourceType} />
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                          This archives the evidence link only. The private file
-                          metadata remains preserved for audit and recovery; no
-                          employee, assignment, request, schedule, attendance,
-                          payroll, payment, or journal record is changed.
-                        </div>
-                        <label className="grid gap-1 text-sm font-medium text-slate-700">
-                          Archive reason
-                          <textarea
-                            className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                            name="archiveReason"
-                            placeholder="Duplicate link, wrong employee/request, superseded document, etc."
-                            required
-                          />
-                        </label>
-                        <button className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                          Archive Evidence Link
-                        </button>
-                      </form>
-                    </EntryModal>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          ))}
-          {attachments.length > 3 ? (
-            <p className="text-xs font-semibold text-slate-500">
-              +{attachments.length - 3} more evidence link
-              {attachments.length - 3 === 1 ? "" : "s"}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {canAdd ? (
-        <EntryModal
-          title="Upload Workforce Evidence"
-          triggerLabel={triggerLabel}
-          triggerClassName="border border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-        >
-          <form action={action} encType="multipart/form-data" className="grid gap-4">
-            <input name="sourceRecordId" type="hidden" value={recordId} />
-            <input name="sourceType" type="hidden" value={sourceType} />
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-              Upload workforce evidence. Files stay private, workforce source
-              records are not mutated, and downloads are audited.
-            </div>
-            <label className="grid gap-1 text-sm font-medium text-slate-700">
-              Evidence file
-              <input
-                accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.xlsx,.docx,application/pdf,image/jpeg,image/png,image/webp,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
-                name="evidenceFile"
-                type="file"
-              />
-            </label>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Required for action
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="requiredForAction"
-                  placeholder="Approval, correction, review, publication"
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Caption
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="caption"
-                  placeholder="What this evidence proves"
-                />
-              </label>
-            </div>
-            <details className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              <summary className="cursor-pointer font-bold text-slate-900">
-                Link metadata-only evidence instead
-              </summary>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="originalFilename"
-                  placeholder="workforce-evidence.pdf"
-                />
-                <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="mimeType"
-                >
-                  <option value="">Select MIME type</option>
-                  <option value="application/pdf">PDF</option>
-                  <option value="image/jpeg">JPEG image</option>
-                  <option value="image/png">PNG image</option>
-                  <option value="image/webp">WebP image</option>
-                  <option value="text/csv">CSV</option>
-                  <option value="text/plain">Text</option>
-                  <option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                    Excel workbook
-                  </option>
-                  <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                    Word document
-                  </option>
-                </select>
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  min="1"
-                  name="sizeBytes"
-                  placeholder="Size in bytes"
-                  step="1"
-                  type="number"
-                />
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="storageProvider"
-                  placeholder="manual-private-reference"
-                />
-              </div>
-              <input
-                className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                name="objectKey"
-                placeholder={objectKeyPlaceholder}
-              />
-              <input
-                className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                name="checksum"
-                placeholder="Optional checksum"
-              />
-            </details>
-            <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Upload Evidence
-            </button>
-          </form>
-        </EntryModal>
-      ) : null}
-    </div>
-  );
 }
 
 async function runWorkforceRequestAction(formData: FormData) {
@@ -664,12 +454,9 @@ async function runCreateEmployee(formData: FormData) {
     String(formData.get("emailPersonal") ?? "").trim() || undefined;
   const phoneNumber =
     String(formData.get("phoneNumber") ?? "").trim() || undefined;
-  const employmentType = String(formData.get("employmentType") ?? "FULL_TIME") as
-    | "FULL_TIME"
-    | "PART_TIME"
-    | "CONTRACT"
-    | "TEMPORARY"
-    | "INTERN";
+  const employmentType = String(
+    formData.get("employmentType") ?? "FULL_TIME"
+  ) as "FULL_TIME" | "PART_TIME" | "CONTRACT" | "TEMPORARY" | "INTERN";
   const hireDate = String(formData.get("hireDate") ?? "");
   const homeLocationId = String(formData.get("homeLocationId") ?? "");
   const initialRoleLabel =
@@ -715,12 +502,9 @@ async function runUpdateEmployee(formData: FormData) {
     String(formData.get("emailPersonal") ?? "").trim() || undefined;
   const phoneNumber =
     String(formData.get("phoneNumber") ?? "").trim() || undefined;
-  const employmentType = String(formData.get("employmentType") ?? "FULL_TIME") as
-    | "FULL_TIME"
-    | "PART_TIME"
-    | "CONTRACT"
-    | "TEMPORARY"
-    | "INTERN";
+  const employmentType = String(
+    formData.get("employmentType") ?? "FULL_TIME"
+  ) as "FULL_TIME" | "PART_TIME" | "CONTRACT" | "TEMPORARY" | "INTERN";
   const status = String(formData.get("status") ?? "ACTIVE") as
     | "ACTIVE"
     | "INACTIVE"
@@ -757,11 +541,9 @@ async function runCreateEmployeeAssignment(formData: FormData) {
   }
   const employeeId = String(formData.get("employeeId") ?? "");
   const locationId = String(formData.get("locationId") ?? "");
-  const assignmentType = String(formData.get("assignmentType") ?? "TEMPORARY") as
-    | "PRIMARY"
-    | "SECONDMENT"
-    | "PROJECT_COVERAGE"
-    | "TEMPORARY";
+  const assignmentType = String(
+    formData.get("assignmentType") ?? "TEMPORARY"
+  ) as "PRIMARY" | "SECONDMENT" | "PROJECT_COVERAGE" | "TEMPORARY";
   const roleLabel = String(formData.get("roleLabel") ?? "").trim();
   const effectiveFrom = String(formData.get("effectiveFrom") ?? "");
   const isPrimary = String(formData.get("isPrimary") ?? "") === "on";
@@ -806,89 +588,6 @@ async function runEndEmployeeAssignment(formData: FormData) {
     ...(evidenceReference ? { evidenceReference } : {}),
     idempotencyKey: `workforce-assignment-end-ui:${assignmentId}:${effectiveTo}:${reason}`
   });
-  revalidatePath("/workforce");
-}
-
-async function addWorkforceEvidenceMetadata(formData: FormData) {
-  "use server";
-
-  const session = await getSessionContext();
-  if (!session) {
-    redirect("/sign-in");
-  }
-
-  const sourceType = String(formData.get("sourceType") ?? "").trim();
-  const requiredPermissionCode = (() => {
-    if (session.permissionCodes.includes(permissions.coreAdminister)) {
-      return permissions.coreAdminister;
-    }
-    if (
-      sourceType === "WORKFORCE_EMPLOYEE" ||
-      sourceType === "WORKFORCE_ASSIGNMENT"
-    ) {
-      return permissions.workforceManage;
-    }
-    if (sourceType === "WORKFORCE_LEAVE") {
-      return session.permissionCodes.includes(permissions.workforceManage)
-        ? permissions.workforceManage
-        : permissions.workforceLeaveApprove;
-    }
-    if (sourceType === "WORKFORCE_OVERTIME") {
-      return session.permissionCodes.includes(permissions.workforceManage)
-        ? permissions.workforceManage
-        : permissions.workforceOvertimeApprove;
-    }
-    if (sourceType === "WORKFORCE_SCHEDULE") {
-      return permissions.workforceScheduleManage;
-    }
-    if (sourceType === "WORKFORCE_ATTENDANCE_IMPORT") {
-      return permissions.workforceAttendanceImportManage;
-    }
-    throw new Error("WORKFORCE_EVIDENCE_SOURCE_INVALID");
-  })();
-
-  const common = {
-    sourceType: sourceType as Extract<
-      EvidenceAttachmentSourceType,
-      | "WORKFORCE_EMPLOYEE"
-      | "WORKFORCE_ASSIGNMENT"
-      | "WORKFORCE_LEAVE"
-      | "WORKFORCE_OVERTIME"
-      | "WORKFORCE_SCHEDULE"
-      | "WORKFORCE_ATTENDANCE_IMPORT"
-    >,
-    sourceRecordId: String(formData.get("sourceRecordId") ?? ""),
-    purpose: "EVIDENCE",
-    caption: String(formData.get("caption") ?? "").trim() || null,
-    requiredForAction:
-      String(formData.get("requiredForAction") ?? "").trim() || null,
-    requiredPermissionCode
-  } as const;
-  const evidenceFile = formData.get("evidenceFile");
-
-  if (evidenceFile instanceof File && evidenceFile.size > 0) {
-    await createControlledEvidenceAttachmentUploadLink({
-      ...common,
-      file: evidenceFile
-    });
-    revalidatePath("/workforce");
-    return;
-  }
-
-  await createControlledEvidenceAttachmentMetadataLink({
-    ...common,
-    attachment: {
-      originalFilename: String(formData.get("originalFilename") ?? ""),
-      mimeType: String(formData.get("mimeType") ?? ""),
-      sizeBytes: parseNumberField(formData, "sizeBytes"),
-      storageProvider:
-        String(formData.get("storageProvider") ?? "").trim() ||
-        "manual-private-reference",
-      objectKey: String(formData.get("objectKey") ?? ""),
-      checksum: String(formData.get("checksum") ?? "").trim() || null
-    }
-  });
-
   revalidatePath("/workforce");
 }
 
@@ -965,98 +664,56 @@ export default async function WorkforcePage() {
   const canManageSchedules =
     session.permissionCodes.includes(permissions.coreAdminister) ||
     session.permissionCodes.includes(permissions.workforceScheduleManage);
+  const canViewSchedules =
+    canManageSchedules ||
+    session.permissionCodes.includes(permissions.workforceScheduleView);
   const canManageAttendance =
     session.permissionCodes.includes(permissions.coreAdminister) ||
-    session.permissionCodes.includes(permissions.workforceAttendanceImportManage);
+    session.permissionCodes.includes(
+      permissions.workforceAttendanceImportManage
+    );
+  const canViewAttendance =
+    canManageAttendance ||
+    session.permissionCodes.includes(
+      permissions.workforceAttendanceImportView
+    );
   const canExportWorkforceCsv = canExportWorkforce(session);
-  const evidenceViewPermission =
-    [
-      permissions.workforceView,
-      permissions.workforceManage,
-      permissions.workforceLeaveApprove,
-      permissions.workforceOvertimeApprove,
-      permissions.workforceScheduleView,
-      permissions.workforceScheduleManage,
-      permissions.workforceAttendanceImportView,
-      permissions.workforceAttendanceImportManage,
-      permissions.coreAdminister
-    ].find((permissionCode) =>
-      session.permissionCodes.includes(permissionCode)
-    ) ?? permissions.workforceView;
-  const employeeEvidenceById = new Map(
-    await Promise.all(
-      dashboard.employees.map(async (employee) => [
-        employee.id,
-        await listControlledEvidenceAttachments({
-          sourceType: "WORKFORCE_EMPLOYEE",
-          sourceRecordId: employee.id,
-          requiredPermissionCode: evidenceViewPermission
-        })
-      ] as const)
-    )
-  );
-  const assignmentEvidenceById = new Map(
-    await Promise.all(
-      dashboard.assignments.map(async (assignment) => [
-        assignment.id,
-        await listControlledEvidenceAttachments({
-          sourceType: "WORKFORCE_ASSIGNMENT",
-          sourceRecordId: assignment.id,
-          requiredPermissionCode: evidenceViewPermission
-        })
-      ] as const)
-    )
-  );
-  const leaveEvidenceById = new Map(
-    await Promise.all(
-      dashboard.leaveRequests.map(async (request) => [
-        request.id,
-        await listControlledEvidenceAttachments({
-          sourceType: "WORKFORCE_LEAVE",
-          sourceRecordId: request.id,
-          requiredPermissionCode: evidenceViewPermission
-        })
-      ] as const)
-    )
-  );
-  const overtimeEvidenceById = new Map(
-    await Promise.all(
-      dashboard.overtimeRecords.map(async (record) => [
-        record.id,
-        await listControlledEvidenceAttachments({
-          sourceType: "WORKFORCE_OVERTIME",
-          sourceRecordId: record.id,
-          requiredPermissionCode: evidenceViewPermission
-        })
-      ] as const)
-    )
-  );
-  const scheduleEvidenceById = new Map(
-    await Promise.all(
-      dashboard.schedules.map(async (schedule) => [
-        schedule.id,
-        await listControlledEvidenceAttachments({
-          sourceType: "WORKFORCE_SCHEDULE",
-          sourceRecordId: schedule.id,
-          requiredPermissionCode: evidenceViewPermission
-        })
-      ] as const)
-    )
-  );
-  const attendanceImportEvidenceById = new Map(
-    await Promise.all(
-      dashboard.attendanceImports.map(async (batch) => [
-        batch.id,
-        await listControlledEvidenceAttachments({
-          sourceType: "WORKFORCE_ATTENDANCE_IMPORT",
-          sourceRecordId: batch.id,
-          requiredPermissionCode: evidenceViewPermission
-        })
-      ] as const)
-    )
-  );
+  const canViewWorkforceRegistry =
+    canManageWorkforce ||
+    session.permissionCodes.includes(permissions.workforceView);
+  const evidenceBySource =
+    await listWorkforceControlledEvidenceAttachmentsBatch({
+      WORKFORCE_EMPLOYEE: canViewWorkforceRegistry
+        ? dashboard.employees.map((employee) => employee.id)
+        : [],
+      WORKFORCE_ASSIGNMENT: canViewWorkforceRegistry
+        ? dashboard.assignments.map((assignment) => assignment.id)
+        : [],
+      WORKFORCE_LEAVE:
+        canViewWorkforceRegistry || canApproveLeave
+          ? dashboard.leaveRequests.map((request) => request.id)
+          : [],
+      WORKFORCE_OVERTIME:
+        canViewWorkforceRegistry || canApproveOvertime
+          ? dashboard.overtimeRecords.map((record) => record.id)
+          : [],
+      WORKFORCE_SCHEDULE: canViewSchedules
+        ? dashboard.schedules.map((schedule) => schedule.id)
+        : [],
+      WORKFORCE_ATTENDANCE_IMPORT: canViewAttendance
+        ? dashboard.attendanceImports.map((batch) => batch.id)
+        : []
+    });
+  const employeeEvidenceById = evidenceBySource.WORKFORCE_EMPLOYEE;
+  const assignmentEvidenceById = evidenceBySource.WORKFORCE_ASSIGNMENT;
+  const leaveEvidenceById = evidenceBySource.WORKFORCE_LEAVE;
+  const overtimeEvidenceById = evidenceBySource.WORKFORCE_OVERTIME;
+  const scheduleEvidenceById = evidenceBySource.WORKFORCE_SCHEDULE;
+  const attendanceImportEvidenceById =
+    evidenceBySource.WORKFORCE_ATTENDANCE_IMPORT;
   const primaryAssignmentOptions = dashboard.assignments.filter(
-    (assignment) => assignment.isPrimary && ["ACTIVE", "PLANNED"].includes(assignment.status)
+    (assignment) =>
+      assignment.isPrimary && ["ACTIVE", "PLANNED"].includes(assignment.status)
   );
 
   return (
@@ -1071,14 +728,14 @@ export default async function WorkforcePage() {
           <div>
             <p className="text-sm font-semibold">
               <strong>Workforce is operational, not payroll.</strong> This
-              foundation tracks who is assigned where, what requests need review,
-              which schedules have coverage gaps, and which attendance imports
-              need exception review.
+              foundation tracks who is assigned where, what requests need
+              review, which schedules have coverage gaps, and which attendance
+              imports need exception review.
             </p>
             <p className="mt-1 text-xs text-blue-900/75">
-              No wages, statutory deductions, payroll exports, journal posting, or
-              attendance-device source-of-truth integration are enabled in this
-              slice.
+              No wages, statutory deductions, payroll exports, journal posting,
+              or attendance-device source-of-truth integration are enabled in
+              this slice.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1097,41 +754,42 @@ export default async function WorkforcePage() {
           <div>
             <h2 className="text-lg font-bold text-slate-950">At a glance</h2>
             <p className="text-sm text-slate-500">
-              Staffing, request, schedule, and attendance signals for the current scope.
+              Staffing, request, schedule, and attendance signals for the
+              current scope.
             </p>
           </div>
           <Badge tone="info">Operational summary</Badge>
         </div>
         <div className="grid divide-y divide-slate-100 md:grid-cols-4 md:divide-x md:divide-y-0">
-        {dashboard.metrics.map((metric) => {
-          const Icon =
-            metricIcons[metric.id as keyof typeof metricIcons] ?? BadgeCheck;
-          return (
-            <div key={metric.id} className="min-w-0 px-5 py-4">
-              <div className="flex items-center gap-3">
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">
-                  <Icon aria-hidden="true" className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    {metric.label}
-                  </p>
-                  <p className="mt-1 truncate text-xl font-bold text-slate-950">
-                    {metric.displayValue}
-                  </p>
+          {dashboard.metrics.map((metric) => {
+            const Icon =
+              metricIcons[metric.id as keyof typeof metricIcons] ?? BadgeCheck;
+            return (
+              <div key={metric.id} className="min-w-0 px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">
+                    <Icon aria-hidden="true" className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {metric.label}
+                    </p>
+                    <p className="mt-1 truncate text-xl font-bold text-slate-950">
+                      {metric.displayValue}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">
+                  {metric.detail}
+                </p>
+                <div className="mt-3">
+                  <Badge tone={metric.tone} size="sm">
+                    Scoped
+                  </Badge>
                 </div>
               </div>
-              <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">
-                {metric.detail}
-              </p>
-              <div className="mt-3">
-                <Badge tone={metric.tone} size="sm">
-                  Scoped
-                </Badge>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
         </div>
       </section>
 
@@ -1143,12 +801,15 @@ export default async function WorkforcePage() {
             </h2>
             <p className="text-sm text-slate-500">
               Action-first queue for staffing gaps, attendance exceptions, and
-              required training or document renewals before workforce UAT signoff.
+              required training or document renewals before workforce UAT
+              signoff.
             </p>
           </div>
           <Badge
             tone={
-              dashboard.productionReadinessRows.length > 0 ? "warning" : "success"
+              dashboard.productionReadinessRows.length > 0
+                ? "warning"
+                : "success"
             }
           >
             {dashboard.productionReadinessRows.length} readiness item
@@ -1244,9 +905,7 @@ export default async function WorkforcePage() {
               outside this workspace.
             </p>
           </div>
-          <Badge tone="info">
-            {dashboard.reportRows.length} report rows
-          </Badge>
+          <Badge tone="info">{dashboard.reportRows.length} report rows</Badge>
         </div>
 
         <div className="overflow-x-auto">
@@ -1334,9 +993,9 @@ export default async function WorkforcePage() {
                 Create Workforce Drafts
               </h2>
               <p className="text-sm text-slate-500">
-                Draft leave, overtime, and schedule records for scoped operations.
-                Submission, approval, publication, payroll, and finance remain
-                separate controlled actions.
+                Draft leave, overtime, and schedule records for scoped
+                operations. Submission, approval, publication, payroll, and
+                finance remain separate controlled actions.
               </p>
             </div>
             <Badge tone="info">
@@ -1345,359 +1004,378 @@ export default async function WorkforcePage() {
           </div>
           <div className="grid gap-4 p-4 xl:grid-cols-3">
             {canManageWorkforce ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm font-bold text-slate-950">
-                  Create Draft Leave Request
-                </p>
-                <EntryModal
-                  title="Create Draft Leave Request"
-                  triggerLabel="Create Leave"
-                  disabled={dashboard.draftOptions.employees.length === 0}
-                >
-              <form action={runCreateDraftLeaveRequest} className="grid gap-3 pt-5">
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase text-slate-500">
-                    Employee
-                  </span>
-                  <select
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-slate-950">
+                    Create Draft Leave Request
+                  </p>
+                  <EntryModal
+                    title="Create Draft Leave Request"
+                    triggerLabel="Create Leave"
                     disabled={dashboard.draftOptions.employees.length === 0}
-                    name="employeeId"
-                    required
                   >
-                    {dashboard.draftOptions.employees.map((employee) => (
-                      <option key={`leave-${employee.id}`} value={employee.id}>
-                        {employee.label} - {employee.detail}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      Leave type
-                    </span>
-                    <select
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="leaveType"
+                    <form
+                      action={runCreateDraftLeaveRequest}
+                      className="grid gap-3 pt-5"
                     >
-                      <option value="VACATION">Vacation</option>
-                      <option value="SICK">Sick</option>
-                      <option value="PERSONAL">Personal</option>
-                      <option value="EMERGENCY">Emergency</option>
-                      <option value="MATERNITY">Maternity</option>
-                      <option value="PATERNITY">Paternity</option>
-                      <option value="OTHER">Other</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      Start date
-                    </span>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="startDate"
-                      required
-                      type="date"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      End date
-                    </span>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="endDate"
-                      required
-                      type="date"
-                    />
-                  </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          Employee
+                        </span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          disabled={
+                            dashboard.draftOptions.employees.length === 0
+                          }
+                          name="employeeId"
+                          required
+                        >
+                          {dashboard.draftOptions.employees.map((employee) => (
+                            <option
+                              key={`leave-${employee.id}`}
+                              value={employee.id}
+                            >
+                              {employee.label} - {employee.detail}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Leave type
+                          </span>
+                          <select
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="leaveType"
+                          >
+                            <option value="VACATION">Vacation</option>
+                            <option value="SICK">Sick</option>
+                            <option value="PERSONAL">Personal</option>
+                            <option value="EMERGENCY">Emergency</option>
+                            <option value="MATERNITY">Maternity</option>
+                            <option value="PATERNITY">Paternity</option>
+                            <option value="OTHER">Other</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Start date
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="startDate"
+                            required
+                            type="date"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            End date
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="endDate"
+                            required
+                            type="date"
+                          />
+                        </label>
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          Reason
+                        </span>
+                        <textarea
+                          className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          name="reason"
+                          placeholder="Operational reason for the leave request"
+                          required
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          External evidence reference
+                        </span>
+                        <input
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          name="evidenceReference"
+                          placeholder="Medical note, manager message, or HR reference"
+                        />
+                      </label>
+                      <button
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        disabled={dashboard.draftOptions.employees.length === 0}
+                        type="submit"
+                      >
+                        Create Draft Leave Request
+                      </button>
+                    </form>
+                  </EntryModal>
                 </div>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase text-slate-500">
-                    Reason
-                  </span>
-                  <textarea
-                    className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    name="reason"
-                    placeholder="Operational reason for the leave request"
-                    required
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase text-slate-500">
-                    Evidence reference
-                  </span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    name="evidenceReference"
-                    placeholder="Medical note, manager message, or HR reference"
-                  />
-                </label>
-                <button
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  disabled={dashboard.draftOptions.employees.length === 0}
-                  type="submit"
-                >
-                Create Draft Leave Request
-              </button>
-            </form>
-                </EntryModal>
               </div>
-            </div>
             ) : null}
 
             {canManageWorkforce ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm font-bold text-slate-950">
-                  Create Draft Overtime Record
-                </p>
-                <EntryModal
-                  title="Create Draft Overtime Record"
-                  triggerLabel="Create Overtime"
-                  disabled={dashboard.draftOptions.employees.length === 0}
-                >
-              <form action={runCreateDraftOvertimeRecord} className="grid gap-3 pt-5">
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase text-slate-500">
-                    Employee
-                  </span>
-                  <select
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-slate-950">
+                    Create Draft Overtime Record
+                  </p>
+                  <EntryModal
+                    title="Create Draft Overtime Record"
+                    triggerLabel="Create Overtime"
                     disabled={dashboard.draftOptions.employees.length === 0}
-                    name="employeeId"
-                    required
                   >
-                    {dashboard.draftOptions.employees.map((employee) => (
-                      <option key={`ot-${employee.id}`} value={employee.id}>
-                        {employee.label} - {employee.detail}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      Overtime type
-                    </span>
-                    <select
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="overtimeType"
+                    <form
+                      action={runCreateDraftOvertimeRecord}
+                      className="grid gap-3 pt-5"
                     >
-                      <option value="REGULAR">Regular</option>
-                      <option value="WEEKEND">Weekend</option>
-                      <option value="HOLIDAY">Holiday</option>
-                      <option value="NIGHT_SHIFT">Night shift</option>
-                      <option value="EMERGENCY">Emergency</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      Start
-                    </span>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="workedStartAt"
-                      required
-                      type="datetime-local"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      End
-                    </span>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="workedEndAt"
-                      required
-                      type="datetime-local"
-                    />
-                  </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          Employee
+                        </span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          disabled={
+                            dashboard.draftOptions.employees.length === 0
+                          }
+                          name="employeeId"
+                          required
+                        >
+                          {dashboard.draftOptions.employees.map((employee) => (
+                            <option
+                              key={`ot-${employee.id}`}
+                              value={employee.id}
+                            >
+                              {employee.label} - {employee.detail}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Overtime type
+                          </span>
+                          <select
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="overtimeType"
+                          >
+                            <option value="REGULAR">Regular</option>
+                            <option value="WEEKEND">Weekend</option>
+                            <option value="HOLIDAY">Holiday</option>
+                            <option value="NIGHT_SHIFT">Night shift</option>
+                            <option value="EMERGENCY">Emergency</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Start
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="workedStartAt"
+                            required
+                            type="datetime-local"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            End
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="workedEndAt"
+                            required
+                            type="datetime-local"
+                          />
+                        </label>
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          Reason
+                        </span>
+                        <textarea
+                          className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          name="reason"
+                          placeholder="Operational reason, manager instruction, or rush coverage note"
+                          required
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          External evidence reference
+                        </span>
+                        <input
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          name="evidenceReference"
+                          placeholder="Approved roster change, manager message, or incident reference"
+                        />
+                      </label>
+                      <button
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        disabled={dashboard.draftOptions.employees.length === 0}
+                        type="submit"
+                      >
+                        Create Draft Overtime Record
+                      </button>
+                    </form>
+                  </EntryModal>
                 </div>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase text-slate-500">
-                    Reason
-                  </span>
-                  <textarea
-                    className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    name="reason"
-                    placeholder="Operational reason, manager instruction, or rush coverage note"
-                    required
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase text-slate-500">
-                    Evidence reference
-                  </span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                    name="evidenceReference"
-                    placeholder="Approved roster change, manager message, or incident reference"
-                  />
-                </label>
-                <button
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  disabled={dashboard.draftOptions.employees.length === 0}
-                  type="submit"
-                >
-                Create Draft Overtime Record
-              </button>
-            </form>
-                </EntryModal>
               </div>
-            </div>
             ) : null}
 
             {canManageSchedules ? (
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm font-bold text-slate-950">
-                  Create Draft Schedule
+                    Create Draft Schedule
                   </p>
                   <EntryModal
                     title="Create Draft Schedule"
                     triggerLabel="Create Schedule"
                   >
-                <form
-                  action={runCreateDraftWorkforceSchedule}
-                  className="grid gap-3 pt-5"
-                >
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase text-slate-500">
-                        Schedule date
-                      </span>
-                      <input
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        name="scheduleDate"
-                        required
-                        type="date"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase text-slate-500">
-                        Shift
-                      </span>
-                      <select
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        name="shiftType"
-                      >
-                        <option value="OPENING">Opening</option>
-                        <option value="MID">Mid</option>
-                        <option value="CLOSING">Closing</option>
-                        <option value="SPLIT">Split</option>
-                        <option value="OVERNIGHT">Overnight</option>
-                        <option value="SPECIAL_EVENT">Special event</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase text-slate-500">
-                        Station
-                      </span>
-                      <input
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        name="stationCode"
-                        placeholder="Kitchen, FOH, grill, cashier"
-                        required
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase text-slate-500">
-                        Role
-                      </span>
-                      <input
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        name="roleLabel"
-                        placeholder="Line cook, server, shift lead"
-                        required
-                      />
-                    </label>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase text-slate-500">
-                        Start
-                      </span>
-                      <input
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        name="startTime"
-                        required
-                        type="time"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase text-slate-500">
-                        End
-                      </span>
-                      <input
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        name="endTime"
-                        required
-                        type="time"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-semibold uppercase text-slate-500">
-                        Headcount
-                      </span>
-                      <input
-                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                        min={1}
-                        name="plannedHeadcount"
-                        required
-                        type="number"
-                        defaultValue={1}
-                      />
-                    </label>
-                  </div>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      Optional assignee
-                    </span>
-                    <select
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="assignedEmployeeId"
+                    <form
+                      action={runCreateDraftWorkforceSchedule}
+                      className="grid gap-3 pt-5"
                     >
-                      <option value="">Leave as open coverage gap</option>
-                      {dashboard.draftOptions.employees.map((employee) => (
-                        <option key={`schedule-${employee.id}`} value={employee.id}>
-                          {employee.label} - {employee.detail}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      Reason
-                    </span>
-                    <textarea
-                      className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="reason"
-                      placeholder="Roster requirement, event coverage, or manpower plan"
-                      required
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-semibold uppercase text-slate-500">
-                      Evidence reference
-                    </span>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                      name="evidenceReference"
-                      placeholder="Manpower plan, event note, or manager instruction"
-                    />
-                  </label>
-                  <button
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-                    type="submit"
-                  >
-                    Create Draft Schedule
-                  </button>
-                </form>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Schedule date
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="scheduleDate"
+                            required
+                            type="date"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Shift
+                          </span>
+                          <select
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="shiftType"
+                          >
+                            <option value="OPENING">Opening</option>
+                            <option value="MID">Mid</option>
+                            <option value="CLOSING">Closing</option>
+                            <option value="SPLIT">Split</option>
+                            <option value="OVERNIGHT">Overnight</option>
+                            <option value="SPECIAL_EVENT">Special event</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Station
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="stationCode"
+                            placeholder="Kitchen, FOH, grill, cashier"
+                            required
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Role
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="roleLabel"
+                            placeholder="Line cook, server, shift lead"
+                            required
+                          />
+                        </label>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Start
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="startTime"
+                            required
+                            type="time"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            End
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            name="endTime"
+                            required
+                            type="time"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-semibold uppercase text-slate-500">
+                            Headcount
+                          </span>
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            min={1}
+                            name="plannedHeadcount"
+                            required
+                            type="number"
+                            defaultValue={1}
+                          />
+                        </label>
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          Optional assignee
+                        </span>
+                        <select
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          name="assignedEmployeeId"
+                        >
+                          <option value="">Leave as open coverage gap</option>
+                          {dashboard.draftOptions.employees.map((employee) => (
+                            <option
+                              key={`schedule-${employee.id}`}
+                              value={employee.id}
+                            >
+                              {employee.label} - {employee.detail}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          Reason
+                        </span>
+                        <textarea
+                          className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          name="reason"
+                          placeholder="Roster requirement, event coverage, or manpower plan"
+                          required
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase text-slate-500">
+                          External evidence reference
+                        </span>
+                        <input
+                          className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          name="evidenceReference"
+                          placeholder="Manpower plan, event note, or manager instruction"
+                        />
+                      </label>
+                      <button
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                        type="submit"
+                      >
+                        Create Draft Schedule
+                      </button>
+                    </form>
                   </EntryModal>
                 </div>
               </div>
@@ -1713,7 +1391,8 @@ export default async function WorkforcePage() {
               Employee Directory
             </h2>
             <p className="text-sm text-slate-500">
-              Scoped employee list with home location and active assignment count.
+              Scoped employee list with home location and active assignment
+              count.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1776,7 +1455,10 @@ export default async function WorkforcePage() {
                         name="employmentType"
                       >
                         {employmentTypeOptions.map(([value, label]) => (
-                          <option key={`create-employee-${value}`} value={value}>
+                          <option
+                            key={`create-employee-${value}`}
+                            value={value}
+                          >
                             {label}
                           </option>
                         ))}
@@ -1794,7 +1476,10 @@ export default async function WorkforcePage() {
                         required
                       >
                         {dashboard.draftOptions.locations.map((location) => (
-                          <option key={`create-location-${location.id}`} value={location.id}>
+                          <option
+                            key={`create-location-${location.id}`}
+                            value={location.id}
+                          >
                             {location.label} - {location.detail}
                           </option>
                         ))}
@@ -1866,7 +1551,7 @@ export default async function WorkforcePage() {
                   </label>
                   <label className="block">
                     <span className="text-xs font-semibold uppercase text-slate-500">
-                      Evidence reference
+                      External evidence reference
                     </span>
                     <input
                       className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -1907,38 +1592,53 @@ export default async function WorkforcePage() {
                     <p className="font-bold text-slate-950">
                       {employee.displayName}
                     </p>
-                    <p className="text-xs text-slate-500">{employee.employeeCode}</p>
+                    <p className="text-xs text-slate-500">
+                      {employee.employeeCode}
+                    </p>
                   </td>
                   <td>{employee.jobTitle}</td>
                   <td>{employee.homeLocationName}</td>
                   <td>{humanize(employee.employmentType)}</td>
                   <td>
-                    <Badge tone={employee.status === "ACTIVE" ? "success" : "warning"} size="sm">
+                    <Badge
+                      tone={
+                        employee.status === "ACTIVE" ? "success" : "warning"
+                      }
+                      size="sm"
+                    >
                       {humanize(employee.status)}
                     </Badge>
                   </td>
                   <td>{employee.activeAssignmentCount}</td>
                   {canManageWorkforce ? (
                     <td className="min-w-44">
-                      <EvidenceMetadataPanel
-                        action={addWorkforceEvidenceMetadata}
+                      <ControlledEvidencePanel
                         archiveAction={archiveWorkforceEvidenceMetadata}
-                        attachments={employeeEvidenceById.get(employee.id) ?? []}
+                        attachments={
+                          employeeEvidenceById.get(employee.id) ?? []
+                        }
                         canAdd={canManageWorkforce}
-                        objectKeyPlaceholder="workforce/evidence/employees/hr-form.pdf"
-                        recordId={employee.id}
+                        sourceRecordId={employee.id}
                         sourceType="WORKFORCE_EMPLOYEE"
                         triggerLabel="Add Evidence"
                       />
                       <EntryModal title="Edit Employee" triggerLabel="Edit">
-                        <form action={runUpdateEmployee} className="grid gap-4 pt-5">
-                          <input name="employeeId" type="hidden" value={employee.id} />
+                        <form
+                          action={runUpdateEmployee}
+                          className="grid gap-4 pt-5"
+                        >
+                          <input
+                            name="employeeId"
+                            type="hidden"
+                            value={employee.id}
+                          />
                           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                             <p className="font-bold text-slate-950">
                               {employee.employeeCode}
                             </p>
                             <p className="text-xs text-slate-500">
-                              Employee code is controlled at creation in this foundation.
+                              Employee code is controlled at creation in this
+                              foundation.
                             </p>
                           </div>
                           <div className="grid gap-3 md:grid-cols-2">
@@ -1948,7 +1648,9 @@ export default async function WorkforcePage() {
                               </span>
                               <input
                                 className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                defaultValue={employee.legalName ?? employee.displayName}
+                                defaultValue={
+                                  employee.legalName ?? employee.displayName
+                                }
                                 name="legalName"
                                 required
                               />
@@ -1989,7 +1691,10 @@ export default async function WorkforcePage() {
                                 name="employmentType"
                               >
                                 {employmentTypeOptions.map(([value, label]) => (
-                                  <option key={`edit-employment-${employee.id}-${value}`} value={value}>
+                                  <option
+                                    key={`edit-employment-${employee.id}-${value}`}
+                                    value={value}
+                                  >
                                     {label}
                                   </option>
                                 ))}
@@ -2005,7 +1710,10 @@ export default async function WorkforcePage() {
                                 name="status"
                               >
                                 {employeeStatusOptions.map(([value, label]) => (
-                                  <option key={`edit-status-${employee.id}-${value}`} value={value}>
+                                  <option
+                                    key={`edit-status-${employee.id}-${value}`}
+                                    value={value}
+                                  >
                                     {label}
                                   </option>
                                 ))}
@@ -2023,11 +1731,16 @@ export default async function WorkforcePage() {
                                 name="homeLocationId"
                                 required
                               >
-                                {dashboard.draftOptions.locations.map((location) => (
-                                  <option key={`edit-location-${employee.id}-${location.id}`} value={location.id}>
-                                    {location.label} - {location.detail}
-                                  </option>
-                                ))}
+                                {dashboard.draftOptions.locations.map(
+                                  (location) => (
+                                    <option
+                                      key={`edit-location-${employee.id}-${location.id}`}
+                                      value={location.id}
+                                    >
+                                      {location.label} - {location.detail}
+                                    </option>
+                                  )
+                                )}
                               </select>
                             </label>
                             <label className="block">
@@ -2065,7 +1778,7 @@ export default async function WorkforcePage() {
                           </label>
                           <label className="block">
                             <span className="text-xs font-semibold uppercase text-slate-500">
-                              Evidence reference
+                              External evidence reference
                             </span>
                             <input
                               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2092,7 +1805,8 @@ export default async function WorkforcePage() {
                       No scoped employee records yet
                     </p>
                     <p className="mt-1 text-sm text-slate-500">
-                      Workforce records will appear after employee setup or seed data.
+                      Workforce records will appear after employee setup or seed
+                      data.
                     </p>
                   </td>
                 </tr>
@@ -2106,9 +1820,7 @@ export default async function WorkforcePage() {
         <section className="ogfi-data-surface overflow-hidden">
           <div className="ogfi-section-header">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">
-                Assignments
-              </h2>
+              <h2 className="text-lg font-bold text-slate-950">Assignments</h2>
               <p className="text-sm text-slate-500">
                 Effective branch, department, and role coverage.
               </p>
@@ -2123,7 +1835,10 @@ export default async function WorkforcePage() {
                     dashboard.draftOptions.locations.length === 0
                   }
                 >
-                  <form action={runCreateEmployeeAssignment} className="grid gap-4 pt-5">
+                  <form
+                    action={runCreateEmployeeAssignment}
+                    className="grid gap-4 pt-5"
+                  >
                     <div className="grid gap-3 md:grid-cols-2">
                       <label className="block">
                         <span className="text-xs font-semibold uppercase text-slate-500">
@@ -2135,7 +1850,10 @@ export default async function WorkforcePage() {
                           required
                         >
                           {dashboard.draftOptions.employees.map((employee) => (
-                            <option key={`assignment-employee-${employee.id}`} value={employee.id}>
+                            <option
+                              key={`assignment-employee-${employee.id}`}
+                              value={employee.id}
+                            >
                               {employee.label} - {employee.detail}
                             </option>
                           ))}
@@ -2151,7 +1869,10 @@ export default async function WorkforcePage() {
                           required
                         >
                           {dashboard.draftOptions.locations.map((location) => (
-                            <option key={`assignment-location-${location.id}`} value={location.id}>
+                            <option
+                              key={`assignment-location-${location.id}`}
+                              value={location.id}
+                            >
                               {location.label} - {location.detail}
                             </option>
                           ))}
@@ -2168,7 +1889,10 @@ export default async function WorkforcePage() {
                           name="assignmentType"
                         >
                           {assignmentTypeOptions.map(([value, label]) => (
-                            <option key={`assignment-type-${value}`} value={value}>
+                            <option
+                              key={`assignment-type-${value}`}
+                              value={value}
+                            >
                               {label}
                             </option>
                           ))}
@@ -2213,18 +1937,24 @@ export default async function WorkforcePage() {
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                         name="replacesAssignmentId"
                       >
-                        <option value="">No existing primary assignment handoff</option>
+                        <option value="">
+                          No existing primary assignment handoff
+                        </option>
                         {primaryAssignmentOptions.map((assignment) => (
                           <option
                             key={`replacement-assignment-${assignment.id}`}
                             value={assignment.id}
                           >
-                            {assignment.employeeName} - {assignment.locationName} / {assignment.roleLabel} / from {assignment.effectiveFrom}
+                            {assignment.employeeName} -{" "}
+                            {assignment.locationName} / {assignment.roleLabel} /
+                            from {assignment.effectiveFrom}
                           </option>
                         ))}
                       </select>
                       <span className="mt-1 block text-xs text-slate-500">
-                        Use with a new primary assignment to end the selected current primary the day before the new effective date. Full transfer approval routing remains a UAT decision.
+                        Use with a new primary assignment to end the selected
+                        current primary the day before the new effective date.
+                        Full transfer approval routing remains a UAT decision.
                       </span>
                     </label>
                     <label className="block">
@@ -2240,7 +1970,7 @@ export default async function WorkforcePage() {
                     </label>
                     <label className="block">
                       <span className="text-xs font-semibold uppercase text-slate-500">
-                        Evidence reference
+                        External evidence reference
                       </span>
                       <input
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2284,8 +2014,12 @@ export default async function WorkforcePage() {
                         {assignment.roleLabel}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {humanize(assignment.assignmentType)} / {assignment.departmentName} / from {assignment.effectiveFrom}
-                        {assignment.effectiveTo ? ` to ${assignment.effectiveTo}` : ""}
+                        {humanize(assignment.assignmentType)} /{" "}
+                        {assignment.departmentName} / from{" "}
+                        {assignment.effectiveFrom}
+                        {assignment.effectiveTo
+                          ? ` to ${assignment.effectiveTo}`
+                          : ""}
                       </p>
                       {assignment.isPrimary ? (
                         <Badge tone="info" size="sm">
@@ -2295,7 +2029,12 @@ export default async function WorkforcePage() {
                     </td>
                     <td>{assignment.locationName}</td>
                     <td>
-                      <Badge tone={assignment.status === "ACTIVE" ? "success" : "neutral"} size="sm">
+                      <Badge
+                        tone={
+                          assignment.status === "ACTIVE" ? "success" : "neutral"
+                        }
+                        size="sm"
+                      >
                         {humanize(assignment.status)}
                       </Badge>
                     </td>
@@ -2303,25 +2042,36 @@ export default async function WorkforcePage() {
                       <td>
                         {["ACTIVE", "PLANNED"].includes(assignment.status) ? (
                           <div className="space-y-3">
-                            <EvidenceMetadataPanel
-                              action={addWorkforceEvidenceMetadata}
+                            <ControlledEvidencePanel
                               archiveAction={archiveWorkforceEvidenceMetadata}
-                              attachments={assignmentEvidenceById.get(assignment.id) ?? []}
+                              attachments={
+                                assignmentEvidenceById.get(assignment.id) ?? []
+                              }
                               canAdd={canManageWorkforce}
-                              objectKeyPlaceholder="workforce/evidence/assignments/transfer-memo.pdf"
-                              recordId={assignment.id}
+                              sourceRecordId={assignment.id}
                               sourceType="WORKFORCE_ASSIGNMENT"
                               triggerLabel="Add Evidence"
                             />
-                            <EntryModal title="End Assignment" triggerLabel="End">
-                              <form action={runEndEmployeeAssignment} className="grid gap-4 pt-5">
-                                <input name="assignmentId" type="hidden" value={assignment.id} />
+                            <EntryModal
+                              title="End Assignment"
+                              triggerLabel="End"
+                            >
+                              <form
+                                action={runEndEmployeeAssignment}
+                                className="grid gap-4 pt-5"
+                              >
+                                <input
+                                  name="assignmentId"
+                                  type="hidden"
+                                  value={assignment.id}
+                                />
                                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
                                   <p className="font-bold text-slate-950">
                                     {assignment.employeeName}
                                   </p>
                                   <p className="text-xs text-slate-500">
-                                    {assignment.roleLabel} / {assignment.locationName}
+                                    {assignment.roleLabel} /{" "}
+                                    {assignment.locationName}
                                   </p>
                                 </div>
                                 <label className="block">
@@ -2349,7 +2099,7 @@ export default async function WorkforcePage() {
                                 </label>
                                 <label className="block">
                                   <span className="text-xs font-semibold uppercase text-slate-500">
-                                    Evidence reference
+                                    External evidence reference
                                   </span>
                                   <input
                                     className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2409,12 +2159,11 @@ export default async function WorkforcePage() {
               .map((record) => {
                 const isLeave = "leaveType" in record;
                 const actions = isLeave
-                  ? workforceRequestActions(record.status)
-                      .filter((action) =>
-                        ["approve", "return", "reject"].includes(action)
-                          ? canApproveLeave
-                          : canManageWorkforce
-                      )
+                  ? workforceRequestActions(record.status).filter((action) =>
+                      ["approve", "return", "reject"].includes(action)
+                        ? canApproveLeave
+                        : canManageWorkforce
+                    )
                   : workforceOvertimeActions(record.status);
                 const scopedActions = isLeave
                   ? actions
@@ -2436,7 +2185,9 @@ export default async function WorkforcePage() {
                           </p>
                           <p className="text-xs text-slate-500">
                             {record.locationName} /{" "}
-                            {humanize(isLeave ? record.leaveType : record.overtimeType)}
+                            {humanize(
+                              isLeave ? record.leaveType : record.overtimeType
+                            )}
                           </p>
                         </div>
                         <Badge
@@ -2461,38 +2212,43 @@ export default async function WorkforcePage() {
                           : `${new Date(record.workedStartAt).toLocaleString("en-PH")} to ${new Date(record.workedEndAt).toLocaleString("en-PH")}`}{" "}
                         / {minutesToHours(record.requestedMinutes)}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">{record.reason}</p>
-                      <EvidenceMetadataPanel
-                        action={addWorkforceEvidenceMetadata}
+                      <p className="mt-1 text-xs text-slate-500">
+                        {record.reason}
+                      </p>
+                      <ControlledEvidencePanel
                         archiveAction={archiveWorkforceEvidenceMetadata}
                         attachments={
                           isLeave
-                            ? leaveEvidenceById.get(record.id) ?? []
-                            : overtimeEvidenceById.get(record.id) ?? []
+                            ? (leaveEvidenceById.get(record.id) ?? [])
+                            : (overtimeEvidenceById.get(record.id) ?? [])
                         }
                         canAdd={
                           isLeave
                             ? canManageWorkforce || canApproveLeave
                             : canManageWorkforce || canApproveOvertime
                         }
-                        objectKeyPlaceholder={
-                          isLeave
-                            ? "workforce/evidence/leave/approval-support.pdf"
-                            : "workforce/evidence/overtime/approval-support.pdf"
+                        sourceRecordId={record.id}
+                        sourceType={
+                          isLeave ? "WORKFORCE_LEAVE" : "WORKFORCE_OVERTIME"
                         }
-                        recordId={record.id}
-                        sourceType={isLeave ? "WORKFORCE_LEAVE" : "WORKFORCE_OVERTIME"}
                         triggerLabel="Add Evidence"
                       />
                     </div>
                     {canUseRequestActions ? (
-                      <form action={runWorkforceRequestAction} className="space-y-2">
+                      <form
+                        action={runWorkforceRequestAction}
+                        className="space-y-2"
+                      >
                         <input
                           name="requestKind"
                           type="hidden"
                           value={isLeave ? "leave" : "overtime"}
                         />
-                        <input name="recordId" type="hidden" value={record.id} />
+                        <input
+                          name="recordId"
+                          type="hidden"
+                          value={record.id}
+                        />
                         <label className="block">
                           <span className="text-xs font-semibold uppercase text-slate-500">
                             Reason
@@ -2505,7 +2261,7 @@ export default async function WorkforcePage() {
                         </label>
                         <label className="block">
                           <span className="text-xs font-semibold uppercase text-slate-500">
-                            Evidence reference
+                            External evidence reference
                           </span>
                           <input
                             className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2591,24 +2347,30 @@ export default async function WorkforcePage() {
                         {humanize(schedule.shiftType)}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {schedule.assignedHeadcount}/{schedule.plannedHeadcount} assigned;
-                        {" "}
-                        {schedule.coverageGapCount} gap
+                        {schedule.assignedHeadcount}/{schedule.plannedHeadcount}{" "}
+                        assigned; {schedule.coverageGapCount} gap
                         {schedule.coverageGapCount === 1 ? "" : "s"}
                       </p>
-                      <EvidenceMetadataPanel
-                        action={addWorkforceEvidenceMetadata}
+                      <ControlledEvidencePanel
                         archiveAction={archiveWorkforceEvidenceMetadata}
-                        attachments={scheduleEvidenceById.get(schedule.id) ?? []}
+                        attachments={
+                          scheduleEvidenceById.get(schedule.id) ?? []
+                        }
                         canAdd={canManageSchedules}
-                        objectKeyPlaceholder="workforce/evidence/schedules/roster-review.pdf"
-                        recordId={schedule.id}
+                        sourceRecordId={schedule.id}
                         sourceType="WORKFORCE_SCHEDULE"
                         triggerLabel="Add Evidence"
                       />
                     </div>
-                    <form action={runWorkforceScheduleAction} className="space-y-2">
-                      <input name="scheduleId" type="hidden" value={schedule.id} />
+                    <form
+                      action={runWorkforceScheduleAction}
+                      className="space-y-2"
+                    >
+                      <input
+                        name="scheduleId"
+                        type="hidden"
+                        value={schedule.id}
+                      />
                       <label className="block">
                         <span className="text-xs font-semibold uppercase text-slate-500">
                           Reason
@@ -2621,7 +2383,7 @@ export default async function WorkforcePage() {
                       </label>
                       <label className="block">
                         <span className="text-xs font-semibold uppercase text-slate-500">
-                          Evidence reference
+                          External evidence reference
                         </span>
                         <input
                           className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2674,14 +2436,15 @@ export default async function WorkforcePage() {
                         {schedule.publicReference}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {schedule.scheduleDate} / {humanize(schedule.shiftType)} /{" "}
-                        {schedule.plannedHours}
+                        {schedule.scheduleDate} / {humanize(schedule.shiftType)}{" "}
+                        / {schedule.plannedHours}
                       </p>
                     </td>
                     <td>{schedule.locationName}</td>
                     <td>
                       <p className="font-semibold text-slate-950">
-                        {schedule.assignedHeadcount}/{schedule.plannedHeadcount} assigned
+                        {schedule.assignedHeadcount}/{schedule.plannedHeadcount}{" "}
+                        assigned
                       </p>
                       <p className="text-xs text-slate-500">
                         {schedule.coverageGapCount > 0
@@ -2714,7 +2477,8 @@ export default async function WorkforcePage() {
                         No scoped schedules yet
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
-                        Published branch schedules and staffing gaps will appear here.
+                        Published branch schedules and staffing gaps will appear
+                        here.
                       </p>
                     </td>
                   </tr>
@@ -2773,18 +2537,21 @@ export default async function WorkforcePage() {
                       {batch.duplicateCount} duplicate
                       {batch.duplicateCount === 1 ? "" : "s"}
                     </p>
-                    <EvidenceMetadataPanel
-                      action={addWorkforceEvidenceMetadata}
+                    <ControlledEvidencePanel
                       archiveAction={archiveWorkforceEvidenceMetadata}
-                      attachments={attendanceImportEvidenceById.get(batch.id) ?? []}
+                      attachments={
+                        attendanceImportEvidenceById.get(batch.id) ?? []
+                      }
                       canAdd={canManageAttendance}
-                      objectKeyPlaceholder="workforce/evidence/attendance/import-review.csv"
-                      recordId={batch.id}
+                      sourceRecordId={batch.id}
                       sourceType="WORKFORCE_ATTENDANCE_IMPORT"
                       triggerLabel="Add Evidence"
                     />
                   </div>
-                  <form action={runAttendanceImportAction} className="space-y-2">
+                  <form
+                    action={runAttendanceImportAction}
+                    className="space-y-2"
+                  >
                     <input name="batchId" type="hidden" value={batch.id} />
                     <label className="block">
                       <span className="text-xs font-semibold uppercase text-slate-500">
@@ -2795,7 +2562,9 @@ export default async function WorkforcePage() {
                         name="verdict"
                       >
                         <option value="ACCEPT">Accept clean rows</option>
-                        <option value="EXCEPTION_LIST">Keep exception list</option>
+                        <option value="EXCEPTION_LIST">
+                          Keep exception list
+                        </option>
                         <option value="REJECT">Reject batch</option>
                       </select>
                     </label>
@@ -2811,7 +2580,7 @@ export default async function WorkforcePage() {
                     </label>
                     <label className="block">
                       <span className="text-xs font-semibold uppercase text-slate-500">
-                        Evidence reference
+                        External evidence reference
                       </span>
                       <input
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2898,7 +2667,8 @@ export default async function WorkforcePage() {
                         No attendance import batches yet
                       </p>
                       <p className="mt-1 text-sm text-slate-500">
-                        Imported attendance evidence and exceptions will appear here.
+                        Imported attendance evidence and exceptions will appear
+                        here.
                       </p>
                     </td>
                   </tr>
@@ -2937,7 +2707,9 @@ export default async function WorkforcePage() {
                 <tr key={`${record.type}-${record.id}`}>
                   <td>{record.employeeName}</td>
                   <td>
-                    <p className="font-semibold text-slate-950">{record.label}</p>
+                    <p className="font-semibold text-slate-950">
+                      {record.label}
+                    </p>
                     <p className="text-xs text-slate-500">{record.type}</p>
                   </td>
                   <td>

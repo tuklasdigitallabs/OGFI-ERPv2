@@ -12,6 +12,7 @@ import {
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { ControlledEvidencePanel } from "@/components/evidence/ControlledEvidencePanel";
 import {
   FinancePagination,
   getPaginationState
@@ -19,12 +20,7 @@ import {
 import type { ShellActiveNav } from "@/components/ShellNavigation";
 import {
   archiveControlledEvidenceAttachment,
-  createControlledEvidenceAttachmentMetadataLink,
-  createControlledEvidenceAttachmentUploadLink,
-  listControlledEvidenceAttachments,
-  type ControlledEvidenceAttachmentRow,
-  type EvidenceAttachmentPurpose,
-  type EvidenceAttachmentSourceType
+  listControlledEvidenceAttachments
 } from "@/server/services/attachments";
 import { permissions } from "@/server/services/authorization";
 import type { SessionContext } from "@/server/services/context";
@@ -294,65 +290,6 @@ function requiredField(formData: FormData, key: string, errorCode: string) {
   return value;
 }
 
-async function createFinanceEvidenceLink(input: {
-  formData: FormData;
-  sourceType: EvidenceAttachmentSourceType;
-  sourceRecordId: string;
-  purpose: EvidenceAttachmentPurpose;
-  requiredPermissionCode: string;
-  defaultRequiredForAction: string;
-}) {
-  const evidenceFile = input.formData.get("evidenceFile");
-  const common = {
-    sourceType: input.sourceType,
-    sourceRecordId: input.sourceRecordId,
-    purpose: input.purpose,
-    caption: cleanField(input.formData, "caption") || null,
-    requiredForAction:
-      cleanField(input.formData, "requiredForAction") ||
-      input.defaultRequiredForAction,
-    requiredPermissionCode: input.requiredPermissionCode
-  };
-
-  if (evidenceFile instanceof File && evidenceFile.size > 0) {
-    await createControlledEvidenceAttachmentUploadLink({
-      ...common,
-      file: evidenceFile
-    });
-    return;
-  }
-
-  await createControlledEvidenceAttachmentMetadataLink({
-    ...common,
-    attachment: {
-      originalFilename: requiredField(
-        input.formData,
-        "originalFilename",
-        "EVIDENCE_FILENAME_REQUIRED"
-      ),
-      mimeType: requiredField(
-        input.formData,
-        "mimeType",
-        "EVIDENCE_MIME_TYPE_REQUIRED"
-      ),
-      sizeBytes: requiredNumber(
-        input.formData,
-        "sizeBytes",
-        "EVIDENCE_SIZE_REQUIRED"
-      ),
-      storageProvider:
-        cleanField(input.formData, "storageProvider") ||
-        "manual-private-reference",
-      objectKey: requiredField(
-        input.formData,
-        "objectKey",
-        "EVIDENCE_OBJECT_KEY_REQUIRED"
-      ),
-      checksum: cleanField(input.formData, "checksum") || null
-    }
-  });
-}
-
 function optionalDate(formData: FormData, key: string) {
   const raw = cleanField(formData, key);
   if (!raw) {
@@ -381,219 +318,6 @@ function paymentMethod(value: string) {
 function reconciliationOutcome(value: string) {
   const allowed = ["FULLY_RECONCILED", "PARTIALLY_RECONCILED", "EXCEPTION"] as const;
   return allowed.find((outcome) => outcome === value) ?? "EXCEPTION";
-}
-
-function EvidenceMetadataPanel({
-  action,
-  archiveAction,
-  attachments,
-  canAdd,
-  hiddenIdName,
-  objectKeyPlaceholder,
-  recordId,
-  sourceType,
-  triggerLabel
-}: {
-  action: (formData: FormData) => Promise<void>;
-  archiveAction?: (formData: FormData) => Promise<void>;
-  attachments: ControlledEvidenceAttachmentRow[];
-  canAdd: boolean;
-  hiddenIdName: string;
-  objectKeyPlaceholder: string;
-  recordId: string;
-  sourceType:
-    | "AP_INVOICE"
-    | "SUPPLIER_CREDIT_NOTE"
-    | "PAYMENT_REQUEST"
-    | "BANK_RECONCILIATION";
-  triggerLabel: string;
-}) {
-  return (
-    <div className="mt-3 space-y-3">
-      {attachments.length > 0 ? (
-        <div className="grid gap-2">
-          {attachments.slice(0, 3).map((attachment) => (
-            <div
-              key={attachment.id}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-            >
-              <p className="text-xs font-bold text-slate-950">
-                {attachment.originalFilename}
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                {attachment.mimeType} /{" "}
-                {(attachment.sizeBytes / 1024).toLocaleString("en-PH", {
-                  maximumFractionDigits: 1
-                })}{" "}
-                KB
-              </p>
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                {attachment.caption ? (
-                  <p className="text-[11px] text-slate-600">
-                    {attachment.caption}
-                  </p>
-                ) : (
-                  <span />
-                )}
-                <div className="flex flex-wrap items-center gap-2">
-                  {attachment.storageProvider === "local-private" ? (
-                    <a
-                      className="inline-flex min-h-8 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-bold text-blue-700 hover:bg-blue-50"
-                      href={`/evidence/${attachment.id}/download`}
-                    >
-                      Download
-                    </a>
-                  ) : null}
-                  {archiveAction && canAdd ? (
-                    <EntryModal
-                      title="Archive Evidence Link"
-                      triggerLabel="Archive"
-                      triggerClassName="border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                    >
-                      <form action={archiveAction} className="grid gap-4">
-                        <input
-                          name="controlledEvidenceAttachmentId"
-                          type="hidden"
-                          value={attachment.id}
-                        />
-                        <input name="sourceType" type="hidden" value={sourceType} />
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                          This archives the evidence link only. The private file
-                          metadata remains preserved for audit and recovery; no
-                          source record is changed.
-                        </div>
-                        <label className="grid gap-1 text-sm font-medium text-slate-700">
-                          Archive reason
-                          <textarea
-                            className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                            name="archiveReason"
-                            placeholder="Duplicate link, wrong source record, superseded evidence, etc."
-                            required
-                          />
-                        </label>
-                        <button className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                          Archive Evidence Link
-                        </button>
-                      </form>
-                    </EntryModal>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          ))}
-          {attachments.length > 3 ? (
-            <p className="text-xs font-semibold text-slate-500">
-              +{attachments.length - 3} more evidence link
-              {attachments.length - 3 === 1 ? "" : "s"}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {canAdd ? (
-        <EntryModal
-          title="Add Evidence Metadata"
-          triggerLabel={triggerLabel}
-          triggerClassName="border border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-        >
-          <form action={action} encType="multipart/form-data" className="grid gap-4">
-            <input name={hiddenIdName} type="hidden" value={recordId} />
-            <input name="sourceType" type="hidden" value={sourceType} />
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-              Upload controlled evidence for this source record. Files stay
-              private, source records are not mutated, and each download is
-              audited.
-            </div>
-            <label className="grid gap-1 text-sm font-medium text-slate-700">
-              Evidence file
-              <input
-                accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.xlsx,.docx,application/pdf,image/jpeg,image/png,image/webp,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
-                name="evidenceFile"
-                type="file"
-              />
-              <span className="text-xs font-normal text-slate-500">
-                PDF, image, CSV, text, Excel, or Word file. Maximum 25 MB.
-              </span>
-            </label>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Required for action
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="requiredForAction"
-                  placeholder="Capture, match, approval, release"
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Caption
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="caption"
-                  placeholder="What this evidence supports"
-                />
-              </label>
-            </div>
-            <details className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              <summary className="cursor-pointer font-bold text-slate-900">
-                Link metadata-only evidence instead
-              </summary>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="originalFilename"
-                  placeholder="payables-evidence.pdf"
-                />
-                <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="mimeType"
-                >
-                  <option value="">Select MIME type</option>
-                  <option value="application/pdf">PDF</option>
-                  <option value="image/jpeg">JPEG image</option>
-                  <option value="image/png">PNG image</option>
-                  <option value="image/webp">WebP image</option>
-                  <option value="text/csv">CSV</option>
-                  <option value="text/plain">Text</option>
-                  <option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                    Excel workbook
-                  </option>
-                  <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                    Word document
-                  </option>
-                </select>
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  min="1"
-                  name="sizeBytes"
-                  placeholder="Size in bytes"
-                  step="1"
-                  type="number"
-                />
-                <input
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                  name="storageProvider"
-                  placeholder="manual-private-reference"
-                />
-              </div>
-              <input
-                className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                name="objectKey"
-                placeholder={objectKeyPlaceholder}
-              />
-              <input
-                className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                name="checksum"
-                placeholder="Optional checksum"
-              />
-            </details>
-            <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Upload Evidence
-            </button>
-          </form>
-        </EntryModal>
-      ) : null}
-    </div>
-  );
 }
 
 async function runManualJournalDraftAction(formData: FormData) {
@@ -1030,44 +754,6 @@ async function runBranchCashDepositDeclarationAction(formData: FormData) {
   revalidatePath("/finance/bank-cash");
 }
 
-async function addBranchCashDepositEvidenceMetadata(formData: FormData) {
-  "use server";
-
-  await createFinanceEvidenceLink({
-    formData,
-    sourceType: "BRANCH_CASH_DEPOSIT",
-    sourceRecordId: requiredField(
-      formData,
-      "branchCashDepositId",
-      "BRANCH_CASH_DEPOSIT_ID_REQUIRED"
-    ),
-    purpose: "EVIDENCE",
-    requiredPermissionCode: permissions.financeCashDepositCreate,
-    defaultRequiredForAction: "DEPOSIT_REVIEW"
-  });
-
-  revalidatePath("/finance/bank-cash");
-}
-
-async function addBankReconciliationEvidenceMetadata(formData: FormData) {
-  "use server";
-
-  await createFinanceEvidenceLink({
-    formData,
-    sourceType: "BANK_RECONCILIATION",
-    sourceRecordId: requiredField(
-      formData,
-      "bankReconciliationId",
-      "BANK_RECONCILIATION_ID_REQUIRED"
-    ),
-    purpose: "RECONCILIATION_SUPPORT",
-    requiredPermissionCode: permissions.financeReconciliationMatch,
-    defaultRequiredForAction: "RECONCILIATION_REVIEW"
-  });
-
-  revalidatePath("/finance/bank-cash");
-}
-
 async function archiveSharedEvidenceMetadata(formData: FormData) {
   "use server";
 
@@ -1242,69 +928,6 @@ async function runBranchCashDepositMatchAction(formData: FormData) {
   });
 
   revalidatePath("/finance/bank-cash");
-}
-
-async function addPaymentReleaseEvidenceMetadata(formData: FormData) {
-  "use server";
-
-  await createFinanceEvidenceLink({
-    formData,
-    sourceType: "PAYMENT_RELEASE",
-    sourceRecordId: requiredField(
-      formData,
-      "paymentReleaseId",
-      "PAYMENT_RELEASE_ID_REQUIRED"
-    ),
-    purpose: "PAYMENT_PROOF",
-    requiredPermissionCode: permissions.financePaymentRelease,
-    defaultRequiredForAction: "RELEASE"
-  });
-
-  revalidatePath("/finance/accounts-payable");
-}
-
-async function addPayablesEvidenceMetadata(formData: FormData) {
-  "use server";
-
-  const sourceType = cleanField(formData, "sourceType");
-  const config = (() => {
-    if (sourceType === "AP_INVOICE") {
-      return {
-        field: "apInvoiceId",
-        errorCode: "AP_INVOICE_ID_REQUIRED",
-        permission: permissions.financeApInvoiceCreate,
-        defaultRequiredForAction: "INVOICE_CAPTURE"
-      };
-    }
-    if (sourceType === "SUPPLIER_CREDIT_NOTE") {
-      return {
-        field: "supplierCreditNoteId",
-        errorCode: "SUPPLIER_CREDIT_NOTE_ID_REQUIRED",
-        permission: permissions.financeSupplierCreditCreate,
-        defaultRequiredForAction: "CREDIT_REVIEW"
-      };
-    }
-    if (sourceType === "PAYMENT_REQUEST") {
-      return {
-        field: "paymentRequestId",
-        errorCode: "PAYMENT_REQUEST_ID_REQUIRED",
-        permission: permissions.financePaymentRequestCreate,
-        defaultRequiredForAction: "PAYMENT_APPROVAL"
-      };
-    }
-    throw new Error("PAYABLES_EVIDENCE_SOURCE_INVALID");
-  })();
-
-  await createFinanceEvidenceLink({
-    formData,
-    sourceType,
-    sourceRecordId: requiredField(formData, config.field, config.errorCode),
-    purpose: "EVIDENCE",
-    requiredPermissionCode: config.permission,
-    defaultRequiredForAction: config.defaultRequiredForAction
-  });
-
-  revalidatePath("/finance/accounts-payable");
 }
 
 export async function FinanceSubworkspace({
@@ -1821,7 +1444,7 @@ export async function FinanceSubworkspace({
                 </label>
                 <label className="block">
                   <span className="text-xs font-semibold uppercase text-slate-500">
-                    Evidence reference
+                    External evidence reference
                   </span>
                   <input
                     className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2107,7 +1730,7 @@ export async function FinanceSubworkspace({
                 </div>
                 <label className="block">
                   <span className="text-xs font-semibold uppercase text-slate-500">
-                    Evidence reference
+                    External evidence reference
                   </span>
                   <input
                     className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2271,7 +1894,7 @@ export async function FinanceSubworkspace({
                       <div className="grid gap-4">
                         <label className="block">
                           <span className="text-xs font-semibold uppercase text-slate-500">
-                            Evidence reference
+                            External evidence reference
                           </span>
                           <input
                             className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -2358,14 +1981,11 @@ export async function FinanceSubworkspace({
                           {row.evidenceReference ? "Evidence" : "Needs evidence"}
                         </Badge>
                       </div>
-                      <EvidenceMetadataPanel
-                        action={addPayablesEvidenceMetadata}
+                      <ControlledEvidencePanel
                         archiveAction={archiveSharedEvidenceMetadata}
                         attachments={supplierCreditEvidenceById.get(row.id) ?? []}
                         canAdd={dashboard.permissions.canCreateSupplierCredit}
-                        hiddenIdName="supplierCreditNoteId"
-                        objectKeyPlaceholder="finance/evidence/supplier-credit/credit-note.pdf"
-                        recordId={row.id}
+                        sourceRecordId={row.id}
                         sourceType="SUPPLIER_CREDIT_NOTE"
                         triggerLabel="Add Evidence"
                       />
@@ -2722,14 +2342,11 @@ export async function FinanceSubworkspace({
                         {row.status.replaceAll("_", " ")}
                       </Badge>
                     </div>
-                    <EvidenceMetadataPanel
-                      action={addPayablesEvidenceMetadata}
+                    <ControlledEvidencePanel
                       archiveAction={archiveSharedEvidenceMetadata}
                       attachments={apInvoiceEvidenceById.get(row.id) ?? []}
                       canAdd={dashboard.permissions.canCreateApInvoice}
-                      hiddenIdName="apInvoiceId"
-                      objectKeyPlaceholder="finance/evidence/ap-invoice/invoice-support.pdf"
-                      recordId={row.id}
+                      sourceRecordId={row.id}
                       sourceType="AP_INVOICE"
                       triggerLabel="Add Evidence"
                     />
@@ -3032,7 +2649,7 @@ export async function FinanceSubworkspace({
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="block">
                       <span className="text-xs font-semibold uppercase text-slate-500">
-                        Evidence reference
+                        External evidence reference
                       </span>
                       <input
                         className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -3131,14 +2748,11 @@ export async function FinanceSubworkspace({
                         {row.status === "APPROVED" ? "Release ready" : "No release"}
                       </Badge>
                     </div>
-                    <EvidenceMetadataPanel
-                      action={addPayablesEvidenceMetadata}
+                    <ControlledEvidencePanel
                       archiveAction={archiveSharedEvidenceMetadata}
                       attachments={paymentRequestEvidenceById.get(row.id) ?? []}
                       canAdd={dashboard.permissions.canCreatePaymentRequest}
-                      hiddenIdName="paymentRequestId"
-                      objectKeyPlaceholder="finance/evidence/payment-request/approval-support.pdf"
-                      recordId={row.id}
+                      sourceRecordId={row.id}
                       sourceType="PAYMENT_REQUEST"
                       triggerLabel="Add Evidence"
                     />
@@ -3290,7 +2904,7 @@ export async function FinanceSubworkspace({
                               </label>
                               <label className="block md:col-span-2">
                                 <span className="text-xs font-semibold uppercase text-slate-500">
-                                  Evidence reference
+                                  External evidence reference
                                 </span>
                                 <input
                                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -3785,211 +3399,16 @@ export async function FinanceSubworkspace({
                           {row.evidenceReference ? "Evidence" : "Needs evidence"}
                         </Badge>
                         <div className="md:col-span-5">
-                          {evidenceAttachments.length > 0 ? (
-                            <div className="mt-3 grid gap-2 md:grid-cols-2">
-                              {evidenceAttachments.slice(0, 4).map((attachment) => (
-                                <div
-                                  key={attachment.id}
-                                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                                >
-                                  <p className="text-xs font-bold text-slate-950">
-                                    {attachment.originalFilename}
-                                  </p>
-                                  <p className="mt-1 text-[11px] text-slate-500">
-                                    {attachment.mimeType} /{" "}
-                                    {(attachment.sizeBytes / 1024).toLocaleString(
-                                      "en-PH",
-                                      { maximumFractionDigits: 1 }
-                                    )}{" "}
-                                    KB / {attachment.purpose.replaceAll("_", " ")}
-                                  </p>
-                                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                                    {attachment.caption ? (
-                                      <p className="text-[11px] text-slate-600">
-                                        {attachment.caption}
-                                      </p>
-                                    ) : (
-                                      <span />
-                                    )}
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      {attachment.storageProvider ===
-                                      "local-private" ? (
-                                        <a
-                                          className="inline-flex min-h-8 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-bold text-blue-700 hover:bg-blue-50"
-                                          href={`/evidence/${attachment.id}/download`}
-                                        >
-                                          Download
-                                        </a>
-                                      ) : null}
-                                    {dashboard.permissions.canReleasePayment ? (
-                                      <EntryModal
-                                        title="Archive Evidence Link"
-                                        triggerLabel="Archive"
-                                        triggerClassName="border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                                      >
-                                        <form
-                                          action={archiveSharedEvidenceMetadata}
-                                          className="grid gap-4"
-                                        >
-                                          <input
-                                            name="controlledEvidenceAttachmentId"
-                                            type="hidden"
-                                            value={attachment.id}
-                                          />
-                                          <input
-                                            name="sourceType"
-                                            type="hidden"
-                                            value="PAYMENT_RELEASE"
-                                          />
-                                          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                                            This archives the evidence link only.
-                                            The private file metadata remains
-                                            preserved for audit and recovery; no
-                                            payment release, AP, bank, or journal
-                                            state is changed.
-                                          </div>
-                                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                            Archive reason
-                                            <textarea
-                                              className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                              name="archiveReason"
-                                              placeholder="Duplicate link, wrong release, superseded proof, etc."
-                                              required
-                                            />
-                                          </label>
-                                          <button className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                                            Archive Evidence Link
-                                          </button>
-                                        </form>
-                                      </EntryModal>
-                                    ) : null}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                          {dashboard.permissions.canReleasePayment ? (
-                            <div className="mt-3">
-                              <EntryModal
-                                title="Add Release Evidence Metadata"
-                                triggerLabel="Add Evidence"
-                                triggerClassName="border border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-                              >
-                                <form
-                                  action={addPaymentReleaseEvidenceMetadata}
-                                  encType="multipart/form-data"
-                                  className="grid gap-4"
-                                >
-                                  <input
-                                    name="paymentReleaseId"
-                                    type="hidden"
-                                    value={row.id}
-                                  />
-                                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-                                    Upload controlled payment proof here. Files
-                                    stay private, payment/AP/bank records are
-                                    not mutated, and downloads are audited.
-                                  </div>
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    Evidence file
-                                    <input
-                                      accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.xlsx,.docx,application/pdf,image/jpeg,image/png,image/webp,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
-                                      name="evidenceFile"
-                                      type="file"
-                                    />
-                                  </label>
-                                  <div className="grid gap-3 md:grid-cols-2">
-                                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                      File name
-                                      <input
-                                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                        name="originalFilename"
-                                        placeholder="bank-transfer-proof.pdf"
-                                      />
-                                    </label>
-                                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                      MIME type
-                                      <select
-                                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                        name="mimeType"
-                                      >
-                                        <option value="">Select MIME type</option>
-                                        <option value="application/pdf">PDF</option>
-                                        <option value="image/jpeg">JPEG image</option>
-                                        <option value="image/png">PNG image</option>
-                                        <option value="image/webp">WebP image</option>
-                                        <option value="text/csv">CSV</option>
-                                        <option value="text/plain">Text</option>
-                                        <option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                                          Excel workbook
-                                        </option>
-                                        <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                                          Word document
-                                        </option>
-                                      </select>
-                                    </label>
-                                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                      Size in bytes
-                                      <input
-                                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                        min="1"
-                                        name="sizeBytes"
-                                        step="1"
-                                        type="number"
-                                      />
-                                    </label>
-                                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                      Storage provider
-                                      <input
-                                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                        name="storageProvider"
-                                        placeholder="manual-private-reference"
-                                      />
-                                    </label>
-                                  </div>
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    Internal object key
-                                    <input
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      name="objectKey"
-                                      placeholder="finance/evidence/payment-release/proof.pdf"
-                                    />
-                                  </label>
-                                  <div className="grid gap-3 md:grid-cols-2">
-                                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                      Checksum
-                                      <input
-                                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                        name="checksum"
-                                        placeholder="sha256..."
-                                      />
-                                    </label>
-                                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                      Required for action
-                                      <input
-                                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                        name="requiredForAction"
-                                        placeholder="Release, reconciliation, reversal"
-                                      />
-                                    </label>
-                                  </div>
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    Caption
-                                    <textarea
-                                      className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      name="caption"
-                                      placeholder="What this release proof supports"
-                                    />
-                                  </label>
-                                  <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                                    Upload Release Evidence
-                                  </button>
-                                </form>
-                              </EntryModal>
-                            </div>
-                          ) : null}
+                          <ControlledEvidencePanel
+                            archiveAction={archiveSharedEvidenceMetadata}
+                            archiveImpact="This archives the evidence link only. The file remains preserved for audit and recovery; no payment release, AP, bank, or journal state is changed."
+                            attachments={evidenceAttachments}
+                            canAdd={dashboard.permissions.canReleasePayment}
+                            purpose="PAYMENT_PROOF"
+                            requiredForAction="RELEASE"
+                            sourceRecordId={row.id}
+                            sourceType="PAYMENT_RELEASE"
+                          />
                         </div>
                       </div>
 
@@ -4033,7 +3452,7 @@ export async function FinanceSubworkspace({
                           </label>
                           <label className="block">
                             <span className="text-xs font-semibold uppercase text-slate-500">
-                              Evidence reference
+                              External evidence reference
                             </span>
                             <input
                               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -4284,7 +3703,7 @@ export async function FinanceSubworkspace({
                   </label>
                   <label className="block lg:col-span-2">
                     <span className="text-xs font-semibold uppercase text-slate-500">
-                      Evidence reference
+                      External evidence reference
                     </span>
                     <input
                       className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -4653,203 +4072,15 @@ export async function FinanceSubworkspace({
                         <p className="mt-1 text-sm text-slate-600">
                           {row.locationName} / {row.bankName} / Declared by {row.declaredBy}
                         </p>
-                        {evidenceAttachments.length > 0 ? (
-                          <div className="mt-3 grid gap-2">
-                            {evidenceAttachments.slice(0, 3).map((attachment) => (
-                              <div
-                                key={attachment.id}
-                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                              >
-                                <p className="text-xs font-bold text-slate-950">
-                                  {attachment.originalFilename}
-                                </p>
-                                <p className="mt-1 text-[11px] text-slate-500">
-                                  {attachment.mimeType} /{" "}
-                                  {(attachment.sizeBytes / 1024).toLocaleString(
-                                    "en-PH",
-                                    { maximumFractionDigits: 1 }
-                                  )}{" "}
-                                  KB
-                                </p>
-                                <div className="mt-1 flex flex-wrap justify-end gap-2">
-                                  {attachment.storageProvider ===
-                                  "local-private" ? (
-                                    <a
-                                      className="inline-flex min-h-8 items-center justify-center rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-bold text-blue-700 hover:bg-blue-50"
-                                      href={`/evidence/${attachment.id}/download`}
-                                    >
-                                      Download
-                                    </a>
-                                  ) : null}
-                                  {dashboard.permissions.canCreateCashDeposit ? (
-                                    <EntryModal
-                                      title="Archive Evidence Link"
-                                      triggerLabel="Archive"
-                                      triggerClassName="border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                                    >
-                                      <form
-                                        action={archiveSharedEvidenceMetadata}
-                                        className="grid gap-4"
-                                      >
-                                        <input
-                                          name="controlledEvidenceAttachmentId"
-                                          type="hidden"
-                                          value={attachment.id}
-                                        />
-                                        <input
-                                          name="sourceType"
-                                          type="hidden"
-                                          value="BRANCH_CASH_DEPOSIT"
-                                        />
-                                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-                                          This archives the evidence link only.
-                                          The private file metadata remains
-                                          preserved for audit and recovery; no
-                                          branch cash deposit, bank,
-                                          reconciliation, or journal state is
-                                          changed.
-                                        </div>
-                                        <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                          Archive reason
-                                          <textarea
-                                            className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                            name="archiveReason"
-                                            placeholder="Duplicate link, wrong deposit, superseded slip, etc."
-                                            required
-                                          />
-                                        </label>
-                                        <button className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                                          Archive Evidence Link
-                                        </button>
-                                      </form>
-                                    </EntryModal>
-                                  ) : null}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                        {dashboard.permissions.canCreateCashDeposit ? (
-                          <div className="mt-3">
-                            <EntryModal
-                              title="Add Deposit Evidence Metadata"
-                              triggerLabel="Add Evidence"
-                              triggerClassName="border border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-                            >
-                              <form
-                                action={addBranchCashDepositEvidenceMetadata}
-                                encType="multipart/form-data"
-                                className="grid gap-4"
-                              >
-                                <input
-                                  name="branchCashDepositId"
-                                  type="hidden"
-                                  value={row.id}
-                                />
-                                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
-                                  Upload controlled deposit proof here. Files
-                                  stay private, cash/bank/journal records are
-                                  not mutated, and downloads are audited.
-                                </div>
-                                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                  Evidence file
-                                  <input
-                                    accept=".pdf,.jpg,.jpeg,.png,.webp,.csv,.txt,.xlsx,.docx,application/pdf,image/jpeg,image/png,image/webp,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 file:mr-3 file:rounded-md file:border-0 file:bg-blue-600 file:px-3 file:py-2 file:text-sm file:font-bold file:text-white"
-                                    name="evidenceFile"
-                                    type="file"
-                                  />
-                                </label>
-                                <div className="grid gap-3 md:grid-cols-2">
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    File name
-                                    <input
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      name="originalFilename"
-                                      placeholder="deposit-slip.pdf"
-                                    />
-                                  </label>
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    MIME type
-                                    <select
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      name="mimeType"
-                                    >
-                                      <option value="">Select MIME type</option>
-                                      <option value="application/pdf">PDF</option>
-                                      <option value="image/jpeg">JPEG image</option>
-                                      <option value="image/png">PNG image</option>
-                                      <option value="image/webp">WebP image</option>
-                                      <option value="text/csv">CSV</option>
-                                      <option value="text/plain">Text</option>
-                                      <option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-                                        Excel workbook
-                                      </option>
-                                      <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                                        Word document
-                                      </option>
-                                    </select>
-                                  </label>
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    Size in bytes
-                                    <input
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      min="1"
-                                      name="sizeBytes"
-                                      step="1"
-                                      type="number"
-                                    />
-                                  </label>
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    Storage provider
-                                    <input
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      name="storageProvider"
-                                      placeholder="manual-private-reference"
-                                    />
-                                  </label>
-                                </div>
-                                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                  Internal object key
-                                  <input
-                                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                    name="objectKey"
-                                    placeholder="finance/evidence/deposits/deposit-slip.pdf"
-                                  />
-                                </label>
-                                <div className="grid gap-3 md:grid-cols-2">
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    Checksum
-                                    <input
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      name="checksum"
-                                      placeholder="sha256..."
-                                    />
-                                  </label>
-                                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    Required for action
-                                    <input
-                                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                      name="requiredForAction"
-                                      placeholder="Deposit review, reconciliation"
-                                    />
-                                  </label>
-                                </div>
-                                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                  Caption
-                                  <textarea
-                                    className="min-h-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
-                                    name="caption"
-                                    placeholder="Cash count or deposit packet context"
-                                  />
-                                </label>
-                                <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                                  Upload Deposit Evidence
-                                </button>
-                              </form>
-                            </EntryModal>
-                          </div>
-                        ) : null}
+                        <ControlledEvidencePanel
+                          archiveAction={archiveSharedEvidenceMetadata}
+                          archiveImpact="This archives the evidence link only. The file remains preserved for audit and recovery; no branch cash deposit, bank, reconciliation, or journal state is changed."
+                          attachments={evidenceAttachments}
+                          canAdd={dashboard.permissions.canCreateCashDeposit}
+                          requiredForAction="DEPOSIT_REVIEW"
+                          sourceRecordId={row.id}
+                          sourceType="BRANCH_CASH_DEPOSIT"
+                        />
                         {dashboard.permissions.canMatchReconciliation ? (
                           <div className="mt-3">
                             <EntryModal
@@ -4936,7 +4167,7 @@ export async function FinanceSubworkspace({
                                     />
                                   </label>
                                   <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                    Evidence reference
+                                    External evidence reference
                                     <input
                                       className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950"
                                       name="evidenceReference"
@@ -5056,16 +4287,13 @@ export async function FinanceSubworkspace({
                         Variance {formatMoney(row.varianceAmount, "PHP")}
                       </Badge>
                       <div className="md:col-span-3">
-                        <EvidenceMetadataPanel
-                          action={addBankReconciliationEvidenceMetadata}
+                        <ControlledEvidencePanel
                           archiveAction={archiveSharedEvidenceMetadata}
                           attachments={
                             bankReconciliationEvidenceById.get(row.id) ?? []
                           }
                           canAdd={dashboard.permissions.canMatchReconciliation}
-                          hiddenIdName="bankReconciliationId"
-                          objectKeyPlaceholder="finance/evidence/reconciliation/review-support.pdf"
-                          recordId={row.id}
+                          sourceRecordId={row.id}
                           sourceType="BANK_RECONCILIATION"
                           triggerLabel="Add Evidence"
                         />

@@ -792,34 +792,16 @@ describe("finance foundation dashboard", () => {
     expect(financeSubworkspaceSource).toContain(
       "Declare Branch Cash Deposit"
     );
+    expect(financeSubworkspaceSource).toContain("ControlledEvidencePanel");
     expect(financeSubworkspaceSource).toContain(
-      "addBranchCashDepositEvidenceMetadata"
-    );
-    expect(financeSubworkspaceSource).toContain(
-      "Add Deposit Evidence Metadata"
-    );
-    expect(financeSubworkspaceSource).toContain(
-      "Upload Deposit Evidence"
-    );
-    expect(financeSubworkspaceSource).toContain('name="evidenceFile"');
-    expect(financeSubworkspaceSource).toContain(
-      "/evidence/${attachment.id}/download"
-    );
-    expect(financeSubworkspaceSource).toContain(
-      'sourceType: "BRANCH_CASH_DEPOSIT"'
+      'sourceType="BRANCH_CASH_DEPOSIT"'
     );
     expect(financeSubworkspaceSource).toContain(
       "permissions.financeCashDepositCreate"
     );
     expect(financeSubworkspaceSource).toContain("canDeclareBranchDeposit");
     expect(financeSubworkspaceSource).toContain(
-      "addBankReconciliationEvidenceMetadata"
-    );
-    expect(financeSubworkspaceSource).toContain(
-      'sourceType: "BANK_RECONCILIATION"'
-    );
-    expect(financeSubworkspaceSource).toContain(
-      "BANK_RECONCILIATION_ID_REQUIRED"
+      'sourceType="BANK_RECONCILIATION"'
     );
     expect(financeSubworkspaceSource).toContain(
       "permissions.financeReconciliationMatch"
@@ -827,9 +809,8 @@ describe("finance foundation dashboard", () => {
     expect(financeSubworkspaceSource).toContain(
       "bankReconciliationEvidenceById"
     );
-    expect(financeSubworkspaceSource).toContain(
-      "finance/evidence/reconciliation/review-support.pdf"
-    );
+    expect(financeSubworkspaceSource).not.toContain('name="objectKey"');
+    expect(financeSubworkspaceSource).not.toContain('name="storageProvider"');
     expect(financeSubworkspaceSource).toContain("archiveSharedEvidenceMetadata");
     expect(financeSubworkspaceSource).toContain(
       "archiveControlledEvidenceAttachment"
@@ -837,7 +818,6 @@ describe("finance foundation dashboard", () => {
     expect(financeSubworkspaceSource).toContain(
       "CONTROLLED_EVIDENCE_ARCHIVE_REASON_REQUIRED"
     );
-    expect(financeSubworkspaceSource).toContain("Archive Evidence Link");
     expect(branchDepositSource).not.toContain("bankAccount.updateMany");
     expect(branchDepositSource).not.toContain("bankReconciliationMatch.create");
     expect(branchDepositSource).not.toContain("paymentRelease.updateMany");
@@ -962,25 +942,17 @@ describe("finance foundation dashboard", () => {
     expect(financeSubworkspaceSource).toContain("Payment Release Report Preview");
     expect(financeSubworkspaceSource).toContain("paymentReleaseReportRows");
     expect(financeSubworkspaceSource).toContain("listControlledEvidenceAttachments");
-    expect(financeSubworkspaceSource).toContain(
+    expect(financeSubworkspaceSource).not.toContain(
       "createControlledEvidenceAttachmentMetadataLink"
     );
-    expect(financeSubworkspaceSource).toContain(
+    expect(financeSubworkspaceSource).not.toContain(
       "createControlledEvidenceAttachmentUploadLink"
     );
-    expect(financeSubworkspaceSource).toContain("Add Release Evidence Metadata");
-    expect(financeSubworkspaceSource).toContain(
-      "Upload Release Evidence"
-    );
-    expect(financeSubworkspaceSource).toContain('name="evidenceFile"');
-    expect(financeSubworkspaceSource).toContain(
-      "/evidence/${attachment.id}/download"
-    );
+    expect(financeSubworkspaceSource).toContain("ControlledEvidencePanel");
     expect(financeSubworkspaceSource).toContain(
       "permissions.financePaymentRelease"
     );
-    expect(financeSubworkspaceSource).toContain("Archive Evidence Link");
-    expect(financeSubworkspaceSource).toContain('sourceType: "PAYMENT_RELEASE"');
+    expect(financeSubworkspaceSource).toContain('sourceType="PAYMENT_RELEASE"');
     expect(financeServiceSource).toContain("PaymentReleaseReportRow");
     expect(financeServiceSource).toContain(
       "PaymentReleaseSettlementReadinessRow"
@@ -1021,21 +993,16 @@ describe("finance foundation dashboard", () => {
   });
 
   it("wires payables source records to controlled evidence upload controls", () => {
-    expect(financeSubworkspaceSource).toContain("addPayablesEvidenceMetadata");
-    expect(financeSubworkspaceSource).toContain("createFinanceEvidenceLink");
-    expect(financeSubworkspaceSource).toContain(
+    expect(financeSubworkspaceSource).toContain("ControlledEvidencePanel");
+    expect(financeSubworkspaceSource).not.toContain("createFinanceEvidenceLink");
+    expect(financeSubworkspaceSource).not.toContain(
       "createControlledEvidenceAttachmentUploadLink"
     );
-    expect(financeSubworkspaceSource).toContain('sourceType: "AP_INVOICE"');
+    expect(financeSubworkspaceSource).toContain('sourceType="AP_INVOICE"');
     expect(financeSubworkspaceSource).toContain(
-      'sourceType: "SUPPLIER_CREDIT_NOTE"'
+      'sourceType="SUPPLIER_CREDIT_NOTE"'
     );
-    expect(financeSubworkspaceSource).toContain('sourceType: "PAYMENT_REQUEST"');
-    expect(financeSubworkspaceSource).toContain("AP_INVOICE_ID_REQUIRED");
-    expect(financeSubworkspaceSource).toContain(
-      "SUPPLIER_CREDIT_NOTE_ID_REQUIRED"
-    );
-    expect(financeSubworkspaceSource).toContain("PAYMENT_REQUEST_ID_REQUIRED");
+    expect(financeSubworkspaceSource).toContain('sourceType="PAYMENT_REQUEST"');
     expect(financeSubworkspaceSource).toContain("permissions.financeApInvoiceCreate");
     expect(financeSubworkspaceSource).toContain(
       "permissions.financeSupplierCreditCreate"
@@ -1047,13 +1014,7 @@ describe("finance foundation dashboard", () => {
     expect(financeSubworkspaceSource).toContain("supplierCreditEvidenceById");
     expect(financeSubworkspaceSource).toContain("paymentRequestEvidenceById");
     expect(financeSubworkspaceSource).toContain("Add Evidence");
-    expect(financeSubworkspaceSource).toContain("Upload Evidence");
-    expect(financeSubworkspaceSource).toContain('name="evidenceFile"');
-    expect(financeSubworkspaceSource).toContain(
-      "/evidence/${attachment.id}/download"
-    );
     expect(financeSubworkspaceSource).toContain("archiveSharedEvidenceMetadata");
-    expect(financeSubworkspaceSource).toContain("Archive Evidence Link");
     expect(financeSubworkspaceSource).not.toContain(
       'sourceType: "MANUAL_JOURNAL"'
     );

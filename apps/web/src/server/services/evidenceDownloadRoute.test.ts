@@ -41,7 +41,9 @@ describe("controlled evidence download route", () => {
 
   it("delivers only the authorized service result with safe headers", async () => {
     downloadControlledEvidenceAttachment.mockResolvedValueOnce({
-      buffer: Buffer.from("evidence"),
+      body: (async function* () {
+        yield Buffer.from("evidence");
+      })(),
       originalFilename: 'evidence\"\r\n.pdf',
       mimeType: "application/pdf",
       sizeBytes: 8,
@@ -53,7 +55,7 @@ describe("controlled evidence download route", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-disposition")).toBe(
-      'attachment; filename="evidence___.pdf"',
+      'attachment; filename="evidence___.pdf"; filename*=UTF-8\'\'evidence___.pdf',
     );
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("cache-control")).toBe("private, no-store");

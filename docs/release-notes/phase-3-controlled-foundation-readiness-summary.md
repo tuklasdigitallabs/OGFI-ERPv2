@@ -26,7 +26,7 @@
 - Review the deferred blocker register with finance, operations, workforce, IT/security, and release owners before representing Phase 3 as production release-ready.
 - Use issue labels in Bank & Cash and Workforce previews to focus review on evidence gaps, unmatched statement lines, reconciliation variance, schedule coverage gaps, attendance exceptions, and duplicate rows.
 - Run `pnpm release:phase3-uat-status` after exporting the Release Readiness register so missing Phase 3 finance, workforce, or deferred-blocker evidence is visible before GO / NO-GO review.
-- Keep evidence references accurate until binary upload/download, retention, scanning, retrieval authorization, and download audit are implemented or formally waived.
+- Use controlled evidence uploads on supported records, wait for `Available` before download, and keep separate evidence references accurate where the workflow still requests them.
 
 ## Important notes
 
@@ -34,7 +34,7 @@
 - Phase 3 does not make the ERP the official accounting book of record until finance owners complete production UAT, close deferred blockers or approve mitigations, and sign off release readiness.
 - Payment release control does not settle AP, reduce supplier balances, post journals, mutate bank balances, or call bank APIs.
 - Cash advance payment handoff for employee/custodian advances remains blocked by `P3-BLOCK-001 / III-009` until a safe payee/payment architecture is approved.
-- Binary evidence upload/download remains blocked by `P3-BLOCK-002`. Current evidence controls use references and metadata links where implemented.
+- Controlled binary upload, fail-closed safety states, authorized download, archive preservation, retention metadata, and legal-hold placement are implemented in the current build. `P3-BLOCK-002` remains open for hosted activation evidence, UAT, and owner signoff; this is not production go-live approval.
 - Budget hard blocks, supplier credit application, AP settlement, production bank/cash close exception resolution, full workforce transfer routing, and document retention remain deferred production blockers until UAT resolves or formally waives them.
 
 ## Learn more
@@ -42,6 +42,7 @@
 - `docs/phases/phase-03-finance-and-workforce/quality/PHASE3_UAT_SCENARIOS.md`
 - `docs/core/07-quality/PHASE3_DEFERRED_GO_LIVE_BLOCKERS_FOR_UAT.md`
 - `docs/knowledge-base/finance/README.md`
+- `docs/knowledge-base/troubleshooting/how-to-attach-supporting-documents-or-photo-evidence.md`
 - `docs/training/phase-3-finance-workforce-controlled-foundation-quick-start.md`
 
 ## Support

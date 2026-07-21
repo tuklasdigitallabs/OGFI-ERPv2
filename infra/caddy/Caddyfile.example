@@ -10,7 +10,7 @@
   }
 
   request_body {
-    max_size {$MAX_REQUEST_BODY_SIZE:25MB}
+    max_size {$MAX_REQUEST_BODY_SIZE:27MiB}
   }
 
   handle /health {

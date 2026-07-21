@@ -410,30 +410,25 @@ describe("authorization surface manifest", () => {
       }),
     ]);
 
-    const financeEvidenceActions = [
-      "addBankReconciliationEvidenceMetadata",
-      "addBranchCashDepositEvidenceMetadata",
-      "addPayablesEvidenceMetadata",
-      "addPaymentReleaseEvidenceMetadata",
-    ];
-    for (const actionName of financeEvidenceActions) {
-      const surface = manifest.find(
-        (entry) =>
-          entry.id === `components/FinanceSubworkspace.tsx#${actionName}`,
-      );
-      expect(surface.permission).toBe("SERVICE_ENFORCED");
-      expect(surface.delegatedServiceIds).toEqual(
-        expect.arrayContaining([
-          "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
-          "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
-        ]),
-      );
-      expect(surface.callChains).toEqual(
-        expect.arrayContaining([
-          `${actionName} -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink`,
-          `${actionName} -> createFinanceEvidenceLink -> server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink`,
-        ]),
-      );
+    for (const [routeId, serviceId] of [
+      [
+        "app/api/evidence/uploads/route.ts#POST",
+        "server/services/evidenceUploads.ts#issueEvidenceUploadIntent",
+      ],
+      [
+        "app/api/evidence/uploads/content/route.ts#POST",
+        "server/services/evidenceUploads.ts#storeEvidenceUploadContent",
+      ],
+    ]) {
+      const surface = manifest.find((entry) => entry.id === routeId);
+      expect(surface).toMatchObject({
+        permission: "SERVICE_ENFORCED",
+        denialContract: "SAFE_UPLOAD_ERROR_NO_SOURCE_MUTATION",
+        riskTier: "HIGH",
+        executableTestIds: ["AUTHZ-EVIDENCE-001"],
+      });
+      expect(surface.delegatedServiceIds).toContain(serviceId);
+      expect(surface.callChains).toContain(`POST -> ${serviceId}`);
     }
 
     for (const surface of manifest) {

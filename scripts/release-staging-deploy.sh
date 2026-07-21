@@ -17,6 +17,7 @@ SSH_TARGET="${STAGING_USER}@${STAGING_HOST}"
 REMOTE_RELEASE_DIR="${STAGING_APP_DIR}/releases/${RELEASE_VERSION}"
 REMOTE_CURRENT_LINK="${STAGING_APP_DIR}/current"
 STAGING_CAPTURE_DATA_SNAPSHOTS_VALUE="${STAGING_CAPTURE_DATA_SNAPSHOTS:-yes}"
+STAGING_COMPOSE_ENV_FILE_VALUE="${STAGING_COMPOSE_ENV_FILE:-${STAGING_APP_DIR}/shared/staging.compose.env}"
 
 if [ "${CONFIRM_STAGING_DEPLOY:-no}" != "yes" ]; then
   echo "Set CONFIRM_STAGING_DEPLOY=yes after backup and release approval are recorded." >&2
@@ -38,6 +39,8 @@ ssh "$SSH_TARGET" "
   pnpm install --frozen-lockfile
   pnpm db:generate
   mkdir -p release-evidence/staging-deploy
+  test -f '$STAGING_COMPOSE_ENV_FILE_VALUE'
+  node --env-file='$STAGING_COMPOSE_ENV_FILE_VALUE' scripts/evidence-hostinger-contract.mjs
   PSQL_CMD=\"\${PSQL_BIN:-\${POSTGRES_PSQL_BIN:-psql}}\"
   RELEASE_DATA_SNAPSHOT_LABEL=pre-migration-${RELEASE_VERSION} \
   RELEASE_DATA_SNAPSHOT_OUTPUT_DIR=release-evidence/staging-deploy/data-snapshots \
@@ -59,8 +62,14 @@ ssh "$SSH_TARGET" "
   else
     echo 'Skipping post-migration data snapshot because STAGING_CAPTURE_DATA_SNAPSHOTS is not yes or psql/PSQL_BIN is not available.'
   fi
-  docker compose config >/tmp/ogfi-compose-${RELEASE_VERSION}.yml
-  docker compose up -d --build web caddy
+  docker compose --env-file '$STAGING_COMPOSE_ENV_FILE_VALUE' \
+    -f docker-compose.yml \
+    -f infra/hostinger/evidence/compose.production.yaml \
+    config >release-evidence/staging-deploy/rendered-compose.yml
+  docker compose --env-file '$STAGING_COMPOSE_ENV_FILE_VALUE' \
+    -f docker-compose.yml \
+    -f infra/hostinger/evidence/compose.production.yaml \
+    up -d web caddy evidence-broker clamd
   ln -sfn '$REMOTE_RELEASE_DIR' '$REMOTE_CURRENT_LINK'
 "
 

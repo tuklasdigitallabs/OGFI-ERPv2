@@ -31,8 +31,8 @@
   },
   "AUTHZ-EVIDENCE-001": {
     "kind": "database-service-and-route",
-    "file": "apps/web/tests/accessControl.integration.test.ts",
-    "additionalFile": "apps/web/src/server/services/evidenceDownloadRoute.test.ts",
-    "evidence": "real private bytes, checksum, live permission and scope revocation, audit, and non-enumerating route contract"
+    "file": "apps/web/tests/evidenceAuthorization.integration.test.ts",
+    "additionalFile": "apps/web/src/server/services/evidenceUploadRoutes.test.ts",
+    "evidence": "database-backed tenant, company, location, department, confidential-workforce, restricted-project, upload-content, required-evidence, legal-hold, exact private-byte, audit, no-mutation, and non-enumerating denials"
   }
 }

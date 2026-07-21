@@ -27,7 +27,7 @@ These items must be completed once at platform level. A workspace must not be ce
 | SPF-002 | Migration and data-safety verification | Review all pending migrations, deploy them to a disposable environment, compare pre/post snapshots, and verify rollback considerations | Complete; exact-SHA PostgreSQL 17 rehearsal and checksum-backed evidence accepted under `DEC-0039` |
 | SPF-003 | Authentication and privileged access | Confirm production identity provider or login path, privileged MFA enforcement, session invalidation, and break-glass runtime behavior | Implementation complete; production enablement remains blocked on hosted restore/locking evidence and accountable-owner policy signoff |
 | SPF-004 | Authorization regression gate | Verify tenant, company, brand, location, department, project membership, restricted-project, and direct-route/API enforcement | Complete; exact-SHA hosted production build, database authorization, manifest, and isolated development-fixture desktop/mobile E2E accepted under `DEC-0044` |
-| SPF-005 | Controlled evidence uploads | Complete the hybrid evidence model described in Section 3 | In progress under confirmed `DEC-0045`; production activation evidence remains a blocker |
+| SPF-005 | Controlled evidence uploads | Complete the hybrid evidence model described in Section 3 | In progress: the same-VPS broker, private scanning, upload/download, quarantine, quota/lease, retention-register, recovery-tooling, deployment-overlay, and authorization-test foundations are implemented; migration review, hosted verification, policy values, backup/key custody, paired restore, and production activation remain open |
 | SPF-006 | Audit and activity integrity | Verify important create, update, transition, approve, post, reverse, cancel, archive, upload, download, export, and denied actions produce the required immutable history; bound or aggregate repeated denied-event writes so enumeration attempts cannot amplify audit storage without limit | Pending cross-workspace verification |
 | SPF-007 | Shared UX states | Standardize loading, empty, error, denied, disabled-with-reason, validation, conflict, retry, and mobile states | Pending workspace verification |
 | SPF-008 | Operational list behavior | Verify server-backed search, filters, pagination, export, responsive tables/cards, and selected-record task flows | Pending workspace verification |
@@ -95,31 +95,42 @@ Evidence capture will use a hybrid model:
 
 Text alone must not satisfy high-risk evidence requirements unless an approved policy explicitly permits a verified external reference.
 
-### Pending implementation
+### Implemented foundation and pending activation
 
-- Select and approve the production S3-compatible storage provider.
-- Use separate buckets and credentials for development, staging, and production.
-- Use opaque object keys segregated by tenant and company; do not place original filenames or sensitive business data in object keys.
+- The `DEC-0046` dedicated internal minimal storage broker is implemented for the same Hostinger VPS topology. Only the broker is configured to own the validated absolute private evidence bind mount and versioned AES-256-GCM key; hosted proof of that isolation remains required.
+- Use separate mounts, encryption keys/versions, broker identities, scanner boundaries, credentials, and environment configuration for development, staging, and production.
+- Use server-generated opaque non-repeating keys; keep tenant/company/source scope in PostgreSQL and do not encode original filenames or sensitive business data in storage keys.
 - Store file metadata and source-record links in PostgreSQL; do not store file bytes in PostgreSQL.
 - Enforce source-record authorization on upload, list, preview, download, archive, and replacement.
 - Enforce location/department scope, confidential workforce access, and restricted-project membership where applicable.
 - Validate configured size limits, allowed extensions, detected content type, and checksum.
 - Upload into quarantine and prevent evidence use until malware scanning succeeds.
-- Use private server-mediated access or short-lived signed URLs; never expose permanent public URLs.
+- Bounded upload and download streams are proxied through the authorized application and internal broker; filesystem paths, broker/scanner access, and permanent public URLs are not exposed.
 - Audit upload, scan result, download, archive, replacement, denial, and retention actions.
 - Preserve important evidence through archival/versioning rather than normal-user hard deletion.
-- Implement retention, legal-hold where required, quotas, encrypted backup/replication, and restore verification.
+- Application retention/legal-hold services and an administrative retention register, company quota reservations, upload leases/rate limits, disk high-water controls, and an evidence-root single-broker process lock are implemented. Recovery creation, isolated staging, and verification tools exist, but an independently recoverable encrypted backup, key escrow/custody, and hosted paired database/evidence restore proof remain activation blockers. Do not represent same-VPS filesystem storage as WORM or Object Lock.
 - Provide one reusable attachment uploader/viewer for workspace adoption.
 - Define the attachment requirement matrix by workflow, action, risk, value, and evidence purpose.
 - Add cross-tenant, cross-company, cross-location, unauthorized-source, and restricted-project denial tests.
 
-The current `local-private` provider remains suitable for local development and controlled demonstration only. It must not be represented as the final production storage design without the required security, scanning, retention, and recovery approvals.
+Direct web-mounted `local-private` storage remains suitable for local development and controlled demonstration only. The production design is the isolated broker contract in `DEC-0046`; confirmation of that architecture does not satisfy its implementation or activation gates.
 
 ### SPF-005 decision status — July 21, 2026
 
-- `DEC-0045` confirms AWS S3 with GuardDuty Malware Protection behind provider-neutral storage and scan adapters, using one private protected bucket per environment, opaque immutable object versions, and an exact-version GuardDuty-tag plus PostgreSQL-state availability gate.
-- EventBridge callbacks are non-authoritative wake-up signals. Exact S3 version/tag revalidation, idempotent database transitions, and bounded PostgreSQL-backed reconciliation are required; Redis or a queue is not introduced in this release.
-- Local-private storage and scan waivers remain limited to local development and controlled UAT. Production must fail closed until AWS account/Region/residency, KMS/IAM/GuardDuty ownership, retention/legal-hold authority, quotas, RPO/RTO, recovery, budget, incident ownership, and hosted staging/restore evidence are configured and approved.
+- `DEC-0046` supersedes `DEC-0045` and confirms a dedicated internal minimal broker on the same Hostinger VPS. Only the broker owns the absolute private evidence mount and versioned AES-256-GCM key; web, Caddy, and ClamAV have no evidence mount. The application proxies bounded streams, and the server issues opaque immutable keys/versions.
+- PostgreSQL is authoritative for source-record authorization, idempotency, quota, quarantine, exact-version compare-and-set availability, retention/legal hold, and audit. ClamAV scans private streams through `INSTREAM`; only a conclusive `CLEAN` result for the exact version and accepted signature freshness becomes available. A bounded systemd timer handles reconciliation without detached post-response work, Redis, or a queue.
+- Same-VPS filesystem storage is not WORM/Object Lock and retains root-compromise and same-disk-loss risks. SPF-005 is not production-ready. Activation remains blocked on actual VPS size/utilization and headroom, evidence quota/high-water values, encryption-key custody/recovery, Hostinger daily-backup entitlement/location/encryption/retention/restore granularity, approved RPO/RTO, retention/legal-hold policy, pinned ClamAV image/resources/signature freshness, implementation verification, and hosted paired database/evidence restore proof.
+- External object storage is deferred until capacity, multi-host deployment, stronger RPO/RTO, legal WORM, or tenant scale triggers a new material decision and controlled copy-verify-cutover migration.
+
+### SPF-005 implementation evidence — July 21, 2026
+
+- Implemented the isolated encrypted broker and provider-neutral storage boundary, private ClamAV `INSTREAM` adapter, streamed application upload/download routes, opaque immutable key/version handling, quarantine-by-default lifecycle, and exact-version clean-release checks.
+- Implemented PostgreSQL-backed idempotency, company quota reservation/consumption, upload leases, request-rate limits, bounded scan reconciliation, compare-and-set availability, legal-hold backend controls, preservation-aware workspace states, server-paginated evidence history, and the restricted administrative retention register. Authorization coverage includes upload/download, source-scope denial, legal-hold, retention-register, and non-enumerating evidence cases. Filename/MIME matching is enforced both when the upload intent is issued and before an exact version becomes available; active-script and spreadsheet extensions cannot pass as plain text.
+- Added the Hostinger deployment overlay, systemd reconciliation and recovery-stage/verification units, configuration/readiness contracts, and recovery create/verify tooling. These are implementation artifacts, not proof that the real Hostinger environment, independent backup destination, encryption-key custody, or paired restore meets approved objectives.
+- Migrations `20260721170000_controlled_evidence_storage_contract`, `20260721180000_evidence_legal_hold_controls`, and `20260721190000_controlled_evidence_policy_alignment` are checksum-bound and independently database-reviewed as `APPROVED_FOR_REHEARSAL`, not production `APPROVED`. They require the recorded writer quiescence, exact-SHA populated-predecessor migration/redeploy checks, schema-drift and report/export comparison, and isolated restore equivalence before release use.
+- Final local candidate verification passes: web lint and typecheck, production build, 761 web unit/contract tests, 20 authorization-manifest tests, 12 database package tests, eight Hostinger-isolation contract tests, seven evidence-recovery contract tests, release-tool self-tests, secret review, migration inventory with zero pending dispositions, and `git diff --check`. The database-dependent authorization/E2E and populated-predecessor rehearsal gates remain separate hosted/disposable-environment evidence and are not implied by these local results.
+- SPF-005 remains open and must not be described as production-ready or complete. External activation is blocked on real Hostinger capacity/configuration values, independently recoverable encrypted off-VPS backup and key escrow, approved retention/legal-hold/disposition policy, paired PostgreSQL/evidence/key restore proof, hosted isolation/scanner/failure tests, and final Security/QA/DevOps/Release acceptance. `DEC-0047` also remains open for the exact finance evidence matrix and explicit attachment-selection/attestation workflow; mapped high-risk finance actions remain non-production and legacy text is supplemental only.
+- Dunong’s controlled-evidence handoff is complete for the implemented foundation: the glossary, upload/support guide, legal-hold administration guide, training module, release note, and indexes cover controlled evidence, quarantine/scan wait, rejection, quota/rate denial, legal hold, retention, download, recovery/support, and the absence of any current AWS integration. These documents continue to label hosted activation and the finance evidence matrix as pending.
 
 ## 4. Workspace Completion Sequence
 

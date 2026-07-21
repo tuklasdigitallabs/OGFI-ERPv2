@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -13,7 +13,20 @@ import type {
   createControlledEvidenceAttachmentUploadLink as createControlledEvidenceAttachmentUploadLinkType,
   downloadControlledEvidenceAttachmentForSession as downloadControlledEvidenceAttachmentForSessionType,
   linkControlledEvidenceAttachment as linkControlledEvidenceAttachmentType,
+  listControlledEvidenceAttachments as listControlledEvidenceAttachmentsType,
 } from "../src/server/services/attachments";
+import type {
+  issueEvidenceUploadIntentForSession as issueEvidenceUploadIntentForSessionType,
+  storeEvidenceUploadContent as storeEvidenceUploadContentType,
+} from "../src/server/services/evidenceUploads";
+import type { EvidenceStorageConfig } from "../src/server/services/evidenceStorageConfig";
+import type { ObjectStorageAdapter } from "../src/server/storage/contracts";
+import type {
+  listEvidenceRetentionRegister as listEvidenceRetentionRegisterType,
+  listEvidenceRetentionRegisterForSession as listEvidenceRetentionRegisterForSessionType,
+  setEvidenceLegalHold as setEvidenceLegalHoldType,
+  setEvidenceLegalHoldForSession as setEvidenceLegalHoldForSessionType,
+} from "../src/server/services/evidenceRetention";
 import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
 import {
   authenticationSessionTokenHash,
@@ -27,9 +40,9 @@ describe("controlled evidence database authorization matrix", () => {
   const suffix = randomUUID().slice(0, 8);
   const id = () => randomUUID();
   const ids = {
-    tenant: id(), company: id(), adjacentCompany: id(), brand: id(), otherBrand: id(),
+    tenant: id(), foreignTenant: id(), company: id(), adjacentCompany: id(), foreignCompany: id(), brand: id(), otherBrand: id(),
     location: id(), adjacentLocation: id(), adjacentCompanyLocation: id(),
-    department: id(), otherDepartment: id(), foreignDepartment: id(), user: id(), role: id(), supplier: id(),
+    foreignLocation: id(), department: id(), otherDepartment: id(), foreignDepartment: id(), user: id(), foreignUser: id(), role: id(), supplier: id(),
     accountClass: id(), ledgerAccount: id(), fiscalYear: id(), period: id(), authSession: id(),
     bankAccount: id(), bankStatement: id(), project: id(), restrictedProject: id(),
   };
@@ -39,6 +52,7 @@ describe("controlled evidence database authorization matrix", () => {
   const noLocationTypes: EvidenceAttachmentSourceType[] = [];
   const controlledLinkIds = new Map<EvidenceAttachmentSourceType, string>();
   const attachmentId = id();
+  const foreignExpenseRequestId = id();
   const fixtureDate = new Date("2026-07-21T00:00:00.000Z");
   let prisma: PrismaClient;
   let session: SessionContext;
@@ -49,6 +63,15 @@ describe("controlled evidence database authorization matrix", () => {
   let createControlledEvidenceAttachmentUploadLink: typeof createControlledEvidenceAttachmentUploadLinkType;
   let downloadControlledEvidenceAttachmentForSession: typeof downloadControlledEvidenceAttachmentForSessionType;
   let linkControlledEvidenceAttachment: typeof linkControlledEvidenceAttachmentType;
+  let listControlledEvidenceAttachments: typeof listControlledEvidenceAttachmentsType;
+  let issueEvidenceUploadIntentForSession: typeof issueEvidenceUploadIntentForSessionType;
+  let storeEvidenceUploadContent: typeof storeEvidenceUploadContentType;
+  let localEvidenceConfig: EvidenceStorageConfig;
+  let localObjectStorage: ObjectStorageAdapter;
+  let listEvidenceRetentionRegister: typeof listEvidenceRetentionRegisterType;
+  let listEvidenceRetentionRegisterForSession: typeof listEvidenceRetentionRegisterForSessionType;
+  let setEvidenceLegalHold: typeof setEvidenceLegalHoldType;
+  let setEvidenceLegalHoldForSession: typeof setEvidenceLegalHoldForSessionType;
 
   const remember = (
     sourceType: EvidenceAttachmentSourceType,
@@ -60,6 +83,30 @@ describe("controlled evidence database authorization matrix", () => {
     return sourceRecordId;
   };
 
+  const uploadInput = (
+    sourceType: EvidenceAttachmentSourceType,
+    sourceRecordId: string,
+    overrides: Partial<{
+      requiredForAction: string;
+      idempotencyKey: string;
+      originalFilename: string;
+      mimeType: "text/plain" | "application/pdf";
+    }> = {},
+  ) => {
+    const body = Buffer.from("authorized evidence upload");
+    return {
+      sourceType,
+      sourceRecordId,
+      purpose: "EVIDENCE" as const,
+      requiredForAction: overrides.requiredForAction,
+      originalFilename: overrides.originalFilename ?? "authorization-evidence.txt",
+      mimeType: overrides.mimeType ?? ("text/plain" as const),
+      sizeBytes: body.byteLength,
+      checksumSha256Base64: createHash("sha256").update(body).digest("base64"),
+      idempotencyKey: overrides.idempotencyKey ?? `authz-${randomUUID()}`,
+    };
+  };
+
   beforeAll(async () => {
     ({ prisma } = await import("@ogfi/database"));
     ({
@@ -69,7 +116,16 @@ describe("controlled evidence database authorization matrix", () => {
       createControlledEvidenceAttachmentUploadLink,
       downloadControlledEvidenceAttachmentForSession,
       linkControlledEvidenceAttachment,
+      listControlledEvidenceAttachments,
     } = await import("../src/server/services/attachments"));
+    ({ issueEvidenceUploadIntentForSession, storeEvidenceUploadContent } =
+      await import("../src/server/services/evidenceUploads"));
+    ({
+      listEvidenceRetentionRegister,
+      listEvidenceRetentionRegisterForSession,
+      setEvidenceLegalHold,
+      setEvidenceLegalHoldForSession,
+    } = await import("../src/server/services/evidenceRetention"));
     await prisma.$connect();
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
@@ -81,9 +137,13 @@ describe("controlled evidence database authorization matrix", () => {
     await prisma.tenant.create({
       data: { id: ids.tenant, name: `Evidence Matrix ${suffix}`, loginCode: `ev-${suffix}` },
     });
+    await prisma.tenant.create({
+      data: { id: ids.foreignTenant, name: `Foreign Evidence Matrix ${suffix}`, loginCode: `evf-${suffix}` },
+    });
     await prisma.company.createMany({ data: [
       { id: ids.company, tenantId: ids.tenant, code: `EV-${suffix}`, legalName: `Evidence Company ${suffix}`, currencyCode: "PHP" },
       { id: ids.adjacentCompany, tenantId: ids.tenant, code: `EV-ADJ-${suffix}`, legalName: `Adjacent Evidence Company ${suffix}`, currencyCode: "PHP" },
+      { id: ids.foreignCompany, tenantId: ids.foreignTenant, code: `EV-F-${suffix}`, legalName: `Foreign Evidence Company ${suffix}`, currencyCode: "PHP" },
     ] });
     await prisma.brand.createMany({ data: [
       { id: ids.brand, tenantId: ids.tenant, companyId: ids.company, code: `EV-B-${suffix}`, name: `Evidence Brand ${suffix}` },
@@ -98,8 +158,12 @@ describe("controlled evidence database authorization matrix", () => {
       { id: ids.location, tenantId: ids.tenant, companyId: ids.company, brandId: ids.brand, locationType: "BRANCH", code: `EV-L-${suffix}`, name: `Evidence Home ${suffix}` },
       { id: ids.adjacentLocation, tenantId: ids.tenant, companyId: ids.company, brandId: ids.brand, locationType: "BRANCH", code: `EV-A-${suffix}`, name: `Evidence Adjacent ${suffix}` },
       { id: ids.adjacentCompanyLocation, tenantId: ids.tenant, companyId: ids.adjacentCompany, locationType: "BRANCH", code: `EV-C-${suffix}`, name: `Evidence Other Company ${suffix}` },
+      { id: ids.foreignLocation, tenantId: ids.foreignTenant, companyId: ids.foreignCompany, locationType: "BRANCH", code: `EV-F-${suffix}`, name: `Evidence Foreign Tenant ${suffix}` },
     ] });
-    await prisma.user.create({ data: { id: ids.user, tenantId: ids.tenant, email: `evidence-${suffix}@example.test`, displayName: `Evidence User ${suffix}` } });
+    await prisma.user.createMany({ data: [
+      { id: ids.user, tenantId: ids.tenant, email: `evidence-${suffix}@example.test`, displayName: `Evidence User ${suffix}` },
+      { id: ids.foreignUser, tenantId: ids.foreignTenant, email: `foreign-evidence-${suffix}@example.test`, displayName: `Foreign Evidence User ${suffix}` },
+    ] });
     await prisma.role.create({ data: { id: ids.role, tenantId: ids.tenant, code: `EVIDENCE_${suffix}`, name: `Evidence Matrix ${suffix}` } });
     const permissionRows = await prisma.permission.findMany({ where: { tenantId: null }, select: { id: true, code: true } });
     await prisma.rolePermission.createMany({ data: permissionRows.map((permission) => ({ roleId: ids.role, permissionId: permission.id })) });
@@ -159,6 +223,7 @@ describe("controlled evidence database authorization matrix", () => {
 
     const expenseId = remember("EXPENSE_REQUEST", id());
     await prisma.expenseRequest.create({ data: { id: expenseId, tenantId: ids.tenant, companyId: ids.company, publicReference: `EV-EXP-${suffix}`, requestDate: fixtureDate, title: "Evidence expense", requestReason: "Evidence matrix", categoryCode: "TEST", brandId: ids.brand, locationId: ids.adjacentLocation, departmentId: ids.department, requestedByUserId: ids.user } });
+    await prisma.expenseRequest.create({ data: { id: foreignExpenseRequestId, tenantId: ids.foreignTenant, companyId: ids.foreignCompany, publicReference: `EV-FEXP-${suffix}`, requestDate: fixtureDate, title: "Foreign tenant evidence expense", requestReason: "Evidence tenant boundary", categoryCode: "TEST", locationId: ids.foreignLocation, requestedByUserId: ids.foreignUser } });
     const expenseLineId = remember("EXPENSE_REQUEST_LINE", id());
     await prisma.expenseRequestLine.create({ data: { id: expenseLineId, expenseRequestId: expenseId, tenantId: ids.tenant, companyId: ids.company, lineNumber: 1, lineDate: fixtureDate, description: "Evidence expense line", categoryCode: "TEST", requestedAmountPhp: 1, lineTotalPhp: 1, createdByUserId: ids.user } });
     const cashRequestId = remember("CASH_ADVANCE_REQUEST", id());
@@ -204,16 +269,70 @@ describe("controlled evidence database authorization matrix", () => {
       data: { projectId: ids.project },
     });
     const requirementId = remember("PROJECT_REQUIREMENT", id(), false);
-    await prisma.projectRequirement.create({ data: { id: requirementId, tenantId: ids.tenant, companyId: ids.company, projectId: ids.restrictedProject, kind: "EVIDENCE", code: `EV-REQ-${suffix}`, label: "Evidence requirement", ownerUserId: ids.user, createdByUserId: ids.user, updatedByUserId: ids.user } });
+    await prisma.projectRequirement.create({ data: { id: requirementId, tenantId: ids.tenant, companyId: ids.company, projectId: ids.restrictedProject, kind: "EVIDENCE", code: `EV-REQ-${suffix}`, label: "Evidence requirement", evidenceType: "DOCUMENT", ownerUserId: ids.user, createdByUserId: ids.user, updatedByUserId: ids.user } });
 
     attachmentRoot = await mkdtemp(path.join(tmpdir(), "ogfi-evidence-matrix-"));
     process.env.OGFI_PRIVATE_ATTACHMENT_ROOT = attachmentRoot;
-    const objectKey = path.posix.join("controlled-evidence", ids.tenant, attachmentId, "matrix.txt");
+    process.env.APP_ENV = "test";
+    process.env.APP_URL = "https://erp.example";
+    process.env.EVIDENCE_STORAGE_PROVIDER = "local-private";
+    process.env.EVIDENCE_LOCAL_STORAGE_ROOT = attachmentRoot;
+    process.env.EVIDENCE_LOCAL_SCAN_MODE = "explicit-test-clean";
+    process.env.EVIDENCE_MAX_UPLOAD_BYTES = "26214400";
+    process.env.EVIDENCE_DEFAULT_COMPANY_QUOTA_BYTES = "1073741824";
+    localEvidenceConfig = {
+      provider: "local-private",
+      production: false,
+      rootDirectory: attachmentRoot,
+      localScanMode: "explicit-test-clean",
+      uploadIntentTtlSeconds: 300,
+      uploadIntentAbsoluteTtlSeconds: 900,
+      uploadLeaseSeconds: 180,
+      maxActiveUploadIntentsPerUser: 20,
+      maxActiveUploadIntentsPerCompany: 500,
+      maxUploadIntentsPerUserHour: 100,
+      maxUploadIntentsPerCompanyHour: 2_000,
+      maxUploadBytes: 26_214_400,
+      defaultCompanyQuotaBytes: 1_073_741_824,
+    };
+    const { LocalPrivateObjectStorageAdapter } = await import(
+      "../src/server/storage/localPrivateAdapters"
+    );
+    localObjectStorage = new LocalPrivateObjectStorageAdapter(localEvidenceConfig);
+    const objectKey = `quarantine/${randomUUID()}`;
+    const objectVersionId = randomUUID();
     const buffer = Buffer.from("evidence authorization matrix");
-    const filePath = path.join(attachmentRoot, ...objectKey.split("/"));
-    await mkdir(path.dirname(filePath), { recursive: true });
-    await writeFile(filePath, buffer);
-    await prisma.attachment.create({ data: { id: attachmentId, tenantId: ids.tenant, storageProvider: "local-private", objectKey, originalFilename: "matrix.txt", mimeType: "text/plain", sizeBytes: buffer.byteLength, checksum: `sha256:${createHash("sha256").update(buffer).digest("hex")}`, uploadedByUserId: ids.user } });
+    const checksum = createHash("sha256").update(buffer).digest("base64");
+    await localObjectStorage.writeExactVersion({
+      key: objectKey,
+      versionId: objectVersionId,
+      body: (async function* () { yield buffer; })(),
+      contentType: "text/plain",
+      expectedSize: buffer.byteLength,
+      expectedChecksumSha256Base64: checksum,
+    });
+    await prisma.attachment.create({ data: {
+      id: attachmentId,
+      tenantId: ids.tenant,
+      companyId: ids.company,
+      storageEnvironment: "LOCAL_DEVELOPMENT",
+      storageProvider: "local-private",
+      objectKey,
+      objectVersionId,
+      originalFilename: "matrix.txt",
+      mimeType: "text/plain",
+      detectedMimeType: "text/plain",
+      sizeBytes: buffer.byteLength,
+      checksum,
+      detectedChecksum: checksum,
+      uploadState: "VERIFIED",
+      scanState: "CLEAN",
+      availabilityState: "AVAILABLE",
+      physicalState: "DURABLE",
+      scanVerifiedObjectVersionId: objectVersionId,
+      availableAt: fixtureDate,
+      uploadedByUserId: ids.user,
+    } });
     for (const [sourceType, sourceRecordId] of sourceIds) {
       const linkId = id();
       controlledLinkIds.set(sourceType, linkId);
@@ -225,7 +344,11 @@ describe("controlled evidence database authorization matrix", () => {
     clearAuthenticatedRequest();
     if (!prisma) return;
     await prisma.auditEvent.deleteMany({ where: { tenantId: ids.tenant } });
+    await prisma.projectActivityEvent.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.controlledEvidenceAttachment.deleteMany({ where: { tenantId: ids.tenant } });
+    await prisma.projectAttachment.deleteMany({ where: { tenantId: ids.tenant } });
+    await prisma.attachmentUploadIntent.deleteMany({ where: { tenantId: ids.tenant } });
+    await prisma.attachmentCompanyQuotaUsage.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.attachment.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.projectRequirement.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.projectMember.deleteMany({ where: { tenantId: ids.tenant } });
@@ -247,6 +370,7 @@ describe("controlled evidence database authorization matrix", () => {
     await prisma.cashAdvanceRequest.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.expenseRequestLine.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.expenseRequest.deleteMany({ where: { tenantId: ids.tenant } });
+    await prisma.expenseRequest.deleteMany({ where: { tenantId: ids.foreignTenant } });
     await prisma.bankReconciliation.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.branchCashDeposit.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.paymentRelease.deleteMany({ where: { tenantId: ids.tenant } });
@@ -266,15 +390,22 @@ describe("controlled evidence database authorization matrix", () => {
     await prisma.userRoleAssignment.deleteMany({ where: { userId: ids.user } });
     await prisma.rolePermission.deleteMany({ where: { roleId: ids.role } });
     await prisma.role.deleteMany({ where: { id: ids.role } });
-    await prisma.user.deleteMany({ where: { id: ids.user } });
-    await prisma.location.deleteMany({ where: { tenantId: ids.tenant } });
+    await prisma.user.deleteMany({ where: { id: { in: [ids.user, ids.foreignUser] } } });
+    await prisma.location.deleteMany({ where: { tenantId: { in: [ids.tenant, ids.foreignTenant] } } });
     await prisma.department.deleteMany({ where: { tenantId: ids.tenant } });
     await prisma.brand.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.company.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.tenant.deleteMany({ where: { id: ids.tenant } });
+    await prisma.company.deleteMany({ where: { tenantId: { in: [ids.tenant, ids.foreignTenant] } } });
+    await prisma.tenant.deleteMany({ where: { id: { in: [ids.tenant, ids.foreignTenant] } } });
     await prisma.$disconnect();
     if (attachmentRoot) await rm(attachmentRoot, { recursive: true, force: true });
     delete process.env.OGFI_PRIVATE_ATTACHMENT_ROOT;
+    delete process.env.APP_ENV;
+    delete process.env.APP_URL;
+    delete process.env.EVIDENCE_STORAGE_PROVIDER;
+    delete process.env.EVIDENCE_LOCAL_STORAGE_ROOT;
+    delete process.env.EVIDENCE_LOCAL_SCAN_MODE;
+    delete process.env.EVIDENCE_MAX_UPLOAD_BYTES;
+    delete process.env.EVIDENCE_DEFAULT_COMPANY_QUOTA_BYTES;
   }, 120_000);
 
   it("denies every location-bound evidence family at an adjacent location", async () => {
@@ -283,6 +414,13 @@ describe("controlled evidence database authorization matrix", () => {
       await expect(
         assertControlledEvidenceSourceAccess(session, sourceType, sourceIds.get(sourceType)!),
         sourceType,
+      ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+      await expect(
+        listControlledEvidenceAttachments({
+          sourceType,
+          sourceRecordId: sourceIds.get(sourceType)!,
+        }),
+        `${sourceType} list`,
       ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
     }
   });
@@ -295,7 +433,30 @@ describe("controlled evidence database authorization matrix", () => {
 
   it("enforces restricted-project authorization for project requirement evidence", async () => {
     const sourceRecordId = sourceIds.get("PROJECT_REQUIREMENT")!;
+    const before = {
+      attachments: await prisma.attachment.count({ where: { tenantId: ids.tenant } }),
+      controlledLinks: await prisma.controlledEvidenceAttachment.count({ where: { tenantId: ids.tenant } }),
+      projectLinks: await prisma.projectAttachment.count({ where: { tenantId: ids.tenant } }),
+      intents: await prisma.attachmentUploadIntent.count({ where: { tenantId: ids.tenant } }),
+      quotaRows: await prisma.attachmentCompanyQuotaUsage.count({ where: { tenantId: ids.tenant } }),
+    };
     await expect(assertControlledEvidenceSourceAccess(session, "PROJECT_REQUIREMENT", sourceRecordId)).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    await expect(
+      issueEvidenceUploadIntentForSession(
+        session,
+        uploadInput("PROJECT_REQUIREMENT", sourceRecordId, {
+          requiredForAction: "PROJECT_REQUIREMENT_SUBMISSION",
+        }),
+        { config: localEvidenceConfig, objectStorage: localObjectStorage },
+      ),
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    expect({
+      attachments: await prisma.attachment.count({ where: { tenantId: ids.tenant } }),
+      controlledLinks: await prisma.controlledEvidenceAttachment.count({ where: { tenantId: ids.tenant } }),
+      projectLinks: await prisma.projectAttachment.count({ where: { tenantId: ids.tenant } }),
+      intents: await prisma.attachmentUploadIntent.count({ where: { tenantId: ids.tenant } }),
+      quotaRows: await prisma.attachmentCompanyQuotaUsage.count({ where: { tenantId: ids.tenant } }),
+    }).toEqual(before);
     await prisma.projectMember.create({ data: { tenantId: ids.tenant, companyId: ids.company, projectId: ids.restrictedProject, userId: ids.user, projectRole: "CONTRIBUTOR", addedByUserId: ids.user } });
     await expect(assertControlledEvidenceSourceAccess(session, "PROJECT_REQUIREMENT", sourceRecordId)).resolves.toBeUndefined();
     await prisma.projectMember.updateMany({ where: { projectId: ids.restrictedProject, userId: ids.user }, data: { status: "INACTIVE", removedAt: new Date(), removedByUserId: ids.user } });
@@ -335,6 +496,13 @@ describe("controlled evidence database authorization matrix", () => {
       where: { roleId: ids.role, permissionId: createPermission.id },
     });
 
+    await expect(
+      issueEvidenceUploadIntentForSession(
+        session,
+        uploadInput("EXPENSE_REQUEST", sourceRecordId),
+        { config: localEvidenceConfig, objectStorage: localObjectStorage },
+      ),
+    ).rejects.toThrow("PERMISSION_DENIED");
     await expect(
       linkControlledEvidenceAttachment({
         sourceType: "EXPENSE_REQUEST",
@@ -423,6 +591,514 @@ describe("controlled evidence database authorization matrix", () => {
     expect(await prisma.expenseRequest.findUniqueOrThrow({ where: { id: sourceRecordId } })).toEqual(sourceBefore);
   });
 
+  it("rechecks live source authority before accepting upload content and leaves quarantine metadata unchanged", async () => {
+    const sourceRecordId = sourceIds.get("EXPENSE_REQUEST")!;
+    const createPermission = await prisma.permission.findFirstOrThrow({
+      where: { tenantId: null, code: "finance.expense_request.create" },
+      select: { id: true },
+    });
+    const body = Buffer.from("authorized evidence upload");
+    const issued = await issueEvidenceUploadIntentForSession(
+      session,
+      uploadInput("EXPENSE_REQUEST", sourceRecordId),
+      { config: localEvidenceConfig, objectStorage: localObjectStorage },
+    );
+    const sourceBefore = await prisma.expenseRequest.findUniqueOrThrow({
+      where: { id: sourceRecordId },
+    });
+    const before = {
+      intent: await prisma.attachmentUploadIntent.findUniqueOrThrow({
+        where: { id: issued.intentId },
+        select: { status: true, consumedAt: true, rowVersion: true },
+      }),
+      attachment: await prisma.attachment.findUniqueOrThrow({
+        where: { id: issued.attachmentId },
+        select: {
+          uploadState: true,
+          scanState: true,
+          availabilityState: true,
+          physicalState: true,
+          objectVersionId: true,
+          rowVersion: true,
+        },
+      }),
+      quota: await prisma.attachmentCompanyQuotaUsage.findFirstOrThrow({
+        where: { tenantId: ids.tenant, companyId: ids.company },
+        select: { usedBytes: true, reservedBytes: true, rowVersion: true },
+      }),
+      storageEntries: (await readdir(attachmentRoot!, { recursive: true })).length,
+    };
+    await prisma.rolePermission.deleteMany({
+      where: { roleId: ids.role, permissionId: createPermission.id },
+    });
+
+    const { POST } = await import(
+      "../src/app/api/evidence/uploads/content/route"
+    );
+    const response = await POST(
+      new Request("https://erp.example/api/evidence/uploads/content", {
+        method: "POST",
+        headers: {
+          origin: "https://erp.example",
+          "content-type": "text/plain",
+          "x-evidence-intent-id": issued.intentId,
+          "x-evidence-intent-token": issued.intentToken,
+        },
+        body,
+      }) as never,
+    );
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({ error: "EVIDENCE_UPLOAD_FAILED" });
+    expect({
+      intent: await prisma.attachmentUploadIntent.findUniqueOrThrow({
+        where: { id: issued.intentId },
+        select: { status: true, consumedAt: true, rowVersion: true },
+      }),
+      attachment: await prisma.attachment.findUniqueOrThrow({
+        where: { id: issued.attachmentId },
+        select: {
+          uploadState: true,
+          scanState: true,
+          availabilityState: true,
+          physicalState: true,
+          objectVersionId: true,
+          rowVersion: true,
+        },
+      }),
+      quota: await prisma.attachmentCompanyQuotaUsage.findFirstOrThrow({
+        where: { tenantId: ids.tenant, companyId: ids.company },
+        select: { usedBytes: true, reservedBytes: true, rowVersion: true },
+      }),
+      storageEntries: (await readdir(attachmentRoot!, { recursive: true })).length,
+    }).toEqual(before);
+    expect(
+      await prisma.expenseRequest.findUniqueOrThrow({ where: { id: sourceRecordId } }),
+    ).toEqual(sourceBefore);
+
+    await prisma.rolePermission.create({
+      data: { roleId: ids.role, permissionId: createPermission.id },
+    });
+  });
+
+  it("keeps quota reserved while an upload lease is active across intent expiry", async () => {
+    const sourceRecordId = sourceIds.get("EXPENSE_REQUEST")!;
+    const body = Buffer.from("authorized evidence upload");
+    const issued = await issueEvidenceUploadIntentForSession(
+      session,
+      uploadInput("EXPENSE_REQUEST", sourceRecordId),
+      { config: localEvidenceConfig, objectStorage: localObjectStorage },
+    );
+    let releaseWrite!: () => void;
+    let markWriteEntered!: () => void;
+    const writeEntered = new Promise<void>((resolve) => {
+      markWriteEntered = resolve;
+    });
+    const writeReleased = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const delayedStorage: ObjectStorageAdapter = {
+      ...localObjectStorage,
+      provider: localObjectStorage.provider,
+      createUploadIntent: (input) => localObjectStorage.createUploadIntent(input),
+      headExactVersion: (input) => localObjectStorage.headExactVersion(input),
+      streamExactVersion: (input) => localObjectStorage.streamExactVersion(input),
+      checkReadiness: (input) => localObjectStorage.checkReadiness(input),
+      async writeExactVersion(input) {
+        markWriteEntered();
+        await writeReleased;
+        return localObjectStorage.writeExactVersion(input);
+      },
+    };
+    const storing = storeEvidenceUploadContent(
+      {
+        intentId: issued.intentId,
+        intentToken: issued.intentToken,
+        body: (async function* () {
+          yield body;
+        })(),
+        contentType: "text/plain",
+      },
+      { config: localEvidenceConfig, objectStorage: delayedStorage },
+    );
+    await writeEntered;
+    await prisma.attachmentUploadIntent.update({
+      where: { id: issued.intentId },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+    const beforeExpiry = await prisma.attachmentCompanyQuotaUsage.findFirstOrThrow({
+      where: { tenantId: ids.tenant, companyId: ids.company },
+      select: { usedBytes: true, reservedBytes: true },
+    });
+    const { expireEvidenceUploadIntents } = await import(
+      "../src/server/services/evidenceUploads"
+    );
+    await expect(
+      expireEvidenceUploadIntents(localEvidenceConfig, 100, delayedStorage),
+    ).resolves.toEqual({ examined: 0, expired: 0, recovered: 0 });
+    expect(
+      await prisma.attachmentCompanyQuotaUsage.findFirstOrThrow({
+        where: { tenantId: ids.tenant, companyId: ids.company },
+        select: { usedBytes: true, reservedBytes: true },
+      }),
+    ).toEqual(beforeExpiry);
+    releaseWrite();
+    await expect(storing).resolves.toMatchObject({ status: "SCANNING" });
+    expect(
+      await prisma.attachmentUploadIntent.findUniqueOrThrow({
+        where: { id: issued.intentId },
+        select: { status: true, uploadLeaseOwner: true, uploadLeaseExpiresAt: true },
+      }),
+    ).toEqual({
+      status: "CONSUMED",
+      uploadLeaseOwner: null,
+      uploadLeaseExpiresAt: null,
+    });
+  });
+
+  it("derives project requirement preservation even when the client omits it", async () => {
+    const sourceRecordId = sourceIds.get("PROJECT_REQUIREMENT")!;
+    await prisma.projectMember.updateMany({
+      where: { projectId: ids.restrictedProject, userId: ids.user },
+      data: {
+        status: "ACTIVE",
+        removedAt: null,
+        removedByUserId: null,
+      },
+    });
+    const issued = await issueEvidenceUploadIntentForSession(
+      session,
+      uploadInput("PROJECT_REQUIREMENT", sourceRecordId, {
+        requiredForAction: undefined,
+      }),
+      { config: localEvidenceConfig, objectStorage: localObjectStorage },
+    );
+    const link = await prisma.controlledEvidenceAttachment.findFirstOrThrow({
+      where: { attachmentId: issued.attachmentId },
+      select: { id: true, requiredForAction: true },
+    });
+    expect(link.requiredForAction).toBe("PROJECT_REQUIREMENT_SUBMIT");
+    await expect(
+      archiveControlledEvidenceAttachment({
+        controlledEvidenceAttachmentId: link.id,
+        archiveReason: "Crafted null marker must not remove required evidence",
+      }),
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
+    await prisma.projectMember.updateMany({
+      where: { projectId: ids.restrictedProject, userId: ids.user },
+      data: {
+        status: "INACTIVE",
+        removedAt: new Date(),
+        removedByUserId: ids.user,
+      },
+    });
+  });
+
+  it("derives finance preservation and rejects a crafted requirement tag", async () => {
+    const sourceRecordId = sourceIds.get("EXPENSE_REQUEST")!;
+    await expect(
+      issueEvidenceUploadIntentForSession(
+        session,
+        uploadInput("EXPENSE_REQUEST", sourceRecordId, {
+          requiredForAction: "CLIENT_SELECTED_VALUE",
+        }),
+        { config: localEvidenceConfig, objectStorage: localObjectStorage },
+      ),
+    ).rejects.toThrow("EVIDENCE_UPLOAD_REQUIRED_ACTION_INVALID");
+    const issued = await issueEvidenceUploadIntentForSession(
+      session,
+      uploadInput("EXPENSE_REQUEST", sourceRecordId, {
+        requiredForAction: undefined,
+      }),
+      { config: localEvidenceConfig, objectStorage: localObjectStorage },
+    );
+    const link = await prisma.controlledEvidenceAttachment.findFirstOrThrow({
+      where: { attachmentId: issued.attachmentId },
+      select: { id: true, requiredForAction: true },
+    });
+    expect(link.requiredForAction).toBe("EXPENSE_REVIEW");
+    await expect(
+      archiveControlledEvidenceAttachment({
+        controlledEvidenceAttachmentId: link.id,
+        archiveReason: "Required finance evidence must remain preserved",
+      }),
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
+  });
+
+  it("bounds active upload intents and does not renew beyond absolute lifetime", async () => {
+    const sourceRecordId = sourceIds.get("EXPENSE_REQUEST")!;
+    const [activeForUser, activeForCompany] = await Promise.all([
+      prisma.attachmentUploadIntent.count({
+        where: {
+          tenantId: ids.tenant,
+          companyId: ids.company,
+          createdByUserId: ids.user,
+          status: { in: ["ISSUED", "UPLOADING"] },
+        },
+      }),
+      prisma.attachmentUploadIntent.count({
+        where: {
+          tenantId: ids.tenant,
+          companyId: ids.company,
+          status: { in: ["ISSUED", "UPLOADING"] },
+        },
+      }),
+    ]);
+    const boundedConfig = {
+      ...localEvidenceConfig,
+      maxActiveUploadIntentsPerUser: activeForUser + 1,
+      maxActiveUploadIntentsPerCompany: activeForCompany + 1,
+    };
+    await issueEvidenceUploadIntentForSession(
+      session,
+      uploadInput("EXPENSE_REQUEST", sourceRecordId),
+      { config: boundedConfig, objectStorage: localObjectStorage },
+    );
+    await expect(
+      issueEvidenceUploadIntentForSession(
+        session,
+        uploadInput("EXPENSE_REQUEST", sourceRecordId),
+        { config: boundedConfig, objectStorage: localObjectStorage },
+      ),
+    ).rejects.toThrow("EVIDENCE_UPLOAD_INTENT_RATE_LIMITED");
+
+    const idempotencyKey = `absolute-${randomUUID()}`;
+    const absoluteInput = uploadInput("EXPENSE_REQUEST", sourceRecordId, {
+      idempotencyKey,
+    });
+    const issued = await issueEvidenceUploadIntentForSession(
+      session,
+      absoluteInput,
+      { config: localEvidenceConfig, objectStorage: localObjectStorage },
+    );
+    await prisma.attachmentUploadIntent.update({
+      where: { id: issued.intentId },
+      data: { createdAt: new Date(Date.now() - 60 * 60 * 1000) },
+    });
+    await expect(
+      issueEvidenceUploadIntentForSession(session, absoluteInput, {
+        config: localEvidenceConfig,
+        objectStorage: localObjectStorage,
+      }),
+    ).rejects.toThrow("EVIDENCE_UPLOAD_IDEMPOTENCY_TERMINAL");
+  });
+
+  it("AUTHZ-EVIDENCE-RETENTION-LIVE-PERMISSION-REVOKED-NO-MUTATION", async () => {
+    const permissions = await prisma.permission.findMany({
+      where: {
+        tenantId: null,
+        code: { in: ["evidence.legal_hold.set", "evidence.retention.view"] },
+      },
+      select: { id: true },
+    });
+    expect(permissions).toHaveLength(2);
+    const attachmentBefore = await prisma.attachment.findUniqueOrThrow({
+      where: { id: attachmentId },
+    });
+    const auditBefore = await prisma.auditEvent.count({
+      where: {
+        tenantId: ids.tenant,
+        entityType: "Attachment",
+        entityId: attachmentId,
+      },
+    });
+    const holdInput = {
+      attachmentId,
+      expectedRowVersion: attachmentBefore.rowVersion,
+      authority: "OGFI Legal",
+      caseReference: `AUTHZ-${suffix}`,
+      reason: "Authorization revocation must prevent legal-hold placement.",
+    };
+    await prisma.rolePermission.deleteMany({
+      where: {
+        roleId: ids.role,
+        permissionId: { in: permissions.map((permission) => permission.id) },
+      },
+    });
+
+    await expect(listEvidenceRetentionRegister()).rejects.toThrow(
+      "PERMISSION_DENIED",
+    );
+    await expect(
+      listEvidenceRetentionRegisterForSession(session),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    await expect(setEvidenceLegalHold(holdInput)).rejects.toThrow(
+      "PERMISSION_DENIED",
+    );
+    await expect(
+      setEvidenceLegalHoldForSession(session, holdInput),
+    ).rejects.toThrow("PERMISSION_DENIED");
+    expect(
+      await prisma.attachment.findUniqueOrThrow({ where: { id: attachmentId } }),
+    ).toEqual(attachmentBefore);
+    expect(
+      await prisma.auditEvent.count({
+        where: {
+          tenantId: ids.tenant,
+          entityType: "Attachment",
+          entityId: attachmentId,
+        },
+      }),
+    ).toBe(auditBefore);
+
+    await prisma.rolePermission.createMany({
+      data: permissions.map((permission) => ({
+        roleId: ids.role,
+        permissionId: permission.id,
+      })),
+    });
+  });
+
+  it("keeps required and legal-hold evidence immutable with non-enumerating archive denials", async () => {
+    const linkId = controlledLinkIds.get("EXPENSE_REQUEST")!;
+    const archive = async (controlledEvidenceAttachmentId: string) => {
+      try {
+        await archiveControlledEvidenceAttachment({
+          controlledEvidenceAttachmentId,
+          archiveReason: "Authorization retention control check",
+        });
+        return null;
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    };
+    const state = () =>
+      prisma.controlledEvidenceAttachment.findUniqueOrThrow({
+        where: { id: linkId },
+        select: {
+          status: true,
+          archivedAt: true,
+          archivedByUserId: true,
+          archiveReason: true,
+          requiredForAction: true,
+        },
+      });
+
+    await prisma.controlledEvidenceAttachment.update({
+      where: { id: linkId },
+      data: { requiredForAction: "EXPENSE_APPROVAL" },
+    });
+    const requiredBefore = await state();
+    expect(await archive(linkId)).toBe(
+      "CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE",
+    );
+    expect(await archive(randomUUID())).toBe(
+      "CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE",
+    );
+    expect(await state()).toEqual(requiredBefore);
+
+    await prisma.controlledEvidenceAttachment.update({
+      where: { id: linkId },
+      data: { requiredForAction: null },
+    });
+    await prisma.attachment.update({
+      where: { id: attachmentId },
+      data: {
+        legalHold: true,
+        legalHoldSetAt: fixtureDate,
+        legalHoldSetByUserId: ids.user,
+        legalHoldReason: "Authorization legal hold fixture",
+      },
+    });
+    const heldBefore = await state();
+    expect(await archive(linkId)).toBe(
+      "CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE",
+    );
+    expect(await archive(randomUUID())).toBe(
+      "CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE",
+    );
+    expect(await state()).toEqual(heldBefore);
+    expect(
+      await prisma.attachment.findUniqueOrThrow({
+        where: { id: attachmentId },
+        select: {
+          legalHold: true,
+          legalHoldSetAt: true,
+          legalHoldSetByUserId: true,
+          legalHoldReason: true,
+        },
+      }),
+    ).toEqual({
+      legalHold: true,
+      legalHoldSetAt: fixtureDate,
+      legalHoldSetByUserId: ids.user,
+      legalHoldReason: "Authorization legal hold fixture",
+    });
+    await prisma.attachment.update({
+      where: { id: attachmentId },
+      data: {
+        legalHold: false,
+        legalHoldSetAt: null,
+        legalHoldSetByUserId: null,
+        legalHoldReason: null,
+      },
+    });
+  });
+
+  it("AUTHZ-EVIDENCE-INTERNAL-RECONCILER-CALLER-PRECONDITIONS-NO-MUTATION", async () => {
+    const {
+      expireEvidenceUploadIntents,
+      recoverDurableEvidenceUploads,
+    } = await import("../src/server/services/evidenceUploads");
+    const { processEvidenceScan, reconcileEvidenceScans } = await import(
+      "../src/server/services/evidenceScanLifecycle"
+    );
+    const { LocalExplicitMalwareScanAdapter } = await import(
+      "../src/server/storage/localPrivateAdapters"
+    );
+    const before = {
+      attachment: await prisma.attachment.findUniqueOrThrow({
+        where: { id: attachmentId },
+      }),
+      links: await prisma.controlledEvidenceAttachment.count({
+        where: { tenantId: ids.tenant },
+      }),
+      intents: await prisma.attachmentUploadIntent.count({
+        where: { tenantId: ids.tenant },
+      }),
+      quota: await prisma.attachmentCompanyQuotaUsage.findFirst({
+        where: { tenantId: ids.tenant, companyId: ids.company },
+      }),
+      audits: await prisma.auditEvent.count({ where: { tenantId: ids.tenant } }),
+    };
+
+    await expect(
+      processEvidenceScan(attachmentId, {
+        config: localEvidenceConfig,
+        objectStorage: localObjectStorage,
+        malwareScan: new LocalExplicitMalwareScanAdapter(localEvidenceConfig),
+      }),
+    ).resolves.toEqual({ status: "AVAILABLE", alreadyProcessed: true });
+    await expect(
+      recoverDurableEvidenceUploads(localEvidenceConfig, localObjectStorage),
+    ).resolves.toMatchObject({ recovered: 0 });
+    await expect(
+      expireEvidenceUploadIntents(localEvidenceConfig, 100, localObjectStorage),
+    ).resolves.toEqual({ examined: 0, expired: 0, recovered: 0 });
+    await expect(
+      reconcileEvidenceScans({
+        config: localEvidenceConfig,
+        objectStorage: localObjectStorage,
+        malwareScan: new LocalExplicitMalwareScanAdapter(localEvidenceConfig),
+      }),
+    ).resolves.toEqual({ claimed: 0, processed: 0 });
+    expect({
+      attachment: await prisma.attachment.findUniqueOrThrow({
+        where: { id: attachmentId },
+      }),
+      links: await prisma.controlledEvidenceAttachment.count({
+        where: { tenantId: ids.tenant },
+      }),
+      intents: await prisma.attachmentUploadIntent.count({
+        where: { tenantId: ids.tenant },
+      }),
+      quota: await prisma.attachmentCompanyQuotaUsage.findFirst({
+        where: { tenantId: ids.tenant, companyId: ids.company },
+      }),
+      audits: await prisma.auditEvent.count({ where: { tenantId: ids.tenant } }),
+    }).toEqual(before);
+  });
+
   it("denies core-only period-close evidence writes and keeps archive denials non-enumerating", async () => {
     const periodClosePermission = await prisma.permission.findFirstOrThrow({
       where: { tenantId: null, code: "finance.period_close.manage" },
@@ -464,7 +1140,7 @@ describe("controlled evidence database authorization matrix", () => {
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: linkId,
       }),
-    ).rejects.toThrow("PERMISSION_DENIED");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
     const { GET } = await import("../src/app/(app)/evidence/[id]/download/route");
     const routeResponse = await GET({} as never, {
       params: Promise.resolve({ id: linkId }),
@@ -578,7 +1254,7 @@ describe("controlled evidence database authorization matrix", () => {
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: linkId,
       }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
     expect(
       await prisma.auditEvent.count({
         where: {
@@ -617,7 +1293,7 @@ describe("controlled evidence database authorization matrix", () => {
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: linkId,
       }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
     expect(
       await prisma.auditEvent.count({
         where: {
@@ -674,6 +1350,7 @@ describe("controlled evidence database authorization matrix", () => {
   });
 
   it("requires a live confidential capability to download workforce evidence", async () => {
+    const linkId = controlledLinkIds.get("WORKFORCE_EMPLOYEE")!;
     const confidentialPermissions = await prisma.permission.findMany({
       where: {
         tenantId: null,
@@ -681,6 +1358,23 @@ describe("controlled evidence database authorization matrix", () => {
       },
       select: { id: true },
     });
+    const before = {
+      link: await prisma.controlledEvidenceAttachment.findUniqueOrThrow({
+        where: { id: linkId },
+        select: { status: true, archivedAt: true },
+      }),
+      attachment: await prisma.attachment.findUniqueOrThrow({
+        where: { id: attachmentId },
+        select: { status: true, availabilityState: true, rowVersion: true },
+      }),
+      downloads: await prisma.auditEvent.count({
+        where: {
+          tenantId: ids.tenant,
+          eventType: "controlled_evidence_attachment.downloaded",
+          entityId: linkId,
+        },
+      }),
+    };
     await prisma.rolePermission.deleteMany({
       where: {
         roleId: ids.role,
@@ -689,11 +1383,31 @@ describe("controlled evidence database authorization matrix", () => {
     });
     await expect(
       downloadControlledEvidenceAttachmentForSession(session, {
-        controlledEvidenceAttachmentId: controlledLinkIds.get(
-          "WORKFORCE_EMPLOYEE",
-        )!,
+        controlledEvidenceAttachmentId: linkId,
       }),
-    ).rejects.toThrow("PERMISSION_DENIED");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
+    await expect(
+      downloadControlledEvidenceAttachmentForSession(session, {
+        controlledEvidenceAttachmentId: randomUUID(),
+      }),
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
+    expect({
+      link: await prisma.controlledEvidenceAttachment.findUniqueOrThrow({
+        where: { id: linkId },
+        select: { status: true, archivedAt: true },
+      }),
+      attachment: await prisma.attachment.findUniqueOrThrow({
+        where: { id: attachmentId },
+        select: { status: true, availabilityState: true, rowVersion: true },
+      }),
+      downloads: await prisma.auditEvent.count({
+        where: {
+          tenantId: ids.tenant,
+          eventType: "controlled_evidence_attachment.downloaded",
+          entityId: linkId,
+        },
+      }),
+    }).toEqual(before);
     await prisma.rolePermission.createMany({
       data: confidentialPermissions.map((row) => ({
         roleId: ids.role,
@@ -705,7 +1419,29 @@ describe("controlled evidence database authorization matrix", () => {
   it("keeps tenant and company boundaries non-enumerating", async () => {
     await prisma.expenseRequest.create({ data: { tenantId: ids.tenant, companyId: ids.adjacentCompany, publicReference: `EV-XCO-${suffix}`, requestDate: fixtureDate, title: "Cross company", requestReason: "Evidence boundary", categoryCode: "TEST", locationId: ids.adjacentCompanyLocation, requestedByUserId: ids.user } });
     const crossCompany = await prisma.expenseRequest.findFirstOrThrow({ where: { companyId: ids.adjacentCompany, publicReference: `EV-XCO-${suffix}` }, select: { id: true } });
+    const before = {
+      attachments: await prisma.attachment.count({ where: { tenantId: ids.tenant } }),
+      links: await prisma.controlledEvidenceAttachment.count({ where: { tenantId: ids.tenant } }),
+      intents: await prisma.attachmentUploadIntent.count({ where: { tenantId: ids.tenant } }),
+      quotas: await prisma.attachmentCompanyQuotaUsage.count({ where: { tenantId: ids.tenant } }),
+    };
     await expect(assertControlledEvidenceSourceAccess(session, "EXPENSE_REQUEST", crossCompany.id)).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    await expect(assertControlledEvidenceSourceAccess(session, "EXPENSE_REQUEST", foreignExpenseRequestId)).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
     await expect(assertControlledEvidenceSourceAccess(session, "EXPENSE_REQUEST", randomUUID())).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    for (const sourceRecordId of [crossCompany.id, foreignExpenseRequestId, randomUUID()]) {
+      await expect(
+        issueEvidenceUploadIntentForSession(
+          session,
+          uploadInput("EXPENSE_REQUEST", sourceRecordId),
+          { config: localEvidenceConfig, objectStorage: localObjectStorage },
+        ),
+      ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    }
+    expect({
+      attachments: await prisma.attachment.count({ where: { tenantId: ids.tenant } }),
+      links: await prisma.controlledEvidenceAttachment.count({ where: { tenantId: ids.tenant } }),
+      intents: await prisma.attachmentUploadIntent.count({ where: { tenantId: ids.tenant } }),
+      quotas: await prisma.attachmentCompanyQuotaUsage.count({ where: { tenantId: ids.tenant } }),
+    }).toEqual(before);
   });
 });

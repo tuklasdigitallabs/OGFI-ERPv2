@@ -110,13 +110,13 @@ export type PaymentReleaseSettlementPolicy = {
   decisionBasis: string;
 };
 export type ControlledEvidenceStoragePolicy = {
-  storageProvider: "local-private";
+  storageProvider: "environment-isolated";
   uploadLimitMb: number;
   allowedMimePolicy: "allowlist";
-  malwareScanMode: "scan_waived_for_local_private_uat";
+  malwareScanMode: "required_before_availability";
   malwareScanWaiverReason: string;
-  retentionPolicy: "follow_transaction_retention";
-  recoveryPolicy: "covered_by_backup_restore_policy";
+  retentionPolicy: "preserve_until_approved_transaction_retention";
+  recoveryPolicy: "paired_database_evidence_restore_required";
   downloadAuditRequired: boolean;
 };
 export type BudgetSourceHookPolicy = {
@@ -450,17 +450,17 @@ export const defaultPolicySettings: readonly PolicySettingDefinition[] = [
     category: "security",
     label: "Controlled evidence storage policy",
     description:
-      "Private evidence upload defaults for storage provider, MIME allowlist, scan-waiver mode, retention, recovery, and download-audit expectations.",
+      "Private evidence upload defaults for environment isolation, MIME allowlist, required hosted scanning, preservation, paired recovery, and download auditing.",
     valueType: "JSON",
     defaultValue: {
-      storageProvider: "local-private",
+      storageProvider: "environment-isolated",
       uploadLimitMb: 10,
       allowedMimePolicy: "allowlist",
-      malwareScanMode: "scan_waived_for_local_private_uat",
+      malwareScanMode: "required_before_availability",
       malwareScanWaiverReason:
-        "Pilot local-private storage has no malware scanner configured; UAT must confirm scan waiver or production scanner before go-live.",
-      retentionPolicy: "follow_transaction_retention",
-      recoveryPolicy: "covered_by_backup_restore_policy",
+        "Only local development may use an explicit test scan result; every hosted upload must pass the private ClamAV boundary before availability.",
+      retentionPolicy: "preserve_until_approved_transaction_retention",
+      recoveryPolicy: "paired_database_evidence_restore_required",
       downloadAuditRequired: true
     }
   },
@@ -625,6 +625,12 @@ function findPolicyDefinition(key: string) {
   return definition;
 }
 
+function sourceDecisionForPolicy(key: string) {
+  return key === "security.evidence_storage.default_policy"
+    ? "DEC-0046"
+    : "DEC-0036";
+}
+
 async function getSavedPolicyValue(session: SessionContext, key: PolicySettingKey) {
   const saved = await prisma.companyPolicySetting.findUnique({
     where: {
@@ -666,7 +672,7 @@ export async function getDashboardTrustGatePolicy(session: SessionContext) {
     mode: mode as DashboardTrustGateMode,
     label,
     isOverridden: saved ? !saved.isDefault : false,
-    sourceDecisionId: saved?.sourceDecisionId ?? "DEC-0036"
+    sourceDecisionId: saved?.sourceDecisionId ?? sourceDecisionForPolicy(key)
   };
 }
 
@@ -781,17 +787,17 @@ function normalizeControlledEvidenceStoragePolicy(
       : fallback.uploadLimitMb;
 
   return {
-    storageProvider: "local-private",
+    storageProvider: "environment-isolated",
     uploadLimitMb,
     allowedMimePolicy: "allowlist",
-    malwareScanMode: "scan_waived_for_local_private_uat",
+    malwareScanMode: "required_before_availability",
     malwareScanWaiverReason:
       typeof source.malwareScanWaiverReason === "string" &&
       source.malwareScanWaiverReason.trim()
         ? source.malwareScanWaiverReason.trim()
         : fallback.malwareScanWaiverReason,
-    retentionPolicy: "follow_transaction_retention",
-    recoveryPolicy: "covered_by_backup_restore_policy",
+    retentionPolicy: "preserve_until_approved_transaction_retention",
+    recoveryPolicy: "paired_database_evidence_restore_required",
     downloadAuditRequired: true
   };
 }
@@ -810,7 +816,7 @@ export async function getControlledEvidenceStoragePolicy(
     key,
     policy,
     isOverridden: saved ? !saved.isDefault : false,
-    sourceDecisionId: saved?.sourceDecisionId ?? "DEC-0036"
+    sourceDecisionId: saved?.sourceDecisionId ?? sourceDecisionForPolicy(key)
   };
 }
 
@@ -1225,7 +1231,8 @@ export async function listCompanyPolicySettings(session: SessionContext) {
       valueType: definition.valueType,
       unit: definition.unit ?? null,
       options: definition.options ?? [],
-      sourceDecisionId: saved?.sourceDecisionId ?? "DEC-0036",
+      sourceDecisionId:
+        saved?.sourceDecisionId ?? sourceDecisionForPolicy(definition.key),
       isDefault: saved ? saved.isDefault : true,
       isOverridden: saved ? !jsonValuesEqual(saved.value, definition.defaultValue) : false,
       updatedAt: saved?.updatedAt.toISOString() ?? null
@@ -1265,7 +1272,7 @@ export async function updateCompanyPolicySetting(formData: FormData) {
             ...(definition.options
               ? { options: asJsonValue([...definition.options]) }
               : {}),
-            sourceDecisionId: "DEC-0036",
+            sourceDecisionId: sourceDecisionForPolicy(definition.key),
             isDefault: nextIsDefault,
             status: "ACTIVE",
             updatedByUserId: session.user.id
@@ -1286,7 +1293,7 @@ export async function updateCompanyPolicySetting(formData: FormData) {
             ...(definition.options
               ? { options: asJsonValue([...definition.options]) }
               : {}),
-            sourceDecisionId: "DEC-0036",
+            sourceDecisionId: sourceDecisionForPolicy(definition.key),
             isDefault: nextIsDefault,
             status: "ACTIVE",
             updatedByUserId: session.user.id
@@ -1362,7 +1369,7 @@ export async function resetCompanyPolicySetting(formData: FormData) {
             ...(definition.options
               ? { options: asJsonValue([...definition.options]) }
               : {}),
-            sourceDecisionId: "DEC-0036",
+            sourceDecisionId: sourceDecisionForPolicy(definition.key),
             isDefault: true,
             status: "ACTIVE",
             updatedByUserId: session.user.id
@@ -1383,7 +1390,7 @@ export async function resetCompanyPolicySetting(formData: FormData) {
             ...(definition.options
               ? { options: asJsonValue([...definition.options]) }
               : {}),
-            sourceDecisionId: "DEC-0036",
+            sourceDecisionId: sourceDecisionForPolicy(definition.key),
             isDefault: true,
             status: "ACTIVE",
             updatedByUserId: session.user.id
@@ -1421,7 +1428,7 @@ export async function resetCompanyPolicySetting(formData: FormData) {
           sourceDecisionId: saved.sourceDecisionId
         },
         metadata: {
-          reason: "Reset to DEC-0036 recommended default from Admin Settings.",
+          reason: `Reset to ${sourceDecisionForPolicy(definition.key)} recommended default from Admin Settings.`,
           previousValue: existing?.value ?? null
         }
       }

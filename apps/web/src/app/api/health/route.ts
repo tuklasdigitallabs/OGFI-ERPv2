@@ -8,7 +8,9 @@ export function GET() {
     checks: {
       app: "ok",
       databaseUrlConfigured: Boolean(process.env.DATABASE_URL),
-      storageEndpointConfigured: Boolean(process.env.S3_ENDPOINT),
+      evidenceProviderConfigured: Boolean(
+        process.env.EVIDENCE_STORAGE_PROVIDER,
+      ),
       errorMonitoringConfigured: Boolean(process.env.ERROR_MONITORING_DSN)
     }
   });

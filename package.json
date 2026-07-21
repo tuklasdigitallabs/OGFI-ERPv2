@@ -87,6 +87,13 @@
     "release:tools:test": "node scripts/release-tools-self-test.mjs",
     "release:authorization-manifest": "node scripts/release-authorization-manifest.mjs --write-evidence",
     "release:go-no-go": "node scripts/release-go-no-go.mjs",
+    "evidence:hostinger:validate": "node scripts/evidence-hostinger-contract.mjs",
+    "evidence:hostinger:test": "node --test scripts/evidence-hostinger-contract.test.mjs",
+    "evidence:recovery:create": "node scripts/evidence-recovery-create.mjs",
+    "evidence:recovery:verify": "node scripts/evidence-recovery-verify.mjs",
+    "evidence:recovery:test": "node --test scripts/evidence-recovery-contract.test.mjs",
+    "evidence:broker": "pnpm --filter @ogfi/web evidence-broker",
+    "evidence:scan:reconcile": "pnpm --filter @ogfi/web evidence-scan-reconcile",
     "docker:up": "docker compose up -d",
     "docker:future-worker": "docker compose --profile future-worker up -d",
     "docker:down": "docker compose down"

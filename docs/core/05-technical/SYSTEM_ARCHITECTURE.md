@@ -25,7 +25,7 @@ This is the default recommendation. It should be treated as the project standard
 | Database | PostgreSQL | Mature transaction guarantees, relational integrity, reporting, JSON support for configurable rules, and safe inventory/audit operations. |
 | Data access | Prisma or Drizzle ORM with explicit SQL for high-risk inventory/reporting queries | Type-safe access plus controlled migrations. |
 | Cache / job queue | Deferred Redis + BullMQ or equivalent | Not included in the current Phase I / Phase 1.5 no-queueing release. Future approval is required before adding workers, queues, schedulers, or queue-dependent acceptance criteria. |
-| Object storage | S3-compatible storage | Attachments, receiving photos, supplier documents, and future project files. |
+| Controlled evidence storage | Private encrypted broker on the Hostinger VPS | The broker alone owns the evidence mount and AES-256-GCM key; uploads remain quarantined until private ClamAV scanning succeeds. External object storage requires a future migration decision. |
 | Authentication | Application-managed identity with secure sessions; optional OIDC/SAML-ready extension | Keeps client onboarding flexible and avoids tying the product to one identity provider. |
 | Logging / monitoring | Structured logs, health checks, error monitoring, metrics | Required for release confidence and production support. |
 | Deployment | Docker containers, GitHub Actions CI/CD, staging and production environments | Repeatable deployment and easier client scaling. |
@@ -55,8 +55,8 @@ Application API / Workflow Layer
         ├──────────────► PostgreSQL
         │                - transactional data, approvals, balances, audit references
         │
-        ├──────────────► Object Storage
-        │                - receipts, delivery photos, supplier documents, evidence
+        ├──────────────► Internal Evidence Broker (same Hostinger VPS)
+        │                - encrypted immutable versions, quarantine, private ClamAV
         │
         └──────────────► External integrations, later
                          - POS, payroll, biometrics, accounting, email, SMS/WhatsApp

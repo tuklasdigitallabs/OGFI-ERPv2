@@ -17,6 +17,7 @@ RUN pnpm --filter @ogfi/web build
 
 FROM base AS runner
 ENV NODE_ENV=production
+RUN apk add --no-cache util-linux
 RUN addgroup -S ogfi && adduser -S ogfi -G ogfi
 COPY --from=build /app /app
 RUN chown -R ogfi:ogfi /app

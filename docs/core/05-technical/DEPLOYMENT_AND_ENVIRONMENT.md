@@ -29,7 +29,7 @@ Required local services:
 ```text
 web application / API process
 PostgreSQL
-S3-compatible local object storage or mocked adapter
+local evidence broker/storage adapter or mocked adapter
 mail catcher / mocked mail provider
 ```
 
@@ -67,7 +67,8 @@ Reverse proxy / load balancer with TLS
   │
   ├── Web/API container(s)
   ├── PostgreSQL (managed preferred)
-  └── S3-compatible object storage
+  ├── internal evidence storage broker
+  └── private ClamAV scanner
 ```
 
 Future approved releases may add private worker and Redis services, but they are outside the current no-queueing release topology.
@@ -84,10 +85,34 @@ Run `pnpm --filter @ogfi/database auth:rotate-encryption` during an approved key
 
 - Application containers may run on a VPS or cloud container service.
 - Prefer a managed PostgreSQL provider for production if budget and policy allow. Database reliability and backup discipline matter more than saving a small hosting cost.
-- Use object storage rather than server-local uploads.
+- Use broker-managed evidence storage rather than a web-mounted uploads directory.
 - Keep app, database, backup, and object-storage credentials separate.
 - Keep staging separate from production, even if both begin on the same provider.
 - Run application containers as non-root users with least container privilege where supported.
+
+### 3.2 Controlled evidence same-VPS deployment contract
+
+`DEC-0046` supersedes the external AWS design in `DEC-0045`. The initial controlled-evidence deployment uses a dedicated internal minimal storage broker and private ClamAV service on the same Hostinger VPS. Only the broker may mount the validated absolute evidence path or receive the versioned AES-256-GCM evidence key. The web application, Caddy, ClamAV, and unrelated services must have no evidence mount. The broker and ClamAV expose no public port.
+
+The application re-authorizes each action against the source record and proxies bounded upload/download streams. The broker generates opaque non-repeating keys and immutable versions, rejects traversal/link/overwrite behavior, encrypts each object with a unique AES-256-GCM nonce and authenticated metadata, and returns identity/checksum metadata for PostgreSQL recording. Do not buffer full evidence files in web-process memory or browser-facing temporary files.
+
+PostgreSQL remains authoritative for tenant/company/source scope, idempotency, quota reservations and consumption, quarantine and scan state, exact key/version/checksum, leases/retries, compare-and-set availability, retention/legal hold, and audit. Only a conclusive ClamAV `CLEAN` result for that exact immutable version and an accepted signature-freshness state may become available. Threat, error, timeout, truncated stream, version/checksum mismatch, stale signature, or indeterminate results remain quarantined.
+
+ClamAV receives file bytes privately through `INSTREAM` and has no evidence mount. Pin the approved image/digest and resource limits; bound stream size and scan timeout; update signatures through an explicitly bounded service; monitor signature age, update failure, health, resource use, scan latency, and backlog. A one-shot, overlap-safe systemd timer reconciles pending scans through PostgreSQL leases/advisory locking, capped batches, retry/backoff, maximum attempts, and terminal quarantine. Keep its timeout below its interval and alert on failed, late, or missing runs. Do not use detached post-response work, Redis, BullMQ, a queue, or an always-running worker for this release.
+
+Same-VPS filesystem storage is not WORM or Object Lock and does not protect against host root compromise or same-disk loss. Retention and legal hold are application-enforced and separately authorized/audited. Provider-managed or otherwise independently administered encrypted backup must be recoverable outside the VPS/disk failure domain. Before activation, confirm Hostinger daily-backup entitlement, destination/location, encryption, retention, restore granularity, and independence; then prove an isolated paired restore that reconciles PostgreSQL metadata to the same evidence key/version/checksum within approved RPO/RTO.
+
+Production activation requires hosted staging evidence for:
+
+- actual VPS CPU, memory, disk layout, utilization, reserved headroom, evidence quota, upload limit, request-rate limit, disk high-water stop, and concurrent quota/high-water behavior;
+- broker-only mount and key access; denial of web/Caddy/ClamAV mount access; non-root/least-privilege runtime; path/link/overwrite denial; streaming interruption; encryption round-trip, nonce/AAD integrity, key rotation, missing-key failure, and audited dual-control recovery;
+- clean, threat, error, timeout, stale-signature, truncated-stream, checksum/version mismatch, duplicate/concurrent result, broker outage, and ClamAV outage behavior;
+- timer overlap/restart/retry/terminal handling, pending age, signature freshness, scan latency, quota/capacity, disk, backup age/failure, and key-version monitoring;
+- approved retention/legal-hold policy and authority, approved database/evidence RPO/RTO, independently recoverable encrypted backup, and a paired isolated restore.
+
+Application rollback after controlled-evidence schema activation must use the last schema-compatible build or maintenance mode. Do not restore a predecessor that cannot enforce the required scope, immutable version, encryption, quarantine, quota, or retention fields while uploads remain enabled. Rehearse forward-fix/maintenance mode and verify that quarantined and available versions remain unchanged.
+
+Review external object storage only when capacity, multi-host deployment, stronger RPO/RTO, legal WORM, or tenant scale becomes a material requirement. Migration must copy evidence, verify every key/version/checksum and authorization mapping, stage read cutover with rollback, and retire the VPS copy only after successful proof and approved retention handling.
 
 ---
 
@@ -208,7 +233,7 @@ Production deployment requires:
 | Asset                      | Baseline                                                                   |
 | -------------------------- | -------------------------------------------------------------------------- |
 | PostgreSQL                 | automated daily full backup + point-in-time recovery where available       |
-| Object storage attachments | versioning and lifecycle policy; periodic backup/replication               |
+| Controlled evidence        | provider-managed or independently administered encrypted backup outside the VPS/disk failure domain; paired key/version/checksum restore proof |
 | Application configuration  | version-controlled non-secret config; secure secret manager backup process |
 | Audit data                 | included in database backup and retained with transaction records          |
 

@@ -1,0 +1,183 @@
+name: ${COMPOSE_PROJECT_NAME:?Set ogfi-erp-staging or ogfi-erp-production}
+
+services:
+  web:
+    image: ${OGFI_WEB_IMAGE:?Set the reviewed web image by immutable digest}
+    build: !reset null
+    depends_on: !override
+      evidence-broker:
+        condition: service_healthy
+    ports: !reset []
+    env_file: !override
+      - path: ${OGFI_PRODUCTION_ENV_FILE:?Set the absolute production application env file}
+        required: true
+    environment:
+      EVIDENCE_STORAGE_PROVIDER: hostinger-local
+      EVIDENCE_BROKER_URL: http://evidence-broker:3010
+      EVIDENCE_BROKER_SHARED_SECRET_FILE: /run/secrets/evidence_broker_shared_secret
+    secrets:
+      - evidence_broker_shared_secret
+    networks:
+      - private
+      - evidence_private
+    restart: unless-stopped
+    security_opt: !override
+      - no-new-privileges:true
+    cap_drop: !override
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/readiness').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    mem_limit: ${WEB_MEMORY_LIMIT:?Set the reviewed web memory limit}
+    cpus: ${WEB_CPU_LIMIT:?Set the reviewed web CPU limit}
+    pids_limit: ${WEB_PIDS_LIMIT:?Set the reviewed web PID limit}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:?Set the reviewed container log size}
+        max-file: ${CONTAINER_LOG_MAX_FILES:?Set the reviewed container log retention count}
+
+  evidence-broker:
+    # A fixed environment-qualified name makes Docker Compose reject --scale.
+    # SPF-005 capacity reservations are intentionally single-broker for now.
+    container_name: ${COMPOSE_PROJECT_NAME:?Set the isolated Compose project name}-evidence-broker
+    image: ${OGFI_WEB_IMAGE:?Set the reviewed web image by immutable digest}
+    command:
+      [
+        "flock",
+        "--nonblock",
+        "/var/lib/ogfi/evidence/.ogfi-evidence-broker.lock",
+        "pnpm",
+        "evidence:broker",
+      ]
+    environment:
+      EVIDENCE_BROKER_LISTEN_HOST: 0.0.0.0
+      EVIDENCE_BROKER_PORT: "3010"
+      EVIDENCE_BROKER_STORAGE_ROOT: /var/lib/ogfi/evidence
+      EVIDENCE_BROKER_KEYS_FILE: /run/secrets/evidence_broker_keys
+      EVIDENCE_BROKER_SHARED_SECRET_FILE: /run/secrets/evidence_broker_shared_secret
+      EVIDENCE_BROKER_MAXIMUM_OBJECT_BYTES: ${EVIDENCE_MAX_UPLOAD_BYTES:?Set the approved maximum evidence object size}
+      EVIDENCE_BROKER_REQUEST_TIMEOUT_MS: ${EVIDENCE_BROKER_REQUEST_TIMEOUT_MS:?Set the broker request timeout}
+      EVIDENCE_BROKER_MINIMUM_FREE_BYTES: ${EVIDENCE_BROKER_MINIMUM_FREE_BYTES:?Set reserved free evidence bytes}
+      EVIDENCE_BROKER_MINIMUM_FREE_PERCENT: ${EVIDENCE_BROKER_MINIMUM_FREE_PERCENT:?Set reserved free disk percent}
+      EVIDENCE_BROKER_MINIMUM_FREE_INODE_PERCENT: ${EVIDENCE_BROKER_MINIMUM_FREE_INODE_PERCENT:?Set reserved free inode percent}
+      EVIDENCE_BROKER_CLAMD_HOST: clamd
+      EVIDENCE_BROKER_CLAMD_PORT: "3310"
+      EVIDENCE_BROKER_CLAMD_TIMEOUT_MS: ${EVIDENCE_BROKER_CLAMD_TIMEOUT_MS:?Set the ClamAV scan timeout}
+      EVIDENCE_BROKER_MAXIMUM_SIGNATURE_AGE_SECONDS: ${EVIDENCE_BROKER_MAXIMUM_SIGNATURE_AGE_SECONDS:?Set the approved signature age ceiling}
+    secrets:
+      - evidence_broker_keys
+      - evidence_broker_shared_secret
+    volumes:
+      - type: bind
+        source: ${EVIDENCE_HOST_STORAGE_ROOT:?Set an absolute production evidence host path}
+        target: /var/lib/ogfi/evidence
+        bind:
+          create_host_path: false
+    networks:
+      - evidence_private
+    depends_on:
+      clamd:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=${EVIDENCE_BROKER_TMPFS_SIZE:?Set the reviewed broker tmpfs size},mode=1777
+    user: ${EVIDENCE_BROKER_RUNTIME_UID_GID:?Set the non-root broker UID:GID}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3010/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+    mem_limit: ${EVIDENCE_BROKER_MEMORY_LIMIT:?Set the reviewed broker memory limit}
+    cpus: ${EVIDENCE_BROKER_CPU_LIMIT:?Set the reviewed broker CPU limit}
+    pids_limit: ${EVIDENCE_BROKER_PIDS_LIMIT:?Set the reviewed broker PID limit}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:?Set the reviewed container log size}
+        max-file: ${CONTAINER_LOG_MAX_FILES:?Set the reviewed container log retention count}
+
+  clamd:
+    image: ${CLAMAV_IMAGE:?Set a reviewed ClamAV image by immutable digest}
+    networks:
+      - evidence_private
+    volumes:
+      - clamav_signatures:${CLAMAV_SIGNATURES_CONTAINER_PATH:?Set the image-specific signature path}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=${CLAMAV_TMPFS_SIZE:?Set the reviewed ClamAV tmpfs size},mode=1777
+      - /run:size=${CLAMAV_RUN_TMPFS_SIZE:?Set the reviewed ClamAV runtime tmpfs size},mode=1777
+    user: ${CLAMAV_RUNTIME_UID_GID:?Set the image-supported non-root ClamAV UID:GID}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "${CLAMAV_HEALTHCHECK_CMD:?Set a health command that checks clamd and signature freshness}"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 90s
+    mem_limit: ${CLAMAV_MEMORY_LIMIT:?Set the reviewed ClamAV memory limit}
+    cpus: ${CLAMAV_CPU_LIMIT:?Set the reviewed ClamAV CPU limit}
+    pids_limit: ${CLAMAV_PIDS_LIMIT:?Set the reviewed ClamAV PID limit}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:?Set the reviewed container log size}
+        max-file: ${CONTAINER_LOG_MAX_FILES:?Set the reviewed container log retention count}
+
+  caddy:
+    depends_on: !override
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:?Set the reviewed container log size}
+        max-file: ${CONTAINER_LOG_MAX_FILES:?Set the reviewed container log retention count}
+
+  postgres:
+    profiles: [disabled-production]
+
+  minio:
+    profiles: [disabled-production]
+
+  redis:
+    profiles: [disabled-production]
+
+  worker:
+    profiles: [disabled-production]
+
+networks:
+  evidence_private:
+    internal: true
+
+volumes:
+  clamav_signatures:
+    name: ${CLAMAV_SIGNATURE_VOLUME_NAME:?Set the stable production signature volume name}
+
+secrets:
+  evidence_broker_keys:
+    file: ${EVIDENCE_BROKER_KEYS_FILE_HOST:?Set an absolute broker keyring file}
+  evidence_broker_shared_secret:
+    file: ${EVIDENCE_BROKER_SHARED_SECRET_FILE_HOST:?Set an absolute broker shared-secret file}

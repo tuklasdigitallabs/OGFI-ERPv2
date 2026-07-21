@@ -283,6 +283,43 @@ jobs:
           NEXT_DIST_DIR: .next-build-check
       - run: docker compose config > release-compose-default.yml
       - run: docker compose --profile future-worker config > release-compose-future-worker.yml
+      - name: Validate Hostinger evidence deployment contract
+        run: pnpm evidence:hostinger:test
+      - name: Render isolated Hostinger evidence topology
+        env:
+          COMPOSE_PROJECT_NAME: ogfi-erp-staging
+          OGFI_WEB_IMAGE: example.invalid/ogfi-web@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          OGFI_PRODUCTION_ENV_FILE: /tmp/ogfi-staging-app.env
+          CLAMAV_IMAGE: example.invalid/clamav@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          EVIDENCE_DEFAULT_COMPANY_QUOTA_BYTES: "1073741824"
+          EVIDENCE_BROKER_MINIMUM_FREE_BYTES: "1073741824"
+          EVIDENCE_BROKER_MINIMUM_FREE_PERCENT: "15"
+          EVIDENCE_BROKER_MINIMUM_FREE_INODE_PERCENT: "15"
+          EVIDENCE_BROKER_RUNTIME_UID_GID: "10001:10001"
+          CLAMAV_RUNTIME_UID_GID: "10002:10002"
+          CLAMAV_SIGNATURES_CONTAINER_PATH: /var/lib/clamav
+          CLAMAV_SIGNATURE_VOLUME_NAME: ogfi_staging_clamav_signatures
+          CLAMAV_HEALTHCHECK_CMD: clamd-and-signature-healthcheck
+          WEB_MEMORY_LIMIT: 2g
+          WEB_CPU_LIMIT: "1.5"
+          WEB_PIDS_LIMIT: "256"
+          EVIDENCE_BROKER_MEMORY_LIMIT: 1g
+          EVIDENCE_BROKER_CPU_LIMIT: "1"
+          EVIDENCE_BROKER_PIDS_LIMIT: "128"
+          EVIDENCE_BROKER_TMPFS_SIZE: 128m
+          CLAMAV_MEMORY_LIMIT: 3g
+          CLAMAV_CPU_LIMIT: "1.5"
+          CLAMAV_PIDS_LIMIT: "128"
+          CLAMAV_TMPFS_SIZE: 256m
+          CLAMAV_RUN_TMPFS_SIZE: 32m
+          CONTAINER_LOG_MAX_SIZE: 10m
+          CONTAINER_LOG_MAX_FILES: "5"
+        run: |
+          touch /tmp/ogfi-staging-app.env
+          docker compose --env-file .env.staging.example \
+            -f docker-compose.yml \
+            -f infra/hostinger/evidence/compose.production.yaml \
+            config > release-compose-hostinger-evidence.yml
       - name: Check release summary metadata
         env:
           RELEASE_VERSION: ${{ inputs.release_version }}
@@ -299,7 +336,7 @@ jobs:
           DEPLOY_TO_STAGING: ${{ inputs.deploy_to_staging }}
           RELEASE_ENVIRONMENT: staging-rehearsal
         run: pnpm release:summary
-      - run: cp release-compose-default.yml release-compose-future-worker.yml release-evidence/
+      - run: cp release-compose-default.yml release-compose-future-worker.yml release-compose-hostinger-evidence.yml release-evidence/
       - run: pnpm release:evidence:manifest
       - uses: actions/upload-artifact@v4
         with:

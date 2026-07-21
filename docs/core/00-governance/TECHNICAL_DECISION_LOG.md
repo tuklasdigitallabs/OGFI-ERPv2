@@ -21,7 +21,7 @@
 | TD-010 | Inventory cannot be directly edited; stock changes must be ledger-based and traceable. | Industry-standard baseline | Needed for correct inventory and audit control. |
 | TD-019 | OGFI ERP is the official accounting system of record. | Confirmed by `DEC-0006` | Finance/accounting implementation remains gated by Phase III decision council, finance-owner review, and build approval. |
 | TD-020 | Use one shared Work Management Engine with specialized Branch Expansion & Construction and Marketing Operations modules. | Confirmed by `DEC-0007` | Implementation remains gated by Work Management Decision Council and explicit build approval. |
-| TD-021 | Use AWS S3 with GuardDuty Malware Protection for production controlled evidence behind provider-neutral storage and scanning adapters. | Confirmed by `DEC-0045` | One private protected bucket per environment; exact-version dual-state release, Governance-mode retention, cross-account recovery, and database-backed reconciliation are mandatory. Production activation values and evidence remain open. |
+| TD-021 | Use a dedicated internal minimal storage broker and private ClamAV on the same Hostinger VPS for the initial controlled-evidence implementation, behind provider-neutral storage and scanning adapters. | Confirmed by `DEC-0046`; supersedes `DEC-0045` | Broker-exclusive absolute private mount and AES-256-GCM key, opaque immutable key/version, application-proxied streaming, PostgreSQL authorization/idempotency/quota/quarantine/CAS/audit, private `INSTREAM` scanning, bounded systemd reconciliation, independent encrypted backup, and paired restore proof are mandatory. Same-VPS storage is not WORM or Object Lock. |
 
 ---
 
@@ -34,7 +34,7 @@
 | TD-013 | Use modular monolith architecture first. | Recommended baseline | Faster and safer for Phase I workflow integrity than early microservices. |
 | TD-014 | Use Dockerized environments and CI/CD via GitHub Actions. | Recommended baseline | Repeatable development/deployment and aligns with GitHub workflow. |
 | TD-015 | Use Redis-backed job queue for reminders, escalations, exports, and notifications. | Deferred future baseline | Not included in the current Phase I / Phase 1.5 no-queueing release scope. Current release uses in-app notifications and manual reminder scans; Redis/BullMQ requires a separate approved technical decision before activation. |
-| TD-016 | Use a provider-neutral S3-compatible object-storage interface for attachments. | Confirmed for production by `DEC-0045` | AWS S3 plus GuardDuty is the production implementation; provider portability remains at the adapter boundary. Local-private storage is limited to local development and controlled UAT. |
+| TD-016 | Use provider-neutral storage and malware-scan interfaces for attachments. | Confirmed for initial production by `DEC-0046`; `DEC-0045` superseded | The current implementation is the dedicated same-VPS broker plus private ClamAV. External object storage is deferred until a confirmed migration trigger and copy-verify-cutover decision. |
 | TD-017 | Use semantic design tokens and tenant-configurable theme overrides. | Recommended baseline | Preserves OGFI visual standard while supporting productization. |
 
 ---

@@ -1,0 +1,33 @@
+[Unit]
+Description=OGFI ERP independent evidence recovery read-back verification (%i)
+Documentation=file:/opt/ogfi/current/infra/systemd/evidence/README.md
+
+[Service]
+Type=oneshot
+User=ogfi-recovery-review
+Group=ogfi-recovery-review
+WorkingDirectory=/opt/ogfi/current
+EnvironmentFile=/etc/ogfi/evidence-recovery/verify-%i.env
+UMask=0077
+TimeoutStartSec=2h
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/ogfi/recovery-readback
+RestrictSUIDSGID=true
+LockPersonality=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+ExecStart=/usr/bin/node /opt/ogfi/current/scripts/evidence-recovery-verify.mjs
+
+# Run this unit only where /var/lib/ogfi/recovery-readback is a read-back copy
+# from the approved independent destination. It writes commit-receipt.json last
+# and deliberately reports TRANSFERRED_UNVERIFIED, never RECOVERABLE. An isolated
+# paired restore and separately escrowed keyring are still mandatory.

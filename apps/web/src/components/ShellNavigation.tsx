@@ -98,6 +98,7 @@ export type ShellActiveNav =
   | "admin-mfa"
   | "admin-session-invalidation"
   | "admin-authentication"
+  | "admin-evidence-retention"
   | "admin";
 
 export type NavSection = {
@@ -142,6 +143,7 @@ export function getNavigationSections(
   canUseMaintenance = false,
   canUseFinance = false,
   canUseWorkforce = false,
+  canViewEvidenceRetention = false,
 ): NavSection[] {
   const procurementItems: NavSection["items"] = [
     canViewPurchaseOrders
@@ -818,6 +820,35 @@ export function getNavigationSections(
                 badge: "Provider",
                 icon: RotateCw,
               },
+              ...(canViewEvidenceRetention
+                ? [
+                    {
+                      label: "Evidence Retention",
+                      href: "/admin/evidence-retention",
+                      activeKey: "admin-evidence-retention" as const,
+                      badge: "Confidential",
+                      icon: ShieldCheck,
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ]
+      : []),
+    ...(!canAdminister && canViewEvidenceRetention
+      ? [
+          {
+            id: "admin",
+            label: "Admin",
+            icon: Settings,
+            items: [
+              {
+                label: "Evidence Retention",
+                href: "/admin/evidence-retention",
+                activeKey: "admin-evidence-retention" as const,
+                badge: "Confidential",
+                icon: ShieldCheck,
+              },
             ],
           },
         ]
@@ -865,6 +896,7 @@ export function getMobileOperationalNavItems({
   canUseStockAdjustments,
   canViewInventory,
   canViewInventoryLedger,
+  canViewEvidenceRetention = false,
 }: {
   canAdminister: boolean;
   canManageQuotes: boolean;
@@ -878,6 +910,7 @@ export function getMobileOperationalNavItems({
   canUseStockAdjustments: boolean;
   canViewInventory: boolean;
   canViewInventoryLedger: boolean;
+  canViewEvidenceRetention?: boolean;
 }): MobileOperationalNavItem[] {
   return [
     ...(canUsePurchaseRequests
@@ -926,6 +959,15 @@ export function getMobileOperationalNavItems({
           { label: "Admin", href: "/admin", tone: "admin" as const },
         ]
       : []),
+    ...(!canAdminister && canViewEvidenceRetention
+      ? [
+          {
+            label: "Evidence",
+            href: "/admin/evidence-retention",
+            tone: "admin" as const,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -956,6 +998,7 @@ function getDefaultSection(activeNav: ShellActiveNav) {
     activeNav === "admin-mfa" ||
     activeNav === "admin-session-invalidation" ||
     activeNav === "admin-authentication" ||
+    activeNav === "admin-evidence-retention" ||
     activeNav === "admin-reason-codes"
   ) {
     return "admin";
@@ -1121,6 +1164,7 @@ export function ShellNavigation({
   canUseMaintenance,
   canUseFinance,
   canUseWorkforce,
+  canViewEvidenceRetention,
   children,
 }: {
   session: SessionContext;
@@ -1146,6 +1190,7 @@ export function ShellNavigation({
   canUseMaintenance: boolean;
   canUseFinance: boolean;
   canUseWorkforce: boolean;
+  canViewEvidenceRetention: boolean;
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -1177,6 +1222,7 @@ export function ShellNavigation({
         canUseMaintenance,
         canUseFinance,
         canUseWorkforce,
+        canViewEvidenceRetention,
       ),
     [
       canAdminister,
@@ -1200,6 +1246,7 @@ export function ShellNavigation({
       canUseMaintenance,
       canUseFinance,
       canUseWorkforce,
+      canViewEvidenceRetention,
     ],
   );
   const mobileOperationalItems = getMobileOperationalNavItems({
@@ -1215,6 +1262,7 @@ export function ShellNavigation({
     canUseStockAdjustments,
     canViewInventory,
     canViewInventoryLedger,
+    canViewEvidenceRetention,
   });
 
   function selectSection(sectionId: string) {
@@ -1358,7 +1406,7 @@ export function ShellNavigation({
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-[var(--color-border-default)] bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-14px_32px_-24px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:hidden">
-        {canAdminister ? (
+        {canAdminister || canViewEvidenceRetention ? (
           <div className="mb-2 flex gap-2 overflow-x-auto px-1 py-1">
             {getMobilePreviewRailItems(sections).map((item) => (
               <a
@@ -1373,7 +1421,7 @@ export function ShellNavigation({
         ) : null}
         <div
           className={
-            canAdminister
+            canAdminister || canViewEvidenceRetention
               ? "grid grid-cols-3 gap-2 px-1 sm:grid-cols-6"
               : "grid grid-cols-2 gap-2 px-1"
           }
