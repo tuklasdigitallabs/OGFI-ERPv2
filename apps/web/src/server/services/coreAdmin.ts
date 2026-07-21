@@ -301,7 +301,10 @@ export async function touchUserPrivilegeEpoch(
 ) {
   await tx.user.update({
     where: { id: userId },
-    data: { updatedAt: new Date() }
+    data: {
+      updatedAt: new Date(),
+      privilegeEpoch: { increment: 1 }
+    }
   });
   await recordAuthSessionInvalidation(tx, {
     targetUserId: userId,
@@ -341,6 +344,7 @@ export async function assertCanManageCompanyScope(
   companyId: string
 ) {
   await requirePermission(session, permissions.coreAdminister);
+  const now = new Date();
 
   const assignment = await prisma.userScopeAssignment.findFirst({
     where: {
@@ -348,7 +352,9 @@ export async function assertCanManageCompanyScope(
       scopeType: "COMPANY",
       scopeId: companyId,
       accessLevel: "MANAGE",
-      status: "ACTIVE"
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }]
     }
   });
 

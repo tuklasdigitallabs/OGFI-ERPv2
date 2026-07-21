@@ -6,6 +6,7 @@ import { requireSessionContext, type SessionContext } from "./context";
 import type { CsvRow } from "./csv";
 import { getReleaseReadinessPolicyFlags } from "./policySettings";
 import { isSensitivePermissionCode } from "./rolePermissionCatalog";
+import { getAuthMode } from "./authentication";
 
 export const releaseReadinessStatuses = [
   "PENDING",
@@ -13,38 +14,43 @@ export const releaseReadinessStatuses = [
   "READY",
   "CONDITIONAL_GO",
   "HOLD",
-  "WAIVED"
+  "WAIVED",
 ] as const;
 
 export const releaseReadinessCategories = [
   {
     id: "uat",
     label: "UAT evidence",
-    description: "Scenario execution, defects, waivers, and owner signoff."
+    description: "Scenario execution, defects, waivers, and owner signoff.",
   },
   {
     id: "deployment",
     label: "Deployment controls",
-    description: "Migration, backup, restore, rollback, smoke, and monitoring evidence."
+    description:
+      "Migration, backup, restore, rollback, smoke, and monitoring evidence.",
   },
   {
     id: "enablement",
     label: "Enablement",
-    description: "Training, KB, release notes, known limits, and support route readiness."
+    description:
+      "Training, KB, release notes, known limits, and support route readiness.",
   },
   {
     id: "security",
     label: "Security controls",
-    description: "Privileged access, break-glass, and session revalidation evidence."
+    description:
+      "Privileged access, break-glass, and session revalidation evidence.",
   },
   {
     id: "go_no_go",
     label: "GO / NO-GO",
-    description: "Release Board decision, conditional GO, hold, rollback, or waiver record."
-  }
+    description:
+      "Release Board decision, conditional GO, hold, rollback, or waiver record.",
+  },
 ] as const;
 
-type ReleaseReadinessCategory = (typeof releaseReadinessCategories)[number]["id"];
+type ReleaseReadinessCategory =
+  (typeof releaseReadinessCategories)[number]["id"];
 type ReleaseReadinessStatus = (typeof releaseReadinessStatuses)[number];
 export const deploymentEvidenceTypes = [
   "MIGRATION",
@@ -52,7 +58,7 @@ export const deploymentEvidenceTypes = [
   "RESTORE_REHEARSAL",
   "ROLLBACK_PLAN",
   "SMOKE_TEST",
-  "MONITORING_HYPERCARE"
+  "MONITORING_HYPERCARE",
 ] as const;
 type DeploymentEvidenceType = (typeof deploymentEvidenceTypes)[number];
 export const enablementEvidenceTypes = [
@@ -61,7 +67,7 @@ export const enablementEvidenceTypes = [
   "SUPPORT_ROUTE_CONFIRMATION",
   "KB_REVIEW",
   "RELEASE_NOTES_REVIEW",
-  "TRAINING_IMPACT_ASSESSMENT"
+  "TRAINING_IMPACT_ASSESSMENT",
 ] as const;
 type EnablementEvidenceType = (typeof enablementEvidenceTypes)[number];
 export const uatEvidenceTypes = [
@@ -69,7 +75,7 @@ export const uatEvidenceTypes = [
   "DEFECT_DISPOSITION",
   "POLICY_VERSION_TRACE",
   "ACCEPTANCE_MATRIX",
-  "DEFAULT_REVISION_REGISTER"
+  "DEFAULT_REVISION_REGISTER",
 ] as const;
 type UatEvidenceType = (typeof uatEvidenceTypes)[number];
 export const uatEvidenceResults = [
@@ -77,7 +83,7 @@ export const uatEvidenceResults = [
   "FAIL",
   "BLOCKED",
   "WAIVED",
-  "RETEST_PASS"
+  "RETEST_PASS",
 ] as const;
 
 export const uatWorkflowAreaOptions = [
@@ -89,13 +95,13 @@ export const uatWorkflowAreaOptions = [
   "Phase 3 deferred blocker review",
   "Security and access controls",
   "Deployment readiness",
-  "Enablement and training readiness"
+  "Enablement and training readiness",
 ] as const;
 
 const phase3UatWorkflowAreas = {
   finance: "Phase 3 finance controlled foundation",
   workforce: "Phase 3 workforce controlled foundation",
-  deferredBlockers: "Phase 3 deferred blocker review"
+  deferredBlockers: "Phase 3 deferred blocker review",
 } as const;
 
 export const releaseBoardDecisions = [
@@ -103,7 +109,7 @@ export const releaseBoardDecisions = [
   "CONDITIONAL_GO",
   "HOLD",
   "ROLLBACK",
-  "FORWARD_FIX"
+  "FORWARD_FIX",
 ] as const;
 
 type ReleaseReadinessGateDefinition = {
@@ -115,159 +121,160 @@ type ReleaseReadinessGateDefinition = {
   policyFlag?: "uatRequired" | "trainingImpactRequired";
 };
 
-export const defaultReleaseReadinessGates: readonly ReleaseReadinessGateDefinition[] = [
-  {
-    gateKey: "uat.scenario_execution",
-    category: "uat",
-    title: "UAT scenarios executed",
-    description:
-      "Required Phase I and Phase 1.5 scenarios have tester, environment, device, result, evidence, and owner signoff.",
-    ownerRole: "QA Lead",
-    policyFlag: "uatRequired"
-  },
-  {
-    gateKey: "uat.defect_disposition",
-    category: "uat",
-    title: "Defects dispositioned",
-    description:
-      "Blocker and critical defects are fixed/retested or formally waived with mitigation, owner, expiry, and retest plan.",
-    ownerRole: "QA Lead / Product Owner",
-    policyFlag: "uatRequired"
-  },
-  {
-    gateKey: "uat.policy_version_trace",
-    category: "uat",
-    title: "Policy version trace captured",
-    description:
-      "UAT evidence references the active DEC-0036 policy/default version so findings can be traced to configuration.",
-    ownerRole: "QA Lead"
-  },
-  {
-    gateKey: "uat.acceptance_matrix_signed",
-    category: "uat",
-    title: "Acceptance matrix signed",
-    description:
-      "Each critical workflow has happy path, denied path, invalid state, audit, evidence, and rollback/reversal proof with owner signoff.",
-    ownerRole: "QA Lead / Operations Owner",
-    policyFlag: "uatRequired"
-  },
-  {
-    gateKey: "uat.default_revision_register",
-    category: "uat",
-    title: "Default revision register updated",
-    description:
-      "Pilot findings that change DEC-0036 defaults, thresholds, evidence rules, or readiness criteria are recorded with owner, decision, and effective date.",
-    ownerRole: "Product Owner / QA Lead",
-    policyFlag: "uatRequired"
-  },
-  {
-    gateKey: "uat.phase3_finance_controlled_foundation",
-    category: "uat",
-    title: "Phase 3 finance foundation UAT accepted",
-    description:
-      "Finance controlled-foundation workflows have verified scenario execution and acceptance-matrix evidence for budget, expense, AP/payment preparation, bank/cash, and period-close readiness without claiming production settlement or official-books go-live.",
-    ownerRole: "Finance Owner / QA Lead",
-    policyFlag: "uatRequired"
-  },
-  {
-    gateKey: "uat.phase3_workforce_controlled_foundation",
-    category: "uat",
-    title: "Phase 3 workforce foundation UAT accepted",
-    description:
-      "Workforce controlled-foundation workflows have verified scenario execution and acceptance-matrix evidence for employee, assignment, leave, overtime, schedule, attendance, training, and compliance-document readiness without payroll or external-device authority.",
-    ownerRole: "HR / Workforce Owner / QA Lead",
-    policyFlag: "uatRequired"
-  },
-  {
-    gateKey: "uat.phase3_deferred_blockers_reviewed",
-    category: "uat",
-    title: "Phase 3 deferred blockers reviewed",
-    description:
-      "Deferred Phase 3 go-live blockers are explicitly reviewed, dispositioned, and tied to the skipped-blockers register so UAT can proceed without treating those blockers as production-complete.",
-    ownerRole: "Product Owner / Finance Owner / QA Lead",
-    policyFlag: "uatRequired"
-  },
-  {
-    gateKey: "deployment.migration_backup_restore",
-    category: "deployment",
-    title: "Migration, backup, and restore evidence",
-    description:
-      "Staging migration, backup, restore rehearsal, rollback path, and smoke evidence are attached before GO review.",
-    ownerRole: "Release Manager"
-  },
-  {
-    gateKey: "deployment.monitoring_hypercare",
-    category: "deployment",
-    title: "Monitoring and hypercare ready",
-    description:
-      "Support contacts, defect intake, monitoring checks, and hypercare review cadence are confirmed.",
-    ownerRole: "Release Manager / Support Owner"
-  },
-  {
-    gateKey: "enablement.training_signoff",
-    category: "enablement",
-    title: "Role-based training signoff",
-    description:
-      "Attendance, known-limit acknowledgement, trainer, date, support route, and evidence reference are recorded.",
-    ownerRole: "Enablement Owner",
-    policyFlag: "trainingImpactRequired"
-  },
-  {
-    gateKey: "enablement.kb_release_notes",
-    category: "enablement",
-    title: "KB and release notes reviewed",
-    description:
-      "Knowledge-base, release-note, and training impact assessment have been checked for behavior-changing work.",
-    ownerRole: "Enablement Owner",
-    policyFlag: "trainingImpactRequired"
-  },
-  {
-    gateKey: "security.privileged_mfa_enrollment",
-    category: "security",
-    title: "Privileged MFA enrollment confirmed",
-    description:
-      "Core Admin, approval, finance, inventory posting, and release-management users have verified ERP-side MFA enrollment evidence, the MFA preflight has no missing/revoked privileged users, and the privileged MFA enforcement mode is intentionally set for rollout. This evidence-backed guard does not replace runtime MFA authentication at sign-in.",
-    ownerRole: "IT / Security"
-  },
-  {
-    gateKey: "security.break_glass_control",
-    category: "security",
-    title: "Break-glass access process confirmed",
-    description:
-      "Emergency access has named owners, expiry, reason capture, post-use review, audit evidence, and revocation procedure.",
-    ownerRole: "IT / Security / Product Owner"
-  },
-  {
-    gateKey: "security.session_revalidation",
-    category: "security",
-    title: "Sensitive-action session revalidation confirmed",
-    description:
-      "Privileged grants, high-risk scope changes, break-glass activation/revocation, and other sensitive actions bump the demo-session privilege epoch and create provider-neutral invalidation records pending external auth-provider completion.",
-    ownerRole: "IT / Security"
-  },
-  {
-    gateKey: "security.controlled_access_requests",
-    category: "security",
-    title: "Controlled access requests cleared",
-    description:
-      "Pending sensitive role and high-risk scope requests are reviewed before production release so unresolved authority changes do not bypass release review.",
-    ownerRole: "IT / Security / Product Owner"
-  },
-  {
-    gateKey: "go_no_go.release_board_decision",
-    category: "go_no_go",
-    title: "Release Board decision recorded",
-    description:
-      "Product Owner chair, QA, Release, Security, Operations, Warehouse/Inventory, and Enablement owners record GO, Conditional GO, HOLD, ROLLBACK, or FORWARD FIX.",
-    ownerRole: "Product Owner / Release Board"
-  }
-] as const;
+export const defaultReleaseReadinessGates: readonly ReleaseReadinessGateDefinition[] =
+  [
+    {
+      gateKey: "uat.scenario_execution",
+      category: "uat",
+      title: "UAT scenarios executed",
+      description:
+        "Required Phase I and Phase 1.5 scenarios have tester, environment, device, result, evidence, and owner signoff.",
+      ownerRole: "QA Lead",
+      policyFlag: "uatRequired",
+    },
+    {
+      gateKey: "uat.defect_disposition",
+      category: "uat",
+      title: "Defects dispositioned",
+      description:
+        "Blocker and critical defects are fixed/retested or formally waived with mitigation, owner, expiry, and retest plan.",
+      ownerRole: "QA Lead / Product Owner",
+      policyFlag: "uatRequired",
+    },
+    {
+      gateKey: "uat.policy_version_trace",
+      category: "uat",
+      title: "Policy version trace captured",
+      description:
+        "UAT evidence references the active DEC-0036 policy/default version so findings can be traced to configuration.",
+      ownerRole: "QA Lead",
+    },
+    {
+      gateKey: "uat.acceptance_matrix_signed",
+      category: "uat",
+      title: "Acceptance matrix signed",
+      description:
+        "Each critical workflow has happy path, denied path, invalid state, audit, evidence, and rollback/reversal proof with owner signoff.",
+      ownerRole: "QA Lead / Operations Owner",
+      policyFlag: "uatRequired",
+    },
+    {
+      gateKey: "uat.default_revision_register",
+      category: "uat",
+      title: "Default revision register updated",
+      description:
+        "Pilot findings that change DEC-0036 defaults, thresholds, evidence rules, or readiness criteria are recorded with owner, decision, and effective date.",
+      ownerRole: "Product Owner / QA Lead",
+      policyFlag: "uatRequired",
+    },
+    {
+      gateKey: "uat.phase3_finance_controlled_foundation",
+      category: "uat",
+      title: "Phase 3 finance foundation UAT accepted",
+      description:
+        "Finance controlled-foundation workflows have verified scenario execution and acceptance-matrix evidence for budget, expense, AP/payment preparation, bank/cash, and period-close readiness without claiming production settlement or official-books go-live.",
+      ownerRole: "Finance Owner / QA Lead",
+      policyFlag: "uatRequired",
+    },
+    {
+      gateKey: "uat.phase3_workforce_controlled_foundation",
+      category: "uat",
+      title: "Phase 3 workforce foundation UAT accepted",
+      description:
+        "Workforce controlled-foundation workflows have verified scenario execution and acceptance-matrix evidence for employee, assignment, leave, overtime, schedule, attendance, training, and compliance-document readiness without payroll or external-device authority.",
+      ownerRole: "HR / Workforce Owner / QA Lead",
+      policyFlag: "uatRequired",
+    },
+    {
+      gateKey: "uat.phase3_deferred_blockers_reviewed",
+      category: "uat",
+      title: "Phase 3 deferred blockers reviewed",
+      description:
+        "Deferred Phase 3 go-live blockers are explicitly reviewed, dispositioned, and tied to the skipped-blockers register so UAT can proceed without treating those blockers as production-complete.",
+      ownerRole: "Product Owner / Finance Owner / QA Lead",
+      policyFlag: "uatRequired",
+    },
+    {
+      gateKey: "deployment.migration_backup_restore",
+      category: "deployment",
+      title: "Migration, backup, and restore evidence",
+      description:
+        "Staging migration, backup, restore rehearsal, rollback path, and smoke evidence are attached before GO review.",
+      ownerRole: "Release Manager",
+    },
+    {
+      gateKey: "deployment.monitoring_hypercare",
+      category: "deployment",
+      title: "Monitoring and hypercare ready",
+      description:
+        "Support contacts, defect intake, monitoring checks, and hypercare review cadence are confirmed.",
+      ownerRole: "Release Manager / Support Owner",
+    },
+    {
+      gateKey: "enablement.training_signoff",
+      category: "enablement",
+      title: "Role-based training signoff",
+      description:
+        "Attendance, known-limit acknowledgement, trainer, date, support route, and evidence reference are recorded.",
+      ownerRole: "Enablement Owner",
+      policyFlag: "trainingImpactRequired",
+    },
+    {
+      gateKey: "enablement.kb_release_notes",
+      category: "enablement",
+      title: "KB and release notes reviewed",
+      description:
+        "Knowledge-base, release-note, and training impact assessment have been checked for behavior-changing work.",
+      ownerRole: "Enablement Owner",
+      policyFlag: "trainingImpactRequired",
+    },
+    {
+      gateKey: "security.privileged_mfa_enrollment",
+      category: "security",
+      title: "Privileged MFA enrollment confirmed",
+      description:
+        "Core Admin, approval, finance, inventory posting, and release-management users have verified ERP-side MFA enrollment evidence, the MFA preflight has no missing/revoked privileged users, and the privileged MFA enforcement mode is intentionally set for rollout. This evidence-backed guard does not replace runtime MFA authentication at sign-in.",
+      ownerRole: "IT / Security",
+    },
+    {
+      gateKey: "security.break_glass_control",
+      category: "security",
+      title: "Break-glass access process confirmed",
+      description:
+        "Emergency access has named owners, expiry, reason capture, post-use review, audit evidence, and revocation procedure.",
+      ownerRole: "IT / Security / Product Owner",
+    },
+    {
+      gateKey: "security.session_revalidation",
+      category: "security",
+      title: "Sensitive-action session revalidation confirmed",
+      description:
+        "Privileged grants, high-risk scope changes, break-glass activation/revocation, and other sensitive actions bump the demo-session privilege epoch and create provider-neutral invalidation records pending external auth-provider completion.",
+      ownerRole: "IT / Security",
+    },
+    {
+      gateKey: "security.controlled_access_requests",
+      category: "security",
+      title: "Controlled access requests cleared",
+      description:
+        "Pending sensitive role and high-risk scope requests are reviewed before production release so unresolved authority changes do not bypass release review.",
+      ownerRole: "IT / Security / Product Owner",
+    },
+    {
+      gateKey: "go_no_go.release_board_decision",
+      category: "go_no_go",
+      title: "Release Board decision recorded",
+      description:
+        "Product Owner chair, QA, Release, Security, Operations, Warehouse/Inventory, and Enablement owners record GO, Conditional GO, HOLD, ROLLBACK, or FORWARD FIX.",
+      ownerRole: "Product Owner / Release Board",
+    },
+  ] as const;
 
 const readinessGateKeySchema = z.enum(
   defaultReleaseReadinessGates.map((gate) => gate.gateKey) as [
     (typeof defaultReleaseReadinessGates)[number]["gateKey"],
-    ...(typeof defaultReleaseReadinessGates)[number]["gateKey"][]
-  ]
+    ...(typeof defaultReleaseReadinessGates)[number]["gateKey"][],
+  ],
 );
 const readinessStatusSchema = z.enum(releaseReadinessStatuses);
 
@@ -282,7 +289,7 @@ const updateReleaseReadinessGateSchema = z.object({
     .trim()
     .optional()
     .transform((value) => value || undefined),
-  reason: z.string().trim().min(5).max(500)
+  reason: z.string().trim().min(5).max(500),
 });
 
 const deploymentEvidenceTypeSchema = z.enum(deploymentEvidenceTypes);
@@ -295,13 +302,13 @@ const createDeploymentEvidenceSchema = z.object({
   performedAt: z.string().trim().min(1),
   performedBy: z.string().trim().min(2).max(160),
   notes: z.string().trim().max(1000).optional(),
-  reason: z.string().trim().min(5).max(500)
+  reason: z.string().trim().min(5).max(500),
 });
 
 const updateDeploymentEvidenceStatusSchema = z.object({
   evidenceId: z.string().uuid(),
   status: z.enum(["VERIFIED", "REJECTED"]),
-  reason: z.string().trim().min(5).max(500)
+  reason: z.string().trim().min(5).max(500),
 });
 
 const enablementEvidenceTypeSchema = z.enum(enablementEvidenceTypes);
@@ -316,13 +323,13 @@ const createEnablementEvidenceSchema = z.object({
   knownLimitAcknowledged: z.string().optional(),
   supportRouteConfirmed: z.string().optional(),
   notes: z.string().trim().max(1000).optional(),
-  reason: z.string().trim().min(5).max(500)
+  reason: z.string().trim().min(5).max(500),
 });
 
 const updateEnablementEvidenceStatusSchema = z.object({
   evidenceId: z.string().uuid(),
   status: z.enum(["VERIFIED", "REJECTED"]),
-  reason: z.string().trim().min(5).max(500)
+  reason: z.string().trim().min(5).max(500),
 });
 
 const uatEvidenceTypeSchema = z.enum(uatEvidenceTypes);
@@ -339,13 +346,13 @@ const createUatEvidenceSchema = z.object({
   policyVersion: z.string().trim().max(80).optional(),
   defectReference: z.string().trim().max(160).optional(),
   notes: z.string().trim().max(1000).optional(),
-  reason: z.string().trim().min(5).max(500)
+  reason: z.string().trim().min(5).max(500),
 });
 
 const updateUatEvidenceStatusSchema = z.object({
   evidenceId: z.string().uuid(),
   status: z.enum(["VERIFIED", "REJECTED"]),
-  reason: z.string().trim().min(5).max(500)
+  reason: z.string().trim().min(5).max(500),
 });
 
 const releaseBoardDecisionSchema = z.object({
@@ -354,12 +361,12 @@ const releaseBoardDecisionSchema = z.object({
   decisionNote: z.string().trim().min(10).max(1500),
   participants: z.string().trim().min(10).max(2000),
   decidedAt: z.string().trim().min(1),
-  reason: z.string().trim().min(5).max(500)
+  reason: z.string().trim().min(5).max(500),
 });
 
 function findGateDefinition(gateKey: string) {
   const definition = defaultReleaseReadinessGates.find(
-    (gate) => gate.gateKey === gateKey
+    (gate) => gate.gateKey === gateKey,
   );
   if (!definition) {
     throw new Error("RELEASE_READINESS_GATE_NOT_FOUND");
@@ -420,7 +427,7 @@ function requiresEvidenceForStatus(status: ReleaseReadinessStatus) {
 
 function requiresDecisionNoteForStatus(
   definition: ReleaseReadinessGateDefinition,
-  status: ReleaseReadinessStatus
+  status: ReleaseReadinessStatus,
 ) {
   return (
     definition.category === "uat" &&
@@ -441,9 +448,9 @@ export async function listReleaseReadinessGates(session: SessionContext) {
     prisma.releaseReadinessGate.findMany({
       where: {
         tenantId: session.context.tenantId,
-        companyId: session.context.companyId
-      }
-    })
+        companyId: session.context.companyId,
+      },
+    }),
   ]);
   const savedByKey = new Map(savedGates.map((gate) => [gate.gateKey, gate]));
 
@@ -467,35 +474,36 @@ export async function listReleaseReadinessGates(session: SessionContext) {
       blockerSummary: saved?.blockerSummary ?? null,
       targetDate: saved?.targetDate?.toISOString() ?? null,
       signedOffAt: saved?.signedOffAt?.toISOString() ?? null,
-      sourceDecisionId: saved?.sourceDecisionId ?? "DEC-0036"
+      sourceDecisionId: saved?.sourceDecisionId ?? "DEC-0036",
     };
   });
 }
 
 export function summarizeReleaseReadiness(
-  gates: Awaited<ReturnType<typeof listReleaseReadinessGates>>
+  gates: Awaited<ReturnType<typeof listReleaseReadinessGates>>,
 ) {
   const requiredGates = gates.filter((gate) => gate.requiredByPolicy);
   const readyStatuses = new Set<ReleaseReadinessStatus>([
     "READY",
     "CONDITIONAL_GO",
-    "WAIVED"
+    "WAIVED",
   ]);
   const blockingGates = requiredGates.filter(
-    (gate) => gate.status === "PENDING" || gate.status === "IN_PROGRESS"
+    (gate) => gate.status === "PENDING" || gate.status === "IN_PROGRESS",
   );
   const holdGates = requiredGates.filter((gate) => gate.status === "HOLD");
 
   return {
     total: gates.length,
     required: requiredGates.length,
-    ready: requiredGates.filter((gate) => readyStatuses.has(gate.status)).length,
+    ready: requiredGates.filter((gate) => readyStatuses.has(gate.status))
+      .length,
     blocking: blockingGates.length,
     hold: holdGates.length,
     canProceed:
       requiredGates.length > 0 &&
       blockingGates.length === 0 &&
-      holdGates.length === 0
+      holdGates.length === 0,
   };
 }
 
@@ -506,7 +514,9 @@ function displayUser(user: { displayName: string; email: string }) {
 function formatReleaseBoardParticipants(participants: unknown) {
   if (Array.isArray(participants)) {
     return participants
-      .filter((participant): participant is string => typeof participant === "string")
+      .filter(
+        (participant): participant is string => typeof participant === "string",
+      )
       .join("; ");
   }
   if (typeof participants === "string") {
@@ -519,11 +529,13 @@ function activeAssignmentWindowFilter(now = new Date()) {
   return {
     status: "ACTIVE" as const,
     startsAt: { lte: now },
-    OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+    OR: [{ endsAt: null }, { endsAt: { gt: now } }],
   };
 }
 
-export async function getReleaseSecurityEvidenceSummary(session: SessionContext) {
+export async function getReleaseSecurityEvidenceSummary(
+  session: SessionContext,
+) {
   await requirePermission(session, permissions.coreAdminister);
   const now = new Date();
   const activeAssignmentFilter = activeAssignmentWindowFilter(now);
@@ -532,93 +544,128 @@ export async function getReleaseSecurityEvidenceSummary(session: SessionContext)
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      status: "ACTIVE"
+      status: "ACTIVE",
     },
-    select: { id: true }
+    select: { id: true },
   });
-  const companyLocationIds = new Set(companyLocations.map((location) => location.id));
+  const companyLocationIds = new Set(
+    companyLocations.map((location) => location.id),
+  );
 
   const [
     users,
     enrollments,
+    runtimeAuthenticators,
     pendingInvalidations,
     breakGlassGrants,
+    pendingAuthRecoveryRequests,
     pendingHighRiskScopeRequests,
-    pendingSensitiveRoleRequests
+    pendingSensitiveRoleRequests,
   ] = await Promise.all([
-      prisma.user.findMany({
-        where: {
-          tenantId: session.context.tenantId,
-          status: "ACTIVE"
+    prisma.user.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        status: "ACTIVE",
+      },
+      include: {
+        scopeAssignments: {
+          where: activeAssignmentFilter,
         },
-        include: {
-          scopeAssignments: {
-            where: activeAssignmentFilter
+        roleAssignments: {
+          where: activeAssignmentFilter,
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: { permission: true },
+                },
+              },
+            },
           },
-          roleAssignments: {
-            where: activeAssignmentFilter,
-            include: {
-              role: {
-                include: {
-                  permissions: {
-                    include: { permission: true }
-                  }
-                }
-              }
-            }
-          }
         },
-        orderBy: { displayName: "asc" }
-      }),
-      prisma.privilegedMfaEnrollment.findMany({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId
+        authIdentities: {
+          where: { provider: "LOCAL", status: "ACTIVE" },
+          select: { id: true },
         },
-        orderBy: { createdAt: "desc" }
-      }),
-      prisma.authSessionInvalidation.count({
-        where: {
-          tenantId: session.context.tenantId,
-          OR: [{ companyId: session.context.companyId }, { companyId: null }],
-          status: "PENDING_PROVIDER"
-        }
-      }),
-      prisma.breakGlassAccessGrant.findMany({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          status: {
-            in: ["PENDING_REVIEW", "ACTIVE", "REVOKED", "EXPIRED", "REJECTED"]
-          }
+      },
+      orderBy: { displayName: "asc" },
+    }),
+    prisma.privilegedMfaEnrollment.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.mfaAuthenticator.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        status: { in: ["PENDING", "ACTIVE", "REVOKED"] },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.authSessionInvalidation.count({
+      where: {
+        tenantId: session.context.tenantId,
+        OR: [{ companyId: session.context.companyId }, { companyId: null }],
+        status: "PENDING_PROVIDER",
+      },
+    }),
+    prisma.breakGlassAccessGrant.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: {
+          in: ["PENDING_REVIEW", "ACTIVE", "REVOKED", "EXPIRED", "REJECTED"],
         },
-        select: {
-          id: true,
-          status: true
-        }
-      }),
-      prisma.highRiskScopeRequest.count({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          status: "PENDING"
-        }
-      }),
-      prisma.sensitiveRoleRequest.count({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          status: "PENDING"
-        }
-      })
-    ]);
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    }),
+    prisma.authRecoveryRequest.count({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING",
+      },
+    }),
+    prisma.highRiskScopeRequest.count({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING",
+      },
+    }),
+    prisma.sensitiveRoleRequest.count({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING",
+      },
+    }),
+  ]);
 
-  const latestEnrollmentByUser = new Map<string, (typeof enrollments)[number]>();
+  const latestEnrollmentByUser = new Map<
+    string,
+    (typeof enrollments)[number]
+  >();
   for (const enrollment of enrollments) {
     if (!latestEnrollmentByUser.has(enrollment.targetUserId)) {
       latestEnrollmentByUser.set(enrollment.targetUserId, enrollment);
     }
   }
+  const latestRuntimeAuthenticatorByUser = new Map<
+    string,
+    (typeof runtimeAuthenticators)[number]
+  >();
+  for (const authenticator of runtimeAuthenticators) {
+    if (!latestRuntimeAuthenticatorByUser.has(authenticator.userId)) {
+      latestRuntimeAuthenticatorByUser.set(authenticator.userId, authenticator);
+    }
+  }
+  const localRuntimeMfa = getAuthMode() === "local";
 
   const privilegedUsers = users
     .map((user) => {
@@ -626,48 +673,75 @@ export async function getReleaseSecurityEvidenceSummary(session: SessionContext)
         (scope) =>
           (scope.scopeType === "COMPANY" &&
             scope.scopeId === session.context.companyId) ||
-          (scope.scopeType === "LOCATION" && companyLocationIds.has(scope.scopeId))
+          (scope.scopeType === "LOCATION" &&
+            companyLocationIds.has(scope.scopeId)),
       );
       const sensitivePermissionCount = new Set(
         user.roleAssignments.flatMap((assignment) =>
           assignment.role.permissions
             .map((rolePermission) => rolePermission.permission.code)
-            .filter((code) => isSensitivePermissionCode(code))
-        )
+            .filter((code) => isSensitivePermissionCode(code)),
+        ),
       ).size;
 
       return {
         user,
         inCompanyScope,
         sensitivePermissionCount,
-        enrollment: latestEnrollmentByUser.get(user.id)
+        enrollment: latestEnrollmentByUser.get(user.id),
+        runtimeAuthenticator: latestRuntimeAuthenticatorByUser.get(user.id),
       };
     })
-    .filter((entry) => entry.inCompanyScope && entry.sensitivePermissionCount > 0);
+    .filter(
+      (entry) => entry.inCompanyScope && entry.sensitivePermissionCount > 0,
+    );
+  const companyScopedUsers = users.filter((user) =>
+    user.scopeAssignments.some(
+      (scope) =>
+        (scope.scopeType === "COMPANY" &&
+          scope.scopeId === session.context.companyId) ||
+        (scope.scopeType === "LOCATION" &&
+          companyLocationIds.has(scope.scopeId)),
+    ),
+  );
+  const missingLocalIdentityUsers = localRuntimeMfa
+    ? companyScopedUsers.filter((user) => user.authIdentities.length === 0)
+    : [];
 
-  const verifiedMfaUsers = privilegedUsers.filter(
-    (entry) => entry.enrollment?.status === "VERIFIED"
+  const verifiedMfaUsers = privilegedUsers.filter((entry) =>
+    localRuntimeMfa
+      ? entry.runtimeAuthenticator?.status === "ACTIVE"
+      : entry.enrollment?.status === "VERIFIED",
   );
-  const pendingMfaUsers = privilegedUsers.filter(
-    (entry) => entry.enrollment?.status === "PENDING_VERIFICATION"
+  const pendingMfaUsers = privilegedUsers.filter((entry) =>
+    localRuntimeMfa
+      ? entry.runtimeAuthenticator?.status === "PENDING"
+      : entry.enrollment?.status === "PENDING_VERIFICATION",
   );
-  const revokedMfaUsers = privilegedUsers.filter(
-    (entry) => entry.enrollment?.status === "REVOKED"
+  const revokedMfaUsers = privilegedUsers.filter((entry) =>
+    localRuntimeMfa
+      ? entry.runtimeAuthenticator?.status === "REVOKED"
+      : entry.enrollment?.status === "REVOKED",
   );
-  const missingMfaUsers = privilegedUsers.filter((entry) => !entry.enrollment);
+  const missingMfaUsers = privilegedUsers.filter((entry) =>
+    localRuntimeMfa ? !entry.runtimeAuthenticator : !entry.enrollment,
+  );
   const openBreakGlassCount = breakGlassGrants.filter((grant) =>
-    ["PENDING_REVIEW", "ACTIVE"].includes(grant.status)
+    ["PENDING_REVIEW", "ACTIVE"].includes(grant.status),
   ).length;
   const breakGlassPostReviewDueCount = breakGlassGrants.filter((grant) =>
-    ["REVOKED", "EXPIRED", "REJECTED"].includes(grant.status)
+    ["REVOKED", "EXPIRED", "REJECTED"].includes(grant.status),
   ).length;
 
   return {
     privilegedUserCount: privilegedUsers.length,
     verifiedMfaUserCount: verifiedMfaUsers.length,
     pendingMfaUserCount: pendingMfaUsers.length,
-    missingOrRevokedMfaUserCount: missingMfaUsers.length + revokedMfaUsers.length,
+    missingOrRevokedMfaUserCount:
+      missingMfaUsers.length + revokedMfaUsers.length,
     pendingProviderInvalidationCount: pendingInvalidations,
+    missingLocalIdentityUserCount: missingLocalIdentityUsers.length,
+    pendingAuthRecoveryRequestCount: pendingAuthRecoveryRequests,
     pendingHighRiskScopeRequestCount: pendingHighRiskScopeRequests,
     pendingSensitiveRoleRequestCount: pendingSensitiveRoleRequests,
     pendingControlledAccessRequestCount:
@@ -678,9 +752,13 @@ export async function getReleaseSecurityEvidenceSummary(session: SessionContext)
       pendingMfaUsers.length === 0 &&
       missingMfaUsers.length === 0 &&
       revokedMfaUsers.length === 0,
-    sampleAttentionUsers: [...missingMfaUsers, ...pendingMfaUsers, ...revokedMfaUsers]
+    sampleAttentionUsers: [
+      ...missingMfaUsers,
+      ...pendingMfaUsers,
+      ...revokedMfaUsers,
+    ]
       .slice(0, 3)
-      .map((entry) => displayUser(entry.user))
+      .map((entry) => displayUser(entry.user)),
   };
 }
 
@@ -690,62 +768,65 @@ export async function listDeploymentEvidenceRecords(session: SessionContext) {
   return prisma.deploymentEvidenceRecord.findMany({
     where: {
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId
+      companyId: session.context.companyId,
     },
     include: {
       createdByUser: { select: { displayName: true, email: true } },
       verifiedByUser: { select: { displayName: true, email: true } },
-      rejectedByUser: { select: { displayName: true, email: true } }
+      rejectedByUser: { select: { displayName: true, email: true } },
     },
-    orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }]
+    orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }],
   });
 }
 
 export function summarizeDeploymentEvidence(
-  records: Awaited<ReturnType<typeof listDeploymentEvidenceRecords>>
+  records: Awaited<ReturnType<typeof listDeploymentEvidenceRecords>>,
 ) {
   const requiredForMigrationGate: DeploymentEvidenceType[] = [
     "MIGRATION",
     "BACKUP",
     "RESTORE_REHEARSAL",
     "ROLLBACK_PLAN",
-    "SMOKE_TEST"
+    "SMOKE_TEST",
   ];
   const requiredForMonitoringGate: DeploymentEvidenceType[] = [
-    "MONITORING_HYPERCARE"
+    "MONITORING_HYPERCARE",
   ];
 
   const verifiedTypes = new Set(
     records
       .filter((record) => record.verificationStatus === "VERIFIED")
-      .map((record) => record.evidenceType)
+      .map((record) => record.evidenceType),
   );
   const missingMigrationGateTypes = requiredForMigrationGate.filter(
-    (type) => !verifiedTypes.has(type)
+    (type) => !verifiedTypes.has(type),
   );
   const missingMonitoringGateTypes = requiredForMonitoringGate.filter(
-    (type) => !verifiedTypes.has(type)
+    (type) => !verifiedTypes.has(type),
   );
 
   return {
     total: records.length,
-    verified: records.filter((record) => record.verificationStatus === "VERIFIED")
-      .length,
-    recorded: records.filter((record) => record.verificationStatus === "RECORDED")
-      .length,
-    rejected: records.filter((record) => record.verificationStatus === "REJECTED")
-      .length,
+    verified: records.filter(
+      (record) => record.verificationStatus === "VERIFIED",
+    ).length,
+    recorded: records.filter(
+      (record) => record.verificationStatus === "RECORDED",
+    ).length,
+    rejected: records.filter(
+      (record) => record.verificationStatus === "REJECTED",
+    ).length,
     missingMigrationGateTypes,
     missingMonitoringGateTypes,
     migrationGateReady: missingMigrationGateTypes.length === 0,
-    monitoringGateReady: missingMonitoringGateTypes.length === 0
+    monitoringGateReady: missingMonitoringGateTypes.length === 0,
   };
 }
 
 async function assertDeploymentGateReadyEvidence(
   session: SessionContext,
   definition: ReleaseReadinessGateDefinition,
-  status: ReleaseReadinessStatus
+  status: ReleaseReadinessStatus,
 ) {
   if (definition.category !== "deployment" || status !== "READY") {
     return;
@@ -755,7 +836,7 @@ async function assertDeploymentGateReadyEvidence(
   const summary = summarizeDeploymentEvidence(records);
   const unresolvedByGate: Record<string, boolean> = {
     "deployment.migration_backup_restore": !summary.migrationGateReady,
-    "deployment.monitoring_hypercare": !summary.monitoringGateReady
+    "deployment.monitoring_hypercare": !summary.monitoringGateReady,
   };
 
   if (unresolvedByGate[definition.gateKey]) {
@@ -766,7 +847,7 @@ async function assertDeploymentGateReadyEvidence(
 async function assertSecurityGateReadyEvidence(
   session: SessionContext,
   definition: ReleaseReadinessGateDefinition,
-  status: ReleaseReadinessStatus
+  status: ReleaseReadinessStatus,
 ) {
   if (definition.category !== "security" || status !== "READY") {
     return;
@@ -777,9 +858,12 @@ async function assertSecurityGateReadyEvidence(
     "security.privileged_mfa_enrollment": !summary.readyForStrictMfa,
     "security.break_glass_control":
       summary.openBreakGlassCount + summary.breakGlassPostReviewDueCount > 0,
-    "security.session_revalidation": summary.pendingProviderInvalidationCount > 0,
+    "security.session_revalidation":
+      summary.pendingProviderInvalidationCount > 0 ||
+      summary.missingLocalIdentityUserCount > 0 ||
+      summary.pendingAuthRecoveryRequestCount > 0,
     "security.controlled_access_requests":
-      summary.pendingControlledAccessRequestCount > 0
+      summary.pendingControlledAccessRequestCount > 0,
   };
 
   if (unresolvedByGate[definition.gateKey]) {
@@ -793,39 +877,41 @@ export async function listEnablementEvidenceRecords(session: SessionContext) {
   return prisma.enablementEvidenceRecord.findMany({
     where: {
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId
+      companyId: session.context.companyId,
     },
     include: {
       createdByUser: { select: { displayName: true, email: true } },
       verifiedByUser: { select: { displayName: true, email: true } },
-      rejectedByUser: { select: { displayName: true, email: true } }
+      rejectedByUser: { select: { displayName: true, email: true } },
     },
-    orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }]
+    orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
   });
 }
 
 export function summarizeEnablementEvidence(
-  records: Awaited<ReturnType<typeof listEnablementEvidenceRecords>>
+  records: Awaited<ReturnType<typeof listEnablementEvidenceRecords>>,
 ) {
   const requiredForTrainingGate: EnablementEvidenceType[] = [
     "TRAINING_SIGNOFF",
     "KNOWN_LIMIT_ACKNOWLEDGEMENT",
-    "SUPPORT_ROUTE_CONFIRMATION"
+    "SUPPORT_ROUTE_CONFIRMATION",
   ];
   const requiredForKbGate: EnablementEvidenceType[] = [
     "KB_REVIEW",
     "RELEASE_NOTES_REVIEW",
-    "TRAINING_IMPACT_ASSESSMENT"
+    "TRAINING_IMPACT_ASSESSMENT",
   ];
   const verifiedRecords = records.filter(
-    (record) => record.verificationStatus === "VERIFIED"
+    (record) => record.verificationStatus === "VERIFIED",
   );
-  const verifiedTypes = new Set(verifiedRecords.map((record) => record.evidenceType));
+  const verifiedTypes = new Set(
+    verifiedRecords.map((record) => record.evidenceType),
+  );
   const hasTrainingAcknowledgement = verifiedRecords.some(
     (record) =>
       record.evidenceType === "TRAINING_SIGNOFF" &&
       record.knownLimitAcknowledged &&
-      record.supportRouteConfirmed
+      record.supportRouteConfirmed,
   );
   const missingTrainingGateTypes = requiredForTrainingGate.filter((type) => {
     if (type === "KNOWN_LIMIT_ACKNOWLEDGEMENT") {
@@ -837,27 +923,29 @@ export function summarizeEnablementEvidence(
     return !verifiedTypes.has(type);
   });
   const missingKbGateTypes = requiredForKbGate.filter(
-    (type) => !verifiedTypes.has(type)
+    (type) => !verifiedTypes.has(type),
   );
 
   return {
     total: records.length,
     verified: verifiedRecords.length,
-    recorded: records.filter((record) => record.verificationStatus === "RECORDED")
-      .length,
-    rejected: records.filter((record) => record.verificationStatus === "REJECTED")
-      .length,
+    recorded: records.filter(
+      (record) => record.verificationStatus === "RECORDED",
+    ).length,
+    rejected: records.filter(
+      (record) => record.verificationStatus === "REJECTED",
+    ).length,
     missingTrainingGateTypes,
     missingKbGateTypes,
     trainingGateReady: missingTrainingGateTypes.length === 0,
-    kbGateReady: missingKbGateTypes.length === 0
+    kbGateReady: missingKbGateTypes.length === 0,
   };
 }
 
 async function assertEnablementGateReadyEvidence(
   session: SessionContext,
   definition: ReleaseReadinessGateDefinition,
-  status: ReleaseReadinessStatus
+  status: ReleaseReadinessStatus,
 ) {
   if (definition.category !== "enablement" || status !== "READY") {
     return;
@@ -867,7 +955,7 @@ async function assertEnablementGateReadyEvidence(
   const summary = summarizeEnablementEvidence(records);
   const unresolvedByGate: Record<string, boolean> = {
     "enablement.training_signoff": !summary.trainingGateReady,
-    "enablement.kb_release_notes": !summary.kbGateReady
+    "enablement.kb_release_notes": !summary.kbGateReady,
   };
 
   if (unresolvedByGate[definition.gateKey]) {
@@ -881,19 +969,19 @@ export async function listUatEvidenceRecords(session: SessionContext) {
   return prisma.uatEvidenceRecord.findMany({
     where: {
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId
+      companyId: session.context.companyId,
     },
     include: {
       createdByUser: { select: { displayName: true, email: true } },
       verifiedByUser: { select: { displayName: true, email: true } },
-      rejectedByUser: { select: { displayName: true, email: true } }
+      rejectedByUser: { select: { displayName: true, email: true } },
     },
-    orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }]
+    orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }],
   });
 }
 
 export function summarizeUatEvidence(
-  records: Awaited<ReturnType<typeof listUatEvidenceRecords>>
+  records: Awaited<ReturnType<typeof listUatEvidenceRecords>>,
 ) {
   type UatEvidenceSummaryRecord = {
     evidenceType: string;
@@ -909,66 +997,71 @@ export function summarizeUatEvidence(
     "DEFECT_DISPOSITION",
     "POLICY_VERSION_TRACE",
     "ACCEPTANCE_MATRIX",
-    "DEFAULT_REVISION_REGISTER"
+    "DEFAULT_REVISION_REGISTER",
   ];
   const verifiedRecords = records.filter(
-    (record) => record.verificationStatus === "VERIFIED"
+    (record) => record.verificationStatus === "VERIFIED",
   );
   const passingVerifiedRecords = verifiedRecords.filter((record) =>
-    ["PASS", "RETEST_PASS", "WAIVED"].includes(record.result)
+    ["PASS", "RETEST_PASS", "WAIVED"].includes(record.result),
   );
-  const verifiedTypes = new Set(verifiedRecords.map((record) => record.evidenceType));
+  const verifiedTypes = new Set(
+    verifiedRecords.map((record) => record.evidenceType),
+  );
   const unresolvedResults = verifiedRecords.filter((record) =>
-    ["FAIL", "BLOCKED"].includes(record.result)
+    ["FAIL", "BLOCKED"].includes(record.result),
   );
   const missingTypes = requiredTypes.filter((type) => !verifiedTypes.has(type));
   const normalizeWorkflowArea = (value: string | null | undefined) =>
     value?.trim().toLowerCase() ?? "";
   const recordMatchesWorkflowArea = (
     record: UatEvidenceSummaryRecord,
-    workflowArea: (typeof uatWorkflowAreaOptions)[number]
-  ) => normalizeWorkflowArea(record.workflowArea) === workflowArea.toLowerCase();
+    workflowArea: (typeof uatWorkflowAreaOptions)[number],
+  ) =>
+    normalizeWorkflowArea(record.workflowArea) === workflowArea.toLowerCase();
   const hasRequiredWorkflowAreaCoverage = (
     requiredEvidenceTypes: readonly UatEvidenceType[],
-    workflowArea: (typeof uatWorkflowAreaOptions)[number]
+    workflowArea: (typeof uatWorkflowAreaOptions)[number],
   ) =>
     requiredEvidenceTypes.every((type) =>
       passingVerifiedRecords.some(
         (record) =>
           record.evidenceType === type &&
-          recordMatchesWorkflowArea(record, workflowArea)
-      )
+          recordMatchesWorkflowArea(record, workflowArea),
+      ),
     );
 
   return {
     total: records.length,
     verified: verifiedRecords.length,
-    recorded: records.filter((record) => record.verificationStatus === "RECORDED")
-      .length,
-    rejected: records.filter((record) => record.verificationStatus === "REJECTED")
-      .length,
+    recorded: records.filter(
+      (record) => record.verificationStatus === "RECORDED",
+    ).length,
+    rejected: records.filter(
+      (record) => record.verificationStatus === "REJECTED",
+    ).length,
     unresolvedResultCount: unresolvedResults.length,
     missingTypes,
     phase3FinanceReady: hasRequiredWorkflowAreaCoverage(
       ["SCENARIO_EXECUTION", "ACCEPTANCE_MATRIX"],
-      phase3UatWorkflowAreas.finance
+      phase3UatWorkflowAreas.finance,
     ),
     phase3WorkforceReady: hasRequiredWorkflowAreaCoverage(
       ["SCENARIO_EXECUTION", "ACCEPTANCE_MATRIX"],
-      phase3UatWorkflowAreas.workforce
+      phase3UatWorkflowAreas.workforce,
     ),
     phase3DeferredBlockerReviewReady: hasRequiredWorkflowAreaCoverage(
       ["DEFECT_DISPOSITION", "DEFAULT_REVISION_REGISTER"],
-      phase3UatWorkflowAreas.deferredBlockers
+      phase3UatWorkflowAreas.deferredBlockers,
     ),
-    ready: missingTypes.length === 0 && unresolvedResults.length === 0
+    ready: missingTypes.length === 0 && unresolvedResults.length === 0,
   };
 }
 
 async function assertUatGateReadyEvidence(
   session: SessionContext,
   definition: ReleaseReadinessGateDefinition,
-  status: ReleaseReadinessStatus
+  status: ReleaseReadinessStatus,
 ) {
   if (definition.category !== "uat" || status !== "READY") {
     return;
@@ -984,26 +1077,26 @@ async function assertUatGateReadyEvidence(
     "uat.default_revision_register": ["DEFAULT_REVISION_REGISTER"],
     "uat.phase3_finance_controlled_foundation": [
       "SCENARIO_EXECUTION",
-      "ACCEPTANCE_MATRIX"
+      "ACCEPTANCE_MATRIX",
     ],
     "uat.phase3_workforce_controlled_foundation": [
       "SCENARIO_EXECUTION",
-      "ACCEPTANCE_MATRIX"
+      "ACCEPTANCE_MATRIX",
     ],
     "uat.phase3_deferred_blockers_reviewed": [
       "DEFECT_DISPOSITION",
-      "DEFAULT_REVISION_REGISTER"
-    ]
+      "DEFAULT_REVISION_REGISTER",
+    ],
   };
   const phase3UnresolvedByGate: Record<string, boolean> = {
     "uat.phase3_finance_controlled_foundation": !summary.phase3FinanceReady,
     "uat.phase3_workforce_controlled_foundation": !summary.phase3WorkforceReady,
     "uat.phase3_deferred_blockers_reviewed":
-      !summary.phase3DeferredBlockerReviewReady
+      !summary.phase3DeferredBlockerReviewReady,
   };
   const requiredTypes = requiredByGate[definition.gateKey] ?? [];
   const missingForGate = summary.missingTypes.some((type) =>
-    requiredTypes.includes(type)
+    requiredTypes.includes(type),
   );
 
   if (
@@ -1018,7 +1111,9 @@ async function assertUatGateReadyEvidence(
 export async function createDeploymentEvidenceRecord(formData: FormData) {
   const session = await requireSessionContext();
   await assertCanManageReleaseReadiness(session);
-  const values = createDeploymentEvidenceSchema.parse(Object.fromEntries(formData));
+  const values = createDeploymentEvidenceSchema.parse(
+    Object.fromEntries(formData),
+  );
   const notes = normalizeOptionalText(values.notes);
   const performedAt = normalizePerformedAt(values.performedAt);
 
@@ -1035,8 +1130,8 @@ export async function createDeploymentEvidenceRecord(formData: FormData) {
         performedBy: values.performedBy,
         notes,
         createdByUserId: session.user.id,
-        sourceDecisionId: "DEC-0036"
-      }
+        sourceDecisionId: "DEC-0036",
+      },
     });
 
     await tx.auditEvent.create({
@@ -1055,13 +1150,13 @@ export async function createDeploymentEvidenceRecord(formData: FormData) {
           performedAt: record.performedAt.toISOString(),
           performedBy: record.performedBy,
           verificationStatus: record.verificationStatus,
-          sourceDecisionId: record.sourceDecisionId
+          sourceDecisionId: record.sourceDecisionId,
         },
         metadata: {
           reason: values.reason,
-          sourceDecisionId: "DEC-0036"
-        }
-      }
+          sourceDecisionId: "DEC-0036",
+        },
+      },
     });
   });
 }
@@ -1092,8 +1187,8 @@ export async function createUatEvidenceRecord(formData: FormData) {
         defectReference,
         notes,
         createdByUserId: session.user.id,
-        sourceDecisionId: "DEC-0036"
-      }
+        sourceDecisionId: "DEC-0036",
+      },
     });
 
     await tx.auditEvent.create({
@@ -1116,13 +1211,13 @@ export async function createUatEvidenceRecord(formData: FormData) {
           policyVersion: record.policyVersion,
           defectReference: record.defectReference,
           verificationStatus: record.verificationStatus,
-          sourceDecisionId: record.sourceDecisionId
+          sourceDecisionId: record.sourceDecisionId,
         },
         metadata: {
           reason: values.reason,
-          sourceDecisionId: "DEC-0036"
-        }
-      }
+          sourceDecisionId: "DEC-0036",
+        },
+      },
     });
   });
 }
@@ -1130,15 +1225,17 @@ export async function createUatEvidenceRecord(formData: FormData) {
 export async function updateUatEvidenceStatus(formData: FormData) {
   const session = await requireSessionContext();
   await assertCanManageReleaseReadiness(session);
-  const values = updateUatEvidenceStatusSchema.parse(Object.fromEntries(formData));
+  const values = updateUatEvidenceStatusSchema.parse(
+    Object.fromEntries(formData),
+  );
 
   await prisma.$transaction(async (tx) => {
     const existing = await tx.uatEvidenceRecord.findFirst({
       where: {
         id: values.evidenceId,
         tenantId: session.context.tenantId,
-        companyId: session.context.companyId
-      }
+        companyId: session.context.companyId,
+      },
     });
 
     if (!existing) {
@@ -1161,15 +1258,15 @@ export async function updateUatEvidenceStatus(formData: FormData) {
               verifiedAt: now,
               verifiedByUserId: session.user.id,
               rejectedAt: null,
-              rejectedByUserId: null
+              rejectedByUserId: null,
             }
           : {
               verificationStatus: "REJECTED",
               rejectedAt: now,
               rejectedByUserId: session.user.id,
               verifiedAt: null,
-              verifiedByUserId: null
-            }
+              verifiedByUserId: null,
+            },
     });
 
     await tx.auditEvent.create({
@@ -1184,20 +1281,20 @@ export async function updateUatEvidenceStatus(formData: FormData) {
         entityType: "UatEvidenceRecord",
         entityId: saved.id,
         beforeData: {
-          verificationStatus: existing.verificationStatus
+          verificationStatus: existing.verificationStatus,
         },
         afterData: {
           evidenceType: saved.evidenceType,
           result: saved.result,
           verificationStatus: saved.verificationStatus,
           verifiedAt: saved.verifiedAt?.toISOString() ?? null,
-          rejectedAt: saved.rejectedAt?.toISOString() ?? null
+          rejectedAt: saved.rejectedAt?.toISOString() ?? null,
         },
         metadata: {
           reason: values.reason,
-          sourceDecisionId: "DEC-0036"
-        }
-      }
+          sourceDecisionId: "DEC-0036",
+        },
+      },
     });
   });
 }
@@ -1205,7 +1302,9 @@ export async function updateUatEvidenceStatus(formData: FormData) {
 export async function createEnablementEvidenceRecord(formData: FormData) {
   const session = await requireSessionContext();
   await assertCanManageReleaseReadiness(session);
-  const values = createEnablementEvidenceSchema.parse(Object.fromEntries(formData));
+  const values = createEnablementEvidenceSchema.parse(
+    Object.fromEntries(formData),
+  );
   const notes = normalizeOptionalText(values.notes);
   const completedAt = normalizeCompletedAt(values.completedAt);
   const knownLimitAcknowledged = values.knownLimitAcknowledged === "on";
@@ -1226,8 +1325,8 @@ export async function createEnablementEvidenceRecord(formData: FormData) {
         supportRouteConfirmed,
         notes,
         createdByUserId: session.user.id,
-        sourceDecisionId: "DEC-0036"
-      }
+        sourceDecisionId: "DEC-0036",
+      },
     });
 
     await tx.auditEvent.create({
@@ -1248,13 +1347,13 @@ export async function createEnablementEvidenceRecord(formData: FormData) {
           knownLimitAcknowledged: record.knownLimitAcknowledged,
           supportRouteConfirmed: record.supportRouteConfirmed,
           verificationStatus: record.verificationStatus,
-          sourceDecisionId: record.sourceDecisionId
+          sourceDecisionId: record.sourceDecisionId,
         },
         metadata: {
           reason: values.reason,
-          sourceDecisionId: "DEC-0036"
-        }
-      }
+          sourceDecisionId: "DEC-0036",
+        },
+      },
     });
   });
 }
@@ -1263,7 +1362,7 @@ export async function updateEnablementEvidenceStatus(formData: FormData) {
   const session = await requireSessionContext();
   await assertCanManageReleaseReadiness(session);
   const values = updateEnablementEvidenceStatusSchema.parse(
-    Object.fromEntries(formData)
+    Object.fromEntries(formData),
   );
 
   await prisma.$transaction(async (tx) => {
@@ -1271,8 +1370,8 @@ export async function updateEnablementEvidenceStatus(formData: FormData) {
       where: {
         id: values.evidenceId,
         tenantId: session.context.tenantId,
-        companyId: session.context.companyId
-      }
+        companyId: session.context.companyId,
+      },
     });
 
     if (!existing) {
@@ -1295,15 +1394,15 @@ export async function updateEnablementEvidenceStatus(formData: FormData) {
               verifiedAt: now,
               verifiedByUserId: session.user.id,
               rejectedAt: null,
-              rejectedByUserId: null
+              rejectedByUserId: null,
             }
           : {
               verificationStatus: "REJECTED",
               rejectedAt: now,
               rejectedByUserId: session.user.id,
               verifiedAt: null,
-              verifiedByUserId: null
-            }
+              verifiedByUserId: null,
+            },
     });
 
     await tx.auditEvent.create({
@@ -1318,19 +1417,19 @@ export async function updateEnablementEvidenceStatus(formData: FormData) {
         entityType: "EnablementEvidenceRecord",
         entityId: saved.id,
         beforeData: {
-          verificationStatus: existing.verificationStatus
+          verificationStatus: existing.verificationStatus,
         },
         afterData: {
           evidenceType: saved.evidenceType,
           verificationStatus: saved.verificationStatus,
           verifiedAt: saved.verifiedAt?.toISOString() ?? null,
-          rejectedAt: saved.rejectedAt?.toISOString() ?? null
+          rejectedAt: saved.rejectedAt?.toISOString() ?? null,
         },
         metadata: {
           reason: values.reason,
-          sourceDecisionId: "DEC-0036"
-        }
-      }
+          sourceDecisionId: "DEC-0036",
+        },
+      },
     });
   });
 }
@@ -1339,7 +1438,7 @@ export async function updateDeploymentEvidenceStatus(formData: FormData) {
   const session = await requireSessionContext();
   await assertCanManageReleaseReadiness(session);
   const values = updateDeploymentEvidenceStatusSchema.parse(
-    Object.fromEntries(formData)
+    Object.fromEntries(formData),
   );
 
   await prisma.$transaction(async (tx) => {
@@ -1347,8 +1446,8 @@ export async function updateDeploymentEvidenceStatus(formData: FormData) {
       where: {
         id: values.evidenceId,
         tenantId: session.context.tenantId,
-        companyId: session.context.companyId
-      }
+        companyId: session.context.companyId,
+      },
     });
 
     if (!existing) {
@@ -1371,15 +1470,15 @@ export async function updateDeploymentEvidenceStatus(formData: FormData) {
               verifiedAt: now,
               verifiedByUserId: session.user.id,
               rejectedAt: null,
-              rejectedByUserId: null
+              rejectedByUserId: null,
             }
           : {
               verificationStatus: "REJECTED",
               rejectedAt: now,
               rejectedByUserId: session.user.id,
               verifiedAt: null,
-              verifiedByUserId: null
-            }
+              verifiedByUserId: null,
+            },
     });
 
     await tx.auditEvent.create({
@@ -1394,19 +1493,19 @@ export async function updateDeploymentEvidenceStatus(formData: FormData) {
         entityType: "DeploymentEvidenceRecord",
         entityId: saved.id,
         beforeData: {
-          verificationStatus: existing.verificationStatus
+          verificationStatus: existing.verificationStatus,
         },
         afterData: {
           evidenceType: saved.evidenceType,
           verificationStatus: saved.verificationStatus,
           verifiedAt: saved.verifiedAt?.toISOString() ?? null,
-          rejectedAt: saved.rejectedAt?.toISOString() ?? null
+          rejectedAt: saved.rejectedAt?.toISOString() ?? null,
         },
         metadata: {
           reason: values.reason,
-          sourceDecisionId: "DEC-0036"
-        }
-      }
+          sourceDecisionId: "DEC-0036",
+        },
+      },
     });
   });
 }
@@ -1417,12 +1516,12 @@ export async function listReleaseBoardDecisions(session: SessionContext) {
   return prisma.releaseBoardDecision.findMany({
     where: {
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId
+      companyId: session.context.companyId,
     },
     include: {
-      chairUser: { select: { displayName: true, email: true } }
+      chairUser: { select: { displayName: true, email: true } },
     },
-    orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }]
+    orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }],
   });
 }
 
@@ -1432,21 +1531,25 @@ async function getLatestReleaseBoardDecision(session: SessionContext) {
   return prisma.releaseBoardDecision.findFirst({
     where: {
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId
+      companyId: session.context.companyId,
     },
-    orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }]
+    orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }],
   });
 }
 
 async function assertGoNoGoGateDecision(
   session: SessionContext,
   definition: ReleaseReadinessGateDefinition,
-  status: ReleaseReadinessStatus
+  status: ReleaseReadinessStatus,
 ) {
   if (definition.gateKey !== "go_no_go.release_board_decision") {
     return;
   }
-  if (status !== "READY" && status !== "CONDITIONAL_GO" && status !== "WAIVED") {
+  if (
+    status !== "READY" &&
+    status !== "CONDITIONAL_GO" &&
+    status !== "WAIVED"
+  ) {
     return;
   }
 
@@ -1496,8 +1599,8 @@ export async function createReleaseBoardDecision(formData: FormData) {
         participants,
         decidedAt,
         chairUserId: session.user.id,
-        sourceDecisionId: "DEC-0036"
-      }
+        sourceDecisionId: "DEC-0036",
+      },
     });
 
     await tx.auditEvent.create({
@@ -1513,19 +1616,19 @@ export async function createReleaseBoardDecision(formData: FormData) {
           evidenceReference: decision.evidenceReference,
           decidedAt: decision.decidedAt.toISOString(),
           participants,
-          sourceDecisionId: decision.sourceDecisionId
+          sourceDecisionId: decision.sourceDecisionId,
         },
         metadata: {
           reason: values.reason,
-          sourceDecisionId: "DEC-0036"
-        }
-      }
+          sourceDecisionId: "DEC-0036",
+        },
+      },
     });
   });
 }
 
 export async function buildReleaseReadinessExportRows(
-  session: SessionContext
+  session: SessionContext,
 ): Promise<CsvRow[]> {
   await requirePermission(session, permissions.coreAdminister);
 
@@ -1535,22 +1638,34 @@ export async function buildReleaseReadinessExportRows(
     deploymentEvidenceRecords,
     enablementEvidenceRecords,
     securityEvidenceSummary,
-    releaseBoardDecisions
+    releaseBoardDecisions,
   ] = await Promise.all([
     listReleaseReadinessGates(session),
     listUatEvidenceRecords(session),
     listDeploymentEvidenceRecords(session),
     listEnablementEvidenceRecords(session),
     getReleaseSecurityEvidenceSummary(session),
-    listReleaseBoardDecisions(session)
+    listReleaseBoardDecisions(session),
   ]);
   const readinessSummary = summarizeReleaseReadiness(gates);
   const uatSummary = summarizeUatEvidence(uatEvidenceRecords);
-  const deploymentSummary = summarizeDeploymentEvidence(deploymentEvidenceRecords);
-  const enablementSummary = summarizeEnablementEvidence(enablementEvidenceRecords);
+  const deploymentSummary = summarizeDeploymentEvidence(
+    deploymentEvidenceRecords,
+  );
+  const enablementSummary = summarizeEnablementEvidence(
+    enablementEvidenceRecords,
+  );
 
   return [
-    ["Section", "Metric", "Value", "Status", "Evidence Reference", "Owner / Actor", "Notes"],
+    [
+      "Section",
+      "Metric",
+      "Value",
+      "Status",
+      "Evidence Reference",
+      "Owner / Actor",
+      "Notes",
+    ],
     [
       "Readiness summary",
       "Required gates",
@@ -1558,7 +1673,7 @@ export async function buildReleaseReadinessExportRows(
       readinessSummary.canProceed ? "CAN_PROCEED_TO_FINAL_REVIEW" : "BLOCKED",
       "",
       "",
-      `ready=${readinessSummary.ready}; blocking=${readinessSummary.blocking}; hold=${readinessSummary.hold}`
+      `ready=${readinessSummary.ready}; blocking=${readinessSummary.blocking}; hold=${readinessSummary.hold}`,
     ],
     [
       "UAT evidence summary",
@@ -1567,7 +1682,7 @@ export async function buildReleaseReadinessExportRows(
       uatSummary.ready ? "READY" : "UNRESOLVED",
       "",
       "",
-      `missing=${uatSummary.missingTypes.join("|") || "none"}; unresolvedResults=${uatSummary.unresolvedResultCount}`
+      `missing=${uatSummary.missingTypes.join("|") || "none"}; unresolvedResults=${uatSummary.unresolvedResultCount}`,
     ],
     [
       "UAT evidence summary",
@@ -1576,7 +1691,7 @@ export async function buildReleaseReadinessExportRows(
       uatSummary.phase3FinanceReady ? "READY" : "UNRESOLVED",
       "",
       "",
-      "Requires verified PASS/RETEST_PASS/WAIVED scenario execution and acceptance-matrix evidence for Phase 3 finance controlled-foundation workflow areas."
+      "Requires verified PASS/RETEST_PASS/WAIVED scenario execution and acceptance-matrix evidence for Phase 3 finance controlled-foundation workflow areas.",
     ],
     [
       "UAT evidence summary",
@@ -1585,7 +1700,7 @@ export async function buildReleaseReadinessExportRows(
       uatSummary.phase3WorkforceReady ? "READY" : "UNRESOLVED",
       "",
       "",
-      "Requires verified PASS/RETEST_PASS/WAIVED scenario execution and acceptance-matrix evidence for Phase 3 workforce controlled-foundation workflow areas."
+      "Requires verified PASS/RETEST_PASS/WAIVED scenario execution and acceptance-matrix evidence for Phase 3 workforce controlled-foundation workflow areas.",
     ],
     [
       "UAT evidence summary",
@@ -1594,18 +1709,19 @@ export async function buildReleaseReadinessExportRows(
       uatSummary.phase3DeferredBlockerReviewReady ? "READY" : "UNRESOLVED",
       "",
       "",
-      "Requires verified defect-disposition and default-revision evidence referencing the Phase 3 deferred/skipped blocker register."
+      "Requires verified defect-disposition and default-revision evidence referencing the Phase 3 deferred/skipped blocker register.",
     ],
     [
       "Deployment evidence summary",
       "Verified deployment records",
       deploymentSummary.verified,
-      deploymentSummary.migrationGateReady && deploymentSummary.monitoringGateReady
+      deploymentSummary.migrationGateReady &&
+      deploymentSummary.monitoringGateReady
         ? "READY"
         : "UNRESOLVED",
       "",
       "",
-      `missingMigration=${deploymentSummary.missingMigrationGateTypes.join("|") || "none"}; missingMonitoring=${deploymentSummary.missingMonitoringGateTypes.join("|") || "none"}`
+      `missingMigration=${deploymentSummary.missingMigrationGateTypes.join("|") || "none"}; missingMonitoring=${deploymentSummary.missingMonitoringGateTypes.join("|") || "none"}`,
     ],
     [
       "Enablement evidence summary",
@@ -1616,7 +1732,7 @@ export async function buildReleaseReadinessExportRows(
         : "UNRESOLVED",
       "",
       "",
-      `missingTraining=${enablementSummary.missingTrainingGateTypes.join("|") || "none"}; missingKb=${enablementSummary.missingKbGateTypes.join("|") || "none"}`
+      `missingTraining=${enablementSummary.missingTrainingGateTypes.join("|") || "none"}; missingKb=${enablementSummary.missingKbGateTypes.join("|") || "none"}`,
     ],
     [
       "Security evidence summary",
@@ -1625,7 +1741,7 @@ export async function buildReleaseReadinessExportRows(
       securityEvidenceSummary.readyForStrictMfa ? "READY" : "UNRESOLVED",
       "",
       "",
-      `pendingMfa=${securityEvidenceSummary.pendingMfaUserCount}; missingOrRevokedMfa=${securityEvidenceSummary.missingOrRevokedMfaUserCount}; pendingProviderInvalidations=${securityEvidenceSummary.pendingProviderInvalidationCount}; openBreakGlass=${securityEvidenceSummary.openBreakGlassCount}; breakGlassReviewDue=${securityEvidenceSummary.breakGlassPostReviewDueCount}; pendingControlledAccess=${securityEvidenceSummary.pendingControlledAccessRequestCount}; pendingHighRiskScopes=${securityEvidenceSummary.pendingHighRiskScopeRequestCount}; pendingSensitiveRoles=${securityEvidenceSummary.pendingSensitiveRoleRequestCount}`
+      `pendingMfa=${securityEvidenceSummary.pendingMfaUserCount}; missingOrRevokedMfa=${securityEvidenceSummary.missingOrRevokedMfaUserCount}; missingLocalIdentities=${securityEvidenceSummary.missingLocalIdentityUserCount}; pendingAuthRecovery=${securityEvidenceSummary.pendingAuthRecoveryRequestCount}; pendingProviderInvalidations=${securityEvidenceSummary.pendingProviderInvalidationCount}; openBreakGlass=${securityEvidenceSummary.openBreakGlassCount}; breakGlassReviewDue=${securityEvidenceSummary.breakGlassPostReviewDueCount}; pendingControlledAccess=${securityEvidenceSummary.pendingControlledAccessRequestCount}; pendingHighRiskScopes=${securityEvidenceSummary.pendingHighRiskScopeRequestCount}; pendingSensitiveRoles=${securityEvidenceSummary.pendingSensitiveRoleRequestCount}`,
     ],
     [
       "Security proof target",
@@ -1634,7 +1750,7 @@ export async function buildReleaseReadinessExportRows(
       "REQUIRED",
       "External provider/vault reference",
       "Security Owner / IT Owner",
-      "Must include matching Evidence run ID and RESULT | PASS | External security proof captured."
+      "Must include matching Evidence run ID and RESULT | PASS | External security proof captured.",
     ],
     [
       "Security proof target",
@@ -1643,7 +1759,7 @@ export async function buildReleaseReadinessExportRows(
       "REQUIRED",
       "External provider/vault reference",
       "Security Owner / IT Owner",
-      "Must include matching Evidence run ID and RESULT | PASS | External security proof captured."
+      "Must include matching Evidence run ID and RESULT | PASS | External security proof captured.",
     ],
     [
       "Security proof target",
@@ -1652,7 +1768,7 @@ export async function buildReleaseReadinessExportRows(
       "REQUIRED",
       "External provider/vault reference",
       "Security Owner / Release Manager",
-      "Must include matching Evidence run ID and RESULT | PASS | External security proof captured."
+      "Must include matching Evidence run ID and RESULT | PASS | External security proof captured.",
     ],
     [
       "Security proof target",
@@ -1661,10 +1777,22 @@ export async function buildReleaseReadinessExportRows(
       "REQUIRED",
       "External provider/vault reference",
       "Security Owner / IT Owner",
-      "Must include matching Evidence run ID and RESULT | PASS | External security proof captured."
+      "Must include matching Evidence run ID and RESULT | PASS | External security proof captured.",
     ],
     [],
-    ["Section", "Gate Key", "Title", "Category", "Required", "Status", "Evidence Reference", "Decision Note", "Blocker", "Owner Role", "Signed Off At"],
+    [
+      "Section",
+      "Gate Key",
+      "Title",
+      "Category",
+      "Required",
+      "Status",
+      "Evidence Reference",
+      "Decision Note",
+      "Blocker",
+      "Owner Role",
+      "Signed Off At",
+    ],
     ...gates.map((gate) => [
       "Gate register",
       gate.gateKey,
@@ -1676,10 +1804,22 @@ export async function buildReleaseReadinessExportRows(
       gate.decisionNote,
       gate.blockerSummary,
       gate.ownerRole,
-      gate.signedOffAt
+      gate.signedOffAt,
     ]),
     [],
-    ["Section", "Evidence Type", "Title", "Workflow / Environment", "Result", "Status", "Evidence Reference", "Owner / Actor", "Recorded By", "Verified By", "Rejected By"],
+    [
+      "Section",
+      "Evidence Type",
+      "Title",
+      "Workflow / Environment",
+      "Result",
+      "Status",
+      "Evidence Reference",
+      "Owner / Actor",
+      "Recorded By",
+      "Verified By",
+      "Rejected By",
+    ],
     ...uatEvidenceRecords.map((record) => [
       "UAT evidence",
       record.evidenceType,
@@ -1691,7 +1831,7 @@ export async function buildReleaseReadinessExportRows(
       record.testerName,
       displayUser(record.createdByUser),
       record.verifiedByUser ? displayUser(record.verifiedByUser) : "",
-      record.rejectedByUser ? displayUser(record.rejectedByUser) : ""
+      record.rejectedByUser ? displayUser(record.rejectedByUser) : "",
     ]),
     ...deploymentEvidenceRecords.map((record) => [
       "Deployment evidence",
@@ -1704,7 +1844,7 @@ export async function buildReleaseReadinessExportRows(
       record.performedBy,
       displayUser(record.createdByUser),
       record.verifiedByUser ? displayUser(record.verifiedByUser) : "",
-      record.rejectedByUser ? displayUser(record.rejectedByUser) : ""
+      record.rejectedByUser ? displayUser(record.rejectedByUser) : "",
     ]),
     ...enablementEvidenceRecords.map((record) => [
       "Enablement evidence",
@@ -1717,10 +1857,18 @@ export async function buildReleaseReadinessExportRows(
       record.ownerName,
       displayUser(record.createdByUser),
       record.verifiedByUser ? displayUser(record.verifiedByUser) : "",
-      record.rejectedByUser ? displayUser(record.rejectedByUser) : ""
+      record.rejectedByUser ? displayUser(record.rejectedByUser) : "",
     ]),
     [],
-    ["Section", "Decision", "Evidence Reference", "Chair", "Decided At", "Participants", "Decision Note"],
+    [
+      "Section",
+      "Decision",
+      "Evidence Reference",
+      "Chair",
+      "Decided At",
+      "Participants",
+      "Decision Note",
+    ],
     ...releaseBoardDecisions.map((decision) => [
       "Release Board decision",
       decision.decision,
@@ -1728,15 +1876,17 @@ export async function buildReleaseReadinessExportRows(
       displayUser(decision.chairUser),
       decision.decidedAt.toISOString(),
       formatReleaseBoardParticipants(decision.participants),
-      decision.decisionNote
-    ])
+      decision.decisionNote,
+    ]),
   ];
 }
 
 export async function updateReleaseReadinessGate(formData: FormData) {
   const session = await requireSessionContext();
   await assertCanManageReleaseReadiness(session);
-  const values = updateReleaseReadinessGateSchema.parse(Object.fromEntries(formData));
+  const values = updateReleaseReadinessGateSchema.parse(
+    Object.fromEntries(formData),
+  );
   const definition = findGateDefinition(values.gateKey);
   const evidenceReference = normalizeOptionalText(values.evidenceReference);
   const decisionNote = normalizeOptionalText(values.decisionNote);
@@ -1756,7 +1906,10 @@ export async function updateReleaseReadinessGate(formData: FormData) {
   ) {
     throw new Error("RELEASE_READINESS_DECISION_NOTE_REQUIRED");
   }
-  if (requiresDecisionNoteForStatus(definition, values.status) && !decisionNote) {
+  if (
+    requiresDecisionNoteForStatus(definition, values.status) &&
+    !decisionNote
+  ) {
     throw new Error("RELEASE_READINESS_UAT_SIGNOFF_REQUIRED");
   }
   if (values.status === "HOLD" && !blockerSummary) {
@@ -1773,12 +1926,14 @@ export async function updateReleaseReadinessGate(formData: FormData) {
       where: {
         companyId_gateKey: {
           companyId: session.context.companyId,
-          gateKey: definition.gateKey
-        }
-      }
+          gateKey: definition.gateKey,
+        },
+      },
     });
 
-    const signedOffAt = requiresEvidenceForStatus(values.status) ? new Date() : null;
+    const signedOffAt = requiresEvidenceForStatus(values.status)
+      ? new Date()
+      : null;
     const signedOffByUserId = requiresEvidenceForStatus(values.status)
       ? session.user.id
       : null;
@@ -1799,8 +1954,8 @@ export async function updateReleaseReadinessGate(formData: FormData) {
             targetDate,
             signedOffAt,
             signedOffByUserId,
-            sourceDecisionId: "DEC-0036"
-          }
+            sourceDecisionId: "DEC-0036",
+          },
         })
       : await tx.releaseReadinessGate.create({
           data: {
@@ -1819,8 +1974,8 @@ export async function updateReleaseReadinessGate(formData: FormData) {
             targetDate,
             signedOffAt,
             signedOffByUserId,
-            sourceDecisionId: "DEC-0036"
-          }
+            sourceDecisionId: "DEC-0036",
+          },
         });
 
     await tx.auditEvent.create({
@@ -1841,8 +1996,8 @@ export async function updateReleaseReadinessGate(formData: FormData) {
                 evidenceReference: existing.evidenceReference,
                 decisionNote: existing.decisionNote,
                 blockerSummary: existing.blockerSummary,
-                requiredByPolicy: existing.requiredByPolicy
-              }
+                requiredByPolicy: existing.requiredByPolicy,
+              },
             }
           : {}),
         afterData: {
@@ -1852,13 +2007,13 @@ export async function updateReleaseReadinessGate(formData: FormData) {
           decisionNote: saved.decisionNote,
           blockerSummary: saved.blockerSummary,
           requiredByPolicy: saved.requiredByPolicy,
-          sourceDecisionId: saved.sourceDecisionId
+          sourceDecisionId: saved.sourceDecisionId,
         },
         metadata: {
           reason: values.reason,
-          ownerRole: definition.ownerRole
-        }
-      }
+          ownerRole: definition.ownerRole,
+        },
+      },
     });
   });
 }

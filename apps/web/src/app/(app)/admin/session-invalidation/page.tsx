@@ -27,7 +27,9 @@ type InvalidationRecord = Awaited<
 >[number];
 
 function statusTone(status: InvalidationRecord["status"]) {
-  return status === "PROVIDER_COMPLETED" ? ("success" as const) : ("warning" as const);
+  return ["PROVIDER_COMPLETED", "APPLICATION_COMPLETED"].includes(status)
+    ? ("success" as const)
+    : ("warning" as const);
 }
 
 async function completeAction(formData: FormData) {
@@ -60,7 +62,7 @@ export default async function AdminSessionInvalidationPage({
     <AppShell
       session={session}
       title="Session Invalidation"
-      subtitle="Provider follow-up queue for privilege changes"
+      subtitle="Application revocation evidence and external-provider follow-up"
       activeNav="admin-session-invalidation"
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
@@ -71,14 +73,14 @@ export default async function AdminSessionInvalidationPage({
           <div>
             <Badge tone="info">Provider-neutral register</Badge>
             <h2 className="mt-3 text-xl font-bold text-slate-950">
-              Demo sessions are blocked locally; production provider termination
-              still needs external evidence.
+              Local application sessions are revoked immediately; external providers
+              still require evidenced follow-up.
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-700">
-              These records are created when role, scope, high-risk access, or
-              break-glass actions change privileges. Mark provider completion only
-              after the IdP/session provider action is evidenced by a separate
-              admin reviewer.
+              These records are created when role, scope, high-risk access, recovery,
+              or break-glass actions change privileges. Database-session revocation
+              completes transactionally. Mark external provider completion only after
+              the IdP action is evidenced by a separate administrator.
             </p>
           </div>
         </div>
@@ -112,7 +114,7 @@ export default async function AdminSessionInvalidationPage({
                       {record.status.replaceAll("_", " ")}
                     </Badge>
                     {record.demoEpochEnforced ? (
-                      <Badge tone="success">Demo epoch enforced</Badge>
+                      <Badge tone="success">Application epoch enforced</Badge>
                     ) : null}
                   </div>
                   <p className="mt-1 text-sm text-slate-600">

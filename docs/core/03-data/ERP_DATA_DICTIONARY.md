@@ -230,20 +230,40 @@ Current implementation adds `PrivilegedMfaEnrollment` as the ERP-side evidence r
 
 ### 5.8 Auth Session Invalidation
 
-Current implementation adds `AuthSessionInvalidation` as the provider-neutral register for session invalidation required by privilege changes. Demo sessions are blocked through user privilege epoch checks. Production identity-provider session revocation remains external until the provider is selected, so these records identify pending provider invalidation work.
+Current implementation adds `AuthSessionInvalidation` as the provider-neutral evidence register for session invalidation required by privilege changes. Local PostgreSQL-backed application sessions are revoked transactionally and record `APPLICATION_COMPLETED`; an external identity provider records `PENDING_PROVIDER` until a separate administrator confirms provider completion evidence.
 
 | Field                                                 |       Required | Notes                                                                            |
 | ----------------------------------------------------- | -------------: | -------------------------------------------------------------------------------- |
 | `tenant_id`, `target_user_id`                         |            Yes | User whose active sessions must be invalidated.                                  |
 | `company_id`                                          |             No | Company context for the privilege change when available.                         |
 | `requested_by_user_id`                                |             No | Actor that caused the invalidation when available.                               |
-| `status`                                              |            Yes | Defaults to `PENDING_PROVIDER`; future provider integration may mark completion. |
+| `status`                                              |            Yes | `APPLICATION_COMPLETED`, `PENDING_PROVIDER`, or `PROVIDER_COMPLETED`.             |
 | `reason`, `source_event_type`, `source_record_id`     | Yes / Yes / No | Why invalidation was required and the source action or record.                   |
-| `demo_epoch_enforced`                                 |            Yes | Indicates the demo-session privilege epoch check is already enforced locally.    |
+| `demo_epoch_enforced`                                 |            Yes | Legacy field indicating the application privilege epoch is enforced locally.     |
 | `provider_name`, `provider_reference`, `completed_at` |             No | External auth-provider completion metadata when configured.                      |
 | `created_at`, `updated_at`                            |            Yes | Queue/register timestamps.                                                       |
 
-### 5.9 Release Readiness Gate
+### 5.9 Production Authentication Records
+
+`DEC-0040` adds tenant-qualified local identities, Argon2id password credentials, encrypted runtime TOTP authenticators, individually hashed recovery codes, opaque database sessions, one-time activation tokens, durable login-attempt records, and controlled account-recovery requests. These records authenticate an internal `User`; ERP roles and scopes remain separate server-side authorization sources.
+
+| Record | Required scope and key fields | Control purpose |
+| --- | --- | --- |
+| `Tenant.login_code` | Unique organization login code | Qualifies local identifiers so the same email or username cannot be resolved across tenants. |
+| `User.privilege_epoch` | Monotonic integer | Invalidates sessions issued before a role, scope, credential, MFA, status, recovery, or break-glass security change. |
+| `AuthIdentity` | `tenant_id`, `user_id`, provider, normalized identifier, optional immutable provider subject, status | Provider-neutral identity linked to one internal ERP user; future OIDC linking must not rely on email alone. |
+| `PasswordCredential` | identity, Argon2id hash, algorithm, password-change metadata | Stores only the encoded password hash; never plaintext passwords. |
+| `MfaAuthenticator` | tenant, user, encrypted secret, IV, authentication tag, key version, status, last-used counter | Stores an AES-GCM-encrypted TOTP secret and prevents timestep replay. |
+| `MfaRecoveryCode` | authenticator, unique keyed hash, consumed timestamp | One-time recovery; raw codes are shown once and never stored. |
+| `AuthSession` | tenant, user, token hash, status, assurance, MFA timestamp, privilege epoch, idle/absolute expiry, challenge failure count/lock, revocation | Server-revocable opaque browser session. Raw session tokens exist only in the secure cookie; assurance rotation preserves absolute expiry. |
+| `AuthActivationToken` | tenant, target user, issuer, token hash, expiry, status, consumed timestamp, delivery state/attempts | Single-use 30-minute activation or approved recovery link delivered directly to account email. Only its hash is stored; retry revokes the failed token and creates a replacement. |
+| `AuthLoginAttempt` | keyed tenant/account/source digests, attempt type, optional challenge-session ID, outcome, timestamp | Durable restart-safe password and MFA throttling without storing raw identifiers, source addresses, passwords, TOTP values, or recovery codes. |
+| `AuthRecoveryRequest` | tenant, company, target, requester, reviewer, reset scope, reason, evidence, status, timestamps | Dual-control password/lost-device recovery; approval revokes prior sessions and optionally the old authenticator before issuing activation. |
+| `AuthBootstrapState` | tenant primary key, target user, authorization reference, issued timestamp | Permanent one-time marker for the approved first-administrator ceremony; repeat, alternate-user, non-admin, and later recovery use is refused. |
+
+Database constraints enforce lowercase unique tenant login codes, tenant-qualified identity/session/activation/recovery relationships, one active MFA authenticator per user, one active activation token per user, and one pending recovery request per tenant/user across companies. These constraints are authoritative backstops; service authorization and workflow checks remain required.
+
+### 5.10 Release Readiness Gate
 
 Current implementation adds `ReleaseReadinessGate` as the company-scoped gate-status register for UAT, deployment, enablement, privileged security controls, and GO / NO-GO readiness evidence. It records whether a release gate is pending, in progress, ready, conditionally ready, held, or waived. It does not replace MFA enrollment records, break-glass access evidence, the signed evidence pack, deployment checklist, training assessment, release notes, or final release-board decision documents.
 

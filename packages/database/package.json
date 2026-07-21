@@ -20,6 +20,8 @@
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx src/seed.ts",
+    "auth:bootstrap": "tsx src/bootstrap-auth.ts",
+    "auth:rotate-encryption": "tsx src/rotate-auth-encryption.ts",
     "seed:reset-demo": "tsx src/reset-demo-data.ts"
   },
   "dependencies": {

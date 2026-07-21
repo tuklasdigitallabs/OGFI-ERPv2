@@ -36,16 +36,34 @@ Real `.env`, `.env.staging`, `.env.production`, secret files, backups, and attac
 | `REDIS_URL`            | Future approved worker/queue scope only | Internal Redis queue/cache connection; not required for the current Phase I / Phase 1.5 no-queueing release. |
 | `AUTH_SECRET`          |                                     Yes | Long random secret for session/auth configuration.                                                           |
 | `APP_ENCRYPTION_KEY`   |                                     Yes | 32-byte base64 key or approved equivalent for field encryption where required.                               |
+| `APP_ENCRYPTION_KEY_VERSION` |                              Yes | Positive version of the current field-encryption key; current default `1`.                                   |
+| `APP_ENCRYPTION_PREVIOUS_KEY` | During a reviewed key rotation only | Immediately previous 32-byte base64 key retained only until protected values are re-encrypted.                |
+| `APP_ENCRYPTION_PREVIOUS_KEY_VERSION` | During a reviewed key rotation only | Version paired with the previous key; it must differ from the current version.                         |
+| `AUTH_MODE`            |                                     Yes | `local` in production; `demo` is allowed only in isolated development/test.                                  |
+| `AUTH_SESSION_IDLE_MINUTES` |                              Yes | Inactivity expiry for database-backed sessions; current default `30`.                                        |
+| `AUTH_SESSION_ABSOLUTE_HOURS` |                            Yes | Maximum database-session lifetime; current default `12`.                                                     |
+| `AUTH_MFA_STEP_UP_MINUTES` |                                Yes | Maximum age of runtime MFA assurance for guarded sensitive actions; current default `15`.                    |
+| `AUTH_MFA_CHALLENGE_MINUTES` |                                Yes | Short lifetime for an incomplete MFA challenge; current default `10`.                                        |
+| `AUTH_MFA_CHALLENGE_LIMIT` |                                  Yes | Failed MFA or recovery-code attempts allowed before challenge lock; current default `5`.                     |
+| `AUTH_LOGIN_WINDOW_MINUTES` |                                Yes | Durable login-throttling window; current default `15`.                                                       |
+| `AUTH_LOGIN_ACCOUNT_LIMIT` |                                 Yes | Failed attempts allowed per tenant-qualified account in the window; current default `5`.                     |
+| `AUTH_LOGIN_SOURCE_LIMIT` |                                  Yes | Failed attempts allowed per trusted proxy source-address digest in the window; current default `20`.         |
+| `AUTH_BOOTSTRAP_TENANT_CODE` | First-admin ceremony only | Tenant login code for the approved initial administrator. Remove after the one-time bootstrap succeeds. |
+| `AUTH_BOOTSTRAP_USER_EMAIL` | First-admin ceremony only | Existing active user with `core.administer` and active company scope; bootstrap refuses any other target. |
+| `AUTH_BOOTSTRAP_AUTHORIZATION_REFERENCE` | First-admin ceremony only | Approved security/change reference recorded in the immutable bootstrap and audit records. |
+| `AUTH_BOOTSTRAP_OUTPUT_FILE` | First-admin ceremony only | Absolute path to a new restricted file for the bearer URL; the URL is never printed to stdout. |
+| `AUTH_ENCRYPTION_ROTATION_BATCH_SIZE` | During reviewed rotation only | Resumable MFA re-encryption batch size, clamped to `1..500`; current default `100`. |
 | `S3_ENDPOINT`          |                                     Yes | S3-compatible endpoint.                                                                                      |
 | `S3_REGION`            |                                     Yes | Region/provider value.                                                                                       |
 | `S3_BUCKET`            |                                     Yes | Environment-specific bucket.                                                                                 |
 | `S3_ACCESS_KEY_ID`     |                                     Yes | Object-storage credential.                                                                                   |
 | `S3_SECRET_ACCESS_KEY` |                                     Yes | Object-storage secret.                                                                                       |
-| `SMTP_HOST`            |                   Before email delivery | Email provider host.                                                                                         |
-| `SMTP_PORT`            |                   Before email delivery | Provider port.                                                                                               |
-| `SMTP_USERNAME`        |                   Before email delivery | Provider credential.                                                                                         |
-| `SMTP_PASSWORD`        |                   Before email delivery | Provider credential.                                                                                         |
-| `SMTP_FROM`            |                   Before email delivery | Approved sender address.                                                                                     |
+| `SMTP_HOST`            |                                     Yes | Approved provider host used for direct activation and recovery delivery.                                     |
+| `SMTP_PORT`            |                                     Yes | Provider port; port `465` uses implicit TLS.                                                                 |
+| `SMTP_USERNAME`        |                                     Yes | Provider credential.                                                                                         |
+| `SMTP_PASSWORD`        |                                     Yes | Provider credential.                                                                                         |
+| `SMTP_FROM`            |                                     Yes | Approved sender address.                                                                                     |
+| `SMTP_SECURITY`        |                                     Yes | `implicit` for TLS on port 465 or `starttls` to require STARTTLS with certificate validation; plaintext is forbidden. |
 | `ERROR_MONITORING_DSN` |                       Before production | Error monitoring configuration.                                                                              |
 | `LOG_LEVEL`            |                                     Yes | Default `info`; never use debug in production without review.                                                |
 

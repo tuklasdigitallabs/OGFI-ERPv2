@@ -195,7 +195,9 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("RELEASE_BOARD_READY_GATES_REQUIRED");
     expect(serviceSource).toContain("RELEASE_BOARD_DECISION_REQUIRED");
     expect(serviceSource).toContain("RELEASE_BOARD_WAIVER_DECISION_REQUIRED");
-    expect(serviceSource).toContain('status !== "READY" && status !== "CONDITIONAL_GO" && status !== "WAIVED"');
+    expect(serviceSource).toContain(
+      '["READY", "CONDITIONAL_GO", "WAIVED"].includes(status)',
+    );
   });
 
   test("enablement evidence register verifies training and release-note readiness", () => {

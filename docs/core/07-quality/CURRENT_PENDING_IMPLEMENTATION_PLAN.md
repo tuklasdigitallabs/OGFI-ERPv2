@@ -25,7 +25,7 @@ These items must be completed once at platform level. A workspace must not be ce
 |---|---|---|---|
 | SPF-001 | CI and verification baseline | Secret review, release-tool self-tests, lint, typecheck, production build, unit/integration tests, access-control tests, and desktop/mobile E2E pass against the same release candidate | In progress; augmented local and hosted gates pass, but required `main` branch protection is not configured |
 | SPF-002 | Migration and data-safety verification | Review all pending migrations, deploy them to a disposable environment, compare pre/post snapshots, and verify rollback considerations | Complete; exact-SHA PostgreSQL 17 rehearsal and checksum-backed evidence accepted under `DEC-0039` |
-| SPF-003 | Authentication and privileged access | Confirm production identity provider or login path, privileged MFA enforcement, session invalidation, and break-glass runtime behavior | Pending external integration and production hardening |
+| SPF-003 | Authentication and privileged access | Confirm production identity provider or login path, privileged MFA enforcement, session invalidation, and break-glass runtime behavior | Implementation complete; production enablement remains blocked on hosted restore/locking evidence and accountable-owner policy signoff |
 | SPF-004 | Authorization regression gate | Verify tenant, company, brand, location, department, project membership, restricted-project, and direct-route/API enforcement | Pending full regression evidence |
 | SPF-005 | Controlled evidence uploads | Complete the hybrid evidence model described in Section 3 | Pending; production blocker `DGB-012` |
 | SPF-006 | Audit and activity integrity | Verify important create, update, transition, approve, post, reverse, cancel, archive, upload, download, export, and denied actions produce the required immutable history | Pending cross-workspace verification |
@@ -54,6 +54,19 @@ These items must be completed once at platform level. A workspace must not be ce
 - The same hosted candidate also passed secret review, release-tool self-tests, lint, application and E2E typechecks, production build, database/worker/UI tests, 626 web tests, access-control integration tests, and desktop/mobile Playwright E2E.
 - Boundary retained: SPF-002 closure does not close SPF-009; staging deployment, application rollback, smoke checks, monitoring, and hypercare remain pending.
 - Knowledge-base and glossary assessment: no update required because this phase changes internal engineering, migration, and recovery controls only; it introduces no end-user workflow, navigation, permission, or product term.
+
+### SPF-003 implementation evidence — July 21, 2026
+
+- Confirmed `DEC-0040`: production authentication uses tenant-qualified local username/password credentials, runtime TOTP, opaque revocable PostgreSQL sessions, controlled activation/recovery, and a one-time first-administrator bootstrap. Demo authentication fails closed in production.
+- Added Argon2id password verification, account/source throttling, MFA challenge and recovery-code controls, idle and absolute session expiry, assurance rotation, administrator/user revocation, privilege-epoch invalidation, same-origin mutation protection, secure SMTP delivery, encryption-key rotation, and hash-only activation/recovery token storage.
+- Authentication administration is tenant/company scoped. Active role and scope assignments are time bounded, scope types are explicit, and sensitive target mutations transactionally revalidate current company scope before changing credentials, MFA, recovery, or sessions.
+- All authentication numeric controls fail startup or utility execution when malformed or outside conservative bounds. Production configuration requires secure cookie, key, SMTP TLS, and HTTPS settings.
+- Migration `20260721150000_production_application_authentication` is bound to SHA-256 `b0eb3415d510b832997e9c504d02562f6edc5c78f2b3d84af7a6c0093f86be14` and independently approved for rehearsal. The populated predecessor rehearsal preserved 10 tenants, 100 companies, and 5,000 users with zero drift; 10 database-backed authentication integrity/race tests pass.
+- Added the sign-in, activation, MFA challenge, account-security/session-management, activation-delivery, and controlled recovery surfaces. Shared modal triggers now remain disabled until hydration, preventing lost first-click actions on desktop and mobile.
+- Local candidate verification passed: secret review, release-tool self-test, migration inventory with zero pending dispositions, lint, typecheck, production build, 643 web tests, database/worker tests, 10 authentication database tests, two access-control database tests, and all 14 desktop/mobile Playwright tests on a fresh migrated and seeded PostgreSQL database.
+- Independent Database review approved the exact migration for rehearsal. Independent Security re-review found no remaining code-level production blocker.
+- Remaining production-GO gates are external and are not represented as complete: hosted production-like migration locking and backup/restore/RTO/RPO evidence, accountable-owner confirmation of the open authentication policies in `DEC-0040`, role-based UAT, and final Security/QA/DevOps/Release approval.
+- Knowledge-base and glossary updated for tenant login code, activation, MFA, recovery codes, challenge locks, sessions, session invalidation, first-administrator bootstrap, and administrator support workflows.
 
 ## 3. Controlled Evidence Upload and Storage
 

@@ -80,13 +80,15 @@ describe("database-backed access control", () => {
     await prisma.tenant.create({
       data: {
         id: ids.tenantId,
-        name: `Access Control Test ${suffix}`
+        name: `Access Control Test ${suffix}`,
+        loginCode: `access-${suffix}`,
       }
     });
     await prisma.tenant.create({
       data: {
         id: ids.otherTenantId,
-        name: `Other Access Control Test ${suffix}`
+        name: `Other Access Control Test ${suffix}`,
+        loginCode: `access-other-${suffix}`,
       }
     });
     await prisma.company.create({
@@ -218,6 +220,25 @@ describe("database-backed access control", () => {
     );
 
     await prisma.userRoleAssignment.updateMany({
+      where: { userId: ids.userId, roleId: ids.roleId },
+      data: { startsAt: new Date(Date.now() + 60_000), endsAt: null }
+    });
+    expect((await getConfiguredContext(email)).permissionCodes).not.toContain(
+      permissionCode
+    );
+
+    await prisma.userRoleAssignment.updateMany({
+      where: { userId: ids.userId, roleId: ids.roleId },
+      data: {
+        startsAt: new Date(Date.now() - 120_000),
+        endsAt: new Date(Date.now() - 60_000)
+      }
+    });
+    expect((await getConfiguredContext(email)).permissionCodes).not.toContain(
+      permissionCode
+    );
+
+    await prisma.userRoleAssignment.updateMany({
       where: {
         userId: ids.userId,
         roleId: ids.roleId,
@@ -237,6 +258,33 @@ describe("database-backed access control", () => {
   });
 
   it("rejects a user context after active location scope is removed", async () => {
+    await prisma.userScopeAssignment.updateMany({
+      where: {
+        userId: ids.userId,
+        scopeType: "LOCATION",
+        scopeId: ids.locationId
+      },
+      data: { startsAt: new Date(Date.now() + 60_000), endsAt: null }
+    });
+    await expect(getConfiguredContext(email)).rejects.toThrow(
+      "SEEDED_USER_CONTEXT_NOT_FOUND"
+    );
+
+    await prisma.userScopeAssignment.updateMany({
+      where: {
+        userId: ids.userId,
+        scopeType: "LOCATION",
+        scopeId: ids.locationId
+      },
+      data: {
+        startsAt: new Date(Date.now() - 120_000),
+        endsAt: new Date(Date.now() - 60_000)
+      }
+    });
+    await expect(getConfiguredContext(email)).rejects.toThrow(
+      "SEEDED_USER_CONTEXT_NOT_FOUND"
+    );
+
     await prisma.userScopeAssignment.updateMany({
       where: {
         userId: ids.userId,

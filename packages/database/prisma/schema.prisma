@@ -869,6 +869,7 @@ enum ProjectRequirementStatus {
 model Tenant {
   id                                      String                                   @id @default(uuid()) @db.Uuid
   name                                    String
+  loginCode                               String                                   @unique
   status                                  RecordStatus                             @default(ACTIVE)
   defaultTimezone                         String                                   @default("Asia/Manila")
   themeConfig                             Json?
@@ -923,6 +924,12 @@ model Tenant {
   breakGlassAccessGrants                  BreakGlassAccessGrant[]
   privilegedMfaEnrollments                PrivilegedMfaEnrollment[]
   authSessionInvalidations                AuthSessionInvalidation[]
+  authRecoveryRequests                    AuthRecoveryRequest[]
+  authIdentities                          AuthIdentity[]
+  mfaAuthenticators                       MfaAuthenticator[]
+  authSessions                            AuthSession[]
+  authActivationTokens                    AuthActivationToken[]
+  authBootstrapState                      AuthBootstrapState?
   stockCountSessions                      StockCountSession[]
   stockCountLines                         StockCountLine[]
   wastageReports                          WastageReport[]
@@ -1076,6 +1083,7 @@ model Company {
   breakGlassAccessGrants                  BreakGlassAccessGrant[]
   privilegedMfaEnrollments                PrivilegedMfaEnrollment[]
   authSessionInvalidations                AuthSessionInvalidation[]
+  authRecoveryRequests                    AuthRecoveryRequest[]
   stockCountSessions                      StockCountSession[]
   stockCountLines                         StockCountLine[]
   wastageReports                          WastageReport[]
@@ -1172,6 +1180,7 @@ model Company {
   bankReconciliationMatches               BankReconciliationMatch[]
 
   @@unique([tenantId, code])
+  @@unique([id, tenantId])
   @@index([tenantId, status])
 }
 
@@ -1339,248 +1348,259 @@ model CostCenter {
 }
 
 model User {
-  id                                  String                         @id @default(uuid()) @db.Uuid
-  tenantId                            String                         @db.Uuid
+  id                                  String                           @id @default(uuid()) @db.Uuid
+  tenantId                            String                           @db.Uuid
   email                               String
   displayName                         String
-  status                              RecordStatus                   @default(ACTIVE)
+  status                              RecordStatus                     @default(ACTIVE)
   lastLoginAt                         DateTime?
-  createdAt                           DateTime                       @default(now())
-  updatedAt                           DateTime                       @updatedAt
-  tenant                              Tenant                         @relation(fields: [tenantId], references: [id])
+  privilegeEpoch                      Int                              @default(0)
+  createdAt                           DateTime                         @default(now())
+  updatedAt                           DateTime                         @updatedAt
+  tenant                              Tenant                           @relation(fields: [tenantId], references: [id])
   roleAssignments                     UserRoleAssignment[]
   scopeAssignments                    UserScopeAssignment[]
-  targetedHighRiskScopeRequests       HighRiskScopeRequest[]         @relation("HighRiskScopeRequestTargetUser")
-  requestedHighRiskScopeRequests      HighRiskScopeRequest[]         @relation("HighRiskScopeRequestRequester")
-  reviewedHighRiskScopeRequests       HighRiskScopeRequest[]         @relation("HighRiskScopeRequestReviewer")
-  targetedSensitiveRoleRequests       SensitiveRoleRequest[]         @relation("SensitiveRoleRequestTargetUser")
-  requestedSensitiveRoleRequests      SensitiveRoleRequest[]         @relation("SensitiveRoleRequestRequester")
-  reviewedSensitiveRoleRequests       SensitiveRoleRequest[]         @relation("SensitiveRoleRequestReviewer")
-  targetedBreakGlassAccessGrants      BreakGlassAccessGrant[]        @relation("BreakGlassAccessGrantTargetUser")
-  requestedBreakGlassAccessGrants     BreakGlassAccessGrant[]        @relation("BreakGlassAccessGrantRequester")
-  approvedBreakGlassAccessGrants      BreakGlassAccessGrant[]        @relation("BreakGlassAccessGrantApprover")
-  revokedBreakGlassAccessGrants       BreakGlassAccessGrant[]        @relation("BreakGlassAccessGrantRevoker")
-  reviewedBreakGlassAccessGrants      BreakGlassAccessGrant[]        @relation("BreakGlassAccessGrantReviewer")
-  targetedPrivilegedMfaEnrollments    PrivilegedMfaEnrollment[]      @relation("PrivilegedMfaEnrollmentTargetUser")
-  attestedPrivilegedMfaEnrollments    PrivilegedMfaEnrollment[]      @relation("PrivilegedMfaEnrollmentAttester")
-  verifiedPrivilegedMfaEnrollments    PrivilegedMfaEnrollment[]      @relation("PrivilegedMfaEnrollmentVerifier")
-  revokedPrivilegedMfaEnrollments     PrivilegedMfaEnrollment[]      @relation("PrivilegedMfaEnrollmentRevoker")
-  targetedAuthSessionInvalidations    AuthSessionInvalidation[]      @relation("AuthSessionInvalidationTargetUser")
-  requestedAuthSessionInvalidations   AuthSessionInvalidation[]      @relation("AuthSessionInvalidationRequestedBy")
-  createdDeploymentEvidenceRecords    DeploymentEvidenceRecord[]     @relation("DeploymentEvidenceCreatedBy")
-  verifiedDeploymentEvidenceRecords   DeploymentEvidenceRecord[]     @relation("DeploymentEvidenceVerifiedBy")
-  rejectedDeploymentEvidenceRecords   DeploymentEvidenceRecord[]     @relation("DeploymentEvidenceRejectedBy")
-  createdEnablementEvidenceRecords    EnablementEvidenceRecord[]     @relation("EnablementEvidenceCreatedBy")
-  verifiedEnablementEvidenceRecords   EnablementEvidenceRecord[]     @relation("EnablementEvidenceVerifiedBy")
-  rejectedEnablementEvidenceRecords   EnablementEvidenceRecord[]     @relation("EnablementEvidenceRejectedBy")
-  createdUatEvidenceRecords           UatEvidenceRecord[]            @relation("UatEvidenceCreatedBy")
-  verifiedUatEvidenceRecords          UatEvidenceRecord[]            @relation("UatEvidenceVerifiedBy")
-  rejectedUatEvidenceRecords          UatEvidenceRecord[]            @relation("UatEvidenceRejectedBy")
-  chairedReleaseBoardDecisions        ReleaseBoardDecision[]         @relation("ReleaseBoardDecisionChair")
-  requestedPurchaseRequests           PurchaseRequest[]              @relation("PurchaseRequestRequester")
+  targetedHighRiskScopeRequests       HighRiskScopeRequest[]           @relation("HighRiskScopeRequestTargetUser")
+  requestedHighRiskScopeRequests      HighRiskScopeRequest[]           @relation("HighRiskScopeRequestRequester")
+  reviewedHighRiskScopeRequests       HighRiskScopeRequest[]           @relation("HighRiskScopeRequestReviewer")
+  targetedSensitiveRoleRequests       SensitiveRoleRequest[]           @relation("SensitiveRoleRequestTargetUser")
+  requestedSensitiveRoleRequests      SensitiveRoleRequest[]           @relation("SensitiveRoleRequestRequester")
+  reviewedSensitiveRoleRequests       SensitiveRoleRequest[]           @relation("SensitiveRoleRequestReviewer")
+  targetedBreakGlassAccessGrants      BreakGlassAccessGrant[]          @relation("BreakGlassAccessGrantTargetUser")
+  requestedBreakGlassAccessGrants     BreakGlassAccessGrant[]          @relation("BreakGlassAccessGrantRequester")
+  approvedBreakGlassAccessGrants      BreakGlassAccessGrant[]          @relation("BreakGlassAccessGrantApprover")
+  revokedBreakGlassAccessGrants       BreakGlassAccessGrant[]          @relation("BreakGlassAccessGrantRevoker")
+  reviewedBreakGlassAccessGrants      BreakGlassAccessGrant[]          @relation("BreakGlassAccessGrantReviewer")
+  targetedPrivilegedMfaEnrollments    PrivilegedMfaEnrollment[]        @relation("PrivilegedMfaEnrollmentTargetUser")
+  attestedPrivilegedMfaEnrollments    PrivilegedMfaEnrollment[]        @relation("PrivilegedMfaEnrollmentAttester")
+  verifiedPrivilegedMfaEnrollments    PrivilegedMfaEnrollment[]        @relation("PrivilegedMfaEnrollmentVerifier")
+  revokedPrivilegedMfaEnrollments     PrivilegedMfaEnrollment[]        @relation("PrivilegedMfaEnrollmentRevoker")
+  targetedAuthSessionInvalidations    AuthSessionInvalidation[]        @relation("AuthSessionInvalidationTargetUser")
+  requestedAuthSessionInvalidations   AuthSessionInvalidation[]        @relation("AuthSessionInvalidationRequestedBy")
+  authIdentities                      AuthIdentity[]
+  mfaAuthenticators                   MfaAuthenticator[]
+  authSessions                        AuthSession[]
+  authActivationTokens                AuthActivationToken[]            @relation("AuthActivationTokenTargetUser")
+  issuedAuthActivationTokens          AuthActivationToken[]            @relation("AuthActivationTokenIssuer")
+  targetedAuthRecoveryRequests        AuthRecoveryRequest[]            @relation("AuthRecoveryTargetUser")
+  requestedAuthRecoveryRequests       AuthRecoveryRequest[]            @relation("AuthRecoveryRequester")
+  reviewedAuthRecoveryRequests        AuthRecoveryRequest[]            @relation("AuthRecoveryReviewer")
+  authBootstrapStates                 AuthBootstrapState[]
+  createdDeploymentEvidenceRecords    DeploymentEvidenceRecord[]       @relation("DeploymentEvidenceCreatedBy")
+  verifiedDeploymentEvidenceRecords   DeploymentEvidenceRecord[]       @relation("DeploymentEvidenceVerifiedBy")
+  rejectedDeploymentEvidenceRecords   DeploymentEvidenceRecord[]       @relation("DeploymentEvidenceRejectedBy")
+  createdEnablementEvidenceRecords    EnablementEvidenceRecord[]       @relation("EnablementEvidenceCreatedBy")
+  verifiedEnablementEvidenceRecords   EnablementEvidenceRecord[]       @relation("EnablementEvidenceVerifiedBy")
+  rejectedEnablementEvidenceRecords   EnablementEvidenceRecord[]       @relation("EnablementEvidenceRejectedBy")
+  createdUatEvidenceRecords           UatEvidenceRecord[]              @relation("UatEvidenceCreatedBy")
+  verifiedUatEvidenceRecords          UatEvidenceRecord[]              @relation("UatEvidenceVerifiedBy")
+  rejectedUatEvidenceRecords          UatEvidenceRecord[]              @relation("UatEvidenceRejectedBy")
+  chairedReleaseBoardDecisions        ReleaseBoardDecision[]           @relation("ReleaseBoardDecisionChair")
+  requestedPurchaseRequests           PurchaseRequest[]                @relation("PurchaseRequestRequester")
   purchaseRequestComments             PurchaseRequestComment[]
   createdQuotationRequests            QuotationRequest[]
   preparedQuoteRecommendations        QuotationRecommendation[]
   createdPurchaseOrders               PurchaseOrder[]
-  cancelledPurchaseOrders             PurchaseOrder[]                @relation("PurchaseOrderCanceller")
-  requestedPurchaseOrderAmendments    PurchaseOrderAmendment[]       @relation("PurchaseOrderAmendmentRequester")
-  approvedPurchaseOrderAmendments     PurchaseOrderAmendment[]       @relation("PurchaseOrderAmendmentApprover")
-  requestedPurchaseOrderClosures      PurchaseOrderBalanceClosure[]  @relation("PurchaseOrderBalanceClosureRequester")
-  approvedPurchaseOrderClosures       PurchaseOrderBalanceClosure[]  @relation("PurchaseOrderBalanceClosureApprover")
-  receivedGoodsReceipts               GoodsReceipt[]                 @relation("GoodsReceiptReceiver")
-  reversedGoodsReceipts               GoodsReceipt[]                 @relation("GoodsReceiptReverser")
-  requestedInventoryTransfers         InventoryTransfer[]            @relation("InventoryTransferRequester")
-  dispatchedInventoryTransfers        InventoryTransfer[]            @relation("InventoryTransferDispatcher")
-  receivedInventoryTransfers          InventoryTransfer[]            @relation("InventoryTransferReceiver")
-  receivedInventoryTransferReceipts   InventoryTransferReceipt[]     @relation("InventoryTransferReceiptReceiver")
-  reversedInventoryTransferReceipts   InventoryTransferReceipt[]     @relation("InventoryTransferReceiptReverser")
-  createdStockCountSessions           StockCountSession[]            @relation("StockCountCreator")
-  assignedStockCountSessions          StockCountSession[]            @relation("StockCountAssignee")
-  reviewedStockCountSessions          StockCountSession[]            @relation("StockCountReviewer")
-  countedStockCountLines              StockCountLine[]               @relation("StockCountLineCounter")
-  reportedWastageReports              WastageReport[]                @relation("WastageReportReporter")
-  reviewedWastageReports              WastageReport[]                @relation("WastageReportReviewer")
-  postedWastageReports                WastageReport[]                @relation("WastageReportPoster")
-  reversedWastageReports              WastageReport[]                @relation("WastageReportReverser")
-  requestedStockAdjustments           StockAdjustment[]              @relation("StockAdjustmentRequester")
-  cancelledStockAdjustments           StockAdjustment[]              @relation("StockAdjustmentCanceller")
-  postedStockAdjustments              StockAdjustment[]              @relation("StockAdjustmentPoster")
-  reversedStockAdjustments            StockAdjustment[]              @relation("StockAdjustmentReverser")
-  createdProjectTemplates             ProjectTemplate[]              @relation("ProjectTemplateCreator")
-  updatedProjectTemplates             ProjectTemplate[]              @relation("ProjectTemplateUpdater")
-  sponsoredProjects                   Project[]                      @relation("ProjectSponsor")
-  managedProjects                     Project[]                      @relation("ProjectManager")
-  createdProjects                     Project[]                      @relation("ProjectCreator")
-  updatedProjects                     Project[]                      @relation("ProjectUpdater")
-  archivedProjects                    Project[]                      @relation("ProjectArchiver")
-  projectMemberships                  ProjectMember[]                @relation("ProjectMemberUser")
-  addedProjectMembers                 ProjectMember[]                @relation("ProjectMemberAdder")
-  removedProjectMembers               ProjectMember[]                @relation("ProjectMemberRemover")
-  projectActivityEvents               ProjectActivityEvent[]         @relation("ProjectActivityActor")
-  ownedProjectTasks                   ProjectTask[]                  @relation("ProjectTaskOwner")
-  completedProjectTasks               ProjectTask[]                  @relation("ProjectTaskCompleter")
-  blockedProjectTasks                 ProjectTask[]                  @relation("ProjectTaskBlocker")
-  cancelledProjectTasks               ProjectTask[]                  @relation("ProjectTaskCanceller")
-  reopenedProjectTasks                ProjectTask[]                  @relation("ProjectTaskReopener")
-  createdProjectTasks                 ProjectTask[]                  @relation("ProjectTaskCreator")
-  updatedProjectTasks                 ProjectTask[]                  @relation("ProjectTaskUpdater")
-  projectTaskAssignments              ProjectTaskAssignee[]          @relation("ProjectTaskAssigneeUser")
-  assignedProjectTasks                ProjectTaskAssignee[]          @relation("ProjectTaskAssigner")
-  removedProjectTaskAssignments       ProjectTaskAssignee[]          @relation("ProjectTaskAssignmentRemover")
-  completedProjectChecklistItems      ProjectTaskChecklistItem[]     @relation("ProjectChecklistCompleter")
-  createdProjectChecklistItems        ProjectTaskChecklistItem[]     @relation("ProjectChecklistCreator")
-  updatedProjectChecklistItems        ProjectTaskChecklistItem[]     @relation("ProjectChecklistUpdater")
-  authoredProjectComments             ProjectComment[]               @relation("ProjectCommentAuthor")
-  editedProjectComments               ProjectComment[]               @relation("ProjectCommentEditor")
-  archivedProjectComments             ProjectComment[]               @relation("ProjectCommentArchiver")
-  ownedProjectBlockers                ProjectBlocker[]               @relation("ProjectBlockerOwner")
-  reportedProjectBlockers             ProjectBlocker[]               @relation("ProjectBlockerReporter")
-  resolvedProjectBlockers             ProjectBlocker[]               @relation("ProjectBlockerResolver")
-  ownedProjectRisks                   ProjectRisk[]                  @relation("ProjectRiskOwner")
-  resolvedProjectRisks                ProjectRisk[]                  @relation("ProjectRiskResolver")
-  createdProjectRisks                 ProjectRisk[]                  @relation("ProjectRiskCreator")
-  updatedProjectRisks                 ProjectRisk[]                  @relation("ProjectRiskUpdater")
-  ownedProjectMilestones              ProjectMilestone[]             @relation("ProjectMilestoneOwner")
-  achievedProjectMilestones           ProjectMilestone[]             @relation("ProjectMilestoneAchiever")
-  cancelledProjectMilestones          ProjectMilestone[]             @relation("ProjectMilestoneCanceller")
-  createdProjectMilestones            ProjectMilestone[]             @relation("ProjectMilestoneCreator")
-  updatedProjectMilestones            ProjectMilestone[]             @relation("ProjectMilestoneUpdater")
-  createdProjectRecordLinks           ProjectRecordLink[]            @relation("ProjectRecordLinkCreator")
-  updatedProjectRecordLinks           ProjectRecordLink[]            @relation("ProjectRecordLinkUpdater")
-  archivedProjectRecordLinks          ProjectRecordLink[]            @relation("ProjectRecordLinkArchiver")
-  createdProjectAttachments           ProjectAttachment[]            @relation("ProjectAttachmentCreator")
-  archivedProjectAttachments          ProjectAttachment[]            @relation("ProjectAttachmentArchiver")
-  ownedProjectRequirements            ProjectRequirement[]           @relation("ProjectRequirementOwner")
-  reviewedProjectRequirements         ProjectRequirement[]           @relation("ProjectRequirementReviewer")
-  submittedProjectRequirements        ProjectRequirement[]           @relation("ProjectRequirementSubmitter")
-  decidedProjectRequirements          ProjectRequirement[]           @relation("ProjectRequirementDecider")
-  createdProjectRequirements          ProjectRequirement[]           @relation("ProjectRequirementCreator")
-  updatedProjectRequirements          ProjectRequirement[]           @relation("ProjectRequirementUpdater")
-  createdControlledEvidenceLinks      ControlledEvidenceAttachment[] @relation("ControlledEvidenceAttachmentCreator")
-  archivedControlledEvidenceLinks     ControlledEvidenceAttachment[] @relation("ControlledEvidenceAttachmentArchiver")
-  requestedPaymentRequests            PaymentRequest[]               @relation("PaymentRequestRequester")
-  submittedPaymentRequests            PaymentRequest[]               @relation("PaymentRequestSubmitter")
-  approvedPaymentRequests             PaymentRequest[]               @relation("PaymentRequestApprover")
-  rejectedPaymentRequests             PaymentRequest[]               @relation("PaymentRequestRejecter")
-  cancelledPaymentRequests            PaymentRequest[]               @relation("PaymentRequestCanceller")
-  createdPaymentRequestLines          PaymentRequestLine[]           @relation("PaymentRequestLineCreator")
-  createdSupplierCreditNotes          SupplierCreditNote[]           @relation("SupplierCreditNoteCreator")
-  cancelledSupplierCreditNotes        SupplierCreditNote[]           @relation("SupplierCreditNoteCanceller")
-  createdPaymentReleases              PaymentRelease[]               @relation("PaymentReleaseCreator")
-  releasedPaymentReleases             PaymentRelease[]               @relation("PaymentReleaseReleaser")
-  heldPaymentReleases                 PaymentRelease[]               @relation("PaymentReleaseHolder")
-  cancelledPaymentReleases            PaymentRelease[]               @relation("PaymentReleaseCanceller")
-  reversedPaymentReleases             PaymentRelease[]               @relation("PaymentReleaseReverser")
-  createdPaymentReleaseAllocations    PaymentReleaseAllocation[]     @relation("PaymentReleaseAllocationCreator")
-  paymentReleaseExecutions            PaymentReleaseExecution[]      @relation("PaymentReleaseExecutionActor")
-  ownedBudgets                        Budget[]                       @relation("BudgetOwner")
-  createdBudgets                      Budget[]                       @relation("BudgetCreator")
-  submittedBudgets                    Budget[]                       @relation("BudgetSubmitter")
-  approvedBudgets                     Budget[]                       @relation("BudgetApprover")
-  cancelledBudgets                    Budget[]                       @relation("BudgetCanceller")
-  requestedBudgetRevisions            BudgetRevision[]               @relation("BudgetRevisionRequester")
-  reviewedBudgetRevisions             BudgetRevision[]               @relation("BudgetRevisionReviewer")
-  requestedBudgetCommitments          BudgetCommitment[]             @relation("BudgetCommitmentRequester")
-  approvedBudgetCommitments           BudgetCommitment[]             @relation("BudgetCommitmentApprover")
-  consumedBudgetCommitments           BudgetCommitment[]             @relation("BudgetCommitmentConsumer")
-  reversedBudgetCommitments           BudgetCommitment[]             @relation("BudgetCommitmentReverser")
-  requestedExpenseRequests            ExpenseRequest[]               @relation("ExpenseRequestRequester")
-  submittedExpenseRequests            ExpenseRequest[]               @relation("ExpenseRequestSubmitter")
-  approvedExpenseRequests             ExpenseRequest[]               @relation("ExpenseRequestApprover")
-  returnedExpenseRequests             ExpenseRequest[]               @relation("ExpenseRequestReturner")
-  rejectedExpenseRequests             ExpenseRequest[]               @relation("ExpenseRequestRejecter")
-  cancelledExpenseRequests            ExpenseRequest[]               @relation("ExpenseRequestCanceller")
-  completedExpenseRequests            ExpenseRequest[]               @relation("ExpenseRequestCompleter")
-  reversedExpenseRequests             ExpenseRequest[]               @relation("ExpenseRequestReverser")
-  createdExpenseRequestLines          ExpenseRequestLine[]           @relation("ExpenseRequestLineCreator")
-  updatedExpenseRequestLines          ExpenseRequestLine[]           @relation("ExpenseRequestLineUpdater")
-  createdExpenseRequestSourceLinks    ExpenseRequestSourceLink[]     @relation("ExpenseRequestSourceLinkCreator")
-  financePayeeUserLinks               FinancePayee[]                 @relation("FinancePayeeUser")
-  createdFinancePayees                FinancePayee[]                 @relation("FinancePayeeCreator")
+  cancelledPurchaseOrders             PurchaseOrder[]                  @relation("PurchaseOrderCanceller")
+  requestedPurchaseOrderAmendments    PurchaseOrderAmendment[]         @relation("PurchaseOrderAmendmentRequester")
+  approvedPurchaseOrderAmendments     PurchaseOrderAmendment[]         @relation("PurchaseOrderAmendmentApprover")
+  requestedPurchaseOrderClosures      PurchaseOrderBalanceClosure[]    @relation("PurchaseOrderBalanceClosureRequester")
+  approvedPurchaseOrderClosures       PurchaseOrderBalanceClosure[]    @relation("PurchaseOrderBalanceClosureApprover")
+  receivedGoodsReceipts               GoodsReceipt[]                   @relation("GoodsReceiptReceiver")
+  reversedGoodsReceipts               GoodsReceipt[]                   @relation("GoodsReceiptReverser")
+  requestedInventoryTransfers         InventoryTransfer[]              @relation("InventoryTransferRequester")
+  dispatchedInventoryTransfers        InventoryTransfer[]              @relation("InventoryTransferDispatcher")
+  receivedInventoryTransfers          InventoryTransfer[]              @relation("InventoryTransferReceiver")
+  receivedInventoryTransferReceipts   InventoryTransferReceipt[]       @relation("InventoryTransferReceiptReceiver")
+  reversedInventoryTransferReceipts   InventoryTransferReceipt[]       @relation("InventoryTransferReceiptReverser")
+  createdStockCountSessions           StockCountSession[]              @relation("StockCountCreator")
+  assignedStockCountSessions          StockCountSession[]              @relation("StockCountAssignee")
+  reviewedStockCountSessions          StockCountSession[]              @relation("StockCountReviewer")
+  countedStockCountLines              StockCountLine[]                 @relation("StockCountLineCounter")
+  reportedWastageReports              WastageReport[]                  @relation("WastageReportReporter")
+  reviewedWastageReports              WastageReport[]                  @relation("WastageReportReviewer")
+  postedWastageReports                WastageReport[]                  @relation("WastageReportPoster")
+  reversedWastageReports              WastageReport[]                  @relation("WastageReportReverser")
+  requestedStockAdjustments           StockAdjustment[]                @relation("StockAdjustmentRequester")
+  cancelledStockAdjustments           StockAdjustment[]                @relation("StockAdjustmentCanceller")
+  postedStockAdjustments              StockAdjustment[]                @relation("StockAdjustmentPoster")
+  reversedStockAdjustments            StockAdjustment[]                @relation("StockAdjustmentReverser")
+  createdProjectTemplates             ProjectTemplate[]                @relation("ProjectTemplateCreator")
+  updatedProjectTemplates             ProjectTemplate[]                @relation("ProjectTemplateUpdater")
+  sponsoredProjects                   Project[]                        @relation("ProjectSponsor")
+  managedProjects                     Project[]                        @relation("ProjectManager")
+  createdProjects                     Project[]                        @relation("ProjectCreator")
+  updatedProjects                     Project[]                        @relation("ProjectUpdater")
+  archivedProjects                    Project[]                        @relation("ProjectArchiver")
+  projectMemberships                  ProjectMember[]                  @relation("ProjectMemberUser")
+  addedProjectMembers                 ProjectMember[]                  @relation("ProjectMemberAdder")
+  removedProjectMembers               ProjectMember[]                  @relation("ProjectMemberRemover")
+  projectActivityEvents               ProjectActivityEvent[]           @relation("ProjectActivityActor")
+  ownedProjectTasks                   ProjectTask[]                    @relation("ProjectTaskOwner")
+  completedProjectTasks               ProjectTask[]                    @relation("ProjectTaskCompleter")
+  blockedProjectTasks                 ProjectTask[]                    @relation("ProjectTaskBlocker")
+  cancelledProjectTasks               ProjectTask[]                    @relation("ProjectTaskCanceller")
+  reopenedProjectTasks                ProjectTask[]                    @relation("ProjectTaskReopener")
+  createdProjectTasks                 ProjectTask[]                    @relation("ProjectTaskCreator")
+  updatedProjectTasks                 ProjectTask[]                    @relation("ProjectTaskUpdater")
+  projectTaskAssignments              ProjectTaskAssignee[]            @relation("ProjectTaskAssigneeUser")
+  assignedProjectTasks                ProjectTaskAssignee[]            @relation("ProjectTaskAssigner")
+  removedProjectTaskAssignments       ProjectTaskAssignee[]            @relation("ProjectTaskAssignmentRemover")
+  completedProjectChecklistItems      ProjectTaskChecklistItem[]       @relation("ProjectChecklistCompleter")
+  createdProjectChecklistItems        ProjectTaskChecklistItem[]       @relation("ProjectChecklistCreator")
+  updatedProjectChecklistItems        ProjectTaskChecklistItem[]       @relation("ProjectChecklistUpdater")
+  authoredProjectComments             ProjectComment[]                 @relation("ProjectCommentAuthor")
+  editedProjectComments               ProjectComment[]                 @relation("ProjectCommentEditor")
+  archivedProjectComments             ProjectComment[]                 @relation("ProjectCommentArchiver")
+  ownedProjectBlockers                ProjectBlocker[]                 @relation("ProjectBlockerOwner")
+  reportedProjectBlockers             ProjectBlocker[]                 @relation("ProjectBlockerReporter")
+  resolvedProjectBlockers             ProjectBlocker[]                 @relation("ProjectBlockerResolver")
+  ownedProjectRisks                   ProjectRisk[]                    @relation("ProjectRiskOwner")
+  resolvedProjectRisks                ProjectRisk[]                    @relation("ProjectRiskResolver")
+  createdProjectRisks                 ProjectRisk[]                    @relation("ProjectRiskCreator")
+  updatedProjectRisks                 ProjectRisk[]                    @relation("ProjectRiskUpdater")
+  ownedProjectMilestones              ProjectMilestone[]               @relation("ProjectMilestoneOwner")
+  achievedProjectMilestones           ProjectMilestone[]               @relation("ProjectMilestoneAchiever")
+  cancelledProjectMilestones          ProjectMilestone[]               @relation("ProjectMilestoneCanceller")
+  createdProjectMilestones            ProjectMilestone[]               @relation("ProjectMilestoneCreator")
+  updatedProjectMilestones            ProjectMilestone[]               @relation("ProjectMilestoneUpdater")
+  createdProjectRecordLinks           ProjectRecordLink[]              @relation("ProjectRecordLinkCreator")
+  updatedProjectRecordLinks           ProjectRecordLink[]              @relation("ProjectRecordLinkUpdater")
+  archivedProjectRecordLinks          ProjectRecordLink[]              @relation("ProjectRecordLinkArchiver")
+  createdProjectAttachments           ProjectAttachment[]              @relation("ProjectAttachmentCreator")
+  archivedProjectAttachments          ProjectAttachment[]              @relation("ProjectAttachmentArchiver")
+  ownedProjectRequirements            ProjectRequirement[]             @relation("ProjectRequirementOwner")
+  reviewedProjectRequirements         ProjectRequirement[]             @relation("ProjectRequirementReviewer")
+  submittedProjectRequirements        ProjectRequirement[]             @relation("ProjectRequirementSubmitter")
+  decidedProjectRequirements          ProjectRequirement[]             @relation("ProjectRequirementDecider")
+  createdProjectRequirements          ProjectRequirement[]             @relation("ProjectRequirementCreator")
+  updatedProjectRequirements          ProjectRequirement[]             @relation("ProjectRequirementUpdater")
+  createdControlledEvidenceLinks      ControlledEvidenceAttachment[]   @relation("ControlledEvidenceAttachmentCreator")
+  archivedControlledEvidenceLinks     ControlledEvidenceAttachment[]   @relation("ControlledEvidenceAttachmentArchiver")
+  requestedPaymentRequests            PaymentRequest[]                 @relation("PaymentRequestRequester")
+  submittedPaymentRequests            PaymentRequest[]                 @relation("PaymentRequestSubmitter")
+  approvedPaymentRequests             PaymentRequest[]                 @relation("PaymentRequestApprover")
+  rejectedPaymentRequests             PaymentRequest[]                 @relation("PaymentRequestRejecter")
+  cancelledPaymentRequests            PaymentRequest[]                 @relation("PaymentRequestCanceller")
+  createdPaymentRequestLines          PaymentRequestLine[]             @relation("PaymentRequestLineCreator")
+  createdSupplierCreditNotes          SupplierCreditNote[]             @relation("SupplierCreditNoteCreator")
+  cancelledSupplierCreditNotes        SupplierCreditNote[]             @relation("SupplierCreditNoteCanceller")
+  createdPaymentReleases              PaymentRelease[]                 @relation("PaymentReleaseCreator")
+  releasedPaymentReleases             PaymentRelease[]                 @relation("PaymentReleaseReleaser")
+  heldPaymentReleases                 PaymentRelease[]                 @relation("PaymentReleaseHolder")
+  cancelledPaymentReleases            PaymentRelease[]                 @relation("PaymentReleaseCanceller")
+  reversedPaymentReleases             PaymentRelease[]                 @relation("PaymentReleaseReverser")
+  createdPaymentReleaseAllocations    PaymentReleaseAllocation[]       @relation("PaymentReleaseAllocationCreator")
+  paymentReleaseExecutions            PaymentReleaseExecution[]        @relation("PaymentReleaseExecutionActor")
+  ownedBudgets                        Budget[]                         @relation("BudgetOwner")
+  createdBudgets                      Budget[]                         @relation("BudgetCreator")
+  submittedBudgets                    Budget[]                         @relation("BudgetSubmitter")
+  approvedBudgets                     Budget[]                         @relation("BudgetApprover")
+  cancelledBudgets                    Budget[]                         @relation("BudgetCanceller")
+  requestedBudgetRevisions            BudgetRevision[]                 @relation("BudgetRevisionRequester")
+  reviewedBudgetRevisions             BudgetRevision[]                 @relation("BudgetRevisionReviewer")
+  requestedBudgetCommitments          BudgetCommitment[]               @relation("BudgetCommitmentRequester")
+  approvedBudgetCommitments           BudgetCommitment[]               @relation("BudgetCommitmentApprover")
+  consumedBudgetCommitments           BudgetCommitment[]               @relation("BudgetCommitmentConsumer")
+  reversedBudgetCommitments           BudgetCommitment[]               @relation("BudgetCommitmentReverser")
+  requestedExpenseRequests            ExpenseRequest[]                 @relation("ExpenseRequestRequester")
+  submittedExpenseRequests            ExpenseRequest[]                 @relation("ExpenseRequestSubmitter")
+  approvedExpenseRequests             ExpenseRequest[]                 @relation("ExpenseRequestApprover")
+  returnedExpenseRequests             ExpenseRequest[]                 @relation("ExpenseRequestReturner")
+  rejectedExpenseRequests             ExpenseRequest[]                 @relation("ExpenseRequestRejecter")
+  cancelledExpenseRequests            ExpenseRequest[]                 @relation("ExpenseRequestCanceller")
+  completedExpenseRequests            ExpenseRequest[]                 @relation("ExpenseRequestCompleter")
+  reversedExpenseRequests             ExpenseRequest[]                 @relation("ExpenseRequestReverser")
+  createdExpenseRequestLines          ExpenseRequestLine[]             @relation("ExpenseRequestLineCreator")
+  updatedExpenseRequestLines          ExpenseRequestLine[]             @relation("ExpenseRequestLineUpdater")
+  createdExpenseRequestSourceLinks    ExpenseRequestSourceLink[]       @relation("ExpenseRequestSourceLinkCreator")
+  financePayeeUserLinks               FinancePayee[]                   @relation("FinancePayeeUser")
+  createdFinancePayees                FinancePayee[]                   @relation("FinancePayeeCreator")
   requestedDisbursements              NonSupplierDisbursementRequest[] @relation("DisbursementRequester")
   submittedDisbursements              NonSupplierDisbursementRequest[] @relation("DisbursementSubmitter")
   approvedDisbursements               NonSupplierDisbursementRequest[] @relation("DisbursementApprover")
   rejectedDisbursements               NonSupplierDisbursementRequest[] @relation("DisbursementRejecter")
   cancelledDisbursements              NonSupplierDisbursementRequest[] @relation("DisbursementCanceller")
-  requestedCashAdvances               CashAdvanceRequest[]           @relation("CashAdvanceRequester")
-  beneficiaryCashAdvances             CashAdvanceRequest[]           @relation("CashAdvanceBeneficiary")
-  submittedCashAdvances               CashAdvanceRequest[]           @relation("CashAdvanceSubmitter")
-  approvedCashAdvances                CashAdvanceRequest[]           @relation("CashAdvanceApprover")
-  returnedCashAdvances                CashAdvanceRequest[]           @relation("CashAdvanceReturner")
-  rejectedCashAdvances                CashAdvanceRequest[]           @relation("CashAdvanceRejecter")
-  cancelledCashAdvances               CashAdvanceRequest[]           @relation("CashAdvanceCanceller")
-  closedCashAdvances                  CashAdvanceRequest[]           @relation("CashAdvanceCloser")
-  actedCashAdvanceMovements           CashAdvanceMovement[]          @relation("CashAdvanceMovementActor")
-  submittedCashAdvanceLiquidations    CashAdvanceLiquidation[]       @relation("CashAdvanceLiquidationSubmitter")
-  reviewedCashAdvanceLiquidations     CashAdvanceLiquidation[]       @relation("CashAdvanceLiquidationReviewer")
-  approvedCashAdvanceLiquidations     CashAdvanceLiquidation[]       @relation("CashAdvanceLiquidationApprover")
-  cancelledCashAdvanceLiquidations    CashAdvanceLiquidation[]       @relation("CashAdvanceLiquidationCanceller")
-  closedCashAdvanceLiquidations       CashAdvanceLiquidation[]       @relation("CashAdvanceLiquidationCloser")
-  createdCashAdvanceLines             CashAdvanceLiquidationLine[]   @relation("CashAdvanceLiquidationLineCreator")
-  custodiedPettyCashFunds             PettyCashFund[]                @relation("PettyCashFundCustodian")
-  createdPettyCashFunds               PettyCashFund[]                @relation("PettyCashFundCreator")
-  updatedPettyCashFunds               PettyCashFund[]                @relation("PettyCashFundUpdater")
-  requestedPettyCashRequests          PettyCashRequest[]             @relation("PettyCashRequestRequester")
-  submittedPettyCashRequests          PettyCashRequest[]             @relation("PettyCashRequestSubmitter")
-  approvedPettyCashRequests           PettyCashRequest[]             @relation("PettyCashRequestApprover")
-  returnedPettyCashRequests           PettyCashRequest[]             @relation("PettyCashRequestReturner")
-  rejectedPettyCashRequests           PettyCashRequest[]             @relation("PettyCashRequestRejecter")
-  cancelledPettyCashRequests          PettyCashRequest[]             @relation("PettyCashRequestCanceller")
-  closedPettyCashRequests             PettyCashRequest[]             @relation("PettyCashRequestCloser")
-  postedPettyCashLedgerEntries        PettyCashLedgerEntry[]         @relation("PettyCashLedgerEntryPoster")
-  voidedPettyCashLedgerEntries        PettyCashLedgerEntry[]         @relation("PettyCashLedgerEntryVoider")
-  submittedPettyCashLiquidations      PettyCashLiquidation[]         @relation("PettyCashLiquidationSubmitter")
-  reviewedPettyCashLiquidations       PettyCashLiquidation[]         @relation("PettyCashLiquidationReviewer")
-  approvedPettyCashLiquidations       PettyCashLiquidation[]         @relation("PettyCashLiquidationApprover")
-  cancelledPettyCashLiquidations      PettyCashLiquidation[]         @relation("PettyCashLiquidationCanceller")
-  closedPettyCashLiquidations         PettyCashLiquidation[]         @relation("PettyCashLiquidationCloser")
-  createdPettyCashLiquidationLines    PettyCashLiquidationLine[]     @relation("PettyCashLiquidationLineCreator")
-  employeeProfiles                    Employee[]                     @relation("EmployeeUser")
-  createdEmployees                    Employee[]                     @relation("EmployeeCreator")
-  updatedEmployees                    Employee[]                     @relation("EmployeeUpdater")
-  createdEmployeeAssignments          EmployeeAssignment[]           @relation("EmployeeAssignmentCreator")
-  requestedEmployeeLeaveRequests      EmployeeLeaveRequest[]         @relation("EmployeeLeaveRequestedBy")
-  approvedEmployeeLeaveRequests       EmployeeLeaveRequest[]         @relation("EmployeeLeaveApprovedBy")
-  createdEmployeeLeaveRequests        EmployeeLeaveRequest[]         @relation("EmployeeLeaveCreatedBy")
-  updatedEmployeeLeaveRequests        EmployeeLeaveRequest[]         @relation("EmployeeLeaveUpdatedBy")
-  requestedEmployeeOvertimeRecords    EmployeeOvertimeRecord[]       @relation("EmployeeOvertimeRequestedBy")
-  approvedEmployeeOvertimeRecords     EmployeeOvertimeRecord[]       @relation("EmployeeOvertimeApprovedBy")
-  createdEmployeeOvertimeRecords      EmployeeOvertimeRecord[]       @relation("EmployeeOvertimeCreatedBy")
-  updatedEmployeeOvertimeRecords      EmployeeOvertimeRecord[]       @relation("EmployeeOvertimeUpdatedBy")
-  createdEmployeeTrainingRecords      EmployeeTrainingRecord[]       @relation("EmployeeTrainingCreatedBy")
-  updatedEmployeeTrainingRecords      EmployeeTrainingRecord[]       @relation("EmployeeTrainingUpdatedBy")
-  createdEmployeeDocuments            EmployeeComplianceDocument[]   @relation("EmployeeDocumentCreatedBy")
-  updatedEmployeeDocuments            EmployeeComplianceDocument[]   @relation("EmployeeDocumentUpdatedBy")
-  createdWorkforceSchedules           WorkforceSchedule[]            @relation("WorkforceScheduleCreator")
-  submittedWorkforceSchedules         WorkforceSchedule[]            @relation("WorkforceScheduleSubmitter")
-  approvedWorkforceSchedules          WorkforceSchedule[]            @relation("WorkforceScheduleApprover")
-  publishedWorkforceSchedules         WorkforceSchedule[]            @relation("WorkforceSchedulePublisher")
-  cancelledWorkforceSchedules         WorkforceSchedule[]            @relation("WorkforceScheduleCanceller")
-  createdWorkforceScheduleLines       WorkforceScheduleLine[]        @relation("WorkforceScheduleLineCreator")
-  updatedWorkforceScheduleLines       WorkforceScheduleLine[]        @relation("WorkforceScheduleLineUpdater")
-  createdAttendanceImportBatches      AttendanceImportBatch[]        @relation("AttendanceImportBatchCreator")
-  reviewedAttendanceImportBatches     AttendanceImportBatch[]        @relation("AttendanceImportBatchReviewer")
-  voidedAttendanceImportBatches       AttendanceImportBatch[]        @relation("AttendanceImportBatchVoider")
-  createdBankAccounts                 BankAccount[]                  @relation("BankAccountCreator")
-  declaredBranchCashDeposits          BranchCashDeposit[]            @relation("BranchCashDepositDeclarer")
-  verifiedBranchCashDeposits          BranchCashDeposit[]            @relation("BranchCashDepositVerifier")
-  createdBankStatements               BankStatement[]                @relation("BankStatementCreator")
-  preparedBankReconciliations         BankReconciliation[]           @relation("BankReconciliationPreparer")
-  reviewedBankReconciliations         BankReconciliation[]           @relation("BankReconciliationReviewer")
-  approvedBankReconciliations         BankReconciliation[]           @relation("BankReconciliationApprover")
-  matchedBankReconciliationMatches    BankReconciliationMatch[]      @relation("BankReconciliationMatchMatcher")
-  initiatedFinanceCloseRuns           FinanceCloseRun[]              @relation("FinanceCloseRunInitiator")
-  ownedFinanceCloseChecklistItems     FinanceCloseChecklistItem[]    @relation("FinanceCloseChecklistOwner")
-  completedFinanceCloseChecklistItems FinanceCloseChecklistItem[]    @relation("FinanceCloseChecklistCompleter")
-  reviewedFinanceCloseChecklistItems  FinanceCloseChecklistItem[]    @relation("FinanceCloseChecklistReviewer")
-  raisedFinanceCloseExceptions        FinanceCloseException[]        @relation("FinanceCloseExceptionRaiser")
-  assignedFinanceCloseExceptions      FinanceCloseException[]        @relation("FinanceCloseExceptionAssignee")
-  resolvedFinanceCloseExceptions      FinanceCloseException[]        @relation("FinanceCloseExceptionResolver")
-  attemptedFinanceCloses              FinanceCloseAttempt[]          @relation("FinanceCloseAttemptActor")
+  requestedCashAdvances               CashAdvanceRequest[]             @relation("CashAdvanceRequester")
+  beneficiaryCashAdvances             CashAdvanceRequest[]             @relation("CashAdvanceBeneficiary")
+  submittedCashAdvances               CashAdvanceRequest[]             @relation("CashAdvanceSubmitter")
+  approvedCashAdvances                CashAdvanceRequest[]             @relation("CashAdvanceApprover")
+  returnedCashAdvances                CashAdvanceRequest[]             @relation("CashAdvanceReturner")
+  rejectedCashAdvances                CashAdvanceRequest[]             @relation("CashAdvanceRejecter")
+  cancelledCashAdvances               CashAdvanceRequest[]             @relation("CashAdvanceCanceller")
+  closedCashAdvances                  CashAdvanceRequest[]             @relation("CashAdvanceCloser")
+  actedCashAdvanceMovements           CashAdvanceMovement[]            @relation("CashAdvanceMovementActor")
+  submittedCashAdvanceLiquidations    CashAdvanceLiquidation[]         @relation("CashAdvanceLiquidationSubmitter")
+  reviewedCashAdvanceLiquidations     CashAdvanceLiquidation[]         @relation("CashAdvanceLiquidationReviewer")
+  approvedCashAdvanceLiquidations     CashAdvanceLiquidation[]         @relation("CashAdvanceLiquidationApprover")
+  cancelledCashAdvanceLiquidations    CashAdvanceLiquidation[]         @relation("CashAdvanceLiquidationCanceller")
+  closedCashAdvanceLiquidations       CashAdvanceLiquidation[]         @relation("CashAdvanceLiquidationCloser")
+  createdCashAdvanceLines             CashAdvanceLiquidationLine[]     @relation("CashAdvanceLiquidationLineCreator")
+  custodiedPettyCashFunds             PettyCashFund[]                  @relation("PettyCashFundCustodian")
+  createdPettyCashFunds               PettyCashFund[]                  @relation("PettyCashFundCreator")
+  updatedPettyCashFunds               PettyCashFund[]                  @relation("PettyCashFundUpdater")
+  requestedPettyCashRequests          PettyCashRequest[]               @relation("PettyCashRequestRequester")
+  submittedPettyCashRequests          PettyCashRequest[]               @relation("PettyCashRequestSubmitter")
+  approvedPettyCashRequests           PettyCashRequest[]               @relation("PettyCashRequestApprover")
+  returnedPettyCashRequests           PettyCashRequest[]               @relation("PettyCashRequestReturner")
+  rejectedPettyCashRequests           PettyCashRequest[]               @relation("PettyCashRequestRejecter")
+  cancelledPettyCashRequests          PettyCashRequest[]               @relation("PettyCashRequestCanceller")
+  closedPettyCashRequests             PettyCashRequest[]               @relation("PettyCashRequestCloser")
+  postedPettyCashLedgerEntries        PettyCashLedgerEntry[]           @relation("PettyCashLedgerEntryPoster")
+  voidedPettyCashLedgerEntries        PettyCashLedgerEntry[]           @relation("PettyCashLedgerEntryVoider")
+  submittedPettyCashLiquidations      PettyCashLiquidation[]           @relation("PettyCashLiquidationSubmitter")
+  reviewedPettyCashLiquidations       PettyCashLiquidation[]           @relation("PettyCashLiquidationReviewer")
+  approvedPettyCashLiquidations       PettyCashLiquidation[]           @relation("PettyCashLiquidationApprover")
+  cancelledPettyCashLiquidations      PettyCashLiquidation[]           @relation("PettyCashLiquidationCanceller")
+  closedPettyCashLiquidations         PettyCashLiquidation[]           @relation("PettyCashLiquidationCloser")
+  createdPettyCashLiquidationLines    PettyCashLiquidationLine[]       @relation("PettyCashLiquidationLineCreator")
+  employeeProfiles                    Employee[]                       @relation("EmployeeUser")
+  createdEmployees                    Employee[]                       @relation("EmployeeCreator")
+  updatedEmployees                    Employee[]                       @relation("EmployeeUpdater")
+  createdEmployeeAssignments          EmployeeAssignment[]             @relation("EmployeeAssignmentCreator")
+  requestedEmployeeLeaveRequests      EmployeeLeaveRequest[]           @relation("EmployeeLeaveRequestedBy")
+  approvedEmployeeLeaveRequests       EmployeeLeaveRequest[]           @relation("EmployeeLeaveApprovedBy")
+  createdEmployeeLeaveRequests        EmployeeLeaveRequest[]           @relation("EmployeeLeaveCreatedBy")
+  updatedEmployeeLeaveRequests        EmployeeLeaveRequest[]           @relation("EmployeeLeaveUpdatedBy")
+  requestedEmployeeOvertimeRecords    EmployeeOvertimeRecord[]         @relation("EmployeeOvertimeRequestedBy")
+  approvedEmployeeOvertimeRecords     EmployeeOvertimeRecord[]         @relation("EmployeeOvertimeApprovedBy")
+  createdEmployeeOvertimeRecords      EmployeeOvertimeRecord[]         @relation("EmployeeOvertimeCreatedBy")
+  updatedEmployeeOvertimeRecords      EmployeeOvertimeRecord[]         @relation("EmployeeOvertimeUpdatedBy")
+  createdEmployeeTrainingRecords      EmployeeTrainingRecord[]         @relation("EmployeeTrainingCreatedBy")
+  updatedEmployeeTrainingRecords      EmployeeTrainingRecord[]         @relation("EmployeeTrainingUpdatedBy")
+  createdEmployeeDocuments            EmployeeComplianceDocument[]     @relation("EmployeeDocumentCreatedBy")
+  updatedEmployeeDocuments            EmployeeComplianceDocument[]     @relation("EmployeeDocumentUpdatedBy")
+  createdWorkforceSchedules           WorkforceSchedule[]              @relation("WorkforceScheduleCreator")
+  submittedWorkforceSchedules         WorkforceSchedule[]              @relation("WorkforceScheduleSubmitter")
+  approvedWorkforceSchedules          WorkforceSchedule[]              @relation("WorkforceScheduleApprover")
+  publishedWorkforceSchedules         WorkforceSchedule[]              @relation("WorkforceSchedulePublisher")
+  cancelledWorkforceSchedules         WorkforceSchedule[]              @relation("WorkforceScheduleCanceller")
+  createdWorkforceScheduleLines       WorkforceScheduleLine[]          @relation("WorkforceScheduleLineCreator")
+  updatedWorkforceScheduleLines       WorkforceScheduleLine[]          @relation("WorkforceScheduleLineUpdater")
+  createdAttendanceImportBatches      AttendanceImportBatch[]          @relation("AttendanceImportBatchCreator")
+  reviewedAttendanceImportBatches     AttendanceImportBatch[]          @relation("AttendanceImportBatchReviewer")
+  voidedAttendanceImportBatches       AttendanceImportBatch[]          @relation("AttendanceImportBatchVoider")
+  createdBankAccounts                 BankAccount[]                    @relation("BankAccountCreator")
+  declaredBranchCashDeposits          BranchCashDeposit[]              @relation("BranchCashDepositDeclarer")
+  verifiedBranchCashDeposits          BranchCashDeposit[]              @relation("BranchCashDepositVerifier")
+  createdBankStatements               BankStatement[]                  @relation("BankStatementCreator")
+  preparedBankReconciliations         BankReconciliation[]             @relation("BankReconciliationPreparer")
+  reviewedBankReconciliations         BankReconciliation[]             @relation("BankReconciliationReviewer")
+  approvedBankReconciliations         BankReconciliation[]             @relation("BankReconciliationApprover")
+  matchedBankReconciliationMatches    BankReconciliationMatch[]        @relation("BankReconciliationMatchMatcher")
+  initiatedFinanceCloseRuns           FinanceCloseRun[]                @relation("FinanceCloseRunInitiator")
+  ownedFinanceCloseChecklistItems     FinanceCloseChecklistItem[]      @relation("FinanceCloseChecklistOwner")
+  completedFinanceCloseChecklistItems FinanceCloseChecklistItem[]      @relation("FinanceCloseChecklistCompleter")
+  reviewedFinanceCloseChecklistItems  FinanceCloseChecklistItem[]      @relation("FinanceCloseChecklistReviewer")
+  raisedFinanceCloseExceptions        FinanceCloseException[]          @relation("FinanceCloseExceptionRaiser")
+  assignedFinanceCloseExceptions      FinanceCloseException[]          @relation("FinanceCloseExceptionAssignee")
+  resolvedFinanceCloseExceptions      FinanceCloseException[]          @relation("FinanceCloseExceptionResolver")
+  attemptedFinanceCloses              FinanceCloseAttempt[]            @relation("FinanceCloseAttemptActor")
   notifications                       Notification[]
   auditEvents                         AuditEvent[]
 
   @@unique([tenantId, email])
+  @@unique([id, tenantId])
 }
 
 model Role {
@@ -1796,6 +1816,177 @@ model AuthSessionInvalidation {
   @@index([tenantId, companyId, status])
   @@index([targetUserId, status])
   @@index([createdAt, status])
+}
+
+model AuthIdentity {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String              @db.Uuid
+  userId               String              @db.Uuid
+  provider             String              @default("LOCAL")
+  providerSubject      String?
+  normalizedIdentifier String
+  status               String              @default("ACTIVE")
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  tenant               Tenant              @relation(fields: [tenantId], references: [id])
+  user                 User                @relation(fields: [userId, tenantId], references: [id, tenantId])
+  passwordCredential   PasswordCredential?
+  sessions             AuthSession[]
+
+  @@unique([tenantId, provider, normalizedIdentifier])
+  @@unique([tenantId, provider, providerSubject])
+  @@unique([id, tenantId, userId])
+  @@index([userId, status])
+}
+
+model PasswordCredential {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authIdentityId    String       @unique @db.Uuid
+  passwordHash      String
+  hashAlgorithm     String       @default("ARGON2ID")
+  requiresChange    Boolean      @default(false)
+  passwordChangedAt DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  authIdentity      AuthIdentity @relation(fields: [authIdentityId], references: [id])
+}
+
+model MfaAuthenticator {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String            @db.Uuid
+  userId          String            @db.Uuid
+  label           String
+  status          String            @default("PENDING")
+  encryptedSecret String
+  secretIv        String
+  secretAuthTag   String
+  keyVersion      Int               @default(1)
+  lastUsedCounter BigInt?
+  verifiedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  user            User              @relation(fields: [userId, tenantId], references: [id, tenantId])
+  recoveryCodes   MfaRecoveryCode[]
+
+  @@index([tenantId, userId, status])
+}
+
+model MfaRecoveryCode {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authenticatorId String           @db.Uuid
+  codeHash        String           @unique
+  consumedAt      DateTime?
+  createdAt       DateTime         @default(now())
+  authenticator   MfaAuthenticator @relation(fields: [authenticatorId], references: [id])
+
+  @@index([authenticatorId, consumedAt])
+}
+
+model AuthSession {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String        @db.Uuid
+  userId                String        @db.Uuid
+  authIdentityId        String?       @db.Uuid
+  tokenHash             String        @unique
+  status                String        @default("PENDING_MFA")
+  assuranceLevel        String        @default("PASSWORD")
+  mfaAuthenticatedAt    DateTime?
+  privilegeEpochAtIssue Int
+  createdAt             DateTime      @default(now())
+  lastSeenAt            DateTime      @default(now())
+  idleExpiresAt         DateTime
+  absoluteExpiresAt     DateTime
+  revokedAt             DateTime?
+  revocationReason      String?
+  userAgentHash         String?
+  sourceAddressHash     String?
+  challengeFailureCount Int          @default(0)
+  challengeLockedAt     DateTime?
+  tenant                Tenant        @relation(fields: [tenantId], references: [id])
+  user                  User          @relation(fields: [userId, tenantId], references: [id, tenantId])
+  authIdentity          AuthIdentity? @relation(fields: [authIdentityId, tenantId, userId], references: [id, tenantId, userId])
+
+  @@index([tenantId, userId, status])
+  @@index([idleExpiresAt, status])
+  @@index([absoluteExpiresAt, status])
+}
+
+model AuthActivationToken {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @db.Uuid
+  targetUserId   String    @db.Uuid
+  issuedByUserId String?   @db.Uuid
+  tokenHash      String    @unique
+  status         String    @default("ACTIVE")
+  deliveryStatus String    @default("PENDING")
+  deliveryAttemptCount Int @default(0)
+  deliveryAttemptedAt DateTime?
+  deliveredAt    DateTime?
+  deliveryError  String?
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  targetUser     User      @relation("AuthActivationTokenTargetUser", fields: [targetUserId, tenantId], references: [id, tenantId])
+  issuedByUser   User?     @relation("AuthActivationTokenIssuer", fields: [issuedByUserId, tenantId], references: [id, tenantId])
+
+  @@index([tenantId, targetUserId, status])
+  @@index([expiresAt, status])
+  @@index([deliveryStatus, createdAt])
+}
+
+model AuthRecoveryRequest {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String    @db.Uuid
+  companyId         String    @db.Uuid
+  targetUserId      String    @db.Uuid
+  requestedByUserId String    @db.Uuid
+  reviewedByUserId  String?   @db.Uuid
+  status            String    @default("PENDING")
+  resetPassword     Boolean   @default(true)
+  resetMfa          Boolean   @default(false)
+  reason            String
+  evidenceReference String
+  reviewReason      String?
+  reviewedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  company           Company   @relation(fields: [companyId, tenantId], references: [id, tenantId])
+  targetUser        User      @relation("AuthRecoveryTargetUser", fields: [targetUserId, tenantId], references: [id, tenantId])
+  requestedByUser   User      @relation("AuthRecoveryRequester", fields: [requestedByUserId, tenantId], references: [id, tenantId])
+  reviewedByUser    User?     @relation("AuthRecoveryReviewer", fields: [reviewedByUserId, tenantId], references: [id, tenantId])
+
+  @@index([tenantId, companyId, status])
+  @@index([targetUserId, status])
+}
+
+model AuthLoginAttempt {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantLoginCodeHash String
+  identifierHash      String
+  sourceAddressHash   String
+  attemptType         String   @default("PASSWORD")
+  sessionId           String?  @db.Uuid
+  succeeded           Boolean  @default(false)
+  attemptedAt         DateTime @default(now())
+
+  @@index([identifierHash, attemptedAt])
+  @@index([sourceAddressHash, attemptedAt])
+  @@index([attemptedAt])
+}
+
+model AuthBootstrapState {
+  tenantId               String   @id @db.Uuid
+  targetUserId           String   @db.Uuid
+  authorizationReference String
+  issuedAt               DateTime @default(now())
+  tenant                 Tenant   @relation(fields: [tenantId], references: [id])
+  targetUser             User     @relation(fields: [targetUserId, tenantId], references: [id, tenantId])
+
+  @@index([targetUserId])
 }
 
 model ProjectTemplate {
@@ -2107,31 +2298,31 @@ model ProjectComment {
 
 model ProjectAttachment {
   id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String          @db.Uuid
-  companyId        String          @db.Uuid
-  projectId        String          @db.Uuid
-  taskId           String?         @db.Uuid
-  commentId        String?         @db.Uuid
-  requirementId    String?         @db.Uuid
-  attachmentId     String          @db.Uuid
+  tenantId         String              @db.Uuid
+  companyId        String              @db.Uuid
+  projectId        String              @db.Uuid
+  taskId           String?             @db.Uuid
+  commentId        String?             @db.Uuid
+  requirementId    String?             @db.Uuid
+  attachmentId     String              @db.Uuid
   purpose          String
   caption          String?
-  status           RecordStatus    @default(ACTIVE)
+  status           RecordStatus        @default(ACTIVE)
   archivedAt       DateTime?
-  archivedByUserId String?         @db.Uuid
+  archivedByUserId String?             @db.Uuid
   archiveReason    String?
-  createdByUserId  String          @db.Uuid
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  tenant           Tenant          @relation(fields: [tenantId], references: [id])
-  company          Company         @relation(fields: [companyId], references: [id])
-  project          Project         @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
-  task             ProjectTask?    @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  createdByUserId  String              @db.Uuid
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  tenant           Tenant              @relation(fields: [tenantId], references: [id])
+  company          Company             @relation(fields: [companyId], references: [id])
+  project          Project             @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task             ProjectTask?        @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
   comment          ProjectComment?     @relation(fields: [commentId], references: [id], onDelete: Restrict)
   requirement      ProjectRequirement? @relation("ProjectRequirementAttachments", fields: [requirementId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId], onDelete: Restrict, map: "ProjectAttachment_requirementId_tenantId_companyId_projectId_fk")
-  attachment       Attachment      @relation(fields: [attachmentId], references: [id])
-  createdBy        User            @relation("ProjectAttachmentCreator", fields: [createdByUserId], references: [id])
-  archivedBy       User?           @relation("ProjectAttachmentArchiver", fields: [archivedByUserId], references: [id])
+  attachment       Attachment          @relation(fields: [attachmentId], references: [id])
+  createdBy        User                @relation("ProjectAttachmentCreator", fields: [createdByUserId], references: [id])
+  archivedBy       User?               @relation("ProjectAttachmentArchiver", fields: [archivedByUserId], references: [id])
 
   @@index([tenantId, companyId, projectId, status])
   @@index([tenantId, companyId, taskId, status])
@@ -2265,32 +2456,32 @@ model ProjectRisk {
 
 model ProjectRecordLink {
   id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId         String            @db.Uuid
-  companyId        String            @db.Uuid
-  projectId        String            @db.Uuid
-  taskId           String?           @db.Uuid
-  milestoneId      String?           @db.Uuid
-  requirementId    String?           @db.Uuid
+  tenantId         String              @db.Uuid
+  companyId        String              @db.Uuid
+  projectId        String              @db.Uuid
+  taskId           String?             @db.Uuid
+  milestoneId      String?             @db.Uuid
+  requirementId    String?             @db.Uuid
   sourceRecordType String
-  sourceRecordId   String            @db.Uuid
-  relationType     String            @default("RELATED")
+  sourceRecordId   String              @db.Uuid
+  relationType     String              @default("RELATED")
   linkLabel        String
-  createdByUserId  String            @db.Uuid
-  updatedByUserId  String            @db.Uuid
+  createdByUserId  String              @db.Uuid
+  updatedByUserId  String              @db.Uuid
   archivedAt       DateTime?
-  archivedByUserId String?           @db.Uuid
+  archivedByUserId String?             @db.Uuid
   archiveReason    String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  tenant           Tenant            @relation(fields: [tenantId], references: [id])
-  company          Company           @relation(fields: [companyId], references: [id])
-  project          Project           @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
-  task             ProjectTask?      @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
-  milestone        ProjectMilestone? @relation(fields: [milestoneId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  tenant           Tenant              @relation(fields: [tenantId], references: [id])
+  company          Company             @relation(fields: [companyId], references: [id])
+  project          Project             @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId])
+  task             ProjectTask?        @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
+  milestone        ProjectMilestone?   @relation(fields: [milestoneId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId])
   requirement      ProjectRequirement? @relation("ProjectRequirementRecordLinks", fields: [requirementId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId], onDelete: Restrict, map: "ProjectRecordLink_requirementId_tenantId_companyId_projectId_fk")
-  createdBy        User              @relation("ProjectRecordLinkCreator", fields: [createdByUserId], references: [id])
-  updatedBy        User              @relation("ProjectRecordLinkUpdater", fields: [updatedByUserId], references: [id])
-  archivedBy       User?             @relation("ProjectRecordLinkArchiver", fields: [archivedByUserId], references: [id])
+  createdBy        User                @relation("ProjectRecordLinkCreator", fields: [createdByUserId], references: [id])
+  updatedBy        User                @relation("ProjectRecordLinkUpdater", fields: [updatedByUserId], references: [id])
+  archivedBy       User?               @relation("ProjectRecordLinkArchiver", fields: [archivedByUserId], references: [id])
 
   @@unique([id, tenantId, companyId, projectId])
   @@index([tenantId, companyId, projectId, archivedAt])
@@ -2303,43 +2494,43 @@ model ProjectRecordLink {
 
 model ProjectRequirement {
   id                String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId             String                   @db.Uuid
-  companyId            String                   @db.Uuid
-  projectId            String                   @db.Uuid
-  taskId               String?                  @db.Uuid
-  kind                 ProjectRequirementKind
-  code                 String
-  label                String
-  evidenceType         String?
-  signoffStage         String?
-  evidenceNote         String?
-  isRequired           Boolean                  @default(true)
-  ownerUserId          String                   @db.Uuid
-  reviewerUserId       String?                  @db.Uuid
-  status               ProjectRequirementStatus @default(PENDING)
-  submittedAt          DateTime?
-  submittedByUserId    String?                  @db.Uuid
-  decisionAt           DateTime?
-  decidedByUserId      String?                  @db.Uuid
-  decisionReason       String?
-  version              Int                      @default(1)
-  archivedAt           DateTime?
-  createdByUserId      String                   @db.Uuid
-  updatedByUserId      String                   @db.Uuid
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
-  tenant               Tenant                   @relation(fields: [tenantId], references: [id])
-  company              Company                  @relation(fields: [companyId], references: [id])
+  tenantId          String                   @db.Uuid
+  companyId         String                   @db.Uuid
+  projectId         String                   @db.Uuid
+  taskId            String?                  @db.Uuid
+  kind              ProjectRequirementKind
+  code              String
+  label             String
+  evidenceType      String?
+  signoffStage      String?
+  evidenceNote      String?
+  isRequired        Boolean                  @default(true)
+  ownerUserId       String                   @db.Uuid
+  reviewerUserId    String?                  @db.Uuid
+  status            ProjectRequirementStatus @default(PENDING)
+  submittedAt       DateTime?
+  submittedByUserId String?                  @db.Uuid
+  decisionAt        DateTime?
+  decidedByUserId   String?                  @db.Uuid
+  decisionReason    String?
+  version           Int                      @default(1)
+  archivedAt        DateTime?
+  createdByUserId   String                   @db.Uuid
+  updatedByUserId   String                   @db.Uuid
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id])
+  company           Company                  @relation(fields: [companyId], references: [id])
   project           Project                  @relation(fields: [projectId, tenantId, companyId], references: [id, tenantId, companyId], map: "ProjectRequirement_projectId_tenantId_companyId_fkey")
   task              ProjectTask?             @relation(fields: [taskId, tenantId, companyId, projectId], references: [id, tenantId, companyId, projectId], onDelete: Restrict, map: "ProjectRequirement_taskId_tenantId_companyId_projectId_fkey")
-  owner                User                     @relation("ProjectRequirementOwner", fields: [ownerUserId], references: [id])
-  reviewer             User?                    @relation("ProjectRequirementReviewer", fields: [reviewerUserId], references: [id])
-  submittedBy          User?                    @relation("ProjectRequirementSubmitter", fields: [submittedByUserId], references: [id])
-  decidedBy            User?                    @relation("ProjectRequirementDecider", fields: [decidedByUserId], references: [id])
-  createdBy            User                     @relation("ProjectRequirementCreator", fields: [createdByUserId], references: [id])
-  updatedBy            User                     @relation("ProjectRequirementUpdater", fields: [updatedByUserId], references: [id])
-  attachments          ProjectAttachment[] @relation("ProjectRequirementAttachments")
-  recordLinks          ProjectRecordLink[] @relation("ProjectRequirementRecordLinks")
+  owner             User                     @relation("ProjectRequirementOwner", fields: [ownerUserId], references: [id])
+  reviewer          User?                    @relation("ProjectRequirementReviewer", fields: [reviewerUserId], references: [id])
+  submittedBy       User?                    @relation("ProjectRequirementSubmitter", fields: [submittedByUserId], references: [id])
+  decidedBy         User?                    @relation("ProjectRequirementDecider", fields: [decidedByUserId], references: [id])
+  createdBy         User                     @relation("ProjectRequirementCreator", fields: [createdByUserId], references: [id])
+  updatedBy         User                     @relation("ProjectRequirementUpdater", fields: [updatedByUserId], references: [id])
+  attachments       ProjectAttachment[]      @relation("ProjectRequirementAttachments")
+  recordLinks       ProjectRecordLink[]      @relation("ProjectRequirementRecordLinks")
 
   @@unique([projectId, kind, code])
   @@unique([id, tenantId, companyId, projectId])
@@ -4867,41 +5058,41 @@ model ExpenseRequestSourceLink {
 
 model CashAdvanceRequest {
   id                    String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId              String                   @db.Uuid
-  companyId             String                   @db.Uuid
+  tenantId              String                           @db.Uuid
+  companyId             String                           @db.Uuid
   publicReference       String
-  currencyCode          String                   @default("PHP")
-  requestedAmountPhp    Decimal                  @db.Decimal(18, 6)
-  issuedAmountPhp       Decimal                  @default(0) @db.Decimal(18, 6)
-  liquidatedAmountPhp   Decimal                  @default(0) @db.Decimal(18, 6)
-  status                CashAdvanceRequestStatus @default(DRAFT)
-  sourceType            CashAdvanceSourceType    @default(STANDALONE)
-  budgetStatus          ExpenseBudgetStatus      @default(NOT_APPLICABLE)
+  currencyCode          String                           @default("PHP")
+  requestedAmountPhp    Decimal                          @db.Decimal(18, 6)
+  issuedAmountPhp       Decimal                          @default(0) @db.Decimal(18, 6)
+  liquidatedAmountPhp   Decimal                          @default(0) @db.Decimal(18, 6)
+  status                CashAdvanceRequestStatus         @default(DRAFT)
+  sourceType            CashAdvanceSourceType            @default(STANDALONE)
+  budgetStatus          ExpenseBudgetStatus              @default(NOT_APPLICABLE)
   requestDate           DateTime
   dueDate               DateTime?
   title                 String
   purpose               String
   categoryCode          String
-  supplierId            String?                  @db.Uuid
-  brandId               String?                  @db.Uuid
-  locationId            String                   @db.Uuid
-  departmentId          String?                  @db.Uuid
-  costCenterId          String?                  @db.Uuid
-  projectId             String?                  @db.Uuid
-  beneficiaryUserId     String?                  @db.Uuid
-  expenseRequestId      String?                  @db.Uuid
-  paymentRequestId      String?                  @db.Uuid
+  supplierId            String?                          @db.Uuid
+  brandId               String?                          @db.Uuid
+  locationId            String                           @db.Uuid
+  departmentId          String?                          @db.Uuid
+  costCenterId          String?                          @db.Uuid
+  projectId             String?                          @db.Uuid
+  beneficiaryUserId     String?                          @db.Uuid
+  expenseRequestId      String?                          @db.Uuid
+  paymentRequestId      String?                          @db.Uuid
   disbursementRequests  NonSupplierDisbursementRequest[]
-  budgetCommitmentId    String?                  @db.Uuid
-  intendedBankAccountId String?                  @db.Uuid
-  approvalInstanceId    String?                  @unique @db.Uuid
-  requestedByUserId     String                   @db.Uuid
-  submittedByUserId     String?                  @db.Uuid
-  approvedByUserId      String?                  @db.Uuid
-  returnedByUserId      String?                  @db.Uuid
-  rejectedByUserId      String?                  @db.Uuid
-  cancelledByUserId     String?                  @db.Uuid
-  closedByUserId        String?                  @db.Uuid
+  budgetCommitmentId    String?                          @db.Uuid
+  intendedBankAccountId String?                          @db.Uuid
+  approvalInstanceId    String?                          @unique @db.Uuid
+  requestedByUserId     String                           @db.Uuid
+  submittedByUserId     String?                          @db.Uuid
+  approvedByUserId      String?                          @db.Uuid
+  returnedByUserId      String?                          @db.Uuid
+  rejectedByUserId      String?                          @db.Uuid
+  cancelledByUserId     String?                          @db.Uuid
+  closedByUserId        String?                          @db.Uuid
   submittedAt           DateTime?
   approvedAt            DateTime?
   returnedAt            DateTime?
@@ -4915,29 +5106,29 @@ model CashAdvanceRequest {
   evidenceReference     String?
   budgetSnapshot        Json?
   idempotencyKey        String?
-  version               Int                      @default(1)
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  tenant                Tenant                   @relation(fields: [tenantId], references: [id])
-  company               Company                  @relation(fields: [companyId], references: [id])
-  supplier              Supplier?                @relation(fields: [supplierId], references: [id])
-  brand                 Brand?                   @relation(fields: [brandId], references: [id])
-  location              Location                 @relation(fields: [locationId], references: [id])
-  department            Department?              @relation(fields: [departmentId], references: [id])
-  costCenter            CostCenter?              @relation(fields: [costCenterId], references: [id])
-  beneficiary           User?                    @relation("CashAdvanceBeneficiary", fields: [beneficiaryUserId], references: [id])
-  expenseRequest        ExpenseRequest?          @relation(fields: [expenseRequestId], references: [id])
-  paymentRequest        PaymentRequest?          @relation(fields: [paymentRequestId], references: [id])
-  budgetCommitment      BudgetCommitment?        @relation(fields: [budgetCommitmentId], references: [id])
-  intendedBankAccount   BankAccount?             @relation(fields: [intendedBankAccountId], references: [id])
-  approvalInstance      ApprovalInstance?        @relation(fields: [approvalInstanceId], references: [id])
-  requestedBy           User                     @relation("CashAdvanceRequester", fields: [requestedByUserId], references: [id])
-  submittedBy           User?                    @relation("CashAdvanceSubmitter", fields: [submittedByUserId], references: [id])
-  approvedBy            User?                    @relation("CashAdvanceApprover", fields: [approvedByUserId], references: [id])
-  returnedBy            User?                    @relation("CashAdvanceReturner", fields: [returnedByUserId], references: [id])
-  rejectedBy            User?                    @relation("CashAdvanceRejecter", fields: [rejectedByUserId], references: [id])
-  cancelledBy           User?                    @relation("CashAdvanceCanceller", fields: [cancelledByUserId], references: [id])
-  closedBy              User?                    @relation("CashAdvanceCloser", fields: [closedByUserId], references: [id])
+  version               Int                              @default(1)
+  createdAt             DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+  tenant                Tenant                           @relation(fields: [tenantId], references: [id])
+  company               Company                          @relation(fields: [companyId], references: [id])
+  supplier              Supplier?                        @relation(fields: [supplierId], references: [id])
+  brand                 Brand?                           @relation(fields: [brandId], references: [id])
+  location              Location                         @relation(fields: [locationId], references: [id])
+  department            Department?                      @relation(fields: [departmentId], references: [id])
+  costCenter            CostCenter?                      @relation(fields: [costCenterId], references: [id])
+  beneficiary           User?                            @relation("CashAdvanceBeneficiary", fields: [beneficiaryUserId], references: [id])
+  expenseRequest        ExpenseRequest?                  @relation(fields: [expenseRequestId], references: [id])
+  paymentRequest        PaymentRequest?                  @relation(fields: [paymentRequestId], references: [id])
+  budgetCommitment      BudgetCommitment?                @relation(fields: [budgetCommitmentId], references: [id])
+  intendedBankAccount   BankAccount?                     @relation(fields: [intendedBankAccountId], references: [id])
+  approvalInstance      ApprovalInstance?                @relation(fields: [approvalInstanceId], references: [id])
+  requestedBy           User                             @relation("CashAdvanceRequester", fields: [requestedByUserId], references: [id])
+  submittedBy           User?                            @relation("CashAdvanceSubmitter", fields: [submittedByUserId], references: [id])
+  approvedBy            User?                            @relation("CashAdvanceApprover", fields: [approvedByUserId], references: [id])
+  returnedBy            User?                            @relation("CashAdvanceReturner", fields: [returnedByUserId], references: [id])
+  rejectedBy            User?                            @relation("CashAdvanceRejecter", fields: [rejectedByUserId], references: [id])
+  cancelledBy           User?                            @relation("CashAdvanceCanceller", fields: [cancelledByUserId], references: [id])
+  closedBy              User?                            @relation("CashAdvanceCloser", fields: [closedByUserId], references: [id])
   movements             CashAdvanceMovement[]
   liquidations          CashAdvanceLiquidation[]
 
@@ -5124,59 +5315,59 @@ model PettyCashFund {
 
 model PettyCashRequest {
   id                   String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId           String                 @db.Uuid
-  companyId          String                 @db.Uuid
-  pettyCashFundId    String                 @db.Uuid
-  publicReference    String
-  requestType        PettyCashRequestType
-  status             PettyCashRequestStatus @default(DRAFT)
-  currencyCode       String                 @default("PHP")
-  requestedAmountPhp Decimal                @db.Decimal(18, 6)
-  approvedAmountPhp  Decimal                @default(0) @db.Decimal(18, 6)
-  purpose            String
-  justification      String
-  dueBy              DateTime?
-  requestedByUserId  String                 @db.Uuid
-  submittedByUserId  String?                @db.Uuid
-  approvedByUserId   String?                @db.Uuid
-  returnedByUserId   String?                @db.Uuid
-  rejectedByUserId   String?                @db.Uuid
-  cancelledByUserId  String?                @db.Uuid
-  closedByUserId     String?                @db.Uuid
-  submittedAt        DateTime?
-  approvedAt         DateTime?
-  returnedAt         DateTime?
-  rejectedAt         DateTime?
-  cancelledAt        DateTime?
-  closedAt           DateTime?
-  returnReason       String?
-  rejectionReason    String?
-  cancellationReason String?
-  closureNotes       String?
-  evidenceReference  String?
-  sourceDocumentType String?
-  sourceDocumentId   String?
-  sourceEventKey     String?
-  approvalInstanceId String?                @unique @db.Uuid
-  idempotencyKey     String?
-  metadata           Json?
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  tenant             Tenant                 @relation(fields: [tenantId], references: [id])
-  company            Company                @relation(fields: [companyId], references: [id])
-  fund               PettyCashFund          @relation(fields: [pettyCashFundId], references: [id])
-  requestedBy        User                   @relation("PettyCashRequestRequester", fields: [requestedByUserId], references: [id])
-  submittedBy        User?                  @relation("PettyCashRequestSubmitter", fields: [submittedByUserId], references: [id])
-  approvedBy         User?                  @relation("PettyCashRequestApprover", fields: [approvedByUserId], references: [id])
-  returnedBy         User?                  @relation("PettyCashRequestReturner", fields: [returnedByUserId], references: [id])
-  rejectedBy         User?                  @relation("PettyCashRequestRejecter", fields: [rejectedByUserId], references: [id])
-  cancelledBy        User?                  @relation("PettyCashRequestCanceller", fields: [cancelledByUserId], references: [id])
-  closedBy           User?                  @relation("PettyCashRequestCloser", fields: [closedByUserId], references: [id])
-  approvalInstance   ApprovalInstance?      @relation(fields: [approvalInstanceId], references: [id])
-  ledgerEntries      PettyCashLedgerEntry[]
+  tenantId             String                           @db.Uuid
+  companyId            String                           @db.Uuid
+  pettyCashFundId      String                           @db.Uuid
+  publicReference      String
+  requestType          PettyCashRequestType
+  status               PettyCashRequestStatus           @default(DRAFT)
+  currencyCode         String                           @default("PHP")
+  requestedAmountPhp   Decimal                          @db.Decimal(18, 6)
+  approvedAmountPhp    Decimal                          @default(0) @db.Decimal(18, 6)
+  purpose              String
+  justification        String
+  dueBy                DateTime?
+  requestedByUserId    String                           @db.Uuid
+  submittedByUserId    String?                          @db.Uuid
+  approvedByUserId     String?                          @db.Uuid
+  returnedByUserId     String?                          @db.Uuid
+  rejectedByUserId     String?                          @db.Uuid
+  cancelledByUserId    String?                          @db.Uuid
+  closedByUserId       String?                          @db.Uuid
+  submittedAt          DateTime?
+  approvedAt           DateTime?
+  returnedAt           DateTime?
+  rejectedAt           DateTime?
+  cancelledAt          DateTime?
+  closedAt             DateTime?
+  returnReason         String?
+  rejectionReason      String?
+  cancellationReason   String?
+  closureNotes         String?
+  evidenceReference    String?
+  sourceDocumentType   String?
+  sourceDocumentId     String?
+  sourceEventKey       String?
+  approvalInstanceId   String?                          @unique @db.Uuid
+  idempotencyKey       String?
+  metadata             Json?
+  createdAt            DateTime                         @default(now())
+  updatedAt            DateTime                         @updatedAt
+  tenant               Tenant                           @relation(fields: [tenantId], references: [id])
+  company              Company                          @relation(fields: [companyId], references: [id])
+  fund                 PettyCashFund                    @relation(fields: [pettyCashFundId], references: [id])
+  requestedBy          User                             @relation("PettyCashRequestRequester", fields: [requestedByUserId], references: [id])
+  submittedBy          User?                            @relation("PettyCashRequestSubmitter", fields: [submittedByUserId], references: [id])
+  approvedBy           User?                            @relation("PettyCashRequestApprover", fields: [approvedByUserId], references: [id])
+  returnedBy           User?                            @relation("PettyCashRequestReturner", fields: [returnedByUserId], references: [id])
+  rejectedBy           User?                            @relation("PettyCashRequestRejecter", fields: [rejectedByUserId], references: [id])
+  cancelledBy          User?                            @relation("PettyCashRequestCanceller", fields: [cancelledByUserId], references: [id])
+  closedBy             User?                            @relation("PettyCashRequestCloser", fields: [closedByUserId], references: [id])
+  approvalInstance     ApprovalInstance?                @relation(fields: [approvalInstanceId], references: [id])
+  ledgerEntries        PettyCashLedgerEntry[]
   disbursementRequests NonSupplierDisbursementRequest[]
-  location           Location?              @relation(fields: [locationId], references: [id])
-  locationId         String?                @db.Uuid
+  location             Location?                        @relation(fields: [locationId], references: [id])
+  locationId           String?                          @db.Uuid
 
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, idempotencyKey])
@@ -5581,18 +5772,18 @@ model FinancePayee {
 }
 
 model NonSupplierDisbursementRequest {
-  id                   String                     @id @default(uuid()) @db.Uuid
-  tenantId             String                     @db.Uuid
-  companyId            String                     @db.Uuid
-  locationId           String                     @db.Uuid
-  payeeId              String                     @db.Uuid
-  cashAdvanceRequestId String?                    @db.Uuid
-  pettyCashRequestId   String?                    @db.Uuid
+  id                   String                    @id @default(uuid()) @db.Uuid
+  tenantId             String                    @db.Uuid
+  companyId            String                    @db.Uuid
+  locationId           String                    @db.Uuid
+  payeeId              String                    @db.Uuid
+  cashAdvanceRequestId String?                   @db.Uuid
+  pettyCashRequestId   String?                   @db.Uuid
   publicReference      String
-  currencyCode         String                     @default("PHP")
-  amountPhp            Decimal                    @db.Decimal(18, 6)
-  status               DisbursementRequestStatus  @default(DRAFT)
-  sourceType           DisbursementSourceType     @default(MANUAL_CONTROL)
+  currencyCode         String                    @default("PHP")
+  amountPhp            Decimal                   @db.Decimal(18, 6)
+  status               DisbursementRequestStatus @default(DRAFT)
+  sourceType           DisbursementSourceType    @default(MANUAL_CONTROL)
   sourceEventKey       String
   requestReason        String
   evidenceReference    String?
@@ -5600,28 +5791,28 @@ model NonSupplierDisbursementRequest {
   rejectionReason      String?
   cancellationReason   String?
   idempotencyKey       String?
-  requestedByUserId    String                     @db.Uuid
-  submittedByUserId    String?                    @db.Uuid
-  approvedByUserId     String?                    @db.Uuid
-  rejectedByUserId     String?                    @db.Uuid
-  cancelledByUserId    String?                    @db.Uuid
+  requestedByUserId    String                    @db.Uuid
+  submittedByUserId    String?                   @db.Uuid
+  approvedByUserId     String?                   @db.Uuid
+  rejectedByUserId     String?                   @db.Uuid
+  cancelledByUserId    String?                   @db.Uuid
   submittedAt          DateTime?
   approvedAt           DateTime?
   rejectedAt           DateTime?
   cancelledAt          DateTime?
-  createdAt            DateTime                   @default(now())
-  updatedAt            DateTime                   @updatedAt
-  tenant               Tenant                     @relation(fields: [tenantId], references: [id])
-  company              Company                    @relation(fields: [companyId], references: [id])
-  location             Location                   @relation(fields: [locationId], references: [id])
-  payee                FinancePayee               @relation(fields: [payeeId], references: [id])
-  cashAdvanceRequest   CashAdvanceRequest?        @relation(fields: [cashAdvanceRequestId], references: [id])
-  pettyCashRequest     PettyCashRequest?          @relation(fields: [pettyCashRequestId], references: [id])
-  requestedBy          User                       @relation("DisbursementRequester", fields: [requestedByUserId], references: [id])
-  submittedBy          User?                      @relation("DisbursementSubmitter", fields: [submittedByUserId], references: [id])
-  approvedBy           User?                      @relation("DisbursementApprover", fields: [approvedByUserId], references: [id])
-  rejectedBy           User?                      @relation("DisbursementRejecter", fields: [rejectedByUserId], references: [id])
-  cancelledBy          User?                      @relation("DisbursementCanceller", fields: [cancelledByUserId], references: [id])
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  tenant               Tenant                    @relation(fields: [tenantId], references: [id])
+  company              Company                   @relation(fields: [companyId], references: [id])
+  location             Location                  @relation(fields: [locationId], references: [id])
+  payee                FinancePayee              @relation(fields: [payeeId], references: [id])
+  cashAdvanceRequest   CashAdvanceRequest?       @relation(fields: [cashAdvanceRequestId], references: [id])
+  pettyCashRequest     PettyCashRequest?         @relation(fields: [pettyCashRequestId], references: [id])
+  requestedBy          User                      @relation("DisbursementRequester", fields: [requestedByUserId], references: [id])
+  submittedBy          User?                     @relation("DisbursementSubmitter", fields: [submittedByUserId], references: [id])
+  approvedBy           User?                     @relation("DisbursementApprover", fields: [approvedByUserId], references: [id])
+  rejectedBy           User?                     @relation("DisbursementRejecter", fields: [rejectedByUserId], references: [id])
+  cancelledBy          User?                     @relation("DisbursementCanceller", fields: [cancelledByUserId], references: [id])
 
   @@unique([tenantId, companyId, publicReference], map: "NonSupplierDisbursementRequest_tenantId_companyId_publicReferen")
   @@unique([tenantId, companyId, sourceEventKey], map: "NonSupplierDisbursementRequest_tenantId_companyId_sourceEventKe")

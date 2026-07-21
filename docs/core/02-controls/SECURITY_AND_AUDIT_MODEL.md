@@ -86,14 +86,16 @@ These are configurable but should never be removed casually just to reduce click
 
 Minimum requirements:
 
-- Passwords are hashed with Argon2id or equivalent modern password hashing.
-- Secure, HttpOnly, SameSite cookies are used for browser sessions.
-- Session rotation occurs after authentication and privilege changes.
-- Rate limit login, password reset, upload intent, search, and public-facing endpoints.
-- MFA capability is tracked for privileged users through ERP-side verified evidence. Selected high-risk administrative/security actions and guarded operational posting/reversal actions can warn or hard-block when the actor lacks verified evidence, according to the company `security.privileged_mfa.enforcement_mode` policy. This guard does not replace external identity-provider MFA challenge enforcement.
-- Inactive sessions expire according to configurable policy.
-- User deactivation revokes active sessions promptly.
-- Sensitive role grants, high-risk scope grants, break-glass access, and other privilege changes refresh the target user's privilege epoch and create provider-neutral invalidation records for production identity-provider follow-up. Provider completion must be confirmed by a separate admin reviewer with external evidence.
+- Production uses tenant-qualified local identities under `DEC-0040`: organization login code, normalized email, and an Argon2id password credential. Demo email-only authentication is permitted only in isolated development/test and is rejected at production startup.
+- Browser sessions use high-entropy opaque tokens; only token hashes are stored in PostgreSQL. Cookies are HttpOnly, SameSite, host-only, and Secure in production, with explicit idle and absolute expiry.
+- Session rotation after runtime MFA or enrollment uses one compare-and-swap transaction with TOTP/recovery-code consumption and audit writes. It preserves the original absolute expiry; expired, locked, cross-tenant, inactive-user, and stale-privilege challenge sessions cannot become active. An explicit monotonic user privilege epoch invalidates stale sessions after role, scope, credential, MFA, user-status, or break-glass changes.
+- Password and MFA attempts are durably rate limited by tenant-qualified account and source-address digests with generic errors that do not disclose whether an account exists. Unknown-account password submissions still perform Argon2id verification against a dummy hash. Failed MFA attempts are audited without storing the submitted code and lock the short-lived challenge at the configured threshold.
+- Privileged local users must enroll an encrypted TOTP authenticator, retain individually hashed one-time recovery codes, complete runtime MFA during sign-in, and provide recent session-bound MFA assurance for guarded sensitive actions. The legacy `PrivilegedMfaEnrollment` register remains external-provider evidence only and cannot satisfy a local runtime challenge.
+- Existing-account password or lost-device recovery requires a reason, identity-verification evidence, a request by one administrator, approval or rejection by a different MFA-assured administrator, session revocation, and audit history. Direct self-request or self-review is blocked. Approval and rejection use status compare-and-swap; approval, optional MFA revocation, privilege-epoch/session invalidation, activation issuance, and audit writes commit together.
+- Activation and recovery links are sent directly through the configured SMTP transport to the target user's account email. Administrators never receive the raw link. Failed delivery is retained for MFA-guarded retry, and production startup fails closed when delivery configuration is incomplete.
+- AES-GCM protected TOTP values carry an explicit key version. A reviewed rotation may make the immediately previous key/version available temporarily while protected values are re-encrypted; unavailable versions fail closed. Activation/recovery bearer tokens are never reversibly stored.
+- Inactive sessions expire according to configurable idle and absolute limits. User deactivation and privilege changes revoke active application sessions transactionally; an external-provider follow-up record remains pending only when an external provider is configured.
+- Break-glass assignments carry the approved end time, and authorization ignores an expired assignment even if reconciliation has not yet updated the grant record.
 - Do not include sensitive role/scope assumptions exclusively in a browser token; validate server-side.
 
 ---

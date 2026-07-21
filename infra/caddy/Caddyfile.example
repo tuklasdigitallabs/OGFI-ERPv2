@@ -25,6 +25,7 @@
 
   reverse_proxy web:3000 {
     header_up X-Forwarded-Proto {scheme}
+    header_up X-Forwarded-For {remote_host}
     transport http {
       dial_timeout 10s
       response_header_timeout 60s

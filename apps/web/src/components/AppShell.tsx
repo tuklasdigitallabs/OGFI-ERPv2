@@ -2,7 +2,10 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Bell, LogOut, Search, ShieldCheck } from "lucide-react";
 import { Badge, Kicker } from "@ogfi/ui";
-import { ShellNavigation, type ShellActiveNav } from "@/components/ShellNavigation";
+import {
+  ShellNavigation,
+  type ShellActiveNav,
+} from "@/components/ShellNavigation";
 import { ThemeModeSelect } from "@/components/ThemeModeSelect";
 import {
   canReadPurchaseOrders,
@@ -23,9 +26,13 @@ import {
   canUseTransfers,
   canUseWastageReports,
   getDefaultAppRoute,
-  permissions
+  permissions,
 } from "@/server/services/authorization";
-import { getSessionContext, type SessionContext } from "@/server/services/context";
+import {
+  getSessionContext,
+  type SessionContext,
+} from "@/server/services/context";
+import { getAuthMode } from "@/server/services/authentication";
 
 async function switchLocationContext(formData: FormData) {
   "use server";
@@ -37,14 +44,15 @@ async function switchLocationContext(formData: FormData) {
 
   const requestedLocationId = String(formData.get("locationId") ?? "");
   const authorizedLocation = session.authorizedLocations.find(
-    (location) => location.locationId === requestedLocationId
+    (location) => location.locationId === requestedLocationId,
   );
-  const locationId = authorizedLocation?.locationId ?? session.context.locationId;
+  const locationId =
+    authorizedLocation?.locationId ?? session.context.locationId;
   const cookieStore = await cookies();
   cookieStore.set("ogfi_demo_location", locationId, {
     httpOnly: true,
     sameSite: "lax",
-    path: "/"
+    path: "/",
   });
 
   const headerStore = await headers();
@@ -60,7 +68,7 @@ export function AppShell({
   children,
   title = "Purchase Requests",
   subtitle = "Phase I Core Administration",
-  activeNav = "purchase-requests"
+  activeNav = "purchase-requests",
 }: {
   session: SessionContext;
   children: React.ReactNode;
@@ -69,30 +77,43 @@ export function AppShell({
   activeNav?: ShellActiveNav;
 }) {
   const canAdminister = session.permissionCodes.includes("core.administer");
-  const canManageQuotes = session.permissionCodes.includes(permissions.quoteManage);
-  const canAccessPurchaseRequests = canUsePurchaseRequests(session.permissionCodes);
+  const canManageQuotes = session.permissionCodes.includes(
+    permissions.quoteManage,
+  );
+  const canAccessPurchaseRequests = canUsePurchaseRequests(
+    session.permissionCodes,
+  );
   const canAccessApprovals = canUseApprovals(session.permissionCodes);
   const canViewPurchaseOrders = canReadPurchaseOrders(session.permissionCodes);
   const canAccessReceiving = canUseReceiving(session.permissionCodes);
   const canViewInventory = session.permissionCodes.includes(
-    permissions.inventoryBalanceView
+    permissions.inventoryBalanceView,
   );
   const canViewInventoryLedger = session.permissionCodes.includes(
-    permissions.inventoryLedgerView
+    permissions.inventoryLedgerView,
   );
   const canAccessTransfers = canUseTransfers(session.permissionCodes);
   const canAccessCounts = canUseStockCounts(session.permissionCodes);
   const canAccessWastage = canUseWastageReports(session.permissionCodes);
-  const canAccessStockAdjustments = canUseStockAdjustments(session.permissionCodes);
+  const canAccessStockAdjustments = canUseStockAdjustments(
+    session.permissionCodes,
+  );
   const canAccessProjects = canUseProjects(session.permissionCodes);
-  const canAccessProjectTemplates = canConfigureProjectTemplates(session.permissionCodes);
-  const canAccessRecipesAndCosting = canUseRecipesAndCosting(session.permissionCodes);
-  const canAccessBranchOperations = canUseBranchOperations(session.permissionCodes);
+  const canAccessProjectTemplates = canConfigureProjectTemplates(
+    session.permissionCodes,
+  );
+  const canAccessRecipesAndCosting = canUseRecipesAndCosting(
+    session.permissionCodes,
+  );
+  const canAccessBranchOperations = canUseBranchOperations(
+    session.permissionCodes,
+  );
   const canAccessFoodSafety = canUseFoodSafety(session.permissionCodes);
   const canAccessIncidents = canUseIncidents(session.permissionCodes);
   const canAccessMaintenance = canUseMaintenance(session.permissionCodes);
   const canAccessFinance = canUseFinance(session.permissionCodes);
   const canAccessWorkforce = canUseWorkforce(session.permissionCodes);
+  const usesLocalAuthentication = getAuthMode() === "local";
 
   return (
     <ShellNavigation
@@ -124,17 +145,28 @@ export function AppShell({
         <div className="mx-auto flex w-full max-w-none flex-col gap-4 px-4 py-5 md:flex-row md:items-center md:justify-between md:px-8">
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Badge tone="info" size="sm">{session.context.companyName}</Badge>
+              <Badge tone="info" size="sm">
+                {session.context.companyName}
+              </Badge>
               <Badge size="sm">{session.context.brandName}</Badge>
-              <Badge tone="success" size="sm">{session.context.locationType}</Badge>
+              <Badge tone="success" size="sm">
+                {session.context.locationType}
+              </Badge>
             </div>
-            <h1 className="page-title text-slate-950">
-              {title}
-            </h1>
+            <h1 className="page-title text-slate-950">{title}</h1>
             <p className="page-subtitle mt-1 max-w-2xl">{subtitle}</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <ThemeModeSelect />
+            {usesLocalAuthentication ? (
+              <a
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                href="/account/security"
+              >
+                <ShieldCheck aria-hidden="true" className="h-4 w-4" />
+                Security
+              </a>
+            ) : null}
             <div className="hidden h-10 min-w-56 items-center gap-2 rounded-[var(--radius-control)] border border-slate-200 bg-white/95 px-3 text-sm text-[var(--color-text-muted)] shadow-sm xl:flex">
               <Search aria-hidden="true" className="h-4 w-4 text-slate-400" />
               <span>Search records</span>
@@ -147,7 +179,10 @@ export function AppShell({
                 name="locationId"
               >
                 {session.authorizedLocations.map((location) => (
-                  <option key={location.scopeAssignmentId} value={location.locationId}>
+                  <option
+                    key={location.scopeAssignmentId}
+                    value={location.locationId}
+                  >
                     {location.locationName}
                   </option>
                 ))}
@@ -175,7 +210,10 @@ export function AppShell({
         </div>
         <div className="posting-context-bar flex flex-wrap items-center gap-3 px-4 py-3 md:px-8">
           <Kicker className="posting-context-kicker gap-1.5">
-            <ShieldCheck aria-hidden="true" className="h-3.5 w-3.5 text-blue-600" />
+            <ShieldCheck
+              aria-hidden="true"
+              className="h-3.5 w-3.5 text-blue-600"
+            />
             Posting context
           </Kicker>
           <span className="posting-context-location text-sm font-semibold">
@@ -186,7 +224,9 @@ export function AppShell({
           </span>
         </div>
       </header>
-      <main className="px-4 pb-44 pt-6 md:px-8 md:pb-40 md:pt-7">{children}</main>
+      <main className="px-4 pb-44 pt-6 md:px-8 md:pb-40 md:pt-7">
+        {children}
+      </main>
     </ShellNavigation>
   );
 }

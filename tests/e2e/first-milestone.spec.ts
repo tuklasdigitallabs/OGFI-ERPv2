@@ -491,6 +491,7 @@ test("first milestone purchase request path works end to end", async ({
   const itemCode = `ITEM-${itemStamp}`;
   const itemName = `${marker} Item`;
   await page.locator('a[href="/items?tab=categories"]').click();
+  await page.waitForURL(/\/items\?tab=categories$/);
   const categoryDialog = await openEntryDialog(page, "Create Category");
   await page.getByLabel("Category code").fill(categoryCode);
   await page.getByLabel("Category name").fill(`${marker} Category`);
@@ -499,6 +500,7 @@ test("first milestone purchase request path works end to end", async ({
   await categoryDialog.getByRole("button", { name: "Create Category", exact: true }).click();
   await expect(page.getByTestId("item-category-row").filter({ hasText: categoryCode })).toBeVisible();
   await page.locator('a[href="/items?tab=uoms"]').click();
+  await page.waitForURL(/\/items\?tab=uoms$/);
   const uomDialog = await openEntryDialog(page, "Create UOM");
   await page.getByLabel("UOM code").fill(uomCode);
   await page.getByLabel("UOM name").fill(`${marker} Unit`);
@@ -507,6 +509,7 @@ test("first milestone purchase request path works end to end", async ({
   await uomDialog.getByRole("button", { name: "Create UOM", exact: true }).click();
   await expect(page.getByTestId("uom-row").filter({ hasText: uomCode })).toBeVisible();
   await page.locator('a[href="/items?tab=items"]').click();
+  await page.waitForURL(/\/items\?tab=items$/);
   const itemDialog = await openEntryDialog(page, "Create Item");
   await page.getByLabel("Item code").fill(itemCode);
   await page.getByLabel("Item name").fill(itemName);
@@ -516,6 +519,7 @@ test("first milestone purchase request path works end to end", async ({
   await itemDialog.getByRole("button", { name: "Create Item", exact: true }).click();
   await expect(page.getByTestId("item-row").filter({ hasText: itemCode })).toBeVisible();
   await page.locator('a[href="/items?tab=conversions"]').click();
+  await page.waitForURL(/\/items\?tab=conversions$/);
   const conversionDialog = await openEntryDialog(page, "Create Conversion");
   await page.locator('select[name="itemId"]').selectOption({ label: itemName });
   await page.locator('select[name="fromUomId"]').selectOption({ label: `From ${uomCode}` });
@@ -608,6 +612,7 @@ test("first milestone purchase request path works end to end", async ({
     .click();
   await expect(page.getByTestId("item-row").filter({ hasText: itemCode }).getByText("INACTIVE")).toBeVisible();
   await page.locator('a[href="/items?tab=categories"]').click();
+  await page.waitForURL(/\/items\?tab=categories$/);
   const categoryRow = page.getByTestId("item-category-row").filter({ hasText: categoryCode });
   await categoryRow.locator("summary").click();
   await categoryRow.getByRole("button", { name: "Deactivate", exact: true }).click();
@@ -622,6 +627,7 @@ test("first milestone purchase request path works end to end", async ({
     page.getByTestId("item-category-row").filter({ hasText: categoryCode }).getByText("INACTIVE")
   ).toBeVisible();
   await page.locator('a[href="/items?tab=uoms"]').click();
+  await page.waitForURL(/\/items\?tab=uoms$/);
   const uomRow = page.getByTestId("uom-row").filter({ hasText: uomCode });
   await uomRow.locator("summary").click();
   await uomRow.getByRole("button", { name: "Deactivate", exact: true }).click();

@@ -380,10 +380,13 @@ export function getDefaultAppRoute(_permissionCodes: string[]) {
 }
 
 export async function getGrantedPermissionCodes(session: SessionContext) {
+  const now = new Date();
   const assignments = await prisma.userRoleAssignment.findMany({
     where: {
       userId: session.user.id,
       status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
       role: {
         status: "ACTIVE",
         OR: [{ tenantId: session.context.tenantId }, { tenantId: null }]

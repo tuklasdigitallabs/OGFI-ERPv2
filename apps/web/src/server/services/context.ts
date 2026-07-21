@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { prisma } from "@ogfi/database";
+import { getAuthMode, getValidatedSessionPrincipal } from "./authentication";
 
 export type DemoUser = {
   id: string;
@@ -29,6 +30,12 @@ export type SessionContext = {
   context: AuthorizedContext;
   authorizedLocations: AuthorizedLocationContext[];
   permissionCodes: string[];
+  authentication?: {
+    sessionId: string;
+    assuranceLevel: string;
+    mfaAuthenticatedAt: Date | null;
+    absoluteExpiresAt: Date;
+  };
 };
 
 const defaultRequesterEmail =
@@ -157,20 +164,28 @@ export async function getConfiguredContext(
   email = defaultRequesterEmail,
   selectedLocationId?: string,
   sessionIssuedAt?: string,
+  authenticatedUserId?: string,
 ): Promise<SessionContext> {
+  const now = new Date();
   const resolvedEmail = resolveDemoEmail(email);
   const seededUserId = resolveSeededDemoUserId(email);
   const user = await prisma.user.findFirst({
-    where: {
-      status: "ACTIVE",
-      OR: [
-        { email: resolvedEmail },
-        ...(seededUserId ? [{ id: seededUserId }] : []),
-      ],
-    },
+    where: authenticatedUserId
+      ? { id: authenticatedUserId, status: "ACTIVE" }
+      : {
+          status: "ACTIVE",
+          OR: [
+            { email: resolvedEmail },
+            ...(seededUserId ? [{ id: seededUserId }] : []),
+          ],
+        },
     include: {
       roleAssignments: {
-        where: { status: "ACTIVE" },
+        where: {
+          status: "ACTIVE",
+          startsAt: { lte: now },
+          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+        },
         include: {
           role: {
             include: {
@@ -187,6 +202,10 @@ export async function getConfiguredContext(
         where: {
           status: "ACTIVE",
           scopeType: "LOCATION",
+          AND: [
+            { startsAt: { lte: now } },
+            { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+          ],
         },
         orderBy: { startsAt: "asc" },
       },
@@ -278,6 +297,31 @@ export async function getConfiguredContext(
 
 export async function getSessionContext() {
   const cookieStore = await cookies();
+  if (getAuthMode() === "local") {
+    const principal = await getValidatedSessionPrincipal();
+    if (!principal) {
+      return null;
+    }
+    const selectedLocationId = cookieStore.get("ogfi_demo_location")?.value;
+    const session = await getConfiguredContext(
+      "",
+      selectedLocationId,
+      undefined,
+      principal.userId,
+    );
+    if (session.context.tenantId !== principal.tenantId) {
+      return null;
+    }
+    return {
+      ...session,
+      authentication: {
+        sessionId: principal.sessionId,
+        assuranceLevel: principal.assuranceLevel,
+        mfaAuthenticatedAt: principal.mfaAuthenticatedAt,
+        absoluteExpiresAt: principal.absoluteExpiresAt,
+      },
+    };
+  }
   const signedInEmail = cookieStore.get("ogfi_demo_session")?.value;
   const sessionIssuedAt = cookieStore.get("ogfi_demo_session_issued_at")?.value;
   const selectedLocationId = cookieStore.get("ogfi_demo_location")?.value;

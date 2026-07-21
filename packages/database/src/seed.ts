@@ -152,33 +152,22 @@ const ids = {
   financePaymentReleasePermissionId: "00000000-0000-4000-8000-000000000132",
   paymentReleaseApprovalRuleId: "00000000-0000-4000-8000-000000000934",
   paymentReleaseApprovalRuleStepId: "00000000-0000-4000-8000-000000000935",
-  financeCashDepositCreatePermissionId:
-    "00000000-0000-4000-8000-000000000175",
-  financeReconciliationViewPermissionId:
-    "00000000-0000-4000-8000-000000000133",
+  financeCashDepositCreatePermissionId: "00000000-0000-4000-8000-000000000175",
+  financeReconciliationViewPermissionId: "00000000-0000-4000-8000-000000000133",
   financeReconciliationMatchPermissionId:
     "00000000-0000-4000-8000-000000000176",
-  financePeriodCloseManagePermissionId:
-    "00000000-0000-4000-8000-000000000134",
-  financeJournalCreatePermissionId:
-    "00000000-0000-4000-8000-000000000135",
-  financeJournalSubmitPermissionId:
-    "00000000-0000-4000-8000-000000000136",
-  financeJournalApprovePermissionId:
-    "00000000-0000-4000-8000-000000000137",
+  financePeriodCloseManagePermissionId: "00000000-0000-4000-8000-000000000134",
+  financeJournalCreatePermissionId: "00000000-0000-4000-8000-000000000135",
+  financeJournalSubmitPermissionId: "00000000-0000-4000-8000-000000000136",
+  financeJournalApprovePermissionId: "00000000-0000-4000-8000-000000000137",
   financeJournalPostPermissionId: "00000000-0000-4000-8000-000000000138",
-  financeJournalReversePermissionId:
-    "00000000-0000-4000-8000-000000000139",
-  financeApInvoiceCreatePermissionId:
-    "00000000-0000-4000-8000-000000000140",
-  financeApInvoiceSubmitPermissionId:
-    "00000000-0000-4000-8000-000000000141",
-  financeApInvoiceMatchPermissionId:
-    "00000000-0000-4000-8000-000000000142",
+  financeJournalReversePermissionId: "00000000-0000-4000-8000-000000000139",
+  financeApInvoiceCreatePermissionId: "00000000-0000-4000-8000-000000000140",
+  financeApInvoiceSubmitPermissionId: "00000000-0000-4000-8000-000000000141",
+  financeApInvoiceMatchPermissionId: "00000000-0000-4000-8000-000000000142",
   financeApInvoiceReviewExceptionPermissionId:
     "00000000-0000-4000-8000-000000000143",
-  financeApInvoiceCancelPermissionId:
-    "00000000-0000-4000-8000-000000000144",
+  financeApInvoiceCancelPermissionId: "00000000-0000-4000-8000-000000000144",
   workforceViewPermissionId: "00000000-0000-4000-8000-000000000145",
   workforceManagePermissionId: "00000000-0000-4000-8000-000000000146",
   workforceLeaveApprovePermissionId: "00000000-0000-4000-8000-000000000147",
@@ -200,8 +189,7 @@ const ids = {
   budgetRevisionApprovalRuleStepId: "00000000-0000-4000-8000-000000000925",
   expenseRequestApprovalRuleId: "00000000-0000-4000-8000-000000000926",
   expenseRequestApprovalRuleStepId: "00000000-0000-4000-8000-000000000927",
-  financeExpenseRequestViewPermissionId:
-    "00000000-0000-4000-8000-000000000153",
+  financeExpenseRequestViewPermissionId: "00000000-0000-4000-8000-000000000153",
   financeExpenseRequestCreatePermissionId:
     "00000000-0000-4000-8000-000000000154",
   financeExpenseRequestSubmitPermissionId:
@@ -210,32 +198,22 @@ const ids = {
     "00000000-0000-4000-8000-000000000156",
   financeExpenseRequestCompletePermissionId:
     "00000000-0000-4000-8000-000000000157",
-  financeCashAdvanceViewPermissionId:
-    "00000000-0000-4000-8000-000000000158",
-  financeCashAdvanceCreatePermissionId:
-    "00000000-0000-4000-8000-000000000159",
-  financeCashAdvanceSubmitPermissionId:
-    "00000000-0000-4000-8000-000000000160",
-  financeCashAdvanceApprovePermissionId:
-    "00000000-0000-4000-8000-000000000161",
+  financeCashAdvanceViewPermissionId: "00000000-0000-4000-8000-000000000158",
+  financeCashAdvanceCreatePermissionId: "00000000-0000-4000-8000-000000000159",
+  financeCashAdvanceSubmitPermissionId: "00000000-0000-4000-8000-000000000160",
+  financeCashAdvanceApprovePermissionId: "00000000-0000-4000-8000-000000000161",
   financeCashAdvanceLiquidatePermissionId:
     "00000000-0000-4000-8000-000000000162",
   financeCashAdvanceReviewLiquidationPermissionId:
     "00000000-0000-4000-8000-000000000163",
   cashAdvanceApprovalRuleId: "00000000-0000-4000-8000-000000000928",
   cashAdvanceApprovalRuleStepId: "00000000-0000-4000-8000-000000000929",
-  financePettyCashViewPermissionId:
-    "00000000-0000-4000-8000-000000000164",
-  financePettyCashCreatePermissionId:
-    "00000000-0000-4000-8000-000000000165",
-  financePettyCashSubmitPermissionId:
-    "00000000-0000-4000-8000-000000000166",
-  financePettyCashApprovePermissionId:
-    "00000000-0000-4000-8000-000000000167",
-  financePettyCashReplenishPermissionId:
-    "00000000-0000-4000-8000-000000000168",
-  financePettyCashLiquidatePermissionId:
-    "00000000-0000-4000-8000-000000000169",
+  financePettyCashViewPermissionId: "00000000-0000-4000-8000-000000000164",
+  financePettyCashCreatePermissionId: "00000000-0000-4000-8000-000000000165",
+  financePettyCashSubmitPermissionId: "00000000-0000-4000-8000-000000000166",
+  financePettyCashApprovePermissionId: "00000000-0000-4000-8000-000000000167",
+  financePettyCashReplenishPermissionId: "00000000-0000-4000-8000-000000000168",
+  financePettyCashLiquidatePermissionId: "00000000-0000-4000-8000-000000000169",
   financePettyCashReviewLiquidationPermissionId:
     "00000000-0000-4000-8000-000000000170",
   pettyCashApprovalRuleId: "00000000-0000-4000-8000-000000000930",
@@ -380,7 +358,8 @@ const dec0036CompanyPolicyDefaults = [
       },
       CASH: {
         executionEvidenceRequired: true,
-        evidenceLabel: "Cash disbursement voucher and recipient acknowledgement",
+        evidenceLabel:
+          "Cash disbursement voucher and recipient acknowledgement",
       },
       MANUAL_REFERENCE: {
         executionEvidenceRequired: true,
@@ -1159,8 +1138,15 @@ async function seedBudgetControlDemoData() {
     },
     select: { id: true, code: true },
   });
-  const accountByCode = new Map(accounts.map((account) => [account.code, account.id]));
-  if (!fiscalYear || !period || !accountByCode.has("5000") || !accountByCode.has("6000")) {
+  const accountByCode = new Map(
+    accounts.map((account) => [account.code, account.id]),
+  );
+  if (
+    !fiscalYear ||
+    !period ||
+    !accountByCode.has("5000") ||
+    !accountByCode.has("6000")
+  ) {
     return;
   }
 
@@ -1215,7 +1201,8 @@ async function seedBudgetControlDemoData() {
                 accountId: foodCostAccountId,
                 amountSide: "DEBIT",
                 amountPhp: 165000,
-                lineDescription: "Demo posted food cost actual for July budget monitoring",
+                lineDescription:
+                  "Demo posted food cost actual for July budget monitoring",
                 brandId: ids.brandId,
                 locationId: ids.locationId,
               },
@@ -1226,7 +1213,8 @@ async function seedBudgetControlDemoData() {
                 accountId: payableAccountId,
                 amountSide: "CREDIT",
                 amountPhp: 165000,
-                lineDescription: "Demo payable offset for July food cost actual",
+                lineDescription:
+                  "Demo payable offset for July food cost actual",
                 brandId: ids.brandId,
                 locationId: ids.locationId,
               },
@@ -1424,7 +1412,8 @@ async function seedBudgetControlDemoData() {
       sourceEventKey: "demo:budget-commitment:po:food-cost:2026-07",
       sourceReference: "PO-2026-YL-FOOD-001",
       amount: 385000,
-      summary: "Approved beef, rice, sauce, and kimchi replenishment for SM North Edsa.",
+      summary:
+        "Approved beef, rice, sauce, and kimchi replenishment for SM North Edsa.",
     },
     {
       lineCode: "PACKAGING",
@@ -1434,7 +1423,8 @@ async function seedBudgetControlDemoData() {
       sourceEventKey: "demo:budget-commitment:po:packaging:2026-07",
       sourceReference: "PO-2026-YL-PACK-001",
       amount: 76000,
-      summary: "Approved trays, sauce cups, and takeaway packaging replenishment.",
+      summary:
+        "Approved trays, sauce cups, and takeaway packaging replenishment.",
     },
     {
       lineCode: "REPAIRS",
@@ -1521,7 +1511,7 @@ async function seedExpenseRequestDemoData() {
     select: { id: true, code: true },
   });
   const budgetLineByCode = new Map(
-    budgetLines.map((line) => [line.code, line.id])
+    budgetLines.map((line) => [line.code, line.id]),
   );
 
   const demoRequests = [
@@ -2160,7 +2150,8 @@ async function seedPettyCashDemoData() {
       currencyCode: "PHP",
       requestedAmountPhp: 10000,
       approvedAmountPhp: 10000,
-      purpose: "Restore branch petty cash float after approved incidental expenses.",
+      purpose:
+        "Restore branch petty cash float after approved incidental expenses.",
       justification:
         "Fund fell below target after sanitation and guest recovery incidental purchases.",
       dueBy: new Date("2026-07-06T00:00:00.000Z"),
@@ -2889,7 +2880,8 @@ async function seedApInvoiceDemoData() {
       requestedAmount: 13440,
       invoiceTotalSnapshot: 13440,
       invoiceOutstandingSnapshot: 13440,
-      notes: "Demo request line; cash/bank release is intentionally not created.",
+      notes:
+        "Demo request line; cash/bank release is intentionally not created.",
       createdByUserId: ids.adminUserId,
     },
   });
@@ -3832,9 +3824,7 @@ async function seedWorkforceDemoData() {
         provider: "One Gourmet Training Team",
         completedAt: new Date("2026-06-15T00:00:00.000Z"),
         validUntil: new Date(
-          index === 2
-            ? "2026-07-01T00:00:00.000Z"
-            : "2027-06-15T00:00:00.000Z",
+          index === 2 ? "2026-07-01T00:00:00.000Z" : "2027-06-15T00:00:00.000Z",
         ),
         status: index === 2 ? "EXPIRED" : "COMPLETED",
         requiredForScope: true,
@@ -3844,9 +3834,7 @@ async function seedWorkforceDemoData() {
         trainingName: "Food Safety and Grill Handling",
         status: index === 2 ? "EXPIRED" : "COMPLETED",
         validUntil: new Date(
-          index === 2
-            ? "2026-07-01T00:00:00.000Z"
-            : "2027-06-15T00:00:00.000Z",
+          index === 2 ? "2026-07-01T00:00:00.000Z" : "2027-06-15T00:00:00.000Z",
         ),
         requiredForScope: true,
         updatedByUserId: ids.adminUserId,
@@ -3866,9 +3854,7 @@ async function seedWorkforceDemoData() {
         status: index === 5 ? "EXPIRED" : "ACTIVE",
         issuedAt: new Date("2026-01-10T00:00:00.000Z"),
         expiryAt: new Date(
-          index === 5
-            ? "2026-07-01T00:00:00.000Z"
-            : "2027-01-10T00:00:00.000Z",
+          index === 5 ? "2026-07-01T00:00:00.000Z" : "2027-01-10T00:00:00.000Z",
         ),
         issuedBy: "City Health Office",
         isMandatoryForRole: true,
@@ -3879,9 +3865,7 @@ async function seedWorkforceDemoData() {
       update: {
         status: index === 5 ? "EXPIRED" : "ACTIVE",
         expiryAt: new Date(
-          index === 5
-            ? "2026-07-01T00:00:00.000Z"
-            : "2027-01-10T00:00:00.000Z",
+          index === 5 ? "2026-07-01T00:00:00.000Z" : "2027-01-10T00:00:00.000Z",
         ),
         isMandatoryForRole: true,
         updatedByUserId: ids.adminUserId,
@@ -3897,8 +3881,21 @@ async function seedProjectMigrationRehearsalData() {
   const attachmentId = "10000000-0000-4000-8000-000000009004";
   const projectAttachmentId = "10000000-0000-4000-8000-000000009005";
   const recordLinkId = "10000000-0000-4000-8000-000000009006";
-  const department = await prisma.department.findFirstOrThrow({
-    where: { tenantId: ids.tenantId, companyId: ids.companyId },
+  const department = await prisma.department.upsert({
+    where: {
+      companyId_code: {
+        companyId: ids.companyId,
+        code: "OPERATIONS",
+      },
+    },
+    create: {
+      id: "10000000-0000-4000-8000-000000009008",
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      code: "OPERATIONS",
+      name: "Operations",
+    },
+    update: { status: "ACTIVE" },
     select: { id: true },
   });
   const costCenter = await prisma.costCenter.upsert({
@@ -3987,7 +3984,8 @@ async function seedProjectMigrationRehearsalData() {
       code: "MIGRATION-SAFETY-EVIDENCE",
       label: "Scoped migration evidence",
       evidenceType: "DATABASE_REHEARSAL",
-      evidenceNote: "Fixture proves composite project and task scope survives upgrade.",
+      evidenceNote:
+        "Fixture proves composite project and task scope survives upgrade.",
       ownerUserId: ids.adminUserId,
       reviewerUserId: ids.approverUserId,
       status: "SUBMITTED",
@@ -4143,76 +4141,160 @@ async function existingRolePermissionRows(
 }
 
 async function resetDemoData() {
-  await prisma.attendanceImportLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.attendanceImportBatch.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.workforceScheduleLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.workforceSchedule.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.employeeComplianceDocument.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.employeeTrainingRecord.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.employeeOvertimeRecord.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.employeeLeaveRequest.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.employeeAssignment.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.attendanceImportLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.attendanceImportBatch.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.workforceScheduleLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.workforceSchedule.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.employeeComplianceDocument.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.employeeTrainingRecord.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.employeeOvertimeRecord.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.employeeLeaveRequest.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.employeeAssignment.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.employee.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.paymentReleaseExecution.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.paymentReleaseAllocation.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.paymentRelease.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.paymentReleaseExecution.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.paymentReleaseAllocation.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.paymentRelease.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.bankReconciliationMatch.deleteMany({
     where: { companyId: ids.companyId },
   });
-  await prisma.bankReconciliation.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.bankStatementLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.bankStatement.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.branchCashDeposit.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.bankReconciliation.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.bankStatementLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.bankStatement.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.branchCashDeposit.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.bankAccount.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.paymentRequestLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.paymentRequest.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.paymentRequestLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.paymentRequest.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.apInvoiceDuplicateSignal.deleteMany({
     where: { companyId: ids.companyId },
   });
-  await prisma.apInvoiceException.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.apInvoiceMatchResult.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.apInvoiceLine.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.apInvoiceException.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.apInvoiceMatchResult.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.apInvoiceLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.apInvoice.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.expenseRequestSourceLink.deleteMany({
     where: { companyId: ids.companyId },
   });
-  await prisma.expenseRequestLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.expenseRequest.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.budgetCommitment.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.budgetRevision.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.expenseRequestLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.expenseRequest.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.budgetCommitment.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.budgetRevision.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.budgetLine.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.budget.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.financeJournalPostingAttempt.deleteMany({
     where: { companyId: ids.companyId },
   });
-  await prisma.financeJournalLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.financeJournal.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.financeJournalLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.financeJournal.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.financePostingRuleDimensionRequirement.deleteMany({
     where: { companyId: ids.companyId },
   });
   await prisma.financePostingRuleAccountMap.deleteMany({
     where: { companyId: ids.companyId },
   });
-  await prisma.financePostingRule.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.chartOfAccount.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.financeAccountClass.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.accountingPeriod.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.financePostingRule.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.chartOfAccount.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.financeAccountClass.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.accountingPeriod.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.fiscalYear.deleteMany({ where: { companyId: ids.companyId } });
 
-  await prisma.projectRecordLink.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.projectRecordLink.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.projectRisk.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectBlocker.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectAttachment.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectRequirement.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectComment.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectTaskChecklistItem.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectTaskAssignee.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectMilestone.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectActivityEvent.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.projectBlocker.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.projectAttachment.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.projectRequirement.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.projectComment.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.projectTaskChecklistItem.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.projectTaskAssignee.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.projectMilestone.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.projectActivityEvent.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.projectTask.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectMember.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.projectMember.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.project.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectTemplate.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.projectTemplate.deleteMany({
+    where: { companyId: ids.companyId },
+  });
 
   await prisma.branchOperationalChecklistLine.deleteMany({
     where: { companyId: ids.companyId },
@@ -4241,16 +4323,22 @@ async function resetDemoData() {
   });
   await prisma.menuItem.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.recipeLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.recipeVersion.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.recipeVersion.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.recipe.deleteMany({ where: { companyId: ids.companyId } });
 
   await prisma.approvalInstanceStep.deleteMany({
     where: { approvalInstance: { companyId: ids.companyId } },
   });
-  await prisma.approvalInstance.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.approvalInstance.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.notification.deleteMany({ where: { companyId: ids.companyId } });
 
-  await prisma.goodsReceiptLine.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.goodsReceiptLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.goodsReceipt.deleteMany({ where: { companyId: ids.companyId } });
   await prisma.inventoryTransferReceiptLine.deleteMany({
     where: { companyId: ids.companyId },
@@ -4258,39 +4346,79 @@ async function resetDemoData() {
   await prisma.inventoryTransferReceipt.deleteMany({
     where: { companyId: ids.companyId },
   });
-  await prisma.inventoryTransferLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.inventoryTransfer.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.inventoryTransferLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.inventoryTransfer.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.wastageLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.wastageReport.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.stockAdjustmentLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.stockAdjustment.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.stockCountLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.stockCountSession.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.inventoryMovement.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.inventoryBalance.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.wastageReport.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.stockAdjustmentLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.stockAdjustment.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.stockCountLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.stockCountSession.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.inventoryMovement.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.inventoryBalance.deleteMany({
+    where: { companyId: ids.companyId },
+  });
 
   await prisma.purchaseOrderBalanceClosure.deleteMany({
     where: { companyId: ids.companyId },
   });
-  await prisma.purchaseOrderAmendment.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.purchaseOrderLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.purchaseOrder.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.quotationRecommendation.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.purchaseOrderAmendment.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.purchaseOrderLine.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.purchaseOrder.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.quotationRecommendation.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.supplierQuotationLine.deleteMany({
     where: { supplierQuotation: { companyId: ids.companyId } },
   });
-  await prisma.supplierQuotation.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.quotationRequest.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.purchaseRequestComment.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.supplierQuotation.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.quotationRequest.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.purchaseRequestComment.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.purchaseRequestLine.deleteMany({
     where: { purchaseRequest: { companyId: ids.companyId } },
   });
-  await prisma.purchaseRequest.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.purchaseRequest.deleteMany({
+    where: { companyId: ids.companyId },
+  });
 
   await prisma.auditEvent.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.operationalReasonCode.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.supplierPriceHistory.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.supplierItemLink.deleteMany({ where: { companyId: ids.companyId } });
+  await prisma.operationalReasonCode.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.supplierPriceHistory.deleteMany({
+    where: { companyId: ids.companyId },
+  });
+  await prisma.supplierItemLink.deleteMany({
+    where: { companyId: ids.companyId },
+  });
   await prisma.supplierContact.deleteMany({
     where: { supplier: { companyId: ids.companyId } },
   });
@@ -4312,7 +4440,8 @@ async function seedOperationalReasonCodes() {
       appliesTo: "OPENING_BALANCE",
       requiresEvidence: true,
       sortOrder: 10,
-      notes: "Initial stock entry supported by signed count sheet or import file.",
+      notes:
+        "Initial stock entry supported by signed count sheet or import file.",
     },
     {
       workflow: "STOCK_ADJUSTMENT",
@@ -4558,7 +4687,9 @@ async function seedRestaurantDemoCatalog() {
       photo: false,
     },
   ];
-  const categoryByCode = new Map<string, string>([[ "PRODUCE-FRESH", ids.itemCategoryId ]]);
+  const categoryByCode = new Map<string, string>([
+    ["PRODUCE-FRESH", ids.itemCategoryId],
+  ]);
 
   for (const category of categories) {
     const record = await prisma.itemCategory.upsert({
@@ -4748,7 +4879,9 @@ async function seedRestaurantDemoCatalog() {
       },
     },
   ];
-  const supplierByCode = new Map<string, string>([[ "FRESHFARM-MNL", ids.supplierId ]]);
+  const supplierByCode = new Map<string, string>([
+    ["FRESHFARM-MNL", ids.supplierId],
+  ]);
 
   for (const [index, supplier] of suppliers.entries()) {
     const record = await prisma.supplier.upsert({
@@ -5382,38 +5515,52 @@ async function seedRestaurantDemoCatalog() {
         itemCode: item.code,
         itemName: item.name,
         itemCategoryId: categoryByCode.get(item.category)!,
-        itemType: item.category === "MENU-ITEMS" ? "menu_placeholder" : "inventory",
+        itemType:
+          item.category === "MENU-ITEMS" ? "menu_placeholder" : "inventory",
         baseUomId: uomByCode.get(item.baseUom)!,
         purchaseUomId: uomByCode.get(item.purchaseUom)!,
         issueUomId: uomByCode.get(item.issueUom)!,
         trackInventory: item.trackInventory ?? true,
         trackExpiry:
           (item.trackInventory ?? true) &&
-          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(item.category),
+          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(
+            item.category,
+          ),
         trackLot:
           (item.trackInventory ?? true) &&
-          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(item.category),
+          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(
+            item.category,
+          ),
         requiresReceivingInspection:
           (item.trackInventory ?? true) &&
-          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(item.category),
+          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(
+            item.category,
+          ),
       },
       update: {
         itemName: item.name,
         itemCategoryId: categoryByCode.get(item.category)!,
-        itemType: item.category === "MENU-ITEMS" ? "menu_placeholder" : "inventory",
+        itemType:
+          item.category === "MENU-ITEMS" ? "menu_placeholder" : "inventory",
         baseUomId: uomByCode.get(item.baseUom)!,
         purchaseUomId: uomByCode.get(item.purchaseUom)!,
         issueUomId: uomByCode.get(item.issueUom)!,
         trackInventory: item.trackInventory ?? true,
         trackExpiry:
           (item.trackInventory ?? true) &&
-          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(item.category),
+          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(
+            item.category,
+          ),
         trackLot:
           (item.trackInventory ?? true) &&
-          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(item.category),
+          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(
+            item.category,
+          ),
         requiresReceivingInspection:
           (item.trackInventory ?? true) &&
-          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(item.category),
+          !["PACKAGING", "GRILL-SUPPLIES", "MENU-ITEMS"].includes(
+            item.category,
+          ),
         status: "ACTIVE",
       },
     });
@@ -5525,11 +5672,36 @@ async function seedPhase2RecipeDemoData() {
       price: 399,
       targetFoodCostPercent: 34,
       lines: [
-        { itemCode: "BEEF-KARUBI-SHORTPLATE-KG", quantity: 0.12, uomCode: "KG", note: "120g sliced karubi" },
-        { itemCode: "JAPANESE-RICE-25KG", quantity: 0.18, uomCode: "KG", note: "Cooked rice portion equivalent" },
-        { itemCode: "YAKINIKU-TARE-L", quantity: 0.045, uomCode: "L", note: "House tare serving" },
-        { itemCode: "KIMCHI-KG", quantity: 0.055, uomCode: "KG", note: "Side dish" },
-        { itemCode: "LETTUCE-GREEN-KG", quantity: 0.035, uomCode: "KG", note: "Garnish" },
+        {
+          itemCode: "BEEF-KARUBI-SHORTPLATE-KG",
+          quantity: 0.12,
+          uomCode: "KG",
+          note: "120g sliced karubi",
+        },
+        {
+          itemCode: "JAPANESE-RICE-25KG",
+          quantity: 0.18,
+          uomCode: "KG",
+          note: "Cooked rice portion equivalent",
+        },
+        {
+          itemCode: "YAKINIKU-TARE-L",
+          quantity: 0.045,
+          uomCode: "L",
+          note: "House tare serving",
+        },
+        {
+          itemCode: "KIMCHI-KG",
+          quantity: 0.055,
+          uomCode: "KG",
+          note: "Side dish",
+        },
+        {
+          itemCode: "LETTUCE-GREEN-KG",
+          quantity: 0.035,
+          uomCode: "KG",
+          note: "Garnish",
+        },
       ],
     },
     {
@@ -5540,11 +5712,36 @@ async function seedPhase2RecipeDemoData() {
       price: 549,
       targetFoodCostPercent: 36,
       lines: [
-        { itemCode: "BEEF-HARAMI-SKIRT-KG", quantity: 0.08, uomCode: "KG", note: "80g harami" },
-        { itemCode: "BEEF-KARUBI-SHORTPLATE-KG", quantity: 0.08, uomCode: "KG", note: "80g karubi" },
-        { itemCode: "JAPANESE-RICE-25KG", quantity: 0.18, uomCode: "KG", note: "Cooked rice portion equivalent" },
-        { itemCode: "GARLIC-SOY-SAUCE-L", quantity: 0.035, uomCode: "L", note: "Garlic soy serving" },
-        { itemCode: "KIMCHI-KG", quantity: 0.055, uomCode: "KG", note: "Side dish" },
+        {
+          itemCode: "BEEF-HARAMI-SKIRT-KG",
+          quantity: 0.08,
+          uomCode: "KG",
+          note: "80g harami",
+        },
+        {
+          itemCode: "BEEF-KARUBI-SHORTPLATE-KG",
+          quantity: 0.08,
+          uomCode: "KG",
+          note: "80g karubi",
+        },
+        {
+          itemCode: "JAPANESE-RICE-25KG",
+          quantity: 0.18,
+          uomCode: "KG",
+          note: "Cooked rice portion equivalent",
+        },
+        {
+          itemCode: "GARLIC-SOY-SAUCE-L",
+          quantity: 0.035,
+          uomCode: "L",
+          note: "Garlic soy serving",
+        },
+        {
+          itemCode: "KIMCHI-KG",
+          quantity: 0.055,
+          uomCode: "KG",
+          note: "Side dish",
+        },
       ],
     },
     {
@@ -5555,11 +5752,36 @@ async function seedPhase2RecipeDemoData() {
       price: 799,
       targetFoodCostPercent: 38,
       lines: [
-        { itemCode: "BEEF-WAGYU-CUBES-KG", quantity: 0.14, uomCode: "KG", note: "140g saikoro cubes" },
-        { itemCode: "JAPANESE-RICE-25KG", quantity: 0.18, uomCode: "KG", note: "Cooked rice portion equivalent" },
-        { itemCode: "YAKINIKU-TARE-L", quantity: 0.04, uomCode: "L", note: "House tare serving" },
-        { itemCode: "SESAME-OIL-L", quantity: 0.01, uomCode: "L", note: "Finishing oil" },
-        { itemCode: "ONION-WHITE-KG", quantity: 0.04, uomCode: "KG", note: "Grill vegetable" },
+        {
+          itemCode: "BEEF-WAGYU-CUBES-KG",
+          quantity: 0.14,
+          uomCode: "KG",
+          note: "140g saikoro cubes",
+        },
+        {
+          itemCode: "JAPANESE-RICE-25KG",
+          quantity: 0.18,
+          uomCode: "KG",
+          note: "Cooked rice portion equivalent",
+        },
+        {
+          itemCode: "YAKINIKU-TARE-L",
+          quantity: 0.04,
+          uomCode: "L",
+          note: "House tare serving",
+        },
+        {
+          itemCode: "SESAME-OIL-L",
+          quantity: 0.01,
+          uomCode: "L",
+          note: "Finishing oil",
+        },
+        {
+          itemCode: "ONION-WHITE-KG",
+          quantity: 0.04,
+          uomCode: "KG",
+          note: "Grill vegetable",
+        },
       ],
     },
     {
@@ -5570,11 +5792,36 @@ async function seedPhase2RecipeDemoData() {
       price: 699,
       targetFoodCostPercent: 37,
       lines: [
-        { itemCode: "BEEF-TONGUE-US-KG", quantity: 0.11, uomCode: "KG", note: "110g beef tongue" },
-        { itemCode: "JAPANESE-RICE-25KG", quantity: 0.18, uomCode: "KG", note: "Cooked rice portion equivalent" },
-        { itemCode: "GARLIC-SOY-SAUCE-L", quantity: 0.035, uomCode: "L", note: "Garlic soy serving" },
-        { itemCode: "SPRING-ONION-BUNCH", quantity: 0.15, uomCode: "BUNCH", note: "Negi garnish equivalent" },
-        { itemCode: "KIMCHI-KG", quantity: 0.055, uomCode: "KG", note: "Side dish" },
+        {
+          itemCode: "BEEF-TONGUE-US-KG",
+          quantity: 0.11,
+          uomCode: "KG",
+          note: "110g beef tongue",
+        },
+        {
+          itemCode: "JAPANESE-RICE-25KG",
+          quantity: 0.18,
+          uomCode: "KG",
+          note: "Cooked rice portion equivalent",
+        },
+        {
+          itemCode: "GARLIC-SOY-SAUCE-L",
+          quantity: 0.035,
+          uomCode: "L",
+          note: "Garlic soy serving",
+        },
+        {
+          itemCode: "SPRING-ONION-BUNCH",
+          quantity: 0.15,
+          uomCode: "BUNCH",
+          note: "Negi garnish equivalent",
+        },
+        {
+          itemCode: "KIMCHI-KG",
+          quantity: 0.055,
+          uomCode: "KG",
+          note: "Side dish",
+        },
       ],
     },
     {
@@ -5585,11 +5832,36 @@ async function seedPhase2RecipeDemoData() {
       price: 349,
       targetFoodCostPercent: 32,
       lines: [
-        { itemCode: "PORK-BELLY-YAKINIKU-KG", quantity: 0.14, uomCode: "KG", note: "140g pork belly" },
-        { itemCode: "JAPANESE-RICE-25KG", quantity: 0.18, uomCode: "KG", note: "Cooked rice portion equivalent" },
-        { itemCode: "YAKINIKU-TARE-L", quantity: 0.04, uomCode: "L", note: "House tare serving" },
-        { itemCode: "LETTUCE-GREEN-KG", quantity: 0.04, uomCode: "KG", note: "Garnish" },
-        { itemCode: "KIMCHI-KG", quantity: 0.055, uomCode: "KG", note: "Side dish" },
+        {
+          itemCode: "PORK-BELLY-YAKINIKU-KG",
+          quantity: 0.14,
+          uomCode: "KG",
+          note: "140g pork belly",
+        },
+        {
+          itemCode: "JAPANESE-RICE-25KG",
+          quantity: 0.18,
+          uomCode: "KG",
+          note: "Cooked rice portion equivalent",
+        },
+        {
+          itemCode: "YAKINIKU-TARE-L",
+          quantity: 0.04,
+          uomCode: "L",
+          note: "House tare serving",
+        },
+        {
+          itemCode: "LETTUCE-GREEN-KG",
+          quantity: 0.04,
+          uomCode: "KG",
+          note: "Garnish",
+        },
+        {
+          itemCode: "KIMCHI-KG",
+          quantity: 0.055,
+          uomCode: "KG",
+          note: "Side dish",
+        },
       ],
     },
   ];
@@ -5794,7 +6066,9 @@ async function seedPhase2SalesImportDemoData() {
       }
       const price = priceByMenuItemId.get(menuItemId) ?? 0;
       const grossSalesAmount = Number((line.quantity * price).toFixed(2));
-      const netSalesAmount = Number((grossSalesAmount - line.discount).toFixed(2));
+      const netSalesAmount = Number(
+        (grossSalesAmount - line.discount).toFixed(2),
+      );
       return {
         ...line,
         menuItemId,
@@ -5879,17 +6153,20 @@ async function seedPhase2BranchOperationsDemoData() {
     {
       area: "Opening Readiness",
       checkName: "Gas, grill, and exhaust safety check",
-      expectedResult: "Grills preheated, gas valves inspected, and exhaust running.",
+      expectedResult:
+        "Grills preheated, gas valves inspected, and exhaust running.",
     },
     {
       area: "Opening Readiness",
       checkName: "Cold holding temperatures verified",
-      expectedResult: "Chillers and freezers are within configured food-safety range.",
+      expectedResult:
+        "Chillers and freezers are within configured food-safety range.",
     },
     {
       area: "Cashier and POS",
       checkName: "POS terminal and cash float ready",
-      expectedResult: "POS online, printer tested, and beginning cash float confirmed.",
+      expectedResult:
+        "POS online, printer tested, and beginning cash float confirmed.",
     },
     {
       area: "Dining Room",
@@ -5899,7 +6176,8 @@ async function seedPhase2BranchOperationsDemoData() {
     {
       area: "Closing Controls",
       checkName: "End-of-day cleaning and waste segregation",
-      expectedResult: "Stations cleaned, waste segregated, and closing checklist signed.",
+      expectedResult:
+        "Stations cleaned, waste segregated, and closing checklist signed.",
     },
   ];
   const demoSessions = [
@@ -6460,7 +6738,9 @@ async function seedOpeningInventoryBalances() {
       id: {
         in: [
           ids.warehouseInventoryLocationId,
-          ...demoBranchLocations.map((location) => location.inventoryLocationId),
+          ...demoBranchLocations.map(
+            (location) => location.inventoryLocationId,
+          ),
         ],
       },
       companyId: ids.companyId,
@@ -6529,7 +6809,8 @@ async function seedOpeningInventoryBalances() {
   let sequence = 1;
 
   for (const inventoryLocation of inventoryLocations) {
-    const isWarehouse = inventoryLocation.id === ids.warehouseInventoryLocationId;
+    const isWarehouse =
+      inventoryLocation.id === ids.warehouseInventoryLocationId;
     const branchMultiplier = isWarehouse ? 5 : 1;
 
     for (const item of items) {
@@ -6549,21 +6830,21 @@ async function seedOpeningInventoryBalances() {
         lotNumber && expiryDate
           ? `${lotNumber}|${expiryDate.toISOString().slice(0, 10)}`
           : "NOLOT|NOEXP";
-      const sourceDocumentId = `10000000-0000-4000-8001-${String(sequence).padStart(
-        12,
-        "0",
-      )}`;
+      const sourceDocumentId = `10000000-0000-4000-8001-${String(
+        sequence,
+      ).padStart(12, "0")}`;
       const sourceEventKey = `opening:${inventoryLocation.id}:${item.id}`;
 
       await prisma.inventoryMovement.upsert({
         where: {
-          tenantId_companyId_sourceDocumentType_sourceDocumentId_sourceEventKey: {
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            sourceDocumentType: "DEMO_OPENING_BALANCE",
-            sourceDocumentId,
-            sourceEventKey,
-          },
+          tenantId_companyId_sourceDocumentType_sourceDocumentId_sourceEventKey:
+            {
+              tenantId: ids.tenantId,
+              companyId: ids.companyId,
+              sourceDocumentType: "DEMO_OPENING_BALANCE",
+              sourceDocumentId,
+              sourceEventKey,
+            },
         },
         create: {
           tenantId: ids.tenantId,
@@ -6583,7 +6864,8 @@ async function seedOpeningInventoryBalances() {
           sourceEventKey,
           reasonCode: "OPENING_BALANCE",
           notes: `Demo opening balance for ${
-            locationByInventoryId.get(inventoryLocation.id)?.code ?? "inventory location"
+            locationByInventoryId.get(inventoryLocation.id)?.code ??
+            "inventory location"
           }.`,
           postedByUserId: ids.adminUserId,
         },
@@ -6595,7 +6877,8 @@ async function seedOpeningInventoryBalances() {
           expiryDate,
           reasonCode: "OPENING_BALANCE",
           notes: `Demo opening balance for ${
-            locationByInventoryId.get(inventoryLocation.id)?.code ?? "inventory location"
+            locationByInventoryId.get(inventoryLocation.id)?.code ??
+            "inventory location"
           }.`,
         },
       });
@@ -6638,38 +6921,102 @@ async function seedPhase2ActualConsumptionDemoData() {
       inventoryLocationId: ids.inventoryLocationId,
       locationLabel: "SM North EDSA",
       lines: [
-        { itemCode: "BEEF-KARUBI-SHORTPLATE-KG", quantity: 12.8, movementType: "WASTAGE_OUT" },
-        { itemCode: "BEEF-HARAMI-SKIRT-KG", quantity: 5.4, movementType: "WASTAGE_OUT" },
-        { itemCode: "BEEF-TONGUE-US-KG", quantity: 2.6, movementType: "ADJUSTMENT_OUT" },
-        { itemCode: "PORK-BELLY-YAKINIKU-KG", quantity: 7.5, movementType: "COUNT_VARIANCE_OUT" },
-        { itemCode: "YAKINIKU-TARE-L", quantity: 6.2, movementType: "WASTAGE_OUT" },
+        {
+          itemCode: "BEEF-KARUBI-SHORTPLATE-KG",
+          quantity: 12.8,
+          movementType: "WASTAGE_OUT",
+        },
+        {
+          itemCode: "BEEF-HARAMI-SKIRT-KG",
+          quantity: 5.4,
+          movementType: "WASTAGE_OUT",
+        },
+        {
+          itemCode: "BEEF-TONGUE-US-KG",
+          quantity: 2.6,
+          movementType: "ADJUSTMENT_OUT",
+        },
+        {
+          itemCode: "PORK-BELLY-YAKINIKU-KG",
+          quantity: 7.5,
+          movementType: "COUNT_VARIANCE_OUT",
+        },
+        {
+          itemCode: "YAKINIKU-TARE-L",
+          quantity: 6.2,
+          movementType: "WASTAGE_OUT",
+        },
       ],
     },
     {
       inventoryLocationId: "10000000-0000-4000-8000-000000000701",
       locationLabel: "SM Mall of Asia",
       lines: [
-        { itemCode: "BEEF-KARUBI-SHORTPLATE-KG", quantity: 15.1, movementType: "WASTAGE_OUT" },
-        { itemCode: "BEEF-HARAMI-SKIRT-KG", quantity: 6.7, movementType: "WASTAGE_OUT" },
-        { itemCode: "BEEF-WAGYU-CUBES-KG", quantity: 2.2, movementType: "ADJUSTMENT_OUT" },
-        { itemCode: "PORK-BELLY-YAKINIKU-KG", quantity: 6.4, movementType: "COUNT_VARIANCE_OUT" },
-        { itemCode: "YAKINIKU-TARE-L", quantity: 7.1, movementType: "WASTAGE_OUT" },
+        {
+          itemCode: "BEEF-KARUBI-SHORTPLATE-KG",
+          quantity: 15.1,
+          movementType: "WASTAGE_OUT",
+        },
+        {
+          itemCode: "BEEF-HARAMI-SKIRT-KG",
+          quantity: 6.7,
+          movementType: "WASTAGE_OUT",
+        },
+        {
+          itemCode: "BEEF-WAGYU-CUBES-KG",
+          quantity: 2.2,
+          movementType: "ADJUSTMENT_OUT",
+        },
+        {
+          itemCode: "PORK-BELLY-YAKINIKU-KG",
+          quantity: 6.4,
+          movementType: "COUNT_VARIANCE_OUT",
+        },
+        {
+          itemCode: "YAKINIKU-TARE-L",
+          quantity: 7.1,
+          movementType: "WASTAGE_OUT",
+        },
       ],
     },
     {
       inventoryLocationId: "10000000-0000-4000-8000-000000000702",
       locationLabel: "SM Mega Mall",
       lines: [
-        { itemCode: "BEEF-KARUBI-SHORTPLATE-KG", quantity: 13.8, movementType: "WASTAGE_OUT" },
-        { itemCode: "BEEF-HARAMI-SKIRT-KG", quantity: 6.1, movementType: "WASTAGE_OUT" },
-        { itemCode: "BEEF-TONGUE-US-KG", quantity: 3.1, movementType: "ADJUSTMENT_OUT" },
-        { itemCode: "PORK-BELLY-YAKINIKU-KG", quantity: 8.3, movementType: "COUNT_VARIANCE_OUT" },
-        { itemCode: "YAKINIKU-TARE-L", quantity: 6.8, movementType: "WASTAGE_OUT" },
+        {
+          itemCode: "BEEF-KARUBI-SHORTPLATE-KG",
+          quantity: 13.8,
+          movementType: "WASTAGE_OUT",
+        },
+        {
+          itemCode: "BEEF-HARAMI-SKIRT-KG",
+          quantity: 6.1,
+          movementType: "WASTAGE_OUT",
+        },
+        {
+          itemCode: "BEEF-TONGUE-US-KG",
+          quantity: 3.1,
+          movementType: "ADJUSTMENT_OUT",
+        },
+        {
+          itemCode: "PORK-BELLY-YAKINIKU-KG",
+          quantity: 8.3,
+          movementType: "COUNT_VARIANCE_OUT",
+        },
+        {
+          itemCode: "YAKINIKU-TARE-L",
+          quantity: 6.8,
+          movementType: "WASTAGE_OUT",
+        },
       ],
     },
   ];
   const itemCodes = Array.from(
-    new Set(branchConsumptions.flatMap((branch) => branch.lines.map((line) => line.itemCode))),
+    new Set(
+      branchConsumptions.flatMap((branch) =>
+        branch.lines.map((line) => line.itemCode),
+      ),
+    ),
   );
   const items = await prisma.item.findMany({
     where: {
@@ -6710,21 +7057,21 @@ async function seedPhase2ActualConsumptionDemoData() {
       });
       const unitCost = unitPriceByItemId.get(item.id) ?? 0;
       const totalCost = Number((line.quantity * unitCost).toFixed(2));
-      const sourceDocumentId = `22000000-0000-4000-8000-${String(sequence).padStart(
-        12,
-        "0",
-      )}`;
+      const sourceDocumentId = `22000000-0000-4000-8000-${String(
+        sequence,
+      ).padStart(12, "0")}`;
       const sourceEventKey = `phase2_actual:${branch.inventoryLocationId}:${item.id}:${line.movementType}`;
 
       await prisma.inventoryMovement.upsert({
         where: {
-          tenantId_companyId_sourceDocumentType_sourceDocumentId_sourceEventKey: {
-            tenantId: ids.tenantId,
-            companyId: ids.companyId,
-            sourceDocumentType: "DEMO_PHASE2_ACTUAL_CONSUMPTION",
-            sourceDocumentId,
-            sourceEventKey,
-          },
+          tenantId_companyId_sourceDocumentType_sourceDocumentId_sourceEventKey:
+            {
+              tenantId: ids.tenantId,
+              companyId: ids.companyId,
+              sourceDocumentType: "DEMO_PHASE2_ACTUAL_CONSUMPTION",
+              sourceDocumentId,
+              sourceEventKey,
+            },
         },
         create: {
           id: `22000000-0000-4000-8001-${String(sequence).padStart(12, "0")}`,
@@ -6732,7 +7079,10 @@ async function seedPhase2ActualConsumptionDemoData() {
           companyId: ids.companyId,
           inventoryLocationId: branch.inventoryLocationId,
           itemId: item.id,
-          movementType: line.movementType as "WASTAGE_OUT" | "ADJUSTMENT_OUT" | "COUNT_VARIANCE_OUT",
+          movementType: line.movementType as
+            | "WASTAGE_OUT"
+            | "ADJUSTMENT_OUT"
+            | "COUNT_VARIANCE_OUT",
           occurredAt: new Date("2026-07-02T14:30:00.000Z"),
           enteredQuantity: line.quantity,
           enteredUomId: item.baseUomId,
@@ -6765,7 +7115,9 @@ async function seedPhase2ActualConsumptionDemoData() {
       if (balance) {
         await prisma.inventoryBalance.update({
           where: { id: balance.id },
-          data: { qtyOnHand: Math.max(0, Number(balance.qtyOnHand) - line.quantity) },
+          data: {
+            qtyOnHand: Math.max(0, Number(balance.qtyOnHand) - line.quantity),
+          },
         });
       }
       sequence += 1;
@@ -6774,11 +7126,14 @@ async function seedPhase2ActualConsumptionDemoData() {
 }
 
 async function main() {
-  const tenantName = process.env.DEMO_TENANT_NAME ?? "One Gourmet Restaurant Group";
+  const tenantName =
+    process.env.DEMO_TENANT_NAME ?? "One Gourmet Restaurant Group";
   const companyName = process.env.DEMO_COMPANY_NAME ?? "One Gourmet Foods Inc.";
   const brandName = process.env.DEMO_BRAND_NAME ?? "Yakiniku Like";
   const locationName =
-    process.env.DEMO_LOCATION_NAME ?? demoBranchLocations[0]?.name ?? "Yakiniku Like";
+    process.env.DEMO_LOCATION_NAME ??
+    demoBranchLocations[0]?.name ??
+    "Yakiniku Like";
   const userEmail =
     process.env.DEMO_USER_EMAIL ?? "storekeeper.bgc@ogfi.example";
   const approverEmail =
@@ -6790,7 +7145,9 @@ async function main() {
 
   if (shouldResetDemoData) {
     await resetDemoData();
-    console.log("Cleared local demo operational, project, supplier, and item data.");
+    console.log(
+      "Cleared local demo operational, project, supplier, and item data.",
+    );
   }
 
   await prisma.tenant.upsert({
@@ -6798,10 +7155,12 @@ async function main() {
     create: {
       id: ids.tenantId,
       name: tenantName,
+      loginCode: process.env.DEMO_TENANT_LOGIN_CODE ?? "ogfi",
       defaultTimezone: "Asia/Manila",
     },
     update: {
       name: tenantName,
+      loginCode: process.env.DEMO_TENANT_LOGIN_CODE ?? "ogfi",
     },
   });
 
@@ -9359,20 +9718,22 @@ async function main() {
         scopeId: ids.companyId,
         accessLevel: "MANAGE",
       },
-      ...[ids.adminUserId, ids.secondaryAdminUserId, ids.superUserId].flatMap((userId) => [
-        ...demoBranchLocations.map((branch) => ({
-          userId,
-          scopeType: "LOCATION" as const,
-          scopeId: branch.id,
-          accessLevel: "MANAGE" as const,
-        })),
-        {
-          userId,
-          scopeType: "LOCATION" as const,
-          scopeId: ids.warehouseLocationId,
-          accessLevel: "MANAGE" as const,
-        },
-      ]),
+      ...[ids.adminUserId, ids.secondaryAdminUserId, ids.superUserId].flatMap(
+        (userId) => [
+          ...demoBranchLocations.map((branch) => ({
+            userId,
+            scopeType: "LOCATION" as const,
+            scopeId: branch.id,
+            accessLevel: "MANAGE" as const,
+          })),
+          {
+            userId,
+            scopeType: "LOCATION" as const,
+            scopeId: ids.warehouseLocationId,
+            accessLevel: "MANAGE" as const,
+          },
+        ],
+      ),
     ],
   });
 

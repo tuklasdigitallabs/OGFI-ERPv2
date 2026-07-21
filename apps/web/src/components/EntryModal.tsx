@@ -22,6 +22,7 @@ export function EntryModal({
   children
 }: EntryModalProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const titleId = useId();
@@ -33,6 +34,11 @@ export function EntryModal({
     /\btext-(?:black|white|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:-\d{2,3})?\b/.test(
       triggerClassName ?? ""
     );
+  const triggerDisabled = disabled || !isHydrated;
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   const closeModal = useCallback(() => {
     if (isSubmitting) {
@@ -109,11 +115,11 @@ export function EntryModal({
             "inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",
             !triggerHasCustomBackground && "bg-blue-600 hover:bg-blue-700",
             !triggerHasCustomTextColor && "text-white",
-            disabled && "cursor-not-allowed opacity-50 hover:bg-blue-600",
+            triggerDisabled && "cursor-not-allowed opacity-50 hover:bg-blue-600",
             triggerClassName
           )}
           type="button"
-          disabled={disabled}
+          disabled={triggerDisabled}
           onClick={() => setIsOpen(true)}
         >
           {triggerLabel}

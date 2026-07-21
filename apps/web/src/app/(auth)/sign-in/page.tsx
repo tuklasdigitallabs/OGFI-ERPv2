@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { KeyRound, LogIn, UserRound } from "lucide-react";
 import { ButtonLink, Panel } from "@ogfi/ui";
@@ -9,17 +10,51 @@ import {
 } from "@/server/services/actionFeedback";
 import { getDefaultAppRoute } from "@/server/services/authorization";
 import { getConfiguredContext } from "@/server/services/context";
+import {
+  assertTrustedServerActionOrigin,
+  authenticatePassword,
+  getAuthMode
+} from "@/server/services/authentication";
 
 export const dynamic = "force-dynamic";
 
 async function signIn(formData: FormData) {
   "use server";
+  await assertTrustedServerActionOrigin();
 
   const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
   if (!email) {
     redirect(actionErrorRedirectPath("/sign-in", "AUTH_REQUIRED"));
+  }
+
+  if (getAuthMode() === "local") {
+    const requestHeaders = await headers();
+    let nextPath: string;
+    try {
+      nextPath = await authenticatePassword({
+        tenantCode: String(formData.get("tenantCode") ?? ""),
+        identifier: email,
+        password: String(formData.get("password") ?? ""),
+        fingerprint: {
+          sourceAddress:
+            requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+            "unknown",
+          userAgent: requestHeaders.get("user-agent") ?? "unknown"
+        }
+      });
+    } catch (error) {
+      const code =
+        error instanceof Error &&
+        ["LOGIN_TEMPORARILY_THROTTLED", "LOGIN_CREDENTIALS_INVALID"].includes(
+          error.message
+        )
+          ? error.message
+          : "LOGIN_CREDENTIALS_INVALID";
+      redirect(actionErrorRedirectPath("/sign-in", code));
+    }
+    redirect(nextPath);
   }
 
   let session: Awaited<ReturnType<typeof getConfiguredContext>>;
@@ -48,6 +83,7 @@ export default async function SignInPage({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const authMode = getAuthMode();
   const requesterEmail =
     process.env.DEMO_USER_EMAIL ?? "storekeeper.bgc@ogfi.example";
   const approverEmail =
@@ -55,7 +91,8 @@ export default async function SignInPage({
   const adminEmail = process.env.DEMO_ADMIN_EMAIL ?? "erp.admin@ogfi.example";
   const superUserEmail =
     process.env.DEMO_SUPER_USER_EMAIL ?? "super.admin@ogfi.example";
-  const configured = await getConfiguredContext(requesterEmail);
+  const configured =
+    authMode === "demo" ? await getConfiguredContext(requesterEmail) : null;
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
   const sampleAccounts = [
@@ -91,24 +128,49 @@ export default async function SignInPage({
         <div className="space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">Sign in</h1>
           <p className="text-sm text-slate-600">
-            Enter the account email. Role access is loaded from the user
-            account.
+            {authMode === "local"
+              ? "Enter your organization code, email, and password. Privileged accounts will also verify an authenticator code."
+              : "Enter the demo account email. Role access is loaded from the seeded user account."}
           </p>
         </div>
         <form action={signIn} className="mt-6 grid gap-3">
+          {authMode === "local" ? (
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              Organization code
+              <input
+                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                name="tenantCode"
+                autoComplete="organization"
+                required
+              />
+            </label>
+          ) : null}
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Email
             <span className="relative">
               <UserRound aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-10 py-2 text-sm"
-                defaultValue={configured.user.email}
+                defaultValue={configured?.user.email ?? ""}
                 name="email"
                 type="email"
+                autoComplete="username"
                 required
               />
             </span>
           </label>
+          {authMode === "local" ? (
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              Password
+              <input
+                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
+            </label>
+          ) : null}
           <button
             className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
             type="submit"
@@ -117,7 +179,7 @@ export default async function SignInPage({
             Sign in
           </button>
         </form>
-        <div className="my-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+        {authMode === "demo" ? <><div className="my-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
           <span className="h-px flex-1 bg-slate-200" />
           Demo access
           <span className="h-px flex-1 bg-slate-200" />
@@ -139,11 +201,11 @@ export default async function SignInPage({
           <div>
             <dt className="font-medium text-slate-700">Authorized context</dt>
             <dd className="text-slate-600">
-              {configured.context.companyName} / {configured.context.brandName}{" "}
-              / {configured.context.locationName}
+              {configured?.context.companyName} / {configured?.context.brandName}{" "}
+              / {configured?.context.locationName}
             </dd>
           </div>
-        </dl>
+        </dl></> : null}
         <ButtonLink
           href="/"
           className="mt-3 w-full rounded-xl bg-slate-700 hover:bg-slate-800"

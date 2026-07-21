@@ -138,6 +138,7 @@ async function createBreakGlassAssignment(
     targetUserId: string;
     locationId: string;
     accessLevel: z.infer<typeof accessLevelSchema>;
+    requestedUntil: Date;
   }
 ) {
   const assignment = await tx.userScopeAssignment.create({
@@ -145,7 +146,9 @@ async function createBreakGlassAssignment(
       userId: input.targetUserId,
       scopeType: "LOCATION",
       scopeId: input.locationId,
-      accessLevel: input.accessLevel
+      accessLevel: input.accessLevel,
+      startsAt: new Date(),
+      endsAt: input.requestedUntil
     }
   });
   await touchUserPrivilegeEpoch(tx, input.targetUserId);
@@ -396,7 +399,8 @@ export async function approveBreakGlassAccess(formData: FormData) {
     const assignment = await createBreakGlassAssignment(tx, {
       targetUserId: grant.targetUserId,
       locationId: grant.locationId,
-      accessLevel: grant.accessLevel
+      accessLevel: grant.accessLevel,
+      requestedUntil: grant.requestedUntil
     });
     await tx.breakGlassAccessGrant.update({
       where: { id: grant.id },

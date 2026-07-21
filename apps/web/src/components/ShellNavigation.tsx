@@ -32,7 +32,7 @@ import {
   UsersRound,
   Utensils,
   WalletCards,
-  type LucideIcon
+  type LucideIcon,
 } from "lucide-react";
 import type { SessionContext } from "@/server/services/context";
 
@@ -97,6 +97,7 @@ export type ShellActiveNav =
   | "admin-break-glass"
   | "admin-mfa"
   | "admin-session-invalidation"
+  | "admin-authentication"
   | "admin";
 
 export type NavSection = {
@@ -140,7 +141,7 @@ export function getNavigationSections(
   canUseIncidents = false,
   canUseMaintenance = false,
   canUseFinance = false,
-  canUseWorkforce = false
+  canUseWorkforce = false,
 ): NavSection[] {
   const procurementItems: NavSection["items"] = [
     canViewPurchaseOrders
@@ -149,18 +150,28 @@ export function getNavigationSections(
           href: "/purchase-orders",
           activeKey: "purchase-orders",
           badge: "Draft",
-          icon: ShoppingCart
+          icon: ShoppingCart,
         }
-      : { label: "Purchase Orders", badge: "PO", icon: ShoppingCart, disabled: true },
+      : {
+          label: "Purchase Orders",
+          badge: "PO",
+          icon: ShoppingCart,
+          disabled: true,
+        },
     canUseReceiving
       ? {
           label: "Receiving",
           href: "/receiving",
           activeKey: "receiving",
           badge: "GRN",
-          icon: PackageCheck
+          icon: PackageCheck,
         }
-      : { label: "Receiving", badge: "GRN", icon: PackageCheck, disabled: true }
+      : {
+          label: "Receiving",
+          badge: "GRN",
+          icon: PackageCheck,
+          disabled: true,
+        },
   ];
 
   return [
@@ -174,9 +185,9 @@ export function getNavigationSections(
           href: "/dashboard",
           activeKey: "dashboard",
           badge: "Preview",
-          icon: LayoutDashboard
-        }
-      ]
+          icon: LayoutDashboard,
+        },
+      ],
     },
     {
       id: "operations",
@@ -190,8 +201,8 @@ export function getNavigationSections(
                 href: "/purchase-requests",
                 activeKey: "purchase-requests" as const,
                 badge: "PR",
-                icon: FileText
-              }
+                icon: FileText,
+              },
             ]
           : []),
         ...(canUseApprovals
@@ -201,8 +212,8 @@ export function getNavigationSections(
                 href: "/approvals",
                 activeKey: "approvals" as const,
                 badge: "Live",
-                icon: ClipboardCheck
-              }
+                icon: ClipboardCheck,
+              },
             ]
           : []),
         ...(canManageQuotes
@@ -212,8 +223,8 @@ export function getNavigationSections(
                 href: "/quotes",
                 activeKey: "quotes" as const,
                 badge: "Quote",
-                icon: ReceiptText
-              }
+                icon: ReceiptText,
+              },
             ]
           : []),
         ...(canAdminister
@@ -223,18 +234,18 @@ export function getNavigationSections(
                 href: "/suppliers",
                 activeKey: "suppliers" as const,
                 badge: "Master",
-                icon: Truck
+                icon: Truck,
               },
               {
                 label: "Items",
                 href: "/items",
                 activeKey: "items" as const,
                 badge: "Master",
-                icon: PackageSearch
-              }
+                icon: PackageSearch,
+              },
             ]
-          : [])
-      ]
+          : []),
+      ],
     },
     ...(canAdminister || canViewPurchaseOrders || canUseReceiving
       ? [
@@ -242,8 +253,8 @@ export function getNavigationSections(
             id: "procurement",
             label: "Procurement",
             icon: ReceiptText,
-            items: procurementItems
-          }
+            items: procurementItems,
+          },
         ]
       : []),
     ...(canAdminister ||
@@ -265,13 +276,13 @@ export function getNavigationSections(
                     href: "/inventory",
                     activeKey: "inventory" as const,
                     badge: "Live",
-                    icon: Boxes
+                    icon: Boxes,
                   }
                 : {
                     label: "Stock Balances",
                     badge: "Live",
                     icon: Boxes,
-                    disabled: true
+                    disabled: true,
                   },
               canUseTransfers
                 ? {
@@ -279,22 +290,27 @@ export function getNavigationSections(
                     href: "/transfers",
                     activeKey: "transfers" as const,
                     badge: "Req",
-                    icon: Truck
+                    icon: Truck,
                   }
-                : { label: "Transfers", badge: "Move", icon: Truck, disabled: true },
+                : {
+                    label: "Transfers",
+                    badge: "Move",
+                    icon: Truck,
+                    disabled: true,
+                  },
               canViewInventoryLedger
                 ? {
                     label: "Movement Ledger",
                     href: "/inventory/ledger",
                     activeKey: "inventory-ledger" as const,
                     badge: "Audit",
-                    icon: ClipboardList
+                    icon: ClipboardList,
                   }
                 : {
                     label: "Movement Ledger",
                     badge: "Audit",
                     icon: ClipboardList,
-                    disabled: true
+                    disabled: true,
                   },
               canUseCounts
                 ? {
@@ -302,13 +318,13 @@ export function getNavigationSections(
                     href: "/counts",
                     activeKey: "counts" as const,
                     badge: "Count",
-                    icon: ClipboardCheck
+                    icon: ClipboardCheck,
                   }
                 : {
                     label: "Stock Counts",
                     badge: "Count",
                     icon: ClipboardCheck,
-                    disabled: true
+                    disabled: true,
                   },
               canUseWastage
                 ? {
@@ -316,19 +332,29 @@ export function getNavigationSections(
                     href: "/wastage",
                     activeKey: "wastage" as const,
                     badge: "Loss",
-                    icon: RotateCw
+                    icon: RotateCw,
                   }
-                : { label: "Wastage", badge: "Loss", icon: RotateCw, disabled: true },
+                : {
+                    label: "Wastage",
+                    badge: "Loss",
+                    icon: RotateCw,
+                    disabled: true,
+                  },
               canUseStockAdjustments
                 ? {
                     label: "Adjustments",
                     href: "/adjustments",
                     activeKey: "adjustments" as const,
                     badge: "Adj",
-                    icon: Boxes
+                    icon: Boxes,
                   }
-                : { label: "Adjustments", badge: "Adj", icon: Boxes, disabled: true }
-            ]
+                : {
+                    label: "Adjustments",
+                    badge: "Adj",
+                    icon: Boxes,
+                    disabled: true,
+                  },
+            ],
           },
         ]
       : []),
@@ -344,16 +370,16 @@ export function getNavigationSections(
                 href: "/reports",
                 activeKey: "reports" as const,
                 badge: "CSV",
-                icon: BarChart3
+                icon: BarChart3,
               },
               {
                 label: "Notifications",
                 href: "/notifications",
                 activeKey: "notifications" as const,
                 badge: "Alert",
-                icon: Bell
-              }
-            ]
+                icon: Bell,
+              },
+            ],
           },
         ]
       : []),
@@ -370,13 +396,13 @@ export function getNavigationSections(
                     href: "/projects",
                     activeKey: "projects" as const,
                     badge: "Live",
-                    icon: ClipboardList
+                    icon: ClipboardList,
                   }
                 : {
                     label: "Projects Tracker",
                     badge: "Preview",
                     icon: ClipboardList,
-                    disabled: true
+                    disabled: true,
                   },
               ...(canUseProjectTemplates
                 ? [
@@ -385,8 +411,8 @@ export function getNavigationSections(
                       href: "/project-templates",
                       activeKey: "project-templates" as const,
                       badge: "Draft",
-                      icon: ClipboardList
-                    }
+                      icon: ClipboardList,
+                    },
                   ]
                 : []),
               ...(canUseProjects
@@ -396,15 +422,15 @@ export function getNavigationSections(
                       href: "/my-work",
                       activeKey: "my-work" as const,
                       badge: "Live",
-                      icon: ClipboardCheck
+                      icon: ClipboardCheck,
                     },
                     {
                       label: "Work Boards",
                       href: "/work-boards",
                       activeKey: "work-boards" as const,
                       badge: "Live",
-                      icon: BriefcaseBusiness
-                    }
+                      icon: BriefcaseBusiness,
+                    },
                   ]
                 : []),
               ...(canUseProjects
@@ -414,11 +440,11 @@ export function getNavigationSections(
                       href: "/work-calendar",
                       activeKey: "work-calendar" as const,
                       badge: "Live",
-                      icon: CalendarDays
-                    }
+                      icon: CalendarDays,
+                    },
                   ]
-                : [])
-            ]
+                : []),
+            ],
           },
         ]
       : []),
@@ -440,13 +466,13 @@ export function getNavigationSections(
                     href: "/recipes",
                     activeKey: "recipes" as const,
                     badge: "Live",
-                    icon: Utensils
+                    icon: Utensils,
                   }
                 : {
                     label: "Recipes & Costing",
                     badge: "Live",
                     icon: Utensils,
-                    disabled: true
+                    disabled: true,
                   },
               canUseBranchOperations || canAdminister
                 ? {
@@ -454,13 +480,13 @@ export function getNavigationSections(
                     href: "/branch-operations",
                     activeKey: "branch-operations" as const,
                     badge: "Daily",
-                    icon: ClipboardCheck
+                    icon: ClipboardCheck,
                   }
                 : {
                     label: "Branch Operations",
                     badge: "Daily",
                     icon: ClipboardCheck,
-                    disabled: true
+                    disabled: true,
                   },
               canUseFoodSafety || canAdminister
                 ? {
@@ -468,13 +494,13 @@ export function getNavigationSections(
                     href: "/food-safety",
                     activeKey: "food-safety" as const,
                     badge: "Compliance",
-                    icon: ClipboardList
+                    icon: ClipboardList,
                   }
                 : {
                     label: "Food Safety",
                     badge: "Compliance",
                     icon: ClipboardList,
-                    disabled: true
+                    disabled: true,
                   },
               canUseIncidents || canAdminister
                 ? {
@@ -482,13 +508,13 @@ export function getNavigationSections(
                     href: "/incidents",
                     activeKey: "incidents" as const,
                     badge: "Follow-up",
-                    icon: ClipboardList
+                    icon: ClipboardList,
                   }
                 : {
                     label: "Incidents",
                     badge: "Follow-up",
                     icon: ClipboardList,
-                    disabled: true
+                    disabled: true,
                   },
               canUseMaintenance || canAdminister
                 ? {
@@ -496,13 +522,13 @@ export function getNavigationSections(
                     href: "/maintenance",
                     activeKey: "maintenance" as const,
                     badge: "SLA",
-                    icon: Settings
+                    icon: Settings,
                   }
                 : {
                     label: "Maintenance",
                     badge: "SLA",
                     icon: Settings,
-                    disabled: true
+                    disabled: true,
                   },
               canUseRecipesAndCosting || canAdminister
                 ? {
@@ -510,15 +536,15 @@ export function getNavigationSections(
                     href: "/recipes?view=food-cost",
                     activeKey: "food-cost" as const,
                     badge: "Preview",
-                    icon: BarChart3
+                    icon: BarChart3,
                   }
                 : {
                     label: "Food Cost Analysis",
                     badge: "Preview",
                     icon: BarChart3,
-                    disabled: true
-                  }
-            ]
+                    disabled: true,
+                  },
+            ],
           },
         ]
       : []),
@@ -534,9 +560,9 @@ export function getNavigationSections(
                 href: "/workforce",
                 activeKey: "workforce" as const,
                 badge: "HR Ops",
-                icon: UsersRound
-              }
-            ]
+                icon: UsersRound,
+              },
+            ],
           },
         ]
       : []),
@@ -552,37 +578,37 @@ export function getNavigationSections(
                 href: "/marketing/calendar",
                 activeKey: "marketing-calendar" as const,
                 badge: "Preview",
-                icon: CalendarDays
+                icon: CalendarDays,
               },
               {
                 label: "Campaigns",
                 href: "/marketing/campaigns",
                 activeKey: "campaigns" as const,
                 badge: "Preview",
-                icon: Megaphone
+                icon: Megaphone,
               },
               {
                 label: "Promotions",
                 href: "/marketing/promotions",
                 activeKey: "promotions" as const,
                 badge: "Preview",
-                icon: ReceiptText
+                icon: ReceiptText,
               },
               {
                 label: "New Item Launches",
                 href: "/marketing/item-launches",
                 activeKey: "item-launches" as const,
                 badge: "Preview",
-                icon: PackageSearch
+                icon: PackageSearch,
               },
               {
                 label: "Creative Board",
                 href: "/marketing/creative-board",
                 activeKey: "creative-board" as const,
                 badge: "Preview",
-                icon: ClipboardList
-              }
-            ]
+                icon: ClipboardList,
+              },
+            ],
           },
           {
             id: "expansion",
@@ -593,69 +619,69 @@ export function getNavigationSections(
                 label: "Expansion Dashboard",
                 href: "/expansion",
                 activeKey: "expansion-dashboard" as const,
-                icon: LayoutDashboard
+                icon: LayoutDashboard,
               },
               {
                 label: "Opening Playbooks",
                 href: "/expansion/playbooks",
                 activeKey: "opening-playbooks" as const,
-                icon: BookOpenText
+                icon: BookOpenText,
               },
               {
                 label: "Site Pipeline",
                 href: "/expansion/sites",
                 activeKey: "site-pipeline" as const,
-                icon: Building2
+                icon: Building2,
               },
               {
                 label: "Feasibility",
                 href: "/expansion/feasibility",
                 activeKey: "feasibility" as const,
-                icon: Gauge
+                icon: Gauge,
               },
               {
                 label: "Capex & Procurement",
                 href: "/expansion/capex-procurement",
                 activeKey: "capex-procurement" as const,
-                icon: ReceiptText
+                icon: ReceiptText,
               },
               {
                 label: "Lifecycle Gates",
                 href: "/expansion/gates",
                 activeKey: "lifecycle-gates" as const,
-                icon: ClipboardCheck
+                icon: ClipboardCheck,
               },
               {
                 label: "Permits & Documents",
                 href: "/expansion/permits",
                 activeKey: "permits" as const,
-                icon: FileText
+                icon: FileText,
               },
               {
                 label: "Construction Board",
                 href: "/expansion/construction",
                 activeKey: "construction-board" as const,
-                icon: ClipboardList
+                icon: ClipboardList,
               },
               {
                 label: "Opening Readiness",
                 href: "/expansion/readiness",
                 activeKey: "opening-readiness" as const,
-                icon: PackageCheck
+                icon: PackageCheck,
               },
               {
                 label: "Punch List",
                 href: "/expansion/punch-list",
                 activeKey: "punch-list" as const,
-                icon: RotateCw
+                icon: RotateCw,
               },
               {
                 label: "Post-Opening Review",
                 href: "/expansion/post-opening",
                 activeKey: "post-opening" as const,
-                icon: BarChart3
-              }
-            ]
+                icon: BarChart3,
+              },
+            ],
           },
           ...(canUseFinance
             ? [
@@ -669,66 +695,66 @@ export function getNavigationSections(
                       href: "/finance",
                       activeKey: "finance-overview" as const,
                       badge: "Guarded",
-                      icon: BarChart3
+                      icon: BarChart3,
                     },
                     {
                       label: "Budget Control",
                       href: "/finance/budget-control",
                       activeKey: "budget-control" as const,
                       badge: "Budget",
-                      icon: Gauge
+                      icon: Gauge,
                     },
                     {
                       label: "Expense Requests",
                       href: "/finance/expense-requests",
                       activeKey: "expense-requests" as const,
                       badge: "Expense",
-                      icon: FileText
+                      icon: FileText,
                     },
                     {
                       label: "Cash Advances",
                       href: "/finance/cash-advances",
                       activeKey: "cash-advances" as const,
                       badge: "Advance",
-                      icon: HandCoins
+                      icon: HandCoins,
                     },
                     {
                       label: "Petty Cash",
                       href: "/finance/petty-cash",
                       activeKey: "petty-cash" as const,
                       badge: "Cash",
-                      icon: WalletCards
+                      icon: WalletCards,
                     },
                     {
                       label: "General Ledger",
                       href: "/finance/general-ledger",
                       activeKey: "general-ledger" as const,
                       badge: "Gated",
-                      icon: Landmark
+                      icon: Landmark,
                     },
                     {
                       label: "Accounts Payable",
                       href: "/finance/accounts-payable",
                       activeKey: "accounts-payable" as const,
                       badge: "AP",
-                      icon: ReceiptText
+                      icon: ReceiptText,
                     },
                     {
                       label: "Bank & Cash",
                       href: "/finance/bank-cash",
                       activeKey: "bank-cash" as const,
                       badge: "Gated",
-                      icon: BriefcaseBusiness
+                      icon: BriefcaseBusiness,
                     },
                     {
                       label: "Period Close",
                       href: "/finance/period-close",
                       activeKey: "period-close" as const,
                       badge: "Gated",
-                      icon: CalendarDays
-                    }
-                  ]
-                }
+                      icon: CalendarDays,
+                    },
+                  ],
+                },
               ]
             : []),
           {
@@ -741,52 +767,59 @@ export function getNavigationSections(
                 href: "/admin",
                 activeKey: "admin" as const,
                 badge: "Core",
-                icon: Settings
+                icon: Settings,
               },
               {
                 label: "Reason Codes",
                 href: "/admin/reason-codes",
                 activeKey: "admin-reason-codes" as const,
                 badge: "Config",
-                icon: ClipboardList
+                icon: ClipboardList,
               },
               {
                 label: "Admin Settings",
                 href: "/admin/settings",
                 activeKey: "admin-settings" as const,
                 badge: "Config",
-                icon: Settings
+                icon: Settings,
               },
               {
                 label: "Release Readiness",
                 href: "/admin/readiness",
                 activeKey: "admin-readiness" as const,
                 badge: "Gate",
-                icon: ClipboardCheck
+                icon: ClipboardCheck,
+              },
+              {
+                label: "Authentication",
+                href: "/admin/authentication",
+                activeKey: "admin-authentication" as const,
+                badge: "Security",
+                icon: KeyRound,
               },
               {
                 label: "Break-Glass Access",
                 href: "/admin/break-glass",
                 activeKey: "admin-break-glass" as const,
                 badge: "Security",
-                icon: KeyRound
+                icon: KeyRound,
               },
               {
                 label: "MFA Enrollment",
                 href: "/admin/mfa",
                 activeKey: "admin-mfa" as const,
                 badge: "Evidence",
-                icon: ShieldCheck
+                icon: ShieldCheck,
               },
               {
                 label: "Session Invalidation",
                 href: "/admin/session-invalidation",
                 activeKey: "admin-session-invalidation" as const,
                 badge: "Provider",
-                icon: RotateCw
-              }
-            ]
-          }
+                icon: RotateCw,
+              },
+            ],
+          },
         ]
       : []),
     {
@@ -799,17 +832,24 @@ export function getNavigationSections(
           href: "/knowledge-base",
           activeKey: "knowledge-base",
           badge: "KB",
-          icon: BookOpenText
-        }
-      ]
-    }
+          icon: BookOpenText,
+        },
+      ],
+    },
   ];
 }
 
 export function getMobilePreviewRailItems(sections: NavSection[]) {
   return sections
-    .filter((section) => section.id !== "operations" && section.id !== "overview" && section.id !== "admin")
-    .flatMap((section) => section.items.filter((item) => item.href && !item.disabled));
+    .filter(
+      (section) =>
+        section.id !== "operations" &&
+        section.id !== "overview" &&
+        section.id !== "admin",
+    )
+    .flatMap((section) =>
+      section.items.filter((item) => item.href && !item.disabled),
+    );
 }
 
 export function getMobileOperationalNavItems({
@@ -824,7 +864,7 @@ export function getMobileOperationalNavItems({
   canUseWastage,
   canUseStockAdjustments,
   canViewInventory,
-  canViewInventoryLedger
+  canViewInventoryLedger,
 }: {
   canAdminister: boolean;
   canManageQuotes: boolean;
@@ -841,7 +881,13 @@ export function getMobileOperationalNavItems({
 }): MobileOperationalNavItem[] {
   return [
     ...(canUsePurchaseRequests
-      ? [{ label: "Requests", href: "/purchase-requests", tone: "primary" as const }]
+      ? [
+          {
+            label: "Requests",
+            href: "/purchase-requests",
+            tone: "primary" as const,
+          },
+        ]
       : []),
     ...(canUseApprovals
       ? [{ label: "Approvals", href: "/approvals", tone: "dark" as const }]
@@ -877,9 +923,9 @@ export function getMobileOperationalNavItems({
       ? [
           { label: "Suppliers", href: "/suppliers", tone: "slate" as const },
           { label: "Items", href: "/items", tone: "slate" as const },
-          { label: "Admin", href: "/admin", tone: "admin" as const }
+          { label: "Admin", href: "/admin", tone: "admin" as const },
         ]
-      : [])
+      : []),
   ];
 }
 
@@ -909,6 +955,7 @@ function getDefaultSection(activeNav: ShellActiveNav) {
     activeNav === "admin-break-glass" ||
     activeNav === "admin-mfa" ||
     activeNav === "admin-session-invalidation" ||
+    activeNav === "admin-authentication" ||
     activeNav === "admin-reason-codes"
   ) {
     return "admin";
@@ -998,13 +1045,15 @@ function getDefaultSection(activeNav: ShellActiveNav) {
 }
 
 function NavIcon({ icon: Icon }: { icon: LucideIcon }) {
-  return <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={2} />;
+  return (
+    <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={2} />
+  );
 }
 
 function NavItem({
   item,
   activeNav,
-  collapsed
+  collapsed,
 }: {
   item: NavSection["items"][number];
   activeNav: ShellActiveNav;
@@ -1072,7 +1121,7 @@ export function ShellNavigation({
   canUseMaintenance,
   canUseFinance,
   canUseWorkforce,
-  children
+  children,
 }: {
   session: SessionContext;
   activeNav: ShellActiveNav;
@@ -1101,7 +1150,7 @@ export function ShellNavigation({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>(
-    getDefaultSection(activeNav)
+    getDefaultSection(activeNav),
   );
   const activeSection = getDefaultSection(activeNav);
   const sections = useMemo(
@@ -1127,7 +1176,7 @@ export function ShellNavigation({
         canUseIncidents,
         canUseMaintenance,
         canUseFinance,
-        canUseWorkforce
+        canUseWorkforce,
       ),
     [
       canAdminister,
@@ -1150,8 +1199,8 @@ export function ShellNavigation({
       canUseIncidents,
       canUseMaintenance,
       canUseFinance,
-      canUseWorkforce
-    ]
+      canUseWorkforce,
+    ],
   );
   const mobileOperationalItems = getMobileOperationalNavItems({
     canAdminister,
@@ -1165,7 +1214,7 @@ export function ShellNavigation({
     canUseWastage,
     canUseStockAdjustments,
     canViewInventory,
-    canViewInventoryLedger
+    canViewInventoryLedger,
   });
 
   function selectSection(sectionId: string) {
@@ -1175,7 +1224,7 @@ export function ShellNavigation({
       return;
     }
     setOpenSection((currentSection) =>
-      currentSection === sectionId ? null : sectionId
+      currentSection === sectionId ? null : sectionId,
     );
   }
 
@@ -1215,7 +1264,11 @@ export function ShellNavigation({
             title={collapsed ? "Expand navigation" : "Collapse navigation"}
             type="button"
           >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
           </button>
         </div>
 
@@ -1223,7 +1276,8 @@ export function ShellNavigation({
           {sections.map((section) => {
             const SectionIcon = section.icon;
             const open = !collapsed && section.id === openSection;
-            const sectionHighlighted = section.id === activeSection || section.id === openSection;
+            const sectionHighlighted =
+              section.id === activeSection || section.id === openSection;
 
             return (
               <div key={section.id} className="mb-2">
@@ -1243,7 +1297,9 @@ export function ShellNavigation({
                       className="shell-nav-section-icon h-4 w-4 shrink-0"
                       strokeWidth={2}
                     />
-                    {!collapsed ? <span className="truncate">{section.label}</span> : null}
+                    {!collapsed ? (
+                      <span className="truncate">{section.label}</span>
+                    ) : null}
                   </span>
                   {!collapsed ? (
                     <ChevronDown
@@ -1286,14 +1342,18 @@ export function ShellNavigation({
                 <div className="truncate text-sm font-semibold text-slate-950">
                   {session.user.displayName}
                 </div>
-                <div className="truncate text-xs text-slate-500">{session.user.role}</div>
+                <div className="truncate text-xs text-slate-500">
+                  {session.user.role}
+                </div>
               </div>
             ) : null}
           </div>
         </div>
       </aside>
 
-        <div className={`shell-main-transition ${collapsed ? "lg:pl-[4.5rem]" : "lg:pl-[16.5rem]"}`}>
+      <div
+        className={`shell-main-transition ${collapsed ? "lg:pl-[4.5rem]" : "lg:pl-[16.5rem]"}`}
+      >
         {children}
       </div>
 
@@ -1311,9 +1371,19 @@ export function ShellNavigation({
             ))}
           </div>
         ) : null}
-        <div className={canAdminister ? "grid grid-cols-3 gap-2 px-1 sm:grid-cols-6" : "grid grid-cols-2 gap-2 px-1"}>
+        <div
+          className={
+            canAdminister
+              ? "grid grid-cols-3 gap-2 px-1 sm:grid-cols-6"
+              : "grid grid-cols-2 gap-2 px-1"
+          }
+        >
           {mobileOperationalItems.map((item) => (
-            <a key={item.href} className={mobileNavItemClass(item.tone)} href={item.href}>
+            <a
+              key={item.href}
+              className={mobileNavItemClass(item.tone)}
+              href={item.href}
+            >
               {item.label}
             </a>
           ))}

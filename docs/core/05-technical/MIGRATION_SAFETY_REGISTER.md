@@ -946,6 +946,23 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "expectedRecoveryTime": "Measure during the hosted rehearsal and record against the OGFI-approved RTO/RPO; final production acceptance remains blocked until that external objective and observed duration are recorded.",
     "reviewerIdentity": "Ligaya database review and Lualhati QA review; confirmed by Codex Decision Chair",
     "reviewedAtUtc": "2026-07-20T21:19:24Z"
+  },
+  {
+    "migration": "20260721150000_production_application_authentication",
+    "sha256": "b0eb3415d510b832997e9c504d02562f6edc5c78f2b3d84af7a6c0093f86be14",
+    "risk": "Tenant login-code backfill and unique indexes on populated tenant, company, and user tables require write/index locks; incorrect composite keys or auth-state uniqueness could weaken tenant isolation or permit competing credentials and recovery state.",
+    "expectedDataEffect": "Backfill one lowercase unique login code per existing tenant, add privilegeEpoch=0 to existing users, add tenant-qualified authentication tables and constraints, and preserve all predecessor tenant/company/user rows and operational data.",
+    "recovery": "The explicit transaction, five-second lock timeout, and five-minute statement timeout roll back on contention or statement failure. Do not use a destructive down migration; correct forward from the reviewed backup and preserve any authentication/audit rows if the release has begun accepting credentials.",
+    "reviewerStatus": "APPROVED_FOR_REHEARSAL",
+    "failurePoint": "Login-code backfill collision, blocking unique-index lock, composite foreign-key validation, or partial-unique creation can abort the transaction; production promotion must stop on any timeout, checksum mismatch, or invariant delta.",
+    "transactionBehavior": "Explicit PostgreSQL transaction with SET LOCAL lock_timeout='5s' and statement_timeout='5min'; all schema and backfill changes commit or roll back together.",
+    "reversibility": "Application rollback may return only to the last secure authentication build or maintenance mode while retaining additive auth tables; never restore demo authentication. Database recovery uses reviewed forward-fix or verified pre-migration restore.",
+    "decisionTrigger": "Stop promotion on SQL error, lock/statement timeout, checksum mismatch, tenant/company/user count change, invalid login code, nonzero predecessor privilege epoch, unexpected initial auth rows, race-test failure, restore non-equivalence, or schema drift.",
+    "owner": "Database Engineering with Security and Release Manager approval; QA independently verifies tenant, race, bootstrap, and rotation evidence.",
+    "verification": "Exact-SHA local populated-predecessor rehearsal preserved 10 tenants, 100 companies, and 5000 users; completed in 5.94 seconds; produced zero invalid login codes/privilege epochs and zero initial auth rows; second deploy reported no pending migrations; schema diff reported no difference; 10 database-backed auth tests passed. Hosted rehearsal and restore evidence remain required before production GO.",
+    "expectedRecoveryTime": "Measure backup restore and forward-fix decision time during the hosted rehearsal against the OGFI-approved RTO/RPO; local transaction rollback is bounded by the configured five-second lock and five-minute statement timeouts.",
+    "reviewerIdentity": "Ligaya database re-review approved exact-SHA migration rehearsal; confirmed by Codex Decision Chair",
+    "reviewedAtUtc": "2026-07-21T01:04:56Z"
   }
 ]
 ```

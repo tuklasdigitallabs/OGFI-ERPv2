@@ -1,20 +1,28 @@
 # Managing Privileged MFA Evidence
 
-**Audience / required role:** ERP administrators, security owners, and release managers with Core Administration access  
-**Applies to:** Users with sensitive ERP permissions  
-**Last verified against:** implemented privileged MFA enrollment evidence register, attestation, verification, revocation, sensitive-action evidence guard, audit, and DEC-0036 readiness controls
+**Who can do this:** ERP administrators and security owners with Core Administration access
+
+**Applies to:** External or future identity-provider MFA evidence for users with sensitive ERP permissions
+
+**Last verified against:** implemented external MFA evidence register and implemented local runtime TOTP under Account security
 
 ## Purpose
 
-Use MFA Enrollment to track evidence that privileged users are enrolled in the selected external MFA or identity provider.
+Use MFA Enrollment to track evidence from an external or future MFA or identity provider.
 
-This is ERP-side enrollment evidence tracking. It does not replace runtime MFA authentication at sign-in. External IdP/provider or vault proof is required for production runtime enforcement.
+This legacy register does not enroll a user in local runtime MFA and does not satisfy a local sign-in or sensitive-action MFA challenge. Local runtime MFA is enrolled by the user under `Security` → `Account security`.
+
+## Prerequisites
+
+- Core Administration permission in the current company scope.
+- An approved external provider and a traceable evidence reference.
+- A second eligible administrator for independent verification.
 
 ## Navigation Path
 
 `Admin` → `MFA Enrollment`
 
-## Record Evidence
+## Steps
 
 1. Open `MFA Enrollment`.
 2. Select `Record Evidence`.
@@ -24,29 +32,12 @@ This is ERP-side enrollment evidence tracking. It does not replace runtime MFA a
 6. Enter the evidence reference.
 7. Enter the attestation note.
 8. Save the evidence.
+9. Have a different administrator review the target user, provider, evidence reference, and attestation.
+10. The reviewer selects `Verify`, enters the verification note, and saves it.
 
-## Verify Evidence
+## Expected Result
 
-1. Review the target user, provider, evidence, and attestation.
-2. Select `Verify`.
-3. Enter the verification note.
-4. Save the verification.
-
-Attestation and verification must be performed by different admins. Self-attestation and self-verification are blocked.
-
-## Revoke Evidence
-
-Use `Revoke` when MFA enrollment is removed, stale, replaced, or no longer trusted. Revocation records the reason and keeps the history.
-
-## Sensitive Action Guard
-
-Open **Admin > Admin Settings > Security and continuity** to review the privileged MFA enforcement mode.
-
-- **Warn and audit missing evidence** records an audit warning when a selected sensitive administrative/security action is attempted without verified MFA evidence.
-- **Block high-risk admin and security actions** prevents selected sensitive administrative/security actions until the acting admin has verified MFA evidence.
-- **Block all guarded sensitive actions** also blocks guarded operational posting/reversal actions until the acting user has verified MFA evidence.
-
-The first guarded actions are high-risk role-permission changes, controlled high-risk scope requests/reviews, break-glass request/approval/revocation/post-review actions, receiving post/reversal, stock adjustment post/reversal, wastage post/reversal, and transfer receipt reversal.
+The external-evidence record is `Verified`, with separate attesting and verifying administrators and retained audit history.
 
 ## Controls And Warnings
 
@@ -54,12 +45,16 @@ The first guarded actions are high-risk role-permission changes, controlled high
 - Evidence references must be plain text references, not uploaded files or runtime tokens.
 - The ERP does not store MFA secrets, recovery codes, passwords, device keys, or identity-provider tokens.
 - Every record, verification, and revocation writes audit history with `DEC-0036` metadata.
-- Missing evidence on guarded actions writes `privileged_mfa.required_warning` or `privileged_mfa.required_denied` audit history depending on the configured mode.
-- Production runtime MFA enforcement still depends on the selected external identity provider.
+- Attestation and verification must be performed by different administrators. The target user cannot attest or verify their own record.
+- Use `Revoke` with a reason when the external enrollment is removed, stale, replaced, or no longer trusted. Revocation keeps the history.
+- In local authentication mode, privileged sign-in and sensitive actions use runtime MFA. A verified record on this page is evidence only and cannot replace that live check.
 
-## What To Check
+## What Happens Next
 
-- The user really has privileged ERP access.
-- The provider and evidence reference match the approved external MFA/IdP system.
-- The verifier is not the target user and not the attesting admin.
-- The release readiness MFA gate points to the evidence pack or this register.
+The record remains available for audit and future/external-provider readiness. The user must separately enroll local runtime MFA under `Security` → `Account security` when their permissions require it.
+
+## Related Articles
+
+- Signing In And Selecting Your Location
+- Session Invalidation And Reauthentication
+- Managing Release Readiness Gates

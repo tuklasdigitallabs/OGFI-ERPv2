@@ -1,40 +1,66 @@
 # Session Invalidation And Reauthentication
 
-**Audience / required role:** ERP administrators and security owners  
-**Applies to:** Role changes, scope changes, break-glass access, and other privileged access updates  
-**Last verified against:** implemented demo-session privilege epoch checks and provider-neutral auth session invalidation register
+**Who can do this:** Any signed-in user can review and revoke their own application sessions; ERP administrators and security owners with Core Administration access can revoke another user’s sessions
+
+**Applies to:** Local application sessions, role and scope changes, break-glass access, and optional external-provider follow-up
+
+**Last verified against:** implemented PostgreSQL-backed sessions, user/admin revocation, privilege-version checks, and authorization-time break-glass expiry
 
 ## Purpose
 
-When a user’s privileges change, stale sessions must not keep old access. The ERP handles this in two layers:
+Use this article to review or revoke application sessions and understand when reauthentication is required.
 
-- Demo sessions are checked against the user privilege epoch and must sign in again after privilege changes.
-- Production auth-provider invalidation is recorded in an ERP-side invalidation register until the external identity provider is integrated.
+Local application sessions are server-controlled. Privilege changes revoke affected sessions transactionally so an old browser cookie cannot keep prior authority.
 
-## What Creates An Invalidation Record
+## Prerequisites
 
-The ERP records an invalidation requirement when privileged access changes, including:
+- To manage your own sessions: an active local sign-in.
+- To revoke another user’s sessions: Core Administration permission in the current company scope and fresh runtime MFA when prompted.
 
-- role assignment or deactivation
-- scope assignment or deactivation
-- controlled high-risk scope approval
-- break-glass activation, revocation, or expiry
+## Navigation Paths
 
-## Where To Review It
+- Your sessions: page header `Security` → `Account security` → `Active sessions`
+- Another user’s sessions: `Admin` → `Authentication` → `Account readiness`
+- External-provider follow-up, when used: `Admin` → `Session Invalidation`
 
-Open **Admin > Session Invalidation**. The queue shows the affected user, why the invalidation was created, whether the demo-session privilege epoch is already enforced, and whether production provider follow-up is still pending.
+## Revoke Your Own Session
 
-Use **Mark Provider Complete** only after the identity-provider action has been performed outside the ERP and the provider ticket, audit entry, or session-revocation reference is available. The admin who triggered the invalidation cannot mark their own provider follow-up complete; a separate admin reviewer must confirm the external evidence.
+1. Open `Security` → `Account security`.
+2. Review the `Active sessions` list and each session’s assurance level and last-used time.
+3. Select `Revoke` beside the session you no longer trust or use.
+4. If you revoke the current session, sign in again to continue.
 
-## What This Does Not Do Yet
+## Revoke Another User’s Sessions
 
-The register does not terminate sessions inside Microsoft Entra, Google Workspace, Okta, or another identity provider by itself. It records the required provider action and keeps audit evidence until the provider adapter is implemented.
+1. Open `Admin` → `Authentication`.
+2. Find the user under `Account readiness`.
+3. Review the displayed number of active sessions.
+4. Select `Revoke all`.
+5. Complete runtime MFA step-up if the application requests it, then repeat the action.
 
-## What To Check
+## Expected Result
 
-- The target user is forced to reauthenticate in demo mode after privilege changes.
-- The invalidation register has a pending provider record for production follow-up under **Admin > Session Invalidation**.
-- The related role, scope, or break-glass audit event explains why the invalidation was required.
-- The provider completion entry includes the provider name, external reference, reason, actor, and audit event.
-- Provider completion is confirmed by a separate admin reviewer, not the same admin who triggered the invalidation.
-- Release readiness should not mark production session invalidation complete until the external provider process is evidenced.
+- A revoked local application session can no longer authorize requests.
+- `Revoke all` invalidates all application sessions for the selected user.
+- The revocation is recorded in the audit trail.
+
+## Controls And Warnings
+
+- You cannot use the admin action to revoke your own sessions; use `Account security` instead.
+- Role, scope, controlled-access, credential-recovery, and other privilege changes can revoke sessions and require a new sign-in.
+- Break-glass scope is checked against its expiry during authorization. Expired access cannot continue merely because a session is still open.
+- Session revocation does not delete the user, assignments, or audit history.
+- Local application-session revocation is authoritative. External identity-provider session termination is a separate, conditional follow-up only when an external provider is configured.
+
+## What Happens Next
+
+The affected user signs in again with organization code, email, password, and runtime MFA when required. Their current role, scope, and unexpired break-glass access are resolved again by the server.
+
+If an external provider is configured and a follow-up record exists, use `Admin` → `Session Invalidation`. Select `Mark Provider Complete` only after the external action is finished and its provider name and reference are available. A separate administrator must confirm it.
+
+## Related Articles
+
+- Signing In And Selecting Your Location
+- Activating And Recovering Local Accounts
+- Managing Break-Glass Access
+- Managing Privileged MFA Evidence

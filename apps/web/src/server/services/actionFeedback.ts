@@ -222,6 +222,24 @@ const actionFeedbackMessages: Record<string, string> = {
     "Review the required fields and field lengths, then try again.",
   LOGIN_ACCOUNT_NOT_FOUND:
     "That account is inactive or not configured for this local demo.",
+  LOGIN_CREDENTIALS_INVALID:
+    "The organization code, email, or password is incorrect.",
+  LOGIN_TEMPORARILY_THROTTLED:
+    "Too many sign-in attempts were detected. Wait 15 minutes, then try again or contact support.",
+  PASSWORD_POLICY_NOT_MET:
+    "Use at least 12 characters with uppercase, lowercase, and a number.",
+  PASSWORD_CONFIRMATION_MISMATCH:
+    "The password confirmation does not match the new password.",
+  AUTH_ACTIVATION_INVALID:
+    "This activation link is invalid, expired, or already used. Ask an administrator for a new link.",
+  MFA_CODE_INVALID:
+    "That authenticator or recovery code is invalid or expired.",
+  MFA_CODE_REPLAYED:
+    "That authenticator code was already used. Wait for the next code and try again.",
+  MFA_CHALLENGE_NOT_FOUND:
+    "Your MFA challenge expired. Sign in again to continue.",
+  PRIVILEGED_MFA_STEP_UP_REQUIRED:
+    "Refresh MFA assurance under Account security before repeating this sensitive action.",
   CORE_ADMIN_USER_DUPLICATE:
     "A user with that email already exists in this tenant.",
   CORE_ADMIN_ROLE_DUPLICATE:

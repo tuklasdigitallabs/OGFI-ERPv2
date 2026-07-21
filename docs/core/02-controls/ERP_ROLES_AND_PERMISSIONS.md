@@ -417,9 +417,11 @@ Role changes should be controlled by an authorized administrator. Current implem
 - admin, approver, system, and sensitive-permission roles use a `SensitiveRoleRequest`;
 - controlled role requests require reason and evidence reference;
 - the requester and target user cannot approve or reject the request;
-- approval requires privileged MFA evidence and creates the `UserRoleAssignment` transactionally;
-- approval writes audit history linked to `DEC-0036` and refreshes the target user's privilege epoch so stale sessions must reauthenticate;
-- production identity-provider session invalidation follow-up is tracked through the provider-neutral session invalidation register.
+- local production approval requires recent session-bound runtime MFA and creates the `UserRoleAssignment` transactionally; external-provider modes may additionally retain verified provider evidence;
+- approval writes audit history linked to `DEC-0036` and `DEC-0040`, increments the target user's privilege epoch, and revokes active application sessions so stale authority cannot survive;
+- external identity-provider invalidation follow-up is tracked only when an external provider is configured.
+
+Account activation and recovery remain Core Administration actions within company `MANAGE` scope. Initial activation may be issued for a user who has no local identity. Recovery for an existing identity requires one administrator to record the reason and identity-verification evidence and a different MFA-assured administrator to approve or reject it. The target user, requester, and reviewer separation rules are enforced by the service; recovery cannot grant roles or scopes.
 
 High-risk changes include:
 

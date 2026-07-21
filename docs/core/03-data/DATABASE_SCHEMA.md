@@ -109,6 +109,21 @@ Do not encode location type only in naming. A warehouse must be functionally dis
 | `user_scope_assignments` | id, user_id, scope_type, scope_id, access_level, starts_at, ends_at | Company, brand, location, department, project scope. |
 | `approval_delegations` | id, delegator_user_id, delegate_user_id, scope, starts_at, ends_at, status | Temporary delegated authority. |
 
+### 4.1 Production authentication tables
+
+| Table | Key fields | Integrity controls |
+|---|---|---|
+| `AuthIdentity` | tenant, user, provider, normalized identifier, provider subject, status | Composite tenant/user foreign key; tenant/provider identifier and subject uniqueness; immutable ownership in the service. |
+| `PasswordCredential` | identity, Argon2id hash, algorithm, password-change metadata | One credential per identity; plaintext is never stored. |
+| `MfaAuthenticator` / `MfaRecoveryCode` | tenant, user, encrypted TOTP fields and key version; keyed recovery-code hash and consumed time | Composite tenant/user foreign key; partial unique index permits one active authenticator per user; recovery codes are one-time. |
+| `AuthSession` | tenant, user, identity, token hash, assurance, privilege epoch, idle/absolute expiry, challenge failures/lock, revocation | Tenant-qualified user and identity foreign keys; opaque token uniqueness; security transitions use compare-and-swap and never extend absolute expiry. |
+| `AuthActivationToken` | tenant, target, issuer, token hash, expiry, consumption and delivery state | One active token per tenant/user; tenant-qualified target/issuer; only a non-reversible token hash is stored. A failed delivery is revoked and retry creates a replacement token. |
+| `AuthLoginAttempt` | keyed tenant/account/source digests, attempt type, optional session, outcome, time | No raw identifier, source address, password, TOTP, or recovery code; attempted-time index supports bounded cleanup. |
+| `AuthRecoveryRequest` | tenant, company, target, requester, reviewer, reason/evidence, reset scope, status | Tenant-qualified company/users; one pending request per tenant/user across companies; review transitions use status compare-and-swap. |
+| `AuthBootstrapState` | tenant primary key, target admin, authorization reference, issued time | Irreversible one-row-per-tenant marker that prevents the deployment bootstrap command from becoming a later recovery path. |
+
+`Tenant.loginCode` is lowercase and unique. `Company(id, tenantId)` and `User(id, tenantId)` are alternate keys used by composite scope foreign keys. Partial unique indexes for active MFA, active activation tokens, and tenant-wide pending recovery requests are migration-level PostgreSQL controls and are intentionally stronger than application-only checks.
+
 ### 4.1 Permission naming convention
 
 ```text
