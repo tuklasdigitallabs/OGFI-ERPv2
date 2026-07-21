@@ -47,6 +47,92 @@ const systemRole = {
 };
 
 describe("core administration audit search wiring", () => {
+  test("privilege mutation users use the same canonical order as approval user locks", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const lockSource = serviceSource.slice(
+      serviceSource.indexOf("function canonicalizePrivilegeMutationUserIds"),
+      serviceSource.indexOf("export function assertNotSelfScopeMutation")
+    );
+    const mutationSource = serviceSource.slice(
+      serviceSource.indexOf("async function updateRolePermissionCodes"),
+      serviceSource.indexOf("export async function updateRolePermissions")
+    );
+    expect(lockSource).toContain(
+      "return Array.from(new Set(userIds)).sort();"
+    );
+    expect(lockSource).toContain("lockUsersForPrivilegeMutation(");
+    expect(lockSource).toContain("for (const userId of canonicalUserIds)");
+    expect(lockSource).toContain('FROM "User"');
+    expect(lockSource).toContain("FOR UPDATE");
+    expect(lockSource).toContain("lockAndRevalidateRolePermissionActor(");
+    expect(lockSource).toContain('FROM "AuthSession"');
+    expect(lockSource).toContain("FOR SHARE");
+    expect(mutationSource).toContain('orderBy: { userId: "asc" }');
+    expect(mutationSource).toContain("[session.user.id, ...affectedUserIds]");
+    expect(mutationSource).toContain("for (const userId of affectedUserIds)");
+  });
+
+  test("role-permission authority is revalidated after role and canonical user locks", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const mutationSource = serviceSource.slice(
+      serviceSource.indexOf("async function updateRolePermissionCodes"),
+      serviceSource.indexOf("export async function updateRolePermissions")
+    );
+    const roleLockIndex = mutationSource.indexOf('FROM "Role"');
+    const userLockIndex = mutationSource.indexOf("lockUsersForPrivilegeMutation(");
+    const authorityIndex = mutationSource.indexOf(
+      "lockAndRevalidateRolePermissionActor("
+    );
+    const permissionDeleteIndex = mutationSource.indexOf(
+      "tx.rolePermission.deleteMany"
+    );
+
+    expect(roleLockIndex).toBeGreaterThan(-1);
+    expect(userLockIndex).toBeGreaterThan(roleLockIndex);
+    expect(authorityIndex).toBeGreaterThan(userLockIndex);
+    expect(permissionDeleteIndex).toBeGreaterThan(authorityIndex);
+    expect(serviceSource).toContain('throw new Error("ROLE_PERMISSION_AUTHORITY_STALE")');
+    expect(serviceSource).toContain("permissions.coreAdminister");
+    expect(serviceSource).toContain("permissions.tenantRoleAdminister");
+    expect(serviceSource).toContain('scopeType: "COMPANY"');
+    expect(serviceSource).toContain('accessLevel: "MANAGE"');
+    expect(serviceSource).toContain("assertPrivilegedMfaForAction(");
+  });
+
+  test("role-permission transaction conflicts are mapped without broad retries", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const mutationSource = serviceSource.slice(
+      serviceSource.indexOf("async function updateRolePermissionCodes"),
+      serviceSource.indexOf("export async function updateRolePermissions")
+    );
+    expect(mutationSource).toContain("isRolePermissionTransactionConflict(error)");
+    expect(mutationSource).toContain('throw new Error("ROLE_PERMISSION_CONCURRENT_CHANGE")');
+    expect(mutationSource).not.toMatch(/retry|setTimeout/i);
+    expect(serviceSource).toContain('candidate.code === "P2034"');
+    expect(serviceSource).toContain('candidate.code === "40P01"');
+    expect(serviceSource).toContain('candidate.code === "40001"');
+    expect(serviceSource).toContain('candidate.meta?.code === "40P01"');
+    expect(serviceSource).toContain('candidate.meta?.code === "40001"');
+  });
+
+  test("company creation invalidates the actor session after granting manage scope", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const companyCreationSource = serviceSource.slice(
+      serviceSource.indexOf("export async function createCoreAdminCompany"),
+      serviceSource.indexOf("export async function createCoreAdminBrand")
+    );
+    const scopeGrantIndex = companyCreationSource.indexOf("tx.userScopeAssignment.create");
+    const epochIndex = companyCreationSource.indexOf("touchUserPrivilegeEpoch(tx, session.user.id");
+    const auditIndex = companyCreationSource.indexOf("tx.auditEvent.create");
+
+    expect(scopeGrantIndex).toBeGreaterThan(-1);
+    expect(epochIndex).toBeGreaterThan(scopeGrantIndex);
+    expect(auditIndex).toBeGreaterThan(epochIndex);
+    expect(companyCreationSource).toContain("companyId: company.id");
+    expect(companyCreationSource).toContain('sourceEventType: "user_scope_assignment.created"');
+    expect(companyCreationSource).toContain("sourceRecordId: scopeAssignment.id");
+  });
+
   test("sensitive and system roles are blocked by service-layer assignment guard", () => {
     expect(isDirectlyAssignableRole(nonSensitiveRole)).toBe(true);
     expect(isDirectlyAssignableRole(sensitiveRole)).toBe(false);

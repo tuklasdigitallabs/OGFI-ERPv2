@@ -164,6 +164,228 @@ function normalizeBusinessCode(value: string) {
     .replace(/[^A-Z0-9._-]/g, "");
 }
 
+function canonicalizePrivilegeMutationUserIds(userIds: string[]) {
+  return Array.from(new Set(userIds)).sort();
+}
+
+function isRolePermissionTransactionConflict(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    meta?: { code?: unknown } | null;
+  };
+  return (
+    candidate.code === "P2034" ||
+    candidate.code === "40P01" ||
+    candidate.code === "40001" ||
+    candidate.meta?.code === "40P01" ||
+    candidate.meta?.code === "40001"
+  );
+}
+
+async function lockUsersForPrivilegeMutation(
+  tx: TransactionClient,
+  tenantId: string,
+  userIds: string[],
+) {
+  const canonicalUserIds = canonicalizePrivilegeMutationUserIds(userIds);
+  const lockedUserById = new Map<
+    string,
+    { id: string; status: string; privilegeEpoch: number }
+  >();
+  for (const userId of canonicalUserIds) {
+    const lockedUsers = await tx.$queryRaw<
+      Array<{ id: string; status: string; privilegeEpoch: number }>
+    >`
+      SELECT "id", status, "privilegeEpoch"
+        FROM "User"
+       WHERE "id" = ${userId}::uuid
+         AND "tenantId" = ${tenantId}::uuid
+       FOR UPDATE
+    `;
+    if (lockedUsers.length !== 1) {
+      throw new Error("ROLE_PERMISSION_CONCURRENT_CHANGE");
+    }
+    lockedUserById.set(userId, lockedUsers[0]!);
+  }
+  return { canonicalUserIds, lockedUserById };
+}
+
+type LockedRolePermissionSession = {
+  status: string;
+  assuranceLevel: string;
+  mfaAuthenticatedAt: Date | null;
+  privilegeEpochAtIssue: number;
+  idleExpiresAt: Date;
+  absoluteExpiresAt: Date;
+};
+
+async function lockAndRevalidateRolePermissionActor(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    actor: { id: string; status: string; privilegeEpoch: number } | undefined;
+    roleId: string;
+    roleCode: string;
+    sensitiveChanges: string[];
+    addedCodes: string[];
+    removedCodes: string[];
+  },
+) {
+  if (!input.actor || input.actor.status !== "ACTIVE") {
+    throw new Error("ROLE_PERMISSION_AUTHORITY_STALE");
+  }
+
+  let liveSession: LockedRolePermissionSession | undefined;
+  if (session.authentication?.sessionId) {
+    const sessions = await tx.$queryRaw<LockedRolePermissionSession[]>`
+      SELECT status, "assuranceLevel", "mfaAuthenticatedAt",
+             "privilegeEpochAtIssue", "idleExpiresAt", "absoluteExpiresAt"
+        FROM "AuthSession"
+       WHERE "id" = ${session.authentication.sessionId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "userId" = ${session.user.id}::uuid
+       FOR SHARE
+    `;
+    liveSession = sessions[0];
+    const now = new Date();
+    if (
+      !liveSession ||
+      liveSession.status !== "ACTIVE" ||
+      liveSession.privilegeEpochAtIssue !== input.actor.privilegeEpoch ||
+      liveSession.idleExpiresAt <= now ||
+      liveSession.absoluteExpiresAt <= now
+    ) {
+      throw new Error("ROLE_PERMISSION_AUTHORITY_STALE");
+    }
+  }
+
+  const now = new Date();
+  const liveRoleAssignments = await tx.userRoleAssignment.findMany({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      role: {
+        status: "ACTIVE",
+        OR: [
+          { tenantId: session.context.tenantId },
+          { tenantId: null },
+        ],
+      },
+    },
+    select: {
+      role: {
+        select: {
+          permissions: {
+            where: {
+              permission: {
+                code: {
+                  in: [
+                    permissions.coreAdminister,
+                    permissions.tenantRoleAdminister,
+                  ],
+                },
+                OR: [
+                  { tenantId: session.context.tenantId },
+                  { tenantId: null },
+                ],
+              },
+            },
+            select: { permission: { select: { code: true } } },
+          },
+        },
+      },
+    },
+  });
+  const livePermissionCodes = new Set(
+    liveRoleAssignments.flatMap((assignment) =>
+      assignment.role.permissions.map(
+        (rolePermission) => rolePermission.permission.code,
+      ),
+    ),
+  );
+  if (
+    !livePermissionCodes.has(permissions.coreAdminister) ||
+    !livePermissionCodes.has(permissions.tenantRoleAdminister)
+  ) {
+    throw new Error("PERMISSION_DENIED");
+  }
+
+  const companyManageScope = await tx.userScopeAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      scopeType: "COMPANY",
+      scopeId: session.context.companyId,
+      accessLevel: "MANAGE",
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+    },
+    select: { id: true },
+  });
+  if (!companyManageScope) {
+    throw new Error("ADMIN_SCOPE_DENIED");
+  }
+
+  if (input.sensitiveChanges.length > 0) {
+    // Lock the external-provider evidence and enforcement setting read by the
+    // shared guard so neither can change between revalidation and mutation.
+    await tx.$queryRaw`
+      SELECT "id"
+        FROM "PrivilegedMfaEnrollment"
+       WHERE "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "targetUserId" = ${session.user.id}::uuid
+         AND status = 'VERIFIED'
+       FOR SHARE
+    `;
+    await tx.$queryRaw`
+      SELECT "id"
+        FROM "CompanyPolicySetting"
+       WHERE "companyId" = ${session.context.companyId}::uuid
+         AND key = 'security.privileged_mfa.enforcement_mode'
+       FOR SHARE
+    `;
+    const mfaDecision = await assertPrivilegedMfaForAction(
+      {
+        ...session,
+        ...(liveSession && session.authentication
+          ? {
+              authentication: {
+                ...session.authentication,
+                assuranceLevel: liveSession.assuranceLevel,
+                mfaAuthenticatedAt: liveSession.mfaAuthenticatedAt,
+                absoluteExpiresAt: liveSession.absoluteExpiresAt,
+              },
+            }
+          : {}),
+      },
+      {
+        action: "role_permissions.update_sensitive",
+        permissionCode: permissions.tenantRoleAdminister,
+        entityType: "Role",
+        entityId: input.roleId,
+        reason:
+          "Sensitive role-permission changes require verified privileged MFA evidence.",
+        metadata: {
+          roleCode: input.roleCode,
+          addedCodes: input.addedCodes,
+          removedCodes: input.removedCodes,
+          sensitiveChanges: input.sensitiveChanges,
+        },
+      },
+      { transaction: tx, deferDenialThrow: true },
+    );
+    return mfaDecision.deniedError;
+  }
+  return null;
+}
+
 export function assertNotSelfScopeMutation(
   actorUserId: string,
   targetUserId: string,
@@ -897,6 +1119,14 @@ export async function createCoreAdminCompany(formData: FormData) {
         scopeId: company.id,
         accessLevel: "MANAGE",
       },
+    });
+
+    await touchUserPrivilegeEpoch(tx, session.user.id, {
+      companyId: company.id,
+      requestedByUserId: session.user.id,
+      reason: "Company management scope created; invalidate active sessions.",
+      sourceEventType: "user_scope_assignment.created",
+      sourceRecordId: scopeAssignment.id,
     });
 
     await tx.auditEvent.create({
@@ -3290,24 +3520,8 @@ async function updateRolePermissionCodes({
   const addedSensitiveCodes = addedCodes.filter((code) =>
     isSensitivePermissionCode(code),
   );
-  if (sensitiveChanges.length > 0) {
-    await assertPrivilegedMfaForAction(session, {
-      action: "role_permissions.update_sensitive",
-      permissionCode: permissions.tenantRoleAdminister,
-      entityType: "Role",
-      entityId: role.id,
-      reason:
-        "Sensitive role-permission changes require verified privileged MFA evidence.",
-      metadata: {
-        roleCode: role.code,
-        addedCodes,
-        removedCodes,
-        sensitiveChanges,
-      },
-    });
-  }
 
-  await prisma.$transaction(async (tx) => {
+  const rolePermissionMutation = prisma.$transaction(async (tx) => {
     await tx.$queryRaw`
       SELECT "id"
       FROM "Role"
@@ -3384,7 +3598,35 @@ async function updateRolePermissionCodes({
       },
       select: { userId: true },
       distinct: ["userId"],
+      orderBy: { userId: "asc" },
     });
+    const affectedUserIds = canonicalizePrivilegeMutationUserIds(
+      affectedAssignees.map((assignee) => assignee.userId),
+    );
+    // Global role/privilege mutation lock order: target Role first, then every
+    // acting or affected User in ascending UUID order, then the acting
+    // AuthSession. Approval routing uses the same sorted User order with
+    // FOR SHARE, so mixed SHARE/UPDATE user locks cannot invert each other.
+    const lockedUsers = await lockUsersForPrivilegeMutation(
+      tx,
+      session.context.tenantId,
+      [session.user.id, ...affectedUserIds],
+    );
+    const deferredMfaDenial = await lockAndRevalidateRolePermissionActor(
+      tx,
+      session,
+      {
+        actor: lockedUsers.lockedUserById.get(session.user.id),
+        roleId: role.id,
+        roleCode: role.code,
+        sensitiveChanges,
+        addedCodes,
+        removedCodes,
+      },
+    );
+    if (deferredMfaDenial) {
+      return { deniedError: deferredMfaDenial };
+    }
 
     if (removedCodes.length > 0) {
       const removedPermissionIds = removedCodes
@@ -3411,8 +3653,8 @@ async function updateRolePermissionCodes({
       });
     }
 
-    for (const assignee of affectedAssignees) {
-      await touchUserPrivilegeEpoch(tx, assignee.userId, {
+    for (const userId of affectedUserIds) {
+      await touchUserPrivilegeEpoch(tx, userId, {
         requestedByUserId: session.user.id,
         reason: "Role permissions changed; invalidate active sessions.",
         sourceEventType: "role_permissions.changed",
@@ -3457,7 +3699,19 @@ async function updateRolePermissionCodes({
         },
       },
     });
+    return { deniedError: null };
   });
+  const mutationOutcome = await rolePermissionMutation.catch(
+    (error: unknown) => {
+      if (isRolePermissionTransactionConflict(error)) {
+        throw new Error("ROLE_PERMISSION_CONCURRENT_CHANGE");
+      }
+      throw error;
+    },
+  );
+  if (mutationOutcome.deniedError) {
+    throw new Error(mutationOutcome.deniedError);
+  }
 }
 
 export async function updateRolePermissions(formData: FormData) {

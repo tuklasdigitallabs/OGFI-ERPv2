@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type TransactionClient } from "@ogfi/database";
 import type { SessionContext } from "./context";
 import { isSensitivePermissionCode } from "./rolePermissionCatalog";
 import {
@@ -26,6 +26,11 @@ type PrivilegedMfaGuardInput = {
   metadata?: Record<string, unknown>;
 };
 
+type PrivilegedMfaGuardOptions = {
+  transaction?: TransactionClient;
+  deferDenialThrow?: boolean;
+};
+
 function isPrivilegedMfaEnforcementMode(
   value: unknown,
 ): value is PrivilegedMfaEnforcementMode {
@@ -37,8 +42,12 @@ function isPrivilegedMfaEnforcementMode(
   );
 }
 
-async function getPrivilegedMfaEnforcementMode(session: SessionContext) {
-  const saved = await prisma.companyPolicySetting.findUnique({
+async function getPrivilegedMfaEnforcementMode(
+  session: SessionContext,
+  transaction?: TransactionClient,
+) {
+  const db = transaction ?? prisma;
+  const saved = await db.companyPolicySetting.findUnique({
     where: {
       companyId_key: {
         companyId: session.context.companyId,
@@ -60,8 +69,10 @@ async function getPrivilegedMfaEnforcementMode(session: SessionContext) {
 
 export async function hasVerifiedPrivilegedMfaEvidence(
   session: SessionContext,
+  transaction?: TransactionClient,
 ) {
-  const enrollment = await prisma.privilegedMfaEnrollment.findFirst({
+  const db = transaction ?? prisma;
+  const enrollment = await db.privilegedMfaEnrollment.findFirst({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -82,7 +93,9 @@ export async function hasVerifiedPrivilegedMfaEvidence(
 export async function assertPrivilegedMfaForAction(
   session: SessionContext,
   input: PrivilegedMfaGuardInput,
+  options: PrivilegedMfaGuardOptions = {},
 ) {
+  const db = options.transaction ?? prisma;
   if (
     input.permissionCode &&
     !isSensitivePermissionCode(input.permissionCode)
@@ -91,6 +104,7 @@ export async function assertPrivilegedMfaForAction(
       required: false,
       mode: "warn_and_audit" as PrivilegedMfaEnforcementMode,
       enrollmentId: null,
+      deniedError: null,
     };
   }
 
@@ -107,9 +121,10 @@ export async function assertPrivilegedMfaForAction(
         required: true,
         mode: "runtime_mfa" as const,
         enrollmentId: null,
+        deniedError: null,
       };
     }
-    await prisma.auditEvent.create({
+    await db.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
@@ -126,25 +141,43 @@ export async function assertPrivilegedMfaForAction(
         metadata: { sourceDecisionId: "DEC-0040" },
       },
     });
+    if (options.deferDenialThrow) {
+      return {
+        required: true,
+        mode: "runtime_mfa" as const,
+        enrollmentId: null,
+        deniedError: "PRIVILEGED_MFA_STEP_UP_REQUIRED" as const,
+      };
+    }
     throw new Error("PRIVILEGED_MFA_STEP_UP_REQUIRED");
   }
 
-  const enrollment = await hasVerifiedPrivilegedMfaEvidence(session);
+  const enrollment = await hasVerifiedPrivilegedMfaEvidence(
+    session,
+    options.transaction,
+  );
   if (enrollment) {
     return {
       required: true,
-      mode: await getPrivilegedMfaEnforcementMode(session),
+      mode: await getPrivilegedMfaEnforcementMode(
+        session,
+        options.transaction,
+      ),
       enrollmentId: enrollment.id,
+      deniedError: null,
     };
   }
 
-  const mode = await getPrivilegedMfaEnforcementMode(session);
+  const mode = await getPrivilegedMfaEnforcementMode(
+    session,
+    options.transaction,
+  );
   const hardBlock =
     mode === "enforce_all_sensitive" ||
     (mode === "enforce_admin_security" &&
       (input.enforcementScope ?? "admin_security") === "admin_security");
 
-  await prisma.auditEvent.create({
+  await db.auditEvent.create({
     data: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -172,6 +205,14 @@ export async function assertPrivilegedMfaForAction(
   });
 
   if (hardBlock) {
+    if (options.deferDenialThrow) {
+      return {
+        required: true,
+        mode,
+        enrollmentId: null,
+        deniedError: "PRIVILEGED_MFA_REQUIRED" as const,
+      };
+    }
     throw new Error("PRIVILEGED_MFA_REQUIRED");
   }
 
@@ -179,5 +220,6 @@ export async function assertPrivilegedMfaForAction(
     required: true,
     mode,
     enrollmentId: null,
+    deniedError: null,
   };
 }

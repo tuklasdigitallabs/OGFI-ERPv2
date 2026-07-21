@@ -142,6 +142,12 @@ Until this slice is implemented, evidence fields remain references to external p
 
 ### Epic B — Approval Engine
 
+**Implemented foundation subset**
+- Implemented Phase I approval-backed workflows create scoped in-app assignment notifications for the first actionable step.
+- An intermediate approval does not finalize the source document: the source remains `PENDING_APPROVAL`, while the current step is completed, the next step is atomically activated, current recipient eligibility is revalidated, and only eligible next-step approvers are notified.
+- A final approve, return, or reject decision atomically records the terminal workflow state and notifies the requester or responsible owner. Stable source-event keys protect retried notification writes from duplication.
+- Scheduled reminder/escalation delivery, external channels, preferences, and broader non-approval fanout remain deferred and are not required to complete the current transaction.
+
 **Acceptance criteria**
 - Approval rules can evaluate transaction type, amount, branch, department, category, urgency, and budget status.
 - Selected policy is deterministic and snapshotted at submission.
@@ -209,7 +215,7 @@ Until this slice is implemented, evidence fields remain references to external p
 - Posting creates immutable receipt movements for accepted quantities, updates balance cache, increments PO line received quantities, and updates PO fulfillment status.
 - Read-only Stock Balances inquiry displays posted balance-cache rows for the current authorized location.
 - Read-only Inventory Ledger inquiry displays recent source-linked movements for the current authorized location.
-- Receipt reversal and discrepancy evidence-reference enforcement are implemented. Binary attachment upload, broader notification fanout, partial line reversal, and advanced inspection approvals remain deferred controlled transitions. A bounded in-app notification foundation is implemented for approval assignment on PR submission, PO submission, and PO remaining-balance closure request.
+- Receipt reversal and discrepancy evidence-reference enforcement are implemented. Binary attachment upload, broader non-approval notification fanout, scheduled or external delivery, partial line reversal, and advanced inspection approvals remain deferred controlled transitions. The bounded in-app approval notification behavior is defined under Epic B.
 
 **Acceptance criteria**
 - Receiver creates RR from issued PO without retyping core data.

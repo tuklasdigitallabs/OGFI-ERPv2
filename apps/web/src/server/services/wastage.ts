@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { WASTAGE_MAX_LINES } from "../../lib/workflowLimits";
 import { canUseWastageReports, permissions, requirePermission } from "./authorization";
@@ -382,6 +382,152 @@ function scopedWastageWhere(session: SessionContext, id?: string) {
       locationId: session.context.locationId
     }
   };
+}
+
+type LockedPendingWastageApproval = {
+  id: string;
+  currentStepOrder: number;
+};
+
+type LockedWastageCancellationPrincipal = {
+  privilegeEpoch: number;
+  authSession:
+    | {
+        status: string;
+        privilegeEpochAtIssue: number;
+        idleExpiresAt: Date;
+        absoluteExpiresAt: Date;
+      }
+    | null;
+};
+
+async function lockWastageCancellationPrincipal(
+  tx: TransactionClient,
+  session: SessionContext
+): Promise<LockedWastageCancellationPrincipal> {
+  const users = await tx.$queryRaw<
+    Array<{ status: string; privilegeEpoch: number }>
+  >`
+    SELECT status, "privilegeEpoch"
+      FROM "User"
+     WHERE id = ${session.user.id}::uuid
+       AND "tenantId" = ${session.context.tenantId}::uuid
+     FOR SHARE
+  `;
+  const user = users[0];
+  if (!user || user.status !== "ACTIVE") {
+    throw new Error("WASTAGE_CANCELLATION_AUTHORITY_STALE");
+  }
+
+  let authSession: LockedWastageCancellationPrincipal["authSession"] = null;
+  if (session.authentication?.sessionId) {
+    const sessions = await tx.$queryRaw<
+      Array<{
+        status: string;
+        privilegeEpochAtIssue: number;
+        idleExpiresAt: Date;
+        absoluteExpiresAt: Date;
+      }>
+    >`
+      SELECT status, "privilegeEpochAtIssue", "idleExpiresAt", "absoluteExpiresAt"
+        FROM "AuthSession"
+       WHERE id = ${session.authentication.sessionId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "userId" = ${session.user.id}::uuid
+       FOR SHARE
+    `;
+    authSession = sessions[0] ?? null;
+    if (
+      !authSession ||
+      authSession.status !== "ACTIVE" ||
+      authSession.privilegeEpochAtIssue !== user.privilegeEpoch
+    ) {
+      throw new Error("WASTAGE_CANCELLATION_AUTHORITY_STALE");
+    }
+  }
+
+  return {
+    privilegeEpoch: user.privilegeEpoch,
+    authSession
+  };
+}
+
+async function assertFreshWastageCancellationAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  principal: LockedWastageCancellationPrincipal
+) {
+  const now = new Date();
+  if (
+    principal.authSession &&
+    (principal.authSession.status !== "ACTIVE" ||
+      principal.authSession.privilegeEpochAtIssue !== principal.privilegeEpoch ||
+      principal.authSession.idleExpiresAt <= now ||
+      principal.authSession.absoluteExpiresAt <= now)
+  ) {
+    throw new Error("WASTAGE_CANCELLATION_AUTHORITY_STALE");
+  }
+
+  const roleAssignment = await tx.userRoleAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      role: {
+        status: "ACTIVE",
+        OR: [{ tenantId: null }, { tenantId: session.context.tenantId }],
+        permissions: {
+          some: { permission: { code: permissions.wastageCancel } }
+        }
+      }
+    },
+    select: { id: true }
+  });
+  if (!roleAssignment) {
+    throw new Error("PERMISSION_DENIED");
+  }
+
+  const scopeAssignment = await tx.userScopeAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      scopeType: "LOCATION",
+      scopeId: session.context.locationId,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }]
+    },
+    select: { id: true }
+  });
+  if (!scopeAssignment) {
+    throw new Error("SCOPE_DENIED");
+  }
+}
+
+async function lockPendingWastageApproval(
+  tx: TransactionClient,
+  session: SessionContext,
+  reportId: string
+) {
+  const approvals = await tx.$queryRaw<LockedPendingWastageApproval[]>`
+    SELECT ai.id, ai."currentStepOrder"
+      FROM "ApprovalInstance" ai
+      JOIN "ApprovalInstanceStep" s
+        ON s."approvalInstanceId" = ai.id
+       AND s."stepOrder" = ai."currentStepOrder"
+     WHERE ai."tenantId" = ${session.context.tenantId}::uuid
+       AND ai."companyId" = ${session.context.companyId}::uuid
+       AND ai."documentType" = 'WastageReport'
+       AND ai."documentId" = ${reportId}::uuid
+       AND ai.status = 'PENDING'::"ApprovalStatus"
+       AND s.status = 'PENDING'::"ApprovalStepStatus"
+     ORDER BY ai."createdAt" ASC, ai.id ASC
+     FOR UPDATE OF ai, s
+  `;
+  if (approvals.length > 1) {
+    throw new Error("WASTAGE_MULTIPLE_PENDING_APPROVALS");
+  }
+  return approvals[0] ?? null;
 }
 
 function requiredFormValues(formData: FormData, name: string) {
@@ -1080,10 +1226,53 @@ export async function cancelWastageReport(formData: FormData) {
   assertWastageCanCancel(report.status);
 
   await prisma.$transaction(async (tx) => {
+    const principal = await lockWastageCancellationPrincipal(tx, session);
+    const approval = await lockPendingWastageApproval(
+      tx,
+      session,
+      report.id
+    );
+    await assertFreshWastageCancellationAuthority(tx, session, principal);
+
+    if (report.status === "PENDING_APPROVAL" && !approval) {
+      throw new Error("WASTAGE_NOT_CANCELLABLE");
+    }
+
+    if (approval) {
+      const cancelledApproval = await tx.approvalInstance.updateMany({
+        where: {
+          id: approval.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          status: "PENDING",
+          currentStepOrder: approval.currentStepOrder
+        },
+        data: {
+          status: "CANCELLED",
+          currentStepOrder: null
+        }
+      });
+      if (cancelledApproval.count !== 1) {
+        throw new Error("WASTAGE_NOT_CANCELLABLE");
+      }
+      await tx.approvalInstanceStep.updateMany({
+        where: {
+          approvalInstanceId: approval.id,
+          status: { in: ["PENDING", "WAITING"] }
+        },
+        data: { status: "SKIPPED" }
+      });
+    }
+
     const cancelled = await tx.wastageReport.updateMany({
       where: {
         id: report.id,
-        status: { in: ["DRAFT", "SUBMITTED", "PENDING_APPROVAL", "RETURNED"] }
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: report.status,
+        inventoryLocation: {
+          locationId: session.context.locationId
+        }
       },
       data: {
         status: "CANCELLED",
@@ -1093,34 +1282,6 @@ export async function cancelWastageReport(formData: FormData) {
     });
     if (cancelled.count !== 1) {
       throw new Error("WASTAGE_NOT_CANCELLABLE");
-    }
-
-    const approval = await tx.approvalInstance.findFirst({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        documentType: "WastageReport",
-        documentId: report.id,
-        status: "PENDING"
-      },
-      select: { id: true }
-    });
-
-    if (approval) {
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: {
-          status: "CANCELLED",
-          currentStepOrder: null
-        }
-      });
-      await tx.approvalInstanceStep.updateMany({
-        where: {
-          approvalInstanceId: approval.id,
-          status: { in: ["PENDING", "WAITING"] }
-        },
-        data: { status: "SKIPPED" }
-      });
     }
 
     await tx.auditEvent.create({

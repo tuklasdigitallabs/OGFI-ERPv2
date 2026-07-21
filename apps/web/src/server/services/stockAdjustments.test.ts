@@ -155,12 +155,12 @@ describe("stock adjustment controlled workflow rules", () => {
     );
   });
 
-  test("cancel action claims every state the UI exposes as cancellable", () => {
+  test("cancel action compare-and-sets the exact preflight state and scope", () => {
     const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
 
-    expect(source).toContain(
-      'status: { in: ["DRAFT", "SUBMITTED", "PENDING_APPROVAL", "RETURNED"] }'
-    );
+    expect(source).toContain("status: adjustment.status");
+    expect(source).toContain("inventoryLocationId: adjustment.inventoryLocationId");
+    expect(source).toContain("lockPendingStockAdjustmentApproval");
     expect(source).toContain('status: { in: ["PENDING", "WAITING"] }');
   });
 

@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { STOCK_ADJUSTMENT_MAX_LINES } from "../../lib/workflowLimits";
 import {
@@ -196,6 +196,214 @@ function scopedStockAdjustmentWhere(session: SessionContext, id?: string) {
       locationId: session.context.locationId
     }
   };
+}
+
+type LockedStockAdjustmentCancellationUser = {
+  id: string;
+  status: string;
+  privilegeEpoch: number;
+};
+
+type LockedStockAdjustmentCancellationSession = {
+  status: string;
+  assuranceLevel: string;
+  mfaAuthenticatedAt: Date | null;
+  privilegeEpochAtIssue: number;
+  idleExpiresAt: Date;
+  absoluteExpiresAt: Date;
+};
+
+type LockedPendingStockAdjustmentApproval = {
+  id: string;
+  currentStepOrder: number;
+};
+
+function canonicalizeStockAdjustmentCancellationUserIds(userIds: string[]) {
+  return Array.from(new Set(userIds)).sort();
+}
+
+function isStockAdjustmentCancellationTransactionConflict(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    meta?: { code?: unknown } | null;
+  };
+  return (
+    candidate.code === "P2034" ||
+    candidate.code === "40P01" ||
+    candidate.code === "40001" ||
+    candidate.meta?.code === "40P01" ||
+    candidate.meta?.code === "40001"
+  );
+}
+
+async function lockStockAdjustmentCancellationUsers(
+  tx: TransactionClient,
+  session: SessionContext,
+  userIds: string[]
+) {
+  const lockedUserById = new Map<
+    string,
+    LockedStockAdjustmentCancellationUser
+  >();
+  for (const userId of canonicalizeStockAdjustmentCancellationUserIds(userIds)) {
+    const users = await tx.$queryRaw<LockedStockAdjustmentCancellationUser[]>`
+      SELECT id, status, "privilegeEpoch"
+        FROM "User"
+       WHERE id = ${userId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+       FOR SHARE
+    `;
+    const user = users[0];
+    if (!user) {
+      throw new Error("STOCK_ADJUSTMENT_CANCELLATION_AUTHORITY_STALE");
+    }
+    lockedUserById.set(user.id, user);
+  }
+  return lockedUserById;
+}
+
+async function lockStockAdjustmentCancellationSession(
+  tx: TransactionClient,
+  session: SessionContext
+) {
+  if (!session.authentication?.sessionId) {
+    return null;
+  }
+  const sessions = await tx.$queryRaw<LockedStockAdjustmentCancellationSession[]>`
+    SELECT status, "assuranceLevel", "mfaAuthenticatedAt",
+           "privilegeEpochAtIssue", "idleExpiresAt", "absoluteExpiresAt"
+      FROM "AuthSession"
+     WHERE id = ${session.authentication.sessionId}::uuid
+       AND "tenantId" = ${session.context.tenantId}::uuid
+       AND "userId" = ${session.user.id}::uuid
+     FOR SHARE
+  `;
+  return sessions[0] ?? null;
+}
+
+async function lockPendingStockAdjustmentApproval(
+  tx: TransactionClient,
+  session: SessionContext,
+  adjustmentId: string
+) {
+  const approvals = await tx.$queryRaw<LockedPendingStockAdjustmentApproval[]>`
+    SELECT ai.id, ai."currentStepOrder"
+      FROM "ApprovalInstance" ai
+      JOIN "ApprovalInstanceStep" s
+        ON s."approvalInstanceId" = ai.id
+       AND s."stepOrder" = ai."currentStepOrder"
+     WHERE ai."tenantId" = ${session.context.tenantId}::uuid
+       AND ai."companyId" = ${session.context.companyId}::uuid
+       AND ai."documentType" = 'StockAdjustment'
+       AND ai."documentId" = ${adjustmentId}::uuid
+       AND ai.status = 'PENDING'::"ApprovalStatus"
+       AND s.status = 'PENDING'::"ApprovalStepStatus"
+     ORDER BY ai."createdAt" ASC, ai.id ASC
+     FOR UPDATE OF ai, s
+  `;
+  if (approvals.length > 1) {
+    throw new Error("STOCK_ADJUSTMENT_MULTIPLE_PENDING_APPROVALS");
+  }
+  return approvals[0] ?? null;
+}
+
+async function assertFreshStockAdjustmentCancellationAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    actor: LockedStockAdjustmentCancellationUser | undefined;
+    authSession: LockedStockAdjustmentCancellationSession | null;
+    inventoryLocationId: string;
+  }
+) {
+  const now = new Date();
+  if (input.actor?.status !== "ACTIVE") {
+    throw new Error("STOCK_ADJUSTMENT_CANCELLATION_AUTHORITY_STALE");
+  }
+  if (
+    session.authentication?.sessionId &&
+    (!input.authSession ||
+      input.authSession.status !== "ACTIVE" ||
+      input.authSession.privilegeEpochAtIssue !== input.actor.privilegeEpoch ||
+      input.authSession.idleExpiresAt <= now ||
+      input.authSession.absoluteExpiresAt <= now)
+  ) {
+    throw new Error("STOCK_ADJUSTMENT_CANCELLATION_AUTHORITY_STALE");
+  }
+
+  const roleAssignment = await tx.userRoleAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      role: {
+        status: "ACTIVE",
+        OR: [{ tenantId: null }, { tenantId: session.context.tenantId }],
+        permissions: {
+          some: {
+            permission: {
+              code: permissions.stockAdjustmentCancel,
+              OR: [{ tenantId: null }, { tenantId: session.context.tenantId }]
+            }
+          }
+        }
+      }
+    },
+    select: { id: true }
+  });
+  if (!roleAssignment) {
+    throw new Error("PERMISSION_DENIED");
+  }
+
+  const inventoryLocation = await tx.inventoryLocation.findFirst({
+    where: {
+      id: input.inventoryLocationId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE",
+      location: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      }
+    },
+    select: { locationId: true }
+  });
+  if (!inventoryLocation) {
+    throw new Error("SCOPE_DENIED");
+  }
+
+  const scopeAssignment = await tx.userScopeAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      AND: {
+        OR: [
+          {
+            scopeType: "LOCATION",
+            scopeId: inventoryLocation.locationId,
+            accessLevel: { in: ["APPROVE", "MANAGE"] }
+          },
+          {
+            scopeType: "COMPANY",
+            scopeId: session.context.companyId,
+            accessLevel: { in: ["APPROVE", "MANAGE"] }
+          }
+        ]
+      }
+    },
+    select: { id: true }
+  });
+  if (!scopeAssignment) {
+    throw new Error("SCOPE_DENIED");
+  }
 }
 
 function requiredFormValues(formData: FormData, name: string) {
@@ -831,76 +1039,140 @@ export async function cancelStockAdjustment(formData: FormData) {
   const values = cancelStockAdjustmentSchema.parse(Object.fromEntries(formData));
 
   const adjustment = await prisma.stockAdjustment.findFirst({
-    where: scopedStockAdjustmentWhere(session, values.id)
+    where: scopedStockAdjustmentWhere(session, values.id),
+    include: { inventoryLocation: true }
   });
   if (!adjustment) {
     throw new Error("STOCK_ADJUSTMENT_NOT_FOUND");
   }
   assertStockAdjustmentCanCancel(adjustment.status);
 
-  await prisma.$transaction(async (tx) => {
-    const cancelled = await tx.stockAdjustment.updateMany({
-      where: {
-        id: adjustment.id,
-        status: { in: ["DRAFT", "SUBMITTED", "PENDING_APPROVAL", "RETURNED"] }
-      },
-      data: {
-        status: "CANCELLED",
-        cancelledAt: new Date(),
-        cancelledByUserId: session.user.id,
-        cancellationReason: values.cancellationReason
-      }
-    });
-    if (cancelled.count !== 1) {
-      throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
-    }
+  try {
+    await prisma.$transaction(async (tx) => {
+      const lockedUserById = await lockStockAdjustmentCancellationUsers(
+        tx,
+        session,
+        [session.user.id, adjustment.requestedByUserId]
+      );
+      const authSession = await lockStockAdjustmentCancellationSession(
+        tx,
+        session
+      );
+      const approval = await lockPendingStockAdjustmentApproval(
+        tx,
+        session,
+        adjustment.id
+      );
 
-    const approval = await tx.approvalInstance.findFirst({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        documentType: "StockAdjustment",
-        documentId: adjustment.id,
-        status: "PENDING"
-      },
-      select: { id: true }
-    });
-
-    if (approval) {
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: {
-          status: "CANCELLED",
-          currentStepOrder: null
-        }
+      await assertFreshStockAdjustmentCancellationAuthority(tx, session, {
+        actor: lockedUserById.get(session.user.id),
+        authSession,
+        inventoryLocationId: adjustment.inventoryLocationId
       });
-      await tx.approvalInstanceStep.updateMany({
-        where: {
-          approvalInstanceId: approval.id,
-          status: { in: ["PENDING", "WAITING"] }
-        },
-        data: { status: "SKIPPED" }
-      });
-    }
-
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "stock_adjustment.cancelled",
+      const liveMfaSession = authSession
+        ? {
+            ...session,
+            authentication: {
+              sessionId: session.authentication!.sessionId,
+              assuranceLevel: authSession.assuranceLevel,
+              mfaAuthenticatedAt: authSession.mfaAuthenticatedAt,
+              absoluteExpiresAt: authSession.absoluteExpiresAt
+            }
+          }
+        : session;
+      await assertPrivilegedMfaForAction(liveMfaSession, {
+        action: "stock_adjustment.cancel",
+        enforcementScope: "all_sensitive",
+        permissionCode: permissions.stockAdjustmentCancel,
         entityType: "StockAdjustment",
         entityId: adjustment.id,
-        beforeData: { status: adjustment.status },
-        afterData: { status: "CANCELLED" },
+        reason:
+          "Cancelling a stock adjustment is a sensitive controlled-workflow action.",
         metadata: {
-          approvalInstanceId: approval?.id ?? null,
-          cancellationReason: values.cancellationReason,
-          nonPostingApproval: adjustment.status === "PENDING_APPROVAL"
+          adjustmentType: adjustment.adjustmentType,
+          inventoryLocationId: adjustment.inventoryLocationId
+        }
+      });
+
+      if (adjustment.status === "PENDING_APPROVAL" && !approval) {
+        throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
+      }
+
+      const cancelled = await tx.stockAdjustment.updateMany({
+        where: {
+          id: adjustment.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          inventoryLocationId: adjustment.inventoryLocationId,
+          status: adjustment.status,
+          inventoryLocation: {
+            locationId: adjustment.inventoryLocation.locationId
+          }
+        },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+          cancelledByUserId: session.user.id,
+          cancellationReason: values.cancellationReason
+        }
+      });
+      if (cancelled.count !== 1) {
+        throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
+      }
+
+      if (approval) {
+        const cancelledApproval = await tx.approvalInstance.updateMany({
+          where: {
+            id: approval.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            status: "PENDING",
+            currentStepOrder: approval.currentStepOrder
+          },
+          data: {
+            status: "CANCELLED",
+            currentStepOrder: null
+          }
+        });
+        if (cancelledApproval.count !== 1) {
+          throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
+        }
+        const skippedSteps = await tx.approvalInstanceStep.updateMany({
+          where: {
+            approvalInstanceId: approval.id,
+            status: { in: ["PENDING", "WAITING"] }
+          },
+          data: { status: "SKIPPED" }
+        });
+        if (skippedSteps.count < 1) {
+          throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
         }
       }
+
+      await tx.auditEvent.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          actorUserId: session.user.id,
+          eventType: "stock_adjustment.cancelled",
+          entityType: "StockAdjustment",
+          entityId: adjustment.id,
+          beforeData: { status: adjustment.status },
+          afterData: { status: "CANCELLED" },
+          metadata: {
+            approvalInstanceId: approval?.id ?? null,
+            cancellationReason: values.cancellationReason,
+            nonPostingApproval: adjustment.status === "PENDING_APPROVAL"
+          }
+        }
+      });
     });
-  });
+  } catch (error) {
+    if (isStockAdjustmentCancellationTransactionConflict(error)) {
+      throw new Error("STOCK_ADJUSTMENT_NOT_CANCELLABLE");
+    }
+    throw error;
+  }
 }
 
 export async function postStockAdjustment(formData: FormData) {

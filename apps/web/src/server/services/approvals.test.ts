@@ -282,3 +282,305 @@ describe("approval inbox controls", () => {
     expect(detailPageSource).toContain('revalidatePath("/workforce")');
   });
 });
+
+function extractFunctionSource(serviceSource: string, functionName: string) {
+  const exportedStart = serviceSource.indexOf(
+    `export async function ${functionName}(`
+  );
+  const internalStart = serviceSource.indexOf(`async function ${functionName}(`);
+  const start = exportedStart >= 0 ? exportedStart : internalStart;
+  expect(start).toBeGreaterThanOrEqual(0);
+  const nextExport = serviceSource.indexOf("\nexport async function ", start + 1);
+  const nextInternal = serviceSource.indexOf("\nasync function ", start + 1);
+  const possibleEnds = [nextExport, nextInternal].filter((index) => index >= 0);
+  const end = possibleEnds.length > 0 ? Math.min(...possibleEnds) : serviceSource.length;
+  return serviceSource.slice(start, end);
+}
+
+describe("multi-step approval advancement", () => {
+  const serviceSource = readFileSync(
+    path.resolve(__dirname, "approvals.ts"),
+    "utf8"
+  );
+
+  test("compare-and-advance is transactional, scoped, and retry-safe", () => {
+    const helperSource = extractFunctionSource(
+      serviceSource,
+      "approveCurrentStepAndAdvance"
+    );
+
+    expect(helperSource).toContain("approvalInstanceStep.updateMany");
+    expect(helperSource).toContain('status: "PENDING"');
+    expect(helperSource).toContain('status: "WAITING"');
+    expect(helperSource).toContain('data: { status: "PENDING" }');
+    expect(helperSource).toContain("tenantId: session.context.tenantId");
+    expect(helperSource).toContain("companyId: session.context.companyId");
+    expect(helperSource).toContain("currentStepOrder: input.stepOrder");
+    expect(helperSource).toContain("currentStepOrder: nextStep.stepOrder");
+    expect(helperSource).toContain('throw new Error("APPROVAL_NOT_ACTIONABLE")');
+    expect(helperSource).toContain("input.audit.eventType");
+    expect(helperSource).toContain("approvedStepOrder: input.stepOrder");
+    expect(helperSource).toContain("nextStepOrder: nextStep.stepOrder");
+    expect(helperSource).toContain("assertLiveApprovalAuthority");
+    expect(helperSource).toContain("resolveNextApprovalStepRecipients");
+    expect(helperSource).toContain("recordWorkflowNotifications");
+    expect(helperSource).toContain('notificationType: "APPROVAL_STEP_READY"');
+    expect(helperSource).toContain("sourceEventKey: auditEvent.id");
+    expect(helperSource).toContain(
+      'throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE")'
+    );
+  });
+
+  test("authority is revalidated under row locks inside the transaction", () => {
+    const prepareSource = extractFunctionSource(
+      serviceSource,
+      "prepareApprovalDecisionAuthority"
+    );
+    const actorLockSource = extractFunctionSource(
+      serviceSource,
+      "lockApprovalActorSession"
+    );
+    const approvalLockSource = extractFunctionSource(
+      serviceSource,
+      "lockApprovalAuthority"
+    );
+    const authoritySource = extractFunctionSource(
+      serviceSource,
+      "assertLiveApprovalAuthority"
+    );
+    expect(actorLockSource).toContain('FROM "AuthSession"');
+    expect(actorLockSource).toContain("FOR SHARE");
+    expect(approvalLockSource).toContain("FOR UPDATE OF ai, s");
+    expect(prepareSource.indexOf("lockApprovalActorSession")).toBeLessThan(
+      prepareSource.indexOf("lockApprovalAuthority")
+    );
+    expect(prepareSource.indexOf("lockApprovalAuthority")).toBeLessThan(
+      prepareSource.indexOf("findNextApprovalStep(tx, input, true)")
+    );
+    expect(prepareSource.indexOf("findNextApprovalStep(tx, input, true)")).toBeLessThan(
+      prepareSource.indexOf("assertLiveApprovalAuthority")
+    );
+    expect(authoritySource).toContain("const now = new Date()");
+    expect(authoritySource).toContain("privilegeEpochAtIssue");
+    expect(authoritySource).toContain("userRoleAssignment.findMany");
+    expect(authoritySource).toContain("requiredPermissionCode");
+    expect(authoritySource).toContain("userScopeAssignment.findFirst");
+    expect(authoritySource).toContain('accessLevel: { in: ["APPROVE", "MANAGE"] }');
+    expect(authoritySource).not.toContain("$queryRawUnsafe");
+  });
+
+  test.each([
+    "closeWithDecision",
+    "closeQuotationRecommendationWithDecision",
+    "closePurchaseOrderWithDecision",
+    "closePurchaseOrderBalanceClosureWithDecision",
+    "closePurchaseOrderAmendmentWithDecision",
+    "closeWastageReportWithDecision",
+    "closeStockAdjustmentWithDecision"
+  ])("%s uses the common live-authority terminal decision primitive", (name) => {
+    expect(extractFunctionSource(serviceSource, name)).toContain(
+      "closeCurrentApprovalDecision(tx, session"
+    );
+  });
+
+  test("terminal decision compare-and-set prevents stale overwrite", () => {
+    const closeSource = extractFunctionSource(
+      serviceSource,
+      "closeCurrentApprovalDecision"
+    );
+    expect(closeSource).toContain("assertLiveApprovalAuthority");
+    expect(closeSource).toContain("approvalInstanceStep.updateMany");
+    expect(closeSource).toContain('status: "PENDING"');
+    expect(closeSource).toContain("approvalInstance.updateMany");
+    expect(closeSource).toContain("currentStepOrder: input.stepOrder");
+    expect(closeSource).toContain('throw new Error("APPROVAL_NOT_ACTIONABLE")');
+  });
+
+  test.each([
+    [
+      "approvePurchaseRequest",
+      "purchase_request.approval_step_approved",
+      "purchase_request.approved"
+    ],
+    [
+      "approveWastageReport",
+      "wastage_report.approval_step_approved",
+      "wastage_report.approved"
+    ],
+    [
+      "approvePurchaseOrder",
+      "purchase_order.approval_step_approved",
+      "purchase_order.approved"
+    ],
+    [
+      "approveQuotationRecommendation",
+      "quotation_recommendation.approval_step_approved",
+      "quotation_recommendation.approved"
+    ],
+    [
+      "approvePurchaseOrderBalanceClosure",
+      "purchase_order_balance_closure.approval_step_approved",
+      "purchase_order_balance_closure.approved"
+    ],
+    [
+      "approvePurchaseOrderAmendment",
+      "purchase_order.amendment_approval_step_approved",
+      "purchase_order.amendment_approved"
+    ],
+    [
+      "approveStockAdjustment",
+      "stock_adjustment.approval_step_approved",
+      "stock_adjustment.approved"
+    ]
+  ])(
+    "%s advances before final source approval",
+    (functionName, stepAuditEvent, finalAuditEvent) => {
+      const handlerSource = extractFunctionSource(serviceSource, functionName);
+      const advanceIndex = handlerSource.indexOf(
+        "approveCurrentStepAndAdvance(tx, session"
+      );
+      const intermediateGuardIndex = handlerSource.indexOf(
+        "if (!stepResult.isFinalStep)"
+      );
+      const finalAuditIndex = handlerSource.indexOf(finalAuditEvent);
+
+      expect(handlerSource).toContain("await prisma.$transaction");
+      expect(handlerSource).toContain(stepAuditEvent);
+      expect(handlerSource).toContain("sourceMutationDeferred: true");
+      expect(advanceIndex).toBeGreaterThanOrEqual(0);
+      expect(intermediateGuardIndex).toBeGreaterThan(advanceIndex);
+      expect(finalAuditIndex).toBeGreaterThan(intermediateGuardIndex);
+    }
+  );
+
+  test("affected handlers retain server authorization and segregation guards", () => {
+    expect(serviceSource).toContain(
+      "await requirePermission(session, permissions.purchaseRequestApprove)"
+    );
+    expect(serviceSource).toContain(
+      "await requirePermission(session, permissions.wastageApprove)"
+    );
+    expect(serviceSource).toContain(
+      "await requirePermission(session, permissions.purchaseOrderApprove)"
+    );
+    expect(serviceSource).toContain(
+      "await requirePermission(session, permissions.quoteApprove)"
+    );
+    expect(serviceSource).toContain(
+      "await assertApprovalScope(session, request.requestLocationId)"
+    );
+    expect(serviceSource).toContain(
+      "await assertApprovalScope(session, order.deliveryLocationId)"
+    );
+    expect(serviceSource).toContain(
+      "assertNotSelfApproval(request.requesterUserId, session.user.id)"
+    );
+    expect(serviceSource).toContain('throw new Error("SELF_APPROVAL_BLOCKED")');
+  });
+
+  test("terminal outcomes notify requester or owner with stable idempotency", () => {
+    const outcomeSource = extractFunctionSource(
+      serviceSource,
+      "recordApprovalOutcomeNotification"
+    );
+    const approveSource = extractFunctionSource(
+      serviceSource,
+      "approveCurrentStepAndAdvance"
+    );
+    const closeSource = extractFunctionSource(
+      serviceSource,
+      "closeCurrentApprovalDecision"
+    );
+    expect(outcomeSource).toContain("recordWorkflowNotifications");
+    expect(outcomeSource).toContain("input.notification.recipientUserIds");
+    expect(outcomeSource).toContain("input.notification.publicReference");
+    expect(outcomeSource).toContain("input.notification.locationName");
+    expect(outcomeSource).toContain(
+      "`approval:${input.approvalId}:outcome:${outcome}`"
+    );
+    expect(approveSource).toContain(
+      'recordApprovalOutcomeNotification(tx, session, input, "APPROVED")'
+    );
+    expect(closeSource).toContain(
+      "recordApprovalOutcomeNotification(tx, session, input, input.decisionStatus)"
+    );
+  });
+
+  test("next-step routing excludes every workflow source actor", () => {
+    const resolverSource = extractFunctionSource(
+      serviceSource,
+      "resolveNextApprovalStepRecipients"
+    );
+    expect(resolverSource).toContain(
+      "input.prohibitedApproverUserIds.includes(input.assignedUserId)"
+    );
+    expect(resolverSource).toContain("return []");
+    expect(resolverSource).toContain("equals: input.assignedUserId");
+    expect(resolverSource).toContain("notIn: input.prohibitedApproverUserIds");
+
+    const expectations: Array<[string, string[]]> = [
+      ["approvePurchaseRequest", ["request.requesterUserId"]],
+      ["approveWastageReport", ["report.reportedByUserId"]],
+      ["approveStockAdjustment", ["adjustment.requestedByUserId"]],
+      [
+        "approvePurchaseOrderBalanceClosure",
+        [
+          "closure.requestedByUserId",
+          "order.createdByUserId",
+          "order.purchaseRequest.requesterUserId",
+          "order.quotationRecommendation.preparedByUserId"
+        ]
+      ],
+      [
+        "approvePurchaseOrderAmendment",
+        [
+          "amendment.requestedByUserId",
+          "order.createdByUserId",
+          "order.purchaseRequest.requesterUserId",
+          "order.quotationRecommendation.preparedByUserId"
+        ]
+      ],
+      [
+        "approvePurchaseOrder",
+        [
+          "order.createdByUserId",
+          "order.purchaseRequest.requesterUserId",
+          "order.quotationRecommendation.preparedByUserId"
+        ]
+      ],
+      [
+        "approveQuotationRecommendation",
+        [
+          "recommendation.preparedByUserId",
+          "purchaseRequest.requesterUserId"
+        ]
+      ]
+    ];
+    for (const [handlerName, prohibitedActors] of expectations) {
+      const handlerSource = extractFunctionSource(serviceSource, handlerName);
+      expect(handlerSource).toContain("prohibitedApproverUserIds:");
+      for (const actor of prohibitedActors) {
+        expect(handlerSource).toContain(actor);
+      }
+    }
+  });
+
+  test("balance closure serializes with receiving and uses quantity CAS", () => {
+    const source = extractFunctionSource(
+      serviceSource,
+      "approvePurchaseOrderBalanceClosure"
+    );
+    expect(source.indexOf("approveCurrentStepAndAdvance")).toBeLessThan(
+      source.indexOf('FROM "PurchaseOrder"')
+    );
+    expect(source).toContain("FOR UPDATE");
+    expect(source).toContain('FROM "PurchaseOrderLine"');
+    expect(source).toContain('ORDER BY "lineNumber", id');
+    expect(source).toContain("FOR UPDATE");
+    expect(source).toContain("purchaseOrderLine.updateMany");
+    expect(source).toContain("orderedQty: line.orderedQty");
+    expect(source).toContain("receivedQty: line.receivedQty");
+    expect(source).toContain("cancelledQty: line.cancelledQty");
+    expect(source).toContain("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
+  });
+});

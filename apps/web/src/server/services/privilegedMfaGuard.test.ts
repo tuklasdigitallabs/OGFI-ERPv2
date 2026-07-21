@@ -39,6 +39,13 @@ describe("privileged MFA sensitive-action guard", () => {
     expect(guardSource).toContain("privileged_mfa.required_warning");
     expect(guardSource).toContain("privileged_mfa.required_denied");
     expect(guardSource).toContain("PRIVILEGED_MFA_REQUIRED");
+    expect(guardSource).toContain("transaction?: TransactionClient");
+    expect(guardSource).toContain("deferDenialThrow?: boolean");
+    expect(guardSource).toContain("const db = options.transaction ?? prisma");
+    expect(coreAdminSource).toContain(
+      "{ transaction: tx, deferDenialThrow: true }"
+    );
+    expect(coreAdminSource).toContain("return { deniedError: deferredMfaDenial }");
     expect(coreAdminSource).toContain("role_permissions.update_sensitive");
     expect(coreAdminSource).toContain("high_risk_scope_request.create");
     expect(coreAdminSource).toContain("high_risk_scope_request.approve");

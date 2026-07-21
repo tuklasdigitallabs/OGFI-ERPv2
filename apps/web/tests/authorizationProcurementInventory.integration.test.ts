@@ -35,8 +35,13 @@ describe("procurement and inventory authorization boundaries", () => {
     adjacentCompanyInventoryLocationId: randomUUID(),
     foreignInventoryLocationId: randomUUID(),
     userId: randomUUID(),
+    approvalRequesterId: randomUUID(),
+    nextApproverId: randomUUID(),
     roleId: randomUUID(),
+    nextRecipientRoleId: randomUUID(),
     userScopeAssignmentId: randomUUID(),
+    approvalRequesterScopeAssignmentId: randomUUID(),
+    nextApproverScopeAssignmentId: randomUUID(),
     authSessionId: randomUUID(),
     approvalRuleId: randomUUID(),
     scopedPurchaseRequestId: randomUUID(),
@@ -44,6 +49,22 @@ describe("procurement and inventory authorization boundaries", () => {
     approvedPurchaseRequestId: randomUUID(),
     approveDispatchApprovalId: randomUUID(),
     rejectDispatchApprovalId: randomUUID(),
+    multiStepApprovalId: randomUUID(),
+    recipientRevocationApprovalId: randomUUID(),
+    requesterOnlyNextStepApprovalId: randomUUID(),
+    mixedNextStepApprovalId: randomUUID(),
+    finalOutcomeApprovalId: randomUUID(),
+    expiryApprovalId: randomUUID(),
+    reassignedApprovalId: randomUUID(),
+    staleAuthorityApprovalId: randomUUID(),
+    multiStepPurchaseRequestId: randomUUID(),
+    recipientRevocationPurchaseRequestId: randomUUID(),
+    requesterOnlyNextStepPurchaseRequestId: randomUUID(),
+    mixedNextStepPurchaseRequestId: randomUUID(),
+    finalOutcomePurchaseRequestId: randomUUID(),
+    expiryPurchaseRequestId: randomUUID(),
+    reassignedPurchaseRequestId: randomUUID(),
+    staleAuthorityPurchaseRequestId: randomUUID(),
     transferWrongSourceId: randomUUID(),
     transferWrongDestinationId: randomUUID(),
     adjacentStockCountId: randomUUID(),
@@ -220,33 +241,66 @@ describe("procurement and inventory authorization boundaries", () => {
         },
       ],
     });
-    await prisma.user.create({
-      data: {
+    await prisma.user.createMany({
+      data: [{
         id: ids.userId,
         tenantId: ids.tenantId,
         email: session.user.email,
         displayName: session.user.displayName,
-      },
+      }, {
+        id: ids.approvalRequesterId,
+        tenantId: ids.tenantId,
+        email: `authz-approval-requester-${suffix}@example.test`,
+        displayName: `Authorization Approval Requester ${suffix}`,
+      }, {
+        id: ids.nextApproverId,
+        tenantId: ids.tenantId,
+        email: `authz-next-approver-${suffix}@example.test`,
+        displayName: `Authorization Next Approver ${suffix}`,
+      }],
     });
-    await prisma.role.create({
-      data: {
+    await prisma.role.createMany({
+      data: [{
         id: ids.roleId,
         tenantId: ids.tenantId,
         code: `AUTHZ_PI_${suffix}`,
         name: `Authorization Procurement Inventory ${suffix}`,
-      },
+      }, {
+        id: ids.nextRecipientRoleId,
+        tenantId: ids.tenantId,
+        code: `AUTHZ_PI_NEXT_${suffix}`,
+        name: `Authorization Next Recipients ${suffix}`,
+      }],
     });
-    await prisma.userRoleAssignment.create({
-      data: { userId: ids.userId, roleId: ids.roleId },
+    await prisma.userRoleAssignment.createMany({
+      data: [
+        { userId: ids.userId, roleId: ids.roleId },
+        { userId: ids.approvalRequesterId, roleId: ids.roleId },
+        { userId: ids.nextApproverId, roleId: ids.roleId },
+        { userId: ids.approvalRequesterId, roleId: ids.nextRecipientRoleId },
+        { userId: ids.nextApproverId, roleId: ids.nextRecipientRoleId },
+      ],
     });
-    await prisma.userScopeAssignment.create({
-      data: {
+    await prisma.userScopeAssignment.createMany({
+      data: [{
         id: ids.userScopeAssignmentId,
         userId: ids.userId,
         scopeType: "LOCATION",
         scopeId: ids.locationId,
         accessLevel: "APPROVE",
-      },
+      }, {
+        id: ids.approvalRequesterScopeAssignmentId,
+        userId: ids.approvalRequesterId,
+        scopeType: "LOCATION",
+        scopeId: ids.locationId,
+        accessLevel: "APPROVE",
+      }, {
+        id: ids.nextApproverScopeAssignmentId,
+        userId: ids.nextApproverId,
+        scopeType: "LOCATION",
+        scopeId: ids.locationId,
+        accessLevel: "APPROVE",
+      }],
     });
     await prisma.authSession.create({
       data: {
@@ -368,6 +422,110 @@ describe("procurement and inventory authorization boundaries", () => {
           justification: "Authorization approved purchase request",
           status: "APPROVED",
         },
+        {
+          id: ids.multiStepPurchaseRequestId,
+          publicReference: `AUTHZ-PI-MULTI-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Authorization multi-step purchase request",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
+        {
+          id: ids.recipientRevocationPurchaseRequestId,
+          publicReference: `AUTHZ-PI-RECIPIENT-REVOKE-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Authorization recipient revocation purchase request",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
+        {
+          id: ids.requesterOnlyNextStepPurchaseRequestId,
+          publicReference: `AUTHZ-PI-REQUESTER-ONLY-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Requester-only next-step routing fixture",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
+        {
+          id: ids.mixedNextStepPurchaseRequestId,
+          publicReference: `AUTHZ-PI-MIXED-RECIPIENTS-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Mixed next-step routing fixture",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
+        {
+          id: ids.finalOutcomePurchaseRequestId,
+          publicReference: `AUTHZ-PI-OUTCOME-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Authorization final outcome purchase request",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
+        {
+          id: ids.expiryPurchaseRequestId,
+          publicReference: `AUTHZ-PI-EXPIRY-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Authorization lock wait expiry purchase request",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
+        {
+          id: ids.reassignedPurchaseRequestId,
+          publicReference: `AUTHZ-PI-REASSIGN-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Authorization reassignment purchase request",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
+        {
+          id: ids.staleAuthorityPurchaseRequestId,
+          publicReference: `AUTHZ-PI-STALE-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Authorization stale authority purchase request",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
       ],
     });
     await prisma.purchaseRequestLine.createMany({
@@ -375,6 +533,14 @@ describe("procurement and inventory authorization boundaries", () => {
         ids.scopedPurchaseRequestId,
         ids.adjacentPurchaseRequestId,
         ids.approvedPurchaseRequestId,
+        ids.multiStepPurchaseRequestId,
+        ids.recipientRevocationPurchaseRequestId,
+        ids.requesterOnlyNextStepPurchaseRequestId,
+        ids.mixedNextStepPurchaseRequestId,
+        ids.finalOutcomePurchaseRequestId,
+        ids.expiryPurchaseRequestId,
+        ids.reassignedPurchaseRequestId,
+        ids.staleAuthorityPurchaseRequestId,
       ].map((purchaseRequestId) => ({
         purchaseRequestId,
         itemId: ids.itemId,
@@ -418,6 +584,86 @@ describe("procurement and inventory authorization boundaries", () => {
           status: "PENDING",
           currentStepOrder: 1,
         },
+        {
+          id: ids.multiStepApprovalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseRequest",
+          documentId: ids.multiStepPurchaseRequestId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
+        {
+          id: ids.recipientRevocationApprovalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseRequest",
+          documentId: ids.recipientRevocationPurchaseRequestId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
+        {
+          id: ids.requesterOnlyNextStepApprovalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseRequest",
+          documentId: ids.requesterOnlyNextStepPurchaseRequestId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
+        {
+          id: ids.mixedNextStepApprovalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseRequest",
+          documentId: ids.mixedNextStepPurchaseRequestId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
+        {
+          id: ids.finalOutcomeApprovalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseRequest",
+          documentId: ids.finalOutcomePurchaseRequestId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
+        {
+          id: ids.expiryApprovalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseRequest",
+          documentId: ids.expiryPurchaseRequestId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
+        {
+          id: ids.reassignedApprovalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseRequest",
+          documentId: ids.reassignedPurchaseRequestId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
+        {
+          id: ids.staleAuthorityApprovalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseRequest",
+          documentId: ids.staleAuthorityPurchaseRequestId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
       ],
     });
     await prisma.approvalInstanceStep.createMany({
@@ -430,6 +676,84 @@ describe("procurement and inventory authorization boundaries", () => {
         },
         {
           approvalInstanceId: ids.rejectDispatchApprovalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+        {
+          approvalInstanceId: ids.multiStepApprovalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+        {
+          approvalInstanceId: ids.multiStepApprovalId,
+          stepOrder: 2,
+          assignedUserId: ids.nextApproverId,
+          status: "WAITING",
+        },
+        {
+          approvalInstanceId: ids.recipientRevocationApprovalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+        {
+          approvalInstanceId: ids.recipientRevocationApprovalId,
+          stepOrder: 2,
+          assignedUserId: ids.nextApproverId,
+          status: "WAITING",
+        },
+        {
+          approvalInstanceId: ids.requesterOnlyNextStepApprovalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+        {
+          approvalInstanceId: ids.requesterOnlyNextStepApprovalId,
+          stepOrder: 2,
+          assignedUserId: ids.approvalRequesterId,
+          status: "WAITING",
+        },
+        {
+          approvalInstanceId: ids.mixedNextStepApprovalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+        {
+          approvalInstanceId: ids.mixedNextStepApprovalId,
+          stepOrder: 2,
+          assignedRoleId: ids.nextRecipientRoleId,
+          status: "WAITING",
+        },
+        {
+          approvalInstanceId: ids.finalOutcomeApprovalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+        {
+          approvalInstanceId: ids.expiryApprovalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+        {
+          approvalInstanceId: ids.reassignedApprovalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+        {
+          approvalInstanceId: ids.reassignedApprovalId,
+          stepOrder: 2,
+          assignedUserId: ids.nextApproverId,
+          status: "WAITING",
+        },
+        {
+          approvalInstanceId: ids.staleAuthorityApprovalId,
           stepOrder: 1,
           assignedUserId: ids.userId,
           status: "PENDING",
@@ -504,6 +828,12 @@ describe("procurement and inventory authorization boundaries", () => {
   afterAll(async () => {
     if (!prisma) return;
     clearAuthenticatedRequest();
+    await prisma.notification.deleteMany({
+      where: { tenantId: { in: [ids.tenantId, ids.foreignTenantId] } },
+    });
+    await prisma.auditEvent.deleteMany({
+      where: { tenantId: { in: [ids.tenantId, ids.foreignTenantId] } },
+    });
     await prisma.authSession.deleteMany({ where: { id: ids.authSessionId } });
     await prisma.inventoryTransferReceipt.deleteMany({
       where: {
@@ -540,13 +870,37 @@ describe("procurement and inventory authorization boundaries", () => {
     await prisma.approvalInstanceStep.deleteMany({
       where: {
         approvalInstanceId: {
-          in: [ids.approveDispatchApprovalId, ids.rejectDispatchApprovalId],
+          in: [
+            ids.approveDispatchApprovalId,
+            ids.rejectDispatchApprovalId,
+            ids.multiStepApprovalId,
+            ids.recipientRevocationApprovalId,
+            ids.requesterOnlyNextStepApprovalId,
+            ids.mixedNextStepApprovalId,
+            ids.finalOutcomeApprovalId,
+            ids.expiryApprovalId,
+            ids.reassignedApprovalId,
+            ids.staleAuthorityApprovalId,
+          ],
         },
       },
     });
     await prisma.approvalInstance.deleteMany({
       where: {
-        id: { in: [ids.approveDispatchApprovalId, ids.rejectDispatchApprovalId] },
+        id: {
+          in: [
+            ids.approveDispatchApprovalId,
+            ids.rejectDispatchApprovalId,
+            ids.multiStepApprovalId,
+            ids.recipientRevocationApprovalId,
+            ids.requesterOnlyNextStepApprovalId,
+            ids.mixedNextStepApprovalId,
+            ids.finalOutcomeApprovalId,
+            ids.expiryApprovalId,
+            ids.reassignedApprovalId,
+            ids.staleAuthorityApprovalId,
+          ],
+        },
       },
     });
     await prisma.approvalRule.deleteMany({ where: { id: ids.approvalRuleId } });
@@ -557,6 +911,14 @@ describe("procurement and inventory authorization boundaries", () => {
             ids.scopedPurchaseRequestId,
             ids.adjacentPurchaseRequestId,
             ids.approvedPurchaseRequestId,
+            ids.multiStepPurchaseRequestId,
+            ids.recipientRevocationPurchaseRequestId,
+            ids.requesterOnlyNextStepPurchaseRequestId,
+            ids.mixedNextStepPurchaseRequestId,
+            ids.finalOutcomePurchaseRequestId,
+            ids.expiryPurchaseRequestId,
+            ids.reassignedPurchaseRequestId,
+            ids.staleAuthorityPurchaseRequestId,
           ],
         },
       },
@@ -568,6 +930,14 @@ describe("procurement and inventory authorization boundaries", () => {
             ids.scopedPurchaseRequestId,
             ids.adjacentPurchaseRequestId,
             ids.approvedPurchaseRequestId,
+            ids.multiStepPurchaseRequestId,
+            ids.recipientRevocationPurchaseRequestId,
+            ids.requesterOnlyNextStepPurchaseRequestId,
+            ids.mixedNextStepPurchaseRequestId,
+            ids.finalOutcomePurchaseRequestId,
+            ids.expiryPurchaseRequestId,
+            ids.reassignedPurchaseRequestId,
+            ids.staleAuthorityPurchaseRequestId,
           ],
         },
       },
@@ -579,6 +949,14 @@ describe("procurement and inventory authorization boundaries", () => {
             ids.scopedPurchaseRequestId,
             ids.adjacentPurchaseRequestId,
             ids.approvedPurchaseRequestId,
+            ids.multiStepPurchaseRequestId,
+            ids.recipientRevocationPurchaseRequestId,
+            ids.requesterOnlyNextStepPurchaseRequestId,
+            ids.mixedNextStepPurchaseRequestId,
+            ids.finalOutcomePurchaseRequestId,
+            ids.expiryPurchaseRequestId,
+            ids.reassignedPurchaseRequestId,
+            ids.staleAuthorityPurchaseRequestId,
           ],
         },
       },
@@ -623,12 +1001,36 @@ describe("procurement and inventory authorization boundaries", () => {
       },
     });
     await prisma.userScopeAssignment.deleteMany({
-      where: { id: ids.userScopeAssignmentId },
+      where: {
+        id: {
+          in: [
+            ids.userScopeAssignmentId,
+            ids.approvalRequesterScopeAssignmentId,
+            ids.nextApproverScopeAssignmentId,
+          ],
+        },
+      },
     });
-    await prisma.userRoleAssignment.deleteMany({ where: { userId: ids.userId } });
-    await prisma.rolePermission.deleteMany({ where: { roleId: ids.roleId } });
-    await prisma.role.deleteMany({ where: { id: ids.roleId } });
-    await prisma.user.deleteMany({ where: { id: ids.userId } });
+    await prisma.userRoleAssignment.deleteMany({
+      where: {
+        userId: {
+          in: [ids.userId, ids.approvalRequesterId, ids.nextApproverId],
+        },
+      },
+    });
+    await prisma.rolePermission.deleteMany({
+      where: { roleId: { in: [ids.roleId, ids.nextRecipientRoleId] } },
+    });
+    await prisma.role.deleteMany({
+      where: { id: { in: [ids.roleId, ids.nextRecipientRoleId] } },
+    });
+    await prisma.user.deleteMany({
+      where: {
+        id: {
+          in: [ids.userId, ids.approvalRequesterId, ids.nextApproverId],
+        },
+      },
+    });
     await prisma.company.deleteMany({
       where: {
         id: { in: [ids.companyId, ids.adjacentCompanyId, ids.foreignCompanyId] },
@@ -754,9 +1156,25 @@ describe("procurement and inventory authorization boundaries", () => {
       create: { roleId: ids.roleId, permissionId: permission.id },
       update: {},
     });
+    await prisma.rolePermission.upsert({
+      where: {
+        roleId_permissionId: {
+          roleId: ids.nextRecipientRoleId,
+          permissionId: permission.id,
+        },
+      },
+      create: {
+        roleId: ids.nextRecipientRoleId,
+        permissionId: permission.id,
+      },
+      update: {},
+    });
     return async () => {
       await prisma.rolePermission.deleteMany({
-        where: { roleId: ids.roleId, permissionId: permission.id },
+        where: {
+          roleId: { in: [ids.roleId, ids.nextRecipientRoleId] },
+          permissionId: permission.id,
+        },
       });
     };
   }
@@ -1145,6 +1563,687 @@ describe("procurement and inventory authorization boundaries", () => {
       ).rejects.toThrow("SELF_APPROVAL_BLOCKED");
       expect(await workflowMutationSnapshot()).toEqual(before);
     } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-MULTI-STEP-ADVANCE-NOTIFIES-NEXT-ELIGIBLE-APPROVER", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const revoke = await grantPermission("purchasing.purchase_request.approve");
+    try {
+      await approvals.approvePurchaseRequest(
+        form({ approvalInstanceId: ids.multiStepApprovalId }),
+      );
+      const [approval, steps, request, notifications] = await Promise.all([
+        prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: ids.multiStepApprovalId },
+        }),
+        prisma.approvalInstanceStep.findMany({
+          where: { approvalInstanceId: ids.multiStepApprovalId },
+          orderBy: { stepOrder: "asc" },
+        }),
+        prisma.purchaseRequest.findUniqueOrThrow({
+          where: { id: ids.multiStepPurchaseRequestId },
+        }),
+        prisma.notification.findMany({
+          where: {
+            tenantId: ids.tenantId,
+            recipientUserId: ids.nextApproverId,
+            notificationType: "APPROVAL_STEP_READY",
+            entityId: ids.multiStepPurchaseRequestId,
+          },
+        }),
+      ]);
+      expect(approval.status).toBe("PENDING");
+      expect(approval.currentStepOrder).toBe(2);
+      expect(steps.map(({ status }) => status)).toEqual(["APPROVED", "PENDING"]);
+      expect(request.status).toBe("PENDING_APPROVAL");
+      expect(request.currentApprovalStep).toBe(2);
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]?.deepLink).toBe(
+        `/approvals/${ids.multiStepApprovalId}`,
+      );
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-DIRECT-REQUESTER-NEXT-STEP-IS-REJECTED-WITHOUT-MUTATION", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const revoke = await grantPermission("purchasing.purchase_request.approve");
+    try {
+      const beforeAuditCount = await prisma.auditEvent.count({
+        where: {
+          tenantId: ids.tenantId,
+          entityId: ids.requesterOnlyNextStepPurchaseRequestId,
+        },
+      });
+      await expect(
+        approvals.approvePurchaseRequest(
+          form({ approvalInstanceId: ids.requesterOnlyNextStepApprovalId }),
+        ),
+      ).rejects.toThrow("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
+
+      const [approval, steps, request, auditCount, notificationCount] =
+        await Promise.all([
+          prisma.approvalInstance.findUniqueOrThrow({
+            where: { id: ids.requesterOnlyNextStepApprovalId },
+          }),
+          prisma.approvalInstanceStep.findMany({
+            where: { approvalInstanceId: ids.requesterOnlyNextStepApprovalId },
+            orderBy: { stepOrder: "asc" },
+          }),
+          prisma.purchaseRequest.findUniqueOrThrow({
+            where: { id: ids.requesterOnlyNextStepPurchaseRequestId },
+          }),
+          prisma.auditEvent.count({
+            where: {
+              tenantId: ids.tenantId,
+              entityId: ids.requesterOnlyNextStepPurchaseRequestId,
+            },
+          }),
+          prisma.notification.count({
+            where: {
+              tenantId: ids.tenantId,
+              entityId: ids.requesterOnlyNextStepPurchaseRequestId,
+            },
+          }),
+        ]);
+      expect(approval).toMatchObject({ status: "PENDING", currentStepOrder: 1 });
+      expect(steps.map(({ status }) => status)).toEqual(["PENDING", "WAITING"]);
+      expect(request).toMatchObject({
+        status: "PENDING_APPROVAL",
+        currentApprovalStep: 1,
+      });
+      expect(auditCount).toBe(beforeAuditCount);
+      expect(notificationCount).toBe(0);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-MIXED-NEXT-ROLE-EXCLUDES-REQUESTER-AND-NOTIFIES-NON-REQUESTER", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const revoke = await grantPermission("purchasing.purchase_request.approve");
+    try {
+      await approvals.approvePurchaseRequest(
+        form({ approvalInstanceId: ids.mixedNextStepApprovalId }),
+      );
+      const [approval, steps, request, notifications] = await Promise.all([
+        prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: ids.mixedNextStepApprovalId },
+        }),
+        prisma.approvalInstanceStep.findMany({
+          where: { approvalInstanceId: ids.mixedNextStepApprovalId },
+          orderBy: { stepOrder: "asc" },
+        }),
+        prisma.purchaseRequest.findUniqueOrThrow({
+          where: { id: ids.mixedNextStepPurchaseRequestId },
+        }),
+        prisma.notification.findMany({
+          where: {
+            tenantId: ids.tenantId,
+            entityId: ids.mixedNextStepPurchaseRequestId,
+            notificationType: "APPROVAL_STEP_READY",
+          },
+        }),
+      ]);
+      expect(approval).toMatchObject({ status: "PENDING", currentStepOrder: 2 });
+      expect(steps.map(({ status }) => status)).toEqual(["APPROVED", "PENDING"]);
+      expect(request).toMatchObject({
+        status: "PENDING_APPROVAL",
+        currentApprovalStep: 2,
+      });
+      expect(notifications.map(({ recipientUserId }) => recipientUserId)).toEqual([
+        ids.nextApproverId,
+      ]);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-NEXT-RECIPIENT-REVOCATION-IS-REVALIDATED-BEFORE-ADVANCE", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const revokePermission = await grantPermission("purchasing.purchase_request.approve");
+    let releaseRecipientRevocation!: () => void;
+    let recipientRevocationLocked!: () => void;
+    const recipientRevocationReady = new Promise<void>((resolve) => {
+      recipientRevocationLocked = resolve;
+    });
+    const recipientRevocationGate = new Promise<void>((resolve) => {
+      releaseRecipientRevocation = resolve;
+    });
+    try {
+      const revokeRecipient = prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: ids.nextApproverId },
+          data: { status: "INACTIVE" },
+        });
+        recipientRevocationLocked();
+        await recipientRevocationGate;
+      });
+      await recipientRevocationReady;
+
+      const approvalAttempt = expect(
+        approvals.approvePurchaseRequest(
+          form({ approvalInstanceId: ids.recipientRevocationApprovalId }),
+        ),
+      ).rejects.toThrow("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      releaseRecipientRevocation();
+      await revokeRecipient;
+      await approvalAttempt;
+
+      const [approval, steps, request, notifications] = await Promise.all([
+        prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: ids.recipientRevocationApprovalId },
+        }),
+        prisma.approvalInstanceStep.findMany({
+          where: { approvalInstanceId: ids.recipientRevocationApprovalId },
+          orderBy: { stepOrder: "asc" },
+        }),
+        prisma.purchaseRequest.findUniqueOrThrow({
+          where: { id: ids.recipientRevocationPurchaseRequestId },
+        }),
+        prisma.notification.findMany({
+          where: {
+            tenantId: ids.tenantId,
+            notificationType: "APPROVAL_STEP_READY",
+            entityId: ids.recipientRevocationPurchaseRequestId,
+          },
+        }),
+      ]);
+      expect(approval).toMatchObject({ status: "PENDING", currentStepOrder: 1 });
+      expect(steps.map(({ status }) => status)).toEqual(["PENDING", "WAITING"]);
+      expect(request).toMatchObject({
+        status: "PENDING_APPROVAL",
+        currentApprovalStep: 1,
+      });
+      expect(notifications).toHaveLength(0);
+    } finally {
+      releaseRecipientRevocation?.();
+      await prisma.user.update({
+        where: { id: ids.nextApproverId },
+        data: { status: "ACTIVE" },
+      });
+      await revokePermission();
+    }
+  });
+
+  it("AUTHZ-PI-FINAL-APPROVAL-NOTIFIES-THE-REQUESTER-ATOMically", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const revoke = await grantPermission("purchasing.purchase_request.approve");
+    try {
+      await approvals.approvePurchaseRequest(
+        form({ approvalInstanceId: ids.finalOutcomeApprovalId }),
+      );
+      const notification = await prisma.notification.findUniqueOrThrow({
+        where: {
+          tenantId_recipientUserId_sourceEventKey: {
+            tenantId: ids.tenantId,
+            recipientUserId: ids.approvalRequesterId,
+            sourceEventKey: `approval:${ids.finalOutcomeApprovalId}:outcome:APPROVED`,
+          },
+        },
+      });
+      expect(notification).toMatchObject({
+        notificationType: "APPROVAL_OUTCOME_APPROVED",
+        entityId: ids.finalOutcomePurchaseRequestId,
+        deepLink: `/approvals/${ids.finalOutcomeApprovalId}`,
+      });
+      expect(notification.title).toContain(`AUTHZ-PI-OUTCOME-${suffix}`);
+      expect(notification.body).toContain(`Authorization Inventory Location ${suffix}`);
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-SESSION-EXPIRING-WHILE-WAITING-CANNOT-ACT", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const revoke = await grantPermission("purchasing.purchase_request.approve");
+    let releaseApprovalLock!: () => void;
+    let approvalLocked!: () => void;
+    const approvalLockReady = new Promise<void>((resolve) => {
+      approvalLocked = resolve;
+    });
+    const approvalLockGate = new Promise<void>((resolve) => {
+      releaseApprovalLock = resolve;
+    });
+    try {
+      await prisma.authSession.update({
+        where: { id: ids.authSessionId },
+        data: {
+          idleExpiresAt: new Date(Date.now() + 400),
+          absoluteExpiresAt: new Date(Date.now() + 60_000),
+        },
+      });
+      const holdApprovalLock = prisma.$transaction(async (tx) => {
+        await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id
+            FROM "ApprovalInstance"
+           WHERE id = ${ids.expiryApprovalId}::uuid
+           FOR UPDATE
+        `;
+        approvalLocked();
+        await approvalLockGate;
+      });
+      await approvalLockReady;
+      const approvalAttempt = expect(
+        approvals.approvePurchaseRequest(
+          form({ approvalInstanceId: ids.expiryApprovalId }),
+        ),
+      ).rejects.toThrow("APPROVAL_AUTHORITY_STALE");
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      releaseApprovalLock();
+      await holdApprovalLock;
+      await approvalAttempt;
+
+      expect(
+        await prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: ids.expiryApprovalId },
+        }),
+      ).toMatchObject({ status: "PENDING", currentStepOrder: 1 });
+      expect(
+        await prisma.purchaseRequest.findUniqueOrThrow({
+          where: { id: ids.expiryPurchaseRequestId },
+        }),
+      ).toMatchObject({ status: "PENDING_APPROVAL", currentApprovalStep: 1 });
+    } finally {
+      releaseApprovalLock?.();
+      await prisma.authSession.update({
+        where: { id: ids.authSessionId },
+        data: {
+          status: "ACTIVE",
+          privilegeEpochAtIssue: 0,
+          revokedAt: null,
+          revocationReason: null,
+          idleExpiresAt: new Date(Date.now() + 30 * 60_000),
+          absoluteExpiresAt: new Date(Date.now() + 60 * 60_000),
+        },
+      });
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-BALANCE-CLOSURE-SERIALIZES-A-CONCURRENT-RECEIPT", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const fixture = {
+      supplierId: randomUUID(),
+      purchaseRequestId: randomUUID(),
+      quotationRequestId: randomUUID(),
+      supplierQuotationId: randomUUID(),
+      recommendationId: randomUUID(),
+      purchaseOrderId: randomUUID(),
+      purchaseOrderLineId: randomUUID(),
+      closureId: randomUUID(),
+      approvalId: randomUUID(),
+    };
+    const revoke = await grantPermission("purchasing.purchase_order.approve");
+    try {
+      await prisma.supplier.create({
+        data: {
+          id: fixture.supplierId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          supplierCode: `AUTHZ-PO-S-${suffix}`,
+          legalName: `Authorization PO Supplier ${suffix}`,
+        },
+      });
+      await prisma.purchaseRequest.create({
+        data: {
+          id: fixture.purchaseRequestId,
+          publicReference: `AUTHZ-PO-PR-${suffix}`,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          requestLocationId: ids.locationId,
+          requesterUserId: ids.approvalRequesterId,
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          urgency: "Normal",
+          justification: "Concurrent receipt closure fixture",
+          status: "APPROVED",
+        },
+      });
+      const purchaseRequestLine = await prisma.purchaseRequestLine.create({
+        data: {
+          purchaseRequestId: fixture.purchaseRequestId,
+          itemId: ids.itemId,
+          uomId: ids.uomId,
+          lineNumber: 1,
+          description: "Concurrent receipt item",
+          requestedQty: 10,
+          estimatedUnitCost: 1,
+          estimatedLineTotal: 10,
+          uomCode: "EA",
+          purpose: "Authorization coverage",
+        },
+      });
+      await prisma.quotationRequest.create({
+        data: {
+          id: fixture.quotationRequestId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          publicReference: `AUTHZ-PO-QR-${suffix}`,
+          purchaseRequestId: fixture.purchaseRequestId,
+          status: "CLOSED",
+          requiredDate: new Date("2026-07-31T00:00:00.000Z"),
+          createdByUserId: ids.approvalRequesterId,
+        },
+      });
+      await prisma.supplierQuotation.create({
+        data: {
+          id: fixture.supplierQuotationId,
+          quotationRequestId: fixture.quotationRequestId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          supplierId: fixture.supplierId,
+          quoteReference: `AUTHZ-PO-SQ-${suffix}`,
+          quoteDate: new Date("2026-07-21T00:00:00.000Z"),
+          currencyCode: "PHP",
+          totalAmount: 10,
+        },
+      });
+      await prisma.quotationRecommendation.create({
+        data: {
+          id: fixture.recommendationId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          quotationRequestId: fixture.quotationRequestId,
+          selectedSupplierQuotationId: fixture.supplierQuotationId,
+          preparedByUserId: ids.approvalRequesterId,
+          status: "APPROVED",
+          currencyCode: "PHP",
+          selectedEvaluatedTotal: 10,
+          lowestEvaluatedTotal: 10,
+          quoteCount: 1,
+          isLowestEvaluatedCost: true,
+          selectionReason: "Authorization fixture",
+          singleSourceJustification: "Single quotation authorization fixture",
+          evaluationSnapshot: {},
+        },
+      });
+      await prisma.purchaseOrder.create({
+        data: {
+          id: fixture.purchaseOrderId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          publicReference: `AUTHZ-PO-${suffix}`,
+          purchaseRequestId: fixture.purchaseRequestId,
+          quotationRequestId: fixture.quotationRequestId,
+          quotationRecommendationId: fixture.recommendationId,
+          selectedSupplierQuotationId: fixture.supplierQuotationId,
+          supplierId: fixture.supplierId,
+          deliveryLocationId: ids.locationId,
+          currencyCode: "PHP",
+          subtotalAmount: 10,
+          totalAmount: 10,
+          expectedDeliveryDate: new Date("2026-07-31T00:00:00.000Z"),
+          status: "PARTIALLY_RECEIVED",
+          sourceSnapshot: {},
+          createdByUserId: ids.approvalRequesterId,
+        },
+      });
+      await prisma.purchaseOrderLine.create({
+        data: {
+          id: fixture.purchaseOrderLineId,
+          purchaseOrderId: fixture.purchaseOrderId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          sourcePrLineId: purchaseRequestLine.id,
+          itemId: ids.itemId,
+          uomId: ids.uomId,
+          lineNumber: 1,
+          description: "Concurrent receipt item",
+          orderedQty: 10,
+          receivedQty: 5,
+          unitPrice: 1,
+          lineTotal: 10,
+        },
+      });
+      await prisma.purchaseOrderBalanceClosure.create({
+        data: {
+          id: fixture.closureId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          purchaseOrderId: fixture.purchaseOrderId,
+          requestedByUserId: ids.approvalRequesterId,
+          reason: "Close outstanding balance",
+          supplierNoticeUnavailableReason: "Authorization concurrency fixture",
+          lineSnapshot: [{
+            purchaseOrderLineId: fixture.purchaseOrderLineId,
+            lineNumber: 1,
+            orderedQty: 10,
+            receivedQty: 5,
+            cancelledQty: 0,
+            remainingQty: 5,
+            unitPrice: 1,
+            closedValue: 5,
+          }],
+          totalClosedQuantity: 5,
+          totalClosedValue: 5,
+        },
+      });
+      await prisma.approvalInstance.create({
+        data: {
+          id: fixture.approvalId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          documentType: "PurchaseOrderBalanceClosure",
+          documentId: fixture.closureId,
+          approvalRuleId: ids.approvalRuleId,
+          status: "PENDING",
+          currentStepOrder: 1,
+        },
+      });
+      await prisma.approvalInstanceStep.create({
+        data: {
+          approvalInstanceId: fixture.approvalId,
+          stepOrder: 1,
+          assignedUserId: ids.userId,
+          status: "PENDING",
+        },
+      });
+
+      let releaseReceipt!: () => void;
+      let receiptLocked!: () => void;
+      const receiptReady = new Promise<void>((resolve) => {
+        receiptLocked = resolve;
+      });
+      const receiptGate = new Promise<void>((resolve) => {
+        releaseReceipt = resolve;
+      });
+      const postReceipt = prisma.$transaction(async (tx) => {
+        await tx.purchaseOrder.update({
+          where: { id: fixture.purchaseOrderId },
+          data: { status: "PARTIALLY_RECEIVED" },
+        });
+        await tx.purchaseOrderLine.update({
+          where: { id: fixture.purchaseOrderLineId },
+          data: { receivedQty: 10 },
+        });
+        receiptLocked();
+        await receiptGate;
+      });
+      await receiptReady;
+      const closureAttempt = expect(
+        approvals.approvePurchaseOrderBalanceClosure(
+          form({ approvalInstanceId: fixture.approvalId }),
+        ),
+      ).rejects.toThrow("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      releaseReceipt();
+      await postReceipt;
+      await closureAttempt;
+
+      expect(
+        await prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: fixture.approvalId },
+        }),
+      ).toMatchObject({ status: "PENDING", currentStepOrder: 1 });
+      expect(
+        await prisma.purchaseOrderBalanceClosure.findUniqueOrThrow({
+          where: { id: fixture.closureId },
+        }),
+      ).toMatchObject({ status: "PENDING_APPROVAL" });
+      expect(
+        await prisma.notification.count({
+          where: {
+            tenantId: ids.tenantId,
+            sourceEventKey: `approval:${fixture.approvalId}:outcome:APPROVED`,
+          },
+        }),
+      ).toBe(0);
+    } finally {
+      await prisma.notification.deleteMany({
+        where: { tenantId: ids.tenantId, entityId: fixture.closureId },
+      });
+      await prisma.auditEvent.deleteMany({
+        where: { tenantId: ids.tenantId, entityId: { in: [fixture.closureId, fixture.purchaseOrderId] } },
+      });
+      await prisma.approvalInstanceStep.deleteMany({
+        where: { approvalInstanceId: fixture.approvalId },
+      });
+      await prisma.approvalInstance.deleteMany({ where: { id: fixture.approvalId } });
+      await prisma.purchaseOrderBalanceClosure.deleteMany({ where: { id: fixture.closureId } });
+      await prisma.purchaseOrderLine.deleteMany({ where: { id: fixture.purchaseOrderLineId } });
+      await prisma.purchaseOrder.deleteMany({ where: { id: fixture.purchaseOrderId } });
+      await prisma.quotationRecommendation.deleteMany({ where: { id: fixture.recommendationId } });
+      await prisma.supplierQuotation.deleteMany({ where: { id: fixture.supplierQuotationId } });
+      await prisma.quotationRequest.deleteMany({ where: { id: fixture.quotationRequestId } });
+      await prisma.purchaseRequestLine.deleteMany({ where: { purchaseRequestId: fixture.purchaseRequestId } });
+      await prisma.purchaseRequest.deleteMany({ where: { id: fixture.purchaseRequestId } });
+      await prisma.supplier.deleteMany({ where: { id: fixture.supplierId } });
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-APPROVE-VS-REJECT-CANNOT-OVERWRITE-A-STALE-DECISION", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const revoke = await grantPermission("purchasing.purchase_request.approve");
+    try {
+      const results = await Promise.allSettled([
+        approvals.approvePurchaseRequest(
+          form({ approvalInstanceId: ids.reassignedApprovalId }),
+        ),
+        approvals.rejectPurchaseRequest(
+          form({
+            approvalInstanceId: ids.reassignedApprovalId,
+            remarks: "Concurrent rejection decision",
+          }),
+        ),
+      ]);
+      expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      const [approval, steps, request, notifications] = await Promise.all([
+        prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: ids.reassignedApprovalId },
+        }),
+        prisma.approvalInstanceStep.findMany({
+          where: { approvalInstanceId: ids.reassignedApprovalId },
+          orderBy: { stepOrder: "asc" },
+        }),
+        prisma.purchaseRequest.findUniqueOrThrow({
+          where: { id: ids.reassignedPurchaseRequestId },
+        }),
+        prisma.notification.findMany({
+          where: {
+            tenantId: ids.tenantId,
+            recipientUserId: ids.approvalRequesterId,
+            entityId: ids.reassignedPurchaseRequestId,
+            notificationType: { startsWith: "APPROVAL_OUTCOME_" },
+          },
+        }),
+      ]);
+      if (approval.status === "PENDING") {
+        expect(approval.currentStepOrder).toBe(2);
+        expect(steps.map(({ status }) => status)).toEqual(["APPROVED", "PENDING"]);
+        expect(request.status).toBe("PENDING_APPROVAL");
+        expect(request.currentApprovalStep).toBe(2);
+        expect(notifications).toHaveLength(0);
+      } else {
+        expect(approval.status).toBe("REJECTED");
+        expect(approval.currentStepOrder).toBeNull();
+        expect(steps.map(({ status }) => status)).toEqual(["REJECTED", "SKIPPED"]);
+        expect(request.status).toBe("REJECTED");
+        expect(request.currentApprovalStep).toBeNull();
+        expect(notifications).toHaveLength(1);
+        expect(notifications[0]?.sourceEventKey).toBe(
+          `approval:${ids.reassignedApprovalId}:outcome:REJECTED`,
+        );
+      }
+    } finally {
+      await revoke();
+    }
+  });
+
+  it("AUTHZ-PI-STALE-PRIVILEGE-AND-REASSIGNMENT-CANNOT-ACT", async () => {
+    const approvals = await import("../src/server/services/approvals");
+    const revoke = await grantPermission("purchasing.purchase_request.approve");
+    try {
+      await prisma.user.update({
+        where: { id: ids.userId },
+        data: { privilegeEpoch: { increment: 1 } },
+      });
+      await expect(
+        approvals.approvePurchaseRequest(
+          form({ approvalInstanceId: ids.staleAuthorityApprovalId }),
+        ),
+      ).rejects.toThrow();
+      expect(
+        await prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: ids.staleAuthorityApprovalId },
+        }),
+      ).toMatchObject({ status: "PENDING", currentStepOrder: 1 });
+      await prisma.user.update({
+        where: { id: ids.userId },
+        data: { privilegeEpoch: 0 },
+      });
+      await prisma.authSession.update({
+        where: { id: ids.authSessionId },
+        data: {
+          status: "ACTIVE",
+          privilegeEpochAtIssue: 0,
+          revokedAt: null,
+          revocationReason: null,
+          idleExpiresAt: new Date(Date.now() + 30 * 60_000),
+          absoluteExpiresAt: new Date(Date.now() + 60 * 60_000),
+        },
+      });
+      await prisma.approvalInstanceStep.updateMany({
+        where: {
+          approvalInstanceId: ids.staleAuthorityApprovalId,
+          stepOrder: 1,
+          status: "PENDING",
+        },
+        data: { assignedUserId: ids.nextApproverId },
+      });
+      await expect(
+        approvals.rejectPurchaseRequest(
+          form({
+            approvalInstanceId: ids.staleAuthorityApprovalId,
+            remarks: "Stale actor must not reject",
+          }),
+        ),
+      ).rejects.toThrow("APPROVAL_ASSIGNMENT_DENIED");
+      expect(
+        await prisma.purchaseRequest.findUniqueOrThrow({
+          where: { id: ids.staleAuthorityPurchaseRequestId },
+        }),
+      ).toMatchObject({ status: "PENDING_APPROVAL", currentApprovalStep: 1 });
+    } finally {
+      await prisma.user.update({
+        where: { id: ids.userId },
+        data: { privilegeEpoch: 0 },
+      });
+      await prisma.authSession.update({
+        where: { id: ids.authSessionId },
+        data: {
+          status: "ACTIVE",
+          privilegeEpochAtIssue: 0,
+          revokedAt: null,
+          revocationReason: null,
+          idleExpiresAt: new Date(Date.now() + 30 * 60_000),
+          absoluteExpiresAt: new Date(Date.now() + 60 * 60_000),
+        },
+      });
       await revoke();
     }
   });

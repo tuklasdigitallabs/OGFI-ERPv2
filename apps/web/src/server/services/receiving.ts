@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { canUseReceiving, permissions, requirePermission } from "./authorization";
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
@@ -6,6 +6,11 @@ import type { CsvRow } from "./csv";
 import { postInventoryMovementInTransaction } from "./inventory";
 import { classifyPurchaseOrderDeliveryAging } from "./purchaseOrders";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
+import {
+  getAuthMode,
+  getMfaStepUpMinutes,
+  isMfaAssuranceFresh
+} from "./authentication";
 
 const createReceiptSchema = z.object({
   purchaseOrderId: z.string().uuid(),
@@ -118,15 +123,217 @@ function getLineValue(formData: FormData, lineId: string, field: string) {
   return formData.get(`line.${lineId}.${field}`);
 }
 
-async function nextGoodsReceiptReference(companyId: string) {
+async function nextGoodsReceiptReference(
+  client: typeof prisma | TransactionClient,
+  companyId: string
+) {
   const year = new Date().getUTCFullYear();
-  const count = await prisma.goodsReceipt.count({
+  const count = await client.goodsReceipt.count({
     where: {
       companyId,
       publicReference: { startsWith: `RR-${year}-` }
     }
   });
   return `RR-${year}-${String(count + 1).padStart(5, "0")}`;
+}
+
+async function lockScopedPurchaseOrder(
+  tx: TransactionClient,
+  session: SessionContext,
+  purchaseOrderId: string
+) {
+  const lockedOrders = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT po.id
+      FROM "PurchaseOrder" po
+     WHERE po.id = ${purchaseOrderId}::uuid
+       AND po."tenantId" = ${session.context.tenantId}::uuid
+       AND po."companyId" = ${session.context.companyId}::uuid
+       AND po."deliveryLocationId" = ${session.context.locationId}::uuid
+     FOR UPDATE OF po
+  `;
+  if (!lockedOrders[0]) {
+    throw new Error("PURCHASE_ORDER_NOT_FOUND");
+  }
+}
+
+async function lockScopedPurchaseOrderLines(
+  tx: TransactionClient,
+  session: SessionContext,
+  purchaseOrderId: string
+) {
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT pol.id
+      FROM "PurchaseOrderLine" pol
+     WHERE pol."purchaseOrderId" = ${purchaseOrderId}::uuid
+       AND pol."tenantId" = ${session.context.tenantId}::uuid
+       AND pol."companyId" = ${session.context.companyId}::uuid
+     ORDER BY pol."lineNumber" ASC, pol.id ASC
+     FOR UPDATE OF pol
+  `;
+}
+
+type LockedReceivingPrincipal = {
+  status: string;
+  privilegeEpoch: number;
+};
+
+type LockedReceivingSession = {
+  status: string;
+  assuranceLevel: string;
+  mfaAuthenticatedAt: Date | null;
+  privilegeEpochAtIssue: number;
+  idleExpiresAt: Date;
+  absoluteExpiresAt: Date;
+};
+
+const privilegedMfaModes = [
+  "warn_and_audit",
+  "enforce_admin_security",
+  "enforce_all_sensitive"
+] as const;
+
+async function assertFreshReceivingAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  permissionCode: string,
+  requiresPrivilegedMfa: boolean
+) {
+  const users = await tx.$queryRaw<LockedReceivingPrincipal[]>`
+    SELECT status, "privilegeEpoch"
+      FROM "User"
+     WHERE id = ${session.user.id}::uuid
+       AND "tenantId" = ${session.context.tenantId}::uuid
+     FOR SHARE
+  `;
+  const user = users[0];
+  if (!user || user.status !== "ACTIVE") {
+    throw new Error("AUTH_REQUIRED");
+  }
+
+  let liveSession: LockedReceivingSession | null = null;
+  if (session.authentication?.sessionId) {
+    const sessions = await tx.$queryRaw<LockedReceivingSession[]>`
+      SELECT status, "assuranceLevel", "mfaAuthenticatedAt",
+             "privilegeEpochAtIssue", "idleExpiresAt", "absoluteExpiresAt"
+        FROM "AuthSession"
+       WHERE id = ${session.authentication.sessionId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "userId" = ${session.user.id}::uuid
+       FOR SHARE
+    `;
+    liveSession = sessions[0] ?? null;
+  }
+
+  const now = new Date();
+  if (
+    session.authentication?.sessionId &&
+    (!liveSession ||
+      liveSession.status !== "ACTIVE" ||
+      liveSession.privilegeEpochAtIssue !== user.privilegeEpoch ||
+      liveSession.idleExpiresAt <= now ||
+      liveSession.absoluteExpiresAt <= now)
+  ) {
+    throw new Error("AUTH_REQUIRED");
+  }
+  if (getAuthMode() === "local" && !liveSession) {
+    throw new Error("AUTH_REQUIRED");
+  }
+
+  const roleAssignments = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT ura.id
+      FROM "UserRoleAssignment" ura
+      JOIN "Role" r ON r.id = ura."roleId"
+      JOIN "RolePermission" rp ON rp."roleId" = r.id
+      JOIN "Permission" p ON p.id = rp."permissionId"
+     WHERE ura."userId" = ${session.user.id}::uuid
+       AND ura.status = 'ACTIVE'::"RecordStatus"
+       AND ura."startsAt" <= ${now}
+       AND (ura."endsAt" IS NULL OR ura."endsAt" > ${now})
+       AND r.status = 'ACTIVE'::"RecordStatus"
+       AND (r."tenantId" IS NULL OR r."tenantId" = ${session.context.tenantId}::uuid)
+       AND p.code = ${permissionCode}
+       AND (p."tenantId" IS NULL OR p."tenantId" = ${session.context.tenantId}::uuid)
+     ORDER BY ura.id ASC
+     LIMIT 1
+  `;
+  if (!roleAssignments[0]) {
+    throw new Error("PERMISSION_DENIED");
+  }
+
+  const locationScopes = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT usa.id
+      FROM "UserScopeAssignment" usa
+      JOIN "Location" l ON l.id = usa."scopeId"
+     WHERE usa."userId" = ${session.user.id}::uuid
+       AND usa."scopeType" = 'LOCATION'::"ScopeType"
+       AND usa."scopeId" = ${session.context.locationId}::uuid
+       AND usa.status = 'ACTIVE'::"RecordStatus"
+       AND usa."startsAt" <= ${now}
+       AND (usa."endsAt" IS NULL OR usa."endsAt" > ${now})
+       AND l."tenantId" = ${session.context.tenantId}::uuid
+       AND l."companyId" = ${session.context.companyId}::uuid
+       AND l.status = 'ACTIVE'::"RecordStatus"
+     ORDER BY usa.id ASC
+     LIMIT 1
+  `;
+  if (!locationScopes[0]) {
+    throw new Error("SCOPE_DENIED");
+  }
+
+  if (!requiresPrivilegedMfa) {
+    return;
+  }
+  if (getAuthMode() === "local") {
+    if (
+      !liveSession ||
+      !isMfaAssuranceFresh({
+        assuranceLevel: liveSession.assuranceLevel,
+        mfaAuthenticatedAt: liveSession.mfaAuthenticatedAt,
+        freshnessMinutes: getMfaStepUpMinutes(),
+        now
+      })
+    ) {
+      throw new Error("PRIVILEGED_MFA_STEP_UP_REQUIRED");
+    }
+    return;
+  }
+
+  const policyRows = await tx.$queryRaw<
+    Array<{ value: unknown; status: string }>
+  >`
+    SELECT value, status
+      FROM "CompanyPolicySetting"
+     WHERE "companyId" = ${session.context.companyId}::uuid
+       AND key = 'security.privileged_mfa.enforcement_mode'
+     FOR SHARE
+  `;
+  const configuredMode = policyRows[0]?.value;
+  const mode =
+    policyRows[0]?.status === "ACTIVE" &&
+    typeof configuredMode === "string" &&
+    privilegedMfaModes.includes(
+      configuredMode as (typeof privilegedMfaModes)[number]
+    )
+      ? configuredMode
+      : "warn_and_audit";
+  if (mode !== "enforce_all_sensitive") {
+    return;
+  }
+
+  const verifiedEnrollments = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id
+      FROM "PrivilegedMfaEnrollment"
+     WHERE "tenantId" = ${session.context.tenantId}::uuid
+       AND "companyId" = ${session.context.companyId}::uuid
+       AND "targetUserId" = ${session.user.id}::uuid
+       AND status = 'VERIFIED'
+     ORDER BY "verifiedAt" DESC, "updatedAt" DESC, id ASC
+     LIMIT 1
+     FOR SHARE
+  `;
+  if (!verifiedEnrollments[0]) {
+    throw new Error("PRIVILEGED_MFA_REQUIRED");
+  }
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -138,20 +345,23 @@ function isUniqueConstraintError(error: unknown) {
   );
 }
 
-async function getBaseQuantity(line: {
-  itemId: string;
-  uomId: string;
-  acceptedQty: unknown;
-  item: {
-    baseUomId: string;
-  };
-}) {
+async function getBaseQuantity(
+  client: typeof prisma | TransactionClient,
+  line: {
+    itemId: string;
+    uomId: string;
+    acceptedQty: unknown;
+    item: {
+      baseUomId: string;
+    };
+  }
+) {
   const acceptedQty = Number(line.acceptedQty);
   if (line.uomId === line.item.baseUomId) {
     return acceptedQty;
   }
 
-  const conversion = await prisma.itemUomConversion.findFirst({
+  const conversion = await client.itemUomConversion.findFirst({
     where: {
       itemId: line.itemId,
       fromUomId: line.uomId,
@@ -517,179 +727,209 @@ export async function createGoodsReceiptFromPurchaseOrder(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.receivingCreate);
   const values = createReceiptSchema.parse(Object.fromEntries(formData));
-
-  const order = await prisma.purchaseOrder.findFirst({
-    where: {
-      id: values.purchaseOrderId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      deliveryLocationId: session.context.locationId
-    },
-    include: {
-      supplier: true,
-      deliveryLocation: true,
-      lines: {
-        orderBy: { lineNumber: "asc" },
-        include: {
-          item: true,
-          uom: true
-        }
-      }
-    }
-  });
-
-  if (!order) {
-    throw new Error("PURCHASE_ORDER_NOT_FOUND");
-  }
-  assertAuthorizedLocation(session, order.deliveryLocationId);
-  assertPurchaseOrderCanBeReceived(order.status);
-
-  const inventoryLocation = await prisma.inventoryLocation.findFirst({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: session.context.locationId,
-      status: "ACTIVE"
-    },
-    orderBy: { createdAt: "asc" }
-  });
-  if (!inventoryLocation) {
-    throw new Error("INVENTORY_LOCATION_NOT_FOUND");
-  }
-
-  const lines = order.lines.flatMap((line) => {
-    if (!line.itemId || !line.item || !line.item.trackInventory) {
-      return [];
-    }
-    const outstandingQty =
-      Number(line.orderedQty) - Number(line.receivedQty) - Number(line.cancelledQty);
-    if (outstandingQty <= 0) {
-      return [];
-    }
-
-    const deliveredQty = Number(getLineValue(formData, line.id, "deliveredQty") ?? 0);
-    const acceptedQty = Number(getLineValue(formData, line.id, "acceptedQty") ?? 0);
-    const rejectedQty = Number(getLineValue(formData, line.id, "rejectedQty") ?? 0);
-    const damagedQty = Number(getLineValue(formData, line.id, "damagedQty") ?? 0);
-    const shortQty = Math.max(outstandingQty - deliveredQty, 0);
-    const discrepancyReason = String(
-      getLineValue(formData, line.id, "discrepancyReason") ?? ""
-    ).trim();
-    const evidenceReference = String(
-      getLineValue(formData, line.id, "evidenceReference") ?? ""
-    ).trim();
-    validateReceivingQuantities({
-      deliveredQty,
-      acceptedQty,
-      rejectedQty,
-      damagedQty,
-      shortQty,
-      outstandingQty,
-      discrepancyReason,
-      evidenceReference
-    });
-
-    if (deliveredQty === 0 && acceptedQty === 0 && rejectedQty === 0 && damagedQty === 0) {
-      return [];
-    }
-
-    return [
-      {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        purchaseOrderLineId: line.id,
-        inventoryDestinationLocationId: inventoryLocation.id,
-        itemId: line.itemId,
-        uomId: line.uomId,
-        lineNumber: line.lineNumber,
-        description: line.description,
-        orderedQty: Number(line.orderedQty),
-        deliveredQty,
-        acceptedQty,
-        rejectedQty,
-        damagedQty,
-        shortQty,
-        unitCost: Number(line.unitPrice),
-        conditionStatus:
-          rejectedQty > 0 || damagedQty > 0 || shortQty > 0
-            ? "WITH_DISCREPANCY"
-            : "ACCEPTED",
-        discrepancyType:
-          rejectedQty > 0 || damagedQty > 0 || shortQty > 0 ? "QUANTITY_OR_CONDITION" : null,
-        discrepancyReason: discrepancyReason || null,
-        evidenceReference: evidenceReference || null,
-        lotNumber: String(getLineValue(formData, line.id, "lotNumber") ?? "").trim() || null,
-        expiryDate: getLineValue(formData, line.id, "expiryDate")
-          ? new Date(String(getLineValue(formData, line.id, "expiryDate")))
-          : null,
-        notes: String(getLineValue(formData, line.id, "notes") ?? "").trim() || null
-      }
-    ];
-  });
-
-  if (lines.length === 0) {
-    throw new Error("GOODS_RECEIPT_LINE_REQUIRED");
-  }
-
-  const discrepancyFlag = lines.some(
-    (line) => line.rejectedQty > 0 || line.damagedQty > 0 || line.shortQty > 0
-  );
-
-  let receiptId: string | null = null;
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      const receipt = await prisma.goodsReceipt.create({
-        data: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          publicReference: await nextGoodsReceiptReference(session.context.companyId),
-          purchaseOrderId: order.id,
-          supplierId: order.supplierId,
-          receivingLocationId: order.deliveryLocationId,
-          receivedByUserId: session.user.id,
-          receivedAt: new Date(),
-          supplierDeliveryReceiptNumber:
-            values.supplierDeliveryReceiptNumber || null,
-          discrepancyFlag,
-          discrepancySummary: discrepancyFlag
-            ? "One or more lines include rejected, damaged, or short quantities."
-            : null,
-          notes: values.notes || null,
-          lines: {
-            create: lines
+      return await prisma.$transaction(async (tx) => {
+        await lockScopedPurchaseOrder(tx, session, values.purchaseOrderId);
+        await lockScopedPurchaseOrderLines(tx, session, values.purchaseOrderId);
+        await assertFreshReceivingAuthority(
+          tx,
+          session,
+          permissions.receivingCreate,
+          false
+        );
+
+        const order = await tx.purchaseOrder.findFirst({
+          where: {
+            id: values.purchaseOrderId,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            deliveryLocationId: session.context.locationId
+          },
+          include: {
+            supplier: true,
+            deliveryLocation: true,
+            lines: {
+              orderBy: [{ lineNumber: "asc" }, { id: "asc" }],
+              include: {
+                item: true,
+                uom: true
+              }
+            }
           }
+        });
+        if (!order) {
+          throw new Error("PURCHASE_ORDER_NOT_FOUND");
         }
+        assertAuthorizedLocation(session, order.deliveryLocationId);
+        assertPurchaseOrderCanBeReceived(order.status);
+
+        const inventoryLocation = await tx.inventoryLocation.findFirst({
+          where: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            locationId: session.context.locationId,
+            status: "ACTIVE"
+          },
+          orderBy: { createdAt: "asc" }
+        });
+        if (!inventoryLocation) {
+          throw new Error("INVENTORY_LOCATION_NOT_FOUND");
+        }
+
+        const lines = order.lines.flatMap((line) => {
+          if (!line.itemId || !line.item || !line.item.trackInventory) {
+            return [];
+          }
+          const outstandingQty =
+            Number(line.orderedQty) -
+            Number(line.receivedQty) -
+            Number(line.cancelledQty);
+          if (outstandingQty <= 0) {
+            return [];
+          }
+
+          const deliveredQty = Number(
+            getLineValue(formData, line.id, "deliveredQty") ?? 0
+          );
+          const acceptedQty = Number(
+            getLineValue(formData, line.id, "acceptedQty") ?? 0
+          );
+          const rejectedQty = Number(
+            getLineValue(formData, line.id, "rejectedQty") ?? 0
+          );
+          const damagedQty = Number(
+            getLineValue(formData, line.id, "damagedQty") ?? 0
+          );
+          const shortQty = Math.max(outstandingQty - deliveredQty, 0);
+          const discrepancyReason = String(
+            getLineValue(formData, line.id, "discrepancyReason") ?? ""
+          ).trim();
+          const evidenceReference = String(
+            getLineValue(formData, line.id, "evidenceReference") ?? ""
+          ).trim();
+          validateReceivingQuantities({
+            deliveredQty,
+            acceptedQty,
+            rejectedQty,
+            damagedQty,
+            shortQty,
+            outstandingQty,
+            discrepancyReason,
+            evidenceReference
+          });
+
+          if (
+            deliveredQty === 0 &&
+            acceptedQty === 0 &&
+            rejectedQty === 0 &&
+            damagedQty === 0
+          ) {
+            return [];
+          }
+
+          return [
+            {
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              purchaseOrderLineId: line.id,
+              inventoryDestinationLocationId: inventoryLocation.id,
+              itemId: line.itemId,
+              uomId: line.uomId,
+              lineNumber: line.lineNumber,
+              description: line.description,
+              orderedQty: Number(line.orderedQty),
+              deliveredQty,
+              acceptedQty,
+              rejectedQty,
+              damagedQty,
+              shortQty,
+              unitCost: Number(line.unitPrice),
+              conditionStatus:
+                rejectedQty > 0 || damagedQty > 0 || shortQty > 0
+                  ? "WITH_DISCREPANCY"
+                  : "ACCEPTED",
+              discrepancyType:
+                rejectedQty > 0 || damagedQty > 0 || shortQty > 0
+                  ? "QUANTITY_OR_CONDITION"
+                  : null,
+              discrepancyReason: discrepancyReason || null,
+              evidenceReference: evidenceReference || null,
+              lotNumber:
+                String(getLineValue(formData, line.id, "lotNumber") ?? "").trim() ||
+                null,
+              expiryDate: getLineValue(formData, line.id, "expiryDate")
+                ? new Date(String(getLineValue(formData, line.id, "expiryDate")))
+                : null,
+              notes:
+                String(getLineValue(formData, line.id, "notes") ?? "").trim() ||
+                null
+            }
+          ];
+        });
+        if (lines.length === 0) {
+          throw new Error("GOODS_RECEIPT_LINE_REQUIRED");
+        }
+
+        const discrepancyFlag = lines.some(
+          (line) =>
+            line.rejectedQty > 0 || line.damagedQty > 0 || line.shortQty > 0
+        );
+        const receipt = await tx.goodsReceipt.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            publicReference: await nextGoodsReceiptReference(
+              tx,
+              session.context.companyId
+            ),
+            purchaseOrderId: order.id,
+            supplierId: order.supplierId,
+            receivingLocationId: order.deliveryLocationId,
+            receivedByUserId: session.user.id,
+            receivedAt: new Date(),
+            supplierDeliveryReceiptNumber:
+              values.supplierDeliveryReceiptNumber || null,
+            discrepancyFlag,
+            discrepancySummary: discrepancyFlag
+              ? "One or more lines include rejected, damaged, or short quantities."
+              : null,
+            notes: values.notes || null,
+            lines: {
+              create: lines
+            }
+          }
+        });
+
+        await tx.auditEvent.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            actorUserId: session.user.id,
+            eventType: "goods_receipt.created",
+            entityType: "GoodsReceipt",
+            entityId: receipt.id,
+            afterData: { status: "DRAFT" },
+            metadata: {
+              purchaseOrderId: order.id,
+              lineCount: lines.length,
+              discrepancyFlag
+            }
+          }
+        });
+
+        return receipt.id;
       });
-      receiptId = receipt.id;
-      break;
     } catch (error) {
-      if (!isUniqueConstraintError(error) || attempt === 5) {
+      if (!isUniqueConstraintError(error)) {
         throw error;
       }
-    }
-  }
-  if (!receiptId) {
-    throw new Error("GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED");
-  }
-
-  await prisma.auditEvent.create({
-    data: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      actorUserId: session.user.id,
-      eventType: "goods_receipt.created",
-      entityType: "GoodsReceipt",
-      entityId: receiptId,
-      afterData: { status: "DRAFT" },
-      metadata: {
-        purchaseOrderId: order.id,
-        lineCount: lines.length,
-        discrepancyFlag
+      if (attempt === 5) {
+        throw new Error("GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED");
       }
     }
-  });
-
-  return receiptId;
+  }
+  throw new Error("GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED");
 }
 
 export async function postGoodsReceipt(formData: FormData) {
@@ -725,7 +965,6 @@ export async function postGoodsReceipt(formData: FormData) {
   }
   assertAuthorizedLocation(session, receipt.receivingLocationId);
   assertGoodsReceiptCanBePosted(receipt.status);
-  assertPurchaseOrderCanBeReceived(receipt.purchaseOrder.status);
   await assertPrivilegedMfaForAction(session, {
     action: "goods_receipt.post",
     enforcementScope: "all_sensitive",
@@ -741,11 +980,134 @@ export async function postGoodsReceipt(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
-    const claimedReceipt = await tx.goodsReceipt.updateMany({
+    await lockScopedPurchaseOrder(tx, session, receipt.purchaseOrderId);
+    await lockScopedPurchaseOrderLines(tx, session, receipt.purchaseOrderId);
+
+    const lockedReceipts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT gr.id
+        FROM "GoodsReceipt" gr
+       WHERE gr.id = ${receipt.id}::uuid
+         AND gr."tenantId" = ${session.context.tenantId}::uuid
+         AND gr."companyId" = ${session.context.companyId}::uuid
+         AND gr."purchaseOrderId" = ${receipt.purchaseOrderId}::uuid
+         AND gr."receivingLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE OF gr
+    `;
+    if (!lockedReceipts[0]) {
+      throw new Error("GOODS_RECEIPT_NOT_FOUND");
+    }
+    await assertFreshReceivingAuthority(
+      tx,
+      session,
+      permissions.receivingPost,
+      true
+    );
+
+    const currentReceipt = await tx.goodsReceipt.findFirst({
       where: {
         id: receipt.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
+        purchaseOrderId: receipt.purchaseOrderId,
+        receivingLocationId: session.context.locationId
+      },
+      include: {
+        lines: {
+          orderBy: [{ lineNumber: "asc" }, { id: "asc" }],
+          include: {
+            item: true,
+            uom: true
+          }
+        }
+      }
+    });
+    if (!currentReceipt) {
+      throw new Error("GOODS_RECEIPT_NOT_FOUND");
+    }
+    assertGoodsReceiptCanBePosted(currentReceipt.status);
+
+    const receivablePurchaseOrder = await tx.purchaseOrder.findFirst({
+      where: {
+        id: receipt.purchaseOrderId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: session.context.locationId
+      },
+      include: {
+        lines: {
+          orderBy: [{ lineNumber: "asc" }, { id: "asc" }]
+        }
+      }
+    });
+    if (
+      !receivablePurchaseOrder ||
+      !["ISSUED", "PARTIALLY_RECEIVED"].includes(
+        receivablePurchaseOrder.status
+      )
+    ) {
+      throw new Error("PURCHASE_ORDER_NOT_RECEIVABLE");
+    }
+
+    const purchaseOrderLines = new Map(
+      receivablePurchaseOrder.lines.map((line) => [line.id, line])
+    );
+    for (const line of currentReceipt.lines) {
+      const purchaseOrderLine = purchaseOrderLines.get(
+        line.purchaseOrderLineId
+      );
+      if (!purchaseOrderLine) {
+        throw new Error("GOODS_RECEIPT_PURCHASE_ORDER_LINE_MISMATCH");
+      }
+      const outstandingQty =
+        Number(purchaseOrderLine.orderedQty) -
+        Number(purchaseOrderLine.receivedQty) -
+        Number(purchaseOrderLine.cancelledQty);
+      const shortQty = Math.max(outstandingQty - Number(line.deliveredQty), 0);
+      const hasDiscrepancy =
+        Number(line.rejectedQty) > 0 ||
+        Number(line.damagedQty) > 0 ||
+        shortQty > 0;
+      if (
+        Number(line.orderedQty) !== Number(purchaseOrderLine.orderedQty) ||
+        Number(line.shortQty) !== shortQty ||
+        line.conditionStatus !==
+          (hasDiscrepancy ? "WITH_DISCREPANCY" : "ACCEPTED") ||
+        line.discrepancyType !==
+          (hasDiscrepancy ? "QUANTITY_OR_CONDITION" : null)
+      ) {
+        throw new Error("GOODS_RECEIPT_DISCREPANCY_CONFLICT");
+      }
+      validateReceivingQuantities({
+        deliveredQty: Number(line.deliveredQty),
+        acceptedQty: Number(line.acceptedQty),
+        rejectedQty: Number(line.rejectedQty),
+        damagedQty: Number(line.damagedQty),
+        shortQty,
+        outstandingQty,
+        discrepancyReason: line.discrepancyReason,
+        evidenceReference: line.evidenceReference
+      });
+    }
+    const liveDiscrepancyFlag = currentReceipt.lines.some(
+      (line) =>
+        Number(line.rejectedQty) > 0 ||
+        Number(line.damagedQty) > 0 ||
+        Number(line.shortQty) > 0
+    );
+    if (
+      currentReceipt.discrepancyFlag !== liveDiscrepancyFlag ||
+      Boolean(currentReceipt.discrepancySummary) !== liveDiscrepancyFlag
+    ) {
+      throw new Error("GOODS_RECEIPT_DISCREPANCY_CONFLICT");
+    }
+
+    const claimedReceipt = await tx.goodsReceipt.updateMany({
+      where: {
+        id: currentReceipt.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        purchaseOrderId: receivablePurchaseOrder.id,
+        receivingLocationId: session.context.locationId,
         status: "DRAFT"
       },
       data: {
@@ -756,27 +1118,11 @@ export async function postGoodsReceipt(formData: FormData) {
       throw new Error("GOODS_RECEIPT_NOT_DRAFT_FOR_POSTING");
     }
 
-    const receivablePurchaseOrder = await tx.purchaseOrder.findFirst({
-      where: {
-        id: receipt.purchaseOrderId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: { in: ["ISSUED", "PARTIALLY_RECEIVED"] }
-      },
-      select: {
-        id: true,
-        status: true
-      }
-    });
-    if (!receivablePurchaseOrder) {
-      throw new Error("PURCHASE_ORDER_NOT_RECEIVABLE");
-    }
-
-    for (const line of receipt.lines) {
+    for (const line of currentReceipt.lines) {
       if (Number(line.acceptedQty) <= 0) {
         continue;
       }
-      const quantityDeltaBaseUom = await getBaseQuantity({
+      const quantityDeltaBaseUom = await getBaseQuantity(tx, {
         itemId: line.itemId,
         uomId: line.uomId,
         acceptedQty: line.acceptedQty,
@@ -786,12 +1132,12 @@ export async function postGoodsReceipt(formData: FormData) {
         inventoryLocationId: line.inventoryDestinationLocationId,
         itemId: line.itemId,
         movementType: "RECEIPT_IN",
-        occurredAt: receipt.receivedAt,
+        occurredAt: currentReceipt.receivedAt,
         enteredQuantity: Number(line.acceptedQty),
         enteredUomId: line.uomId,
         quantityDeltaBaseUom,
         sourceDocumentType: "GoodsReceipt",
-        sourceDocumentId: receipt.id,
+        sourceDocumentId: currentReceipt.id,
         sourceDocumentLineId: line.id,
         sourceEventKey: `posted:${line.id}`,
         lotNumber: line.lotNumber,
@@ -824,7 +1170,12 @@ export async function postGoodsReceipt(formData: FormData) {
     }
 
     const refreshedPoLines = await tx.purchaseOrderLine.findMany({
-      where: { purchaseOrderId: receipt.purchaseOrderId }
+      where: {
+        purchaseOrderId: receivablePurchaseOrder.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
+      },
+      orderBy: [{ lineNumber: "asc" }, { id: "asc" }]
     });
     const fullyReceived = refreshedPoLines.every(
       (line) =>
@@ -832,15 +1183,17 @@ export async function postGoodsReceipt(formData: FormData) {
     );
 
     await tx.goodsReceipt.update({
-      where: { id: receipt.id },
+      where: { id: currentReceipt.id },
       data: {
-        status: receipt.discrepancyFlag ? "POSTED_WITH_DISCREPANCY" : "POSTED",
+        status: currentReceipt.discrepancyFlag
+          ? "POSTED_WITH_DISCREPANCY"
+          : "POSTED",
         postedAt: new Date()
       }
     });
     const updatedPurchaseOrder = await tx.purchaseOrder.updateMany({
       where: {
-        id: receipt.purchaseOrderId,
+        id: receivablePurchaseOrder.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: { in: ["ISSUED", "PARTIALLY_RECEIVED"] }
@@ -859,16 +1212,18 @@ export async function postGoodsReceipt(formData: FormData) {
         actorUserId: session.user.id,
         eventType: "goods_receipt.posted",
         entityType: "GoodsReceipt",
-        entityId: receipt.id,
+        entityId: currentReceipt.id,
         beforeData: { status: "DRAFT" },
         afterData: {
-          status: receipt.discrepancyFlag ? "POSTED_WITH_DISCREPANCY" : "POSTED",
+          status: currentReceipt.discrepancyFlag
+            ? "POSTED_WITH_DISCREPANCY"
+            : "POSTED",
           purchaseOrderStatus: fullyReceived ? "FULLY_RECEIVED" : "PARTIALLY_RECEIVED"
         },
         metadata: {
-          purchaseOrderId: receipt.purchaseOrderId,
-          lineCount: receipt.lines.length,
-          discrepancyFlag: receipt.discrepancyFlag
+          purchaseOrderId: receivablePurchaseOrder.id,
+          lineCount: currentReceipt.lines.length,
+          discrepancyFlag: currentReceipt.discrepancyFlag
         }
       }
     });
@@ -888,25 +1243,6 @@ export async function reverseGoodsReceipt(formData: FormData) {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       receivingLocationId: session.context.locationId
-    },
-    include: {
-      purchaseOrder: {
-        include: {
-          balanceClosures: true
-        }
-      },
-      lines: {
-        orderBy: { lineNumber: "asc" },
-        include: {
-          item: true,
-          uom: true,
-          postedMovement: {
-            include: {
-              reversalMovements: true
-            }
-          }
-        }
-      }
     }
   });
 
@@ -917,16 +1253,6 @@ export async function reverseGoodsReceipt(formData: FormData) {
   assertGoodsReceiptCanBeReversed(receipt.status, receipt.reversedAt);
   if (receipt.receivedByUserId === session.user.id) {
     throw new Error("GOODS_RECEIPT_SELF_REVERSAL_NOT_ALLOWED");
-  }
-  if (receipt.purchaseOrder.status === "CLOSED" || receipt.purchaseOrder.status === "CANCELLED") {
-    throw new Error("GOODS_RECEIPT_REVERSAL_PO_CLOSED");
-  }
-  if (
-    receipt.purchaseOrder.balanceClosures.some((closure) =>
-      ["PENDING", "APPROVED"].includes(closure.status)
-    )
-  ) {
-    throw new Error("GOODS_RECEIPT_REVERSAL_PO_CLOSURE_ACTIVE");
   }
   await assertPrivilegedMfaForAction(session, {
     action: "goods_receipt.reverse",
@@ -943,11 +1269,93 @@ export async function reverseGoodsReceipt(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
-    const claimedReceipt = await tx.goodsReceipt.updateMany({
+    await lockScopedPurchaseOrder(tx, session, receipt.purchaseOrderId);
+    await lockScopedPurchaseOrderLines(tx, session, receipt.purchaseOrderId);
+    const lockedReceipts = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT gr.id
+        FROM "GoodsReceipt" gr
+       WHERE gr.id = ${receipt.id}::uuid
+         AND gr."tenantId" = ${session.context.tenantId}::uuid
+         AND gr."companyId" = ${session.context.companyId}::uuid
+         AND gr."purchaseOrderId" = ${receipt.purchaseOrderId}::uuid
+         AND gr."receivingLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE OF gr
+    `;
+    if (!lockedReceipts[0]) {
+      throw new Error("GOODS_RECEIPT_NOT_FOUND");
+    }
+    await assertFreshReceivingAuthority(
+      tx,
+      session,
+      permissions.receivingReverse,
+      true
+    );
+
+    const currentReceipt = await tx.goodsReceipt.findFirst({
       where: {
         id: receipt.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
+        purchaseOrderId: receipt.purchaseOrderId,
+        receivingLocationId: session.context.locationId
+      },
+      include: {
+        lines: {
+          orderBy: [{ lineNumber: "asc" }, { id: "asc" }],
+          include: {
+            item: true,
+            uom: true,
+            postedMovement: {
+              include: {
+                reversalMovements: true
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!currentReceipt) {
+      throw new Error("GOODS_RECEIPT_NOT_FOUND");
+    }
+    assertGoodsReceiptCanBeReversed(
+      currentReceipt.status,
+      currentReceipt.reversedAt
+    );
+    if (currentReceipt.receivedByUserId === session.user.id) {
+      throw new Error("GOODS_RECEIPT_SELF_REVERSAL_NOT_ALLOWED");
+    }
+
+    const currentPurchaseOrder = await tx.purchaseOrder.findFirst({
+      where: {
+        id: currentReceipt.purchaseOrderId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: session.context.locationId
+      },
+      include: {
+        balanceClosures: {
+          where: { status: { in: ["PENDING_APPROVAL", "APPROVED"] } },
+          select: { id: true, status: true }
+        }
+      }
+    });
+    if (
+      !currentPurchaseOrder ||
+      ["CLOSED", "CANCELLED"].includes(currentPurchaseOrder.status)
+    ) {
+      throw new Error("GOODS_RECEIPT_REVERSAL_PO_CLOSED");
+    }
+    if (currentPurchaseOrder.balanceClosures.length > 0) {
+      throw new Error("GOODS_RECEIPT_REVERSAL_PO_CLOSURE_ACTIVE");
+    }
+
+    const claimedReceipt = await tx.goodsReceipt.updateMany({
+      where: {
+        id: currentReceipt.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        purchaseOrderId: currentPurchaseOrder.id,
+        receivingLocationId: session.context.locationId,
         status: { in: ["POSTED", "POSTED_WITH_DISCREPANCY"] },
         reversedAt: null
       },
@@ -959,34 +1367,13 @@ export async function reverseGoodsReceipt(formData: FormData) {
       throw new Error("GOODS_RECEIPT_NOT_POSTED_FOR_REVERSAL");
     }
 
-    const currentPurchaseOrder = await tx.purchaseOrder.findFirst({
-      where: {
-        id: receipt.purchaseOrderId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: { notIn: ["CLOSED", "CANCELLED"] }
-      },
-      include: {
-        balanceClosures: true
-      }
-    });
-    if (!currentPurchaseOrder) {
-      throw new Error("GOODS_RECEIPT_REVERSAL_PO_CLOSED");
-    }
-    if (
-      currentPurchaseOrder.balanceClosures.some((closure) =>
-        ["PENDING", "APPROVED"].includes(closure.status)
-      )
-    ) {
-      throw new Error("GOODS_RECEIPT_REVERSAL_PO_CLOSURE_ACTIVE");
-    }
-
     const otherOpenReceiptCount = await tx.goodsReceipt.count({
       where: {
-        purchaseOrderId: receipt.purchaseOrderId,
+        purchaseOrderId: currentReceipt.purchaseOrderId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        id: { not: receipt.id },
+        receivingLocationId: session.context.locationId,
+        id: { not: currentReceipt.id },
         status: { in: ["DRAFT", "POSTING", "REVERSING"] }
       }
     });
@@ -997,7 +1384,7 @@ export async function reverseGoodsReceipt(formData: FormData) {
     const originalMovementIds: string[] = [];
     const reversalMovementIds: string[] = [];
 
-    for (const line of receipt.lines) {
+    for (const line of currentReceipt.lines) {
       if (Number(line.acceptedQty) <= 0) {
         continue;
       }
@@ -1014,7 +1401,7 @@ export async function reverseGoodsReceipt(formData: FormData) {
         original.inventoryLocationId !== line.inventoryDestinationLocationId ||
         original.itemId !== line.itemId ||
         original.sourceDocumentType !== "GoodsReceipt" ||
-        original.sourceDocumentId !== receipt.id ||
+        original.sourceDocumentId !== currentReceipt.id ||
         original.sourceDocumentLineId !== line.id
       ) {
         throw new Error("GOODS_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH");
@@ -1033,7 +1420,7 @@ export async function reverseGoodsReceipt(formData: FormData) {
         enteredUomId: line.uomId,
         quantityDeltaBaseUom,
         sourceDocumentType: "GoodsReceipt",
-        sourceDocumentId: receipt.id,
+        sourceDocumentId: currentReceipt.id,
         sourceDocumentLineId: line.id,
         sourceEventKey: `reversed:${line.id}`,
         lotNumber: line.lotNumber,
@@ -1071,21 +1458,35 @@ export async function reverseGoodsReceipt(formData: FormData) {
     }
 
     const refreshedPoLines = await tx.purchaseOrderLine.findMany({
-      where: { purchaseOrderId: receipt.purchaseOrderId }
+      where: {
+        purchaseOrderId: currentPurchaseOrder.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
+      },
+      orderBy: [{ lineNumber: "asc" }, { id: "asc" }]
     });
     const nextPurchaseOrderStatus =
       calculatePurchaseOrderReceivingStatus(refreshedPoLines);
 
-    await tx.purchaseOrder.update({
-      where: { id: receipt.purchaseOrderId },
+    const updatedPurchaseOrder = await tx.purchaseOrder.updateMany({
+      where: {
+        id: currentPurchaseOrder.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: session.context.locationId,
+        status: currentPurchaseOrder.status
+      },
       data: {
         status: nextPurchaseOrderStatus
       }
     });
+    if (updatedPurchaseOrder.count !== 1) {
+      throw new Error("GOODS_RECEIPT_REVERSAL_PO_CLOSED");
+    }
 
     const reversed = await tx.goodsReceipt.updateMany({
       where: {
-        id: receipt.id,
+        id: currentReceipt.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "REVERSING"
@@ -1108,22 +1509,22 @@ export async function reverseGoodsReceipt(formData: FormData) {
         actorUserId: session.user.id,
         eventType: "goods_receipt.reversed",
         entityType: "GoodsReceipt",
-        entityId: receipt.id,
+        entityId: currentReceipt.id,
         beforeData: {
-          status: receipt.status,
-          purchaseOrderStatus: receipt.purchaseOrder.status
+          status: currentReceipt.status,
+          purchaseOrderStatus: currentPurchaseOrder.status
         },
         afterData: {
           status: "REVERSED",
           purchaseOrderStatus: nextPurchaseOrderStatus
         },
         metadata: {
-          purchaseOrderId: receipt.purchaseOrderId,
+          purchaseOrderId: currentPurchaseOrder.id,
           reversalReason: values.reversalReason,
           originalMovementIds,
           reversalMovementIds,
-          lineCount: receipt.lines.length,
-          discrepancyFlag: receipt.discrepancyFlag
+          lineCount: currentReceipt.lines.length,
+          discrepancyFlag: currentReceipt.discrepancyFlag
         }
       }
     });

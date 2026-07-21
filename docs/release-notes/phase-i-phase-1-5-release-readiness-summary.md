@@ -12,6 +12,8 @@
 - Transfers support request, submit, dispatch, partial/discrepancy receipt, accepted-only destination posting, receipt-event audit, and receipt reversal.
 - Stock counts support blind entry, review/recount controls, frozen-count movement blocking, and reviewed count-generated Stock Adjustment records.
 - Wastage and Stock Adjustments use approval-first, separate posting, source-linked ledger movements, and full-document reversal controls.
+- Implemented Phase I procurement and inventory multi-step approval routes keep the source record pending until the final step, notify each next eligible approver, and notify the requester or responsible owner after final approval, return, or rejection. Decision-time authority checks reject stale, reassigned, revoked, or losing concurrent actions instead of overwriting the accepted decision.
+- Wastage cancellation and approval are concurrency-controlled so one accepted action cannot be overwritten by the other.
 - Phase 1.5 Projects & Implementation Tracker supports scoped projects, templates, members, tasks, checklists, comments, blockers, risks, milestones, project reports, notifications, calendar visibility, and safe links to ERP records.
 - Tracker links remain references only; project tasks do not approve, receive, post, close, or mutate operational source records.
 - Knowledge-base and quick-start training content is now available for Phase I operational users and administrators.
@@ -68,6 +70,7 @@
 ## Important notes
 
 - This release note is a readiness summary. It is not a go-live signoff.
+- These approval-integrity changes do not by themselves complete SPF-006 or establish production readiness; the remaining audit-integrity and release gates still apply.
 - UAT execution, defect disposition, deployment rehearsal, rollback evidence, backup/restore evidence, external-security proof references, and final release approval remain required before GO.
 - Latest local release-candidate verification on 30 June 2026 passed lint, typecheck, production build, the standard app test suite at 32 files / 274 tests, the named access-control integration gate (`pnpm test:access-control`) at 1 file / 2 tests, and the Playwright desktop/mobile e2e smoke at 10 tests. These checks must still be rerun in CI/staging for final release approval.
 - CI now includes production build and Playwright e2e gates; the manual staging release rehearsal workflow must still be executed for the release candidate, and staging deployment, backup/restore, rollback drill, smoke-test artifacts, and signed GO/NO-GO evidence still need environment execution.

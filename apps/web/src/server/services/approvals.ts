@@ -1,4 +1,4 @@
-import { prisma, type TransactionClient } from "@ogfi/database";
+import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import {
   canUseApprovals,
@@ -14,7 +14,6 @@ import {
 } from "./financePeriodClose";
 import {
   assertPurchaseOrderCanRequestAmendment,
-  assertPurchaseOrderCanRequestBalanceClosure,
   buildPurchaseOrderAmendmentProposal,
   buildPurchaseOrderClosureLineSnapshot
 } from "./purchaseOrders";
@@ -176,6 +175,626 @@ export function assertNotSelfApproval(requesterUserId: string, actorUserId: stri
   if (requesterUserId === actorUserId) {
     throw new Error("SELF_APPROVAL_BLOCKED");
   }
+}
+
+type ApprovalStepAdvanceInput = {
+  approvalId: string;
+  stepId: string;
+  stepOrder: number;
+  requiredPermissionCode: string;
+  locationId: string;
+  remarks: string | undefined;
+  prohibitedApproverUserIds?: string[];
+  notification: {
+    recipientUserIds: string[];
+    publicReference: string;
+    locationName: string;
+    entityLabel: string;
+  };
+  audit: {
+    eventType: string;
+    entityType: string;
+    entityId: string;
+    metadata?: Record<string, string | number | boolean | null>;
+  };
+};
+
+type LockedApprovalAuthority = {
+  approvalStatus: string;
+  currentStepOrder: number | null;
+  stepStatus: string;
+  assignedUserId: string | null;
+  assignedRoleId: string | null;
+};
+
+type LockedWaitingApprovalStep = {
+  id: string;
+  stepOrder: number;
+  assignedUserId: string | null;
+  assignedRoleId: string | null;
+};
+
+type LockedApprovalActor = {
+  status: string;
+  privilegeEpoch: number;
+};
+
+type LockedApprovalSession = {
+  status: string;
+  privilegeEpochAtIssue: number;
+  idleExpiresAt: Date;
+  absoluteExpiresAt: Date;
+};
+
+async function lockApprovalActorSession(
+  tx: TransactionClient,
+  session: SessionContext
+) {
+  const user = await tx.user.findFirst({
+    where: {
+      id: session.user.id,
+      tenantId: session.context.tenantId
+    },
+    select: { status: true, privilegeEpoch: true }
+  });
+  if (!user) throw new Error("APPROVAL_AUTHORITY_STALE");
+
+  let liveSession: LockedApprovalSession | undefined;
+  if (session.authentication?.sessionId) {
+    const sessions = await tx.$queryRaw<LockedApprovalSession[]>`
+      SELECT status, "privilegeEpochAtIssue", "idleExpiresAt", "absoluteExpiresAt"
+         FROM "AuthSession"
+        WHERE id = ${session.authentication.sessionId}::uuid
+          AND "tenantId" = ${session.context.tenantId}::uuid
+          AND "userId" = ${session.user.id}::uuid
+        FOR SHARE
+    `;
+    liveSession = sessions[0];
+  }
+  return { user, liveSession };
+}
+
+async function lockApprovalAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: ApprovalStepAdvanceInput
+) {
+  const locked = await tx.$queryRaw<LockedApprovalAuthority[]>`
+    SELECT ai.status AS "approvalStatus",
+            ai."currentStepOrder",
+            s.status AS "stepStatus",
+            s."assignedUserId",
+            s."assignedRoleId"
+       FROM "ApprovalInstance" ai
+       JOIN "ApprovalInstanceStep" s ON s."approvalInstanceId" = ai.id
+      WHERE ai.id = ${input.approvalId}::uuid
+        AND ai."tenantId" = ${session.context.tenantId}::uuid
+        AND ai."companyId" = ${session.context.companyId}::uuid
+        AND s.id = ${input.stepId}::uuid
+        AND s."stepOrder" = ${input.stepOrder}
+      FOR UPDATE OF ai, s
+  `;
+  const authority = locked[0];
+  if (
+    !authority ||
+    authority.approvalStatus !== "PENDING" ||
+    authority.currentStepOrder !== input.stepOrder ||
+    authority.stepStatus !== "PENDING"
+  ) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+  return authority;
+}
+
+async function assertLiveApprovalAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: ApprovalStepAdvanceInput,
+  authority: LockedApprovalAuthority,
+  actor: {
+    user: LockedApprovalActor;
+    liveSession: LockedApprovalSession | undefined;
+  }
+) {
+  // This timestamp is deliberately obtained only after the approval/current
+  // step and any next step have been locked.
+  const now = new Date();
+  if (actor.user.status !== "ACTIVE") {
+    throw new Error("APPROVAL_AUTHORITY_STALE");
+  }
+  if (session.authentication?.sessionId) {
+    if (
+      !actor.liveSession ||
+      actor.liveSession.status !== "ACTIVE" ||
+      actor.liveSession.privilegeEpochAtIssue !== actor.user.privilegeEpoch ||
+      actor.liveSession.idleExpiresAt <= now ||
+      actor.liveSession.absoluteExpiresAt <= now
+    ) {
+      throw new Error("APPROVAL_AUTHORITY_STALE");
+    }
+  }
+
+  const effectiveRoleAssignments = await tx.userRoleAssignment.findMany({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      role: {
+        status: "ACTIVE",
+        OR: [
+          { tenantId: null },
+          { tenantId: session.context.tenantId }
+        ],
+        permissions: {
+          some: { permission: { code: input.requiredPermissionCode } }
+        }
+      }
+    },
+    select: { roleId: true }
+  });
+  const liveRoleIds = effectiveRoleAssignments.map(({ roleId }) => roleId);
+  if (liveRoleIds.length === 0) {
+    throw new Error("APPROVAL_AUTHORITY_STALE");
+  }
+  if (
+    authority.assignedUserId !== session.user.id &&
+    (!authority.assignedRoleId || !liveRoleIds.includes(authority.assignedRoleId))
+  ) {
+    throw new Error("APPROVAL_ASSIGNMENT_DENIED");
+  }
+
+  const location = await tx.location.findFirst({
+    where: {
+      id: input.locationId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE"
+    },
+    select: { id: true, companyId: true, brandId: true }
+  });
+  if (!location) throw new Error("APPROVAL_SCOPE_DENIED");
+  const scope = await tx.userScopeAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      accessLevel: { in: ["APPROVE", "MANAGE"] },
+      AND: {
+        OR: [
+          { scopeType: "LOCATION", scopeId: location.id },
+          { scopeType: "COMPANY", scopeId: location.companyId },
+          ...(location.brandId
+            ? [{ scopeType: "BRAND" as const, scopeId: location.brandId }]
+            : [])
+        ]
+      }
+    },
+    select: { id: true }
+  });
+  if (!scope) throw new Error("APPROVAL_SCOPE_DENIED");
+}
+
+async function resolveNextApprovalStepRecipients(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    assignedUserId: string | null;
+    assignedRoleId: string | null;
+    locationId: string;
+    requiredPermissionCode: string;
+    prohibitedApproverUserIds: string[];
+  }
+) {
+  if (
+    input.assignedUserId &&
+    input.prohibitedApproverUserIds.includes(input.assignedUserId)
+  ) {
+    return [];
+  }
+  const now = new Date();
+  const location = await tx.location.findFirst({
+    where: {
+      id: input.locationId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE"
+    },
+    select: { id: true, companyId: true, brandId: true }
+  });
+  if (!location) throw new Error("APPROVAL_SCOPE_DENIED");
+  const recipientIdFilter = {
+    ...(input.assignedUserId ? { equals: input.assignedUserId } : {}),
+    ...(input.prohibitedApproverUserIds.length > 0
+      ? { notIn: input.prohibitedApproverUserIds }
+      : {})
+  };
+  const recipientWhere = {
+      tenantId: session.context.tenantId,
+      status: "ACTIVE",
+      ...(Object.keys(recipientIdFilter).length > 0
+        ? { id: recipientIdFilter }
+        : {}),
+      roleAssignments: {
+        some: {
+          ...(input.assignedRoleId ? { roleId: input.assignedRoleId } : {}),
+          status: "ACTIVE",
+          startsAt: { lte: now },
+          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+          role: {
+            status: "ACTIVE",
+            OR: [
+              { tenantId: null },
+              { tenantId: session.context.tenantId }
+            ],
+            permissions: {
+              some: {
+                permission: { code: input.requiredPermissionCode }
+              }
+            }
+          }
+        }
+      },
+      scopeAssignments: {
+        some: {
+          status: "ACTIVE",
+          startsAt: { lte: now },
+          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+          accessLevel: { in: ["APPROVE", "MANAGE"] },
+          AND: {
+            OR: [
+              { scopeType: "LOCATION", scopeId: location.id },
+              { scopeType: "COMPANY", scopeId: location.companyId },
+              ...(location.brandId
+                ? [{ scopeType: "BRAND" as const, scopeId: location.brandId }]
+                : [])
+            ]
+          }
+        }
+      }
+    } satisfies Prisma.UserWhereInput;
+  const eligibleRecipients = await tx.user.findMany({
+    where: recipientWhere,
+    select: { id: true }
+  });
+  return [...new Set(eligibleRecipients.map(({ id }) => id))];
+}
+
+function sameApprovalRouting(
+  left: LockedWaitingApprovalStep | undefined,
+  right: LockedWaitingApprovalStep | undefined
+) {
+  return (
+    left?.id === right?.id &&
+    left?.stepOrder === right?.stepOrder &&
+    left?.assignedUserId === right?.assignedUserId &&
+    left?.assignedRoleId === right?.assignedRoleId
+  );
+}
+
+async function findNextApprovalStep(
+  tx: TransactionClient,
+  input: ApprovalStepAdvanceInput,
+  lock: boolean
+) {
+  if (!lock) {
+    return tx.approvalInstanceStep.findFirst({
+      where: {
+        approvalInstanceId: input.approvalId,
+        stepOrder: { gt: input.stepOrder },
+        status: "WAITING"
+      },
+      orderBy: { stepOrder: "asc" },
+      select: {
+        id: true,
+        stepOrder: true,
+        assignedUserId: true,
+        assignedRoleId: true
+      }
+    });
+  }
+  const rows = await tx.$queryRaw<LockedWaitingApprovalStep[]>`
+    SELECT id, "stepOrder", "assignedUserId", "assignedRoleId"
+      FROM "ApprovalInstanceStep"
+     WHERE "approvalInstanceId" = ${input.approvalId}::uuid
+       AND "stepOrder" > ${input.stepOrder}
+       AND status = 'WAITING'::"ApprovalStepStatus"
+     ORDER BY "stepOrder" ASC
+     LIMIT 1
+     FOR UPDATE
+  `;
+  return rows[0] ?? null;
+}
+
+async function prepareApprovalDecisionAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: ApprovalStepAdvanceInput,
+  includeNextStep: boolean
+) {
+  const preliminaryNextStep = includeNextStep
+    ? await findNextApprovalStep(tx, input, false)
+    : null;
+  const preliminaryRecipientIds = preliminaryNextStep
+    ? await resolveNextApprovalStepRecipients(tx, session, {
+        assignedUserId: preliminaryNextStep.assignedUserId,
+        assignedRoleId: preliminaryNextStep.assignedRoleId,
+        locationId: input.locationId,
+        requiredPermissionCode: input.requiredPermissionCode,
+        prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
+      })
+    : [];
+  if (preliminaryNextStep && preliminaryRecipientIds.length === 0) {
+    throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
+  }
+
+  const lockedUserIds = [session.user.id, ...preliminaryRecipientIds]
+    .filter((id, index, values) => values.indexOf(id) === index)
+    .sort();
+  for (const userId of lockedUserIds) {
+    const lockedUsers = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+        FROM "User"
+       WHERE id = ${userId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+       FOR SHARE
+    `;
+    if (lockedUsers.length !== 1) {
+      throw new Error("APPROVAL_AUTHORITY_STALE");
+    }
+  }
+
+  const actor = await lockApprovalActorSession(tx, session);
+  const authority = await lockApprovalAuthority(tx, session, input);
+  const lockedNextStep = includeNextStep
+    ? await findNextApprovalStep(tx, input, true)
+    : null;
+  await assertLiveApprovalAuthority(tx, session, input, authority, actor);
+  if (!includeNextStep) {
+    return { nextStep: null, recipientUserIds: [] as string[] };
+  }
+
+  if (!sameApprovalRouting(preliminaryNextStep ?? undefined, lockedNextStep ?? undefined)) {
+    throw new Error("APPROVAL_NEXT_STEP_ROUTING_CHANGED");
+  }
+  if (!lockedNextStep) {
+    return { nextStep: null, recipientUserIds: [] as string[] };
+  }
+  const lockedUserIdSet = new Set(lockedUserIds);
+  const revalidatedRecipientIds = (
+    await resolveNextApprovalStepRecipients(tx, session, {
+      assignedUserId: lockedNextStep.assignedUserId,
+      assignedRoleId: lockedNextStep.assignedRoleId,
+      locationId: input.locationId,
+      requiredPermissionCode: input.requiredPermissionCode,
+      prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
+    })
+  ).filter((recipientId) => lockedUserIdSet.has(recipientId));
+  if (revalidatedRecipientIds.length === 0) {
+    throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
+  }
+  return {
+    nextStep: lockedNextStep,
+    recipientUserIds: revalidatedRecipientIds
+  };
+}
+
+async function recordApprovalOutcomeNotification(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: ApprovalStepAdvanceInput,
+  outcome: "APPROVED" | "RETURNED" | "REJECTED"
+) {
+  const outcomeLabel = outcome.toLowerCase();
+  await recordWorkflowNotifications(tx, {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    locationId: input.locationId,
+    recipientUserIds: input.notification.recipientUserIds,
+    notificationType: `APPROVAL_OUTCOME_${outcome}`,
+    priority: outcome === "REJECTED" ? "HIGH" : "NORMAL",
+    title: `${input.notification.publicReference} ${outcomeLabel}`,
+    body: `${input.notification.entityLabel} ${input.notification.publicReference} at ${input.notification.locationName} was ${outcomeLabel}.`,
+    deepLink: `/approvals/${input.approvalId}`,
+    entityType: input.audit.entityType,
+    entityId: input.audit.entityId,
+    sourceEventKey: `approval:${input.approvalId}:outcome:${outcome}`,
+    recipientBasis: "requester_or_owner",
+    metadata: {
+      approvalInstanceId: input.approvalId,
+      publicReference: input.notification.publicReference,
+      locationName: input.notification.locationName,
+      outcome
+    }
+  });
+}
+
+async function approveCurrentStepAndAdvance(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: ApprovalStepAdvanceInput
+) {
+  // The preparation primitive runs assertLiveApprovalAuthority and
+  // resolveNextApprovalStepRecipients, and raises
+  // APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE before any decision mutation.
+  const prepared = await prepareApprovalDecisionAuthority(
+    tx,
+    session,
+    input,
+    true
+  );
+  if (prepared.nextStep && prepared.recipientUserIds.length === 0) {
+    throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
+  }
+  const actedAt = new Date();
+  const actedStep = await tx.approvalInstanceStep.updateMany({
+    where: {
+      id: input.stepId,
+      approvalInstanceId: input.approvalId,
+      stepOrder: input.stepOrder,
+      status: "PENDING"
+    },
+    data: {
+      status: "APPROVED",
+      actedAt,
+      actedByUserId: session.user.id,
+      ...(input.remarks ? { remarks: input.remarks } : {})
+    }
+  });
+  if (actedStep.count !== 1) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+
+  const nextStep = prepared.nextStep;
+
+  if (nextStep) {
+    const activatedNextStep = await tx.approvalInstanceStep.updateMany({
+      where: {
+        id: nextStep.id,
+        approvalInstanceId: input.approvalId,
+        status: "WAITING"
+      },
+      data: { status: "PENDING" }
+    });
+    if (activatedNextStep.count !== 1) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+
+    const advancedApproval = await tx.approvalInstance.updateMany({
+      where: {
+        id: input.approvalId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING",
+        currentStepOrder: input.stepOrder
+      },
+      data: { currentStepOrder: nextStep.stepOrder }
+    });
+    if (advancedApproval.count !== 1) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+
+    const auditEvent = await tx.auditEvent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        actorUserId: session.user.id,
+        eventType: input.audit.eventType,
+        entityType: input.audit.entityType,
+        entityId: input.audit.entityId,
+        beforeData: { currentStepOrder: input.stepOrder },
+        afterData: { currentStepOrder: nextStep.stepOrder },
+        metadata: {
+          approvalInstanceId: input.approvalId,
+          approvedStepOrder: input.stepOrder,
+          nextStepOrder: nextStep.stepOrder,
+          remarks: input.remarks ?? null,
+          ...input.audit.metadata
+        }
+      }
+    });
+
+    await recordWorkflowNotifications(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      locationId: input.locationId,
+      recipientUserIds: prepared.recipientUserIds,
+      notificationType: "APPROVAL_STEP_READY",
+      priority: "NORMAL",
+      title: `Approval required: ${input.notification.publicReference}`,
+      body: `${input.notification.entityLabel} ${input.notification.publicReference} at ${input.notification.locationName} is ready for approval step ${nextStep.stepOrder}.`,
+      deepLink: `/approvals/${input.approvalId}`,
+      entityType: input.audit.entityType,
+      entityId: input.audit.entityId,
+      sourceEventKey: auditEvent.id,
+      recipientBasis: nextStep.assignedUserId
+        ? "assigned_user"
+        : "assigned_role",
+      metadata: {
+        approvalInstanceId: input.approvalId,
+        approvalStepOrder: nextStep.stepOrder
+      }
+    });
+
+    return {
+      isFinalStep: false as const,
+      actedAt,
+      nextStepOrder: nextStep.stepOrder
+    };
+  }
+
+  const completedApproval = await tx.approvalInstance.updateMany({
+    where: {
+      id: input.approvalId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "PENDING",
+      currentStepOrder: input.stepOrder
+    },
+    data: {
+      status: "APPROVED",
+      currentStepOrder: null
+    }
+  });
+  if (completedApproval.count !== 1) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+
+  await recordApprovalOutcomeNotification(tx, session, input, "APPROVED");
+
+  return { isFinalStep: true as const, actedAt, nextStepOrder: null };
+}
+
+async function closeCurrentApprovalDecision(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: ApprovalStepAdvanceInput & {
+    decisionStatus: "RETURNED" | "REJECTED";
+  }
+) {
+  // The shared preparation primitive runs assertLiveApprovalAuthority first.
+  await prepareApprovalDecisionAuthority(tx, session, input, false);
+  const actedAt = new Date();
+  const actedStep = await tx.approvalInstanceStep.updateMany({
+    where: {
+      id: input.stepId,
+      approvalInstanceId: input.approvalId,
+      stepOrder: input.stepOrder,
+      status: "PENDING"
+    },
+    data: {
+      status: input.decisionStatus,
+      actedAt,
+      actedByUserId: session.user.id,
+      ...(input.remarks ? { remarks: input.remarks } : {})
+    }
+  });
+  if (actedStep.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
+
+  await tx.approvalInstanceStep.updateMany({
+    where: {
+      approvalInstanceId: input.approvalId,
+      status: "WAITING"
+    },
+    data: { status: "SKIPPED" }
+  });
+  const closed = await tx.approvalInstance.updateMany({
+    where: {
+      id: input.approvalId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "PENDING",
+      currentStepOrder: input.stepOrder
+    },
+    data: {
+      status: input.decisionStatus,
+      currentStepOrder: null
+    }
+  });
+  if (closed.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  await recordApprovalOutcomeNotification(tx, session, input, input.decisionStatus);
+  return { actedAt };
 }
 
 async function getActiveRoleIds(session: SessionContext) {
@@ -464,7 +1083,9 @@ async function findActionableQuotationRecommendationApproval(
     include: {
       quotationRequest: {
         include: {
-          purchaseRequest: true
+          purchaseRequest: {
+            include: { requestLocation: true }
+          }
         }
       },
       selectedSupplierQuotation: {
@@ -4378,31 +4999,64 @@ export async function approvePurchaseRequest(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    const approvedAt = new Date();
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "APPROVED",
-        actedAt: approvedAt,
-        actedByUserId: session.user.id,
-        ...(values.remarks ? { remarks: values.remarks } : {})
+    const stepResult = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.purchaseRequestApprove,
+      locationId: request.requestLocationId,
+      remarks: values.remarks,
+      prohibitedApproverUserIds: [request.requesterUserId],
+      notification: {
+        recipientUserIds: [request.requesterUserId],
+        publicReference: request.publicReference,
+        locationName: request.requestLocation.name,
+        entityLabel: "Purchase request"
+      },
+      audit: {
+        eventType: "purchase_request.approval_step_approved",
+        entityType: "PurchaseRequest",
+        entityId: request.id,
+        metadata: { sourceMutationDeferred: true }
       }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
+    if (!stepResult.isFinalStep) {
+      const advancedRequest = await tx.purchaseRequest.updateMany({
+        where: {
+          id: request.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: step.stepOrder
+        },
+        data: {
+          currentApprovalStep: stepResult.nextStepOrder,
+          version: { increment: 1 }
+        }
+      });
+      if (advancedRequest.count !== 1) {
+        throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
       }
-    });
-    await tx.purchaseRequest.update({
-      where: { id: request.id },
+      return;
+    }
+
+    const updatedRequest = await tx.purchaseRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING_APPROVAL",
+        currentApprovalStep: step.stepOrder
+      },
       data: {
         status: "APPROVED",
         currentApprovalStep: null,
         version: { increment: 1 }
       }
     });
+    if (updatedRequest.count !== 1) {
+      throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    }
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -4420,7 +5074,7 @@ export async function approvePurchaseRequest(formData: FormData) {
       tx,
       session,
       request,
-      approvedAt
+      stepResult.actedAt
     );
   });
 }
@@ -4435,22 +5089,34 @@ export async function approveWastageReport(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "APPROVED",
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        ...(values.remarks ? { remarks: values.remarks } : {})
+    const stepResult = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.wastageApprove,
+      locationId: report.inventoryLocation.locationId,
+      remarks: values.remarks,
+      prohibitedApproverUserIds: [report.reportedByUserId],
+      notification: {
+        recipientUserIds: [report.reportedByUserId],
+        publicReference: report.publicReference,
+        locationName: report.inventoryLocation.location.name,
+        entityLabel: "Wastage report"
+      },
+      audit: {
+        eventType: "wastage_report.approval_step_approved",
+        entityType: "WastageReport",
+        entityId: report.id,
+        metadata: {
+          nonPostingApproval: true,
+          sourceMutationDeferred: true
+        }
       }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
-    });
+    if (!stepResult.isFinalStep) {
+      return;
+    }
+
     const updatedReport = await tx.wastageReport.updateMany({
       where: {
         id: report.id,
@@ -4460,7 +5126,7 @@ export async function approveWastageReport(formData: FormData) {
       },
       data: {
         status: "APPROVED",
-        reviewedAt: new Date(),
+        reviewedAt: stepResult.actedAt,
         reviewedByUserId: session.user.id,
         ...(values.remarks ? { reviewNotes: values.remarks } : {})
       }
@@ -4502,60 +5168,33 @@ export async function approveStockAdjustment(formData: FormData) {
     );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "APPROVED",
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        ...(values.remarks ? { remarks: values.remarks } : {})
+    const stepResult = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.stockAdjustmentApprove,
+      locationId: adjustment.inventoryLocation.locationId,
+      remarks: values.remarks,
+      prohibitedApproverUserIds: [adjustment.requestedByUserId],
+      notification: {
+        recipientUserIds: [adjustment.requestedByUserId],
+        publicReference: adjustment.publicReference,
+        locationName: adjustment.inventoryLocation.location.name,
+        entityLabel: "Stock adjustment"
+      },
+      audit: {
+        eventType: "stock_adjustment.approval_step_approved",
+        entityType: "StockAdjustment",
+        entityId: adjustment.id,
+        metadata: {
+          nonPostingApproval: true,
+          sourceMutationDeferred: true
+        }
       }
     });
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
-    });
-    if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
-      });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
-      });
-      await tx.auditEvent.create({
-        data: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          actorUserId: session.user.id,
-          eventType: "stock_adjustment.approval_step_approved",
-          entityType: "StockAdjustment",
-          entityId: adjustment.id,
-          beforeData: { currentStepOrder: step.stepOrder },
-          afterData: { currentStepOrder: nextStep.stepOrder },
-          metadata: {
-            approvalInstanceId: approval.id,
-            approvedStepOrder: step.stepOrder,
-            nextStepOrder: nextStep.stepOrder,
-            remarks: values.remarks ?? null,
-            nonPostingApproval: true
-          }
-        }
-      });
+    if (!stepResult.isFinalStep) {
       return;
     }
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
-    });
     const updatedAdjustment = await tx.stockAdjustment.updateMany({
       where: {
         id: adjustment.id,
@@ -4599,6 +5238,64 @@ export async function approvePurchaseOrderBalanceClosure(formData: FormData) {
     );
 
   await prisma.$transaction(async (tx) => {
+    const stepResult = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.purchaseOrderApprove,
+      locationId: order.deliveryLocationId,
+      remarks: values.remarks,
+      prohibitedApproverUserIds: [
+        closure.requestedByUserId,
+        order.createdByUserId,
+        order.purchaseRequest.requesterUserId,
+        order.quotationRecommendation.preparedByUserId
+      ],
+      notification: {
+        recipientUserIds: [closure.requestedByUserId],
+        publicReference: order.publicReference,
+        locationName: order.deliveryLocation.name,
+        entityLabel: "Purchase order balance closure"
+      },
+      audit: {
+        eventType:
+          "purchase_order_balance_closure.approval_step_approved",
+        entityType: "PurchaseOrderBalanceClosure",
+        entityId: closure.id,
+        metadata: {
+          purchaseOrderId: order.id,
+          sourceMutationDeferred: true,
+          noInventoryMovement: true
+        }
+      }
+    });
+    if (!stepResult.isFinalStep) {
+      return;
+    }
+    const approvedAt = stepResult.actedAt;
+
+    const lockedOrders = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+        FROM "PurchaseOrder"
+       WHERE id = ${order.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "deliveryLocationId" = ${order.deliveryLocationId}::uuid
+       FOR UPDATE
+    `;
+    if (lockedOrders.length !== 1) {
+      throw new Error("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+        FROM "PurchaseOrderLine"
+       WHERE "purchaseOrderId" = ${order.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+       ORDER BY "lineNumber", id
+       FOR UPDATE
+    `;
+
     const currentOrder = await tx.purchaseOrder.findFirst({
       where: {
         id: order.id,
@@ -4624,44 +5321,33 @@ export async function approvePurchaseOrderBalanceClosure(formData: FormData) {
     });
 
     if (!currentOrder) {
-      throw new Error("PURCHASE_ORDER_NOT_FOUND");
+      throw new Error("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
     }
 
-    const lineSnapshot = buildPurchaseOrderClosureLineSnapshot(
-      currentOrder.lines
-    );
+    let lineSnapshot: ReturnType<typeof buildPurchaseOrderClosureLineSnapshot>;
+    try {
+      lineSnapshot = buildPurchaseOrderClosureLineSnapshot(currentOrder.lines);
+    } catch {
+      throw new Error("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
+    }
     const outstandingQty = lineSnapshot.reduce(
       (total, line) => total + line.remainingQty,
       0
     );
-    assertPurchaseOrderCanRequestBalanceClosure({
-      status: currentOrder.status,
-      outstandingQty,
-      draftReceiptCount: currentOrder.goodsReceipts.filter(
-        (receipt) => receipt.status !== "POSTED"
-      ).length,
-      pendingClosureCount: currentOrder.balanceClosures.filter(
-        (pendingClosure) => pendingClosure.id !== closure.id
-      ).length
-    });
-
-    const approvedAt = new Date();
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "APPROVED",
-        actedAt: approvedAt,
-        actedByUserId: session.user.id,
-        ...(values.remarks ? { remarks: values.remarks } : {})
-      }
-    });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
-    });
+    const draftReceiptCount = currentOrder.goodsReceipts.filter(
+      (receipt) => receipt.status !== "POSTED"
+    ).length;
+    const competingClosureCount = currentOrder.balanceClosures.filter(
+      (pendingClosure) => pendingClosure.id !== closure.id
+    ).length;
+    if (
+      currentOrder.status !== "PARTIALLY_RECEIVED" ||
+      outstandingQty <= 0 ||
+      draftReceiptCount > 0 ||
+      competingClosureCount > 0
+    ) {
+      throw new Error("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
+    }
 
     for (const line of currentOrder.lines) {
       const orderedQty = Number(line.orderedQty);
@@ -4669,12 +5355,23 @@ export async function approvePurchaseOrderBalanceClosure(formData: FormData) {
       const cancelledQty = Number(line.cancelledQty);
       const remainingQty = orderedQty - receivedQty - cancelledQty;
       if (remainingQty > 0) {
-        await tx.purchaseOrderLine.update({
-          where: { id: line.id },
+        const updatedLine = await tx.purchaseOrderLine.updateMany({
+          where: {
+            id: line.id,
+            purchaseOrderId: currentOrder.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            orderedQty: line.orderedQty,
+            receivedQty: line.receivedQty,
+            cancelledQty: line.cancelledQty
+          },
           data: {
             cancelledQty: cancelledQty + remainingQty
           }
         });
+        if (updatedLine.count !== 1) {
+          throw new Error("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
+        }
       }
     }
 
@@ -4694,15 +5391,21 @@ export async function approvePurchaseOrderBalanceClosure(formData: FormData) {
       }
     });
     if (updatedOrder.count !== 1) {
-      throw new Error("PURCHASE_ORDER_NOT_PARTIALLY_RECEIVED_FOR_CLOSURE");
+      throw new Error("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
     }
 
     const currentClosedValue = lineSnapshot.reduce(
       (total, line) => total + line.closedValue,
       0
     );
-    await tx.purchaseOrderBalanceClosure.update({
-      where: { id: closure.id },
+    const updatedClosure = await tx.purchaseOrderBalanceClosure.updateMany({
+      where: {
+        id: closure.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        purchaseOrderId: currentOrder.id,
+        status: "PENDING_APPROVAL"
+      },
       data: {
         status: "APPROVED",
         approvedByUserId: session.user.id,
@@ -4712,6 +5415,9 @@ export async function approvePurchaseOrderBalanceClosure(formData: FormData) {
         totalClosedValue: currentClosedValue
       }
     });
+    if (updatedClosure.count !== 1) {
+      throw new Error("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
+    }
     await tx.auditEvent.createMany({
       data: [
         {
@@ -4843,22 +5549,38 @@ export async function approvePurchaseOrderAmendment(formData: FormData) {
       expectedDeliveryDate: proposedExpectedDeliveryDate
     });
 
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "APPROVED",
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        ...(values.remarks ? { remarks: values.remarks } : {})
+    const stepResult = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.purchaseOrderApprove,
+      locationId: order.deliveryLocationId,
+      remarks: values.remarks,
+      prohibitedApproverUserIds: [
+        amendment.requestedByUserId,
+        order.createdByUserId,
+        order.purchaseRequest.requesterUserId,
+        order.quotationRecommendation.preparedByUserId
+      ],
+      notification: {
+        recipientUserIds: [amendment.requestedByUserId],
+        publicReference: order.publicReference,
+        locationName: order.deliveryLocation.name,
+        entityLabel: "Purchase order amendment"
+      },
+      audit: {
+        eventType: "purchase_order.amendment_approval_step_approved",
+        entityType: "PurchaseOrderAmendment",
+        entityId: amendment.id,
+        metadata: {
+          purchaseOrderId: order.id,
+          sourceMutationDeferred: true
+        }
       }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
-    });
+    if (!stepResult.isFinalStep) {
+      return;
+    }
 
     for (const line of verifiedProposal.lines) {
       const updatedLine = await tx.purchaseOrderLine.updateMany({
@@ -4917,8 +5639,8 @@ export async function approvePurchaseOrderAmendment(formData: FormData) {
       data: {
         status: "APPROVED",
         approvedByUserId: session.user.id,
-        approvedAt: new Date(),
-        appliedAt: new Date()
+        approvedAt: stepResult.actedAt,
+        appliedAt: stepResult.actedAt
       }
     });
     if (updatedAmendment.count !== 1) {
@@ -6228,23 +6950,38 @@ export async function approvePurchaseOrder(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    const approvedAt = new Date();
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "APPROVED",
-        actedAt: approvedAt,
-        actedByUserId: session.user.id,
-        ...(values.remarks ? { remarks: values.remarks } : {})
+    const stepResult = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.purchaseOrderApprove,
+      locationId: order.deliveryLocationId,
+      remarks: values.remarks,
+      prohibitedApproverUserIds: [
+        order.createdByUserId,
+        order.purchaseRequest.requesterUserId,
+        order.quotationRecommendation.preparedByUserId
+      ],
+      notification: {
+        recipientUserIds: [
+          order.createdByUserId,
+          order.purchaseRequest.requesterUserId
+        ],
+        publicReference: order.publicReference,
+        locationName: order.deliveryLocation.name,
+        entityLabel: "Purchase order"
+      },
+      audit: {
+        eventType: "purchase_order.approval_step_approved",
+        entityType: "PurchaseOrder",
+        entityId: order.id,
+        metadata: { sourceMutationDeferred: true }
       }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
-    });
+    if (!stepResult.isFinalStep) {
+      return;
+    }
+
     const updatedOrder = await tx.purchaseOrder.updateMany({
       where: {
         id: order.id,
@@ -6277,7 +7014,12 @@ export async function approvePurchaseOrder(formData: FormData) {
         }
       }
     });
-    await projectPurchaseOrderBudgetCommitments(tx, session, order, approvedAt);
+    await projectPurchaseOrderBudgetCommitments(
+      tx,
+      session,
+      order,
+      stepResult.actedAt
+    );
   });
 }
 
@@ -6289,33 +7031,59 @@ export async function approveQuotationRecommendation(formData: FormData) {
     await findActionableQuotationRecommendationApproval(
       session,
       values.approvalInstanceId
-    );
+  );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "APPROVED",
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        ...(values.remarks ? { remarks: values.remarks } : {})
+    const stepResult = await approveCurrentStepAndAdvance(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.quoteApprove,
+      locationId: purchaseRequest.requestLocationId,
+      remarks: values.remarks,
+      prohibitedApproverUserIds: [
+        recommendation.preparedByUserId,
+        purchaseRequest.requesterUserId
+      ],
+      notification: {
+        recipientUserIds: [
+          recommendation.preparedByUserId,
+          purchaseRequest.requesterUserId
+        ],
+        publicReference: purchaseRequest.publicReference,
+        locationName: purchaseRequest.requestLocation.name,
+        entityLabel: "Quotation recommendation"
+      },
+      audit: {
+        eventType: "quotation_recommendation.approval_step_approved",
+        entityType: "PurchaseRequest",
+        entityId: purchaseRequest.id,
+        metadata: {
+          quotationRecommendationId: recommendation.id,
+          sourceMutationDeferred: true
+        }
       }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
+    if (!stepResult.isFinalStep) {
+      return;
+    }
+
+    const updatedRecommendation = await tx.quotationRecommendation.updateMany({
+      where: {
+        id: recommendation.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING_APPROVAL"
+      },
       data: {
         status: "APPROVED",
-        currentStepOrder: null
-      }
-    });
-    await tx.quotationRecommendation.update({
-      where: { id: recommendation.id },
-      data: {
-        status: "APPROVED",
-        approvedAt: new Date(),
+        approvedAt: stepResult.actedAt,
         version: { increment: 1 }
       }
     });
+    if (updatedRecommendation.count !== 1) {
+      throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    }
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -7604,30 +8372,43 @@ async function closeWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status,
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        remarks: values.remarks
+    await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.purchaseRequestApprove,
+      locationId: request.requestLocationId,
+      remarks: values.remarks,
+      notification: {
+        recipientUserIds: [request.requesterUserId],
+        publicReference: request.publicReference,
+        locationName: request.requestLocation.name,
+        entityLabel: "Purchase request"
+      },
+      decisionStatus: status,
+      audit: {
+        eventType,
+        entityType: "PurchaseRequest",
+        entityId: request.id
       }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status,
-        currentStepOrder: null
-      }
-    });
-    await tx.purchaseRequest.update({
-      where: { id: request.id },
+    const updatedRequest = await tx.purchaseRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING_APPROVAL",
+        currentApprovalStep: step.stepOrder
+      },
       data: {
         status,
         currentApprovalStep: null,
         version: { increment: 1 }
       }
     });
+    if (updatedRequest.count !== 1) {
+      throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    }
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -7659,32 +8440,47 @@ async function closeQuotationRecommendationWithDecision(
     await findActionableQuotationRecommendationApproval(
       session,
       values.approvalInstanceId
-    );
+  );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status,
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        remarks: values.remarks
+    await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.quoteApprove,
+      locationId: purchaseRequest.requestLocationId,
+      remarks: values.remarks,
+      notification: {
+        recipientUserIds: [
+          recommendation.preparedByUserId,
+          purchaseRequest.requesterUserId
+        ],
+        publicReference: purchaseRequest.publicReference,
+        locationName: purchaseRequest.requestLocation.name,
+        entityLabel: "Quotation recommendation"
+      },
+      decisionStatus: status,
+      audit: {
+        eventType,
+        entityType: "PurchaseRequest",
+        entityId: purchaseRequest.id
       }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status,
-        currentStepOrder: null
-      }
-    });
-    await tx.quotationRecommendation.update({
-      where: { id: recommendation.id },
+    const updatedRecommendation = await tx.quotationRecommendation.updateMany({
+      where: {
+        id: recommendation.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING_APPROVAL"
+      },
       data: {
         status,
         version: { increment: 1 }
       }
     });
+    if (updatedRecommendation.count !== 1) {
+      throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    }
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -7721,20 +8517,27 @@ async function closePurchaseOrderWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: status === "DRAFT" ? "RETURNED" : "REJECTED",
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        remarks: values.remarks
-      }
-    });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: status === "DRAFT" ? "RETURNED" : "REJECTED",
-        currentStepOrder: null
+    await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.purchaseOrderApprove,
+      locationId: order.deliveryLocationId,
+      remarks: values.remarks,
+      notification: {
+        recipientUserIds: [
+          order.createdByUserId,
+          order.purchaseRequest.requesterUserId
+        ],
+        publicReference: order.publicReference,
+        locationName: order.deliveryLocation.name,
+        entityLabel: "Purchase order"
+      },
+      decisionStatus: status === "DRAFT" ? "RETURNED" : "REJECTED",
+      audit: {
+        eventType,
+        entityType: "PurchaseOrder",
+        entityId: order.id
       }
     });
     const updatedOrder = await tx.purchaseOrder.updateMany({
@@ -7799,20 +8602,24 @@ async function closePurchaseOrderBalanceClosureWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status,
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        remarks: values.remarks
-      }
-    });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status,
-        currentStepOrder: null
+    const decision = await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.purchaseOrderApprove,
+      locationId: order.deliveryLocationId,
+      remarks: values.remarks,
+      notification: {
+        recipientUserIds: [closure.requestedByUserId],
+        publicReference: order.publicReference,
+        locationName: order.deliveryLocation.name,
+        entityLabel: "Purchase order balance closure"
+      },
+      decisionStatus: status,
+      audit: {
+        eventType,
+        entityType: "PurchaseOrderBalanceClosure",
+        entityId: closure.id
       }
     });
     const updatedClosure = await tx.purchaseOrderBalanceClosure.updateMany({
@@ -7824,7 +8631,7 @@ async function closePurchaseOrderBalanceClosureWithDecision(
       },
       data: {
         status,
-        rejectedAt: new Date(),
+        rejectedAt: decision.actedAt,
         rejectionReason: values.remarks
       }
     });
@@ -7867,20 +8674,24 @@ async function closePurchaseOrderAmendmentWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status,
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        remarks: values.remarks
-      }
-    });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status,
-        currentStepOrder: null
+    const decision = await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.purchaseOrderApprove,
+      locationId: order.deliveryLocationId,
+      remarks: values.remarks,
+      notification: {
+        recipientUserIds: [amendment.requestedByUserId],
+        publicReference: order.publicReference,
+        locationName: order.deliveryLocation.name,
+        entityLabel: "Purchase order amendment"
+      },
+      decisionStatus: status,
+      audit: {
+        eventType,
+        entityType: "PurchaseOrderAmendment",
+        entityId: amendment.id
       }
     });
     const updatedAmendment = await tx.purchaseOrderAmendment.updateMany({
@@ -7892,7 +8703,7 @@ async function closePurchaseOrderAmendmentWithDecision(
       },
       data: {
         status,
-        rejectedAt: new Date(),
+        rejectedAt: decision.actedAt,
         rejectionReason: values.remarks
       }
     });
@@ -7950,20 +8761,24 @@ async function closeWastageReportWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status,
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        remarks: values.remarks
-      }
-    });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status,
-        currentStepOrder: null
+    const decision = await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.wastageApprove,
+      locationId: report.inventoryLocation.locationId,
+      remarks: values.remarks,
+      notification: {
+        recipientUserIds: [report.reportedByUserId],
+        publicReference: report.publicReference,
+        locationName: report.inventoryLocation.location.name,
+        entityLabel: "Wastage report"
+      },
+      decisionStatus: status,
+      audit: {
+        eventType,
+        entityType: "WastageReport",
+        entityId: report.id
       }
     });
     const updatedReport = await tx.wastageReport.updateMany({
@@ -7975,7 +8790,7 @@ async function closeWastageReportWithDecision(
       },
       data: {
         status,
-        reviewedAt: new Date(),
+        reviewedAt: decision.actedAt,
         reviewedByUserId: session.user.id,
         reviewNotes: values.remarks
       }
@@ -8018,20 +8833,24 @@ async function closeStockAdjustmentWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status,
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        remarks: values.remarks
-      }
-    });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status,
-        currentStepOrder: null
+    await closeCurrentApprovalDecision(tx, session, {
+      approvalId: approval.id,
+      stepId: step.id,
+      stepOrder: step.stepOrder,
+      requiredPermissionCode: permissions.stockAdjustmentApprove,
+      locationId: adjustment.inventoryLocation.locationId,
+      remarks: values.remarks,
+      decisionStatus: status,
+      notification: {
+        recipientUserIds: [adjustment.requestedByUserId],
+        publicReference: adjustment.publicReference,
+        locationName: adjustment.inventoryLocation.location.name,
+        entityLabel: "Stock adjustment"
+      },
+      audit: {
+        eventType,
+        entityType: "StockAdjustment",
+        entityId: adjustment.id
       }
     });
     const updatedAdjustment = await tx.stockAdjustment.updateMany({
