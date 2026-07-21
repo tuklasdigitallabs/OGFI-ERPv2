@@ -70,6 +70,8 @@ jobs:
           AUTHORIZATION_DATABASE_INTEGRATION: "yes"
           AUTHORIZATION_TEST_DATABASE: ogfi_ci
           AUTHORIZATION_TEST_RUN_ID: "${{ github.run_id }}-${{ github.run_attempt }}"
+      - name: Restore Next.js generated type reference
+        run: git restore -- apps/web/next-env.d.ts
       - run: pnpm release:authorization-manifest
         env:
           AUTHORIZATION_DATABASE_INTEGRATION: "yes"
