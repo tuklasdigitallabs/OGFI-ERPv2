@@ -1,0 +1,1599 @@
+{
+  "schemaVersion": 1,
+  "cluster": "admin-platform",
+  "testFiles": [
+    "apps/web/tests/authorizationAdminPlatform.integration.test.ts"
+  ],
+  "cases": [
+    {
+      "id": "AUTHZ-ADMIN-LIVE-PERMISSION-REVOKED-DENIES-READ",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-LIVE-PERMISSION-REVOKED-DENIES-READ",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": [
+        "live database permission revalidation",
+        "stale session denial"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-COMPANY-MANAGE-REVOKED-DENIES-WRITE-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-COMPANY-MANAGE-REVOKED-DENIES-WRITE-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": [
+        "active company MANAGE scope",
+        "stale scope denial",
+        "no activation-token mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": [
+        "target user company scope",
+        "cross-company denial",
+        "no activation-token mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-PRIVILEGED-MFA-DENIED-NO-TOKEN-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-PRIVILEGED-MFA-DENIED-NO-TOKEN-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": [
+        "privileged MFA enforcement",
+        "no activation-token mutation",
+        "denial audit allowed"
+      ]
+    },
+    {
+      "id": "AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": [
+        "tenant and recipient ownership predicate",
+        "no notification mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": [
+        "live core-admin permission",
+        "release export denial",
+        "no readiness-gate mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "real ACTIVE auth session token",
+        "cookie-bound session resolution",
+        "live permission",
+        "no user mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-POLICY-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-POLICY-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "real ACTIVE auth session token",
+        "company policy admin guard",
+        "no policy mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "real ACTIVE auth session token",
+        "release governance admin guard",
+        "no readiness-gate mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-SECURITY-GOVERNANCE-COOKIE-BOUNDARIES-DENY-WITHOUT-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-SECURITY-GOVERNANCE-COOKIE-BOUNDARIES-DENY-WITHOUT-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "real ACTIVE auth session token",
+        "auth invalidation admin guard",
+        "break-glass admin guard",
+        "privileged-MFA admin guard",
+        "no controlled-record mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-AUTH-INVALIDATION-COMPANY-AND-TENANT-GLOBAL-BOUNDARIES",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-AUTH-INVALIDATION-COMPANY-AND-TENANT-GLOBAL-BOUNDARIES",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": ["effective company MANAGE assignment", "selected-company listing", "live tenant-global invalidation authority", "non-enumerating inaccessible completion", "exact completion audit"]
+    },
+    {
+      "id": "AUTHZ-AUTH-INVALIDATION-CONCURRENT-COMPLETION-CAS-EXACTLY-ONCE",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-AUTH-INVALIDATION-CONCURRENT-COMPLETION-CAS-EXACTLY-ONCE",
+      "kind": "AUTHENTICATED_DATABASE_CONCURRENCY",
+      "coveredControls": ["two-administrator concurrent completion", "pending-provider compare-and-swap", "single state transition", "single completion audit"]
+    },
+    {
+      "id": "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "all admin-platform HIGH boundaries invoke real service guards",
+        "live permission revocation",
+        "exact business-table no-mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-CONTROLLED-REQUEST-NON-ENUMERATION-WITH-DENIAL-AUDIT-ONLY",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-CONTROLLED-REQUEST-NON-ENUMERATION-WITH-DENIAL-AUDIT-ONLY",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "existing and nonexistent controlled requests return the same permission denial",
+        "request state unchanged",
+        "denial audit isolated from business mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "target-company MANAGE scope",
+        "foreign company brand, department, and location denial",
+        "exact master-data no-mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "live core.tenant_role_administer permission",
+        "all tenant-global role mutations denied",
+        "exact role, assignment, and request no-mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-ROLE-TARGET-COMPANY-AND-EXPIRY-DENIED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-ROLE-TARGET-COMPANY-AND-EXPIRY-DENIED-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "selected-company target membership",
+        "cross-company target denial",
+        "expired target membership denial",
+        "exact role assignment and request no-mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-SENSITIVE-READS",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-SENSITIVE-READS",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "live core.tenant_role_administer permission",
+        "role and user sensitive disclosure denial",
+        "no denial-side audit mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-ROLE-PERMISSION-CHANGES-INVALIDATE-ACTIVE-ASSIGNEES",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-ROLE-PERMISSION-CHANGES-INVALIDATE-ACTIVE-ASSIGNEES",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "manual non-sensitive role-permission updates",
+        "assigned-role sensitive manual and recommended promotion denial",
+        "active effective assignee privilege epoch",
+        "session invalidation",
+        "expired assignee exclusion"
+      ]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-ROLE-PERMISSION-SELF-MUTATION-DENIED",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-ROLE-PERMISSION-SELF-MUTATION-DENIED",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": ["manual and recommended self-role denial", "role-row TOCTOU guard", "no permission, audit, privilege-epoch, or invalidation mutation"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-CONCURRENT-DIRECT-ROLE-GRANT-CREATES-EXACTLY-ONE",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-CONCURRENT-DIRECT-ROLE-GRANT-CREATES-EXACTLY-ONE",
+      "kind": "AUTHENTICATED_DATABASE_CONCURRENCY",
+      "coveredControls": ["role-row serialization", "active-assignment duplicate prevention", "single audit and session invalidation"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-CONCURRENT-DIRECT-GRANT-AND-SENSITIVE-PROMOTION-PRESERVES-SEPARATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-CONCURRENT-DIRECT-GRANT-AND-SENSITIVE-PROMOTION-PRESERVES-SEPARATION",
+      "kind": "AUTHENTICATED_DATABASE_CONCURRENCY",
+      "coveredControls": ["role-row serialization", "live direct-assignment sensitivity recheck", "assigned-role sensitive-promotion denial", "no active direct assignment with sensitive authority"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-CONCURRENT-SENSITIVE-APPROVAL-AND-PERMISSION-PROMOTION-PRESERVES-REVIEW",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-CONCURRENT-SENSITIVE-APPROVAL-AND-PERMISSION-PROMOTION-PRESERVES-REVIEW",
+      "kind": "AUTHENTICATED_DATABASE_CONCURRENCY",
+      "coveredControls": ["pending sensitive-role request permission freeze", "locked role permission revalidation", "reviewed permission audit accuracy", "no unreviewed sensitive authority"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-CONCURRENT-SENSITIVE-ROLE-APPROVAL-CAS-CREATES-EXACTLY-ONE",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-CONCURRENT-SENSITIVE-ROLE-APPROVAL-CAS-CREATES-EXACTLY-ONE",
+      "kind": "AUTHENTICATED_DATABASE_CONCURRENCY",
+      "coveredControls": ["pending request compare-and-swap", "role-row serialization", "single sensitive assignment, audit, and session invalidation"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-CONCURRENT-SENSITIVE-ROLE-REQUEST-CREATES-EXACTLY-ONE",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-CONCURRENT-SENSITIVE-ROLE-REQUEST-CREATES-EXACTLY-ONE",
+      "kind": "AUTHENTICATED_DATABASE_CONCURRENCY",
+      "coveredControls": ["role-row serialization", "pending-request duplicate prevention", "single request and audit"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-CONCURRENT-ROLE-DEACTIVATION-MUTATES-EXACTLY-ONCE",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-CONCURRENT-ROLE-DEACTIVATION-MUTATES-EXACTLY-ONCE",
+      "kind": "AUTHENTICATED_DATABASE_CONCURRENCY",
+      "coveredControls": ["role-row serialization", "active-status compare-and-swap", "single audit, invalidation, and privilege-epoch update"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-DETAIL-READS-ENFORCE-COMPANY-AND-TENANT-ROLE-SCOPE",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-DETAIL-READS-ENFORCE-COMPANY-AND-TENANT-ROLE-SCOPE",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["selected-company non-enumeration", "approval-rule and location company predicates", "permission-detail tenant-role gate", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-PERMISSION-DETAIL-EXCLUDES-FOREIGN-TENANT-ROLES",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-PERMISSION-DETAIL-EXCLUDES-FOREIGN-TENANT-ROLES",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["global-permission nested-role tenant predicate", "nested-assignee tenant predicate", "foreign user and scope non-disclosure", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["selected-company audit scope", "tenant-wide audit live tenant-role permission", "no audit disclosure or mutation"]
+    },
+    {
+      "id": "AUTHZ-AUTH-SESSION-AND-MFA-OWNER-NON-ENUMERATION-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-AUTH-SESSION-AND-MFA-OWNER-NON-ENUMERATION-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "foreign session ownership",
+        "MFA session state ownership",
+        "non-enumerating denial",
+        "no auth-session mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "generic invalid login and activation denial",
+        "activation-delivery target predicate",
+        "MFA transition state",
+        "self-session sign-out ownership",
+        "no activation-token mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-SESSION-REVOCATION-CALLER-CHAIN-SUCCESS",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-SESSION-REVOCATION-CALLER-CHAIN-SUCCESS",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "verified privileged-MFA guard",
+        "guarded revokeApplicationSessions caller",
+        "privilege-epoch touch",
+        "auth invalidation record",
+        "target session revoked exactly once"
+      ]
+    },
+    {
+      "id": "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+      "testName": "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "recovery self-review",
+        "self session administration",
+        "break-glass self-approval",
+        "break-glass lifecycle",
+        "privileged-MFA self-review",
+        "exact record no-mutation"
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "surfaceId": "server/services/authentication.ts#completeMfaChallenge",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "validated-auth-session",
+        "MFA-challenge-owner-and-counter"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-SESSION-AND-MFA-OWNER-NON-ENUMERATION-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "an ACTIVE non-challenge session is unchanged and receives the non-enumerating challenge-not-found denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#completeMfaEnrollment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["validated-auth-session", "pending-authenticator-owner"],
+      "caseIds": [
+        "AUTHZ-AUTH-SESSION-AND-MFA-OWNER-NON-ENUMERATION-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "foreign or nonexistent authenticator id cannot change the authenticated session or enrollment state"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#activateAccount",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "single-use activation token digest",
+        "active target-user predicate",
+        "transactional token consumption"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS"
+      ],
+      "noMutationControls": [
+        "invalid token leaves activation-token and auth-session counts unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#authenticatePassword",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "tenant-login-code plus normalized-identifier predicate",
+        "constant-work dummy password",
+        "rate-limit accounting"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS"
+      ],
+      "noMutationControls": [
+        "invalid credentials create only permitted failure accounting and no auth session"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#beginMfaStepUp",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "validated ACTIVE auth-session token",
+        "session-owned active authenticator predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS"
+      ],
+      "noMutationControls": [
+        "missing owned authenticator leaves ACTIVE session unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#clearAuthenticationCookies",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["fixed authentication cookie allowlist"],
+      "caseIds": [
+        "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS"
+      ],
+      "noMutationControls": ["cookie cleanup performs no database mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#deliverAccountActivation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "active activation-token id and digest predicate",
+        "target-user ACTIVE predicate",
+        "compare-and-set delivery claim"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS",
+        "AUTHZ-ADMIN-PRIVILEGED-MFA-DENIED-NO-TOKEN-MUTATION"
+      ],
+      "noMutationControls": [
+        "unknown activation id cannot mutate delivery state"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#getValidatedSessionPrincipal",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "auth-session token digest",
+        "ACTIVE state",
+        "tenant-user privilege epoch and expiry validation"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS"
+      ],
+      "noMutationControls": ["returns only the token-bound active principal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#recordMfaFailure",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "completeMfaChallenge validated PENDING_MFA session caller",
+        "session id and state compare-and-set"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-SESSION-AND-MFA-OWNER-NON-ENUMERATION-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "non-PENDING session is rejected before failure accounting caller path"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#rotateSessionInTransaction",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "completeMfaChallenge and completeMfaEnrollment owner/state guards",
+        "source session compare-and-set"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-SESSION-AND-MFA-OWNER-NON-ENUMERATION-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "invalid challenge and enrollment ownership deny before rotation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#signOutCurrentSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["current session token digest", "token-bound session id"],
+      "caseIds": [
+        "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS"
+      ],
+      "noMutationControls": ["only the current token-bound session is revoked"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#startMfaEnrollment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "validated ACTIVE or MFA_ENROLLMENT_REQUIRED session",
+        "session-owned authenticator predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-PUBLIC-BOUNDARY-TARGET-STATE-AND-SELF-SESSION-CONTROLS"
+      ],
+      "noMutationControls": [
+        "existing active authenticator blocks replacement without mutation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#issueAccountActivation",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "authenticationAdmin.assertCanManageAuthentication",
+        "authenticationAdmin.targetUserIdsForCompany",
+        "privilegedMfaGuard.assertPrivilegedMfaForAction"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-COMPANY-MANAGE-REVOKED-DENIES-WRITE-NO-MUTATION",
+        "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-PRIVILEGED-MFA-DENIED-NO-TOKEN-MUTATION"
+      ],
+      "noMutationControls": [
+        "activation token count unchanged before guarded internal call"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#issueAccountActivationInTransaction",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["authenticationAdmin transaction caller guard chain"],
+      "caseIds": [
+        "AUTHZ-ADMIN-COMPANY-MANAGE-REVOKED-DENIES-WRITE-NO-MUTATION",
+        "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-PRIVILEGED-MFA-DENIED-NO-TOKEN-MUTATION"
+      ],
+      "noMutationControls": [
+        "activation token count unchanged when caller precondition denies"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#revokeApplicationSessions",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "authenticationAdmin.revokeAuthenticationSessions caller guard chain"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "guarded caller denial leaves every application session unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authentication.ts#revokeOwnSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "getValidatedSessionPrincipal",
+        "authSession id plus owner updateMany"
+      ],
+      "caseIds": [
+        "AUTHZ-AUTH-SESSION-AND-MFA-OWNER-NON-ENUMERATION-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "foreign session remains ACTIVE and owner session remains unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authenticationAdmin.ts#issueAuthenticationActivation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "targetUserIdsForCompany",
+        "assertPrivilegedMfaForAction"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-LIVE-PERMISSION-REVOKED-DENIES-READ",
+        "AUTHZ-ADMIN-COMPANY-MANAGE-REVOKED-DENIES-WRITE-NO-MUTATION",
+        "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-PRIVILEGED-MFA-DENIED-NO-TOKEN-MUTATION"
+      ],
+      "noMutationControls": [
+        "activation token count unchanged on every denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authenticationAdmin.ts#approveAuthRecovery",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "recovery tenant-company-status query",
+        "self-review guard",
+        "assertPrivilegedMfaForAction"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "self-review and live-permission denials leave recovery, token, and session state unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authenticationAdmin.ts#rejectAuthRecovery",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "recovery tenant-company-status query",
+        "self-review guard",
+        "assertPrivilegedMfaForAction"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "self-review and live-permission denials leave recovery status unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authenticationAdmin.ts#revokeAuthenticationSessions",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "targetUserIdsForCompany",
+        "self-revocation guard",
+        "assertPrivilegedMfaForAction"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "self-administration, foreign-company target, and revoked-permission denials leave sessions unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authenticationAdmin.ts#requestAuthRecovery",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "targetUserIdsForCompany",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission denial leaves recovery-request count unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authenticationAdmin.ts#retryAuthenticationActivationDelivery",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "activation tenant-target scope predicate",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission denial leaves activation delivery state unchanged"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/authInvalidation.ts#completeAuthSessionInvalidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "authInvalidation.assertCanManageAuthInvalidations",
+        "tenant-company pending-record predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-SECURITY-GOVERNANCE-COOKIE-BOUNDARIES-DENY-WITHOUT-MUTATION",
+        "AUTHZ-AUTH-INVALIDATION-COMPANY-AND-TENANT-GLOBAL-BOUNDARIES",
+        "AUTHZ-AUTH-INVALIDATION-CONCURRENT-COMPLETION-CAS-EXACTLY-ONCE"
+      ],
+      "noMutationControls": [
+        "invalidation count unchanged on live-permission denial",
+        "inaccessible, ineffective-scope, and concurrent losing completions do not mutate invalidation state or create duplicate audits"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/authInvalidation.ts#recordAuthSessionInvalidation",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "touchUserPrivilegeEpoch guarded caller",
+        "tenant-company-target binding",
+        "idempotent pending invalidation record"
+      ],
+      "caseIds": ["AUTHZ-ADMIN-SESSION-REVOCATION-CALLER-CHAIN-SUCCESS"],
+      "noMutationControls": [
+        "guarded session-revocation caller creates exactly one target-bound invalidation"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/notifications.ts#archiveNotification",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["notification tenantId plus recipientUserId updateMany"],
+      "caseIds": ["AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION"],
+      "noMutationControls": [
+        "foreign recipient notification status and archivedAt unchanged"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/policySettings.ts#updateCompanyPolicySetting",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope"
+      ],
+      "caseIds": [
+        "AUTHZ-POLICY-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "company policy setting count unchanged on denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/policySettings.ts#resetCompanyPolicySetting",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "company-policy count and values unchanged on live-permission denial"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/privilegedMfa.ts#verifyPrivilegedMfaEnrollment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "privilegedMfa.assertCanManagePrivilegedMfa",
+        "tenant-company pending-enrollment predicate",
+        "self-verification guard"
+      ],
+      "caseIds": [
+        "AUTHZ-SECURITY-GOVERNANCE-COOKIE-BOUNDARIES-DENY-WITHOUT-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission and self-verification denials leave enrollment unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/privilegedMfa.ts#recordPrivilegedMfaEnrollment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "privileged target predicate",
+        "self-attestation guard"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "live-permission denial leaves privileged-MFA enrollment count unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/privilegedMfa.ts#revokePrivilegedMfaEnrollment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "privilegedMfa.assertCanManagePrivilegedMfa",
+        "tenant-company enrollment predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission and self-revocation denials leave enrollment unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/privilegedMfaGuard.ts#assertPrivilegedMfaForAction",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "guarded admin-security caller",
+        "authenticated session assurance and recency",
+        "verified enrollment evidence"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-PRIVILEGED-MFA-DENIED-NO-TOKEN-MUTATION",
+        "AUTHZ-ADMIN-SESSION-REVOCATION-CALLER-CHAIN-SUCCESS"
+      ],
+      "noMutationControls": [
+        "denied caller leaves target state unchanged; verified caller proceeds exactly once"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/breakGlassAccess.ts#approveBreakGlassAccess",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "breakGlass.assertCanManageBreakGlass",
+        "tenant-company pending grant predicate",
+        "requester-review SoD guard"
+      ],
+      "caseIds": [
+        "AUTHZ-SECURITY-GOVERNANCE-COOKIE-BOUNDARIES-DENY-WITHOUT-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission and requester self-approval denials leave grant and scope assignment unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/breakGlassAccess.ts#requestBreakGlassAccess",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "target user and company-location predicate",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "live-permission denial leaves break-glass grants unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/breakGlassAccess.ts#rejectBreakGlassAccess",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "breakGlass.assertCanManageBreakGlass",
+        "tenant-company pending grant predicate",
+        "requester-review SoD guard"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission and requester self-review denials leave grant unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/breakGlassAccess.ts#revokeBreakGlassAccess",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "breakGlass.assertCanManageBreakGlass",
+        "tenant-company active grant predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission denial and non-ACTIVE lifecycle denial leave grant unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/breakGlassAccess.ts#completeBreakGlassPostReview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "breakGlass.assertCanManageBreakGlass",
+        "tenant-company post-review grant predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission denial and pending-grant lifecycle denial leave grant unchanged"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#buildReleaseReadinessExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "release tenant-company query chain"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+      ],
+      "noMutationControls": ["readiness-gate count unchanged on denial"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#getReleaseSecurityEvidenceSummary",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "buildReleaseReadinessExportRows outer permission",
+        "requirePermission(core.administer)"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "outer and inner live permission deny before security evidence query"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#listDeploymentEvidenceRecords",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "buildReleaseReadinessExportRows outer permission",
+        "release tenant-company evidence query"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "outer live permission denies internal query execution"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#listEnablementEvidenceRecords",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "buildReleaseReadinessExportRows outer permission",
+        "release tenant-company evidence query"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "outer live permission denies internal query execution"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#listUatEvidenceRecords",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "buildReleaseReadinessExportRows outer permission",
+        "release tenant-company evidence query"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "outer live permission denies internal query execution"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#updateReleaseReadinessGate",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "releaseReadiness.assertCanManageReleaseReadiness"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "readiness-gate count unchanged on live-permission denial"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/coreAdmin.ts#createCoreAdminUser",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS"
+      ],
+      "noMutationControls": [
+        "user count unchanged on core-admin denial or initial-role tenant-admin denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#touchUserPrivilegeEpoch",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "guarded core-admin and authentication-admin callers",
+        "target user id",
+        "transactional auth-session invalidation"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-SESSION-REVOCATION-CALLER-CHAIN-SUCCESS",
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "guarded success increments the target epoch once and denied callers do not invoke the helper"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/coreAdmin.ts#createCoreAdminRole",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "tenant role predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS"
+      ],
+      "noMutationControls": [
+        "role count unchanged on live core-admin or tenant-role permission denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#createCoreAdminCompany",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "tenant company predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "company and actor scope counts unchanged on live-permission denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#createCoreAdminBrand",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "tenant-company predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission and foreign-company scope denials leave brand count unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#createCoreAdminDepartment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "tenant-company predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission and foreign-company scope denials leave department count unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#createCoreAdminLocation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "tenant-company-brand predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-FOREIGN-COMPANY-MASTER-DATA-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "permission and foreign-company scope denials leave location count unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#createUserRoleAssignment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "target user and role tenant predicates",
+        "self-role guard"
+      ],
+      "caseIds": [
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+        "AUTHZ-CORE-ADMIN-ROLE-TARGET-COMPANY-AND-EXPIRY-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-CONCURRENT-DIRECT-ROLE-GRANT-CREATES-EXACTLY-ONE",
+        "AUTHZ-CORE-ADMIN-CONCURRENT-DIRECT-GRANT-AND-SENSITIVE-PROMOTION-PRESERVES-SEPARATION"
+      ],
+      "noMutationControls": [
+        "permission, cross-company target, and expired-membership denials leave role assignments unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#deactivateUserRoleAssignment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.tenant_role_administer)",
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "selected-company target membership",
+        "assignment tenant predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+        "AUTHZ-CORE-ADMIN-ROLE-TARGET-COMPANY-AND-EXPIRY-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-CONCURRENT-ROLE-DEACTIVATION-MUTATES-EXACTLY-ONCE"
+      ],
+      "noMutationControls": [
+        "permission and cross-company target denials leave role assignment and target privilege epoch unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#requestSensitiveUserRole",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.tenant_role_administer)",
+        "assertCanManageCompanyScope",
+        "selected-company target membership",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+        "AUTHZ-CORE-ADMIN-ROLE-TARGET-COMPANY-AND-EXPIRY-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-CONCURRENT-SENSITIVE-ROLE-REQUEST-CREATES-EXACTLY-ONE"
+      ],
+      "noMutationControls": [
+        "permission, cross-company target, and expired-membership denials leave requests unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#createUserLocationScopeAssignment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "target user/location tenant-company predicates",
+        "self-scope guard"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "live-permission denial leaves user-scope assignments unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#deactivateUserScopeAssignment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "assignment user and location predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "live-permission denial leaves scope assignment and privilege epoch unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#requestHighRiskUserLocationScope",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "target user and selected-company location predicate",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "live-permission denial leaves high-risk scope requests unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#approveSensitiveUserRoleRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "pending request tenant predicate",
+        "requester/target SoD guard",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+        "AUTHZ-ADMIN-CONTROLLED-REQUEST-NON-ENUMERATION-WITH-DENIAL-AUDIT-ONLY",
+        "AUTHZ-CORE-ADMIN-CONCURRENT-SENSITIVE-ROLE-APPROVAL-CAS-CREATES-EXACTLY-ONE"
+      ],
+      "noMutationControls": [
+        "tenant-role permission and non-enumerating request denials leave request and assignment unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#rejectSensitiveUserRoleRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "pending request tenant predicate",
+        "requester/target SoD guard",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+        "AUTHZ-CORE-ADMIN-ROLE-TARGET-COMPANY-AND-EXPIRY-DENIED-NO-MUTATION",
+        "AUTHZ-ADMIN-CONTROLLED-REQUEST-NON-ENUMERATION-WITH-DENIAL-AUDIT-ONLY"
+      ],
+      "noMutationControls": [
+        "tenant-role permission, cross-company target, and non-enumerating request denials leave request unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#approveHighRiskUserLocationScopeRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "pending request tenant predicate",
+        "requester/target SoD guard",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "SoD, target company/location, and MFA approval negatives remain"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#rejectHighRiskUserLocationScopeRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "pending request tenant predicate",
+        "requester/target SoD guard",
+        "privileged MFA"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "SoD, target company/location, and MFA rejection negatives remain"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#updateRolePermissions",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "tenant role predicate",
+        "privileged MFA",
+        "admin-role retention guard"
+      ],
+      "caseIds": [
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-ROLE-PERMISSION-CHANGES-INVALIDATE-ACTIVE-ASSIGNEES",
+        "AUTHZ-CORE-ADMIN-ROLE-PERMISSION-SELF-MUTATION-DENIED",
+        "AUTHZ-CORE-ADMIN-CONCURRENT-DIRECT-GRANT-AND-SENSITIVE-PROMOTION-PRESERVES-SEPARATION"
+      ],
+      "noMutationControls": [
+        "tenant-role and core-admin permission denials leave role permissions unchanged"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#applyRecommendedRolePermissions",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.tenant_role_administer)",
+        "requirePermission(core.administer)",
+        "tenant role predicate",
+        "privileged MFA",
+        "admin-role retention guard"
+      ],
+      "caseIds": [
+        "AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-ALL-ROLE-MUTATIONS",
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
+        "AUTHZ-CORE-ADMIN-ROLE-PERMISSION-CHANGES-INVALIDATE-ACTIVE-ASSIGNEES",
+        "AUTHZ-CORE-ADMIN-ROLE-PERMISSION-SELF-MUTATION-DENIED"
+      ],
+      "noMutationControls": [
+        "tenant-role and core-admin permission denials leave recommended role permissions unchanged"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#createDeploymentEvidenceRecord",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "releaseReadiness.assertCanManageReleaseReadiness"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "shared permission denial covered; evidence-record target validation negative remains"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#createEnablementEvidenceRecord",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "releaseReadiness.assertCanManageReleaseReadiness"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "shared permission denial covered; evidence-record target validation negative remains"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#createUatEvidenceRecord",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "releaseReadiness.assertCanManageReleaseReadiness"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "shared permission denial covered; evidence-record target validation negative remains"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#createReleaseBoardDecision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "releaseReadiness.assertCanManageReleaseReadiness"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "shared permission denial covered; decision-specific evidence and status negative remains"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#updateDeploymentEvidenceStatus",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "releaseReadiness.assertCanManageReleaseReadiness",
+        "tenant-company evidence predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": ["foreign evidence-record status negative remains"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#updateEnablementEvidenceStatus",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "releaseReadiness.assertCanManageReleaseReadiness",
+        "tenant-company evidence predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": ["foreign evidence-record status negative remains"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#updateUatEvidenceStatus",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "releaseReadiness.assertCanManageReleaseReadiness",
+        "tenant-company evidence predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": ["foreign evidence-record status negative remains"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/operationalReasonCodes.ts#createOperationalReasonCode",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "operational reason-code count unchanged on live-permission denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/operationalReasonCodes.ts#deactivateOperationalReasonCode",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission(core.administer)",
+        "assertCanManageCompanyScope",
+        "tenant-company reason-code predicate"
+      ],
+      "caseIds": [
+        "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"
+      ],
+      "noMutationControls": [
+        "operational reason-code status unchanged on live-permission denial"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/context.ts#getConfiguredContext",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["authentication session resolution", "live role and scope resolution"],
+      "caseIds": ["AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"],
+      "noMutationControls": ["stale permission claims do not authorize protected data or writes"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/context.ts#getSessionContext",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["authentication cookie", "session validation", "live context resolution"],
+      "caseIds": ["AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"],
+      "noMutationControls": ["invalid or stale session cannot authorize protected mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/context.ts#requireSessionContext",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["getSessionContext", "required authenticated principal"],
+      "caseIds": ["AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"],
+      "noMutationControls": ["missing or stale authority is denied before protected mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#getCoreAdminOverview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission(core.administer)", "requirePermission(core.tenant_role_administer)"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-SENSITIVE-READS"],
+      "noMutationControls": ["no role or user disclosure and no audit mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#getCoreAdminRoleDetail",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission(core.administer)", "requirePermission(core.tenant_role_administer)", "tenant role predicate"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-SENSITIVE-READS"],
+      "noMutationControls": ["no role permission or assignee disclosure and no audit mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#getCoreAdminUserDetail",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission(core.administer)", "requirePermission(core.tenant_role_administer)", "tenant user predicate"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-TENANT-ROLE-PERMISSION-REVOKED-DENIES-SENSITIVE-READS"],
+      "noMutationControls": ["no user role or scope disclosure and no audit mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#getCoreAdminApprovalRuleDetail",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "company-or-authorized-tenant rule predicate"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-DETAIL-READS-ENFORCE-COMPANY-AND-TENANT-ROLE-SCOPE"],
+      "noMutationControls": ["foreign and nonexistent approval-rule ids disclose no rule, assignee, or audit data"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#getCoreAdminCompanyDetail",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "exact selected-company predicate"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-DETAIL-READS-ENFORCE-COMPANY-AND-TENANT-ROLE-SCOPE"],
+      "noMutationControls": ["foreign and nonexistent company ids return the same no-data result without audit mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#getCoreAdminLocationDetail",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "tenant-and-selected-company location predicate"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-DETAIL-READS-ENFORCE-COMPANY-AND-TENANT-ROLE-SCOPE"],
+      "noMutationControls": ["foreign and nonexistent location ids return the same no-data result without audit mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#getCoreAdminPermissionDetail",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "live tenant-role administrator permission", "tenant-or-global permission predicate"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-DETAIL-READS-ENFORCE-COMPANY-AND-TENANT-ROLE-SCOPE", "AUTHZ-CORE-ADMIN-PERMISSION-DETAIL-EXCLUDES-FOREIGN-TENANT-ROLES"],
+      "noMutationControls": ["revoked tenant-role permission discloses no role, assignee, or scope data and creates no audit mutation", "global permissions expose no foreign-tenant role, assignee, or scope data"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#getCoreAdminAuditEventDetail",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "live tenant-role permission for tenant-wide audit"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION"],
+      "noMutationControls": ["revoked tenant-role permission discloses no tenant-wide audit details and leaves evidence unchanged"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/coreAdmin.ts#listCoreAdminAuditEvents",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "live tenant-role permission for tenant-wide audit"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION"],
+      "noMutationControls": ["revoked tenant-role permission excludes tenant-wide audit records without mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/breakGlassAccess.ts#listBreakGlassAccessGrants",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "company MANAGE scope", "guarded expiry mutation"],
+      "caseIds": ["AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION"],
+      "noMutationControls": ["no break-glass disclosure or expiry mutation on denial"],
+      "status": "COVERED"
+    }
+  ]
+}

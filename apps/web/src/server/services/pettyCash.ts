@@ -1,106 +1,107 @@
-import { prisma } from "@ogfi/database";
-import type { TransactionClient } from "@ogfi/database";
+import { prisma } from "@ogfi/database"
+import type { TransactionClient } from "@ogfi/database"
 import {
   canUseFinance,
+  getGrantedPermissionCodes,
   permissions,
   requirePermission
-} from "./authorization";
-import type { SessionContext } from "./context";
+} from "./authorization"
+import type { SessionContext } from "./context"
 import {
   recordWorkflowNotifications,
   resolveScopedNotificationRecipients
-} from "./notifications";
+} from "./notifications"
 import {
   resolveEvidenceReadiness,
   type EvidenceCaptureMode,
   type EvidenceProductionReadiness
-} from "./attachments";
+} from "./attachments"
 
-type BadgeTone = "neutral" | "info" | "success" | "warning" | "destructive";
+type BadgeTone = "neutral" | "info" | "success" | "warning" | "destructive"
 
 type DecimalLike = {
-  toNumber?: () => number;
-  toString: () => string;
-};
+  toNumber?: () => number
+  toString: () => string
+}
 
 export type PettyCashMetric = {
-  id: string;
-  label: string;
-  displayValue: string;
-  detail: string;
-  tone: BadgeTone;
-};
+  id: string
+  label: string
+  displayValue: string
+  detail: string
+  tone: BadgeTone
+}
 
 export type PettyCashFundRow = {
-  id: string;
-  publicReference: string;
-  code: string;
-  name: string;
-  status: string;
-  locationName: string;
-  custodianName: string;
-  currentBalancePhp: number;
-  targetBalancePhp: number;
-  lowBalanceAlertPhp: number;
-  availableToTargetPhp: number;
-  requestCount: number;
-  openRequestCount: number;
-  liquidationCount: number;
-  openLiquidationCount: number;
-  ledgerEntryCount: number;
-  evidenceReference: string | null;
-};
+  id: string
+  publicReference: string
+  code: string
+  name: string
+  status: string
+  locationName: string
+  custodianName: string
+  currentBalancePhp: number
+  targetBalancePhp: number
+  lowBalanceAlertPhp: number
+  availableToTargetPhp: number
+  requestCount: number
+  openRequestCount: number
+  liquidationCount: number
+  openLiquidationCount: number
+  ledgerEntryCount: number
+  evidenceReference: string | null
+}
 
 export type PettyCashReportRow = {
-  id: string;
-  publicReference: string;
-  code: string;
-  name: string;
-  status: string;
-  locationName: string;
-  custodianName: string;
-  balanceState: "HEALTHY" | "LOW_BALANCE" | "INACTIVE";
-  currentBalancePhp: number;
-  targetBalancePhp: number;
-  availableToTargetPhp: number;
-  openRequestCount: number;
-  openLiquidationCount: number;
-  ledgerEntryCount: number;
-  evidenceState: "COMPLETE" | "MISSING";
-  evidenceCaptureMode: EvidenceCaptureMode;
-  evidenceProductionReadiness: EvidenceProductionReadiness;
-  evidenceBlockerId: string | null;
-  exportSafeSummary: string;
-};
+  id: string
+  publicReference: string
+  code: string
+  name: string
+  status: string
+  locationName: string
+  custodianName: string
+  balanceState: "HEALTHY" | "LOW_BALANCE" | "INACTIVE"
+  currentBalancePhp: number
+  targetBalancePhp: number
+  availableToTargetPhp: number
+  openRequestCount: number
+  openLiquidationCount: number
+  ledgerEntryCount: number
+  evidenceState: "COMPLETE" | "MISSING"
+  evidenceCaptureMode: EvidenceCaptureMode
+  evidenceProductionReadiness: EvidenceProductionReadiness
+  evidenceBlockerId: string | null
+  exportSafeSummary: string
+}
 
 export type PettyCashExceptionRow = {
-  id: string;
-  fundId: string;
-  fundName: string;
-  publicReference: string;
-  locationName: string;
-  custodianName: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
+  id: string
+  fundId: string
+  fundName: string
+  publicReference: string
+  locationName: string
+  custodianName: string
+  severity: "HIGH" | "MEDIUM" | "LOW"
   issueType:
     | "LOW_BALANCE"
     | "OPEN_REQUESTS"
     | "OPEN_LIQUIDATIONS"
-    | "MISSING_EVIDENCE";
-  issueLabel: string;
-  amountPhp: number | null;
-  count: number | null;
-  nextAction: string;
-  blockerId: string | null;
-};
+    | "MISSING_EVIDENCE"
+  issueLabel: string
+  amountPhp: number | null
+  count: number | null
+  nextAction: string
+  blockerId: string | null
+}
 
 export type PettyCashRequestWorkflowRow = {
-  id: string;
-  publicReference: string;
-  fundName: string;
-  requestType: string;
-  status: string;
-  requestedAmountPhp: number;
-  approvedAmountPhp: number;
+  id: string
+  publicReference: string
+  fundName: string
+  requestType: string
+  status: string
+  requestedAmountPhp: number
+  approvedAmountPhp: number
   allowedActions: Array<
     | "submit"
     | "approve"
@@ -111,130 +112,130 @@ export type PettyCashRequestWorkflowRow = {
     | "fulfill"
     | "void"
     | "close"
-  >;
-  disbursementHandoffReference: string | null;
-};
+  >
+  disbursementHandoffReference: string | null
+}
 
 export type PettyCashLiquidationWorkflowRow = {
-  id: string;
-  publicReference: string;
-  fundName: string;
-  status: string;
-  claimedAmountPhp: number;
-  approvedAmountPhp: number;
-  shortageAmountPhp: number;
-  overageAmountPhp: number;
+  id: string
+  publicReference: string
+  fundName: string
+  status: string
+  claimedAmountPhp: number
+  approvedAmountPhp: number
+  shortageAmountPhp: number
+  overageAmountPhp: number
   allowedActions: Array<
     "approve" | "return" | "reject" | "cancel" | "reverse" | "close"
-  >;
-};
+  >
+}
 
 export type PettyCashDraftOption = {
-  id: string;
-  label: string;
-  detail: string;
-};
+  id: string
+  label: string
+  detail: string
+}
 
 export type PettyCashDashboard = {
-  generatedAt: string;
+  generatedAt: string
   permissions: {
-    canCreate: boolean;
-    canSubmit: boolean;
-    canApprove: boolean;
-    canReplenish: boolean;
-    canCreateDisbursementHandoff: boolean;
-    canLiquidate: boolean;
-    canReviewLiquidation: boolean;
-  };
+    canCreate: boolean
+    canSubmit: boolean
+    canApprove: boolean
+    canReplenish: boolean
+    canCreateDisbursementHandoff: boolean
+    canLiquidate: boolean
+    canReviewLiquidation: boolean
+  }
   draftOptions: {
-    funds: PettyCashDraftOption[];
-    locations: PettyCashDraftOption[];
-    custodians: PettyCashDraftOption[];
-    suppliers: PettyCashDraftOption[];
-    categories: PettyCashDraftOption[];
-  };
-  metrics: PettyCashMetric[];
-  funds: PettyCashFundRow[];
-  reportRows: PettyCashReportRow[];
-  exceptionRows: PettyCashExceptionRow[];
-  requests: PettyCashRequestWorkflowRow[];
-  liquidations: PettyCashLiquidationWorkflowRow[];
+    funds: PettyCashDraftOption[]
+    locations: PettyCashDraftOption[]
+    custodians: PettyCashDraftOption[]
+    suppliers: PettyCashDraftOption[]
+    categories: PettyCashDraftOption[]
+  }
+  metrics: PettyCashMetric[]
+  funds: PettyCashFundRow[]
+  reportRows: PettyCashReportRow[]
+  exceptionRows: PettyCashExceptionRow[]
+  requests: PettyCashRequestWorkflowRow[]
+  liquidations: PettyCashLiquidationWorkflowRow[]
   guardrails: Array<{
-    label: string;
-    detail: string;
-    tone: BadgeTone;
-  }>;
-};
+    label: string
+    detail: string
+    tone: BadgeTone
+  }>
+}
 
 export type PettyCashActionInput = {
-  pettyCashFundId: string;
-  reason?: string;
-  evidenceReference?: string;
-  idempotencyKey?: string;
-};
+  pettyCashFundId: string
+  reason?: string
+  evidenceReference?: string
+  idempotencyKey?: string
+}
 
 export type CreatePettyCashFundInput = {
-  code: string;
-  name: string;
-  locationId: string;
-  custodianUserId: string;
-  openingBalancePhp: number;
-  targetBalancePhp: number;
-  lowBalanceAlertPhp: number;
-  evidenceReference: string;
-  notes?: string;
-  idempotencyKey?: string;
-};
+  code: string
+  name: string
+  locationId: string
+  custodianUserId: string
+  openingBalancePhp: number
+  targetBalancePhp: number
+  lowBalanceAlertPhp: number
+  evidenceReference: string
+  notes?: string
+  idempotencyKey?: string
+}
 
 export type PettyCashRequestActionInput = {
-  pettyCashRequestId: string;
-  reason?: string;
-  evidenceReference?: string;
-  approvedAmountPhp?: number;
-  idempotencyKey?: string;
-};
+  pettyCashRequestId: string
+  reason?: string
+  evidenceReference?: string
+  approvedAmountPhp?: number
+  idempotencyKey?: string
+}
 
 export type PettyCashFulfillmentInput = PettyCashRequestActionInput & {
-  amountPhp: number;
-  referenceNo?: string;
-};
+  amountPhp: number
+  referenceNo?: string
+}
 
 export type PettyCashDisbursementHandoffInput = PettyCashRequestActionInput & {
-  paymentReferenceLabel?: string;
-};
+  paymentReferenceLabel?: string
+}
 
 export type PettyCashLiquidationLineInput = {
-  spendDate: Date;
-  categoryCode: string;
-  description: string;
-  amountPhp: number;
-  taxAmountPhp?: number;
-  receiptReference?: string;
-  evidenceReference?: string;
-  supplierId?: string;
-};
+  spendDate: Date
+  categoryCode: string
+  description: string
+  amountPhp: number
+  taxAmountPhp?: number
+  receiptReference?: string
+  evidenceReference?: string
+  supplierId?: string
+}
 
 export type SubmitPettyCashLiquidationInput = {
-  pettyCashFundId: string;
-  publicReference?: string;
-  cycleStart: Date;
-  cycleEnd: Date;
-  evidenceReference: string;
-  idempotencyKey?: string;
-  lines: PettyCashLiquidationLineInput[];
-};
+  pettyCashFundId: string
+  publicReference?: string
+  cycleStart: Date
+  cycleEnd: Date
+  evidenceReference: string
+  idempotencyKey?: string
+  lines: PettyCashLiquidationLineInput[]
+}
 
 export type PettyCashLiquidationActionInput = {
-  liquidationId: string;
-  reason?: string;
-  evidenceReference?: string;
-  approvedAmountPhp?: number;
-  shortageAmountPhp?: number;
-  overageAmountPhp?: number;
-  idempotencyKey?: string;
-};
+  liquidationId: string
+  reason?: string
+  evidenceReference?: string
+  approvedAmountPhp?: number
+  shortageAmountPhp?: number
+  overageAmountPhp?: number
+  idempotencyKey?: string
+}
 
-type PettyCashFundTransition = "activate";
+type PettyCashFundTransition = "activate"
 
 type PettyCashRequestTransition =
   | "submit"
@@ -245,7 +246,7 @@ type PettyCashRequestTransition =
   | "create_handoff"
   | "fulfill"
   | "void"
-  | "close";
+  | "close"
 
 type PettyCashLiquidationTransition =
   | "submit_liquidation"
@@ -254,19 +255,19 @@ type PettyCashLiquidationTransition =
   | "reject_liquidation"
   | "cancel_liquidation"
   | "reverse_liquidation"
-  | "close_liquidation";
+  | "close_liquidation"
 
 function decimalToNumber(value: DecimalLike | number | null | undefined) {
   if (value == null) {
-    return 0;
+    return 0
   }
   if (typeof value === "number") {
-    return value;
+    return value
   }
   if (typeof value.toNumber === "function") {
-    return value.toNumber();
+    return value.toNumber()
   }
-  return Number(value.toString());
+  return Number(value.toString())
 }
 
 function money(value: number) {
@@ -274,17 +275,17 @@ function money(value: number) {
     style: "currency",
     currency: "PHP",
     maximumFractionDigits: 0
-  }).format(value);
+  }).format(value)
 }
 
 function number(value: number) {
   return new Intl.NumberFormat("en-PH", {
     maximumFractionDigits: 0
-  }).format(value);
+  }).format(value)
 }
 
 function roundMoney(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
 const pettyCashCategoryOptions = [
@@ -318,62 +319,62 @@ const pettyCashCategoryOptions = [
     label: "Other approved petty cash",
     detail: "Approved small-value spend that does not fit another category"
   }
-] satisfies PettyCashDraftOption[];
+] satisfies PettyCashDraftOption[]
 
 async function nextPettyCashFundReference(
   tx: TransactionClient,
   companyId: string
 ) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await tx.pettyCashFund.count({
     where: {
       companyId,
       publicReference: { startsWith: `PCF-${year}-` }
     }
-  });
-  return `PCF-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `PCF-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 async function nextPettyCashRequestReference(
   tx: TransactionClient,
   companyId: string
 ) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await tx.pettyCashRequest.count({
     where: {
       companyId,
       publicReference: { startsWith: `PCR-${year}-` }
     }
-  });
-  return `PCR-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `PCR-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 async function nextDisbursementRequestReference(
   tx: TransactionClient,
   companyId: string
 ) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await tx.nonSupplierDisbursementRequest.count({
     where: {
       companyId,
       publicReference: { startsWith: `DISB-${year}-` }
     }
-  });
-  return `DISB-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `DISB-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 async function nextPettyCashLiquidationReference(
   tx: TransactionClient,
   companyId: string
 ) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await tx.pettyCashLiquidation.count({
     where: {
       companyId,
       publicReference: { startsWith: `PCL-${year}-` }
     }
-  });
-  return `PCL-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `PCL-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 const openRequestStatuses = new Set([
@@ -382,17 +383,17 @@ const openRequestStatuses = new Set([
   "APPROVED",
   "FULFILLED_OFFLINE",
   "RETURNED_FOR_REVISION"
-]);
+])
 
 const openLiquidationStatuses = new Set([
   "SUBMITTED",
   "UNDER_REVIEW",
   "RETURNED_FOR_REVISION",
   "APPROVED"
-]);
+])
 
 function authorizedLocationIds(session: SessionContext) {
-  return session.authorizedLocations.map((location) => location.locationId);
+  return session.authorizedLocations.map((location) => location.locationId)
 }
 
 function assertReason(
@@ -400,7 +401,7 @@ function assertReason(
   errorCode: string
 ): asserts value is string {
   if (!value?.trim()) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
@@ -409,127 +410,137 @@ function assertEvidence(
   errorCode: string
 ): asserts value is string {
   if (!value?.trim()) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 function assertPositiveAmount(value: number, errorCode: string) {
   if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 function resolvePettyCashRequestActions(input: {
-  status: string;
-  hasOpenDisbursementHandoff?: boolean;
+  status: string
+  hasOpenDisbursementHandoff?: boolean
   permissions: {
-    canSubmit: boolean;
-    canApprove: boolean;
-    canReplenish: boolean;
-    canCreateDisbursementHandoff: boolean;
-  };
+    canSubmit: boolean
+    canApprove: boolean
+    canReplenish: boolean
+    canCreateDisbursementHandoff: boolean
+  }
 }): PettyCashRequestWorkflowRow["allowedActions"] {
-  const actions: PettyCashRequestWorkflowRow["allowedActions"] = [];
+  const actions: PettyCashRequestWorkflowRow["allowedActions"] = []
   if (
     input.permissions.canSubmit &&
     ["DRAFT", "RETURNED_FOR_REVISION"].includes(input.status)
   ) {
-    actions.push("submit");
+    actions.push("submit")
   }
   if (input.permissions.canApprove && input.status === "AWAITING_APPROVAL") {
-    actions.push("approve", "return", "reject");
+    actions.push("approve", "return", "reject")
   }
   if (
     input.permissions.canSubmit &&
-    ["DRAFT", "SUBMITTED", "AWAITING_APPROVAL", "RETURNED_FOR_REVISION", "APPROVED"].includes(
-      input.status
-    )
+    [
+      "DRAFT",
+      "SUBMITTED",
+      "AWAITING_APPROVAL",
+      "RETURNED_FOR_REVISION",
+      "APPROVED"
+    ].includes(input.status)
   ) {
-    actions.push("cancel");
+    actions.push("cancel")
   }
   if (input.permissions.canReplenish && input.status === "APPROVED") {
-    actions.push("fulfill");
+    actions.push("fulfill")
   }
   if (
     input.permissions.canCreateDisbursementHandoff &&
     input.status === "APPROVED" &&
     !input.hasOpenDisbursementHandoff
   ) {
-    actions.push("create_handoff");
+    actions.push("create_handoff")
   }
   if (input.permissions.canApprove && input.status === "FULFILLED_OFFLINE") {
-    actions.push("void");
+    actions.push("void")
   }
   if (input.permissions.canApprove && input.status === "FULFILLED_OFFLINE") {
-    actions.push("close");
+    actions.push("close")
   }
-  return actions;
+  return actions
 }
 
 function resolvePettyCashLiquidationActions(input: {
-  status: string;
+  status: string
   permissions: {
-    canLiquidate: boolean;
-    canReviewLiquidation: boolean;
-  };
+    canLiquidate: boolean
+    canReviewLiquidation: boolean
+  }
 }): PettyCashLiquidationWorkflowRow["allowedActions"] {
-  const actions: PettyCashLiquidationWorkflowRow["allowedActions"] = [];
+  const actions: PettyCashLiquidationWorkflowRow["allowedActions"] = []
   if (
     input.permissions.canReviewLiquidation &&
     ["SUBMITTED", "UNDER_REVIEW"].includes(input.status)
   ) {
-    actions.push("approve", "return", "reject");
+    actions.push("approve", "return", "reject")
   }
   if (
     input.permissions.canLiquidate &&
     ["DRAFT", "SUBMITTED", "RETURNED_FOR_REVISION"].includes(input.status)
   ) {
-    actions.push("cancel");
+    actions.push("cancel")
   }
   if (input.permissions.canReviewLiquidation && input.status === "APPROVED") {
-    actions.push("reverse", "close");
+    actions.push("reverse", "close")
   }
   if (input.permissions.canReviewLiquidation && input.status === "CLOSED") {
-    actions.push("reverse");
+    actions.push("reverse")
   }
-  return actions;
+  return actions
 }
 
 function assertFundTransition(input: {
-  transition: PettyCashFundTransition;
-  status: string;
+  transition: PettyCashFundTransition
+  status: string
 }) {
   const allowed: Record<PettyCashFundTransition, string[]> = {
     activate: ["DRAFT", "SUSPENDED"]
-  };
+  }
   if (!allowed[input.transition].includes(input.status)) {
-    throw new Error("PETTY_CASH_FUND_INVALID_STATUS_TRANSITION");
+    throw new Error("PETTY_CASH_FUND_INVALID_STATUS_TRANSITION")
   }
 }
 
 function assertRequestTransition(input: {
-  transition: PettyCashRequestTransition;
-  status: string;
+  transition: PettyCashRequestTransition
+  status: string
 }) {
   const allowed: Record<PettyCashRequestTransition, string[]> = {
     submit: ["DRAFT", "RETURNED_FOR_REVISION"],
     approve: ["AWAITING_APPROVAL"],
     return: ["AWAITING_APPROVAL"],
     reject: ["AWAITING_APPROVAL"],
-    cancel: ["DRAFT", "SUBMITTED", "AWAITING_APPROVAL", "RETURNED_FOR_REVISION", "APPROVED"],
+    cancel: [
+      "DRAFT",
+      "SUBMITTED",
+      "AWAITING_APPROVAL",
+      "RETURNED_FOR_REVISION",
+      "APPROVED"
+    ],
     create_handoff: ["APPROVED"],
     fulfill: ["APPROVED"],
     void: ["FULFILLED_OFFLINE"],
     close: ["FULFILLED_OFFLINE"]
-  };
+  }
   if (!allowed[input.transition].includes(input.status)) {
-    throw new Error("PETTY_CASH_REQUEST_INVALID_STATUS_TRANSITION");
+    throw new Error("PETTY_CASH_REQUEST_INVALID_STATUS_TRANSITION")
   }
 }
 
 function assertLiquidationTransition(input: {
-  transition: PettyCashLiquidationTransition;
-  status: string;
+  transition: PettyCashLiquidationTransition
+  status: string
 }) {
   const allowed: Record<PettyCashLiquidationTransition, string[]> = {
     submit_liquidation: ["DRAFT", "RETURNED_FOR_REVISION"],
@@ -539,10 +550,38 @@ function assertLiquidationTransition(input: {
     cancel_liquidation: ["DRAFT", "SUBMITTED", "RETURNED_FOR_REVISION"],
     reverse_liquidation: ["APPROVED", "CLOSED"],
     close_liquidation: ["APPROVED"]
-  };
-  if (!allowed[input.transition].includes(input.status)) {
-    throw new Error("PETTY_CASH_LIQUIDATION_INVALID_STATUS_TRANSITION");
   }
+  if (!allowed[input.transition].includes(input.status)) {
+    throw new Error("PETTY_CASH_LIQUIDATION_INVALID_STATUS_TRANSITION")
+  }
+}
+
+async function lockGrantedFinancePermissions(
+  tx: TransactionClient,
+  session: SessionContext,
+  permissionCodes: string[]
+) {
+  const grants = await tx.$queryRaw<Array<{ code: string }>>`
+    SELECT permission.code
+    FROM "UserRoleAssignment" AS ura
+    INNER JOIN "Role" AS role ON role.id = ura."roleId"
+    INNER JOIN "RolePermission" AS rp ON rp."roleId" = role.id
+    INNER JOIN "Permission" AS permission ON permission.id = rp."permissionId"
+    WHERE ura."userId" = ${session.user.id}::uuid
+      AND ura.status::text = 'ACTIVE'
+      AND ura."startsAt" <= NOW()
+      AND (ura."endsAt" IS NULL OR ura."endsAt" > NOW())
+      AND role.status::text = 'ACTIVE'
+      AND (role."tenantId" = ${session.context.tenantId}::uuid OR role."tenantId" IS NULL)
+      AND (permission."tenantId" = ${session.context.tenantId}::uuid OR permission."tenantId" IS NULL)
+    FOR UPDATE OF ura, role, rp, permission
+  `
+  const requestedCodes = new Set(permissionCodes)
+  return new Set(
+    grants
+      .map((grant) => grant.code)
+      .filter((permissionCode) => requestedCodes.has(permissionCode))
+  )
 }
 
 async function getScopedFundOrThrow(
@@ -562,11 +601,11 @@ async function getScopedFundOrThrow(
       liquidations: true,
       ledgerEntries: true
     }
-  });
+  })
   if (!fund) {
-    throw new Error("PETTY_CASH_FUND_NOT_FOUND");
+    throw new Error("PETTY_CASH_FUND_NOT_FOUND")
   }
-  return fund;
+  return fund
 }
 
 async function getScopedRequestOrThrow(
@@ -592,11 +631,11 @@ async function getScopedRequestOrThrow(
       ledgerEntries: true,
       disbursementRequests: true
     }
-  });
+  })
   if (!request) {
-    throw new Error("PETTY_CASH_REQUEST_NOT_FOUND");
+    throw new Error("PETTY_CASH_REQUEST_NOT_FOUND")
   }
-  return request;
+  return request
 }
 
 async function findPettyCashApprovalRule(
@@ -616,7 +655,7 @@ async function findPettyCashApprovalRule(
       }
     },
     orderBy: { priority: "asc" }
-  });
+  })
 }
 
 async function getScopedLiquidationOrThrow(
@@ -638,29 +677,29 @@ async function getScopedLiquidationOrThrow(
       lines: true,
       ledgerEntries: true
     }
-  });
+  })
   if (!liquidation) {
-    throw new Error("PETTY_CASH_LIQUIDATION_NOT_FOUND");
+    throw new Error("PETTY_CASH_LIQUIDATION_NOT_FOUND")
   }
-  return liquidation;
+  return liquidation
 }
 
 async function writePettyCashAudit(
   tx: TransactionClient,
   input: {
-    session: SessionContext;
+    session: SessionContext
     entityType:
       | "PettyCashFund"
       | "PettyCashRequest"
       | "PettyCashLiquidation"
-      | "NonSupplierDisbursementRequest";
-    entityId: string;
-    eventType: string;
-    beforeStatus: string;
-    afterStatus: string;
-    reason?: string | null;
-    evidenceReference?: string | null;
-    metadata?: Record<string, unknown>;
+      | "NonSupplierDisbursementRequest"
+    entityId: string
+    eventType: string
+    beforeStatus: string
+    afterStatus: string
+    reason?: string | null
+    evidenceReference?: string | null
+    metadata?: Record<string, unknown>
   }
 ) {
   return tx.auditEvent.create({
@@ -688,31 +727,31 @@ async function writePettyCashAudit(
         ...(input.metadata ?? {})
       }
     }
-  });
+  })
 }
 
 export function buildPettyCashFundRows(
   funds: Array<{
-    id: string;
-    publicReference: string;
-    code: string;
-    name: string;
-    status: string;
-    currentBalancePhp: DecimalLike | number;
-    targetBalancePhp: DecimalLike | number;
-    lowBalanceAlertPhp: DecimalLike | number;
-    evidenceReference: string | null;
-    location: { name: string };
-    custodian: { displayName: string };
-    requests: Array<{ id: string; status: string }>;
-    liquidations: Array<{ id: string; status: string }>;
-    ledgerEntries: Array<{ id: string }>;
+    id: string
+    publicReference: string
+    code: string
+    name: string
+    status: string
+    currentBalancePhp: DecimalLike | number
+    targetBalancePhp: DecimalLike | number
+    lowBalanceAlertPhp: DecimalLike | number
+    evidenceReference: string | null
+    location: { name: string }
+    custodian: { displayName: string }
+    requests: Array<{ id: string; status: string }>
+    liquidations: Array<{ id: string; status: string }>
+    ledgerEntries: Array<{ id: string }>
   }>
 ) {
   return funds.map((fund) => {
-    const currentBalancePhp = decimalToNumber(fund.currentBalancePhp);
-    const targetBalancePhp = decimalToNumber(fund.targetBalancePhp);
-    const lowBalanceAlertPhp = decimalToNumber(fund.lowBalanceAlertPhp);
+    const currentBalancePhp = decimalToNumber(fund.currentBalancePhp)
+    const targetBalancePhp = decimalToNumber(fund.targetBalancePhp)
+    const lowBalanceAlertPhp = decimalToNumber(fund.lowBalanceAlertPhp)
 
     return {
       id: fund.id,
@@ -736,8 +775,8 @@ export function buildPettyCashFundRows(
       ).length,
       ledgerEntryCount: fund.ledgerEntries.length,
       evidenceReference: fund.evidenceReference
-    };
-  });
+    }
+  })
 }
 
 export function buildPettyCashReportRows(
@@ -749,10 +788,10 @@ export function buildPettyCashReportRows(
         ? "INACTIVE"
         : fund.currentBalancePhp <= fund.lowBalanceAlertPhp
           ? "LOW_BALANCE"
-          : "HEALTHY";
+          : "HEALTHY"
     const evidenceReadiness = resolveEvidenceReadiness({
       evidenceReference: fund.evidenceReference
-    });
+    })
     return {
       id: fund.id,
       publicReference: fund.publicReference,
@@ -770,7 +809,8 @@ export function buildPettyCashReportRows(
       ledgerEntryCount: fund.ledgerEntryCount,
       evidenceState: evidenceReadiness.evidenceState,
       evidenceCaptureMode: evidenceReadiness.evidenceCaptureMode,
-      evidenceProductionReadiness: evidenceReadiness.evidenceProductionReadiness,
+      evidenceProductionReadiness:
+        evidenceReadiness.evidenceProductionReadiness,
       evidenceBlockerId: evidenceReadiness.evidenceBlockerId,
       exportSafeSummary: [
         fund.publicReference,
@@ -783,21 +823,21 @@ export function buildPettyCashReportRows(
         `${fund.openRequestCount} open request(s)`,
         `${fund.openLiquidationCount} open liquidation(s)`
       ].join(" / ")
-    };
-  });
+    }
+  })
 }
 
 const pettyCashExceptionPriority = {
   HIGH: 0,
   MEDIUM: 1,
   LOW: 2
-} as const;
+} as const
 
 export function buildPettyCashExceptionRows(
   reportRows: PettyCashReportRow[]
 ): PettyCashExceptionRow[] {
   const exceptionRows = reportRows.flatMap((fund) => {
-    const rows: PettyCashExceptionRow[] = [];
+    const rows: PettyCashExceptionRow[] = []
     if (fund.balanceState === "LOW_BALANCE") {
       rows.push({
         id: `${fund.id}:low-balance`,
@@ -814,7 +854,7 @@ export function buildPettyCashExceptionRows(
         nextAction:
           "Review open cycles, then create or approve a replenishment request if still needed.",
         blockerId: null
-      });
+      })
     }
     if (fund.openRequestCount > 0) {
       rows.push({
@@ -832,7 +872,7 @@ export function buildPettyCashExceptionRows(
         nextAction:
           "Use Petty Cash Request Actions to submit, approve, fulfill, void, or close the request.",
         blockerId: null
-      });
+      })
     }
     if (fund.openLiquidationCount > 0) {
       rows.push({
@@ -850,7 +890,7 @@ export function buildPettyCashExceptionRows(
         nextAction:
           "Review receipt evidence, capture shortage or overage if applicable, then close the liquidation.",
         blockerId: null
-      });
+      })
     }
     if (fund.evidenceState === "MISSING") {
       rows.push({
@@ -868,63 +908,63 @@ export function buildPettyCashExceptionRows(
         nextAction:
           "Upload petty-cash evidence or link approved metadata; production retention and scan/waiver signoff remain for UAT.",
         blockerId: fund.evidenceBlockerId
-      });
+      })
     }
-    return rows;
-  });
+    return rows
+  })
 
   return exceptionRows.sort((left, right) => {
     const priorityDelta =
       pettyCashExceptionPriority[left.severity] -
-      pettyCashExceptionPriority[right.severity];
+      pettyCashExceptionPriority[right.severity]
     if (priorityDelta !== 0) {
-      return priorityDelta;
+      return priorityDelta
     }
-    return left.fundName.localeCompare(right.fundName);
-  });
+    return left.fundName.localeCompare(right.fundName)
+  })
 }
 
 export async function createPettyCashFund(
   session: SessionContext,
   input: CreatePettyCashFundInput
 ) {
-  await requirePermission(session, permissions.financePettyCashCreate);
-  const code = input.code.trim().toUpperCase();
-  const name = input.name.trim();
-  const evidenceReference = input.evidenceReference.trim();
-  const notes = input.notes?.trim() || null;
-  const openingBalancePhp = roundMoney(Number(input.openingBalancePhp));
-  const targetBalancePhp = roundMoney(Number(input.targetBalancePhp));
-  const lowBalanceAlertPhp = roundMoney(Number(input.lowBalanceAlertPhp));
-  const idempotencyKey = input.idempotencyKey?.trim() || null;
+  await requirePermission(session, permissions.financePettyCashCreate)
+  const code = input.code.trim().toUpperCase()
+  const name = input.name.trim()
+  const evidenceReference = input.evidenceReference.trim()
+  const notes = input.notes?.trim() || null
+  const openingBalancePhp = roundMoney(Number(input.openingBalancePhp))
+  const targetBalancePhp = roundMoney(Number(input.targetBalancePhp))
+  const lowBalanceAlertPhp = roundMoney(Number(input.lowBalanceAlertPhp))
+  const idempotencyKey = input.idempotencyKey?.trim() || null
 
   if (!code) {
-    throw new Error("PETTY_CASH_FUND_CODE_REQUIRED");
+    throw new Error("PETTY_CASH_FUND_CODE_REQUIRED")
   }
   if (!name) {
-    throw new Error("PETTY_CASH_FUND_NAME_REQUIRED");
+    throw new Error("PETTY_CASH_FUND_NAME_REQUIRED")
   }
   if (!input.locationId) {
-    throw new Error("PETTY_CASH_FUND_LOCATION_REQUIRED");
+    throw new Error("PETTY_CASH_FUND_LOCATION_REQUIRED")
   }
   if (!input.custodianUserId) {
-    throw new Error("PETTY_CASH_FUND_CUSTODIAN_REQUIRED");
+    throw new Error("PETTY_CASH_FUND_CUSTODIAN_REQUIRED")
   }
   if (!evidenceReference) {
-    throw new Error("PETTY_CASH_FUND_EVIDENCE_REQUIRED");
+    throw new Error("PETTY_CASH_FUND_EVIDENCE_REQUIRED")
   }
   if (openingBalancePhp < 0 || targetBalancePhp < 0 || lowBalanceAlertPhp < 0) {
-    throw new Error("PETTY_CASH_FUND_AMOUNT_INVALID");
+    throw new Error("PETTY_CASH_FUND_AMOUNT_INVALID")
   }
   if (lowBalanceAlertPhp > targetBalancePhp) {
-    throw new Error("PETTY_CASH_FUND_LOW_ALERT_ABOVE_TARGET");
+    throw new Error("PETTY_CASH_FUND_LOW_ALERT_ABOVE_TARGET")
   }
 
   const authorizedLocationIds = session.authorizedLocations.map(
     (location) => location.locationId
-  );
+  )
   if (!authorizedLocationIds.includes(input.locationId)) {
-    throw new Error("SCOPE_DENIED");
+    throw new Error("SCOPE_DENIED")
   }
 
   return prisma.$transaction(async (tx) => {
@@ -938,12 +978,12 @@ export async function createPettyCashFund(
           }
         },
         include: { ledgerEntries: true }
-      });
+      })
       if (existing) {
         if (!authorizedLocationIds.includes(existing.locationId)) {
-          throw new Error("SCOPE_DENIED");
+          throw new Error("SCOPE_DENIED")
         }
-        return existing;
+        return existing
       }
     }
 
@@ -981,22 +1021,22 @@ export async function createPettyCashFund(
         },
         select: { id: true }
       })
-    ]);
+    ])
 
     if (!location) {
-      throw new Error("PETTY_CASH_FUND_LOCATION_NOT_FOUND");
+      throw new Error("PETTY_CASH_FUND_LOCATION_NOT_FOUND")
     }
     if (!custodian) {
-      throw new Error("PETTY_CASH_FUND_CUSTODIAN_NOT_SCOPED");
+      throw new Error("PETTY_CASH_FUND_CUSTODIAN_NOT_SCOPED")
     }
     if (duplicateCode) {
-      throw new Error("PETTY_CASH_FUND_CODE_ALREADY_EXISTS");
+      throw new Error("PETTY_CASH_FUND_CODE_ALREADY_EXISTS")
     }
 
     const publicReference = await nextPettyCashFundReference(
       tx,
       session.context.companyId
-    );
+    )
     const fund = await tx.pettyCashFund.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1019,7 +1059,7 @@ export async function createPettyCashFund(
         idempotencyKey
       },
       include: { ledgerEntries: true }
-    });
+    })
 
     if (openingBalancePhp > 0) {
       await tx.pettyCashLedgerEntry.create({
@@ -1039,9 +1079,10 @@ export async function createPettyCashFund(
           reason: notes ?? "Opening petty cash fund baseline",
           sourceEventKey: `petty-cash-fund:${fund.id}:opening`,
           idempotencyKey: idempotencyKey ? `${idempotencyKey}:opening` : null,
-          notes: "Opening balance marker only; no bank, payment, or journal posting."
+          notes:
+            "Opening balance marker only; no bank, payment, or journal posting."
         }
-      });
+      })
     }
 
     await writePettyCashAudit(tx, {
@@ -1068,31 +1109,31 @@ export async function createPettyCashFund(
         noJournalPosting: true,
         idempotencyKey
       }
-    });
+    })
 
-    return fund;
-  });
+    return fund
+  })
 }
 
 export async function activatePettyCashFund(
   session: SessionContext,
   input: PettyCashActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashCreate);
-  const reason = input.reason?.trim();
-  const evidenceReference = input.evidenceReference?.trim();
-  assertReason(reason, "PETTY_CASH_FUND_ACTIVATION_REASON_REQUIRED");
+  await requirePermission(session, permissions.financePettyCashCreate)
+  const reason = input.reason?.trim()
+  const evidenceReference = input.evidenceReference?.trim()
+  assertReason(reason, "PETTY_CASH_FUND_ACTIVATION_REASON_REQUIRED")
   assertEvidence(
     evidenceReference,
     "PETTY_CASH_FUND_ACTIVATION_EVIDENCE_REQUIRED"
-  );
+  )
 
   return prisma.$transaction(async (tx) => {
-    const fund = await getScopedFundOrThrow(tx, session, input.pettyCashFundId);
+    const fund = await getScopedFundOrThrow(tx, session, input.pettyCashFundId)
     if (fund.status === "ACTIVE") {
-      return fund;
+      return fund
     }
-    assertFundTransition({ transition: "activate", status: fund.status });
+    assertFundTransition({ transition: "activate", status: fund.status })
     const updated = await tx.pettyCashFund.update({
       where: { id: fund.id },
       data: {
@@ -1103,7 +1144,7 @@ export async function activatePettyCashFund(
         notes: reason,
         version: { increment: 1 }
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashFund",
@@ -1116,46 +1157,46 @@ export async function activatePettyCashFund(
       metadata: {
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export type CreatePettyCashRequestInput = {
-  pettyCashFundId: string;
-  publicReference?: string;
-  requestType: "REPLENISHMENT" | "DISBURSEMENT";
-  requestedAmountPhp: number;
-  purpose: string;
-  justification: string;
-  dueBy?: Date;
-  evidenceReference?: string;
-  sourceDocumentType?: string;
-  sourceDocumentId?: string;
-  sourceEventKey?: string;
-  idempotencyKey?: string;
-};
+  pettyCashFundId: string
+  publicReference?: string
+  requestType: "REPLENISHMENT" | "DISBURSEMENT"
+  requestedAmountPhp: number
+  purpose: string
+  justification: string
+  dueBy?: Date
+  evidenceReference?: string
+  sourceDocumentType?: string
+  sourceDocumentId?: string
+  sourceEventKey?: string
+  idempotencyKey?: string
+}
 
 export async function createPettyCashRequest(
   session: SessionContext,
   input: CreatePettyCashRequestInput
 ) {
-  await requirePermission(session, permissions.financePettyCashCreate);
+  await requirePermission(session, permissions.financePettyCashCreate)
   assertPositiveAmount(
     input.requestedAmountPhp,
     "PETTY_CASH_REQUEST_AMOUNT_REQUIRED"
-  );
+  )
   if (!input.purpose.trim()) {
-    throw new Error("PETTY_CASH_REQUEST_PURPOSE_REQUIRED");
+    throw new Error("PETTY_CASH_REQUEST_PURPOSE_REQUIRED")
   }
   if (!input.justification.trim()) {
-    throw new Error("PETTY_CASH_REQUEST_JUSTIFICATION_REQUIRED");
+    throw new Error("PETTY_CASH_REQUEST_JUSTIFICATION_REQUIRED")
   }
 
   return prisma.$transaction(async (tx) => {
-    const fund = await getScopedFundOrThrow(tx, session, input.pettyCashFundId);
+    const fund = await getScopedFundOrThrow(tx, session, input.pettyCashFundId)
     if (fund.status !== "ACTIVE") {
-      throw new Error("PETTY_CASH_FUND_NOT_ACTIVE");
+      throw new Error("PETTY_CASH_FUND_NOT_ACTIVE")
     }
     if (input.idempotencyKey) {
       const existing = await tx.pettyCashRequest.findFirst({
@@ -1164,14 +1205,14 @@ export async function createPettyCashRequest(
           companyId: session.context.companyId,
           idempotencyKey: input.idempotencyKey
         }
-      });
+      })
       if (existing) {
-        return existing;
+        return existing
       }
     }
     const publicReference =
       input.publicReference?.trim() ||
-      (await nextPettyCashRequestReference(tx, session.context.companyId));
+      (await nextPettyCashRequestReference(tx, session.context.companyId))
     const request = await tx.pettyCashRequest.create({
       data: {
         tenantId: fund.tenantId,
@@ -1191,7 +1232,7 @@ export async function createPettyCashRequest(
         sourceEventKey: input.sourceEventKey?.trim() ?? null,
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1205,23 +1246,23 @@ export async function createPettyCashRequest(
         requestedAmountPhp: input.requestedAmountPhp,
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
-    return request;
-  });
+    })
+    return request
+  })
 }
 
 export async function submitPettyCashRequest(
   session: SessionContext,
   input: PettyCashRequestActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashSubmit);
-  const evidenceReference = input.evidenceReference?.trim();
+  await requirePermission(session, permissions.financePettyCashSubmit)
+  const evidenceReference = input.evidenceReference?.trim()
   return prisma.$transaction(async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
+    )
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -1230,31 +1271,31 @@ export async function submitPettyCashRequest(
         documentId: request.id,
         status: "PENDING"
       }
-    });
+    })
     if (request.status === "AWAITING_APPROVAL" && existingApproval) {
-      return request;
+      return request
     }
     if (request.status !== "AWAITING_APPROVAL") {
-      assertRequestTransition({ transition: "submit", status: request.status });
+      assertRequestTransition({ transition: "submit", status: request.status })
     }
     assertEvidence(
       evidenceReference ?? request.evidenceReference,
       "PETTY_CASH_REQUEST_EVIDENCE_REQUIRED"
-    );
+    )
     assertPositiveAmount(
       decimalToNumber(request.requestedAmountPhp),
       "PETTY_CASH_REQUEST_AMOUNT_REQUIRED"
-    );
-    const approvalRule = await findPettyCashApprovalRule(tx, session);
+    )
+    const approvalRule = await findPettyCashApprovalRule(tx, session)
     if (!approvalRule || approvalRule.steps.length === 0) {
-      throw new Error("PETTY_CASH_APPROVAL_RULE_NOT_CONFIGURED");
+      throw new Error("PETTY_CASH_APPROVAL_RULE_NOT_CONFIGURED")
     }
-    const firstStep = approvalRule.steps[0];
+    const firstStep = approvalRule.steps[0]
     if (!firstStep) {
-      throw new Error("PETTY_CASH_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+      throw new Error("PETTY_CASH_APPROVAL_RULE_STEP_NOT_CONFIGURED")
     }
     if (existingApproval) {
-      throw new Error("PETTY_CASH_ALREADY_SUBMITTED");
+      throw new Error("PETTY_CASH_ALREADY_SUBMITTED")
     }
 
     const approvalInstance = await tx.approvalInstance.create({
@@ -1275,7 +1316,7 @@ export async function submitPettyCashRequest(
           }))
         }
       }
-    });
+    })
 
     const updated = await tx.pettyCashRequest.update({
       where: { id: request.id },
@@ -1286,7 +1327,7 @@ export async function submitPettyCashRequest(
         submittedAt: new Date(),
         evidenceReference: evidenceReference ?? request.evidenceReference
       }
-    });
+    })
     const auditEvent = await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1300,14 +1341,14 @@ export async function submitPettyCashRequest(
         approvalRuleId: approvalRule.id,
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
+    })
     const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: request.fund.locationId,
       assignedUserId: firstStep.userId,
       assignedRoleId: firstStep.roleId
-    });
+    })
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -1333,37 +1374,37 @@ export async function submitPettyCashRequest(
         noJournalPosting: true,
         noBankMutation: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function approvePettyCashRequest(
   session: SessionContext,
   input: PettyCashRequestActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashApprove);
+  await requirePermission(session, permissions.financePettyCashApprove)
   return prisma.$transaction(async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
+    )
     if (request.status === "APPROVED") {
-      return request;
+      return request
     }
-    assertRequestTransition({ transition: "approve", status: request.status });
+    assertRequestTransition({ transition: "approve", status: request.status })
     if (request.requestedByUserId === session.user.id) {
-      throw new Error("PETTY_CASH_REQUEST_SELF_APPROVAL_BLOCKED");
+      throw new Error("PETTY_CASH_REQUEST_SELF_APPROVAL_BLOCKED")
     }
     const approvedAmountPhp =
-      input.approvedAmountPhp ?? decimalToNumber(request.requestedAmountPhp);
+      input.approvedAmountPhp ?? decimalToNumber(request.requestedAmountPhp)
     assertPositiveAmount(
       approvedAmountPhp,
       "PETTY_CASH_REQUEST_APPROVED_AMOUNT_REQUIRED"
-    );
+    )
     if (approvedAmountPhp > decimalToNumber(request.requestedAmountPhp)) {
-      throw new Error("PETTY_CASH_REQUEST_APPROVAL_EXCEEDS_REQUEST");
+      throw new Error("PETTY_CASH_REQUEST_APPROVAL_EXCEEDS_REQUEST")
     }
     const updated = await tx.pettyCashRequest.update({
       where: { id: request.id },
@@ -1375,7 +1416,7 @@ export async function approvePettyCashRequest(
         evidenceReference:
           input.evidenceReference?.trim() ?? request.evidenceReference
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1389,25 +1430,25 @@ export async function approvePettyCashRequest(
         approvedAmountPhp,
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function returnPettyCashRequestForRevision(
   session: SessionContext,
   input: PettyCashRequestActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashApprove);
-  const reason = input.reason?.trim();
-  assertReason(reason, "PETTY_CASH_REQUEST_RETURN_REASON_REQUIRED");
+  await requirePermission(session, permissions.financePettyCashApprove)
+  const reason = input.reason?.trim()
+  assertReason(reason, "PETTY_CASH_REQUEST_RETURN_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
-    assertRequestTransition({ transition: "return", status: request.status });
+    )
+    assertRequestTransition({ transition: "return", status: request.status })
     const updated = await tx.pettyCashRequest.update({
       where: { id: request.id },
       data: {
@@ -1416,7 +1457,7 @@ export async function returnPettyCashRequestForRevision(
         returnedAt: new Date(),
         returnReason: reason
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1426,25 +1467,25 @@ export async function returnPettyCashRequestForRevision(
       afterStatus: updated.status,
       reason,
       evidenceReference: input.evidenceReference ?? request.evidenceReference
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function rejectPettyCashRequest(
   session: SessionContext,
   input: PettyCashRequestActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashApprove);
-  const reason = input.reason?.trim();
-  assertReason(reason, "PETTY_CASH_REQUEST_REJECTION_REASON_REQUIRED");
+  await requirePermission(session, permissions.financePettyCashApprove)
+  const reason = input.reason?.trim()
+  assertReason(reason, "PETTY_CASH_REQUEST_REJECTION_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
-    assertRequestTransition({ transition: "reject", status: request.status });
+    )
+    assertRequestTransition({ transition: "reject", status: request.status })
     const updated = await tx.pettyCashRequest.update({
       where: { id: request.id },
       data: {
@@ -1453,7 +1494,7 @@ export async function rejectPettyCashRequest(
         rejectedAt: new Date(),
         rejectionReason: reason
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1463,33 +1504,41 @@ export async function rejectPettyCashRequest(
       afterStatus: updated.status,
       reason,
       evidenceReference: input.evidenceReference ?? request.evidenceReference
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function cancelPettyCashRequest(
   session: SessionContext,
   input: PettyCashRequestActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashSubmit);
-  const reason = input.reason?.trim();
-  assertReason(reason, "PETTY_CASH_REQUEST_CANCELLATION_REASON_REQUIRED");
+  await requirePermission(session, permissions.financePettyCashSubmit)
+  const reason = input.reason?.trim()
+  assertReason(reason, "PETTY_CASH_REQUEST_CANCELLATION_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
+    const grantedPermissionCodes = await lockGrantedFinancePermissions(
+      tx,
+      session,
+      [permissions.financePettyCashSubmit, permissions.financePettyCashApprove]
+    )
+    if (!grantedPermissionCodes.has(permissions.financePettyCashSubmit)) {
+      throw new Error("PERMISSION_DENIED")
+    }
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
-    assertRequestTransition({ transition: "cancel", status: request.status });
+    )
+    assertRequestTransition({ transition: "cancel", status: request.status })
     if (
       request.requestedByUserId !== session.user.id &&
-      !session.permissionCodes.includes(permissions.financePettyCashApprove)
+      !grantedPermissionCodes.has(permissions.financePettyCashApprove)
     ) {
-      throw new Error("PETTY_CASH_REQUEST_CANCEL_PERMISSION_DENIED");
+      throw new Error("PETTY_CASH_REQUEST_CANCEL_PERMISSION_DENIED")
     }
     if (request.ledgerEntries.length > 0) {
-      throw new Error("PETTY_CASH_REQUEST_CANCEL_REQUIRES_REVERSAL");
+      throw new Error("PETTY_CASH_REQUEST_CANCEL_REQUIRES_REVERSAL")
     }
     const updated = await tx.pettyCashRequest.update({
       where: { id: request.id },
@@ -1499,7 +1548,7 @@ export async function cancelPettyCashRequest(
         cancelledAt: new Date(),
         cancellationReason: reason
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1509,31 +1558,31 @@ export async function cancelPettyCashRequest(
       afterStatus: updated.status,
       reason,
       evidenceReference: input.evidenceReference ?? request.evidenceReference
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function createPettyCashDisbursementHandoff(
   session: SessionContext,
   input: PettyCashDisbursementHandoffInput
 ) {
-  await requirePermission(session, permissions.financeDisbursementCreate);
-  const reason = input.reason?.trim();
-  assertReason(reason, "PETTY_CASH_DISBURSEMENT_HANDOFF_REASON_REQUIRED");
+  await requirePermission(session, permissions.financeDisbursementCreate)
+  const reason = input.reason?.trim()
+  assertReason(reason, "PETTY_CASH_DISBURSEMENT_HANDOFF_REASON_REQUIRED")
 
   return prisma.$transaction(async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
+    )
     assertRequestTransition({
       transition: "create_handoff",
       status: request.status
-    });
+    })
 
-    const sourceEventKey = `petty-cash-request:${request.id}:non-supplier-disbursement`;
+    const sourceEventKey = `petty-cash-request:${request.id}:non-supplier-disbursement`
     const existing = await tx.nonSupplierDisbursementRequest.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -1541,13 +1590,13 @@ export async function createPettyCashDisbursementHandoff(
         sourceEventKey,
         status: { notIn: ["CANCELLED", "REJECTED"] }
       }
-    });
+    })
     if (existing) {
-      return existing;
+      return existing
     }
 
-    const amountPhp = decimalToNumber(request.approvedAmountPhp);
-    assertPositiveAmount(amountPhp, "PETTY_CASH_DISBURSEMENT_AMOUNT_REQUIRED");
+    const amountPhp = decimalToNumber(request.approvedAmountPhp)
+    assertPositiveAmount(amountPhp, "PETTY_CASH_DISBURSEMENT_AMOUNT_REQUIRED")
 
     const payee = await tx.financePayee.upsert({
       where: {
@@ -1581,12 +1630,12 @@ export async function createPettyCashDisbursementHandoff(
         evidenceReference:
           input.evidenceReference?.trim() ?? request.evidenceReference
       }
-    });
+    })
 
     const publicReference = await nextDisbursementRequestReference(
       tx,
       session.context.companyId
-    );
+    )
     const created = await tx.nonSupplierDisbursementRequest.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1606,7 +1655,7 @@ export async function createPettyCashDisbursementHandoff(
         idempotencyKey: input.idempotencyKey ?? sourceEventKey,
         requestedByUserId: session.user.id
       }
-    });
+    })
 
     await writePettyCashAudit(tx, {
       session,
@@ -1635,56 +1684,59 @@ export async function createPettyCashDisbursementHandoff(
         noApSettlement: true,
         noPettyCashLedgerMutation: true
       }
-    });
-    return created;
-  });
+    })
+    return created
+  })
 }
 
 export async function fulfillPettyCashRequestOffline(
   session: SessionContext,
   input: PettyCashFulfillmentInput
 ) {
-  await requirePermission(session, permissions.financePettyCashReplenish);
-  const reason = input.reason?.trim();
-  const evidenceReference = input.evidenceReference?.trim();
-  assertReason(reason, "PETTY_CASH_FULFILLMENT_REASON_REQUIRED");
-  assertEvidence(evidenceReference, "PETTY_CASH_FULFILLMENT_EVIDENCE_REQUIRED");
-  assertPositiveAmount(input.amountPhp, "PETTY_CASH_FULFILLMENT_AMOUNT_REQUIRED");
+  await requirePermission(session, permissions.financePettyCashReplenish)
+  const reason = input.reason?.trim()
+  const evidenceReference = input.evidenceReference?.trim()
+  assertReason(reason, "PETTY_CASH_FULFILLMENT_REASON_REQUIRED")
+  assertEvidence(evidenceReference, "PETTY_CASH_FULFILLMENT_EVIDENCE_REQUIRED")
+  assertPositiveAmount(
+    input.amountPhp,
+    "PETTY_CASH_FULFILLMENT_AMOUNT_REQUIRED"
+  )
 
   return prisma.$transaction(async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
-    assertRequestTransition({ transition: "fulfill", status: request.status });
+    )
+    assertRequestTransition({ transition: "fulfill", status: request.status })
     if (request.approvedByUserId === session.user.id) {
-      throw new Error("PETTY_CASH_FULFILLER_APPROVER_SEGREGATION_REQUIRED");
+      throw new Error("PETTY_CASH_FULFILLER_APPROVER_SEGREGATION_REQUIRED")
     }
-    const approvedAmountPhp = decimalToNumber(request.approvedAmountPhp);
+    const approvedAmountPhp = decimalToNumber(request.approvedAmountPhp)
     if (input.amountPhp > approvedAmountPhp) {
-      throw new Error("PETTY_CASH_FULFILLMENT_EXCEEDS_APPROVED_AMOUNT");
+      throw new Error("PETTY_CASH_FULFILLMENT_EXCEEDS_APPROVED_AMOUNT")
     }
     const sourceEventKey =
       input.idempotencyKey ??
-      `petty-cash:${request.id}:fulfill:${input.referenceNo ?? "manual"}`;
+      `petty-cash:${request.id}:fulfill:${input.referenceNo ?? "manual"}`
     const existingLedger = await tx.pettyCashLedgerEntry.findFirst({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         sourceEventKey
       }
-    });
+    })
     if (existingLedger) {
-      return request;
+      return request
     }
 
-    const balanceBeforePhp = decimalToNumber(request.fund.currentBalancePhp);
-    const isReplenishment = request.requestType === "REPLENISHMENT";
-    const direction = isReplenishment ? 1 : -1;
-    const balanceAfterPhp = balanceBeforePhp + direction * input.amountPhp;
+    const balanceBeforePhp = decimalToNumber(request.fund.currentBalancePhp)
+    const isReplenishment = request.requestType === "REPLENISHMENT"
+    const direction = isReplenishment ? 1 : -1
+    const balanceAfterPhp = balanceBeforePhp + direction * input.amountPhp
     if (balanceAfterPhp < -0.009) {
-      throw new Error("PETTY_CASH_FULFILLMENT_INSUFFICIENT_FUND_BALANCE");
+      throw new Error("PETTY_CASH_FULFILLMENT_INSUFFICIENT_FUND_BALANCE")
     }
 
     await tx.pettyCashLedgerEntry.create({
@@ -1706,7 +1758,7 @@ export async function fulfillPettyCashRequestOffline(
         idempotencyKey: input.idempotencyKey ?? null,
         notes: input.referenceNo?.trim() ?? null
       }
-    });
+    })
     await tx.pettyCashFund.update({
       where: { id: request.pettyCashFundId },
       data: {
@@ -1715,7 +1767,7 @@ export async function fulfillPettyCashRequestOffline(
         evidenceReference,
         version: { increment: 1 }
       }
-    });
+    })
     const updated = await tx.pettyCashRequest.update({
       where: { id: request.id },
       data: {
@@ -1729,7 +1781,7 @@ export async function fulfillPettyCashRequestOffline(
           sourceEventKey
         }
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1746,60 +1798,60 @@ export async function fulfillPettyCashRequestOffline(
         balanceAfterPhp,
         sourceEventKey
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function voidPettyCashFulfillment(
   session: SessionContext,
   input: PettyCashRequestActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashApprove);
-  const reason = input.reason?.trim();
-  const evidenceReference = input.evidenceReference?.trim();
-  assertReason(reason, "PETTY_CASH_VOID_REASON_REQUIRED");
-  assertEvidence(evidenceReference, "PETTY_CASH_VOID_EVIDENCE_REQUIRED");
+  await requirePermission(session, permissions.financePettyCashApprove)
+  const reason = input.reason?.trim()
+  const evidenceReference = input.evidenceReference?.trim()
+  assertReason(reason, "PETTY_CASH_VOID_REASON_REQUIRED")
+  assertEvidence(evidenceReference, "PETTY_CASH_VOID_EVIDENCE_REQUIRED")
 
   return prisma.$transaction(async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
+    )
     if (request.status === "VOIDED") {
-      return request;
+      return request
     }
-    assertRequestTransition({ transition: "void", status: request.status });
+    assertRequestTransition({ transition: "void", status: request.status })
     const originalLedger = request.ledgerEntries.find(
       (entry) =>
         ["REPLENISHMENT", "ISSUE"].includes(entry.entryType) && !entry.voidedAt
-    );
+    )
     if (!originalLedger) {
-      throw new Error("PETTY_CASH_FULFILLMENT_LEDGER_NOT_FOUND");
+      throw new Error("PETTY_CASH_FULFILLMENT_LEDGER_NOT_FOUND")
     }
     const reversalEventKey =
       input.idempotencyKey ??
-      `petty-cash:${request.id}:void:${originalLedger.id}`;
+      `petty-cash:${request.id}:void:${originalLedger.id}`
     const existingReversal = await tx.pettyCashLedgerEntry.findFirst({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         sourceEventKey: reversalEventKey
       }
-    });
+    })
     if (existingReversal) {
-      return request;
+      return request
     }
 
-    const balanceBeforePhp = decimalToNumber(request.fund.currentBalancePhp);
-    const originalDirection = originalLedger.direction;
-    const originalAmountPhp = decimalToNumber(originalLedger.amountPhp);
-    const reversalDirection = originalDirection * -1;
+    const balanceBeforePhp = decimalToNumber(request.fund.currentBalancePhp)
+    const originalDirection = originalLedger.direction
+    const originalAmountPhp = decimalToNumber(originalLedger.amountPhp)
+    const reversalDirection = originalDirection * -1
     const balanceAfterPhp =
-      balanceBeforePhp + reversalDirection * originalAmountPhp;
+      balanceBeforePhp + reversalDirection * originalAmountPhp
     if (balanceAfterPhp < -0.009) {
-      throw new Error("PETTY_CASH_VOID_INSUFFICIENT_FUND_BALANCE");
+      throw new Error("PETTY_CASH_VOID_INSUFFICIENT_FUND_BALANCE")
     }
 
     await tx.pettyCashLedgerEntry.update({
@@ -1807,14 +1859,11 @@ export async function voidPettyCashFulfillment(
       data: {
         voidedByUserId: session.user.id,
         voidedAt: new Date(),
-        notes: [
-          originalLedger.notes,
-          `Voided: ${reason}`
-        ]
+        notes: [originalLedger.notes, `Voided: ${reason}`]
           .filter(Boolean)
           .join(" / ")
       }
-    });
+    })
     const reversalLedger = await tx.pettyCashLedgerEntry.create({
       data: {
         tenantId: request.tenantId,
@@ -1834,7 +1883,7 @@ export async function voidPettyCashFulfillment(
         idempotencyKey: input.idempotencyKey ?? null,
         notes: `Reverses petty cash ledger entry ${originalLedger.id}; no bank, payment, or journal posting.`
       }
-    });
+    })
     await tx.pettyCashFund.update({
       where: { id: request.pettyCashFundId },
       data: {
@@ -1843,7 +1892,7 @@ export async function voidPettyCashFulfillment(
         evidenceReference,
         version: { increment: 1 }
       }
-    });
+    })
     const updated = await tx.pettyCashRequest.update({
       where: { id: request.id },
       data: {
@@ -1861,7 +1910,7 @@ export async function voidPettyCashFulfillment(
           noJournalPosting: true
         }
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1882,25 +1931,25 @@ export async function voidPettyCashFulfillment(
         noBankMutation: true,
         noJournalPosting: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function closePettyCashRequest(
   session: SessionContext,
   input: PettyCashRequestActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashApprove);
-  const reason = input.reason?.trim();
-  assertReason(reason, "PETTY_CASH_REQUEST_CLOSE_REASON_REQUIRED");
+  await requirePermission(session, permissions.financePettyCashApprove)
+  const reason = input.reason?.trim()
+  assertReason(reason, "PETTY_CASH_REQUEST_CLOSE_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,
       input.pettyCashRequestId
-    );
-    assertRequestTransition({ transition: "close", status: request.status });
+    )
+    assertRequestTransition({ transition: "close", status: request.status })
     const updated = await tx.pettyCashRequest.update({
       where: { id: request.id },
       data: {
@@ -1909,7 +1958,7 @@ export async function closePettyCashRequest(
         closedAt: new Date(),
         closureNotes: reason
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",
@@ -1919,48 +1968,50 @@ export async function closePettyCashRequest(
       afterStatus: updated.status,
       reason,
       evidenceReference: input.evidenceReference ?? request.evidenceReference
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function submitPettyCashLiquidation(
   session: SessionContext,
   input: SubmitPettyCashLiquidationInput
 ) {
-  await requirePermission(session, permissions.financePettyCashLiquidate);
+  await requirePermission(session, permissions.financePettyCashLiquidate)
   assertEvidence(
     input.evidenceReference,
     "PETTY_CASH_LIQUIDATION_EVIDENCE_REQUIRED"
-  );
+  )
   if (input.cycleEnd.getTime() < input.cycleStart.getTime()) {
-    throw new Error("PETTY_CASH_LIQUIDATION_INVALID_CYCLE_DATES");
+    throw new Error("PETTY_CASH_LIQUIDATION_INVALID_CYCLE_DATES")
   }
   if (input.lines.length === 0) {
-    throw new Error("PETTY_CASH_LIQUIDATION_LINES_REQUIRED");
+    throw new Error("PETTY_CASH_LIQUIDATION_LINES_REQUIRED")
   }
   if (input.lines.length > 25) {
-    throw new Error("PETTY_CASH_LIQUIDATION_LINE_LIMIT_EXCEEDED");
+    throw new Error("PETTY_CASH_LIQUIDATION_LINE_LIMIT_EXCEEDED")
   }
   const claimedAmountPhp = input.lines.reduce((sum, line) => {
     assertPositiveAmount(
       line.amountPhp,
       "PETTY_CASH_LIQUIDATION_LINE_AMOUNT_REQUIRED"
-    );
+    )
     if (!line.description.trim()) {
-      throw new Error("PETTY_CASH_LIQUIDATION_LINE_DESCRIPTION_REQUIRED");
+      throw new Error("PETTY_CASH_LIQUIDATION_LINE_DESCRIPTION_REQUIRED")
     }
     assertEvidence(
-      line.evidenceReference ?? line.receiptReference ?? input.evidenceReference,
+      line.evidenceReference ??
+        line.receiptReference ??
+        input.evidenceReference,
       "PETTY_CASH_LIQUIDATION_LINE_EVIDENCE_REQUIRED"
-    );
-    return sum + line.amountPhp;
-  }, 0);
+    )
+    return sum + line.amountPhp
+  }, 0)
 
   return prisma.$transaction(async (tx) => {
-    const fund = await getScopedFundOrThrow(tx, session, input.pettyCashFundId);
+    const fund = await getScopedFundOrThrow(tx, session, input.pettyCashFundId)
     if (fund.status !== "ACTIVE") {
-      throw new Error("PETTY_CASH_FUND_NOT_ACTIVE");
+      throw new Error("PETTY_CASH_FUND_NOT_ACTIVE")
     }
     if (input.idempotencyKey) {
       const existing = await tx.pettyCashLiquidation.findFirst({
@@ -1969,14 +2020,14 @@ export async function submitPettyCashLiquidation(
           companyId: session.context.companyId,
           idempotencyKey: input.idempotencyKey
         }
-      });
+      })
       if (existing) {
-        return existing;
+        return existing
       }
     }
     const publicReference =
       input.publicReference?.trim() ||
-      (await nextPettyCashLiquidationReference(tx, session.context.companyId));
+      (await nextPettyCashLiquidationReference(tx, session.context.companyId))
     const liquidation = await tx.pettyCashLiquidation.create({
       data: {
         tenantId: fund.tenantId,
@@ -2012,7 +2063,7 @@ export async function submitPettyCashLiquidation(
           }))
         }
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashLiquidation",
@@ -2027,9 +2078,9 @@ export async function submitPettyCashLiquidation(
         lineCount: input.lines.length,
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
-    return liquidation;
-  });
+    })
+    return liquidation
+  })
 }
 
 export async function approvePettyCashLiquidation(
@@ -2039,69 +2090,69 @@ export async function approvePettyCashLiquidation(
   await requirePermission(
     session,
     permissions.financePettyCashReviewLiquidation
-  );
-  const evidenceReference = input.evidenceReference?.trim();
+  )
+  const evidenceReference = input.evidenceReference?.trim()
   return prisma.$transaction(async (tx) => {
     const liquidation = await getScopedLiquidationOrThrow(
       tx,
       session,
       input.liquidationId
-    );
+    )
     if (liquidation.status === "APPROVED") {
-      return liquidation;
+      return liquidation
     }
     assertLiquidationTransition({
       transition: "approve_liquidation",
       status: liquidation.status
-    });
+    })
     if (liquidation.submittedByUserId === session.user.id) {
-      throw new Error("PETTY_CASH_LIQUIDATION_SELF_APPROVAL_BLOCKED");
+      throw new Error("PETTY_CASH_LIQUIDATION_SELF_APPROVAL_BLOCKED")
     }
     assertEvidence(
       evidenceReference ?? liquidation.evidenceReference,
       "PETTY_CASH_LIQUIDATION_APPROVAL_EVIDENCE_REQUIRED"
-    );
+    )
     const approvedAmountPhp =
-      input.approvedAmountPhp ?? decimalToNumber(liquidation.claimedAmountPhp);
+      input.approvedAmountPhp ?? decimalToNumber(liquidation.claimedAmountPhp)
     assertPositiveAmount(
       approvedAmountPhp,
       "PETTY_CASH_LIQUIDATION_APPROVED_AMOUNT_REQUIRED"
-    );
+    )
     if (approvedAmountPhp > decimalToNumber(liquidation.claimedAmountPhp)) {
-      throw new Error("PETTY_CASH_LIQUIDATION_APPROVAL_EXCEEDS_CLAIM");
+      throw new Error("PETTY_CASH_LIQUIDATION_APPROVAL_EXCEEDS_CLAIM")
     }
-    const shortageAmountPhp = input.shortageAmountPhp ?? 0;
-    const overageAmountPhp = input.overageAmountPhp ?? 0;
+    const shortageAmountPhp = input.shortageAmountPhp ?? 0
+    const overageAmountPhp = input.overageAmountPhp ?? 0
     if (shortageAmountPhp < 0 || overageAmountPhp < 0) {
-      throw new Error("PETTY_CASH_LIQUIDATION_VARIANCE_AMOUNT_INVALID");
+      throw new Error("PETTY_CASH_LIQUIDATION_VARIANCE_AMOUNT_INVALID")
     }
     if (shortageAmountPhp > 0 && overageAmountPhp > 0) {
-      throw new Error("PETTY_CASH_LIQUIDATION_VARIANCE_CONFLICT");
+      throw new Error("PETTY_CASH_LIQUIDATION_VARIANCE_CONFLICT")
     }
     if (shortageAmountPhp > 0 || overageAmountPhp > 0) {
       assertReason(
         input.reason?.trim(),
         "PETTY_CASH_LIQUIDATION_VARIANCE_REASON_REQUIRED"
-      );
+      )
       assertEvidence(
         evidenceReference ?? liquidation.evidenceReference,
         "PETTY_CASH_LIQUIDATION_VARIANCE_EVIDENCE_REQUIRED"
-      );
+      )
     }
     const sourceEventKey =
       input.idempotencyKey ??
-      `petty-cash:${liquidation.pettyCashFundId}:liquidation:${liquidation.id}`;
+      `petty-cash:${liquidation.pettyCashFundId}:liquidation:${liquidation.id}`
     const existingLedger = await tx.pettyCashLedgerEntry.findFirst({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         sourceEventKey
       }
-    });
+    })
     if (existingLedger) {
-      return liquidation;
+      return liquidation
     }
-    const balanceBeforePhp = decimalToNumber(liquidation.fund.currentBalancePhp);
+    const balanceBeforePhp = decimalToNumber(liquidation.fund.currentBalancePhp)
 
     await tx.pettyCashLedgerEntry.create({
       data: {
@@ -2122,7 +2173,7 @@ export async function approvePettyCashLiquidation(
         idempotencyKey: input.idempotencyKey ?? null,
         notes: "Custody review marker only; no cash, bank, or journal mutation."
       }
-    });
+    })
     const updated = await tx.pettyCashLiquidation.update({
       where: { id: liquidation.id },
       data: {
@@ -2137,7 +2188,7 @@ export async function approvePettyCashLiquidation(
         evidenceReference: evidenceReference ?? liquidation.evidenceReference,
         reviewReason: input.reason?.trim() ?? null
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashLiquidation",
@@ -2154,9 +2205,9 @@ export async function approvePettyCashLiquidation(
         sourceEventKey,
         noBalanceChange: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function returnPettyCashLiquidationForRevision(
@@ -2166,19 +2217,19 @@ export async function returnPettyCashLiquidationForRevision(
   await requirePermission(
     session,
     permissions.financePettyCashReviewLiquidation
-  );
-  const reason = input.reason?.trim();
-  assertReason(reason, "PETTY_CASH_LIQUIDATION_RETURN_REASON_REQUIRED");
+  )
+  const reason = input.reason?.trim()
+  assertReason(reason, "PETTY_CASH_LIQUIDATION_RETURN_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
     const liquidation = await getScopedLiquidationOrThrow(
       tx,
       session,
       input.liquidationId
-    );
+    )
     assertLiquidationTransition({
       transition: "return_liquidation",
       status: liquidation.status
-    });
+    })
     const updated = await tx.pettyCashLiquidation.update({
       where: { id: liquidation.id },
       data: {
@@ -2187,7 +2238,7 @@ export async function returnPettyCashLiquidationForRevision(
         reviewedAt: new Date(),
         reviewReason: reason
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashLiquidation",
@@ -2196,10 +2247,11 @@ export async function returnPettyCashLiquidationForRevision(
       beforeStatus: liquidation.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? liquidation.evidenceReference
-    });
-    return updated;
-  });
+      evidenceReference:
+        input.evidenceReference ?? liquidation.evidenceReference
+    })
+    return updated
+  })
 }
 
 export async function rejectPettyCashLiquidation(
@@ -2209,19 +2261,19 @@ export async function rejectPettyCashLiquidation(
   await requirePermission(
     session,
     permissions.financePettyCashReviewLiquidation
-  );
-  const reason = input.reason?.trim();
-  assertReason(reason, "PETTY_CASH_LIQUIDATION_REJECTION_REASON_REQUIRED");
+  )
+  const reason = input.reason?.trim()
+  assertReason(reason, "PETTY_CASH_LIQUIDATION_REJECTION_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
     const liquidation = await getScopedLiquidationOrThrow(
       tx,
       session,
       input.liquidationId
-    );
+    )
     assertLiquidationTransition({
       transition: "reject_liquidation",
       status: liquidation.status
-    });
+    })
     const updated = await tx.pettyCashLiquidation.update({
       where: { id: liquidation.id },
       data: {
@@ -2230,7 +2282,7 @@ export async function rejectPettyCashLiquidation(
         reviewedAt: new Date(),
         reviewReason: reason
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashLiquidation",
@@ -2239,39 +2291,49 @@ export async function rejectPettyCashLiquidation(
       beforeStatus: liquidation.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? liquidation.evidenceReference
-    });
-    return updated;
-  });
+      evidenceReference:
+        input.evidenceReference ?? liquidation.evidenceReference
+    })
+    return updated
+  })
 }
 
 export async function cancelPettyCashLiquidation(
   session: SessionContext,
   input: PettyCashLiquidationActionInput
 ) {
-  await requirePermission(session, permissions.financePettyCashLiquidate);
-  const reason = input.reason?.trim();
-  assertReason(reason, "PETTY_CASH_LIQUIDATION_CANCELLATION_REASON_REQUIRED");
+  await requirePermission(session, permissions.financePettyCashLiquidate)
+  const reason = input.reason?.trim()
+  assertReason(reason, "PETTY_CASH_LIQUIDATION_CANCELLATION_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
+    const grantedPermissionCodes = await lockGrantedFinancePermissions(
+      tx,
+      session,
+      [
+        permissions.financePettyCashLiquidate,
+        permissions.financePettyCashReviewLiquidation
+      ]
+    )
+    if (!grantedPermissionCodes.has(permissions.financePettyCashLiquidate)) {
+      throw new Error("PERMISSION_DENIED")
+    }
     const liquidation = await getScopedLiquidationOrThrow(
       tx,
       session,
       input.liquidationId
-    );
+    )
     assertLiquidationTransition({
       transition: "cancel_liquidation",
       status: liquidation.status
-    });
+    })
     if (
       liquidation.submittedByUserId !== session.user.id &&
-      !session.permissionCodes.includes(
-        permissions.financePettyCashReviewLiquidation
-      )
+      !grantedPermissionCodes.has(permissions.financePettyCashReviewLiquidation)
     ) {
-      throw new Error("PETTY_CASH_LIQUIDATION_CANCEL_PERMISSION_DENIED");
+      throw new Error("PETTY_CASH_LIQUIDATION_CANCEL_PERMISSION_DENIED")
     }
     if (liquidation.ledgerEntries.length > 0) {
-      throw new Error("PETTY_CASH_LIQUIDATION_CANCEL_REQUIRES_REVERSAL");
+      throw new Error("PETTY_CASH_LIQUIDATION_CANCEL_REQUIRES_REVERSAL")
     }
     const updated = await tx.pettyCashLiquidation.update({
       where: { id: liquidation.id },
@@ -2281,7 +2343,7 @@ export async function cancelPettyCashLiquidation(
         cancelledAt: new Date(),
         cancellationReason: reason
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashLiquidation",
@@ -2290,10 +2352,11 @@ export async function cancelPettyCashLiquidation(
       beforeStatus: liquidation.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? liquidation.evidenceReference
-    });
-    return updated;
-  });
+      evidenceReference:
+        input.evidenceReference ?? liquidation.evidenceReference
+    })
+    return updated
+  })
 }
 
 export async function reversePettyCashLiquidation(
@@ -2303,66 +2366,60 @@ export async function reversePettyCashLiquidation(
   await requirePermission(
     session,
     permissions.financePettyCashReviewLiquidation
-  );
-  const reason = input.reason?.trim();
-  const evidenceReference = input.evidenceReference?.trim();
-  assertReason(reason, "PETTY_CASH_LIQUIDATION_REVERSAL_REASON_REQUIRED");
+  )
+  const reason = input.reason?.trim()
+  const evidenceReference = input.evidenceReference?.trim()
+  assertReason(reason, "PETTY_CASH_LIQUIDATION_REVERSAL_REASON_REQUIRED")
   assertEvidence(
     evidenceReference,
     "PETTY_CASH_LIQUIDATION_REVERSAL_EVIDENCE_REQUIRED"
-  );
+  )
 
   return prisma.$transaction(async (tx) => {
     const liquidation = await getScopedLiquidationOrThrow(
       tx,
       session,
       input.liquidationId
-    );
+    )
     if (liquidation.status === "REVERSED") {
-      return liquidation;
+      return liquidation
     }
     assertLiquidationTransition({
       transition: "reverse_liquidation",
       status: liquidation.status
-    });
+    })
     const settlementLedger = liquidation.ledgerEntries.find(
-      (entry) =>
-        entry.entryType === "LIQUIDATION_SETTLEMENT" && !entry.voidedAt
-    );
+      (entry) => entry.entryType === "LIQUIDATION_SETTLEMENT" && !entry.voidedAt
+    )
     if (!settlementLedger) {
-      throw new Error("PETTY_CASH_LIQUIDATION_SETTLEMENT_REQUIRED");
+      throw new Error("PETTY_CASH_LIQUIDATION_SETTLEMENT_REQUIRED")
     }
 
     const reversalEventKey =
       input.idempotencyKey ??
-      `petty-cash:${liquidation.id}:reverse:${settlementLedger.id}`;
+      `petty-cash:${liquidation.id}:reverse:${settlementLedger.id}`
     const existingReversal = await tx.pettyCashLedgerEntry.findFirst({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         sourceEventKey: reversalEventKey
       }
-    });
+    })
     if (existingReversal) {
-      return liquidation;
+      return liquidation
     }
 
-    const balanceBeforePhp = decimalToNumber(
-      liquidation.fund.currentBalancePhp
-    );
+    const balanceBeforePhp = decimalToNumber(liquidation.fund.currentBalancePhp)
     await tx.pettyCashLedgerEntry.update({
       where: { id: settlementLedger.id },
       data: {
         voidedByUserId: session.user.id,
         voidedAt: new Date(),
-        notes: [
-          settlementLedger.notes,
-          `Reversed: ${reason}`
-        ]
+        notes: [settlementLedger.notes, `Reversed: ${reason}`]
           .filter(Boolean)
           .join(" / ")
       }
-    });
+    })
     const reversalLedger = await tx.pettyCashLedgerEntry.create({
       data: {
         tenantId: liquidation.tenantId,
@@ -2382,7 +2439,7 @@ export async function reversePettyCashLiquidation(
         idempotencyKey: input.idempotencyKey ?? null,
         notes: `Reverses petty cash liquidation settlement marker ${settlementLedger.id}; no bank, payment, or journal posting.`
       }
-    });
+    })
     const updated = await tx.pettyCashLiquidation.update({
       where: { id: liquidation.id },
       data: {
@@ -2392,7 +2449,7 @@ export async function reversePettyCashLiquidation(
         closureNotes: reason,
         evidenceReference
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashLiquidation",
@@ -2412,9 +2469,9 @@ export async function reversePettyCashLiquidation(
         noJournalPosting: true,
         noBankMutation: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function closePettyCashLiquidation(
@@ -2424,29 +2481,29 @@ export async function closePettyCashLiquidation(
   await requirePermission(
     session,
     permissions.financePettyCashReviewLiquidation
-  );
-  const reason = input.reason?.trim();
-  const evidenceReference = input.evidenceReference?.trim();
-  assertReason(reason, "PETTY_CASH_LIQUIDATION_CLOSE_REASON_REQUIRED");
+  )
+  const reason = input.reason?.trim()
+  const evidenceReference = input.evidenceReference?.trim()
+  assertReason(reason, "PETTY_CASH_LIQUIDATION_CLOSE_REASON_REQUIRED")
   assertEvidence(
     evidenceReference,
     "PETTY_CASH_LIQUIDATION_CLOSE_EVIDENCE_REQUIRED"
-  );
+  )
   return prisma.$transaction(async (tx) => {
     const liquidation = await getScopedLiquidationOrThrow(
       tx,
       session,
       input.liquidationId
-    );
+    )
     assertLiquidationTransition({
       transition: "close_liquidation",
       status: liquidation.status
-    });
+    })
     const settlementLedger = liquidation.ledgerEntries.find(
       (entry) => entry.entryType === "LIQUIDATION_SETTLEMENT"
-    );
+    )
     if (!settlementLedger) {
-      throw new Error("PETTY_CASH_LIQUIDATION_SETTLEMENT_REQUIRED");
+      throw new Error("PETTY_CASH_LIQUIDATION_SETTLEMENT_REQUIRED")
     }
     const updated = await tx.pettyCashLiquidation.update({
       where: { id: liquidation.id },
@@ -2457,7 +2514,7 @@ export async function closePettyCashLiquidation(
         closureNotes: reason,
         evidenceReference
       }
-    });
+    })
     await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashLiquidation",
@@ -2476,22 +2533,22 @@ export async function closePettyCashLiquidation(
         noJournalPosting: true,
         noBankMutation: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function getPettyCashDashboard(
   session: SessionContext
 ): Promise<PettyCashDashboard> {
-  if (!canUseFinance(session.permissionCodes)) {
-    throw new Error("PERMISSION_DENIED");
+  if (!canUseFinance(await getGrantedPermissionCodes(session))) {
+    throw new Error("PERMISSION_DENIED")
   }
-  await requirePermission(session, permissions.financePettyCashView);
+  await requirePermission(session, permissions.financePettyCashView)
 
   const authorizedLocationIds = session.authorizedLocations.map(
     (location) => location.locationId
-  );
+  )
 
   const [funds, suppliers, locations, custodians] = await Promise.all([
     prisma.pettyCashFund.findMany({
@@ -2588,15 +2645,21 @@ export async function getPettyCashDashboard(
       orderBy: [{ displayName: "asc" }],
       take: 100
     })
-  ]);
+  ])
 
-  const rows = buildPettyCashFundRows(funds);
-  const reportRows = buildPettyCashReportRows(rows);
-  const exceptionRows = buildPettyCashExceptionRows(reportRows);
+  const rows = buildPettyCashFundRows(funds)
+  const reportRows = buildPettyCashReportRows(rows)
+  const exceptionRows = buildPettyCashExceptionRows(reportRows)
   const workflowPermissions = {
-    canCreate: session.permissionCodes.includes(permissions.financePettyCashCreate),
-    canSubmit: session.permissionCodes.includes(permissions.financePettyCashSubmit),
-    canApprove: session.permissionCodes.includes(permissions.financePettyCashApprove),
+    canCreate: session.permissionCodes.includes(
+      permissions.financePettyCashCreate
+    ),
+    canSubmit: session.permissionCodes.includes(
+      permissions.financePettyCashSubmit
+    ),
+    canApprove: session.permissionCodes.includes(
+      permissions.financePettyCashApprove
+    ),
     canReplenish: session.permissionCodes.includes(
       permissions.financePettyCashReplenish
     ),
@@ -2609,20 +2672,20 @@ export async function getPettyCashDashboard(
     canReviewLiquidation: session.permissionCodes.includes(
       permissions.financePettyCashReviewLiquidation
     )
-  };
-  const activeRows = rows.filter((row) => row.status === "ACTIVE");
+  }
+  const activeRows = rows.filter((row) => row.status === "ACTIVE")
   const openRequestCount = rows.reduce(
     (sum, row) => sum + row.openRequestCount,
     0
-  );
+  )
   const openLiquidationCount = rows.reduce(
     (sum, row) => sum + row.openLiquidationCount,
     0
-  );
+  )
   const totalCurrentBalance = rows.reduce(
     (sum, row) => sum + row.currentBalancePhp,
     0
-  );
+  )
 
   return {
     generatedAt: new Date().toISOString(),
@@ -2666,21 +2729,24 @@ export async function getPettyCashDashboard(
         id: "cash-on-hand",
         label: "Cash on hand",
         displayValue: money(totalCurrentBalance),
-        detail: "PHP-only fund balance snapshots from controlled petty cash markers.",
+        detail:
+          "PHP-only fund balance snapshots from controlled petty cash markers.",
         tone: totalCurrentBalance > 0 ? "success" : "neutral"
       },
       {
         id: "open-requests",
         label: "Open requests",
         displayValue: number(openRequestCount),
-        detail: "Replenishment or disbursement requests still requiring action.",
+        detail:
+          "Replenishment or disbursement requests still requiring action.",
         tone: openRequestCount > 0 ? "warning" : "success"
       },
       {
         id: "open-liquidations",
         label: "Open liquidations",
         displayValue: number(openLiquidationCount),
-        detail: "Liquidation cycles pending receipt review, shortage, or overage closure.",
+        detail:
+          "Liquidation cycles pending receipt review, shortage, or overage closure.",
         tone: openLiquidationCount > 0 ? "warning" : "success"
       }
     ],
@@ -2741,5 +2807,5 @@ export async function getPettyCashDashboard(
         tone: "info"
       }
     ]
-  };
+  }
 }

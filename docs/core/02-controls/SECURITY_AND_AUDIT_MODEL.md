@@ -56,6 +56,21 @@ Branch Manager
 
 Scope rules cascade downward only when explicitly defined. For example, company scope may include all company locations, but a location assignment does not include other locations.
 
+### 2.3 Tenant role administration
+
+Role catalog and `UserRoleAssignment` administration use a dedicated tenant-level authorization boundary under `DEC-0043`:
+
+- `core.tenant_role_administer` is required for role overview/details, role creation, direct assignment/deactivation, sensitive-role request/review, role-permission updates, and onboarding when `initialRoleId` is present;
+- `core.administer`, company `MANAGE`, selected-company context, or target membership alone cannot substitute for that permission;
+- the seeded `CONFIGURED_ADMIN` and `CONFIGURED_SUPER_USER` roles receive the permission;
+- quick role assignment rechecks the role's live permissions while holding the role lock; allowlisted role codes are not directly assignable when any current permission is sensitive;
+- adding sensitive authority to a role with an active, effective assignee is blocked pending a separately approved sensitive-role change workflow, including when a direct grant and permission change race;
+- a pending sensitive-role request freezes permission changes for that role; approval reloads the active role and permission set while holding the role lock before it claims the request, creates the assignment, and records permission audit metadata;
+- sensitive-role approval governs granting access, not revocation; an authorized administrator may deactivate the active assignment with reason, audit, privilege-epoch update, and session invalidation while self-mutation and active approval-route safeguards remain enforced;
+- target-user actions additionally require the target to be active in the same tenant and to have an active, currently effective `COMPANY` scope for the operator's selected company or `LOCATION` scope to an active location in that company;
+- this membership check constrains the eligible target and does not turn the tenant-global assignment into a company-scoped grant; and
+- all checks are server-enforced, with non-enumerating denial and no business mutation on failure.
+
 ---
 
 ## 3. Segregation of duties baseline
@@ -74,7 +89,8 @@ The system should enforce these standard controls by default:
 | Submit wastage | Reporter may submit; approval/review follows value/rule threshold |
 | Post stock adjustment | Requires authorized approval; requester and poster separation is configurable by risk tier |
 | Change approval rule | Admin access plus audit event; no silent change |
-| Change low-risk user scope/role | Administrator access plus audit event |
+| Change low-risk user scope | Administrator access plus audit event |
+| Administer role catalog or direct role assignment | Tenant-level `core.tenant_role_administer`; target-user actions also require active/effective selected-company membership; audit event required |
 | Change high-risk scope | Controlled `HighRiskScopeRequest`, reason, evidence, separate reviewer, privileged MFA guard, audit, and session invalidation |
 | Grant sensitive/admin/approver role | Controlled `SensitiveRoleRequest`, reason, evidence, separate reviewer, privileged MFA guard, audit, and session invalidation |
 

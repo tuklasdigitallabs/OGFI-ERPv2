@@ -322,6 +322,7 @@ describe("period close readiness foundation", () => {
     expect(pageSource).not.toContain("Binary upload");
     expect(pageSource).not.toContain("P3-BLOCK-002");
     expect(pageSource).toContain("permissions.financePeriodCloseManage");
+    expect(pageSource).not.toContain("permissions.coreAdminister");
     expect(pageSource).not.toContain("financeJournal.create");
     expect(pageSource).not.toContain("apInvoice.update");
     expect(pageSource).not.toContain("paymentRelease.update");

@@ -1620,12 +1620,12 @@ export function approvalReminderKind(input: {
 }
 
 export async function listPendingApprovals(session: SessionContext) {
-  if (!canUseApprovals(session.permissionCodes)) {
+  const permissionCodes = await getGrantedPermissionCodes(session);
+  if (!canUseApprovals(permissionCodes)) {
     return [];
   }
 
   const roleIds = await getActiveRoleIds(session);
-  const permissionCodes = await getGrantedPermissionCodes(session);
   const approvals = await prisma.approvalInstance.findMany({
     where: {
       tenantId: session.context.tenantId,
@@ -2606,7 +2606,8 @@ export async function runApprovalReminderScan(
   session: SessionContext,
   input: { asOf?: Date; timeZone?: string } = {}
 ) {
-  if (!canUseApprovals(session.permissionCodes)) {
+  const permissionCodes = await getGrantedPermissionCodes(session);
+  if (!canUseApprovals(permissionCodes)) {
     throw new Error("PERMISSION_DENIED");
   }
 
@@ -2727,7 +2728,8 @@ export async function getApprovalDetail(
   session: SessionContext,
   approvalInstanceId: string
 ): Promise<ApprovalDetail | null> {
-  if (!canUseApprovals(session.permissionCodes)) {
+  const permissionCodes = await getGrantedPermissionCodes(session);
+  if (!canUseApprovals(permissionCodes)) {
     return null;
   }
 

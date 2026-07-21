@@ -299,8 +299,9 @@ export default async function CoreAdministrationPage({
               <div>
                 <p className="font-semibold text-slate-950">Guardrails active</p>
                 <p className="mt-1 text-sm text-slate-600">
-                  Admin changes require server-side permission checks, company MANAGE
-                  scope, reasoned actions, and audit history.
+                  Role administration requires tenant-wide role authority and company
+                  Manage scope. Other admin changes retain their service-specific
+                  permission, reason, and audit controls.
                 </p>
               </div>
             </div>
@@ -406,7 +407,9 @@ export default async function CoreAdministrationPage({
                     <input className="rounded-md border border-slate-300 px-3 py-2" name="reason" required />
                   </label>
                   <p className="text-sm text-slate-500 md:col-span-2">
-                    Admin-controlled and sensitive roles can be assigned here only by an ERP Administrator with company Manage scope. A setup reason is required and audited.
+                    Initial role assignment requires Administer tenant-wide roles and
+                    company Manage scope. The selected location establishes the new
+                    user&apos;s company eligibility. A setup reason is required and audited.
                   </p>
                   <p className="text-sm text-slate-500 md:col-span-2">
                     This creates the ERP user record. Authentication credentials remain handled by the login system.

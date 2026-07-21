@@ -45,7 +45,7 @@ Core Administration may add a constrained user role assignment create/deactivate
 ## Hard-gate assessment
 
 - Tenant isolation: Target user and role must resolve server-side within the acting session tenant.
-- Server-side authorization: Actor must have `core.administer` and active company `MANAGE` scope.
+- Server-side authorization: Superseded by `DEC-0043`; every direct role-administration surface now requires `core.tenant_role_administer`. Target-user actions additionally require active/effective membership in the operator's selected company.
 - Approval segregation: Self role mutation is blocked; approval/admin roles are not assignable in this slice.
 - Audit history: Create/deactivate writes append-only `AuditEvent` in the same transaction.
 - No destructive deletion: Deactivation sets `status = INACTIVE` and `endsAt`.
@@ -57,6 +57,7 @@ Core Administration may add a constrained user role assignment create/deactivate
 - Reason is required for create and deactivate.
 - Duplicate active role assignment is blocked.
 - Only explicitly allowlisted non-sensitive role codes are assignable.
+- Allowlisting never overrides the role's current permission sensitivity. Direct assignment rechecks the locked role, and sensitive permission additions are blocked while the role has any active, effective assignee.
 - Roles used by active approval-rule steps are blocked from mutation.
 - Sensitive roles remain blocked even if a direct server-action request is crafted.
 - Audit metadata records the role code and evaluated permission codes.
@@ -65,7 +66,7 @@ Core Administration may add a constrained user role assignment create/deactivate
 
 - Code / architecture: Add controlled service actions for role assignment create/deactivate.
 - Data / schema: No schema change; uses existing `UserRoleAssignment` and `AuditEvent`.
-- Workflow / permissions: Requires `core.administer` plus company `MANAGE` scope.
+- Workflow / permissions: The assignment classification and safeguards in this record remain applicable, but `DEC-0043` replaces the former `core.administer` plus company `MANAGE` capability gate with `core.tenant_role_administer` and target-company eligibility where applicable.
 - UI / mobile: User Access page exposes role controls only for non-self users and non-sensitive roles.
 - Knowledge base / training: Future admin guide should explain why sensitive role grants are blocked pending policy.
 - Tests / UAT: Validate self-mutation block, duplicate block, sensitive-role block, and E2E role create/deactivate audit visibility.
@@ -95,4 +96,4 @@ Core Administration may add a constrained user role assignment create/deactivate
 
 ## Supersession
 
-Not superseded.
+The authorization-boundary portions of this record are superseded by `DEC-0043-TENANT-ROLE-ADMINISTRATION-BOUNDARY.md`. Its constrained direct-assignment classification, audit, no-self-action, non-destructive deactivation, and sensitive-role safeguards remain confirmed.

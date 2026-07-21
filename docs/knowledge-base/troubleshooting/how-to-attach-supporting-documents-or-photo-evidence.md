@@ -1,9 +1,9 @@
 # How To Attach Supporting Documents Or Photo Evidence
 
-**Audience / required role:** Requesters, receiving users, warehouse users, branch managers, approvers, and support administrators  
-**Applies to:** Purchase requests, supplier communication, receiving discrepancies, transfers, wastage, stock adjustments, projects, and approval support  
-**Related phase/module:** Phase I / Evidence, Audit, and Attachments  
-**Last verified against:** implemented evidence-reference fields, discrepancy evidence controls, wastage/adjustment evidence references, and shared attachment metadata design
+**Audience / required role:** Requesters, receiving users, warehouse users, branch managers, approvers, and support administrators
+**Applies to:** Purchase requests, supplier communication, receiving discrepancies, transfers, wastage, stock adjustments, projects, and approval support
+**Related phase/module:** Phase I / Evidence, Audit, and Attachments
+**Last verified against:** implemented evidence-reference fields, discrepancy evidence controls, wastage/adjustment evidence references, canonical controlled-evidence write authorization, controlled private-download authorization, and shared attachment design
 
 ## Purpose
 
@@ -19,6 +19,9 @@ In the current operational workflows, many screens collect an evidence reference
 - Wastage reports can require evidence reference based on policy flags.
 - Stock Adjustments collect evidence reference where policy requires it.
 - Project tracker attachments use authorized metadata links; source records remain protected by their own permissions.
+- Creating an attachment link, uploading a file, adding attachment metadata, or archiving a link normally requires the current write permission for the source record. A project-requirement owner may use the controlled owner path only when live project-view, requirement ownership, and project-scope checks all pass. A permission name supplied by the screen cannot replace or weaken the canonical source policy.
+- Finance period-close evidence requires `Manage Period Close` access. Core Administration access by itself does not authorize period-close evidence changes.
+- Where a controlled attachment download is available, the ERP rechecks the user's current permission and the company, brand, location, department, project, membership, and restricted-project rules of the linked source record before sending file bytes.
 
 ## How To Enter Evidence References
 
@@ -42,6 +45,8 @@ In the current operational workflows, many screens collect an evidence reference
 - Do not paste private file links into broad comments unless every viewer is authorized.
 - Evidence references do not replace required approval, posting, receiving, reversal, or audit actions.
 - Do not use project tasks to expose protected PO, receiving, inventory, approval, or finance attachments to users who lack source-record access.
+- A copied attachment link or identifier does not grant access. If the related role, scope, or project membership is removed, the download becomes unavailable on the next request.
+- Being able to view a source record or download its evidence does not automatically allow you to add, upload, or archive evidence. Those actions recheck the source record's canonical mutation authority; the only current view-based exception is the controlled project-requirement owner path, which also requires ownership and project scope.
 - Keep original evidence in the approved storage location until the shared attachment service is fully released for that workflow.
 
 ## What To Check

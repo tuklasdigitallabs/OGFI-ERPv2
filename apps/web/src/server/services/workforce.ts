@@ -1,6 +1,11 @@
 import { prisma } from "@ogfi/database";
 import type { TransactionClient } from "@ogfi/database";
-import { canUseWorkforce, permissions, requirePermission } from "./authorization";
+import {
+  permissions,
+  requireAnyPermission,
+  requirePermission,
+  requireWorkforceAccess,
+} from "./authorization";
 import type { SessionContext } from "./context";
 import type { CsvRow } from "./csv";
 import {
@@ -365,29 +370,25 @@ const employeeStatuses: EmployeeStatusInput[] = [
   "LEAVE_OF_ABSENCE"
 ];
 
-function locationScope(session: SessionContext) {
-  return session.authorizedLocations.map((location) => location.locationId);
-}
-
-function canManageWorkforce(session: SessionContext) {
+function canManageWorkforce(grantedPermissionCodes: string[]) {
   return (
-    session.permissionCodes.includes(permissions.coreAdminister) ||
-    session.permissionCodes.includes(permissions.workforceManage)
+    grantedPermissionCodes.includes(permissions.coreAdminister) ||
+    grantedPermissionCodes.includes(permissions.workforceManage)
   );
 }
 
-function canViewConfidentialWorkforce(session: SessionContext) {
-  return canManageWorkforce(session);
+function canViewConfidentialWorkforce(grantedPermissionCodes: string[]) {
+  return canManageWorkforce(grantedPermissionCodes);
 }
 
 async function requireWorkforcePermission(
   session: SessionContext,
   permissionCode: string
 ) {
-  if (session.permissionCodes.includes(permissions.coreAdminister)) {
-    return;
-  }
-  await requirePermission(session, permissionCode);
+  await requireAnyPermission(session, [
+    permissions.coreAdminister,
+    permissionCode,
+  ]);
 }
 
 function requireWorkforceReason(value: string | undefined, errorCode: string) {
@@ -397,8 +398,94 @@ function requireWorkforceReason(value: string | undefined, errorCode: string) {
   return value.trim();
 }
 
-function allowedLocationIds(session: SessionContext) {
-  return session.authorizedLocations.map((location) => location.locationId);
+async function loadWorkforceScopeSnapshot(session: SessionContext) {
+  const now = new Date();
+  const assignments = await prisma.userScopeAssignment.findMany({
+    where: {
+      userId: session.user.id,
+      scopeType: { in: ["LOCATION", "COMPANY"] },
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+    },
+    select: { scopeType: true, scopeId: true, accessLevel: true },
+  });
+  const locationScopeIds = assignments
+    .filter((assignment) => assignment.scopeType === "LOCATION")
+    .map((assignment) => assignment.scopeId);
+  const locations = await prisma.location.findMany({
+    where: {
+      id: { in: locationScopeIds },
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE",
+    },
+    select: { id: true, brandId: true, name: true },
+  });
+  const departments = await prisma.department.findMany({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE",
+    },
+    select: { id: true },
+  });
+  return {
+    locationIds: locations.map((location) => location.id),
+    locationsById: new Map(locations.map((location) => [location.id, location])),
+    departmentIds: new Set(departments.map((department) => department.id)),
+    hasCompanyManage: assignments.some(
+      (assignment) =>
+        assignment.scopeType === "COMPANY" &&
+        assignment.scopeId === session.context.companyId &&
+        assignment.accessLevel === "MANAGE",
+    ),
+  };
+}
+
+function workforceDimensionsMatch(
+  scope: Awaited<ReturnType<typeof loadWorkforceScopeSnapshot>>,
+  input: {
+    locationId: string;
+    brandId?: string | null;
+    departmentId?: string | null;
+  },
+) {
+  const location = scope.locationsById.get(input.locationId);
+  if (!location) return false;
+  const brandId = input.brandId || null;
+  if (brandId !== null && brandId !== location.brandId) return false;
+  if (input.departmentId && !scope.departmentIds.has(input.departmentId)) {
+    return false;
+  }
+  return true;
+}
+
+export async function assertWorkforceSourceScopeAccess(
+  session: SessionContext,
+  input: {
+    locationId?: string | null;
+    brandId?: string | null;
+    departmentId?: string | null;
+  },
+) {
+  await requireWorkforceAccess(session);
+  const scope = await loadWorkforceScopeSnapshot(session);
+  if (!input.locationId) {
+    if (!scope.hasCompanyManage) {
+      throw new Error("WORKFORCE_SOURCE_NOT_AVAILABLE");
+    }
+    return;
+  }
+  if (
+    !workforceDimensionsMatch(scope, {
+      locationId: input.locationId,
+      brandId: input.brandId ?? null,
+      departmentId: input.departmentId ?? null,
+    })
+  ) {
+    throw new Error("WORKFORCE_SOURCE_NOT_AVAILABLE");
+  }
 }
 
 function assertStatusAllowed(status: string, allowed: string[], errorCode: string) {
@@ -418,11 +505,12 @@ function assertOneOf<T extends string>(
   return value as T;
 }
 
-function assertScopedLocation(session: SessionContext, locationId: string) {
+async function assertScopedLocation(session: SessionContext, locationId: string) {
   if (!locationId.trim()) {
     throw new Error("WORKFORCE_EMPLOYEE_HOME_LOCATION_REQUIRED");
   }
-  if (!allowedLocationIds(session).includes(locationId)) {
+  const scope = await loadWorkforceScopeSnapshot(session);
+  if (!scope.locationsById.has(locationId)) {
     throw new Error("WORKFORCE_LOCATION_SCOPE_DENIED");
   }
 }
@@ -473,18 +561,20 @@ async function getScopedLeaveOrThrow(
   session: SessionContext,
   leaveRequestId: string
 ) {
+  const scope = await loadWorkforceScopeSnapshot(session);
   const request = await tx.employeeLeaveRequest.findFirst({
     where: {
       id: leaveRequestId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      OR: [
-        { locationId: { in: allowedLocationIds(session) } },
-        { employee: { homeLocationId: { in: allowedLocationIds(session) } } }
-      ]
     }
   });
-  if (!request) {
+  if (
+    !request ||
+    (request.locationId
+      ? !scope.locationIds.includes(request.locationId)
+      : !scope.hasCompanyManage)
+  ) {
     throw new Error("WORKFORCE_LEAVE_REQUEST_NOT_FOUND");
   }
   return request;
@@ -575,18 +665,20 @@ async function getScopedOvertimeOrThrow(
   session: SessionContext,
   overtimeRecordId: string
 ) {
+  const scope = await loadWorkforceScopeSnapshot(session);
   const record = await tx.employeeOvertimeRecord.findFirst({
     where: {
       id: overtimeRecordId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      OR: [
-        { locationId: { in: allowedLocationIds(session) } },
-        { employee: { homeLocationId: { in: allowedLocationIds(session) } } }
-      ]
     }
   });
-  if (!record) {
+  if (
+    !record ||
+    (record.locationId
+      ? !scope.locationIds.includes(record.locationId)
+      : !scope.hasCompanyManage)
+  ) {
     throw new Error("WORKFORCE_OVERTIME_RECORD_NOT_FOUND");
   }
   return record;
@@ -597,16 +689,26 @@ async function getScopedScheduleOrThrow(
   session: SessionContext,
   scheduleId: string
 ) {
+  const scope = await loadWorkforceScopeSnapshot(session);
   const schedule = await tx.workforceSchedule.findFirst({
     where: {
       id: scheduleId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      locationId: { in: allowedLocationIds(session) }
+      locationId: { in: scope.locationIds }
     },
     include: { lines: true }
   });
   if (!schedule) {
+    throw new Error("WORKFORCE_SCHEDULE_NOT_FOUND");
+  }
+  if (
+    !workforceDimensionsMatch(scope, {
+      locationId: schedule.locationId,
+      brandId: schedule.brandId,
+      departmentId: schedule.departmentId,
+    })
+  ) {
     throw new Error("WORKFORCE_SCHEDULE_NOT_FOUND");
   }
   return schedule;
@@ -617,16 +719,25 @@ async function getScopedAttendanceBatchOrThrow(
   session: SessionContext,
   batchId: string
 ) {
+  const scope = await loadWorkforceScopeSnapshot(session);
   const batch = await tx.attendanceImportBatch.findFirst({
     where: {
       id: batchId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      locationId: { in: allowedLocationIds(session) }
+      locationId: { in: scope.locationIds }
     },
     include: { lines: true }
   });
   if (!batch) {
+    throw new Error("WORKFORCE_ATTENDANCE_BATCH_NOT_FOUND");
+  }
+  if (
+    !workforceDimensionsMatch(scope, {
+      locationId: batch.locationId,
+      brandId: batch.brandId,
+    })
+  ) {
     throw new Error("WORKFORCE_ATTENDANCE_BATCH_NOT_FOUND");
   }
   return batch;
@@ -885,6 +996,7 @@ async function getScopedEmployeeForDraftOrThrow(
   session: SessionContext,
   employeeId: string
 ) {
+  const scope = await loadWorkforceScopeSnapshot(session);
   const employee = await tx.employee.findFirst({
     where: {
       id: employeeId,
@@ -892,13 +1004,13 @@ async function getScopedEmployeeForDraftOrThrow(
       companyId: session.context.companyId,
       status: "ACTIVE",
       OR: [
-        { homeLocationId: { in: allowedLocationIds(session) } },
+        { homeLocationId: { in: scope.locationIds } },
         {
           assignments: {
             some: {
               tenantId: session.context.tenantId,
               companyId: session.context.companyId,
-              locationId: { in: allowedLocationIds(session) },
+              locationId: { in: scope.locationIds },
               status: "ACTIVE"
             }
           }
@@ -911,7 +1023,7 @@ async function getScopedEmployeeForDraftOrThrow(
         where: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          locationId: { in: allowedLocationIds(session) },
+          locationId: { in: scope.locationIds },
           status: "ACTIVE"
         },
         orderBy: [{ isPrimary: "desc" }, { effectiveFrom: "desc" }],
@@ -923,11 +1035,18 @@ async function getScopedEmployeeForDraftOrThrow(
     throw new Error("WORKFORCE_EMPLOYEE_NOT_FOUND");
   }
 
-  const assignmentLocationId = employee.assignments[0]?.locationId;
+  const authorizedAssignment = employee.assignments.find((assignment) =>
+    workforceDimensionsMatch(scope, {
+      locationId: assignment.locationId,
+      brandId: assignment.brandId,
+      departmentId: assignment.departmentId,
+    }),
+  );
+  const assignmentLocationId = authorizedAssignment?.locationId;
   const homeLocationId = employee.homeLocationId;
   const locationId =
     assignmentLocationId ??
-    (homeLocationId && allowedLocationIds(session).includes(homeLocationId)
+    (homeLocationId && scope.locationIds.includes(homeLocationId)
       ? homeLocationId
       : null);
   if (!locationId) {
@@ -941,19 +1060,20 @@ async function getScopedEmployeeForManagementOrThrow(
   session: SessionContext,
   employeeId: string
 ) {
+  const scope = await loadWorkforceScopeSnapshot(session);
   const employee = await tx.employee.findFirst({
     where: {
       id: employeeId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       OR: [
-        { homeLocationId: { in: allowedLocationIds(session) } },
+        { homeLocationId: { in: scope.locationIds } },
         {
           assignments: {
             some: {
               tenantId: session.context.tenantId,
               companyId: session.context.companyId,
-              locationId: { in: allowedLocationIds(session) }
+              locationId: { in: scope.locationIds }
             }
           }
         }
@@ -965,7 +1085,7 @@ async function getScopedEmployeeForManagementOrThrow(
         where: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          locationId: { in: allowedLocationIds(session) },
+          locationId: { in: scope.locationIds },
           status: "ACTIVE"
         },
         orderBy: [{ isPrimary: "desc" }, { effectiveFrom: "desc" }],
@@ -976,6 +1096,19 @@ async function getScopedEmployeeForManagementOrThrow(
   if (!employee) {
     throw new Error("WORKFORCE_EMPLOYEE_NOT_FOUND");
   }
+  const homeLocationAuthorized =
+    Boolean(employee.homeLocationId) &&
+    scope.locationIds.includes(employee.homeLocationId!);
+  const assignmentAuthorized = employee.assignments.some((assignment) =>
+    workforceDimensionsMatch(scope, {
+      locationId: assignment.locationId,
+      brandId: assignment.brandId,
+      departmentId: assignment.departmentId,
+    }),
+  );
+  if (!homeLocationAuthorized && !assignmentAuthorized) {
+    throw new Error("WORKFORCE_EMPLOYEE_NOT_FOUND");
+  }
   return employee;
 }
 
@@ -984,12 +1117,13 @@ async function getScopedAssignmentForManagementOrThrow(
   session: SessionContext,
   assignmentId: string
 ) {
+  const scope = await loadWorkforceScopeSnapshot(session);
   const assignment = await tx.employeeAssignment.findFirst({
     where: {
       id: assignmentId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      locationId: { in: allowedLocationIds(session) }
+      locationId: { in: scope.locationIds }
     },
     include: {
       employee: true,
@@ -997,6 +1131,15 @@ async function getScopedAssignmentForManagementOrThrow(
     }
   });
   if (!assignment) {
+    throw new Error("WORKFORCE_ASSIGNMENT_NOT_FOUND");
+  }
+  if (
+    !workforceDimensionsMatch(scope, {
+      locationId: assignment.locationId,
+      brandId: assignment.brandId,
+      departmentId: assignment.departmentId,
+    })
+  ) {
     throw new Error("WORKFORCE_ASSIGNMENT_NOT_FOUND");
   }
   return assignment;
@@ -1024,7 +1167,7 @@ export async function createEmployee(
     employmentTypes,
     "WORKFORCE_EMPLOYMENT_TYPE_INVALID"
   );
-  assertScopedLocation(session, input.homeLocationId);
+  await assertScopedLocation(session, input.homeLocationId);
   const hireDate = parseDateOnly(input.hireDate, "WORKFORCE_EMPLOYEE_HIRE_DATE_INVALID");
   const assignmentEffectiveFrom = parseDateOnly(
     input.assignmentEffectiveFrom?.trim() || input.hireDate,
@@ -1137,7 +1280,7 @@ export async function updateEmployee(
     employeeStatuses,
     "WORKFORCE_EMPLOYEE_STATUS_INVALID"
   );
-  assertScopedLocation(session, input.homeLocationId);
+  await assertScopedLocation(session, input.homeLocationId);
 
   return prisma.$transaction(async (tx) => {
     const employee = await getScopedEmployeeForManagementOrThrow(
@@ -1145,6 +1288,13 @@ export async function updateEmployee(
       session,
       input.employeeId
     );
+    const scope = await loadWorkforceScopeSnapshot(session);
+    if (
+      !employee.homeLocationId ||
+      !scope.locationIds.includes(employee.homeLocationId)
+    ) {
+      throw new Error("WORKFORCE_EMPLOYEE_NOT_FOUND");
+    }
     const updated = await tx.employee.update({
       where: { id: employee.id },
       data: {
@@ -1200,7 +1350,7 @@ export async function createEmployeeAssignment(
   if (!roleLabel) {
     throw new Error("WORKFORCE_ASSIGNMENT_ROLE_REQUIRED");
   }
-  assertScopedLocation(session, input.locationId);
+  await assertScopedLocation(session, input.locationId);
   const effectiveFrom = parseDateOnly(
     input.effectiveFrom,
     "WORKFORCE_ASSIGNMENT_EFFECTIVE_FROM_INVALID"
@@ -1208,6 +1358,7 @@ export async function createEmployeeAssignment(
   const isPrimary = Boolean(input.isPrimary);
 
   return prisma.$transaction(async (tx) => {
+    const scope = await loadWorkforceScopeSnapshot(session);
     const employee = await getScopedEmployeeForManagementOrThrow(
       tx,
       session,
@@ -1241,7 +1392,7 @@ export async function createEmployeeAssignment(
           companyId: session.context.companyId,
           employeeId: employee.id,
           isPrimary: true,
-          locationId: { in: allowedLocationIds(session) },
+          locationId: { in: scope.locationIds },
           status: { in: ["PLANNED", "ACTIVE"] }
         },
         include: {
@@ -1579,9 +1730,7 @@ export async function createDraftWorkforceSchedule(
   if (!workforceShiftTypes.includes(input.shiftType)) {
     throw new Error("WORKFORCE_SCHEDULE_SHIFT_TYPE_INVALID");
   }
-  if (!allowedLocationIds(session).includes(session.context.locationId)) {
-    throw new Error("WORKFORCE_SCHEDULE_LOCATION_SCOPE_REQUIRED");
-  }
+  await assertScopedLocation(session, session.context.locationId);
   const reason = requireWorkforceReason(
     input.reason,
     "WORKFORCE_SCHEDULE_REASON_REQUIRED"
@@ -1620,6 +1769,7 @@ export async function createDraftWorkforceSchedule(
   }
 
   return prisma.$transaction(async (tx) => {
+    const scope = await loadWorkforceScopeSnapshot(session);
     const existing = input.idempotencyKey
       ? await tx.workforceSchedule.findFirst({
           where: {
@@ -1653,9 +1803,7 @@ export async function createDraftWorkforceSchedule(
     });
     const assignedHeadcount = assigned ? 1 : 0;
     const coverageGapCount = Math.max(plannedHeadcount - assignedHeadcount, 0);
-    const currentLocation = session.authorizedLocations.find(
-      (location) => location.locationId === session.context.locationId
-    );
+    const currentLocation = scope.locationsById.get(session.context.locationId);
     const evidenceReference = input.evidenceReference?.trim() || null;
     const created = await tx.workforceSchedule.create({
       data: {
@@ -1665,7 +1813,7 @@ export async function createDraftWorkforceSchedule(
         locationId: session.context.locationId,
         publicReference: nextWorkforceScheduleReference({
           scheduleDate,
-          locationName: currentLocation?.locationName ?? session.context.locationName
+          locationName: currentLocation?.name ?? session.context.locationName
         }),
         scheduleDate,
         shiftType: input.shiftType,
@@ -2783,11 +2931,10 @@ export async function voidAttendanceImportBatch(
 export async function getWorkforceDashboard(
   session: SessionContext
 ): Promise<WorkforceDashboard> {
-  if (!canUseWorkforce(session.permissionCodes)) {
-    await requirePermission(session, permissions.workforceView);
-  }
+  const grantedPermissionCodes = await requireWorkforceAccess(session);
 
-  const allowedLocationIds = locationScope(session);
+  const scope = await loadWorkforceScopeSnapshot(session);
+  const allowedLocationIds = scope.locationIds;
   const baseWhere = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId
@@ -2857,7 +3004,7 @@ export async function getWorkforceDashboard(
         ...baseWhere,
         OR: [
           { locationId: { in: allowedLocationIds } },
-          { employee: { homeLocationId: { in: allowedLocationIds } } }
+          ...(scope.hasCompanyManage ? [{ locationId: null }] : []),
         ]
       },
       include: {
@@ -2872,7 +3019,7 @@ export async function getWorkforceDashboard(
         ...baseWhere,
         OR: [
           { locationId: { in: allowedLocationIds } },
-          { employee: { homeLocationId: { in: allowedLocationIds } } }
+          ...(scope.hasCompanyManage ? [{ locationId: null }] : []),
         ]
       },
       include: {
@@ -2951,27 +3098,68 @@ export async function getWorkforceDashboard(
     })
   ]);
 
-  const pendingLeaveCount = leaveRequests.filter((record) =>
+  const scopedEmployees = employees
+    .map((employee) => ({
+      ...employee,
+      assignments: employee.assignments.filter((assignment) =>
+        workforceDimensionsMatch(scope, assignment),
+      ),
+    }))
+    .filter(
+      (employee) =>
+        (employee.homeLocationId !== null &&
+          scope.locationIds.includes(employee.homeLocationId)) ||
+        employee.assignments.length > 0,
+    );
+  const scopedEmployeeIds = new Set(scopedEmployees.map((employee) => employee.id));
+  const scopedLeaveRequests = leaveRequests.filter((record) =>
+    record.locationId
+      ? scope.locationIds.includes(record.locationId)
+      : scope.hasCompanyManage,
+  );
+  const scopedOvertimeRecords = overtimeRecords.filter((record) =>
+    record.locationId
+      ? scope.locationIds.includes(record.locationId)
+      : scope.hasCompanyManage,
+  );
+  const scopedTrainingRecords = trainingRecords.filter((record) =>
+    scopedEmployeeIds.has(record.employeeId),
+  );
+  const scopedComplianceDocuments = complianceDocuments.filter((record) =>
+    scopedEmployeeIds.has(record.employeeId),
+  );
+  const scopedAssignments = assignments.filter((assignment) =>
+    workforceDimensionsMatch(scope, assignment),
+  );
+  const scopedSchedules = schedules.filter((schedule) =>
+    workforceDimensionsMatch(scope, schedule),
+  );
+  const scopedAttendanceImports = attendanceImports.filter((batch) =>
+    workforceDimensionsMatch(scope, batch),
+  );
+  const pendingLeaveCount = scopedLeaveRequests.filter((record) =>
     pendingLeaveStatuses.includes(record.status as (typeof pendingLeaveStatuses)[number])
   ).length;
-  const pendingOvertimeCount = overtimeRecords.filter((record) =>
+  const pendingOvertimeCount = scopedOvertimeRecords.filter((record) =>
     pendingOvertimeStatuses.includes(
       record.status as (typeof pendingOvertimeStatuses)[number]
     )
   ).length;
   const readinessIssueCount =
-    trainingRecords.filter((record) => record.status === "EXPIRED").length +
-    complianceDocuments.filter((record) => record.status === "EXPIRED").length;
-  const coverageGapCount = schedules.reduce(
+    scopedTrainingRecords.filter((record) => record.status === "EXPIRED").length +
+    scopedComplianceDocuments.filter((record) => record.status === "EXPIRED").length;
+  const coverageGapCount = scopedSchedules.reduce(
     (total, schedule) => total + schedule.coverageGapCount,
     0
   );
-  const attendanceExceptionCount = attendanceImports.reduce(
+  const attendanceExceptionCount = scopedAttendanceImports.reduce(
     (total, batch) => total + batch.exceptionCount + batch.duplicateCount,
     0
   );
-  const showConfidentialNames = canViewConfidentialWorkforce(session);
-  const scheduleRows: WorkforceScheduleRow[] = schedules.map((schedule) => ({
+  const showConfidentialNames = canViewConfidentialWorkforce(
+    grantedPermissionCodes,
+  );
+  const scheduleRows: WorkforceScheduleRow[] = scopedSchedules.map((schedule) => ({
     id: schedule.id,
     publicReference: schedule.publicReference,
     locationName: schedule.location.name,
@@ -2987,7 +3175,7 @@ export async function getWorkforceDashboard(
       .filter((line) => line.status === "GAP")
       .map((line) => `${line.stationCode} / ${line.roleLabel}`)
   }));
-  const attendanceImportRows: AttendanceImportBatchRow[] = attendanceImports.map(
+  const attendanceImportRows: AttendanceImportBatchRow[] = scopedAttendanceImports.map(
     (batch) => ({
       id: batch.id,
       publicReference: batch.publicReference,
@@ -3008,7 +3196,7 @@ export async function getWorkforceDashboard(
     attendanceImports: attendanceImportRows
   });
   const readinessRows = [
-    ...trainingRecords.map((record) => ({
+    ...scopedTrainingRecords.map((record) => ({
       id: record.id,
       employeeName: showConfidentialNames
         ? displayEmployeeName(record.employee)
@@ -3019,7 +3207,7 @@ export async function getWorkforceDashboard(
       validUntil: toDateString(record.validUntil),
       requiredForScope: record.requiredForScope
     })),
-    ...complianceDocuments.map((record) => ({
+    ...scopedComplianceDocuments.map((record) => ({
       id: record.id,
       employeeName: showConfidentialNames
         ? displayEmployeeName(record.employee)
@@ -3042,7 +3230,7 @@ export async function getWorkforceDashboard(
         id: "active-employees",
         label: "Active employees",
         displayValue: String(
-          employees.filter((employee) => employee.status === "ACTIVE").length
+          scopedEmployees.filter((employee) => employee.status === "ACTIVE").length
         ),
         detail: "Scoped employees with active operational records.",
         tone: "success"
@@ -3051,7 +3239,7 @@ export async function getWorkforceDashboard(
         id: "active-assignments",
         label: "Active assignments",
         displayValue: String(
-          assignments.filter((assignment) => assignment.status === "ACTIVE").length
+          scopedAssignments.filter((assignment) => assignment.status === "ACTIVE").length
         ),
         detail: "Effective branch or department coverage within your locations.",
         tone: "info"
@@ -3085,7 +3273,7 @@ export async function getWorkforceDashboard(
         tone: attendanceExceptionCount > 0 ? "warning" : "success"
       }
     ],
-    employees: employees.map((employee) => ({
+    employees: scopedEmployees.map((employee) => ({
       id: employee.id,
       employeeCode: employee.employeeCode,
       displayName: showConfidentialNames
@@ -3102,7 +3290,7 @@ export async function getWorkforceDashboard(
       employmentType: employee.employmentType,
       activeAssignmentCount: employee.assignments.length
     })),
-    assignments: assignments.map((assignment) => ({
+    assignments: scopedAssignments.map((assignment) => ({
       id: assignment.id,
       employeeId: assignment.employeeId,
       employeeName: showConfidentialNames
@@ -3117,7 +3305,7 @@ export async function getWorkforceDashboard(
       effectiveFrom: assignment.effectiveFrom.toISOString().slice(0, 10),
       effectiveTo: toDateString(assignment.effectiveTo)
     })),
-    leaveRequests: leaveRequests.map((request) => ({
+    leaveRequests: scopedLeaveRequests.map((request) => ({
       id: request.id,
       employeeName: showConfidentialNames
         ? displayEmployeeName(request.employee)
@@ -3130,7 +3318,7 @@ export async function getWorkforceDashboard(
       endDate: request.endDate.toISOString().slice(0, 10),
       reason: request.reason
     })),
-    overtimeRecords: overtimeRecords.map((record) => ({
+    overtimeRecords: scopedOvertimeRecords.map((record) => ({
       id: record.id,
       employeeName: showConfidentialNames
         ? displayEmployeeName(record.employee)
@@ -3149,12 +3337,12 @@ export async function getWorkforceDashboard(
     readiness: readinessRows,
     productionReadinessRows,
     draftOptions: {
-      locations: session.authorizedLocations.map((location) => ({
-        id: location.locationId,
-        label: location.locationName,
-        detail: `${location.brandName} / ${location.accessLevel.toLowerCase()}`
+      locations: [...scope.locationsById.values()].map((location) => ({
+        id: location.id,
+        label: location.name,
+        detail: location.brandId ? "Assigned brand location" : "Company location"
       })),
-      employees: employees
+      employees: scopedEmployees
         .filter((employee) => employee.status === "ACTIVE")
         .map((employee) => {
           const assignment = employee.assignments[0];

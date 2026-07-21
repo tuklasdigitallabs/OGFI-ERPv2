@@ -1,5 +1,5 @@
 import { prisma, type TransactionClient } from "@ogfi/database";
-import { permissions } from "./authorization";
+import { getGrantedPermissionCodes, permissions } from "./authorization";
 import type { SessionContext } from "./context";
 import { recordWorkflowNotifications } from "./notifications";
 import {
@@ -366,8 +366,9 @@ export async function runProjectTaskDeadlineReminderScan(
   input: { asOf?: Date } = {}
 ) {
   const scopes = await getActiveProjectScopes(session);
+  const permissionCodes = await getGrantedPermissionCodes(session);
   const canScan =
-    session.permissionCodes.includes(permissions.projectManage) &&
+    permissionCodes.includes(permissions.projectManage) &&
     hasCompanyManageScope(scopes, session.context.companyId);
   if (!canScan) {
     throw new Error("PERMISSION_DENIED");

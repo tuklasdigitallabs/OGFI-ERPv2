@@ -1,180 +1,181 @@
-import { createHash } from "node:crypto";
-import { prisma } from "@ogfi/database";
-import type { TransactionClient } from "@ogfi/database";
+import { createHash } from "node:crypto"
+import { prisma } from "@ogfi/database"
+import type { TransactionClient } from "@ogfi/database"
 import {
   canUseFinance,
+  getGrantedPermissionCodes,
   permissions,
   requirePermission
-} from "./authorization";
-import type { SessionContext } from "./context";
+} from "./authorization"
+import type { SessionContext } from "./context"
 import {
   recordWorkflowNotifications,
   resolveScopedNotificationRecipients
-} from "./notifications";
+} from "./notifications"
 import {
   resolveEvidenceReadiness,
   type EvidenceCaptureMode,
   type EvidenceProductionReadiness
-} from "./attachments";
+} from "./attachments"
 import {
   getExpenseRequestHandoffPolicy,
   type ExpenseRequestHandoffPolicy
-} from "./policySettings";
+} from "./policySettings"
 
-type BadgeTone = "neutral" | "info" | "success" | "warning" | "destructive";
+type BadgeTone = "neutral" | "info" | "success" | "warning" | "destructive"
 
 type DecimalLike = {
-  toNumber?: () => number;
-  toString: () => string;
-};
+  toNumber?: () => number
+  toString: () => string
+}
 
 export type ExpenseRequestMetric = {
-  id: string;
-  label: string;
-  displayValue: string;
-  detail: string;
-  tone: BadgeTone;
-};
+  id: string
+  label: string
+  displayValue: string
+  detail: string
+  tone: BadgeTone
+}
 
 export type ExpenseRequestRow = {
-  id: string;
-  publicReference: string;
-  title: string;
-  status: string;
-  urgency: string;
-  budgetStatus: string;
-  requesterName: string;
-  locationName: string;
-  supplierName: string;
-  categoryCode: string;
-  requestDate: string;
-  requiredByDate: string | null;
-  totalRequestedAmount: number;
-  settledAmount: number;
-  lineCount: number;
-  evidenceReference: string | null;
-  sourceLinkCount: number;
-};
+  id: string
+  publicReference: string
+  title: string
+  status: string
+  urgency: string
+  budgetStatus: string
+  requesterName: string
+  locationName: string
+  supplierName: string
+  categoryCode: string
+  requestDate: string
+  requiredByDate: string | null
+  totalRequestedAmount: number
+  settledAmount: number
+  lineCount: number
+  evidenceReference: string | null
+  sourceLinkCount: number
+}
 
 export type ExpenseRequestReportRow = {
-  id: string;
-  publicReference: string;
-  title: string;
-  status: string;
-  budgetStatus: string;
-  dueState: "NOT_DUE" | "DUE_SOON" | "OVERDUE" | "NO_DUE_DATE" | "CLOSED";
-  locationName: string;
-  supplierName: string;
-  categoryCode: string;
-  totalRequestedAmount: number;
-  settledAmount: number;
-  outstandingAmount: number;
-  evidenceState: "COMPLETE" | "MISSING";
-  evidenceCaptureMode: EvidenceCaptureMode;
-  evidenceProductionReadiness: EvidenceProductionReadiness;
-  evidenceBlockerId: string | null;
-  sourceLinkCount: number;
-  exportSafeSummary: string;
-};
+  id: string
+  publicReference: string
+  title: string
+  status: string
+  budgetStatus: string
+  dueState: "NOT_DUE" | "DUE_SOON" | "OVERDUE" | "NO_DUE_DATE" | "CLOSED"
+  locationName: string
+  supplierName: string
+  categoryCode: string
+  totalRequestedAmount: number
+  settledAmount: number
+  outstandingAmount: number
+  evidenceState: "COMPLETE" | "MISSING"
+  evidenceCaptureMode: EvidenceCaptureMode
+  evidenceProductionReadiness: EvidenceProductionReadiness
+  evidenceBlockerId: string | null
+  sourceLinkCount: number
+  exportSafeSummary: string
+}
 
 export type ExpenseRequestApHandoffRow = {
-  id: string;
-  expenseRequestId: string;
-  expenseReference: string;
-  expenseTitle: string;
-  apInvoiceId: string;
-  apInvoiceReference: string;
-  supplierInvoiceNumber: string;
-  status: string;
-  amountPhp: number;
-  remainingAmountPhp: number;
-  locationName: string;
-  supplierName: string;
-  createdByName: string;
-  createdAt: string;
-  boundary: string;
-};
+  id: string
+  expenseRequestId: string
+  expenseReference: string
+  expenseTitle: string
+  apInvoiceId: string
+  apInvoiceReference: string
+  supplierInvoiceNumber: string
+  status: string
+  amountPhp: number
+  remainingAmountPhp: number
+  locationName: string
+  supplierName: string
+  createdByName: string
+  createdAt: string
+  boundary: string
+}
 
 export type ExpenseRequestDraftOption = {
-  id: string;
-  label: string;
-  detail: string;
-};
+  id: string
+  label: string
+  detail: string
+}
 
 export type ExpenseRequestDashboard = {
-  generatedAt: string;
+  generatedAt: string
   handoffPolicy: {
-    key: string;
-    policy: ExpenseRequestHandoffPolicy;
-    isOverridden: boolean;
-    sourceDecisionId: string;
-  };
+    key: string
+    policy: ExpenseRequestHandoffPolicy
+    isOverridden: boolean
+    sourceDecisionId: string
+  }
   permissions: {
-    canCreate: boolean;
-    canSubmit: boolean;
-    canApprove: boolean;
-    canComplete: boolean;
-  };
+    canCreate: boolean
+    canSubmit: boolean
+    canApprove: boolean
+    canComplete: boolean
+  }
   draftOptions: {
-    locations: ExpenseRequestDraftOption[];
-    suppliers: ExpenseRequestDraftOption[];
-    budgetLines: ExpenseRequestDraftOption[];
-    categories: ExpenseRequestDraftOption[];
-  };
-  metrics: ExpenseRequestMetric[];
-  requests: ExpenseRequestRow[];
-  reportRows: ExpenseRequestReportRow[];
-  apHandoffRows: ExpenseRequestApHandoffRow[];
+    locations: ExpenseRequestDraftOption[]
+    suppliers: ExpenseRequestDraftOption[]
+    budgetLines: ExpenseRequestDraftOption[]
+    categories: ExpenseRequestDraftOption[]
+  }
+  metrics: ExpenseRequestMetric[]
+  requests: ExpenseRequestRow[]
+  reportRows: ExpenseRequestReportRow[]
+  apHandoffRows: ExpenseRequestApHandoffRow[]
   guardrails: Array<{
-    label: string;
-    detail: string;
-    tone: BadgeTone;
-  }>;
-};
+    label: string
+    detail: string
+    tone: BadgeTone
+  }>
+}
 
 export type ExpenseRequestActionInput = {
-  expenseRequestId: string;
-  reason?: string;
-  evidenceReference?: string;
-  idempotencyKey?: string;
-};
+  expenseRequestId: string
+  reason?: string
+  evidenceReference?: string
+  idempotencyKey?: string
+}
 
 export type ExpenseRequestApHandoffInput = ExpenseRequestActionInput & {
-  supplierInvoiceNumber?: string;
-  invoiceDate?: Date;
-  dueDate?: Date | null;
-  paymentTermsDays?: number | null;
-};
+  supplierInvoiceNumber?: string
+  invoiceDate?: Date
+  dueDate?: Date | null
+  paymentTermsDays?: number | null
+}
 
 export type CreateDraftExpenseRequestLineInput = {
-  lineDescription: string;
-  lineDate?: Date | undefined;
-  requestedAmountPhp: number;
-  taxAmountPhp?: number | undefined;
-  discountAmountPhp?: number | undefined;
-};
+  lineDescription: string
+  lineDate?: Date | undefined
+  requestedAmountPhp: number
+  taxAmountPhp?: number | undefined
+  discountAmountPhp?: number | undefined
+}
 
 export type CreateDraftExpenseRequestInput = {
-  title: string;
-  requestReason: string;
-  urgency: "NORMAL" | "URGENT" | "EMERGENCY";
-  requestDate: Date;
-  requiredByDate?: Date | null;
-  locationId: string;
-  supplierId?: string | null;
-  categoryCode: string;
-  expenseType?: string | undefined;
-  branchImpactFlag?: boolean;
-  evidenceReference?: string | undefined;
-  lineDescription: string;
-  lineDate: Date;
-  requestedAmountPhp: number;
-  taxAmountPhp?: number | undefined;
-  discountAmountPhp?: number | undefined;
-  lines?: CreateDraftExpenseRequestLineInput[] | undefined;
-  budgetLineId?: string | null;
-  idempotencyKey?: string | undefined;
-};
+  title: string
+  requestReason: string
+  urgency: "NORMAL" | "URGENT" | "EMERGENCY"
+  requestDate: Date
+  requiredByDate?: Date | null
+  locationId: string
+  supplierId?: string | null
+  categoryCode: string
+  expenseType?: string | undefined
+  branchImpactFlag?: boolean
+  evidenceReference?: string | undefined
+  lineDescription: string
+  lineDate: Date
+  requestedAmountPhp: number
+  taxAmountPhp?: number | undefined
+  discountAmountPhp?: number | undefined
+  lines?: CreateDraftExpenseRequestLineInput[] | undefined
+  budgetLineId?: string | null
+  idempotencyKey?: string | undefined
+}
 
 type ExpenseRequestTransition =
   | "submit"
@@ -183,19 +184,19 @@ type ExpenseRequestTransition =
   | "reject"
   | "cancel"
   | "complete"
-  | "mark_handoff_ready";
+  | "mark_handoff_ready"
 
 function decimalToNumber(value: DecimalLike | number | null | undefined) {
   if (value == null) {
-    return 0;
+    return 0
   }
   if (typeof value === "number") {
-    return value;
+    return value
   }
   if (typeof value.toNumber === "function") {
-    return value.toNumber();
+    return value.toNumber()
   }
-  return Number(value.toString());
+  return Number(value.toString())
 }
 
 function money(value: number) {
@@ -203,53 +204,53 @@ function money(value: number) {
     style: "currency",
     currency: "PHP",
     maximumFractionDigits: 0
-  }).format(value);
+  }).format(value)
 }
 
 function number(value: number) {
   return new Intl.NumberFormat("en-PH", {
     maximumFractionDigits: 0
-  }).format(value);
+  }).format(value)
 }
 
 function roundMoney(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
 function cleanText(value: string | null | undefined) {
-  return value?.trim() ?? "";
+  return value?.trim() ?? ""
 }
 
 function jsonRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
-    : {};
+    : {}
 }
 
 function assertDate(value: Date, errorCode: string) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 function assertNonNegativeMoney(value: number, errorCode: string) {
   if (!Number.isFinite(value) || value < 0) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 function assertPositiveMoney(value: number, errorCode: string) {
   if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 function nextExpenseReference(input: {
-  year: number;
-  idempotencyKey?: string | undefined;
-  title: string;
-  locationId: string;
-  categoryCode: string;
+  year: number
+  idempotencyKey?: string | undefined
+  title: string
+  locationId: string
+  categoryCode: string
 }) {
   const hash = createHash("sha256")
     .update(
@@ -262,8 +263,8 @@ function nextExpenseReference(input: {
     )
     .digest("hex")
     .slice(0, 8)
-    .toUpperCase();
-  return `EXP-${input.year}-${hash}`;
+    .toUpperCase()
+  return `EXP-${input.year}-${hash}`
 }
 
 const expenseCategoryOptions = [
@@ -287,67 +288,67 @@ const expenseCategoryOptions = [
     label: "Store operations",
     detail: "Other branch operating expenses"
   }
-] satisfies ExpenseRequestDraftOption[];
+] satisfies ExpenseRequestDraftOption[]
 
 function supplierName(
   supplier: { tradingName: string | null; legalName: string } | null
 ) {
-  return supplier?.tradingName ?? supplier?.legalName ?? "No supplier yet";
+  return supplier?.tradingName ?? supplier?.legalName ?? "No supplier yet"
 }
 
 function authorizedLocationIds(session: SessionContext) {
-  return session.authorizedLocations.map((location) => location.locationId);
+  return session.authorizedLocations.map((location) => location.locationId)
 }
 
 function assertReason(value: string | undefined, errorCode: string) {
   if (!value?.trim()) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 function assertEvidence(value: string | undefined | null, errorCode: string) {
   if (!value?.trim()) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 async function nextExpenseApInvoiceReference(companyId: string) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await prisma.apInvoice.count({
     where: {
       companyId,
       publicReference: { startsWith: `AP-INV-${year}-` }
     }
-  });
-  return `AP-INV-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `AP-INV-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 function resolveExpenseDueState(
   request: Pick<ExpenseRequestRow, "status" | "requiredByDate">
 ): ExpenseRequestReportRow["dueState"] {
   if (["COMPLETED", "CANCELLED", "REJECTED"].includes(request.status)) {
-    return "CLOSED";
+    return "CLOSED"
   }
   if (!request.requiredByDate) {
-    return "NO_DUE_DATE";
+    return "NO_DUE_DATE"
   }
-  const today = new Date();
-  const requiredBy = new Date(request.requiredByDate);
+  const today = new Date()
+  const requiredBy = new Date(request.requiredByDate)
   const daysUntilDue = Math.ceil(
     (requiredBy.getTime() - today.getTime()) / 86_400_000
-  );
+  )
   if (daysUntilDue < 0) {
-    return "OVERDUE";
+    return "OVERDUE"
   }
   if (daysUntilDue <= 3) {
-    return "DUE_SOON";
+    return "DUE_SOON"
   }
-  return "NOT_DUE";
+  return "NOT_DUE"
 }
 
 function assertExpenseTransition(input: {
-  transition: ExpenseRequestTransition;
-  status: string;
+  transition: ExpenseRequestTransition
+  status: string
 }) {
   const allowed: Record<ExpenseRequestTransition, string[]> = {
     submit: ["DRAFT", "RETURNED_FOR_REVISION"],
@@ -364,10 +365,38 @@ function assertExpenseTransition(input: {
     ],
     complete: ["APPROVED", "IN_PROGRESS"],
     mark_handoff_ready: ["APPROVED", "IN_PROGRESS"]
-  };
-  if (!allowed[input.transition].includes(input.status)) {
-    throw new Error("EXPENSE_REQUEST_INVALID_STATUS_TRANSITION");
   }
+  if (!allowed[input.transition].includes(input.status)) {
+    throw new Error("EXPENSE_REQUEST_INVALID_STATUS_TRANSITION")
+  }
+}
+
+async function lockGrantedFinancePermissions(
+  tx: TransactionClient,
+  session: SessionContext,
+  permissionCodes: string[]
+) {
+  const grants = await tx.$queryRaw<Array<{ code: string }>>`
+    SELECT permission.code
+    FROM "UserRoleAssignment" AS ura
+    INNER JOIN "Role" AS role ON role.id = ura."roleId"
+    INNER JOIN "RolePermission" AS rp ON rp."roleId" = role.id
+    INNER JOIN "Permission" AS permission ON permission.id = rp."permissionId"
+    WHERE ura."userId" = ${session.user.id}::uuid
+      AND ura.status::text = 'ACTIVE'
+      AND ura."startsAt" <= NOW()
+      AND (ura."endsAt" IS NULL OR ura."endsAt" > NOW())
+      AND role.status::text = 'ACTIVE'
+      AND (role."tenantId" = ${session.context.tenantId}::uuid OR role."tenantId" IS NULL)
+      AND (permission."tenantId" = ${session.context.tenantId}::uuid OR permission."tenantId" IS NULL)
+    FOR UPDATE OF ura, role, rp, permission
+  `
+  const requestedCodes = new Set(permissionCodes)
+  return new Set(
+    grants
+      .map((grant) => grant.code)
+      .filter((permissionCode) => requestedCodes.has(permissionCode))
+  )
 }
 
 async function findExpenseRequestApprovalRule(
@@ -387,7 +416,7 @@ async function findExpenseRequestApprovalRule(
       }
     },
     orderBy: { priority: "asc" }
-  });
+  })
 }
 
 async function getScopedExpenseRequestOrThrow(
@@ -406,24 +435,24 @@ async function getScopedExpenseRequestOrThrow(
       lines: true,
       sourceLinks: true
     }
-  });
+  })
   if (!request) {
-    throw new Error("EXPENSE_REQUEST_NOT_FOUND");
+    throw new Error("EXPENSE_REQUEST_NOT_FOUND")
   }
-  return request;
+  return request
 }
 
 async function writeExpenseAudit(
   tx: TransactionClient,
   input: {
-    session: SessionContext;
-    requestId: string;
-    eventType: string;
-    beforeStatus: string;
-    afterStatus: string;
-    reason?: string | null;
-    evidenceReference?: string | null;
-    metadata?: Record<string, unknown>;
+    session: SessionContext
+    requestId: string
+    eventType: string
+    beforeStatus: string
+    afterStatus: string
+    reason?: string | null
+    evidenceReference?: string | null
+    metadata?: Record<string, unknown>
   }
 ) {
   return tx.auditEvent.create({
@@ -450,26 +479,26 @@ async function writeExpenseAudit(
         ...(input.metadata ?? {})
       }
     }
-  });
+  })
 }
 
 async function upsertExpenseRequestBudgetCommitments(
   tx: TransactionClient,
   input: {
-    session: SessionContext;
-    request: Awaited<ReturnType<typeof getScopedExpenseRequestOrThrow>>;
-    reason?: string | null;
-    evidenceReference?: string | null;
+    session: SessionContext
+    request: Awaited<ReturnType<typeof getScopedExpenseRequestOrThrow>>
+    reason?: string | null
+    evidenceReference?: string | null
   }
 ) {
   const budgetedLines = input.request.lines.filter(
     (line) => line.budgetLineId && decimalToNumber(line.lineTotalPhp) > 0
-  );
+  )
   if (budgetedLines.length === 0) {
-    return [];
+    return []
   }
 
-  const results = [];
+  const results = []
   for (const line of budgetedLines) {
     const budgetLine = await tx.budgetLine.findFirst({
       where: {
@@ -484,18 +513,18 @@ async function upsertExpenseRequestBudgetCommitments(
         budgetId: true,
         locationId: true
       }
-    });
+    })
     if (!budgetLine) {
-      throw new Error("EXPENSE_REQUEST_BUDGET_LINE_NOT_ACTIVE");
+      throw new Error("EXPENSE_REQUEST_BUDGET_LINE_NOT_ACTIVE")
     }
     if (
       budgetLine.locationId &&
       !authorizedLocationIds(input.session).includes(budgetLine.locationId)
     ) {
-      throw new Error("SCOPE_DENIED");
+      throw new Error("SCOPE_DENIED")
     }
 
-    const sourceEventKey = `expense-request:${input.request.id}:approved:line:${line.lineNumber}`;
+    const sourceEventKey = `expense-request:${input.request.id}:approved:line:${line.lineNumber}`
     const existing = await tx.budgetCommitment.findUnique({
       where: {
         companyId_sourceType_sourceId_sourceEventKey: {
@@ -506,8 +535,8 @@ async function upsertExpenseRequestBudgetCommitments(
         }
       },
       select: { id: true }
-    });
-    const committedAmountPhp = decimalToNumber(line.lineTotalPhp);
+    })
+    const committedAmountPhp = decimalToNumber(line.lineTotalPhp)
     const sourceSnapshot = {
       summary: `${input.request.publicReference} / ${line.description}`,
       expenseRequestId: input.request.id,
@@ -523,7 +552,7 @@ async function upsertExpenseRequestBudgetCommitments(
       noPaymentRelease: true,
       noApSettlement: true,
       noJournalPosting: true
-    };
+    }
 
     const commitment = await tx.budgetCommitment.upsert({
       where: {
@@ -571,7 +600,7 @@ async function upsertExpenseRequestBudgetCommitments(
         id: true,
         status: true
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -602,32 +631,32 @@ async function upsertExpenseRequestBudgetCommitments(
           noJournalPosting: true
         }
       }
-    });
+    })
 
-    results.push(commitment);
+    results.push(commitment)
   }
-  return results;
+  return results
 }
 
 export function buildExpenseRequestRows(
   requests: Array<{
-    id: string;
-    publicReference: string;
-    title: string;
-    status: string;
-    urgency: string;
-    budgetStatus: string;
-    requestDate: Date;
-    requiredByDate: Date | null;
-    totalRequestedAmount: DecimalLike | number;
-    settledAmount: DecimalLike | number;
-    categoryCode: string;
-    evidenceReference: string | null;
-    requestedBy: { displayName: string };
-    location: { name: string };
-    supplier: { tradingName: string | null; legalName: string } | null;
-    lines: Array<{ id: string }>;
-    sourceLinks: Array<{ id: string }>;
+    id: string
+    publicReference: string
+    title: string
+    status: string
+    urgency: string
+    budgetStatus: string
+    requestDate: Date
+    requiredByDate: Date | null
+    totalRequestedAmount: DecimalLike | number
+    settledAmount: DecimalLike | number
+    categoryCode: string
+    evidenceReference: string | null
+    requestedBy: { displayName: string }
+    location: { name: string }
+    supplier: { tradingName: string | null; legalName: string } | null
+    lines: Array<{ id: string }>
+    sourceLinks: Array<{ id: string }>
   }>
 ) {
   return requests.map((request) => ({
@@ -648,7 +677,7 @@ export function buildExpenseRequestRows(
     lineCount: request.lines.length,
     evidenceReference: request.evidenceReference,
     sourceLinkCount: request.sourceLinks.length
-  }));
+  }))
 }
 
 export function buildExpenseRequestReportRows(
@@ -658,10 +687,10 @@ export function buildExpenseRequestReportRows(
     const outstandingAmount = Math.max(
       request.totalRequestedAmount - request.settledAmount,
       0
-    );
+    )
     const evidenceReadiness = resolveEvidenceReadiness({
       evidenceReference: request.evidenceReference
-    });
+    })
     return {
       id: request.id,
       publicReference: request.publicReference,
@@ -677,7 +706,8 @@ export function buildExpenseRequestReportRows(
       outstandingAmount,
       evidenceState: evidenceReadiness.evidenceState,
       evidenceCaptureMode: evidenceReadiness.evidenceCaptureMode,
-      evidenceProductionReadiness: evidenceReadiness.evidenceProductionReadiness,
+      evidenceProductionReadiness:
+        evidenceReadiness.evidenceProductionReadiness,
       evidenceBlockerId: evidenceReadiness.evidenceBlockerId,
       sourceLinkCount: request.sourceLinkCount,
       exportSafeSummary: [
@@ -690,30 +720,30 @@ export function buildExpenseRequestReportRows(
         evidenceReadiness.evidenceCaptureMode,
         `${request.sourceLinkCount} source link(s)`
       ].join(" / ")
-    };
-  });
+    }
+  })
 }
 
 export function buildExpenseRequestApHandoffRows(
   links: Array<{
-    id: string;
-    expenseRequestId: string;
-    sourceDocumentId: string;
-    sourceAmountSnapshotPhp: DecimalLike | number;
-    remainingAmountSnapshotPhp: DecimalLike | number;
-    sourceDocumentSnapshot: unknown;
-    createdAt: Date;
-    createdBy: { displayName: string };
+    id: string
+    expenseRequestId: string
+    sourceDocumentId: string
+    sourceAmountSnapshotPhp: DecimalLike | number
+    remainingAmountSnapshotPhp: DecimalLike | number
+    sourceDocumentSnapshot: unknown
+    createdAt: Date
+    createdBy: { displayName: string }
     expenseRequest: {
-      publicReference: string;
-      title: string;
-      location: { name: string };
-      supplier: { tradingName: string | null; legalName: string } | null;
-    };
+      publicReference: string
+      title: string
+      location: { name: string }
+      supplier: { tradingName: string | null; legalName: string } | null
+    }
   }>
 ): ExpenseRequestApHandoffRow[] {
   return links.map((link) => {
-    const snapshot = jsonRecord(link.sourceDocumentSnapshot);
+    const snapshot = jsonRecord(link.sourceDocumentSnapshot)
     return {
       id: link.id,
       expenseRequestId: link.expenseRequestId,
@@ -737,8 +767,8 @@ export function buildExpenseRequestApHandoffRows(
         snapshot.boundary ??
           "expense_to_ap_invoice_draft_only_no_payment_release_no_journal"
       )
-    };
-  });
+    }
+  })
 }
 
 export async function createDraftExpenseRequest(
@@ -746,17 +776,17 @@ export async function createDraftExpenseRequest(
   input: CreateDraftExpenseRequestInput
 ) {
   if (!canUseFinance(session.permissionCodes)) {
-    throw new Error("PERMISSION_DENIED");
+    throw new Error("PERMISSION_DENIED")
   }
-  await requirePermission(session, permissions.financeExpenseRequestCreate);
+  await requirePermission(session, permissions.financeExpenseRequestCreate)
 
-  const title = cleanText(input.title);
-  const requestReason = cleanText(input.requestReason);
-  const locationId = cleanText(input.locationId);
-  const supplierId = cleanText(input.supplierId) || null;
-  const categoryCode = cleanText(input.categoryCode).toUpperCase();
-  const expenseType = cleanText(input.expenseType) || "OPERATING";
-  const evidenceReference = cleanText(input.evidenceReference) || null;
+  const title = cleanText(input.title)
+  const requestReason = cleanText(input.requestReason)
+  const locationId = cleanText(input.locationId)
+  const supplierId = cleanText(input.supplierId) || null
+  const categoryCode = cleanText(input.categoryCode).toUpperCase()
+  const expenseType = cleanText(input.expenseType) || "OPERATING"
+  const evidenceReference = cleanText(input.evidenceReference) || null
   const draftLines =
     input.lines && input.lines.length > 0
       ? input.lines
@@ -768,26 +798,32 @@ export async function createDraftExpenseRequest(
             taxAmountPhp: input.taxAmountPhp,
             discountAmountPhp: input.discountAmountPhp
           }
-        ];
+        ]
   if (draftLines.length > 25) {
-    throw new Error("EXPENSE_REQUEST_LINE_LIMIT_EXCEEDED");
+    throw new Error("EXPENSE_REQUEST_LINE_LIMIT_EXCEEDED")
   }
   const normalizedLines = draftLines.map((line, index) => {
-    const lineDescription = cleanText(line.lineDescription);
-    const requestedAmountPhp = roundMoney(Number(line.requestedAmountPhp));
-    const taxAmountPhp = roundMoney(Number(line.taxAmountPhp ?? 0));
-    const discountAmountPhp = roundMoney(Number(line.discountAmountPhp ?? 0));
+    const lineDescription = cleanText(line.lineDescription)
+    const requestedAmountPhp = roundMoney(Number(line.requestedAmountPhp))
+    const taxAmountPhp = roundMoney(Number(line.taxAmountPhp ?? 0))
+    const discountAmountPhp = roundMoney(Number(line.discountAmountPhp ?? 0))
     const lineTotalPhp = roundMoney(
       requestedAmountPhp + taxAmountPhp - discountAmountPhp
-    );
+    )
     if (!lineDescription) {
-      throw new Error("EXPENSE_REQUEST_LINE_DESCRIPTION_REQUIRED");
+      throw new Error("EXPENSE_REQUEST_LINE_DESCRIPTION_REQUIRED")
     }
-    assertDate(line.lineDate ?? input.requestDate, "EXPENSE_REQUEST_LINE_DATE_INVALID");
-    assertPositiveMoney(requestedAmountPhp, "EXPENSE_REQUEST_AMOUNT_REQUIRED");
-    assertNonNegativeMoney(taxAmountPhp, "EXPENSE_REQUEST_TAX_INVALID");
-    assertNonNegativeMoney(discountAmountPhp, "EXPENSE_REQUEST_DISCOUNT_INVALID");
-    assertPositiveMoney(lineTotalPhp, "EXPENSE_REQUEST_LINE_TOTAL_REQUIRED");
+    assertDate(
+      line.lineDate ?? input.requestDate,
+      "EXPENSE_REQUEST_LINE_DATE_INVALID"
+    )
+    assertPositiveMoney(requestedAmountPhp, "EXPENSE_REQUEST_AMOUNT_REQUIRED")
+    assertNonNegativeMoney(taxAmountPhp, "EXPENSE_REQUEST_TAX_INVALID")
+    assertNonNegativeMoney(
+      discountAmountPhp,
+      "EXPENSE_REQUEST_DISCOUNT_INVALID"
+    )
+    assertPositiveMoney(lineTotalPhp, "EXPENSE_REQUEST_LINE_TOTAL_REQUIRED")
     return {
       lineNumber: index + 1,
       lineDescription,
@@ -796,41 +832,44 @@ export async function createDraftExpenseRequest(
       taxAmountPhp,
       discountAmountPhp,
       lineTotalPhp
-    };
-  });
+    }
+  })
   const totalRequestedAmountPhp = roundMoney(
     normalizedLines.reduce((sum, line) => sum + line.lineTotalPhp, 0)
-  );
-  const budgetLineId = cleanText(input.budgetLineId) || null;
-  const idempotencyKey = cleanText(input.idempotencyKey) || null;
+  )
+  const budgetLineId = cleanText(input.budgetLineId) || null
+  const idempotencyKey = cleanText(input.idempotencyKey) || null
 
   if (!title) {
-    throw new Error("EXPENSE_REQUEST_TITLE_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_TITLE_REQUIRED")
   }
   if (!requestReason) {
-    throw new Error("EXPENSE_REQUEST_REASON_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_REASON_REQUIRED")
   }
   if (!locationId) {
-    throw new Error("EXPENSE_REQUEST_LOCATION_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_LOCATION_REQUIRED")
   }
   if (!categoryCode) {
-    throw new Error("EXPENSE_REQUEST_CATEGORY_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_CATEGORY_REQUIRED")
   }
   if (!["NORMAL", "URGENT", "EMERGENCY"].includes(input.urgency)) {
-    throw new Error("EXPENSE_REQUEST_URGENCY_INVALID");
+    throw new Error("EXPENSE_REQUEST_URGENCY_INVALID")
   }
-  assertDate(input.requestDate, "EXPENSE_REQUEST_DATE_INVALID");
+  assertDate(input.requestDate, "EXPENSE_REQUEST_DATE_INVALID")
   if (input.requiredByDate) {
-    assertDate(input.requiredByDate, "EXPENSE_REQUEST_REQUIRED_DATE_INVALID");
+    assertDate(input.requiredByDate, "EXPENSE_REQUEST_REQUIRED_DATE_INVALID")
     if (input.requiredByDate < input.requestDate) {
-      throw new Error("EXPENSE_REQUEST_REQUIRED_DATE_BEFORE_REQUEST");
+      throw new Error("EXPENSE_REQUEST_REQUIRED_DATE_BEFORE_REQUEST")
     }
   }
-  assertPositiveMoney(totalRequestedAmountPhp, "EXPENSE_REQUEST_LINE_TOTAL_REQUIRED");
+  assertPositiveMoney(
+    totalRequestedAmountPhp,
+    "EXPENSE_REQUEST_LINE_TOTAL_REQUIRED"
+  )
 
-  const allowedLocationIds = new Set(authorizedLocationIds(session));
+  const allowedLocationIds = new Set(authorizedLocationIds(session))
   if (!allowedLocationIds.has(locationId)) {
-    throw new Error("SCOPE_DENIED");
+    throw new Error("SCOPE_DENIED")
   }
 
   return prisma.$transaction(async (tx) => {
@@ -844,15 +883,18 @@ export async function createDraftExpenseRequest(
           }
         },
         include: { lines: true, sourceLinks: true }
-      });
+      })
       if (existing) {
         if (!allowedLocationIds.has(existing.locationId)) {
-          throw new Error("SCOPE_DENIED");
+          throw new Error("SCOPE_DENIED")
         }
-        if (existing.requestedByUserId === session.user.id && existing.status === "DRAFT") {
-          return existing;
+        if (
+          existing.requestedByUserId === session.user.id &&
+          existing.status === "DRAFT"
+        ) {
+          return existing
         }
-        throw new Error("EXPENSE_REQUEST_IDEMPOTENCY_CONFLICT");
+        throw new Error("EXPENSE_REQUEST_IDEMPOTENCY_CONFLICT")
       }
     }
 
@@ -874,7 +916,12 @@ export async function createDraftExpenseRequest(
               companyId: session.context.companyId,
               status: "ACTIVE"
             },
-            select: { id: true, supplierCode: true, legalName: true, tradingName: true }
+            select: {
+              id: true,
+              supplierCode: true,
+              legalName: true,
+              tradingName: true
+            }
           })
         : Promise.resolve(null),
       budgetLineId
@@ -900,21 +947,23 @@ export async function createDraftExpenseRequest(
             }
           })
         : Promise.resolve(null)
-    ]);
+    ])
 
     if (!location) {
-      throw new Error("EXPENSE_REQUEST_LOCATION_NOT_FOUND");
+      throw new Error("EXPENSE_REQUEST_LOCATION_NOT_FOUND")
     }
     if (supplierId && !supplier) {
-      throw new Error("EXPENSE_REQUEST_SUPPLIER_NOT_ACTIVE");
+      throw new Error("EXPENSE_REQUEST_SUPPLIER_NOT_ACTIVE")
     }
     if (budgetLineId && !budgetLine) {
-      throw new Error("EXPENSE_REQUEST_BUDGET_LINE_NOT_ACTIVE");
+      throw new Error("EXPENSE_REQUEST_BUDGET_LINE_NOT_ACTIVE")
     }
 
     const activeCommitments =
       budgetLine?.commitments
-        .filter((commitment) => ["PENDING", "APPROVED"].includes(commitment.status))
+        .filter((commitment) =>
+          ["PENDING", "APPROVED"].includes(commitment.status)
+        )
         .reduce(
           (sum, commitment) =>
             sum +
@@ -922,17 +971,17 @@ export async function createDraftExpenseRequest(
             decimalToNumber(commitment.consumedAmountPhp) -
             decimalToNumber(commitment.releasedAmountPhp),
           0
-        ) ?? 0;
+        ) ?? 0
     const budgetRemaining =
       budgetLine == null
         ? null
-        : decimalToNumber(budgetLine.revisedAmountPhp) - activeCommitments;
+        : decimalToNumber(budgetLine.revisedAmountPhp) - activeCommitments
     const budgetStatus =
       budgetLine == null
         ? "UNBUDGETED"
         : budgetRemaining != null && totalRequestedAmountPhp > budgetRemaining
           ? "OVER_BUDGET"
-          : "BUDGETED";
+          : "BUDGETED"
 
     const publicReference = nextExpenseReference({
       year: input.requestDate.getUTCFullYear(),
@@ -940,7 +989,7 @@ export async function createDraftExpenseRequest(
       title,
       locationId,
       categoryCode
-    });
+    })
 
     const existingReference = await tx.expenseRequest.findUnique({
       where: {
@@ -950,18 +999,18 @@ export async function createDraftExpenseRequest(
         }
       },
       include: { lines: true, sourceLinks: true }
-    });
+    })
     if (existingReference) {
       if (!allowedLocationIds.has(existingReference.locationId)) {
-        throw new Error("SCOPE_DENIED");
+        throw new Error("SCOPE_DENIED")
       }
       if (
         existingReference.requestedByUserId === session.user.id &&
         existingReference.status === "DRAFT"
       ) {
-        return existingReference;
+        return existingReference
       }
-      throw new Error("EXPENSE_REQUEST_REFERENCE_ALREADY_EXISTS");
+      throw new Error("EXPENSE_REQUEST_REFERENCE_ALREADY_EXISTS")
     }
 
     const request = await tx.expenseRequest.create({
@@ -982,7 +1031,7 @@ export async function createDraftExpenseRequest(
         categoryCode,
         expenseType,
         branchImpactFlag:
-          input.branchImpactFlag ?? (input.urgency === "EMERGENCY"),
+          input.branchImpactFlag ?? input.urgency === "EMERGENCY",
         supplierId: supplier?.id ?? null,
         brandId: location.brandId ?? null,
         locationId: location.id,
@@ -1026,7 +1075,7 @@ export async function createDraftExpenseRequest(
         }
       },
       include: { lines: true, sourceLinks: true }
-    });
+    })
 
     await writeExpenseAudit(tx, {
       session,
@@ -1050,41 +1099,44 @@ export async function createDraftExpenseRequest(
         budgetRemainingAmountPhp: budgetRemaining,
         idempotencyKey
       }
-    });
+    })
 
-    return request;
-  });
+    return request
+  })
 }
 
 export async function submitExpenseRequestForApproval(
   session: SessionContext,
   input: ExpenseRequestActionInput
 ) {
-  await requirePermission(session, permissions.financeExpenseRequestSubmit);
+  await requirePermission(session, permissions.financeExpenseRequestSubmit)
   return prisma.$transaction(async (tx) => {
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,
       input.expenseRequestId
-    );
+    )
     if (request.status === "AWAITING_APPROVAL") {
-      return request;
+      return request
     }
-    assertExpenseTransition({ transition: "submit", status: request.status });
+    assertExpenseTransition({ transition: "submit", status: request.status })
     assertEvidence(
       input.evidenceReference ?? request.evidenceReference,
       "EXPENSE_REQUEST_EVIDENCE_REQUIRED"
-    );
-    if (request.lines.length === 0 || decimalToNumber(request.totalRequestedAmount) <= 0) {
-      throw new Error("EXPENSE_REQUEST_LINES_REQUIRED");
+    )
+    if (
+      request.lines.length === 0 ||
+      decimalToNumber(request.totalRequestedAmount) <= 0
+    ) {
+      throw new Error("EXPENSE_REQUEST_LINES_REQUIRED")
     }
-    const approvalRule = await findExpenseRequestApprovalRule(tx, session);
+    const approvalRule = await findExpenseRequestApprovalRule(tx, session)
     if (!approvalRule || approvalRule.steps.length === 0) {
-      throw new Error("EXPENSE_REQUEST_APPROVAL_RULE_NOT_CONFIGURED");
+      throw new Error("EXPENSE_REQUEST_APPROVAL_RULE_NOT_CONFIGURED")
     }
-    const firstStep = approvalRule.steps[0];
+    const firstStep = approvalRule.steps[0]
     if (!firstStep) {
-      throw new Error("EXPENSE_REQUEST_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+      throw new Error("EXPENSE_REQUEST_APPROVAL_RULE_STEP_NOT_CONFIGURED")
     }
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
@@ -1094,9 +1146,9 @@ export async function submitExpenseRequestForApproval(
         documentId: request.id,
         status: "PENDING"
       }
-    });
+    })
     if (existingApproval) {
-      throw new Error("EXPENSE_REQUEST_ALREADY_SUBMITTED");
+      throw new Error("EXPENSE_REQUEST_ALREADY_SUBMITTED")
     }
 
     const approvalInstance = await tx.approvalInstance.create({
@@ -1117,7 +1169,7 @@ export async function submitExpenseRequestForApproval(
           }))
         }
       }
-    });
+    })
 
     const updated = await tx.expenseRequest.update({
       where: { id: request.id },
@@ -1126,10 +1178,11 @@ export async function submitExpenseRequestForApproval(
         approvalInstanceId: approvalInstance.id,
         submittedByUserId: session.user.id,
         submittedAt: new Date(),
-        evidenceReference: input.evidenceReference?.trim() ?? request.evidenceReference,
+        evidenceReference:
+          input.evidenceReference?.trim() ?? request.evidenceReference,
         version: { increment: 1 }
       }
-    });
+    })
     const auditEvent = await writeExpenseAudit(tx, {
       session,
       requestId: request.id,
@@ -1143,14 +1196,14 @@ export async function submitExpenseRequestForApproval(
         approvalRuleId: approvalRule.id,
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
+    })
     const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: request.locationId,
       assignedUserId: firstStep.userId,
       assignedRoleId: firstStep.roleId
-    });
+    })
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -1175,35 +1228,38 @@ export async function submitExpenseRequestForApproval(
         noPaymentRelease: true,
         noJournalPosting: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function approveExpenseRequest(
   session: SessionContext,
   input: ExpenseRequestActionInput
 ) {
-  await requirePermission(session, permissions.financeExpenseRequestApprove);
+  await requirePermission(session, permissions.financeExpenseRequestApprove)
   return prisma.$transaction(async (tx) => {
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,
       input.expenseRequestId
-    );
+    )
     if (request.status === "APPROVED") {
-      return request;
+      return request
     }
-    assertExpenseTransition({ transition: "approve", status: request.status });
+    assertExpenseTransition({ transition: "approve", status: request.status })
     if (request.requestedByUserId === session.user.id) {
-      throw new Error("EXPENSE_REQUEST_SELF_APPROVAL_BLOCKED");
+      throw new Error("EXPENSE_REQUEST_SELF_APPROVAL_BLOCKED")
     }
     if (request.budgetStatus === "OVER_BUDGET") {
-      assertReason(input.reason, "EXPENSE_REQUEST_BUDGET_OVERRIDE_REASON_REQUIRED");
+      assertReason(
+        input.reason,
+        "EXPENSE_REQUEST_BUDGET_OVERRIDE_REASON_REQUIRED"
+      )
       assertEvidence(
         input.evidenceReference ?? request.evidenceReference,
         "EXPENSE_REQUEST_BUDGET_OVERRIDE_EVIDENCE_REQUIRED"
-      );
+      )
     }
 
     const updated = await tx.expenseRequest.update({
@@ -1212,7 +1268,8 @@ export async function approveExpenseRequest(
         status: "APPROVED",
         approvedByUserId: session.user.id,
         approvedAt: new Date(),
-        evidenceReference: input.evidenceReference?.trim() ?? request.evidenceReference,
+        evidenceReference:
+          input.evidenceReference?.trim() ?? request.evidenceReference,
         budgetSnapshot: {
           budgetStatus: request.budgetStatus,
           overrideReason: input.reason?.trim() ?? null,
@@ -1222,13 +1279,13 @@ export async function approveExpenseRequest(
         },
         version: { increment: 1 }
       }
-    });
+    })
     const budgetCommitments = await upsertExpenseRequestBudgetCommitments(tx, {
       session,
       request,
       reason: input.reason ?? null,
       evidenceReference: updated.evidenceReference
-    });
+    })
     await writeExpenseAudit(tx, {
       session,
       requestId: request.id,
@@ -1244,27 +1301,27 @@ export async function approveExpenseRequest(
         budgetCommitmentBoundary: "budget_commitment_only_no_source_mutation",
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function returnExpenseRequestForRevision(
   session: SessionContext,
   input: ExpenseRequestActionInput
 ) {
-  await requirePermission(session, permissions.financeExpenseRequestApprove);
-  const reason = input.reason?.trim();
+  await requirePermission(session, permissions.financeExpenseRequestApprove)
+  const reason = input.reason?.trim()
   if (!reason) {
-    throw new Error("EXPENSE_REQUEST_RETURN_REASON_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_RETURN_REASON_REQUIRED")
   }
   return prisma.$transaction(async (tx) => {
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,
       input.expenseRequestId
-    );
-    assertExpenseTransition({ transition: "return", status: request.status });
+    )
+    assertExpenseTransition({ transition: "return", status: request.status })
     const updated = await tx.expenseRequest.update({
       where: { id: request.id },
       data: {
@@ -1274,7 +1331,7 @@ export async function returnExpenseRequestForRevision(
         returnReason: reason,
         version: { increment: 1 }
       }
-    });
+    })
     await writeExpenseAudit(tx, {
       session,
       requestId: request.id,
@@ -1283,27 +1340,27 @@ export async function returnExpenseRequestForRevision(
       afterStatus: updated.status,
       reason,
       evidenceReference: input.evidenceReference ?? request.evidenceReference
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function rejectExpenseRequest(
   session: SessionContext,
   input: ExpenseRequestActionInput
 ) {
-  await requirePermission(session, permissions.financeExpenseRequestApprove);
-  const reason = input.reason?.trim();
+  await requirePermission(session, permissions.financeExpenseRequestApprove)
+  const reason = input.reason?.trim()
   if (!reason) {
-    throw new Error("EXPENSE_REQUEST_REJECTION_REASON_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_REJECTION_REASON_REQUIRED")
   }
   return prisma.$transaction(async (tx) => {
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,
       input.expenseRequestId
-    );
-    assertExpenseTransition({ transition: "reject", status: request.status });
+    )
+    assertExpenseTransition({ transition: "reject", status: request.status })
     const updated = await tx.expenseRequest.update({
       where: { id: request.id },
       data: {
@@ -1313,7 +1370,7 @@ export async function rejectExpenseRequest(
         rejectionReason: reason,
         version: { increment: 1 }
       }
-    });
+    })
     await writeExpenseAudit(tx, {
       session,
       requestId: request.id,
@@ -1322,32 +1379,43 @@ export async function rejectExpenseRequest(
       afterStatus: updated.status,
       reason,
       evidenceReference: input.evidenceReference ?? request.evidenceReference
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function cancelExpenseRequest(
   session: SessionContext,
   input: ExpenseRequestActionInput
 ) {
-  await requirePermission(session, permissions.financeExpenseRequestCreate);
-  const reason = input.reason?.trim();
+  await requirePermission(session, permissions.financeExpenseRequestCreate)
+  const reason = input.reason?.trim()
   if (!reason) {
-    throw new Error("EXPENSE_REQUEST_CANCELLATION_REASON_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_CANCELLATION_REASON_REQUIRED")
   }
   return prisma.$transaction(async (tx) => {
+    const grantedPermissionCodes = await lockGrantedFinancePermissions(
+      tx,
+      session,
+      [
+        permissions.financeExpenseRequestCreate,
+        permissions.financeExpenseRequestApprove
+      ]
+    )
+    if (!grantedPermissionCodes.has(permissions.financeExpenseRequestCreate)) {
+      throw new Error("PERMISSION_DENIED")
+    }
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,
       input.expenseRequestId
-    );
-    assertExpenseTransition({ transition: "cancel", status: request.status });
+    )
+    assertExpenseTransition({ transition: "cancel", status: request.status })
     if (
       request.requestedByUserId !== session.user.id &&
-      !session.permissionCodes.includes(permissions.financeExpenseRequestApprove)
+      !grantedPermissionCodes.has(permissions.financeExpenseRequestApprove)
     ) {
-      throw new Error("EXPENSE_REQUEST_CANCEL_PERMISSION_DENIED");
+      throw new Error("EXPENSE_REQUEST_CANCEL_PERMISSION_DENIED")
     }
     const updated = await tx.expenseRequest.update({
       where: { id: request.id },
@@ -1358,7 +1426,7 @@ export async function cancelExpenseRequest(
         cancellationReason: reason,
         version: { increment: 1 }
       }
-    });
+    })
     await writeExpenseAudit(tx, {
       session,
       requestId: request.id,
@@ -1367,31 +1435,31 @@ export async function cancelExpenseRequest(
       afterStatus: updated.status,
       reason,
       evidenceReference: input.evidenceReference ?? request.evidenceReference
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function completeExpenseRequest(
   session: SessionContext,
   input: ExpenseRequestActionInput
 ) {
-  await requirePermission(session, permissions.financeExpenseRequestComplete);
-  const reason = input.reason?.trim();
+  await requirePermission(session, permissions.financeExpenseRequestComplete)
+  const reason = input.reason?.trim()
   if (!reason) {
-    throw new Error("EXPENSE_REQUEST_COMPLETION_NOTE_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_COMPLETION_NOTE_REQUIRED")
   }
   return prisma.$transaction(async (tx) => {
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,
       input.expenseRequestId
-    );
-    assertExpenseTransition({ transition: "complete", status: request.status });
+    )
+    assertExpenseTransition({ transition: "complete", status: request.status })
     assertEvidence(
       input.evidenceReference ?? request.evidenceReference,
       "EXPENSE_REQUEST_COMPLETION_EVIDENCE_REQUIRED"
-    );
+    )
     const updated = await tx.expenseRequest.update({
       where: { id: request.id },
       data: {
@@ -1399,10 +1467,11 @@ export async function completeExpenseRequest(
         completedByUserId: session.user.id,
         completedAt: new Date(),
         completionNotes: reason,
-        evidenceReference: input.evidenceReference?.trim() ?? request.evidenceReference,
+        evidenceReference:
+          input.evidenceReference?.trim() ?? request.evidenceReference,
         version: { increment: 1 }
       }
-    });
+    })
     await writeExpenseAudit(tx, {
       session,
       requestId: request.id,
@@ -1414,34 +1483,34 @@ export async function completeExpenseRequest(
       metadata: {
         paymentHandoffReady: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function markExpenseRequestPaymentHandoffReady(
   session: SessionContext,
   input: ExpenseRequestActionInput
 ) {
-  await requirePermission(session, permissions.financeExpenseRequestComplete);
-  const reason = input.reason?.trim();
+  await requirePermission(session, permissions.financeExpenseRequestComplete)
+  const reason = input.reason?.trim()
   if (!reason) {
-    throw new Error("EXPENSE_REQUEST_HANDOFF_REASON_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_HANDOFF_REASON_REQUIRED")
   }
   return prisma.$transaction(async (tx) => {
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,
       input.expenseRequestId
-    );
+    )
     assertExpenseTransition({
       transition: "mark_handoff_ready",
       status: request.status
-    });
+    })
     assertEvidence(
       input.evidenceReference ?? request.evidenceReference,
       "EXPENSE_REQUEST_HANDOFF_EVIDENCE_REQUIRED"
-    );
+    )
     await writeExpenseAudit(tx, {
       session,
       requestId: request.id,
@@ -1456,25 +1525,25 @@ export async function markExpenseRequestPaymentHandoffReady(
         handoffBoundary:
           "ready_marker_only_payment_request_or_ap_creation_deferred"
       }
-    });
+    })
     return {
       expenseRequestId: request.id,
       status: request.status,
       paymentHandoffReady: true,
       handoffRecordCreated: false
-    };
-  });
+    }
+  })
 }
 
 export async function createExpenseRequestApInvoiceDraft(
   session: SessionContext,
   input: ExpenseRequestApHandoffInput
 ) {
-  await requirePermission(session, permissions.financeExpenseRequestComplete);
-  await requirePermission(session, permissions.financeApInvoiceCreate);
-  const reason = input.reason?.trim();
+  await requirePermission(session, permissions.financeExpenseRequestComplete)
+  await requirePermission(session, permissions.financeApInvoiceCreate)
+  const reason = input.reason?.trim()
   if (!reason) {
-    throw new Error("EXPENSE_REQUEST_AP_HANDOFF_REASON_REQUIRED");
+    throw new Error("EXPENSE_REQUEST_AP_HANDOFF_REASON_REQUIRED")
   }
 
   return prisma.$transaction(async (tx) => {
@@ -1482,38 +1551,38 @@ export async function createExpenseRequestApInvoiceDraft(
       tx,
       session,
       input.expenseRequestId
-    );
+    )
     if (!["APPROVED", "COMPLETED"].includes(request.status)) {
-      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_STATUS_INVALID");
+      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_STATUS_INVALID")
     }
     if (request.currencyCode !== "PHP") {
-      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_PHP_ONLY");
+      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_PHP_ONLY")
     }
     if (!request.supplierId) {
-      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_SUPPLIER_REQUIRED");
+      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_SUPPLIER_REQUIRED")
     }
     if (request.requestedByUserId === request.approvedByUserId) {
-      throw new Error("EXPENSE_REQUEST_HANDOFF_SELF_APPROVAL_BLOCKED");
+      throw new Error("EXPENSE_REQUEST_HANDOFF_SELF_APPROVAL_BLOCKED")
     }
     if (request.requestedByUserId === session.user.id) {
-      throw new Error("EXPENSE_REQUEST_HANDOFF_SELF_SERVICE_BLOCKED");
+      throw new Error("EXPENSE_REQUEST_HANDOFF_SELF_SERVICE_BLOCKED")
     }
     assertEvidence(
       input.evidenceReference ?? request.evidenceReference,
       "EXPENSE_REQUEST_AP_HANDOFF_EVIDENCE_REQUIRED"
-    );
+    )
     if (
       request.lines.length === 0 ||
       decimalToNumber(request.totalRequestedAmount) <= 0
     ) {
-      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_AMOUNT_REQUIRED");
+      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_AMOUNT_REQUIRED")
     }
 
     const existingLink = request.sourceLinks.find(
       (link) =>
         link.sourceDocumentType === "AP_INVOICE" &&
         link.sourceEventKey === "expense_ap_invoice_handoff_v1"
-    );
+    )
     if (existingLink) {
       const existingInvoice = await tx.apInvoice.findFirst({
         where: {
@@ -1522,14 +1591,14 @@ export async function createExpenseRequestApInvoiceDraft(
           companyId: session.context.companyId
         },
         include: { lines: true }
-      });
+      })
       if (existingInvoice) {
         return {
           expenseRequestId: request.id,
           apInvoiceId: existingInvoice.id,
           publicReference: existingInvoice.publicReference,
           created: false
-        };
+        }
       }
     }
 
@@ -1541,18 +1610,18 @@ export async function createExpenseRequestApInvoiceDraft(
         status: "ACTIVE"
       },
       select: { id: true }
-    });
+    })
     if (!supplier) {
-      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_SUPPLIER_NOT_ACTIVE");
+      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_SUPPLIER_NOT_ACTIVE")
     }
 
     const lines = request.lines.map((line, index) => {
-      const requestedAmount = decimalToNumber(line.requestedAmountPhp);
-      const taxAmount = decimalToNumber(line.taxAmountPhp);
-      const discountAmount = decimalToNumber(line.discountAmountPhp);
-      const lineTotalAmount = decimalToNumber(line.lineTotalPhp);
+      const requestedAmount = decimalToNumber(line.requestedAmountPhp)
+      const taxAmount = decimalToNumber(line.taxAmountPhp)
+      const discountAmount = decimalToNumber(line.discountAmountPhp)
+      const lineTotalAmount = decimalToNumber(line.lineTotalPhp)
       if (lineTotalAmount <= 0) {
-        throw new Error("EXPENSE_REQUEST_AP_HANDOFF_LINE_AMOUNT_REQUIRED");
+        throw new Error("EXPENSE_REQUEST_AP_HANDOFF_LINE_AMOUNT_REQUIRED")
       }
       return {
         tenantId: session.context.tenantId,
@@ -1568,30 +1637,28 @@ export async function createExpenseRequestApInvoiceDraft(
         taxAmount,
         discountAmount,
         lineTotalAmount
-      };
-    });
+      }
+    })
     const subtotalAmount = roundMoney(
       lines.reduce((sum, line) => sum + line.unitPrice, 0)
-    );
+    )
     const taxAmount = roundMoney(
       lines.reduce((sum, line) => sum + line.taxAmount, 0)
-    );
+    )
     const discountAmount = roundMoney(
       lines.reduce((sum, line) => sum + line.discountAmount, 0)
-    );
+    )
     const totalAmount = roundMoney(
       lines.reduce((sum, line) => sum + line.lineTotalAmount, 0)
-    );
+    )
     if (totalAmount <= 0) {
-      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_AMOUNT_REQUIRED");
+      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_AMOUNT_REQUIRED")
     }
 
     const supplierInvoiceNumber =
-      input.supplierInvoiceNumber?.trim() ||
-      `EXP-${request.publicReference}`;
+      input.supplierInvoiceNumber?.trim() || `EXP-${request.publicReference}`
     const idempotencyKey =
-      input.idempotencyKey?.trim() ||
-      `expense-ap-invoice:${request.id}:v1`;
+      input.idempotencyKey?.trim() || `expense-ap-invoice:${request.id}:v1`
     const duplicate = await tx.apInvoice.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -1601,14 +1668,14 @@ export async function createExpenseRequestApInvoiceDraft(
         status: { notIn: ["CANCELLED", "REVERSED"] }
       },
       select: { id: true, publicReference: true }
-    });
+    })
     if (duplicate) {
-      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_DUPLICATE_INVOICE");
+      throw new Error("EXPENSE_REQUEST_AP_HANDOFF_DUPLICATE_INVOICE")
     }
 
     const publicReference = await nextExpenseApInvoiceReference(
       session.context.companyId
-    );
+    )
     const invoice = await tx.apInvoice.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1640,7 +1707,7 @@ export async function createExpenseRequestApInvoiceDraft(
         }
       },
       include: { lines: true }
-    });
+    })
 
     await tx.expenseRequestSourceLink.create({
       data: {
@@ -1663,7 +1730,7 @@ export async function createExpenseRequestApInvoiceDraft(
         },
         createdByUserId: session.user.id
       }
-    });
+    })
 
     await writeExpenseAudit(tx, {
       session,
@@ -1682,7 +1749,7 @@ export async function createExpenseRequestApInvoiceDraft(
         noJournalPosting: true,
         noSourceMutation: true
       }
-    });
+    })
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1707,28 +1774,28 @@ export async function createExpenseRequestApInvoiceDraft(
           noSourceMutation: true
         }
       }
-    });
+    })
 
     return {
       expenseRequestId: request.id,
       apInvoiceId: invoice.id,
       publicReference: invoice.publicReference,
       created: true
-    };
-  });
+    }
+  })
 }
 
 export async function getExpenseRequestDashboard(
   session: SessionContext
 ): Promise<ExpenseRequestDashboard> {
-  if (!canUseFinance(session.permissionCodes)) {
-    throw new Error("PERMISSION_DENIED");
+  if (!canUseFinance(await getGrantedPermissionCodes(session))) {
+    throw new Error("PERMISSION_DENIED")
   }
-  await requirePermission(session, permissions.financeExpenseRequestView);
+  await requirePermission(session, permissions.financeExpenseRequestView)
 
   const authorizedLocationIds = session.authorizedLocations.map(
     (location) => location.locationId
-  );
+  )
 
   const requests = await prisma.expenseRequest.findMany({
     where: {
@@ -1745,85 +1812,96 @@ export async function getExpenseRequestDashboard(
     },
     orderBy: { createdAt: "desc" },
     take: 50
-  });
+  })
 
-  const rows = buildExpenseRequestRows(requests);
-  const reportRows = buildExpenseRequestReportRows(rows);
+  const rows = buildExpenseRequestRows(requests)
+  const reportRows = buildExpenseRequestReportRows(rows)
   const openRows = rows.filter((row) =>
-    ["SUBMITTED", "AWAITING_APPROVAL", "APPROVED", "IN_PROGRESS", "ON_HOLD"].includes(
-      row.status
-    )
-  );
-  const pendingApprovalRows = rows.filter((row) => row.status === "AWAITING_APPROVAL");
-  const overBudgetRows = rows.filter((row) => row.budgetStatus === "OVER_BUDGET");
+    [
+      "SUBMITTED",
+      "AWAITING_APPROVAL",
+      "APPROVED",
+      "IN_PROGRESS",
+      "ON_HOLD"
+    ].includes(row.status)
+  )
+  const pendingApprovalRows = rows.filter(
+    (row) => row.status === "AWAITING_APPROVAL"
+  )
+  const overBudgetRows = rows.filter(
+    (row) => row.budgetStatus === "OVER_BUDGET"
+  )
   const totalOpenAmount = openRows.reduce(
     (sum, row) => sum + row.totalRequestedAmount,
     0
-  );
+  )
 
   const [suppliers, budgetLines, apHandoffLinks, handoffPolicy] =
     await Promise.all([
-    prisma.supplier.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      },
-      select: {
-        id: true,
-        supplierCode: true,
-        legalName: true,
-        tradingName: true
-      },
-      orderBy: [{ supplierCode: "asc" }],
-      take: 100
-    }),
-    prisma.budgetLine.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE",
-        budget: { status: { in: ["ACTIVE", "PARTIALLY_RELEASED"] } },
-        OR: [{ locationId: null }, { locationId: { in: authorizedLocationIds } }]
-      },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        revisedAmountPhp: true,
-        location: { select: { name: true } },
-        budget: { select: { publicReference: true, name: true } }
-      },
-      orderBy: [{ budget: { publicReference: "asc" } }, { code: "asc" }],
-      take: 100
-    }),
-    prisma.expenseRequestSourceLink.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        sourceDocumentType: "AP_INVOICE",
-        sourceEventKey: "expense_ap_invoice_handoff_v1",
-        expenseRequest: {
-          locationId: { in: authorizedLocationIds }
-        }
-      },
-      include: {
-        createdBy: { select: { displayName: true } },
-        expenseRequest: {
-          select: {
-            publicReference: true,
-            title: true,
-            location: { select: { name: true } },
-            supplier: { select: { legalName: true, tradingName: true } }
+      prisma.supplier.findMany({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          status: "ACTIVE"
+        },
+        select: {
+          id: true,
+          supplierCode: true,
+          legalName: true,
+          tradingName: true
+        },
+        orderBy: [{ supplierCode: "asc" }],
+        take: 100
+      }),
+      prisma.budgetLine.findMany({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          status: "ACTIVE",
+          budget: { status: { in: ["ACTIVE", "PARTIALLY_RELEASED"] } },
+          OR: [
+            { locationId: null },
+            { locationId: { in: authorizedLocationIds } }
+          ]
+        },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          revisedAmountPhp: true,
+          location: { select: { name: true } },
+          budget: { select: { publicReference: true, name: true } }
+        },
+        orderBy: [{ budget: { publicReference: "asc" } }, { code: "asc" }],
+        take: 100
+      }),
+      prisma.expenseRequestSourceLink.findMany({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          sourceDocumentType: "AP_INVOICE",
+          sourceEventKey: "expense_ap_invoice_handoff_v1",
+          expenseRequest: {
+            locationId: { in: authorizedLocationIds }
           }
-        }
-      },
-      orderBy: [{ createdAt: "desc" }],
-      take: 50
-    }),
-    getExpenseRequestHandoffPolicy(session)
-  ]);
-  const apHandoffRows = buildExpenseRequestApHandoffRows(apHandoffLinks);
+        },
+        include: {
+          createdBy: { select: { displayName: true } },
+          expenseRequest: {
+            select: {
+              publicReference: true,
+              title: true,
+              location: { select: { name: true } },
+              supplier: { select: { legalName: true, tradingName: true } }
+            }
+          }
+        },
+        orderBy: [{ createdAt: "desc" }],
+        take: 50
+      }),
+      getExpenseRequestHandoffPolicy(session)
+    ])
+  const apHandoffRows = buildExpenseRequestApHandoffRows(apHandoffLinks)
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1869,21 +1947,24 @@ export async function getExpenseRequestDashboard(
         id: "open-expense-requests",
         label: "Open requests",
         displayValue: number(openRows.length),
-        detail: "Submitted, approved, in-progress, or on-hold expense requests in scope.",
+        detail:
+          "Submitted, approved, in-progress, or on-hold expense requests in scope.",
         tone: openRows.length > 0 ? "info" : "neutral"
       },
       {
         id: "pending-approval",
         label: "Pending approval",
         displayValue: number(pendingApprovalRows.length),
-        detail: "Requests waiting for a scoped approver. Requesters cannot approve their own.",
+        detail:
+          "Requests waiting for a scoped approver. Requesters cannot approve their own.",
         tone: pendingApprovalRows.length > 0 ? "warning" : "success"
       },
       {
         id: "open-value",
         label: "Open value",
         displayValue: money(totalOpenAmount),
-        detail: "PHP-only requested value. This is not a payment, AP settlement, or journal.",
+        detail:
+          "PHP-only requested value. This is not a payment, AP settlement, or journal.",
         tone: totalOpenAmount > 0 ? "info" : "neutral"
       },
       {
@@ -1923,5 +2004,5 @@ export async function getExpenseRequestDashboard(
         tone: "info"
       }
     ]
-  };
+  }
 }

@@ -177,9 +177,12 @@ describe("workforce foundation controls", () => {
   });
 
   it("enforces permission and scoped location reads in the service layer", () => {
-    expect(workforceServiceSource).toContain("canUseWorkforce");
+    expect(workforceServiceSource).toContain("requireWorkforceAccess");
+    expect(workforceServiceSource).toContain("requireAnyPermission");
     expect(workforceServiceSource).toContain("requirePermission");
-    expect(workforceServiceSource).toContain("authorizedLocations.map");
+    expect(workforceServiceSource).toContain("loadWorkforceScopeSnapshot");
+    expect(workforceServiceSource).toContain("userScopeAssignment.findMany");
+    expect(workforceServiceSource).not.toContain("session.authorizedLocations");
     expect(workforceServiceSource).toContain("locationId: { in: allowedLocationIds }");
   });
 

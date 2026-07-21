@@ -1,8 +1,9 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type Prisma } from "@ogfi/database";
 import type { SessionContext } from "./context";
 
 export const permissions = {
   coreAdminister: "core.administer",
+  tenantRoleAdminister: "core.tenant_role_administer",
   purchaseRequestCreate: "purchasing.purchase_request.create",
   purchaseRequestSubmit: "purchasing.purchase_request.submit",
   purchaseRequestApprove: "purchasing.purchase_request.approve",
@@ -426,4 +427,83 @@ export async function requirePermission(
 ) {
   const grantedPermissionCodes = await getGrantedPermissionCodes(session);
   assertPermissionAllowed(grantedPermissionCodes, permissionCode);
+}
+
+export async function requireAnyPermission(
+  session: SessionContext,
+  permissionCodes: string[]
+) {
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
+  if (
+    !permissionCodes.some((permissionCode) =>
+      grantedPermissionCodes.includes(permissionCode)
+    )
+  ) {
+    throw new Error("PERMISSION_DENIED");
+  }
+}
+
+export async function requireFinanceAccess(session: SessionContext) {
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
+  if (!canUseFinance(grantedPermissionCodes)) {
+    throw new Error("PERMISSION_DENIED");
+  }
+  return grantedPermissionCodes;
+}
+
+export async function requireWorkforceAccess(session: SessionContext) {
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
+  if (!canUseWorkforce(grantedPermissionCodes)) {
+    throw new Error("PERMISSION_DENIED");
+  }
+  return grantedPermissionCodes;
+}
+
+export type ActiveOrganizationalScopeType =
+  | "COMPANY"
+  | "BRAND"
+  | "LOCATION"
+  | "DEPARTMENT"
+  | "PROJECT";
+
+export async function requireActiveScopeAssignment(
+  session: SessionContext,
+  input: {
+    scopeType: ActiveOrganizationalScopeType;
+    scopeId: string;
+    allowCompanyManage?: boolean;
+  },
+) {
+  const scopeId = input.scopeId.trim();
+  if (!scopeId) {
+    throw new Error("SCOPE_DENIED");
+  }
+  const now = new Date();
+  const scopeAlternatives: Prisma.UserScopeAssignmentWhereInput[] = [
+    {
+      scopeType: input.scopeType,
+      scopeId,
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+    },
+  ];
+  if (input.allowCompanyManage) {
+    scopeAlternatives.push({
+      scopeType: "COMPANY",
+      scopeId: session.context.companyId,
+      accessLevel: "MANAGE",
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+    });
+  }
+  const assignment = await prisma.userScopeAssignment.findFirst({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: scopeAlternatives,
+    },
+    select: { id: true },
+  });
+  if (!assignment) {
+    throw new Error("SCOPE_DENIED");
+  }
 }

@@ -1,6 +1,10 @@
 import { prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
-import { permissions, requirePermission } from "./authorization";
+import {
+  getGrantedPermissionCodes,
+  permissions,
+  requirePermission,
+} from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
 
 const completeAuthSessionInvalidationSchema = z.object({
@@ -12,6 +16,7 @@ const completeAuthSessionInvalidationSchema = z.object({
 
 async function assertCanManageAuthInvalidations(session: SessionContext) {
   await requirePermission(session, permissions.coreAdminister);
+  const now = new Date();
   const assignment = await prisma.userScopeAssignment.findFirst({
     where: {
       userId: session.user.id,
@@ -19,11 +24,19 @@ async function assertCanManageAuthInvalidations(session: SessionContext) {
       scopeId: session.context.companyId,
       accessLevel: "MANAGE",
       status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
     },
   });
   if (!assignment) {
     throw new Error("ADMIN_SCOPE_DENIED");
   }
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
+  return {
+    canManageTenantGlobal: grantedPermissionCodes.includes(
+      permissions.tenantRoleAdminister,
+    ),
+  };
 }
 
 export async function recordAuthSessionInvalidation(
@@ -81,11 +94,18 @@ export async function recordAuthSessionInvalidation(
 }
 
 export async function listAuthSessionInvalidations(session: SessionContext) {
-  await assertCanManageAuthInvalidations(session);
+  const access = await assertCanManageAuthInvalidations(session);
   const records = await prisma.authSessionInvalidation.findMany({
     where: {
       tenantId: session.context.tenantId,
-      OR: [{ companyId: session.context.companyId }, { companyId: null }],
+      ...(access.canManageTenantGlobal
+        ? {
+            OR: [
+              { companyId: session.context.companyId },
+              { companyId: null },
+            ],
+          }
+        : { companyId: session.context.companyId }),
     },
     include: {
       targetUser: true,
@@ -116,34 +136,54 @@ export async function listAuthSessionInvalidations(session: SessionContext) {
 
 export async function completeAuthSessionInvalidation(formData: FormData) {
   const session = await requireSessionContext();
-  await assertCanManageAuthInvalidations(session);
+  const access = await assertCanManageAuthInvalidations(session);
   const values = completeAuthSessionInvalidationSchema.parse(
     Object.fromEntries(formData),
   );
-  const existing = await prisma.authSessionInvalidation.findFirst({
-    where: {
-      id: values.invalidationId,
-      tenantId: session.context.tenantId,
-      OR: [{ companyId: session.context.companyId }, { companyId: null }],
-      status: "PENDING_PROVIDER",
-    },
-  });
-  if (!existing) {
-    throw new Error("AUTH_SESSION_INVALIDATION_NOT_FOUND");
-  }
-  if (existing.requestedByUserId === session.user.id) {
-    throw new Error("AUTH_SESSION_INVALIDATION_SELF_COMPLETION_BLOCKED");
-  }
+  const accessibleCompanyPredicate = access.canManageTenantGlobal
+    ? {
+        OR: [
+          { companyId: session.context.companyId },
+          { companyId: null },
+        ],
+      }
+    : { companyId: session.context.companyId };
 
   await prisma.$transaction(async (tx) => {
-    const saved = await tx.authSessionInvalidation.update({
-      where: { id: existing.id },
+    const existing = await tx.authSessionInvalidation.findFirst({
+      where: {
+        id: values.invalidationId,
+        tenantId: session.context.tenantId,
+        status: "PENDING_PROVIDER",
+        ...accessibleCompanyPredicate,
+      },
+    });
+    if (!existing) {
+      throw new Error("AUTH_SESSION_INVALIDATION_NOT_FOUND");
+    }
+    if (existing.requestedByUserId === session.user.id) {
+      throw new Error("AUTH_SESSION_INVALIDATION_SELF_COMPLETION_BLOCKED");
+    }
+
+    const claimed = await tx.authSessionInvalidation.updateMany({
+      where: {
+        id: existing.id,
+        tenantId: session.context.tenantId,
+        status: "PENDING_PROVIDER",
+        ...accessibleCompanyPredicate,
+      },
       data: {
         status: "PROVIDER_COMPLETED",
         providerName: values.providerName,
         providerReference: values.providerReference,
         completedAt: new Date(),
       },
+    });
+    if (claimed.count !== 1) {
+      throw new Error("AUTH_SESSION_INVALIDATION_NOT_FOUND");
+    }
+    const saved = await tx.authSessionInvalidation.findUniqueOrThrow({
+      where: { id: existing.id },
     });
 
     await tx.auditEvent.create({

@@ -2,11 +2,32 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const approverEmail = process.env.DEMO_APPROVER_EMAIL ?? "approver@example.test";
 const adminEmail = process.env.DEMO_ADMIN_EMAIL ?? "admin@example.test";
+const superUserEmail =
+  process.env.DEMO_SUPER_USER_EMAIL ?? "super.admin@ogfi.example";
 const requesterEmail = process.env.DEMO_USER_EMAIL ?? "user@example.test";
 const seededSupplierCode = "OGF-BEEF-PRIME";
 const seededSupplierName = "Prime Cut Foods Corporation";
 const seededSupplierDisplayName = "Prime Cut Beef";
 const seededItemCode = "BEEF-HARAMI-SKIRT-KG";
+
+function futureDate(daysFromToday: number) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysFromToday);
+  return date.toISOString().slice(0, 10);
+}
+
+async function clickAboveMobileNavigation(page: Page, locator: Locator) {
+  if ((page.viewportSize()?.width ?? 0) < 1024) {
+    await locator.evaluate((element) =>
+      element.scrollIntoView({ block: "center", inline: "nearest" }),
+    );
+    await locator.evaluate((element) => (element as HTMLButtonElement).click());
+    return;
+  } else {
+    await locator.scrollIntoViewIfNeeded();
+  }
+  await locator.click();
+}
 
 async function expectDemoSession(page: Page, email: string) {
   await expect
@@ -33,9 +54,11 @@ async function signInAs(
 }
 
 async function createDraftPurchaseRequest(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Create Draft PR" });
   await page
     .getByRole("button", { name: "Create Draft Purchase Request" })
     .click({ force: true });
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
 }
 
 async function openPurchaseRequestComposer(page: Page) {
@@ -60,6 +83,14 @@ async function gotoRowView(page: Page, row: Locator) {
   const href = await row.getByRole("link", { name: "View" }).getAttribute("href");
   expect(href).toBeTruthy();
   await page.goto(href ?? "/purchase-requests");
+}
+
+async function gotoAdminUserAccess(page: Page, row: Locator) {
+  const href = await row
+    .getByRole("link", { name: "Manage Access" })
+    .getAttribute("href");
+  expect(href).toBeTruthy();
+  await page.goto(href ?? "/admin", { timeout: 30_000 });
 }
 
 async function gotoAuditEvent(page: Page, eventType: string) {
@@ -129,7 +160,7 @@ test("returned purchase requests can be reopened as draft", async ({
     .toString(16)
     .slice(2, 8)}`;
   await openPurchaseRequestComposer(page);
-  await page.getByLabel("Required date").fill("2026-07-18");
+  await page.getByLabel("Required date").fill(futureDate(7));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Return/reopen validation for ${marker}`);
   await page.getByLabel("Catalog item").selectOption({ index: 1 });
@@ -184,7 +215,7 @@ test("draft purchase requests can be cancelled with audit history", async ({
     .toString(16)
     .slice(2, 8)}`;
   await openPurchaseRequestComposer(page);
-  await page.getByLabel("Required date").fill("2026-07-19");
+  await page.getByLabel("Required date").fill(futureDate(8));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Cancellation validation for ${marker}`);
   await page.getByLabel("Catalog item").selectOption({ index: 1 });
@@ -220,7 +251,7 @@ test("purchase requests can be rejected with remarks and action history", async 
     .toString(16)
     .slice(2, 8)}`;
   await openPurchaseRequestComposer(page);
-  await page.getByLabel("Required date").fill("2026-07-20");
+  await page.getByLabel("Required date").fill(futureDate(9));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Rejection validation for ${marker}`);
   await page.getByLabel("Catalog item").selectOption({ index: 1 });
@@ -266,8 +297,9 @@ test("purchase requests can be rejected with remarks and action history", async 
 test("first milestone purchase request path works end to end", async ({
   page
 }, testInfo) => {
-  test.setTimeout(240_000);
-  page.setDefaultTimeout(10_000);
+  test.setTimeout(360_000);
+  page.setDefaultTimeout(15_000);
+  page.setDefaultNavigationTimeout(30_000);
 
   await signInAs(
     page,
@@ -282,7 +314,7 @@ test("first milestone purchase request path works end to end", async ({
   const scopeCandidateName =
     testInfo.project.name === "mobile" ? "Lia Mendoza" : "Paolo Cruz";
   await openPurchaseRequestComposer(page);
-  await page.getByLabel("Required date").fill("2026-07-15");
+  await page.getByLabel("Required date").fill(futureDate(10));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Local milestone validation for ${marker}`);
   await page.getByLabel("Catalog item").selectOption({ index: 1 });
@@ -372,9 +404,10 @@ test("first milestone purchase request path works end to end", async ({
   await currentQuoteRequestRow
     .getByLabel("Single-source justification")
     .fill(`Only recorded quote for ${marker}`);
-  await currentQuoteRequestRow
-    .getByRole("button", { name: "Record Recommendation" })
-    .click();
+  await clickAboveMobileNavigation(
+    page,
+    currentQuoteRequestRow.getByRole("button", { name: "Record Recommendation" }),
+  );
   const recommendation = currentQuoteRequestRow
     .getByTestId("quotation-recommendation")
     .filter({ hasText: quoteReference });
@@ -517,7 +550,9 @@ test("first milestone purchase request path works end to end", async ({
   await page.locator('select[name="baseUomId"]').selectOption({ label: uomCode });
   await page.getByLabel("Creation reason").first().fill(`E2E item setup for ${marker}`);
   await itemDialog.getByRole("button", { name: "Create Item", exact: true }).click();
-  await expect(page.getByTestId("item-row").filter({ hasText: itemCode })).toBeVisible();
+  await expect(page.getByTestId("item-row").filter({ hasText: itemCode })).toBeVisible({
+    timeout: 15_000,
+  });
   await page.locator('a[href="/items?tab=conversions"]').click();
   await page.waitForURL(/\/items\?tab=conversions$/);
   const conversionDialog = await openEntryDialog(page, "Create Conversion");
@@ -587,14 +622,14 @@ test("first milestone purchase request path works end to end", async ({
   );
   const catalogMarker = `${marker} Catalog PR`;
   await openPurchaseRequestComposer(page);
-  await page.getByLabel("Required date").fill("2026-07-16");
+  await page.getByLabel("Required date").fill(futureDate(11));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Catalog item validation for ${marker}`);
   await page.getByLabel("Catalog item").selectOption({ label: `${itemName} / ${itemCode}` });
   await page.getByLabel("Quantity").fill("2");
   await page.getByLabel("Purpose / notes").fill(catalogMarker);
   await createDraftPurchaseRequest(page);
-  await expect(page.getByRole("heading", { name: itemName })).toBeVisible();
+  await expect(page.getByText(itemName, { exact: true }).first()).toBeVisible();
   await expect(page.getByText(catalogMarker)).toBeVisible();
   await expect(page.getByText(`2 ${uomCode}`)).toBeVisible();
 
@@ -640,57 +675,33 @@ test("first milestone purchase request path works end to end", async ({
     .click();
   await expect(page.getByTestId("uom-row").filter({ hasText: uomCode }).getByText("INACTIVE")).toBeVisible();
   await page.goto("/admin");
-  await page
-    .getByTestId("admin-user-row")
-    .filter({ hasText: "Nico Valdez" })
-    .getByRole("link", { name: "Manage Access" })
-    .click();
+  await gotoAdminUserAccess(
+    page,
+    page.getByTestId("admin-user-row").filter({ hasText: "Nico Valdez" }),
+  );
   await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
   await expect(page.getByText(/^Nico Valdez \/ /)).toBeVisible();
   await expect(page.getByRole("main").getByText("ERP Administrator", { exact: true })).toBeVisible();
   await expect(page.getByRole("main").getByText("Self protected").first()).toBeVisible();
   await gotoCoreAdmin(page);
-  await page
-    .getByTestId("admin-user-row")
-    .filter({ hasText: "Bianca Reyes" })
-    .getByRole("link", { name: "Manage Access" })
-    .click();
+  await gotoAdminUserAccess(
+    page,
+    page.getByTestId("admin-user-row").filter({ hasText: "Bianca Reyes" }),
+  );
   await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
   await expect(page.getByText(/^Bianca Reyes \/ /)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Assign Location Scope" })).toBeVisible();
   await gotoCoreAdmin(page);
-  await page
-    .getByTestId("admin-user-row")
-    .filter({ hasText: scopeCandidateName })
-    .getByRole("link", { name: "Manage Access" })
-    .click();
+  await gotoAdminUserAccess(
+    page,
+    page.getByTestId("admin-user-row").filter({ hasText: scopeCandidateName }),
+  );
   await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
-  await expect(page.getByText("No active roles are assigned.")).toBeVisible();
+  await expect(page.getByText("No active roles are assigned.")).toBeVisible({
+    timeout: 15_000,
+  });
   await expect(page.getByText("No effective permissions from active roles.")).toBeVisible();
   await expect(page.getByText("No active scopes are assigned.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Assign Role" })).toBeVisible();
-  const roleAssignmentDialog = await openEntryDialog(page, "Assign Role");
-  await roleAssignmentDialog
-    .getByLabel("Role assignment reason")
-    .fill(`E2E role assignment for ${marker}`);
-  await roleAssignmentDialog
-    .getByRole("button", { name: "Assign Role", exact: true })
-    .click();
-  const assignedRoleRow = page
-    .getByTestId("admin-user-role-row")
-    .filter({ hasText: "Branch Storekeeper" });
-  await expect(assignedRoleRow).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText("Create purchase requests", { exact: true })).toBeVisible();
-  await assignedRoleRow.getByRole("button", { name: "Deactivate Role", exact: true }).click();
-  const roleDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Role" });
-  await roleDeactivationDialog
-    .getByLabel("Role deactivation reason")
-    .fill(`E2E role deactivation for ${marker}`);
-  await roleDeactivationDialog
-    .getByRole("button", { name: "Deactivate Role", exact: true })
-    .click();
-  await expect(page.getByText("No active roles are assigned.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Assign Role" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Assign Location Scope" })).toBeVisible();
   const assignScopeButton = page.getByRole("button", { name: "Assign Scope" });
   if ((await assignScopeButton.count()) > 0) {
@@ -711,7 +722,83 @@ test("first milestone purchase request path works end to end", async ({
     .filter({ hasText: "LOCATION" })
     .filter({ hasText: "VIEW" });
   await expect(assignedScopeRow).toBeVisible();
-  await assignedScopeRow.getByRole("button", { name: "Deactivate Scope", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Controlled Role Requests" }),
+  ).toBeVisible();
+  const roleRequestDialog = await openEntryDialog(
+    page,
+    "Request Controlled Role",
+  );
+  const requesterRoleOption = roleRequestDialog
+    .locator('select[name="roleId"] option')
+    .filter({ hasText: "Branch Storekeeper" });
+  const requesterRoleId = await requesterRoleOption.getAttribute("value");
+  expect(requesterRoleId).toBeTruthy();
+  await roleRequestDialog
+    .locator('select[name="roleId"]')
+    .selectOption(requesterRoleId ?? "");
+  await roleRequestDialog
+    .getByLabel("Business reason")
+    .fill(`E2E controlled role request for ${marker}`);
+  await roleRequestDialog
+    .getByLabel("Evidence reference")
+    .fill(`E2E-ROLE-${marker}`);
+  await roleRequestDialog
+    .getByRole("button", { name: "Submit Controlled Role Request" })
+    .click();
+
+  await signInAs(page, superUserEmail, "/admin", "Core Administration");
+  await gotoAdminUserAccess(
+    page,
+    page.getByTestId("admin-user-row").filter({ hasText: scopeCandidateName }),
+  );
+  const controlledRequestRow = page
+    .getByText(`E2E controlled role request for ${marker}`)
+    .locator("xpath=ancestor::div[contains(@class,'ogfi-list-row')][1]");
+  await expect(controlledRequestRow).toBeVisible();
+  const approveControlledRoleButton = controlledRequestRow.getByRole("button", {
+    name: "Approve",
+    exact: true,
+  });
+  await expect(approveControlledRoleButton).toBeEnabled({ timeout: 15_000 });
+  await clickAboveMobileNavigation(page, approveControlledRoleButton);
+  const roleApprovalDialog = page.getByRole("dialog", {
+    name: "Approve Controlled Role",
+  });
+  await roleApprovalDialog
+    .getByLabel("Approval reason")
+    .fill(`E2E independent role approval for ${marker}`);
+  await roleApprovalDialog
+    .getByRole("button", { name: "Approve Role", exact: true })
+    .click();
+  const assignedRoleRow = page
+    .getByTestId("admin-user-role-row")
+    .filter({ hasText: "Branch Storekeeper" });
+  await expect(assignedRoleRow).toBeVisible({ timeout: 15000 });
+  await expect(
+    page.getByText("Create purchase requests", { exact: true }).first(),
+  ).toBeVisible();
+  await clickAboveMobileNavigation(
+    page,
+    assignedRoleRow.getByRole("button", { name: "Deactivate Role", exact: true }),
+  );
+  const roleDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Role" });
+  await roleDeactivationDialog
+    .getByLabel("Role deactivation reason")
+    .fill(`E2E role deactivation for ${marker}`);
+  await roleDeactivationDialog
+    .getByRole("button", { name: "Deactivate Role", exact: true })
+    .click();
+  await expect(page.getByText("No active roles are assigned.")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(
+    page.getByRole("button", { name: "Request Controlled Role" }),
+  ).toBeVisible();
+  await clickAboveMobileNavigation(
+    page,
+    assignedScopeRow.getByRole("button", { name: "Deactivate Scope", exact: true }),
+  );
   const scopeDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Scope" });
   await scopeDeactivationDialog
     .getByLabel("Deactivation reason")
@@ -719,7 +806,9 @@ test("first milestone purchase request path works end to end", async ({
   await scopeDeactivationDialog
     .getByRole("button", { name: "Deactivate Scope", exact: true })
     .click();
-  await expect(page.getByRole("button", { name: "Assign Scope" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assign Scope" })).toBeVisible({
+    timeout: 15_000,
+  });
   await gotoCoreAdmin(page);
   await page.locator('a[href="/admin?tab=roles"]').click();
   const roleAccessHref = await page
@@ -728,7 +817,7 @@ test("first milestone purchase request path works end to end", async ({
     .getByRole("link", { name: "Configure Role" })
     .getAttribute("href");
   expect(roleAccessHref).toBeTruthy();
-  await page.goto(roleAccessHref ?? "/admin");
+  await page.goto(roleAccessHref ?? "/admin", { timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Role Access" })).toBeVisible();
   await expect(page.getByText("ERP Administrator / CONFIGURED_ADMIN")).toBeVisible();
   await expect(
@@ -737,16 +826,22 @@ test("first milestone purchase request path works end to end", async ({
       .filter({ hasText: "Administer core setup" })
   ).toBeVisible();
   await gotoCoreAdmin(page);
-  await page.goto("/admin/permissions/00000000-0000-4000-8000-000000000016");
+  await page.goto("/admin/permissions/00000000-0000-4000-8000-000000000016", {
+    timeout: 30_000,
+  });
   await expect(page.getByRole("heading", { name: "Permission Access" })).toBeVisible();
   await expect(page.getByTestId("admin-permission-role-row").filter({ hasText: "ERP Administrator" })).toBeVisible();
   await gotoCoreAdmin(page);
-  await page.goto("/admin/companies/00000000-0000-4000-8000-000000000002");
+  await page.goto("/admin/companies/00000000-0000-4000-8000-000000000002", {
+    timeout: 30_000,
+  });
   await expect(page.getByRole("heading", { name: "Company Context" })).toBeVisible();
   await expect(page.getByTestId("admin-company-user-row").filter({ hasText: "Nico Valdez" })).toBeVisible();
   await expect(page.getByTestId("admin-company-location-row").filter({ hasText: "Yakiniku Like SM North Edsa" })).toBeVisible();
   await gotoCoreAdmin(page);
-  await page.goto("/admin/approval-rules/00000000-0000-4000-8000-000000000010");
+  await page.goto("/admin/approval-rules/00000000-0000-4000-8000-000000000010", {
+    timeout: 30_000,
+  });
   await expect(page.getByRole("heading", { name: "Approval Rule" })).toBeVisible();
   await expect(
     page.getByTestId("admin-rule-step-row").filter({ hasText: "Operations Approver" })

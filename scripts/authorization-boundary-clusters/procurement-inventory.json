@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "cluster": "procurement-inventory",
+  "testFiles": [
+    "apps/web/tests/authorizationProcurementInventory.integration.test.ts"
+  ],
+  "cases": [
+    {
+      "id": "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE_TABLE",
+      "coveredControls": ["live permission revocation/absence", "no business-row mutation", "no approval mutation", "no movement or balance mutation", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-INVENTORY-POST-SCOPE-MATRIX",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-INVENTORY-POST-*",
+      "kind": "REAL_POSTGRESQL_NEGATIVE_TABLE",
+      "coveredControls": ["tenant", "company", "location", "item company", "no movement or balance mutation", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["location", "transaction rollback", "no movement or balance mutation", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["exact generic approve, reject, and return dispatch", "live delegated permission", "no approval or source mutation", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE_TABLE",
+      "coveredControls": ["exact supplier and item boundary invocation", "valid input reaches live permission guard", "no master-data mutation", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-PURCHASE-REQUEST-CREATE-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-PURCHASE-REQUEST-CREATE-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["exact draft creation invocation", "valid header and line input", "live permission", "no request, approval, or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-PURCHASE-REQUEST-COMMENT-WRONG-LOCATION-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-PURCHASE-REQUEST-COMMENT-WRONG-LOCATION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["record location scope", "non-enumerating not-found denial", "no comment mutation", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-GENERIC-APPROVAL-SELF-ACTION-BLOCKED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-GENERIC-APPROVAL-SELF-ACTION-BLOCKED-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["live approval permission", "approve and reject dispatch", "self-approval prevention", "no approval or source mutation", "no audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-PURCHASE-REQUEST-INVALID-LIFECYCLE-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-PURCHASE-REQUEST-INVALID-LIFECYCLE-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["live submit permission", "invalid approved-to-cancel transition", "no source or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-INVENTORY-IDEMPOTENT-RETRY-POSTS-EXACTLY-ONCE",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-INVENTORY-IDEMPOTENT-RETRY-POSTS-EXACTLY-ONCE",
+      "kind": "REAL_POSTGRESQL_IDEMPOTENCY",
+      "coveredControls": ["same source event retry", "single movement", "single balance effect", "duplicate result"]
+    },
+    {
+      "id": "AUTHZ-PI-TRANSFER-LOCATION-LIFECYCLE-SOD-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-TRANSFER-LOCATION-LIFECYCLE-SOD-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE_TABLE",
+      "coveredControls": ["dispatch source location", "receive destination location", "invalid lifecycle", "dispatcher/receiver segregation", "no transfer, receipt, movement, balance, or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-RECEIVING-NONEXISTENT-SOURCE-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-RECEIVING-NONEXISTENT-SOURCE-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["live posting permission", "nonexistent source non-enumeration", "no receipt, movement, balance, purchase-order, or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-ATTACHMENT-LINK-MISSING-PERMISSION-DENIAL-AUDIT-NO-LINK",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-ATTACHMENT-LINK-MISSING-PERMISSION-DENIAL-AUDIT-NO-LINK",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["exact attachment link boundary", "live permission", "source record context", "no controlled-evidence link", "denial audit exactly once"]
+    },
+    {
+      "id": "AUTHZ-PI-APPROVAL-READ-AND-REMINDER-STALE-SESSION-REVOKED",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-APPROVAL-READ-AND-REMINDER-STALE-SESSION-REVOKED",
+      "kind": "REAL_POSTGRESQL_STALE_SESSION_REVOCATION",
+      "coveredControls": ["live permission revalidation", "stale session denial", "queue non-disclosure", "detail non-disclosure", "reminder no mutation"]
+    },
+    {
+      "id": "AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE_TABLE",
+      "coveredControls": ["live create, enter, and adjustment permissions", "wrong inventory location non-enumeration", "start lifecycle", "entry lifecycle", "variance-adjustment lifecycle", "no stock-count, adjustment, balance, movement, or audit mutation"]
+    }
+  ],
+  "boundaries": [
+    {"surfaceId":"server/services/inventory.ts#postInventoryMovement","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["inventory-posting-scope-adapter","inventory-source-event-idempotency"],"caseIds":["AUTHZ-PI-INVENTORY-POST-SCOPE-MATRIX","AUTHZ-PI-INVENTORY-IDEMPOTENT-RETRY-POSTS-EXACTLY-ONCE"],"noMutationControls":["InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventory.ts#postInventoryMovementInTransaction","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["inventory-posting-scope-adapter"],"caseIds":["AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"],"noMutationControls":["InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/approvals.ts#approveApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["approval-document-dispatch","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-GENERIC-APPROVAL-SELF-ACTION-BLOCKED-NO-MUTATION"],"noMutationControls":["ApprovalInstance","source document","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#rejectApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["approval-document-dispatch","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-GENERIC-APPROVAL-SELF-ACTION-BLOCKED-NO-MUTATION"],"noMutationControls":["ApprovalInstance","source document","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#returnApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["approval-document-dispatch","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","source document","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#returnPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PurchaseRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#runApprovalReminderScan","classification":"PUBLIC_BOUNDARY","adapterIds":["live-approval-read-permission","stale-session-revocation"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-APPROVAL-READ-AND-REMINDER-STALE-SESSION-REVOKED"],"noMutationControls":["Notification"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveAttendanceImportBatchApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","AttendanceImportBatch","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveBudgetRevision","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","BudgetRevision","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveCashAdvanceRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","CashAdvanceRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveEmployeeLeaveRequestApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","EmployeeLeaveRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveEmployeeOvertimeRecordApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","EmployeeOvertimeRecord","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveExpenseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","ExpenseRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approvePaymentReleaseApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PaymentRelease","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approvePaymentRequestApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PaymentRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approvePettyCashRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PettyCashRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approvePurchaseOrder","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PurchaseOrder","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approvePurchaseOrderAmendment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PurchaseOrderAmendment","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approvePurchaseOrderBalanceClosure","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PurchaseOrderBalanceClosure","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approvePurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PurchaseRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveQuotationRecommendation","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","QuotationRecommendation","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","StockAdjustment","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveWastageReport","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","WastageReport","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#approveWorkforceScheduleApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","WorkforceSchedule","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#rejectEmployeeOvertimeRecordApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","EmployeeOvertimeRecord","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#rejectPaymentReleaseApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PaymentRelease","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvals.ts#rejectPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","approval-scope","self-approval"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ApprovalInstance","PurchaseRequest","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/suppliers.ts#createSupplier","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Supplier","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/suppliers.ts#createSupplierItemLink","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["SupplierItemLink","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/suppliers.ts#updateSupplierAccreditation","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Supplier","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/suppliers.ts#deactivateSupplier","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Supplier","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/suppliers.ts#deactivateSupplierItemLink","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["SupplierItemLink","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/items.ts#createItem","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Item","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#createItemCategory","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ItemCategory","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#createItemUomConversion","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ItemUomConversion","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#createUom","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Uom","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#updateItem","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Item","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#updateItemCategory","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ItemCategory","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#updateItemUomConversion","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ItemUomConversion","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#updateUom","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Uom","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#deactivateItem","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Item","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#deactivateItemCategory","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["ItemCategory","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/items.ts#deactivateUom","classification":"PUBLIC_BOUNDARY","adapterIds":["live-core-admin-permission"],"caseIds":["AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["Uom","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/purchaseRequests.ts#addPurchaseRequestComment","classification":"PUBLIC_BOUNDARY","adapterIds":["record-location-non-enumeration"],"caseIds":["AUTHZ-PI-PURCHASE-REQUEST-COMMENT-WRONG-LOCATION-NO-MUTATION"],"noMutationControls":["PurchaseRequestComment","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseRequests.ts#createDraftPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["live-create-permission"],"caseIds":["AUTHZ-PI-PURCHASE-REQUEST-CREATE-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseRequest","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseRequests.ts#submitPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","record-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseRequest","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseRequests.ts#cancelPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","record-location-scope","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-PURCHASE-REQUEST-INVALID-LIFECYCLE-NO-MUTATION"],"noMutationControls":["PurchaseRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseRequests.ts#completeEmergencyPurchasePostReview","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","record-location-scope","segregation-of-duties"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseRequest","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseRequests.ts#reopenReturnedPurchaseRequest","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","record-location-scope","requester-only","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseRequest","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/quotes.ts#createSupplierQuote","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","purchase-request-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["SupplierQuotation","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/quotes.ts#createQuotationRecommendation","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","purchase-request-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["QuotationRecommendation","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/quotes.ts#submitQuotationRecommendation","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","purchase-request-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["QuotationRecommendation","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/purchaseOrders.ts#createPurchaseOrderFromRecommendation","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","purchase-request-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseOrder","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseOrders.ts#submitPurchaseOrderForApproval","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","delivery-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseOrder","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseOrders.ts#issuePurchaseOrderToSupplier","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","delivery-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseOrder","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseOrders.ts#cancelPurchaseOrder","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","delivery-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseOrder","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseOrders.ts#requestPurchaseOrderAmendment","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","delivery-location-scope","lifecycle-transition","approval-sod"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseOrderAmendment","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/purchaseOrders.ts#requestPurchaseOrderBalanceClosure","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","delivery-location-scope","lifecycle-transition","approval-sod"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["PurchaseOrderBalanceClosure","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/attachments.ts#linkControlledEvidenceAttachment","classification":"PUBLIC_BOUNDARY","adapterIds":["live-required-permission","source-view-permission","source-record-scope","denial-audit"],"caseIds":["AUTHZ-PI-ATTACHMENT-LINK-MISSING-PERMISSION-DENIAL-AUDIT-NO-LINK"],"noMutationControls":["ControlledEvidenceAttachment"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/receiving.ts#buildReceivingReportExportRows","classification":"PUBLIC_BOUNDARY","adapterIds":["any-read-permission","tenant-company-query"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["read-only export denial and workflow snapshot"],"status":"COVERED"},
+    {"surfaceId":"server/services/receiving.ts#createGoodsReceiptFromPurchaseOrder","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","delivery-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["GoodsReceipt","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/receiving.ts#postGoodsReceipt","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","receipt-location-scope","inventory-posting","source-non-enumeration"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-RECEIVING-NONEXISTENT-SOURCE-NO-MUTATION"],"noMutationControls":["GoodsReceipt","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/receiving.ts#reverseGoodsReceipt","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","receipt-location-scope","inventory-reversal"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["GoodsReceipt","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/transfers.ts#buildInventoryTransferExportRows","classification":"PUBLIC_BOUNDARY","adapterIds":["any-read-permission","source-or-destination-location-query"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["read-only export denial and workflow snapshot"],"status":"COVERED"},
+    {"surfaceId":"server/services/transfers.ts#createInventoryTransfer","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","source-location-scope","destination-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["InventoryTransfer","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/transfers.ts#submitInventoryTransfer","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","source-or-destination-location-scope","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-TRANSFER-LOCATION-LIFECYCLE-SOD-NO-MUTATION"],"noMutationControls":["InventoryTransfer","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/transfers.ts#dispatchInventoryTransfer","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","source-location-scope","inventory-posting"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-TRANSFER-LOCATION-LIFECYCLE-SOD-NO-MUTATION"],"noMutationControls":["InventoryTransfer","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/transfers.ts#receiveInventoryTransfer","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","destination-location-scope","inventory-posting","dispatcher-receiver-sod"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-TRANSFER-LOCATION-LIFECYCLE-SOD-NO-MUTATION"],"noMutationControls":["InventoryTransfer","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/transfers.ts#reverseInventoryTransferReceipt","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","destination-location-scope","inventory-reversal"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["InventoryTransfer","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/transfers.ts#cancelInventoryTransfer","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","source-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["InventoryTransfer","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/transfers.ts#settleInventoryTransferDiscrepancy","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","destination-location-scope","lifecycle-transition","segregation-of-duties"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["InventoryTransfer","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/stockCounts.ts#buildStockCountExportRows","classification":"PUBLIC_BOUNDARY","adapterIds":["any-read-permission","inventory-location-query"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["read-only export denial and workflow snapshot"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockCounts.ts#submitStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","freeze-integrity"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockCountSession","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockCounts.ts#reviewStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockCountSession","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockCounts.ts#cancelStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","freeze-release"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockCountSession","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockCounts.ts#scheduleStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockCountSession","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockCounts.ts#startStockCount","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","inventory-location-scope","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockCountSession","StockCountLine","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockCounts.ts#saveStockCountEntries","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","inventory-location-scope","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockCountSession","StockCountLine","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockCounts.ts#generateStockCountVarianceAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["live-permission","inventory-location-scope","lifecycle-transition"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION","AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"],"noMutationControls":["StockAdjustment","StockAdjustmentLine","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/wastage.ts#createWastageReport","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["WastageReport","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/wastage.ts#submitWastageReport","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["WastageReport","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/wastage.ts#reviewWastageReport","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","segregation-of-duties"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["WastageReport","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/wastage.ts#cancelWastageReport","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["WastageReport","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/wastage.ts#postWastageReport","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","inventory-posting"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["WastageReport","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/wastage.ts#reverseWastageReport","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","inventory-reversal"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["WastageReport","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/stockAdjustments.ts#createStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockAdjustments.ts#submitStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockAdjustments.ts#cancelStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","ApprovalInstance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockAdjustments.ts#postStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","inventory-posting"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/stockAdjustments.ts#reverseStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","inventory-reversal"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"}
+  ]
+}

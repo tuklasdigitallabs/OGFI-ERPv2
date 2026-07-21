@@ -1,0 +1,38 @@
+{
+  "AUTHZ-DEEPLINK-001": {
+    "kind": "playwright",
+    "file": "tests/e2e/first-milestone.spec.ts",
+    "evidence": "blocks direct URL access to admin and master data pages for an unauthorized user"
+  },
+  "AUTHZ-ACTION-001": {
+    "kind": "database-and-service",
+    "file": "apps/web/tests/accessControl.integration.test.ts",
+    "evidence": "live permission, scope, membership, and restricted-project checks execute before protected service effects"
+  },
+  "AUTHZ-SERVICE-001": {
+    "kind": "database",
+    "file": "apps/web/tests/accessControl.integration.test.ts",
+    "evidence": "real PostgreSQL tenant and scope authorization adapters"
+  },
+  "AUTHZ-API-001": {
+    "kind": "route-contract",
+    "file": "apps/web/src/server/services/phase2ExportRoutes.test.ts",
+    "evidence": "stable unauthenticated and permission-denied export responses"
+  },
+  "AUTHZ-ROUTE-MATRIX-001": {
+    "kind": "authenticated-database-route-matrix",
+    "file": "apps/web/tests/authorizationRoutes.integration.test.ts",
+    "evidence": "every discovered protected GET route executes with a real authenticated session whose live permissions deny access and returns no export bytes"
+  },
+  "AUTHZ-SIGNOUT-ROUTE-001": {
+    "kind": "authenticated-database-route",
+    "file": "apps/web/tests/authorizationRoutes.integration.test.ts",
+    "evidence": "the sign-out POST route rejects an untrusted mutation origin without revoking or mutating the authenticated session"
+  },
+  "AUTHZ-EVIDENCE-001": {
+    "kind": "database-service-and-route",
+    "file": "apps/web/tests/accessControl.integration.test.ts",
+    "additionalFile": "apps/web/src/server/services/evidenceDownloadRoute.test.ts",
+    "evidence": "real private bytes, checksum, live permission and scope revocation, audit, and non-enumerating route contract"
+  }
+}

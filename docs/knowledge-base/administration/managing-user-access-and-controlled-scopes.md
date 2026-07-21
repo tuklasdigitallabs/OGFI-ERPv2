@@ -1,26 +1,42 @@
 # Managing User Access And Controlled Scopes
 
-**Audience / required role:** ERP administrators with Core Administration access  
-**Applies to:** User roles, sensitive roles, location scopes, high-risk scopes, and Manage-level access  
-**Last verified against:** implemented Core Admin user detail, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation controls
+**Audience / required role:** ERP administrators with Core Administration access; role administration also requires `Administer tenant-wide roles` access
+**Applies to:** User roles, sensitive roles, location scopes, high-risk scopes, and Manage-level access
+**Last verified against:** `DEC-0043`; implemented Core Admin user onboarding and user detail services; tenant-role authorization, selected-company target checks, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
 
 ## Purpose
 
 Use Core Administration to manage what a user can do and where they can do it. A role grants functions. A scope grants company, branch, warehouse, or other location access. Both are required for operational access.
 
+Role assignments are tenant-wide. Selecting a company limits which users an administrator may act on; it does not make the assigned role belong only to that company. The role applies wherever the user also has an active scope, but it does not grant access to company records by itself.
+
 High-risk scopes are not granted through quick assignment. Warehouse, commissary, central kitchen, head-office, project-site, temporary-site, and any `MANAGE` location access require a controlled request and a separate admin decision.
 
 Sensitive roles are also not granted through quick assignment. Admin, approver, system, and sensitive-permission roles require a controlled role request, evidence reference, privileged MFA evidence, and a separate admin decision.
 
+## Before You Begin
+
+- Select the company in which the user should be managed.
+- To view or change roles, you need `Administer tenant-wide roles` access. Core Administration access or company Manage scope alone is not enough.
+- Target-user role changes also require the existing company administration access shown for the selected company.
+- For a role grant, deactivation, request, or review, the target account must be active and must have a current active company assignment for the selected company or an active location assignment to an active location in that company. A default company alone is not an access assignment.
+- If you create a user with an initial role, also select an initial active location in the selected company. The system creates the location membership and role together; it does not create a role-only user through this path.
+
 ## Navigation Path
 
 `Admin` → `Core Administration` → `Users` → open a user
+
+## Steps
+
+Choose the section below for the access task you need to complete. Do not use a role assignment to replace a missing company or location scope.
 
 ## Quick Assignment
 
 Use `Assign Scope` only for low-risk active branch/location access that is eligible for quick setup.
 
 Use `Assign Role` only for roles that the page marks as available for quick setup. Sensitive roles are intentionally hidden from quick role assignment and must use the controlled role request path.
+
+The system evaluates the role's current permissions at the time of assignment. An allowlisted role stops being eligible for quick setup if it contains a sensitive permission. A role's permissions cannot change while a controlled role request is pending, and a sensitive permission cannot be added while the role has an active assignee; resolve the controlled request before changing that role's permission design.
 
 1. Open the user detail page.
 2. Select `Assign Scope`.
@@ -68,8 +84,15 @@ The request remains pending until another authorized admin approves or rejects i
 
 Scope approval creates the actual scope assignment in the same controlled action. Role approval creates the actual role assignment in the same controlled action. Rejection records the decision and does not grant access.
 
+## Revoking An Active Role
+
+An authorized administrator may select `Deactivate Role`, enter the required deactivation reason, and confirm the action. This applies to both quick-assigned and controlled sensitive roles: the controlled approval requirement governs granting sensitive access and must not prevent later revocation. The system preserves the assignment history, records the revocation, refreshes the target user's privilege epoch, and invalidates active sessions.
+
 ## Controls And Warnings
 
+- `Administer tenant-wide roles` is a separate high-risk control. Core Administration access, company Manage scope, or being able to see a user does not replace it.
+- A role assigned from one selected-company context is not restricted to that company. The user's active scopes still determine which company and location records they can access.
+- The system blocks a target-user role action when the target account is inactive, its company or location assignment has not started, has ended, is inactive, or belongs outside the selected company.
 - An admin cannot request scope access for themselves from this screen.
 - The requester or target user cannot approve or reject the controlled scope request.
 - An admin cannot request a controlled sensitive role for themselves from this screen.
@@ -78,8 +101,20 @@ Scope approval creates the actual scope assignment in the same controlled action
 - Sensitive role request approval re-checks tenant, company, target user, role active status, duplicate active assignments, privileged MFA evidence, and approval-rule protection.
 - Direct quick assignment remains blocked for high-risk and `MANAGE` scope changes even if someone tries to bypass the UI.
 - Direct quick assignment remains blocked for sensitive/admin/approver/system roles even if someone tries to bypass the UI.
+- A role code that was previously eligible for quick assignment does not remain eligible after it gains a sensitive permission, and direct assignment cannot race with a sensitive permission change.
 - Every request, approval, rejection, and resulting scope or role assignment writes audit history with reason, evidence, actor, target user, selected access or role, and DEC-0036 reference.
 - Controlled scope and controlled role approval change the target user's privilege epoch, requiring stale demo sessions to sign in again before protected access continues.
+- Changing a role's permission set refreshes the privilege epoch of every active, effective assignee of that role. Their existing sessions must revalidate before protected access continues; expired assignments are not refreshed.
+- Role and scope changes do not post inventory, approve transactions, or create financial entries. They change future access only.
+
+## If A Role Action Is Unavailable Or Denied
+
+1. Confirm that the correct company is selected.
+2. Ask a configured administrator or configured super user to confirm that your role includes `Administer tenant-wide roles`. Do not treat company Manage scope as a substitute.
+3. Ask an authorized administrator to confirm that the target account is active and has a current active company assignment for the selected company or an active location assignment in that company.
+4. If the message says that the selected user is no longer available, do not assume the account was deleted and do not disclose or search for membership in another company. Recheck the selected-company context and the target's authorized membership.
+5. If the action concerns your own role or a sensitive role, use the separate controlled request and reviewer process. Self-service and self-review remain blocked.
+6. If the target legitimately needs membership first, complete the appropriate scope-assignment process before retrying the role action. Do not create a duplicate account or grant broader access merely to bypass the denial.
 
 ## What To Check
 
@@ -89,3 +124,17 @@ Scope approval creates the actual scope assignment in the same controlled action
 - Approved requests show the new active scope assignment.
 - Approved controlled role requests show the new active role assignment.
 - Rejected requests remain visible in request history and do not create access.
+
+## Expected Result
+
+A permitted direct assignment becomes active, or a controlled request remains pending for a separate decision. The action and its reason are recorded in audit history. A denied action does not create, change, or deactivate a role assignment.
+
+## What Happens Next
+
+After a role or scope change, the target user's previous session may need to revalidate before the new access takes effect. Confirm access using the user's intended company and location context; do not test by broadening the user's scope.
+
+## Related Articles
+
+- [Activating And Recovering Local Accounts](./activating-and-recovering-local-accounts.md)
+- [Session Invalidation And Reauthentication](./session-invalidation-and-reauthentication.md)
+- [Why Can't I See My Branch, Warehouse, Or Request?](../troubleshooting/why-cant-i-see-my-branch-warehouse-or-request.md)

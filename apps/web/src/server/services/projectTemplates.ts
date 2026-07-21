@@ -3,7 +3,9 @@ import { z } from "zod";
 import {
   canConfigureProjectTemplates,
   canUseProjects,
+  getGrantedPermissionCodes,
   permissions,
+  requirePermission,
 } from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
 import { expansionProjectTypes } from "./expansionProjectTypes";
@@ -682,7 +684,7 @@ async function getEditableExpansionPlaybook(
   session: SessionContext,
   id: string,
 ) {
-  assertCanConfigureTemplates(session);
+  await assertCanConfigureTemplates(session);
   const template = await prisma.projectTemplate.findFirst({
     where: {
       id,
@@ -857,14 +859,20 @@ export function parseProjectTemplateConfig(
   return config;
 }
 
-function assertCanConfigureTemplates(session: SessionContext) {
-  if (!session.permissionCodes.includes(permissions.projectTemplateConfigure)) {
-    throw new Error("PROJECT_TEMPLATE_PERMISSION_DENIED");
+async function assertCanConfigureTemplates(session: SessionContext) {
+  try {
+    await requirePermission(session, permissions.projectTemplateConfigure);
+  } catch (error) {
+    if (error instanceof Error && error.message === "PERMISSION_DENIED") {
+      throw new Error("PROJECT_TEMPLATE_PERMISSION_DENIED");
+    }
+    throw error;
   }
 }
 
 export async function listProjectTemplates(session: SessionContext) {
-  if (!canConfigureProjectTemplates(session.permissionCodes)) {
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
+  if (!canConfigureProjectTemplates(grantedPermissionCodes)) {
     throw new Error("PERMISSION_DENIED");
   }
   const templates = await prisma.projectTemplate.findMany({
@@ -874,16 +882,17 @@ export async function listProjectTemplates(session: SessionContext) {
     },
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
   });
-  const canConfigure = session.permissionCodes.includes(
+  const canConfigure = grantedPermissionCodes.includes(
     permissions.projectTemplateConfigure,
   );
   return templates.map((template) => mapTemplateCard(template, canConfigure));
 }
 
 export async function listExpansionOpeningPlaybooks(session: SessionContext) {
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
   if (
-    !canUseProjects(session.permissionCodes) &&
-    !canConfigureProjectTemplates(session.permissionCodes)
+    !canUseProjects(grantedPermissionCodes) &&
+    !canConfigureProjectTemplates(grantedPermissionCodes)
   ) {
     throw new Error("PERMISSION_DENIED");
   }
@@ -894,7 +903,7 @@ export async function listExpansionOpeningPlaybooks(session: SessionContext) {
     },
     orderBy: [{ status: "asc" }, { projectType: "asc" }, { name: "asc" }],
   });
-  const canConfigure = session.permissionCodes.includes(
+  const canConfigure = grantedPermissionCodes.includes(
     permissions.projectTemplateConfigure,
   );
   return templates
@@ -908,9 +917,10 @@ export async function getExpansionOpeningPlaybook(
   session: SessionContext,
   id: string,
 ): Promise<ExpansionOpeningPlaybookDetail> {
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
   if (
-    !canUseProjects(session.permissionCodes) &&
-    !canConfigureProjectTemplates(session.permissionCodes)
+    !canUseProjects(grantedPermissionCodes) &&
+    !canConfigureProjectTemplates(grantedPermissionCodes)
   ) {
     throw new Error("PERMISSION_DENIED");
   }
@@ -927,7 +937,7 @@ export async function getExpansionOpeningPlaybook(
   ) {
     throw new Error("PROJECT_TEMPLATE_NOT_FOUND");
   }
-  const canConfigure = session.permissionCodes.includes(
+  const canConfigure = grantedPermissionCodes.includes(
     permissions.projectTemplateConfigure,
   );
   return {
@@ -940,9 +950,10 @@ export async function getExpansionOpeningPlaybook(
 export async function listPublishedProjectTemplatesForProjectCreate(
   session: SessionContext,
 ) {
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
   if (
-    !session.permissionCodes.includes(permissions.projectCreate) &&
-    !canConfigureProjectTemplates(session.permissionCodes)
+    !grantedPermissionCodes.includes(permissions.projectCreate) &&
+    !canConfigureProjectTemplates(grantedPermissionCodes)
   ) {
     throw new Error("PERMISSION_DENIED");
   }
@@ -967,7 +978,7 @@ export async function listPublishedProjectTemplatesForProjectCreate(
 
 export async function createProjectTemplate(formData: FormData) {
   const session = await requireSessionContext();
-  assertCanConfigureTemplates(session);
+  await assertCanConfigureTemplates(session);
   const values = createTemplateSchema.parse({
     code: formData.get("code"),
     name: formData.get("name"),
@@ -1006,7 +1017,7 @@ export async function createProjectTemplate(formData: FormData) {
 
 export async function createExpansionOpeningPlaybook(formData: FormData) {
   const session = await requireSessionContext();
-  assertCanConfigureTemplates(session);
+  await assertCanConfigureTemplates(session);
   const values = createOpeningPlaybookSchema.parse({
     code: formData.get("code"),
     name: formData.get("name"),
@@ -1047,7 +1058,7 @@ export async function duplicateExpansionOpeningPlaybookRevision(
   formData: FormData,
 ) {
   const session = await requireSessionContext();
-  assertCanConfigureTemplates(session);
+  await assertCanConfigureTemplates(session);
   const values = duplicateOpeningPlaybookRevisionSchema.parse({
     sourceTemplateId: formData.get("sourceTemplateId"),
     code: formData.get("code"),
@@ -1668,7 +1679,7 @@ export async function updateExpansionOpeningPlaybookReminders(
 
 export async function publishProjectTemplate(formData: FormData) {
   const session = await requireSessionContext();
-  assertCanConfigureTemplates(session);
+  await assertCanConfigureTemplates(session);
   const values = templateLifecycleActionSchema.parse({
     id: formData.get("id"),
     expectedVersion: formData.get("expectedVersion"),
@@ -1734,7 +1745,7 @@ export async function publishProjectTemplate(formData: FormData) {
 
 export async function archiveProjectTemplate(formData: FormData) {
   const session = await requireSessionContext();
-  assertCanConfigureTemplates(session);
+  await assertCanConfigureTemplates(session);
   const values = templateLifecycleActionSchema.parse({
     id: formData.get("id"),
     expectedVersion: formData.get("expectedVersion"),

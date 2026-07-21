@@ -22,13 +22,17 @@ export async function GET(
         )}"`,
         "Content-Length": String(download.sizeBytes),
         "Content-Type": download.mimeType,
+        "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
       },
     });
   } catch {
     return NextResponse.json(
       { error: "CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE" },
-      { status: 404 },
+      {
+        status: 404,
+        headers: { "Cache-Control": "private, no-store" },
+      },
     );
   }
 }

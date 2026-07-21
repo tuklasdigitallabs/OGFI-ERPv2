@@ -50,6 +50,15 @@ describe("auth provider invalidation register", () => {
     expect(authInvalidationSource).toContain(
       "auth_session_invalidation.provider_completed"
     );
+    expect(authInvalidationSource).toContain("startsAt: { lte: now }");
+    expect(authInvalidationSource).toContain("endsAt: { gt: now }");
+    expect(authInvalidationSource).toContain(
+      "permissions.tenantRoleAdminister"
+    );
+    expect(authInvalidationSource).toContain(
+      "await tx.authSessionInvalidation.updateMany"
+    );
+    expect(authInvalidationSource).toContain("if (claimed.count !== 1)");
     expect(authInvalidationSource).toContain("AUTH_PROVIDER_NAME");
     expect(coreAdminSource).toContain("recordAuthSessionInvalidation(tx");
     expect(coreAdminSource).toContain("Privilege epoch changed");

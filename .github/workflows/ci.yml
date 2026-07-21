@@ -46,6 +46,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:secret-review
       - run: pnpm release:tools:test
+      - run: pnpm release:migration-review
       - run: pnpm db:generate
       - run: pnpm db:migrate:deploy
       - run: pnpm db:seed
@@ -58,17 +59,29 @@ jobs:
       - run: pnpm --filter @ogfi/database test
       - run: pnpm --filter @ogfi/worker test
       - run: pnpm --filter @ogfi/ui test
-      - run: pnpm --filter @ogfi/web test -- --exclude tests/accessControl.integration.test.ts
-      - run: pnpm test:access-control
+      - run: pnpm test:authorization
+        env:
+          AUTHORIZATION_DATABASE_INTEGRATION: "yes"
+          AUTHORIZATION_TEST_DATABASE: ogfi_ci
+          AUTHORIZATION_TEST_RUN_ID: "${{ github.run_id }}-${{ github.run_attempt }}"
       - run: pnpm --dir apps/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e
+        env:
+          AUTHORIZATION_DATABASE_INTEGRATION: "yes"
+          AUTHORIZATION_TEST_DATABASE: ogfi_ci
+          AUTHORIZATION_TEST_RUN_ID: "${{ github.run_id }}-${{ github.run_attempt }}"
+      - run: pnpm release:authorization-manifest
+        env:
+          AUTHORIZATION_DATABASE_INTEGRATION: "yes"
+          AUTHORIZATION_TEST_DATABASE: ogfi_ci
+          AUTHORIZATION_TEST_RUN_ID: "${{ github.run_id }}-${{ github.run_attempt }}"
       - name: Upload CI verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ci-verification-${{ github.run_id }}-${{ github.sha }}
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
           path: |
             release-evidence/
             apps/web/playwright-report/

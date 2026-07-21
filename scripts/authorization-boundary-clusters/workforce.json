@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "cluster": "workforce",
+  "testFiles": [
+    "apps/web/tests/authorizationWorkforce.integration.test.ts",
+    "apps/web/tests/authorizationAdapter.integration.test.ts"
+  ],
+  "cases": [
+    {
+      "id": "AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["live database permission revalidation", "every workforce service entrypoint is invoked", "stale session denial", "no workforce, audit, or notification mutation", "dashboard and export denial"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["tenant and company predicate", "exact active location scope", "same-brand adjacent-location denial", "employee home and assignment scope", "leave, overtime, schedule, and attendance record scope", "no workforce, audit, or notification mutation"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": ["authoritative leave and overtime record location", "employee home location cannot substitute", "all leave and overtime mutations", "no record, approval, approval-step, audit, or notification mutation"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-OVERTIME-AND-SCHEDULE-SELF-APPROVAL-NO-MUTATION",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-OVERTIME-AND-SCHEDULE-SELF-APPROVAL-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["overtime requester self-approval denial", "schedule creator and submitter self-approval denial", "no workforce, audit, or notification mutation"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-SCHEDULE-GAP-EVIDENCE-REQUIRED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-SCHEDULE-GAP-EVIDENCE-REQUIRED-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["coverage-gap waiver evidence", "approved-status precondition", "no workforce, audit, or notification mutation"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-ATTENDANCE-REJECTION-REASON-REQUIRED-NO-MUTATION",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-ATTENDANCE-REJECTION-REASON-REQUIRED-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["attendance rejection reason", "review-ready status precondition", "no workforce, audit, or notification mutation"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["location-brand consistency", "department tenant/company validity", "assignment, schedule, and attendance denial", "no workforce, audit, or notification mutation"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-DASHBOARD-AND-EXPORT-REDACT-WRONG-DIMENSIONS",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-DASHBOARD-AND-EXPORT-REDACT-WRONG-DIMENSIONS",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["dashboard location-brand and department consistency", "export redaction", "read-only no-mutation snapshot"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["leave, overtime, schedule, and attendance invalid terminal transitions", "approval and publication preconditions", "no workforce, approval, audit, or notification mutation"]
+    },
+    {
+      "id": "AUTHZ-WORKFORCE-LIVE-MANAGE-REVOCATION-REDACTS-CONFIDENTIAL-FIELDS",
+      "file": "apps/web/tests/authorizationWorkforce.integration.test.ts",
+      "testName": "AUTHZ-WORKFORCE-LIVE-MANAGE-REVOCATION-REDACTS-CONFIDENTIAL-FIELDS",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["live manage-permission revocation", "personal email and phone redaction", "workforce-view continuity", "read-only no-mutation snapshot"]
+    },
+    {
+      "id": "AUTHZ-ADAPTER-LIVE-PERMISSION-DB-DENIED-WRITE-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdapter.integration.test.ts",
+      "testName": "AUTHZ-ADAPTER-LIVE-PERMISSION-DB-DENIED-WRITE-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["createEmployee live permission revocation", "no employee mutation"]
+    },
+    {
+      "id": "AUTHZ-ADAPTER-RECORD-SCOPED-QUERY-WRONG-LOCATION-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdapter.integration.test.ts",
+      "testName": "AUTHZ-ADAPTER-RECORD-SCOPED-QUERY-WRONG-LOCATION-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["createEmployee exact active home-location scope", "no employee mutation"]
+    },
+    {
+      "id": "AUTHZ-ADAPTER-APPROVAL-SCOPE-DB-WRONG-LOCATION-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdapter.integration.test.ts",
+      "testName": "AUTHZ-ADAPTER-APPROVAL-SCOPE-DB-WRONG-LOCATION-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["leave approval exact location scope", "no leave or audit mutation"]
+    },
+    {
+      "id": "AUTHZ-ADAPTER-APPROVAL-SOD-DB-SELF-APPROVAL-NO-MUTATION",
+      "file": "apps/web/tests/authorizationAdapter.integration.test.ts",
+      "testName": "AUTHZ-ADAPTER-APPROVAL-SOD-DB-SELF-APPROVAL-NO-MUTATION",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["leave requester self-approval denial", "no leave or audit mutation"]
+    }
+  ],
+  "boundaries": [
+    { "surfaceId": "server/services/workforce.ts#createEmployee", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "assertScopedLocation"], "caseIds": ["AUTHZ-ADAPTER-LIVE-PERMISSION-DB-DENIED-WRITE-NO-MUTATION", "AUTHZ-ADAPTER-RECORD-SCOPED-QUERY-WRONG-LOCATION-NO-MUTATION"], "noMutationControls": ["employee and audit counts"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#updateEmployee", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "assertScopedLocation", "getScopedEmployeeForManagementOrThrow"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION"], "noMutationControls": ["employee and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#createEmployeeAssignment", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "assertScopedLocation", "getScopedEmployeeForManagementOrThrow"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION"], "noMutationControls": ["assignment, employee, audit, and notification snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#endEmployeeAssignment", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "getScopedAssignmentForManagementOrThrow", "reason", "status and effective-date preconditions"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION"], "noMutationControls": ["assignment, employee, audit, and notification snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#createDraftLeaveRequest", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedEmployeeForDraftOrThrow"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION"], "noMutationControls": ["leave and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#createDraftOvertimeRecord", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedEmployeeForDraftOrThrow"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION"], "noMutationControls": ["overtime and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#createDraftWorkforceSchedule", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "current live session location", "getScopedEmployeeForDraftOrThrow", "schedule conflict query"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION"], "noMutationControls": ["schedule, lines, and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#submitLeaveRequest", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedLeaveOrThrow", "status transition", "approval rule"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["leave, approval, audit, and notification snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#approveLeaveRequest", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "getScopedLeaveOrThrow", "self-approval", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-ADAPTER-APPROVAL-SCOPE-DB-WRONG-LOCATION-NO-MUTATION", "AUTHZ-ADAPTER-APPROVAL-SOD-DB-SELF-APPROVAL-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["leave and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#returnLeaveRequestForRevision", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "getScopedLeaveOrThrow", "reason", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["leave and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#rejectLeaveRequest", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "getScopedLeaveOrThrow", "reason", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["leave and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#cancelLeaveRequest", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedLeaveOrThrow", "reason", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["leave and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#submitOvertimeRecord", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedOvertimeOrThrow", "status transition", "approval rule"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["overtime, approval, audit, and notification snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#approveOvertimeRecord", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "getScopedOvertimeOrThrow", "self-approval", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-WORKFORCE-OVERTIME-AND-SCHEDULE-SELF-APPROVAL-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["overtime and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#rejectOvertimeRecord", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requireWorkforcePermission", "getScopedOvertimeOrThrow", "reason", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["overtime and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#cancelOvertimeRecord", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedOvertimeOrThrow", "reason", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-RECORD-LOCATION-OVERRIDES-EMPLOYEE-HOME-ALL-LEAVE-OVERTIME-MUTATIONS", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["overtime and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#submitWorkforceSchedule", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedScheduleOrThrow", "workforceDimensionsMatch", "status transition", "approval rule"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["schedule, approval, audit, and notification snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#approveWorkforceSchedule", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedScheduleOrThrow", "workforceDimensionsMatch", "self-approval", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION", "AUTHZ-WORKFORCE-OVERTIME-AND-SCHEDULE-SELF-APPROVAL-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["schedule and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#rejectWorkforceSchedule", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedScheduleOrThrow", "workforceDimensionsMatch", "reason", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["schedule and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#publishWorkforceSchedule", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedScheduleOrThrow", "workforceDimensionsMatch", "approved status", "coverage-gap waiver reason and evidence"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION", "AUTHZ-WORKFORCE-SCHEDULE-GAP-EVIDENCE-REQUIRED-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["schedule and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#cancelWorkforceSchedule", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedScheduleOrThrow", "workforceDimensionsMatch", "reason", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["schedule and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#reviewAttendanceImportBatch", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedAttendanceBatchOrThrow", "workforceDimensionsMatch", "reason/evidence", "status transition", "approval rule"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION", "AUTHZ-WORKFORCE-ATTENDANCE-REJECTION-REASON-REQUIRED-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["attendance, approval, audit, and notification snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#voidAttendanceImportBatch", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["requirePermission", "getScopedAttendanceBatchOrThrow", "workforceDimensionsMatch", "reason", "status transition"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-ADJACENT-LOCATION-ALL-RECORD-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-BRAND-AND-DEPARTMENT-CONSISTENCY-NO-MUTATION", "AUTHZ-WORKFORCE-TERMINAL-STATUS-ALL-TRANSITIONS-NO-MUTATION"], "noMutationControls": ["batch, lines, and audit snapshots"], "status": "COVERED" },
+    { "surfaceId": "server/services/workforce.ts#buildWorkforceOperationsExportRows", "classification": "PUBLIC_BOUNDARY", "adapterIds": ["getWorkforceDashboard", "requireWorkforceAccess", "tenant/company/location query predicates", "workforceDimensionsMatch"], "caseIds": ["AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", "AUTHZ-WORKFORCE-DASHBOARD-AND-EXPORT-REDACT-WRONG-DIMENSIONS"], "noMutationControls": ["export denial and global workforce snapshot"], "status": "COVERED" }
+  ]
+}

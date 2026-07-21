@@ -1,0 +1,2096 @@
+{
+  "schemaVersion": 1,
+  "cluster": "finance",
+  "testFiles": [
+    "apps/web/tests/authorizationFinance.integration.test.ts",
+    "apps/web/tests/accessControl.integration.test.ts"
+  ],
+  "cases": [
+    {
+      "id": "FIN-AUTHZ-PERM-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-PERM-001 rejects stale client permission claims before finance mutation",
+      "kind": "database-service-negative",
+      "coveredControls": [
+        "LIVE_ROLE_PERMISSION",
+        "STALE_SESSION_CLAIM",
+        "NO_MONEY_MUTATION",
+        "NO_WORKFLOW_MUTATION",
+        "NO_AUDIT_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-COOKIE-PERM-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-COOKIE-PERM-001 executes cookie-authenticated finance boundaries and denies revoked permissions",
+      "kind": "authenticated-request-database-service-negative",
+      "coveredControls": [
+        "REAL_AUTH_SESSION",
+        "LIVE_ROLE_PERMISSION",
+        "NO_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-PARTIAL-DOWNGRADE-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-PARTIAL-DOWNGRADE-001 rejects stale elevated cancellation claims while retaining base permissions",
+      "kind": "database-service-partial-permission-revocation-negative",
+      "coveredControls": [
+        "LIVE_ELEVATED_PERMISSION",
+        "STALE_SESSION_CLAIM",
+        "TRANSACTIONAL_ROLE_GRANT_LOCK",
+        "NO_WORKFLOW_MUTATION",
+        "NO_AUDIT_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-SCOPE-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-SCOPE-001 denies adjacent location, department, and project finance writes without money, workflow, or audit effects",
+      "kind": "database-service-negative",
+      "coveredControls": [
+        "LOCATION_SCOPE",
+        "DEPARTMENT_SCOPE",
+        "PROJECT_SCOPE",
+        "NO_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-RECORD-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-RECORD-001 executes every finance lifecycle boundary with a foreign record id and no mutation",
+      "kind": "database-service-and-authenticated-request-negative",
+      "coveredControls": [
+        "TENANT_SCOPE",
+        "COMPANY_SCOPE",
+        "RECORD_SCOPE",
+        "CALLER_TRANSACTION_PRECONDITION",
+        "NO_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-SOD-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-SOD-001 blocks self-approval across budget, expense, cash advance, and petty cash domains",
+      "kind": "database-service-negative",
+      "coveredControls": [
+        "SEGREGATION_OF_DUTIES",
+        "TRANSACTION_ROLLBACK",
+        "NO_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-STATE-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-STATE-001 rejects invalid finance lifecycle and accounting-period states without side effects",
+      "kind": "database-service-negative",
+      "coveredControls": [
+        "LIFECYCLE_STATE",
+        "PERIOD_STATE",
+        "TRANSACTION_ROLLBACK",
+        "NO_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-COMPANY-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-COMPANY-001 rejects an adjacent-company accounting period before close workflow mutation",
+      "kind": "database-service-negative",
+      "coveredControls": [
+        "TENANT_SCOPE",
+        "COMPANY_SCOPE",
+        "PERIOD_CLOSE_SCOPE",
+        "NO_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-EVIDENCE-BOUNDARY-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-EVIDENCE-BOUNDARY-001 executes finance evidence boundaries with live denial and denial-only audit effects",
+      "kind": "authenticated-request-database-service-negative",
+      "coveredControls": [
+        "LIVE_ROLE_PERMISSION",
+        "SOURCE_ADAPTER_DELEGATION",
+        "DENIAL_AUDIT"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-EVIDENCE-001",
+      "file": "apps/web/tests/accessControl.integration.test.ts",
+      "testName": "denies same-company evidence source records outside the active location scope",
+      "kind": "database-service-negative",
+      "coveredControls": [
+        "LIVE_SOURCE_PERMISSION",
+        "LOCATION_SCOPE",
+        "PROJECT_SCOPE",
+        "INTEGRITY",
+        "ARCHIVE",
+        "NON_ENUMERATION",
+        "AUDIT"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-EVIDENCE-ADAPTER-001",
+      "file": "apps/web/tests/accessControl.integration.test.ts",
+      "testName": "executes every controlled-evidence source adapter against the migrated schema",
+      "kind": "database-adapter-negative",
+      "coveredControls": ["ALL_EVIDENCE_SOURCE_ADAPTERS", "MIGRATED_SCHEMA"]
+    },
+    {
+      "id": "FIN-AUTHZ-EXPORT-AUDIT-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-EXPORT-AUDIT-001 binds export audit mutation to a guarded finance export caller",
+      "kind": "database-guarded-caller",
+      "coveredControls": [
+        "LIVE_EXPORT_PERMISSION",
+        "SCOPE_FILTER",
+        "AUDIT_MUTATION",
+        "GUARDED_CALLER_BINDING"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-TOCTOU-001",
+      "file": "apps/web/tests/authorizationFinance.integration.test.ts",
+      "testName": "FIN-AUTHZ-TOCTOU-001 serializes budget and journal creation against concurrent authority revocation",
+      "kind": "database-concurrency-negative",
+      "coveredControls": [
+        "transactional live role permission revalidation",
+        "transactional location and project scope revalidation",
+        "concurrent revocation serialization",
+        "no budget, journal, workflow, or audit mutation"
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "surfaceId": "server/services/attachments.ts#archiveControlledEvidenceAttachment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "authorizeControlledEvidenceSourceAction",
+        "assertControlledEvidenceSourceAccess"
+      ],
+      "caseIds": ["FIN-AUTHZ-EVIDENCE-BOUNDARY-001", "FIN-AUTHZ-EVIDENCE-001"],
+      "noMutationControls": ["source-record", "binary"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/attachments.ts#createControlledEvidenceAttachmentMetadataLink",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "authorizeControlledEvidenceSourceAction",
+        "assertControlledEvidenceSourceAccess"
+      ],
+      "caseIds": ["FIN-AUTHZ-EVIDENCE-BOUNDARY-001", "FIN-AUTHZ-EVIDENCE-001"],
+      "noMutationControls": ["source-record"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/attachments.ts#createControlledEvidenceAttachmentUploadLink",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "authorizeControlledEvidenceSourceAction",
+        "assertControlledEvidenceSourceAccess",
+        "private-storage-policy"
+      ],
+      "caseIds": ["FIN-AUTHZ-EVIDENCE-BOUNDARY-001", "FIN-AUTHZ-EVIDENCE-001"],
+      "noMutationControls": ["source-record"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/attachments.ts#downloadControlledEvidenceAttachment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "downloadControlledEvidenceAttachmentForSession"
+      ],
+      "caseIds": ["FIN-AUTHZ-EVIDENCE-BOUNDARY-001", "FIN-AUTHZ-EVIDENCE-001"],
+      "noMutationControls": ["source-record"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/attachments.ts#downloadControlledEvidenceAttachmentForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "assertControlledEvidenceSourceAccess",
+        "requireAnyPermission",
+        "private-byte-integrity"
+      ],
+      "caseIds": ["FIN-AUTHZ-EVIDENCE-001", "FIN-AUTHZ-EVIDENCE-ADAPTER-001"],
+      "noMutationControls": ["source-record"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/attachments.ts#listControlledEvidenceAttachments",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "authorizeControlledEvidenceSourceAction",
+        "assertControlledEvidenceSourceAccess"
+      ],
+      "caseIds": ["FIN-AUTHZ-EVIDENCE-BOUNDARY-001", "FIN-AUTHZ-EVIDENCE-001"],
+      "noMutationControls": ["read-only"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/budgetControl.ts#approveBudget",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit", "notification"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#approveBudgetRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetRevisionOrThrow",
+        "assertBudgetRevisionTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget-revision", "budget-line", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#archiveBudget",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#cancelBudget",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit", "notification"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#cancelBudgetRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetRevisionOrThrow",
+        "assertBudgetRevisionTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget-revision", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#closeBudget",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#createDraftBudget",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission", "requireActiveScopeAssignment"],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-SCOPE-001",
+        "FIN-AUTHZ-TOCTOU-001"
+      ],
+      "noMutationControls": ["budget", "budget-line", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#createDraftBudgetRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission", "getScopedBudgetLineOrThrow"],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["budget-revision", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#rejectBudget",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#rejectBudgetRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetRevisionOrThrow",
+        "assertBudgetRevisionTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget-revision", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#reverseBudgetCommitmentFromApprovedSourceEvent",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["caller-owned-transaction", "assertCanUseBudgetLine"],
+      "caseIds": ["FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["source-record", "budget-commitment"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#reverseBudgetCommitmentFromSourceEvent",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission", "assertCanUseBudgetLine"],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["source-record", "budget-commitment", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#submitBudgetForReview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#submitBudgetRevisionForReview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetRevisionOrThrow",
+        "assertBudgetRevisionTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget-revision", "audit"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/cashAdvances.ts#approveCashAdvanceLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceLiquidationOrThrow",
+        "assertLiquidationTransition",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#approveCashAdvanceRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["cash-advance", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#cancelCashAdvanceLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceLiquidationOrThrow",
+        "assertLiquidationTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-PARTIAL-DOWNGRADE-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#cancelCashAdvanceRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-PARTIAL-DOWNGRADE-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["cash-advance", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#closeCashAdvanceLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceLiquidationOrThrow",
+        "assertLiquidationTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#closeCashAdvanceRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["cash-advance", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#createCashAdvanceDisbursementHandoff",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["cash-advance", "payment-release", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#createDraftCashAdvanceRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission", "requireActiveScopeAssignment"],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-SCOPE-001"],
+      "noMutationControls": ["cash-advance", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#issueCashAdvanceOffline",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["cash-advance", "movement", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#rejectCashAdvanceLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceLiquidationOrThrow",
+        "assertLiquidationTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#rejectCashAdvanceRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["cash-advance", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#reverseCashAdvanceLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceLiquidationOrThrow",
+        "assertLiquidationTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#submitCashAdvanceForApproval",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["cash-advance", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#submitCashAdvanceLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertLiquidationTransition",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#voidCashAdvanceOfflineIssue",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["cash-advance", "movement", "audit"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/expenseRequests.ts#approveExpenseRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedExpenseRequestOrThrow",
+        "assertExpenseTransition",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["expense-request", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#cancelExpenseRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedExpenseRequestOrThrow",
+        "assertExpenseTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-PARTIAL-DOWNGRADE-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["expense-request", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#completeExpenseRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedExpenseRequestOrThrow",
+        "assertExpenseTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["expense-request", "payment-release", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#createDraftExpenseRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission", "requireActiveScopeAssignment"],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-SCOPE-001"],
+      "noMutationControls": ["expense-request", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#createExpenseRequestApInvoiceDraft",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedExpenseRequestOrThrow",
+        "assertExpenseTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": [
+        "expense-request",
+        "ap-invoice",
+        "payment-release"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#rejectExpenseRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedExpenseRequestOrThrow",
+        "assertExpenseTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["expense-request", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#submitExpenseRequestForApproval",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedExpenseRequestOrThrow",
+        "assertExpenseTransition",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["expense-request", "audit"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/finance.ts#approveManualJournal",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-journal-query",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001"
+      ],
+      "noMutationControls": ["journal", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#approvePaymentRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-location-filtered-request-query",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001"
+      ],
+      "noMutationControls": ["payment-request", "payment-release", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#buildBankCashExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireFinanceAccess",
+        "tenant-company-location-dashboard-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001"],
+      "noMutationControls": ["read-only"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#buildFinanceFoundationExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireFinanceAccess",
+        "tenant-company-location-dashboard-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001"],
+      "noMutationControls": ["read-only"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#cancelApInvoice",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "tenant-company-location-invoice-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["ap-invoice", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#cancelPaymentRelease",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#cancelPaymentRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-request-query"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-PARTIAL-DOWNGRADE-001",
+        "FIN-AUTHZ-RECORD-001"
+      ],
+      "noMutationControls": ["payment-request", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#cancelSupplierCreditNote",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-credit-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["supplier-credit", "ap-invoice"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#createApInvoiceDraft",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "tenant-company-location-source-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-SCOPE-001"],
+      "noMutationControls": ["ap-invoice", "procurement-source"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#createBranchCashDepositDeclaration",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "assertAuthorizedLocation"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-SCOPE-001"],
+      "noMutationControls": ["bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#createFiscalYearWithMonthlyPeriods",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireFinanceConfigurationAccess",
+        "session-company-scope",
+        "idempotency"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-COMPANY-001"],
+      "noMutationControls": ["fiscal-year", "period", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#createManualJournalDraft",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "assertManualJournalLineScope",
+        "requireOpenAccountingPeriod"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-SCOPE-001",
+        "FIN-AUTHZ-STATE-001",
+        "FIN-AUTHZ-TOCTOU-001"
+      ],
+      "noMutationControls": ["journal", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#createPaymentReleaseDraft",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-request-query",
+        "settlement-control"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#createPaymentRequestDraft",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "tenant-company-location-invoice-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["payment-request", "payment-release"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#createSupplierCreditNoteDraft",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "tenant-company-location-invoice-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["supplier-credit", "ap-invoice"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#postApprovedManualJournal",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-journal-query",
+        "requireOpenAccountingPeriod",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["journal", "posting-attempt", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#rejectPaymentRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-request-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["payment-request", "payment-release"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#reversePostedFinanceJournal",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-journal-query",
+        "requireOpenAccountingPeriod",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["journal", "reversal", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#submitApInvoiceForMatch",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "tenant-company-location-invoice-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["ap-invoice", "procurement-source"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#submitManualJournal",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-journal-query"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["journal", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#submitPaymentRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-request-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["payment-request", "payment-release"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#submitSupplierCreditNoteForApplication",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-credit-query"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["supplier-credit", "ap-invoice"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#approveFinanceCloseRunApproval",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "findActionableFinanceCloseRunApproval",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001"
+      ],
+      "noMutationControls": ["approval", "close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#buildPeriodCloseExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireFinanceAccess", "getPeriodCloseDashboard"],
+      "caseIds": ["FIN-AUTHZ-PERM-001"],
+      "noMutationControls": ["read-only"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#cancelPeriodCloseRun",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "close-state"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-COMPANY-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#completePeriodCloseRun",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "period-readiness-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-COMPANY-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#rejectFinanceCloseRunApproval",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "findActionableFinanceCloseRunApproval",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001"
+      ],
+      "noMutationControls": ["approval", "close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/pettyCash.ts#approvePettyCashLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedLiquidationOrThrow",
+        "assertLiquidationTransition",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#approvePettyCashRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["request", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#cancelPettyCashLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedLiquidationOrThrow",
+        "assertLiquidationTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-PARTIAL-DOWNGRADE-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#cancelPettyCashRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-PARTIAL-DOWNGRADE-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["request", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#closePettyCashLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedLiquidationOrThrow",
+        "assertLiquidationTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "fund", "ledger"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#closePettyCashRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["request", "fund", "ledger"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#createPettyCashDisbursementHandoff",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["request", "payment-release", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#createPettyCashFund",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission", "requireActiveScopeAssignment"],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-SCOPE-001"],
+      "noMutationControls": ["fund", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#createPettyCashRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requirePermission", "getScopedFundOrThrow"],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["request", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#rejectPettyCashLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedLiquidationOrThrow",
+        "assertLiquidationTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#rejectPettyCashRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["request", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#reversePettyCashLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedLiquidationOrThrow",
+        "assertLiquidationTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "fund", "ledger"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#submitPettyCashLiquidation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedFundOrThrow",
+        "assertLiquidationTransition",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#submitPettyCashRequest",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["request", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#voidPettyCashFulfillment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["request", "fund", "ledger"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#activateBudget",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#projectBudgetCommitmentFromApprovedSourceEvent",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["caller-owned-transaction", "assertCanUseBudgetLine"],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["source-record", "budget-commitment"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#returnBudgetForRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#startBudgetReview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetOrThrow",
+        "assertBudgetTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#startBudgetRevisionReview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedBudgetRevisionOrThrow",
+        "assertBudgetRevisionTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["budget-revision", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#upsertBudgetCommitmentFromSourceEvent",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "budget-line-company-query",
+        "assertCanUseBudgetLine",
+        "idempotency"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": ["source-record", "budget-commitment", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#markCashAdvanceLiquidationClosureReady",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceLiquidationOrThrow",
+        "assertLiquidationTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#returnCashAdvanceForRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceOrThrow",
+        "assertCashAdvanceTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["cash-advance", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#returnCashAdvanceLiquidationForRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedCashAdvanceLiquidationOrThrow",
+        "assertLiquidationTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "movement", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#markExpenseRequestPaymentHandoffReady",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedExpenseRequestOrThrow",
+        "assertExpenseTransition",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["expense-request", "payment-release", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#returnExpenseRequestForRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedExpenseRequestOrThrow",
+        "assertExpenseTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["expense-request", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/exportAudit.ts#logOperationalExportAudit",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["guarded-export-caller", "assertReportExportScopeFilters"],
+      "caseIds": ["FIN-AUTHZ-EXPORT-AUDIT-001"],
+      "noMutationControls": ["report-source", "money", "inventory"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#evaluateApInvoiceMatch",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "tenant-company-location-invoice-query",
+        "projectBudgetCommitmentFromApprovedSourceEvent"
+      ],
+      "caseIds": ["FIN-AUTHZ-COOKIE-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": [
+        "procurement-source",
+        "budget-commitment",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#executePaymentRelease",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#handoffPaymentReleaseToReconciliation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#holdPaymentRelease",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#markPaymentReleaseExecutionFailed",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#matchBranchCashDepositToBankReconciliation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "tenant-company-location-deposit-query",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SCOPE-001"
+      ],
+      "noMutationControls": ["deposit", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#matchPaymentReleaseToBankReconciliation",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#openAccountingPeriod",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireFinanceConfigurationAccess",
+        "company-filtered-period-query",
+        "period-state"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-COMPANY-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["period", "journal", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#openFiscalYear",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireFinanceConfigurationAccess",
+        "company-filtered-fiscal-year-query",
+        "fiscal-state"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-COMPANY-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["fiscal-year", "period", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#recordPaymentReleaseReconciliationOutcome",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#requestPaymentReleaseReversal",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control",
+        "self-approval"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#resumePaymentReleaseFromHold",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requireSessionContext",
+        "requirePermission",
+        "company-filtered-release-query",
+        "settlement-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-COOKIE-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["payment-release", "bank", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#acknowledgePeriodCloseException",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "exception-state"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-COMPANY-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#calculatePeriodCloseReadiness",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "readiness-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-COMPANY-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#lockAccountingPeriodFromCloseRun",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "sensitive-approval-control",
+        "period-state"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#recordPeriodCloseChecklistResult",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "checklist-state"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#reopenAccountingPeriodFromCloseRun",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "sensitive-approval-control",
+        "period-state"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#requestPeriodCloseSensitiveActionApproval",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "self-approval",
+        "approval-routing"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-SOD-001"
+      ],
+      "noMutationControls": ["period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#resolvePeriodCloseException",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "exception-state"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#startPeriodCloseRun",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "company-filtered-period-query",
+        "period-state",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-COMPANY-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#waivePeriodCloseChecklistItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "checklist-state",
+        "evidence-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/financePeriodClose.ts#waivePeriodCloseException",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "tenant-company-close-run-query",
+        "exception-state",
+        "evidence-control"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["close-run", "period", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#activatePettyCashFund",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedFundOrThrow",
+        "assertFundTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["fund", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#fulfillPettyCashRequestOffline",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition",
+        "idempotency"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["request", "fund", "ledger", "journal"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#returnPettyCashLiquidationForRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedLiquidationOrThrow",
+        "assertLiquidationTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["liquidation", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#returnPettyCashRequestForRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "requirePermission",
+        "getScopedRequestOrThrow",
+        "assertRequestTransition"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-PERM-001",
+        "FIN-AUTHZ-RECORD-001",
+        "FIN-AUTHZ-STATE-001"
+      ],
+      "noMutationControls": ["request", "ledger", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/budgetControl.ts#getBudgetControlDashboard",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "getGrantedPermissionCodes",
+        "tenant-company finance scope"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001"],
+      "noMutationControls": [
+        "no budget or finance dashboard disclosure after live permission revocation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/cashAdvances.ts#getCashAdvanceDashboard",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "getGrantedPermissionCodes",
+        "tenant-company finance scope"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001"],
+      "noMutationControls": [
+        "no cash-advance dashboard disclosure after live permission revocation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#getExpenseRequestDashboard",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "getGrantedPermissionCodes",
+        "tenant-company finance scope"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001"],
+      "noMutationControls": [
+        "no expense-request dashboard disclosure after live permission revocation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/finance.ts#getFinanceFoundationDashboard",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireFinanceAccess", "tenant-company finance scope"],
+      "caseIds": ["FIN-AUTHZ-PERM-001"],
+      "noMutationControls": [
+        "no finance foundation disclosure after live permission revocation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#getPettyCashDashboard",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "getGrantedPermissionCodes",
+        "tenant-company finance scope"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001"],
+      "noMutationControls": [
+        "no petty-cash dashboard disclosure after live permission revocation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/exportAudit.ts#logOperationalExportFailure",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "authorized operational export route",
+        "server/services/exportAudit.ts#logOperationalExportAudit"
+      ],
+      "caseIds": ["FIN-AUTHZ-PERM-001", "FIN-AUTHZ-RECORD-001"],
+      "noMutationControls": [
+        "failure audit only after an authenticated authorized export attempt",
+        "no money or workflow mutation"
+      ],
+      "status": "COVERED"
+    }
+  ]
+}

@@ -4,7 +4,8 @@ import {
   canUseFoodSafety,
   canUseIncidents,
   canUseMaintenance,
-  canUseRecipesAndCosting
+  canUseRecipesAndCosting,
+  getGrantedPermissionCodes
 } from "./authorization";
 import {
   getBranchOperationsDashboard,
@@ -59,13 +60,13 @@ type RestaurantOpsReminderSource = {
   maintenance?: MaintenanceDashboard;
 };
 
-function phase2NotificationAccess(session: SessionContext) {
+function phase2NotificationAccess(permissionCodes: string[]) {
   return (
-    canUseRecipesAndCosting(session.permissionCodes) ||
-    canUseBranchOperations(session.permissionCodes) ||
-    canUseFoodSafety(session.permissionCodes) ||
-    canUseIncidents(session.permissionCodes) ||
-    canUseMaintenance(session.permissionCodes)
+    canUseRecipesAndCosting(permissionCodes) ||
+    canUseBranchOperations(permissionCodes) ||
+    canUseFoodSafety(permissionCodes) ||
+    canUseIncidents(permissionCodes) ||
+    canUseMaintenance(permissionCodes)
   );
 }
 
@@ -292,13 +293,17 @@ export async function runRestaurantOpsExceptionReminderScan(
   session: SessionContext,
   input: { asOf?: Date; timeZone?: string } = {}
 ) {
-  if (!phase2NotificationAccess(session)) {
+  const permissionCodes = await getGrantedPermissionCodes(session);
+  if (!phase2NotificationAccess(permissionCodes)) {
     throw new Error("PERMISSION_DENIED");
   }
 
   const asOf = input.asOf ?? new Date();
   const asOfDate = dateOnlyInTimeZone(asOf, input.timeZone);
-  const reminders = await collectRestaurantOpsReminders(session);
+  const reminders = await collectRestaurantOpsReminders({
+    ...session,
+    permissionCodes
+  });
   const emitted: Array<{ reminderKind: RestaurantOpsReminderKind; sourceKey: string }> = [];
 
   await prisma.$transaction(async (tx) => {

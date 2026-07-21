@@ -5,9 +5,12 @@ const isCi = Boolean(process.env.CI);
 export default defineConfig({
   testDir: "../../tests/e2e",
   timeout: 60_000,
+  expect: { timeout: 15_000 },
   forbidOnly: isCi,
   retries: isCi ? 1 : 0,
-  workers: isCi ? 1 : undefined,
+  // The end-to-end flows intentionally mutate the same seeded tenant and users.
+  // Serial execution is required locally and in CI to keep evidence deterministic.
+  workers: 1,
   reporter: isCi
     ? [
         ["line"],

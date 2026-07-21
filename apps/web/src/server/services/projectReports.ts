@@ -1,7 +1,7 @@
 import { prisma } from "@ogfi/database";
 import type { CsvRow } from "./csv";
+import { canUseProjects, getGrantedPermissionCodes } from "./authorization";
 import { getExportFailureReasonCode } from "./exportErrors";
-import { canExportProjects } from "./exportAuthorization";
 import { assertReportExportScopeFilters } from "./exportAudit";
 import { getProjectDashboard } from "./projectDashboard";
 import type { SessionContext } from "./context";
@@ -17,6 +17,10 @@ import { getReportExportPolicy } from "./policySettings";
 const projectExportAttempts = new Map<string, number[]>();
 const projectExportWindowMs = 60_000;
 const maxProjectExportsPerWindow = 5;
+
+async function canExportProjectsLive(session: SessionContext) {
+  return canUseProjects(await getGrantedPermissionCodes(session));
+}
 
 function pruneProjectExportAttempts(now: number, attempts: number[]) {
   return attempts.filter((attemptedAt) => now - attemptedAt < projectExportWindowMs);
@@ -102,7 +106,7 @@ export async function logProjectExportFailure(input: {
 }
 
 export async function buildProjectHealthExportRows(session: SessionContext) {
-  if (!canExportProjects(session)) {
+  if (!(await canExportProjectsLive(session))) {
     await logProjectExportAudit({
       session,
       eventType: "project_report.export_denied",
@@ -183,7 +187,7 @@ export const projectTaskRegisterExportHeaders = [
 ] as const;
 
 export async function buildProjectTaskRegisterExportRows(session: SessionContext) {
-  if (!canExportProjects(session)) {
+  if (!(await canExportProjectsLive(session))) {
     await logProjectExportAudit({
       session,
       eventType: "project_report.export_denied",
@@ -351,7 +355,7 @@ export function safeProjectActivityExportSummary(input: {
 }
 
 export async function buildProjectActivityLogExportRows(session: SessionContext) {
-  if (!canExportProjects(session)) {
+  if (!(await canExportProjectsLive(session))) {
     await logProjectExportAudit({
       session,
       eventType: "project_report.export_denied",
@@ -432,7 +436,7 @@ export async function buildProjectActivityLogExportRows(session: SessionContext)
 export async function buildProjectLinkedRecordFollowUpExportRows(
   session: SessionContext
 ) {
-  if (!canExportProjects(session)) {
+  if (!(await canExportProjectsLive(session))) {
     await logProjectExportAudit({
       session,
       eventType: "project_report.export_denied",

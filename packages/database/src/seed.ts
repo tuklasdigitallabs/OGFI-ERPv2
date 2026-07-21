@@ -22,6 +22,7 @@ const ids = {
   adminUserId: "00000000-0000-4000-8000-000000000014",
   adminRoleId: "00000000-0000-4000-8000-000000000015",
   administerPermissionId: "00000000-0000-4000-8000-000000000016",
+  tenantRoleAdministerPermissionId: "00000000-0000-4000-8000-000000000998",
   secondaryAdminUserId: "00000000-0000-4000-8000-000000000901",
   superUserId: "00000000-0000-4000-8000-000000000991",
   superRoleId: "00000000-0000-4000-8000-000000000992",
@@ -7705,6 +7706,17 @@ async function main() {
   });
 
   await prisma.permission.upsert({
+    where: { code: "core.tenant_role_administer" },
+    create: {
+      id: ids.tenantRoleAdministerPermissionId,
+      code: "core.tenant_role_administer",
+      module: "core",
+      action: "tenant_role_administer",
+    },
+    update: {},
+  });
+
+  await prisma.permission.upsert({
     where: { code: "purchasing.purchase_request.create" },
     create: {
       id: ids.createPermissionId,
@@ -8926,6 +8938,10 @@ async function main() {
       {
         roleId: ids.adminRoleId,
         permissionId: ids.administerPermissionId,
+      },
+      {
+        roleId: ids.adminRoleId,
+        permissionId: ids.tenantRoleAdministerPermissionId,
       },
       {
         roleId: ids.adminRoleId,

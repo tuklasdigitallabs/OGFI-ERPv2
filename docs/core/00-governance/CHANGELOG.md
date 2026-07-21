@@ -1,5 +1,13 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-21 — Tenant Role Administration Authorization Decision
+
+- Added `DEC-0043` confirming that `UserRoleAssignment` remains tenant-global while all direct role administration requires `core.tenant_role_administer`.
+- Required active/effective selected-company membership for target-user role actions without treating the resulting role assignment as company-bound.
+- Confirmed the permission for `CONFIGURED_ADMIN` and `CONFIGURED_SUPER_USER`, retained existing sensitive-role safeguards, and deferred a company-bound role-assignment schema to a future material decision.
+- Clarified that controlled approval is required to grant a sensitive role but must not prevent an authorized administrator from revoking that active assignment with audit and session invalidation.
+- Kept SPF-004 pending implementation and executable authorization evidence.
+
 ## 2026-06-29 — Stock Adjustment Foundation Decision
 
 - Added `DEC-0019` confirming the Phase I Stock Adjustment foundation as non-posting `StockAdjustment` and `StockAdjustmentLine` records only.

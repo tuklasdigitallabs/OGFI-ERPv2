@@ -4,7 +4,7 @@
 **System:** OGFI ERP — Multi-Brand, Multi-Branch Restaurant Operations Platform  
 **Applies To:** Phase I foundation and forward-compatible permissions for all future phases  
 **Status:** Working Baseline  
-**Last Updated:** June 25, 2026
+**Last Updated:** July 21, 2026
 
 ---
 
@@ -103,6 +103,7 @@ Current Phase I scaffold permission keys for the PO foundation:
 
 | Permission key | Meaning |
 |---|---|
+| `core.tenant_role_administer` | Administer the tenant-owned role catalog and tenant-global role assignments. Required for role overview/details, role creation, direct grants/deactivation, sensitive-role request/review, role-permission updates, and onboarding when `initialRoleId` is supplied. For target-user actions, the target must also be an active/effective member of the operator's selected company. This permission does not make a role assignment company-bound or grant access to company business records. |
 | `purchasing.purchase_order.view` | View scoped Purchase Orders and their PR/quote lineage. |
 | `purchasing.purchase_order.create` | Create a draft Purchase Order from an approved quotation recommendation. This does not grant submit, approval, issue/send, amendment, receiving, or inventory posting authority. |
 | `purchasing.purchase_order.submit` | Submit a scoped draft Purchase Order into the configured approval flow. This does not grant approval, issue/send, receiving, or inventory posting authority. |
@@ -413,11 +414,21 @@ Expired temporary access must be automatically removed.
 
 Role changes should be controlled by an authorized administrator. Current implementation separates ordinary quick assignment from controlled sensitive role grants:
 
-- quick role assignment is limited to roles the service marks directly assignable;
+- `UserRoleAssignment` remains tenant-global; it does not carry company, brand, location, or department scope;
+- every direct role-administration surface requires `core.tenant_role_administer`; `core.administer` or company `MANAGE` alone is insufficient;
+- the seeded `CONFIGURED_ADMIN` and `CONFIGURED_SUPER_USER` roles receive `core.tenant_role_administer` by default;
+- role overview/details, role creation, direct grants/deactivation, sensitive-role request/review, role-permission updates, and onboarding with `initialRoleId` all use this tenant-level guard;
+- a target user must be active and have a currently effective `COMPANY` assignment for the selected company or a currently effective `LOCATION` assignment to an active location in that company before a grant, deactivation, sensitive request, or review may proceed;
+- selected-company membership limits the eligible target population but does not scope the resulting role assignment; company-bound assignments are deferred under `DEC-0043`;
+- onboarding with `initialRoleId` must establish selected-company membership in the same transaction rather than create a role-only user;
+- quick role assignment is limited to roles whose current live permission set contains no sensitive capability; an allowlisted role code never overrides that live sensitivity check;
 - admin, approver, system, and sensitive-permission roles use a `SensitiveRoleRequest`;
+- a role with an active, effective assignee cannot be promoted by adding a sensitive permission; direct grants and role-permission changes serialize on the role so they cannot race around this safeguard;
+- role permissions cannot change while a sensitive-role request for that role is pending, and approval reloads the active role and its current permission set under the same role lock so the granted authority and audit evidence match what was approved;
 - controlled role requests require reason and evidence reference;
 - the requester and target user cannot approve or reject the request;
 - local production approval requires recent session-bound runtime MFA and creates the `UserRoleAssignment` transactionally; external-provider modes may additionally retain verified provider evidence;
+- an authorized administrator may deactivate an active ordinary or sensitive role with a reason; the direct-assignment eligibility check does not block revocation, and the action remains subject to tenant-role authority, selected-company target eligibility, no-self-mutation, active-approval-route safety, audit, privilege-epoch update, and session invalidation;
 - approval writes audit history linked to `DEC-0036` and `DEC-0040`, increments the target user's privilege epoch, and revokes active application sessions so stale authority cannot survive;
 - external identity-provider invalidation follow-up is tracked only when an external provider is configured.
 

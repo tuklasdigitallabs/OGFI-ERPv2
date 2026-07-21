@@ -7,6 +7,15 @@
 | Brand | A restaurant concept operated under a company. |
 | Location | A branch, warehouse, commissary, Head Office, project site, or future temporary site. |
 | Scope | The company, brand, location, department, or project access assigned to a user. |
+| Tenant-wide role administration | The high-risk access control labeled `Administer tenant-wide roles` (`core.tenant_role_administer`). It is required to view or change the tenant-owned role catalog and tenant-wide user role assignments. Core Administration access or company Manage scope alone is not enough. |
+| Tenant-wide role assignment | A role assignment that is not limited to the company selected when it was granted. The user's active scopes still determine which company and location records the user can access. The role does not grant company-record access by itself. |
+| Selected-company target eligibility | The rule that a role grant, deactivation, request, or review may concern only an active user with a current active company assignment for the selected company or an active location assignment to an active location in that company. A default company alone does not qualify. |
+| Controlled role revocation | Removal of an active role by an authorized administrator with a recorded reason, audit event, privilege-epoch change, and session invalidation. A sensitive role requires controlled approval when granted, but that grant classification must not prevent its later revocation. |
+| Initial-role onboarding | Creating a user with an initial role. This requires an initial active location in the selected company, and the system creates the location membership and role assignment together. |
+| Location-primary workforce scope | Workforce access for a location-bound record requires an active assignment to that exact location. A shared brand does not extend access to another location. The record's brand must match the location's brand, and any department must be active in the same company; a department assignment does not currently narrow otherwise valid workforce location access. |
+| Source-record access | The current permission and scope required to view the business record that an attachment, export, notification, or project link belongs to. Having a copied link or attachment ID does not grant access. |
+| Canonical evidence mutation authority | The source-specific authority the ERP derives before it links, uploads, adds metadata to, or archives controlled evidence. This is normally the source write permission; a project-requirement owner may instead use the controlled owner path only after live project-view, ownership, and project-scope checks pass. A caller-supplied permission name cannot weaken or replace the canonical policy. For example, period-close evidence changes require `finance.period_close.manage`; Core Administration alone is insufficient. |
+| Restricted project | A project visible only through active project membership, an exact project scope, or authorized project management with company-level manage scope. Broad branch, brand, or department scope alone does not grant access. |
 | Purchase Request (PR) | A request to obtain goods or services that may require approval before purchasing. |
 | Purchase Order (PO) | An approved order issued to a supplier. |
 | Receiving Report | The record of goods accepted, rejected, damaged, short, or partially delivered. |
@@ -21,6 +30,7 @@
 | MFA step-up | A fresh runtime MFA check required before a sensitive action. The current assurance window is 15 minutes. |
 | Recovery code | One of 10 single-use codes issued after MFA enrollment. It can replace an authenticator code when the device is unavailable. |
 | Application session | A server-controlled signed-in session that can expire or be revoked without deleting the user account. |
+| Privilege epoch | A server-maintained access version for a user. Role, role-permission, or scope changes refresh it so an older session must revalidate before protected access continues. |
 | Activation link | A single-use link sent directly to the account email address so a user can create or replace local credentials. It expires after 30 minutes and is not displayed to administrators. |
 | Controlled recovery | The audited process for recovering an existing account: one administrator submits identity evidence and a different MFA-assured administrator approves or rejects the request. |
 | First-administrator bootstrap | A deployment-only, one-time tenant ceremony that issues the initial administrator activation through a restricted file. It cannot be reused for recovery or another user. |

@@ -1,0 +1,1734 @@
+{
+  "schemaVersion": 1,
+  "cluster": "projects-operations",
+  "testFiles": [
+    "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+    "apps/web/tests/accessControl.integration.test.ts"
+  ],
+  "cases": [
+    {
+      "id": "PROJECT_OPS_RESTRICTED_REVOCATION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-RESTRICTED-ACCESS-REVOCATION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "restricted-project-membership",
+        "project-scope-revocation",
+        "live-role-permission-revocation",
+        "milestone-risk-member-details-task-link-comment-checklist-attachment-evidence-denial",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_CREATE_LIVE_PERMISSION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-CREATE-LIVE-PERMISSION-REVOCATION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live-project-create-permission-revocation",
+        "stale-session-claim",
+        "no-project-member-activity-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_LIFECYCLE_DENIAL_AUDIT",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-LIFECYCLE-DENIAL-AUDIT-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "restricted-project-lifecycle",
+        "permission-denial",
+        "exact-denial-audit",
+        "no-project-or-activity-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_EXPORT_REVOCATION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-EXPORT-LIVE-PERMISSION-REVOCATION-AUDIT-NO-DATA-LEAK",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live-role-permission-revocation",
+        "project-export-data-leak-prevention",
+        "exact-denial-audit",
+        "no-project-task-link-attachment-activity-inventory-finance-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-NOTIFICATION-SCOPE-AND-GUARDED-CALLERS-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "notification-recipient-ownership",
+        "tenant-company-location-recipient-resolution",
+        "empty-recipient-no-write",
+        "project-reminder-guard",
+        "restaurant-operations-reminder-guard",
+        "no-protected-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_REMINDER_REVOCATION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-REMINDER-LIVE-PERMISSION-REVOCATION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live-project-manage-revocation",
+        "live-restaurant-operations-permission-revocation",
+        "company-manage-scope-insufficient-without-permission",
+        "no-notification-or-activity-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_DIMENSION_SCOPE",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-COMPANY-LOCATION-BRAND-SCOPE-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "company",
+        "location",
+        "brand",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_WORKFLOW_DENIAL",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-WORKFLOW-TRANSITION-DENIAL-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "workflow-transition",
+        "optimistic-version",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_SELF_DECISION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-SELF-DECISION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "segregation-of-duties",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_RESTAURANT_PERMISSION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-RESTAURANT-PERMISSION-DENIAL-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live-permission",
+        "authenticated-request-boundary",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_TEMPLATE_PERMISSION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-TEMPLATE-PERMISSION-DENIAL-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "template-configure-permission",
+        "authenticated-request-boundary",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-TEMPLATE-LIVE-PERMISSION-REVOCATION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live-template-configure-permission-revocation",
+        "template-read-and-write-denial",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_MEMBER_MANAGE_LIVE_PERMISSION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-MEMBER-MANAGE-LIVE-PERMISSION-REVOCATION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live-project-member-manage-permission-revocation",
+        "member-option-non-disclosure",
+        "add-and-remove-member-denial",
+        "no-project-member-activity-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_EXPANSION_REVOCATION",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-EXPANSION-LIVE-PERMISSION-REVOCATION-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live-role-permission-revocation",
+        "authenticated-request-boundary",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "PROJECT_OPS_RECIPE_RECORD_SCOPE",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-PROJECT-OPS-RECIPE-RECORD-SCOPE-NO-MUTATION",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "tenant-company-brand-location-record-query",
+        "workflow-record-not-found",
+        "no-project-task-activity-source-inventory-finance-audit-mutation"
+      ]
+    },
+    {
+      "id": "CORE_RESTRICTED_PROJECT_ADAPTER",
+      "file": "apps/web/tests/accessControl.integration.test.ts",
+      "testName": "enforces restricted-project membership and exact project scope through the real service",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "restricted-project-membership",
+        "exact-project-scope",
+        "company-manage-plus-live-project-manage"
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "surfaceId": "server/services/branchOperations.ts#buildBranchOperationsExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/branchOperations.ts#buildBranchOperationsExportRows"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/branchOperations.ts#applyBranchOperationChecklistCorrection",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/branchOperations.ts#applyBranchOperationChecklistCorrection",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": [
+        "all-protected-state",
+        "operational-correction",
+        "operational-status-transition"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/branchOperations.ts#closeBranchOperationChecklist",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/branchOperations.ts#closeBranchOperationChecklist"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/branchOperations.ts#createBranchOperationChecklist",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/branchOperations.ts#createBranchOperationChecklist"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/branchOperations.ts#reviewBranchOperationChecklist",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/branchOperations.ts#reviewBranchOperationChecklist"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/branchOperations.ts#returnBranchOperationChecklistForCorrection",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/branchOperations.ts#returnBranchOperationChecklistForCorrection",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": [
+        "all-protected-state",
+        "operational-correction",
+        "operational-status-transition"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/expansionProjects.ts#buildExpansionPortfolioExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#buildExpansionPortfolioExportRows"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#createExpansionCapexProcurementItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#createExpansionCapexProcurementItem"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#createExpansionConstructionTask",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#createExpansionConstructionTask"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#createExpansionFeasibilityModel",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#createExpansionFeasibilityModel"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#createExpansionOpeningReadiness",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#createExpansionOpeningReadiness"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#createExpansionPermitDocument",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#createExpansionPermitDocument"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#createExpansionPostOpeningReview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#createExpansionPostOpeningReview"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#createExpansionPunchListItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#createExpansionPunchListItem"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#recordExpansionConstructionProgress",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#recordExpansionConstructionProgress",
+        "server/services/projects.ts#listAuthorizedProjectAccess"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#seedExpansionLifecycleGates",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#seedExpansionLifecycleGates",
+        "server/services/projects.ts#listAuthorizedProjectAccess"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#toggleExpansionOpeningReadinessChecklist",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#toggleExpansionOpeningReadinessChecklist",
+        "server/services/projects.ts#listAuthorizedProjectAccess"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#transitionExpansionCapexProcurementItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#transitionExpansionCapexProcurementItem"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#transitionExpansionConstructionTask",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#transitionExpansionConstructionTask"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#transitionExpansionFeasibilityModel",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#transitionExpansionFeasibilityModel"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#transitionExpansionLifecycleGate",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#transitionExpansionLifecycleGate"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#transitionExpansionOpeningReadiness",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#transitionExpansionOpeningReadiness"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#transitionExpansionPermitDocument",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#transitionExpansionPermitDocument"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#transitionExpansionPostOpeningReview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#transitionExpansionPostOpeningReview"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expansionProjects.ts#transitionExpansionPunchListItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/expansionProjects.ts#transitionExpansionPunchListItem"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPANSION_REVOCATION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/foodSafety.ts#buildFoodSafetyExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/foodSafety.ts#buildFoodSafetyExportRows"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/foodSafety.ts#applyFoodSafetyLogCorrection",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/foodSafety.ts#applyFoodSafetyLogCorrection",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": [
+        "all-protected-state",
+        "operational-correction",
+        "operational-status-transition"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/foodSafety.ts#closeFoodSafetyLog",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/foodSafety.ts#closeFoodSafetyLog"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/foodSafety.ts#createFoodSafetyLog",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/foodSafety.ts#createFoodSafetyLog"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/foodSafety.ts#reviewFoodSafetyLog",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/foodSafety.ts#reviewFoodSafetyLog"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/foodSafety.ts#returnFoodSafetyLogForCorrection",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/foodSafety.ts#returnFoodSafetyLogForCorrection",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": [
+        "all-protected-state",
+        "operational-correction",
+        "operational-status-transition"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/incidents.ts#buildIncidentExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/incidents.ts#buildIncidentExportRows"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/incidents.ts#cancelOperationalIncident",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/incidents.ts#cancelOperationalIncident"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/incidents.ts#correctOperationalIncident",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/incidents.ts#correctOperationalIncident",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": [
+        "all-protected-state",
+        "operational-correction",
+        "operational-status-transition"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/incidents.ts#createOperationalIncident",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/incidents.ts#createOperationalIncident"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/incidents.ts#resolveOperationalIncident",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/incidents.ts#resolveOperationalIncident",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": [
+        "all-protected-state",
+        "operational-status-transition"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/maintenance.ts#buildMaintenanceExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/maintenance.ts#buildMaintenanceExportRows"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/maintenance.ts#cancelMaintenanceTicket",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/maintenance.ts#cancelMaintenanceTicket"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/maintenance.ts#completeMaintenanceTicket",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/maintenance.ts#completeMaintenanceTicket"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/maintenance.ts#correctMaintenanceTicket",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/maintenance.ts#correctMaintenanceTicket",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": [
+        "all-protected-state",
+        "operational-correction",
+        "operational-status-transition"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/maintenance.ts#createMaintenanceTicket",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/maintenance.ts#createMaintenanceTicket"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/notifications.ts#markNotificationRead",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/notifications.ts#markNotificationRead"],
+      "caseIds": ["PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS"],
+      "noMutationControls": ["other-user-notification", "all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/notifications.ts#recordWorkflowNotifications",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "server/services/notifications.ts#recordWorkflowNotifications",
+        "server/services/projectNotifications.ts#runProjectTaskDeadlineReminderScan",
+        "server/services/restaurantOpsNotifications.ts#runRestaurantOpsExceptionReminderScan"
+      ],
+      "caseIds": ["PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS"],
+      "noMutationControls": [
+        "empty-recipient-notification",
+        "guard-denied-notification",
+        "all-protected-state"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/notifications.ts#resolveScopedNotificationRecipients",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "server/services/notifications.ts#resolveScopedNotificationRecipients"
+      ],
+      "caseIds": ["PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS"],
+      "noMutationControls": [
+        "tenant-company-location-recipient-scope",
+        "all-protected-state"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/operationalWorkflow.ts#recordOperationalStatusTransition",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "server/services/operationalWorkflow.ts#recordOperationalStatusTransition",
+        "server/services/branchOperations.ts#returnBranchOperationChecklistForCorrection",
+        "server/services/foodSafety.ts#returnFoodSafetyLogForCorrection",
+        "server/services/incidents.ts#resolveOperationalIncident",
+        "server/services/maintenance.ts#correctMaintenanceTicket"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": [
+        "operational-status-transition",
+        "all-protected-state"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/projectNotifications.ts#scanProjectTaskDeadlineReminders",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "server/services/projectNotifications.ts#scanProjectTaskDeadlineReminders",
+        "server/services/projectNotifications.ts#runProjectTaskDeadlineReminderScan",
+        "server/services/authorization.ts#getGrantedPermissionCodes"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "PROJECT_OPS_REMINDER_REVOCATION"
+      ],
+      "noMutationControls": [
+        "guard-denied-notification",
+        "project-activity",
+        "all-protected-state"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectNotifications.ts#notifyProjectMilestoneAtRisk",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "authorized project milestone caller",
+        "server/services/notifications.ts#recordWorkflowNotifications"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "PROJECT_OPS_RESTRICTED_REVOCATION"
+      ],
+      "noMutationControls": ["notification", "activity", "all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectNotifications.ts#notifyProjectRiskElevated",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "authorized project risk caller",
+        "server/services/notifications.ts#recordWorkflowNotifications"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "PROJECT_OPS_RESTRICTED_REVOCATION"
+      ],
+      "noMutationControls": ["notification", "activity", "all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectNotifications.ts#notifyProjectTaskAssigned",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "authorized project task caller",
+        "server/services/notifications.ts#recordWorkflowNotifications"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "PROJECT_OPS_RESTRICTED_REVOCATION"
+      ],
+      "noMutationControls": ["notification", "activity", "all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectNotifications.ts#notifyProjectTaskBlocked",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "authorized project task caller",
+        "server/services/notifications.ts#recordWorkflowNotifications"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "PROJECT_OPS_RESTRICTED_REVOCATION"
+      ],
+      "noMutationControls": ["notification", "activity", "all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectNotifications.ts#notifyProjectTaskDeadlineReminder",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "guarded reminder scanner",
+        "server/services/notifications.ts#recordWorkflowNotifications"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "PROJECT_OPS_REMINDER_REVOCATION"
+      ],
+      "noMutationControls": ["notification", "activity", "all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectNotifications.ts#runProjectTaskDeadlineReminderScan",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/authorization.ts#getGrantedPermissionCodes",
+        "company MANAGE scope",
+        "guarded reminder scanner"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "PROJECT_OPS_REMINDER_REVOCATION"
+      ],
+      "noMutationControls": ["notification", "activity", "all-protected-state"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/projectMilestones.ts#createProjectMilestone",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectMilestones.ts#createProjectMilestone",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project", "task", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectMilestones.ts#transitionProjectMilestone",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectMilestones.ts#transitionProjectMilestone",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-milestone", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRecordLinks.ts#archiveProjectRecordLink",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRecordLinks.ts#archiveProjectRecordLink",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["source-link", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRecordLinks.ts#createProjectRecordLink",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRecordLinks.ts#createProjectRecordLink",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["source-link", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRecordLinks.ts#resolveProjectRecordLinkSourceSummary",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "server/services/projectRecordLinks.ts#resolveProjectRecordLinkSourceSummary",
+        "server/services/projectRecordLinks.ts#createProjectRecordLink",
+        "server/services/projectReports.ts#buildProjectLinkedRecordFollowUpExportRows"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "PROJECT_OPS_EXPORT_REVOCATION"
+      ],
+      "noMutationControls": [
+        "source-record",
+        "source-link",
+        "activity",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRecordLinks.ts#listProjectTaskRecordLinks",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projects.ts#findAuthorizedProject",
+        "restricted project membership and exact scope"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": [
+        "no task record-link disclosure",
+        "source-link",
+        "activity",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/projectRequirements.ts#decideProjectRequirement",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRequirements.ts#decideProjectRequirementForSession"
+      ],
+      "caseIds": ["PROJECT_OPS_SELF_DECISION"],
+      "noMutationControls": ["requirement", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRequirements.ts#decideProjectRequirementForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRequirements.ts#decideProjectRequirementForSession",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": ["PROJECT_OPS_SELF_DECISION", "PROJECT_OPS_DIMENSION_SCOPE"],
+      "noMutationControls": ["requirement", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRequirements.ts#reassignProjectRequirementReviewerForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRequirements.ts#reassignProjectRequirementReviewerForSession",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["requirement", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRequirements.ts#reassignProjectRequirementReviewer",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/context.ts#requireSessionContext",
+        "server/services/projectRequirements.ts#reassignProjectRequirementReviewerForSession",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["requirement", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRequirements.ts#resolveProjectRequirementException",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRequirements.ts#resolveProjectRequirementException",
+        "server/services/projectRequirements.ts#resolveProjectRequirementExceptionForSession",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["requirement", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRequirements.ts#resolveProjectRequirementExceptionForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRequirements.ts#resolveProjectRequirementExceptionForSession",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["requirement", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRequirements.ts#submitProjectRequirement",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRequirements.ts#submitProjectRequirementForSession"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "PROJECT_OPS_DIMENSION_SCOPE",
+        "PROJECT_OPS_WORKFLOW_DENIAL"
+      ],
+      "noMutationControls": ["requirement", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRequirements.ts#submitProjectRequirementForSession",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRequirements.ts#submitProjectRequirementForSession",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "PROJECT_OPS_DIMENSION_SCOPE",
+        "PROJECT_OPS_WORKFLOW_DENIAL"
+      ],
+      "noMutationControls": ["requirement", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRequirements.ts#uploadProjectRequirementEvidence",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRequirements.ts#uploadProjectRequirementEvidence",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": [
+        "requirement",
+        "attachment",
+        "project-attachment",
+        "activity",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRisks.ts#createProjectRisk",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRisks.ts#createProjectRisk",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-risk", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectRisks.ts#transitionProjectRisk",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectRisks.ts#transitionProjectRisk",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-risk", "activity", "audit"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/projects.ts#addProjectMember",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projects.ts#addProjectMember",
+        "server/services/authorization.ts#requirePermission",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "PROJECT_OPS_MEMBER_MANAGE_LIVE_PERMISSION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-member", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projects.ts#createProject",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projects.ts#createProject",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "PROJECT_CREATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": [
+        "project",
+        "project-member",
+        "task",
+        "milestone",
+        "requirement",
+        "activity",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projects.ts#listProjectMemberOptions",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projects.ts#listProjectMemberOptions",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": ["PROJECT_OPS_MEMBER_MANAGE_LIVE_PERMISSION"],
+      "noMutationControls": [
+        "member-option-non-disclosure",
+        "project-member",
+        "activity",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projects.ts#removeProjectMember",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projects.ts#removeProjectMember",
+        "server/services/authorization.ts#requirePermission",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "PROJECT_OPS_MEMBER_MANAGE_LIVE_PERMISSION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-member", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projects.ts#transitionProjectLifecycle",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projects.ts#transitionProjectLifecycle",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_LIFECYCLE_DENIAL_AUDIT",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project", "activity"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projects.ts#updateProjectDetails",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projects.ts#updateProjectDetails",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projects.ts#updateProjectLeadership",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projects.ts#updateProjectLeadership",
+        "server/services/authorization.ts#requirePermission",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project", "project-member", "activity", "audit"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/projectTasks.ts#addProjectTaskAttachment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#addProjectTaskAttachment",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-attachment", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTasks.ts#addProjectTaskChecklistItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#addProjectTaskChecklistItem",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["task-checklist", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTasks.ts#addProjectTaskComment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#addProjectTaskComment",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-comment", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTasks.ts#archiveProjectTaskAttachment",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#archiveProjectTaskAttachment",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-attachment", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTasks.ts#createProjectTask",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#createProjectTask",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-task", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTasks.ts#reassignProjectTask",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#reassignProjectTask",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": [
+        "project-task",
+        "task-assignee",
+        "activity",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTasks.ts#resolveProjectTaskBlocker",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#resolveProjectTaskBlocker",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": [
+        "project-blocker",
+        "project-task",
+        "activity",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTasks.ts#toggleProjectTaskChecklistItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#toggleProjectTaskChecklistItem",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": [
+        "task-checklist",
+        "project-task",
+        "activity",
+        "audit"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTasks.ts#transitionProjectTask",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTasks.ts#transitionProjectTask",
+        "server/services/projects.ts#findAuthorizedProject"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_RESTRICTED_REVOCATION",
+        "CORE_RESTRICTED_PROJECT_ADAPTER"
+      ],
+      "noMutationControls": ["project-task", "activity", "audit"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/projectTemplates.ts#archiveProjectTemplate",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#archiveProjectTemplate",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#createExpansionOpeningPlaybook",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#createExpansionOpeningPlaybook",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#duplicateExpansionOpeningPlaybookRevision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#duplicateExpansionOpeningPlaybookRevision",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "activity", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#createProjectTemplate",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#createProjectTemplate",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#publishProjectTemplate",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#publishProjectTemplate",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookChecklistItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookChecklistItem",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookEvidenceDefault",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookEvidenceDefault",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookMilestone",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookMilestone",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookSignoffDefault",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookSignoffDefault",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookTask",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#removeExpansionOpeningPlaybookTask",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#updateExpansionOpeningPlaybookOverview",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#updateExpansionOpeningPlaybookOverview",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#updateExpansionOpeningPlaybookReminders",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#updateExpansionOpeningPlaybookReminders",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookTask",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookTask",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookMilestone",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookMilestone",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookChecklistItem",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookChecklistItem",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookEvidenceDefault",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookEvidenceDefault",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookSignoffDefault",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectTemplates.ts#upsertExpansionOpeningPlaybookSignoffDefault",
+        "server/services/authorization.ts#requirePermission"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_TEMPLATE_PERMISSION",
+        "PROJECT_OPS_TEMPLATE_LIVE_PERMISSION"
+      ],
+      "noMutationControls": ["project-template", "audit"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/projectReports.ts#buildProjectActivityLogExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectReports.ts#buildProjectActivityLogExportRows",
+        "server/services/authorization.ts#getGrantedPermissionCodes"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPORT_REVOCATION"],
+      "noMutationControls": [
+        "project",
+        "project-task",
+        "project-link",
+        "project-attachment",
+        "activity",
+        "inventory",
+        "finance"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectReports.ts#buildProjectHealthExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectReports.ts#buildProjectHealthExportRows",
+        "server/services/authorization.ts#getGrantedPermissionCodes"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPORT_REVOCATION"],
+      "noMutationControls": [
+        "project",
+        "project-task",
+        "project-link",
+        "project-attachment",
+        "activity",
+        "inventory",
+        "finance"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectReports.ts#buildProjectLinkedRecordFollowUpExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectReports.ts#buildProjectLinkedRecordFollowUpExportRows",
+        "server/services/authorization.ts#getGrantedPermissionCodes"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPORT_REVOCATION"],
+      "noMutationControls": [
+        "project",
+        "project-task",
+        "project-link",
+        "project-attachment",
+        "activity",
+        "inventory",
+        "finance"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectReports.ts#buildProjectTaskRegisterExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/projectReports.ts#buildProjectTaskRegisterExportRows",
+        "server/services/authorization.ts#getGrantedPermissionCodes"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPORT_REVOCATION"],
+      "noMutationControls": [
+        "project",
+        "project-task",
+        "project-link",
+        "project-attachment",
+        "activity",
+        "inventory",
+        "finance"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectReports.ts#logProjectExportAudit",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "server/services/projectReports.ts#logProjectExportAudit",
+        "server/services/projectReports.ts#buildProjectHealthExportRows",
+        "server/services/projectReports.ts#buildProjectTaskRegisterExportRows",
+        "server/services/projectReports.ts#buildProjectActivityLogExportRows",
+        "server/services/projectReports.ts#buildProjectLinkedRecordFollowUpExportRows"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPORT_REVOCATION"],
+      "noMutationControls": [
+        "project",
+        "project-task",
+        "project-link",
+        "project-attachment",
+        "activity",
+        "inventory",
+        "finance"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/projectReports.ts#logProjectExportFailure",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "authorized project export route",
+        "server/services/projectReports.ts#logProjectExportAudit"
+      ],
+      "caseIds": ["PROJECT_OPS_EXPORT_REVOCATION"],
+      "noMutationControls": [
+        "failure audit only after an authorized export attempt",
+        "project",
+        "project-task",
+        "inventory",
+        "finance"
+      ],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/restaurantOpsNotifications.ts#runRestaurantOpsExceptionReminderScan",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/restaurantOpsNotifications.ts#runRestaurantOpsExceptionReminderScan",
+        "server/services/authorization.ts#getGrantedPermissionCodes"
+      ],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "PROJECT_OPS_REMINDER_REVOCATION"
+      ],
+      "noMutationControls": ["notification", "activity", "all-protected-state"],
+      "status": "COVERED"
+    },
+
+    {
+      "surfaceId": "server/services/recipes.ts#archiveRecipe",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/recipes.ts#archiveRecipe"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#buildFoodCostAnalysisExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/recipes.ts#buildFoodCostAnalysisExportRows"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#buildRecipeCostingExportRows",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/recipes.ts#buildRecipeCostingExportRows"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#createDraftRecipe",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/recipes.ts#createDraftRecipe"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#createMenuPriceDecision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/recipes.ts#createMenuPriceDecision"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#createRecipeRevisionDraft",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/recipes.ts#createRecipeRevisionDraft"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#transitionMenuPriceDecision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/recipes.ts#transitionMenuPriceDecision"],
+      "caseIds": ["PROJECT_OPS_RECIPE_RECORD_SCOPE"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/recipes.ts#transitionRecipeVersion",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/recipes.ts#transitionRecipeVersion"],
+      "caseIds": ["PROJECT_OPS_RECIPE_RECORD_SCOPE"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    }
+  ]
+}

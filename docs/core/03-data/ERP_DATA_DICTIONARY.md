@@ -3,7 +3,7 @@
 **Document ID:** ERP_DATA_DICTIONARY  
 **Version:** 0.1  
 **Status:** Phase I baseline  
-**Date:** 25 June 2026  
+**Date:** 21 July 2026
 **Applies to:** Platform Administration, Approvals, Purchasing, Receiving, Inventory, Transfers, Wastage, Adjustments, Audit, Notifications
 
 ---
@@ -148,10 +148,12 @@ One model supports branches, warehouse, Head Office, commissary, project sites, 
 
 | Entity                | Required fields                                                                       | Notes                                                                                                                                             |
 | --------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Role                  | `tenant_id`, `role_code`, `role_name`, `role_group`, `status`                         | Groups: executive, Head Office, branch, warehouse, project, audit, system.                                                                        |
-| Permission            | `permission_key`, `module`, `action`                                                  | Examples: `purchase_request.submit`, `purchase_order.submit`, `purchase_order.approve`, `purchase_order.issue`, `purchase_order.close_remaining`. |
-| User Role Assignment  | `user_id`, `role_id`, `effective_from`, `effective_to`, `assignment_status`           | Supports time-bound coverage.                                                                                                                     |
+| Role                  | `tenant_id`, `role_code`, `role_name`, `role_group`, `status`                         | Tenant-owned catalog. Groups: executive, Head Office, branch, warehouse, project, audit, system.                                                   |
+| Permission            | `permission_key`, `module`, `action`                                                  | Includes `core.tenant_role_administer` for tenant role administration; other examples include `purchase_request.submit`, `purchase_order.approve`, and `purchase_order.issue`. |
+| User Role Assignment  | `user_id`, `role_id`, `effective_from`, `effective_to`, `assignment_status`           | Tenant-global through its user and tenant-owned role; it currently has no `company_id`. Supports time-bound coverage.                              |
 | User Scope Assignment | `user_id`, `scope_type`, `scope_id`, `access_level`, `effective_from`, `effective_to` | Scope types: tenant, company, brand, location, department, cost center, project.                                                                  |
+
+`DEC-0043` preserves the tenant-global `UserRoleAssignment` representation. The operator's selected company is an administration context, not an assignment field. Before any role action concerning a target user, the service must verify an active target account and at least one active, currently effective `COMPANY` scope for that company or `LOCATION` scope to an active location owned by that company. `default_company_id` alone is not company membership. Onboarding with `initialRoleId` must create the selected-company scope and role assignment atomically. A future `company_id` or equivalent role-assignment binding requires a separate confirmed decision and migration plan.
 
 ### 5.3 High-Risk Scope Request
 
@@ -169,7 +171,7 @@ Current implementation adds `HighRiskScopeRequest` as the controlled approval ar
 
 ### 5.4 Sensitive Role Request
 
-Current implementation adds `SensitiveRoleRequest` as the controlled approval artifact for admin, approver, system, and sensitive-permission role grants. It records the request and review decision separately from the actual `UserRoleAssignment`; approval creates the active role assignment transactionally, writes audit history linked to `DEC-0036`, requires privileged MFA evidence, and refreshes the target user's privilege epoch so stale sessions must reauthenticate.
+Current implementation adds `SensitiveRoleRequest` as the controlled approval artifact for admin, approver, system, and sensitive-permission role grants. It records the request and review decision separately from the actual `UserRoleAssignment`; approval creates the active tenant-global role assignment transactionally, writes audit history linked to `DEC-0036`, requires privileged MFA evidence, and refreshes the target user's privilege epoch so stale sessions must reauthenticate. Its `company_id` records the selected-company request/review context and target eligibility boundary under `DEC-0043`; it does not company-bind the resulting `UserRoleAssignment`.
 
 | Field                                                  | Required | Notes                                                                                                      |
 | ------------------------------------------------------ | -------: | ---------------------------------------------------------------------------------------------------------- |

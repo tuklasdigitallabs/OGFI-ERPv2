@@ -506,11 +506,7 @@ async function addPeriodCloseEvidenceMetadata(formData: FormData) {
     caption: String(formData.get("caption") ?? "").trim() || null,
     requiredForAction:
       String(formData.get("requiredForAction") ?? "").trim() || null,
-    requiredPermissionCode: session.permissionCodes.includes(
-      permissions.coreAdminister
-    )
-      ? permissions.coreAdminister
-      : permissions.financePeriodCloseManage
+    requiredPermissionCode: permissions.financePeriodCloseManage
   } as const;
   const evidenceFile = formData.get("evidenceFile");
 
@@ -558,11 +554,7 @@ async function archivePeriodCloseEvidenceMetadata(formData: FormData) {
       formData.get("controlledEvidenceAttachmentId") ?? ""
     ),
     archiveReason: String(formData.get("archiveReason") ?? "").trim(),
-    requiredPermissionCode: session.permissionCodes.includes(
-      permissions.coreAdminister
-    )
-      ? permissions.coreAdminister
-      : permissions.financePeriodCloseManage
+    requiredPermissionCode: permissions.financePeriodCloseManage
   });
 
   revalidatePath("/finance/period-close");
@@ -579,10 +571,7 @@ export default async function PeriodClosePage({
   if (!canUseFinance(session.permissionCodes)) {
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
-  if (
-    !session.permissionCodes.includes(permissions.coreAdminister) &&
-    !session.permissionCodes.includes(permissions.financePeriodCloseManage)
-  ) {
+  if (!session.permissionCodes.includes(permissions.financePeriodCloseManage)) {
     redirect("/finance");
   }
 
@@ -592,11 +581,7 @@ export default async function PeriodClosePage({
     dashboard.permissions.canManagePeriodClose &&
     dashboard.periodOptions.length > 0;
   const canExportPeriodClose = canExportFinance(session);
-  const periodCloseEvidencePermission = session.permissionCodes.includes(
-    permissions.coreAdminister
-  )
-    ? permissions.coreAdminister
-    : permissions.financePeriodCloseManage;
+  const periodCloseEvidencePermission = permissions.financePeriodCloseManage;
   const closeRunEvidenceById = new Map(
     await Promise.all(
       dashboard.runs.map(async (run) => [

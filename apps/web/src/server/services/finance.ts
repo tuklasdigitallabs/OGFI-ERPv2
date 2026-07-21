@@ -1,755 +1,768 @@
-import { createHash, randomUUID } from "node:crypto";
-import { prisma } from "@ogfi/database";
-import type { Prisma, TransactionClient } from "@ogfi/database";
+import { createHash, randomUUID } from "node:crypto"
+import { prisma } from "@ogfi/database"
+import type { Prisma, TransactionClient } from "@ogfi/database"
 import {
   canUseFinance,
   permissions,
+  requireFinanceAccess,
   requirePermission
-} from "./authorization";
+} from "./authorization"
 import {
   assertAuthorizedLocation,
   requireSessionContext,
   type SessionContext
-} from "./context";
-import type { CsvRow } from "./csv";
+} from "./context"
+import type { CsvRow } from "./csv"
 import {
   recordWorkflowNotifications,
   resolveScopedNotificationRecipients
-} from "./notifications";
+} from "./notifications"
 import {
   phase3EvidenceUploadBlockerId,
   resolveEvidenceReadiness,
   type EvidenceCaptureMode,
   type EvidenceProductionReadiness
-} from "./attachments";
+} from "./attachments"
 import {
   getPaymentReleaseEvidencePolicy,
   getPaymentReleaseSettlementPolicy,
   type PaymentReleaseSettlementPolicy
-} from "./policySettings";
+} from "./policySettings"
 import {
   getBudgetControlDashboard,
   projectBudgetCommitmentFromApprovedSourceEvent,
   reverseBudgetCommitmentFromApprovedSourceEvent
-} from "./budgetControl";
-import { getExpenseRequestDashboard } from "./expenseRequests";
-import { getCashAdvanceDashboard } from "./cashAdvances";
-import { getPettyCashDashboard } from "./pettyCash";
+} from "./budgetControl"
+import { getExpenseRequestDashboard } from "./expenseRequests"
+import { getCashAdvanceDashboard } from "./cashAdvances"
+import { getPettyCashDashboard } from "./pettyCash"
 
-type BadgeTone = "neutral" | "info" | "success" | "warning";
+type BadgeTone = "neutral" | "info" | "success" | "warning"
 
 export type FinanceFoundationMetric = {
-  id: string;
-  label: string;
-  displayValue: string;
-  detail: string;
-  tone: BadgeTone;
-};
+  id: string
+  label: string
+  displayValue: string
+  detail: string
+  tone: BadgeTone
+}
 
 export type FinanceSourceChainRow = {
-  id: string;
-  purchaseOrderReference: string;
-  supplierName: string;
-  status: string;
-  totalAmount: number;
-  currencyCode: string;
-  receivedAmount: number;
-  discrepancyCount: number;
-  matchStatus: "READY_FOR_INVOICE" | "PARTIAL_RECEIPT" | "DISCREPANCY_REVIEW" | "AWAITING_RECEIPT";
-  sourceHref: string;
-};
+  id: string
+  purchaseOrderReference: string
+  supplierName: string
+  status: string
+  totalAmount: number
+  currencyCode: string
+  receivedAmount: number
+  discrepancyCount: number
+  matchStatus:
+    | "READY_FOR_INVOICE"
+    | "PARTIAL_RECEIPT"
+    | "DISCREPANCY_REVIEW"
+    | "AWAITING_RECEIPT"
+  sourceHref: string
+}
 
 export type FinanceGuardrail = {
-  label: string;
-  detail: string;
-  tone: BadgeTone;
-};
+  label: string
+  detail: string
+  tone: BadgeTone
+}
 
 export type FinanceJournalRow = {
-  id: string;
-  publicReference: string;
-  journalType: string;
-  status: string;
-  journalDate: string;
-  description: string;
-  totalDebitAmountPhp: number;
-  totalCreditAmountPhp: number;
-  lineCount: number;
-  sourceHref: string;
-};
+  id: string
+  publicReference: string
+  journalType: string
+  status: string
+  journalDate: string
+  description: string
+  totalDebitAmountPhp: number
+  totalCreditAmountPhp: number
+  lineCount: number
+  sourceHref: string
+}
 
 export type ApInvoiceQueueRow = {
-  id: string;
-  publicReference: string;
-  supplierInvoiceNumber: string;
-  supplierName: string;
-  status: string;
-  matchStatus: string;
-  duplicateRisk: string;
-  invoiceDate: string;
-  totalAmount: number;
-  paymentOutstandingAmount: number;
-  paymentReady: boolean;
-  paymentPreparationStatus: string;
-  currencyCode: string;
-  lineCount: number;
-  exceptionCount: number;
-  sourceHref: string;
-};
+  id: string
+  publicReference: string
+  supplierInvoiceNumber: string
+  supplierName: string
+  status: string
+  matchStatus: string
+  duplicateRisk: string
+  invoiceDate: string
+  totalAmount: number
+  paymentOutstandingAmount: number
+  paymentReady: boolean
+  paymentPreparationStatus: string
+  currencyCode: string
+  lineCount: number
+  exceptionCount: number
+  sourceHref: string
+}
 
 export type PaymentRequestQueueRow = {
-  id: string;
-  publicReference: string;
-  supplierName: string;
-  status: string;
-  totalRequestedAmount: number;
-  currencyCode: string;
-  lineCount: number;
-  requestedBy: string;
-  createdAt: string;
-};
+  id: string
+  publicReference: string
+  supplierName: string
+  status: string
+  totalRequestedAmount: number
+  currencyCode: string
+  lineCount: number
+  requestedBy: string
+  createdAt: string
+}
 
 export type SupplierCreditNoteQueueRow = {
-  id: string;
-  publicReference: string;
-  supplierCreditNoteNumber: string;
-  originalInvoiceReference: string;
-  supplierName: string;
-  status: string;
-  creditDate: string;
-  creditAmount: number;
-  currencyCode: string;
-  reasonCode: string;
-  evidenceReference: string | null;
-  createdBy: string;
-  createdAt: string;
-};
+  id: string
+  publicReference: string
+  supplierCreditNoteNumber: string
+  originalInvoiceReference: string
+  supplierName: string
+  status: string
+  creditDate: string
+  creditAmount: number
+  currencyCode: string
+  reasonCode: string
+  evidenceReference: string | null
+  createdBy: string
+  createdAt: string
+}
 
 export type PayablesReportRow = {
-  id: string;
-  rowType: "AP_INVOICE" | "SUPPLIER_CREDIT" | "PAYMENT_REQUEST";
-  reference: string;
-  supplierName: string;
-  status: string;
-  amount: number;
-  openAmount: number;
-  currencyCode: string;
-  ageBucket: "CURRENT" | "DAYS_31_60" | "DAYS_61_90" | "DAYS_90_PLUS" | "PENDING_CREDIT" | "PAYMENT_PREP";
-  detail: string;
-};
+  id: string
+  rowType: "AP_INVOICE" | "SUPPLIER_CREDIT" | "PAYMENT_REQUEST"
+  reference: string
+  supplierName: string
+  status: string
+  amount: number
+  openAmount: number
+  currencyCode: string
+  ageBucket:
+    | "CURRENT"
+    | "DAYS_31_60"
+    | "DAYS_61_90"
+    | "DAYS_90_PLUS"
+    | "PENDING_CREDIT"
+    | "PAYMENT_PREP"
+  detail: string
+}
 
 export type PaymentReleaseQueueRow = {
-  id: string;
-  publicReference: string;
-  paymentRequestReference: string;
-  supplierName: string;
-  bankAccountId: string;
-  bankName: string;
-  method: string;
-  status: string;
-  releaseAmount: number;
-  releasedAmount: number;
-  reconciliationMatchedAmount: number;
-  reconciliationMatchCount: number;
-  currencyCode: string;
-  createdBy: string;
-  releasedBy: string | null;
-  releaseReference: string | null;
-  evidenceReference: string | null;
-  createdAt: string;
-};
+  id: string
+  publicReference: string
+  paymentRequestReference: string
+  supplierName: string
+  bankAccountId: string
+  bankName: string
+  method: string
+  status: string
+  releaseAmount: number
+  releasedAmount: number
+  reconciliationMatchedAmount: number
+  reconciliationMatchCount: number
+  currencyCode: string
+  createdBy: string
+  releasedBy: string | null
+  releaseReference: string | null
+  evidenceReference: string | null
+  createdAt: string
+}
 
 export type PaymentReleaseReportRow = {
-  id: string;
-  publicReference: string;
-  paymentRequestReference: string;
-  supplierName: string;
-  bankName: string;
-  method: string;
-  status: string;
+  id: string
+  publicReference: string
+  paymentRequestReference: string
+  supplierName: string
+  bankName: string
+  method: string
+  status: string
   settlementState:
     | "NOT_RELEASED"
     | "PARTIALLY_RELEASED"
     | "RELEASED"
     | "RECONCILED"
-    | "EXCEPTION";
-  releaseAmount: number;
-  releasedAmount: number;
-  remainingAmount: number;
-  currencyCode: string;
-  evidenceState: "COMPLETE" | "MISSING";
-  evidenceCaptureMode: EvidenceCaptureMode;
-  evidenceProductionReadiness: EvidenceProductionReadiness;
-  evidenceBlockerId: string | null;
-  releaseReference: string | null;
-  exportSafeSummary: string;
-};
+    | "EXCEPTION"
+  releaseAmount: number
+  releasedAmount: number
+  remainingAmount: number
+  currencyCode: string
+  evidenceState: "COMPLETE" | "MISSING"
+  evidenceCaptureMode: EvidenceCaptureMode
+  evidenceProductionReadiness: EvidenceProductionReadiness
+  evidenceBlockerId: string | null
+  releaseReference: string | null
+  exportSafeSummary: string
+}
 
 export type PaymentReleaseSettlementReadinessRow = {
-  id: string;
-  paymentReleaseId: string;
-  publicReference: string;
-  paymentRequestReference: string;
-  supplierName: string;
-  bankName: string;
-  method: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
+  id: string
+  paymentReleaseId: string
+  publicReference: string
+  paymentRequestReference: string
+  supplierName: string
+  bankName: string
+  method: string
+  severity: "HIGH" | "MEDIUM" | "LOW"
   issueType:
     | "NOT_RELEASED"
     | "PARTIAL_RELEASE"
     | "MISSING_EVIDENCE"
     | "RECONCILIATION_PENDING"
-    | "SETTLEMENT_EXCEPTION";
-  issueLabel: string;
-  amount: number | null;
-  currencyCode: string;
-  nextAction: string;
-  blockerId: string | null;
-};
+    | "SETTLEMENT_EXCEPTION"
+  issueLabel: string
+  amount: number | null
+  currencyCode: string
+  nextAction: string
+  blockerId: string | null
+}
 
 export type BankCashAccountRow = {
-  id: string;
-  publicReference: string;
-  bankName: string;
-  maskedAccountNumber: string;
-  accountType: string;
-  status: string;
-  currencyCode: string;
-  scopeLabel: string;
-  depositCount: number;
-  statementCount: number;
-  reconciliationCount: number;
-};
+  id: string
+  publicReference: string
+  bankName: string
+  maskedAccountNumber: string
+  accountType: string
+  status: string
+  currencyCode: string
+  scopeLabel: string
+  depositCount: number
+  statementCount: number
+  reconciliationCount: number
+}
 
 export type BranchCashDepositQueueRow = {
-  id: string;
-  publicReference: string;
-  bankAccountId: string;
-  locationName: string;
-  bankName: string;
-  depositDate: string;
-  amountPhp: number;
-  status: string;
-  depositSlipNumber: string | null;
-  evidenceReference: string | null;
-  declaredBy: string;
-};
+  id: string
+  publicReference: string
+  bankAccountId: string
+  locationName: string
+  bankName: string
+  depositDate: string
+  amountPhp: number
+  status: string
+  depositSlipNumber: string | null
+  evidenceReference: string | null
+  declaredBy: string
+}
 
 export type BankStatementLineQueueRow = {
-  id: string;
-  publicReference: string;
-  bankAccountId: string;
-  bankName: string;
-  transactionDate: string;
-  bankReference: string;
-  description: string;
-  netAmount: number;
-  matchedAmount: number;
-  status: string;
-};
+  id: string
+  publicReference: string
+  bankAccountId: string
+  bankName: string
+  transactionDate: string
+  bankReference: string
+  description: string
+  netAmount: number
+  matchedAmount: number
+  status: string
+}
 
 export type BankReconciliationQueueRow = {
-  id: string;
-  publicReference: string;
-  bankAccountId: string;
-  bankName: string;
-  statementReference: string;
-  status: string;
-  preparedAt: string;
-  varianceAmount: number;
-  matchCount: number;
-};
+  id: string
+  publicReference: string
+  bankAccountId: string
+  bankName: string
+  statementReference: string
+  status: string
+  preparedAt: string
+  varianceAmount: number
+  matchCount: number
+}
 
 export type BankCashSummary = {
-  accounts: BankCashAccountRow[];
-  deposits: BranchCashDepositQueueRow[];
-  statementLines: BankStatementLineQueueRow[];
-  reconciliations: BankReconciliationQueueRow[];
-};
+  accounts: BankCashAccountRow[]
+  deposits: BranchCashDepositQueueRow[]
+  statementLines: BankStatementLineQueueRow[]
+  reconciliations: BankReconciliationQueueRow[]
+}
 
 export type BankCashReportRow = {
-  id: string;
-  bankName: string;
-  maskedAccountNumber: string;
-  scopeLabel: string;
-  status: string;
-  currencyCode: string;
-  depositCount: number;
-  depositAmountPhp: number;
-  statementLineCount: number;
-  unmatchedStatementCount: number;
-  reconciliationCount: number;
-  varianceAmountPhp: number;
-  evidenceGapCount: number;
-  readinessState: "READY" | "NEEDS_REVIEW" | "NO_ACTIVITY";
-  readinessIssues: string[];
-  exportSafeSummary: string;
-};
+  id: string
+  bankName: string
+  maskedAccountNumber: string
+  scopeLabel: string
+  status: string
+  currencyCode: string
+  depositCount: number
+  depositAmountPhp: number
+  statementLineCount: number
+  unmatchedStatementCount: number
+  reconciliationCount: number
+  varianceAmountPhp: number
+  evidenceGapCount: number
+  readinessState: "READY" | "NEEDS_REVIEW" | "NO_ACTIVITY"
+  readinessIssues: string[]
+  exportSafeSummary: string
+}
 
 export type BankCashExceptionRow = {
-  id: string;
-  bankAccountId: string;
-  bankName: string;
-  maskedAccountNumber: string;
-  scopeLabel: string;
-  severity: "HIGH" | "MEDIUM" | "LOW";
+  id: string
+  bankAccountId: string
+  bankName: string
+  maskedAccountNumber: string
+  scopeLabel: string
+  severity: "HIGH" | "MEDIUM" | "LOW"
   issueType:
     | "DEPOSIT_EVIDENCE_GAP"
     | "UNMATCHED_STATEMENT_LINES"
     | "RECONCILIATION_VARIANCE"
-    | "NO_ACTIVITY";
-  issueLabel: string;
-  count: number | null;
-  amountPhp: number | null;
-  currencyCode: string;
-  nextAction: string;
-};
+    | "NO_ACTIVITY"
+  issueLabel: string
+  count: number | null
+  amountPhp: number | null
+  currencyCode: string
+  nextAction: string
+}
 
 export type FinanceDraftOption = {
-  id: string;
-  label: string;
-  detail: string;
-};
+  id: string
+  label: string
+  detail: string
+}
 
 export type FinanceConfigurationSummary = {
   fiscalYear: {
-    id: string;
-    code: string;
-    name: string;
-    status: string;
-    startDate: string;
-    endDate: string;
-    isDefault: boolean;
-  } | null;
+    id: string
+    code: string
+    name: string
+    status: string
+    startDate: string
+    endDate: string
+    isDefault: boolean
+  } | null
   fiscalYears: Array<{
-    id: string;
-    code: string;
-    name: string;
-    status: string;
-    startDate: string;
-    endDate: string;
-    isDefault: boolean;
-    periodCount: number;
-  }>;
+    id: string
+    code: string
+    name: string
+    status: string
+    startDate: string
+    endDate: string
+    isDefault: boolean
+    periodCount: number
+  }>
   openPeriods: Array<{
-    id: string;
-    code: string;
-    name: string;
-    status: string;
-    startDate: string;
-    endDate: string;
-  }>;
+    id: string
+    code: string
+    name: string
+    status: string
+    startDate: string
+    endDate: string
+  }>
   accountingPeriods: Array<{
-    id: string;
-    fiscalYearId: string;
-    fiscalYearCode: string;
-    periodNumber: number;
-    code: string;
-    name: string;
-    startDate: string;
-    endDate: string;
-    status: string;
-  }>;
-  accountClassCount: number;
-  postingAccountCount: number;
+    id: string
+    fiscalYearId: string
+    fiscalYearCode: string
+    periodNumber: number
+    code: string
+    name: string
+    startDate: string
+    endDate: string
+    status: string
+  }>
+  accountClassCount: number
+  postingAccountCount: number
   postingRules: Array<{
-    id: string;
-    code: string;
-    name: string;
-    status: string;
-    sourceType: string;
-    sourceEvent: string;
-    isExecutionEnabled: boolean;
-    isConfigOnly: boolean;
-    accountMapCount: number;
-    dimensionRequirementCount: number;
-  }>;
-};
+    id: string
+    code: string
+    name: string
+    status: string
+    sourceType: string
+    sourceEvent: string
+    isExecutionEnabled: boolean
+    isConfigOnly: boolean
+    accountMapCount: number
+    dimensionRequirementCount: number
+  }>
+}
 
 export type FinanceFoundationDashboard = {
-  generatedAt: string;
+  generatedAt: string
   scope: {
-    companyName: string;
-    brandName: string;
-    locationName: string;
-    locationType: string;
-  };
+    companyName: string
+    brandName: string
+    locationName: string
+    locationType: string
+  }
   permissions: {
-    canConfigure: boolean;
-    canViewLedger: boolean;
-    canCreateJournal: boolean;
-    canSubmitJournal: boolean;
-    canApproveJournal: boolean;
-    canPostJournal: boolean;
-    canReverseJournal: boolean;
-    canViewPayables: boolean;
-    canCreateApInvoice: boolean;
-    canSubmitApInvoice: boolean;
-    canMatchApInvoice: boolean;
-    canCancelApInvoice: boolean;
-    canCreateSupplierCredit: boolean;
-    canSubmitSupplierCredit: boolean;
-    canCancelSupplierCredit: boolean;
-    canCreatePaymentRequest: boolean;
-    canApprovePaymentRequest: boolean;
-    canReleasePayment: boolean;
-    canCreateCashDeposit: boolean;
-    canViewReconciliation: boolean;
-    canMatchReconciliation: boolean;
-    canManagePeriodClose: boolean;
-  };
-  metrics: FinanceFoundationMetric[];
-  sourceChain: FinanceSourceChainRow[];
+    canConfigure: boolean
+    canViewLedger: boolean
+    canCreateJournal: boolean
+    canSubmitJournal: boolean
+    canApproveJournal: boolean
+    canPostJournal: boolean
+    canReverseJournal: boolean
+    canViewPayables: boolean
+    canCreateApInvoice: boolean
+    canSubmitApInvoice: boolean
+    canMatchApInvoice: boolean
+    canCancelApInvoice: boolean
+    canCreateSupplierCredit: boolean
+    canSubmitSupplierCredit: boolean
+    canCancelSupplierCredit: boolean
+    canCreatePaymentRequest: boolean
+    canApprovePaymentRequest: boolean
+    canReleasePayment: boolean
+    canCreateCashDeposit: boolean
+    canViewReconciliation: boolean
+    canMatchReconciliation: boolean
+    canManagePeriodClose: boolean
+  }
+  metrics: FinanceFoundationMetric[]
+  sourceChain: FinanceSourceChainRow[]
   draftOptions: {
-    journalAccounts: FinanceDraftOption[];
-    suppliers: FinanceDraftOption[];
-    purchaseOrders: FinanceDraftOption[];
-  };
-  configuration: FinanceConfigurationSummary;
-  recentJournals: FinanceJournalRow[];
-  apInvoices: ApInvoiceQueueRow[];
-  supplierCreditNotes: SupplierCreditNoteQueueRow[];
-  paymentRequests: PaymentRequestQueueRow[];
-  payablesReportRows: PayablesReportRow[];
-  paymentReleases: PaymentReleaseQueueRow[];
-  paymentReleaseReportRows: PaymentReleaseReportRow[];
-  paymentReleaseSettlementReadinessRows: PaymentReleaseSettlementReadinessRow[];
+    journalAccounts: FinanceDraftOption[]
+    suppliers: FinanceDraftOption[]
+    purchaseOrders: FinanceDraftOption[]
+  }
+  configuration: FinanceConfigurationSummary
+  recentJournals: FinanceJournalRow[]
+  apInvoices: ApInvoiceQueueRow[]
+  supplierCreditNotes: SupplierCreditNoteQueueRow[]
+  paymentRequests: PaymentRequestQueueRow[]
+  payablesReportRows: PayablesReportRow[]
+  paymentReleases: PaymentReleaseQueueRow[]
+  paymentReleaseReportRows: PaymentReleaseReportRow[]
+  paymentReleaseSettlementReadinessRows: PaymentReleaseSettlementReadinessRow[]
   paymentReleaseSettlementPolicy: {
-    key: string;
-    policy: PaymentReleaseSettlementPolicy;
-    isOverridden: boolean;
-    sourceDecisionId: string;
-  };
-  bankCash: BankCashSummary;
-  bankCashReportRows: BankCashReportRow[];
-  bankCashExceptionRows: BankCashExceptionRow[];
-  guardrails: FinanceGuardrail[];
-};
+    key: string
+    policy: PaymentReleaseSettlementPolicy
+    isOverridden: boolean
+    sourceDecisionId: string
+  }
+  bankCash: BankCashSummary
+  bankCashReportRows: BankCashReportRow[]
+  bankCashExceptionRows: BankCashExceptionRow[]
+  guardrails: FinanceGuardrail[]
+}
 
 type FinanceSourcePurchaseOrder = {
-  id: string;
-  publicReference: string;
-  status: string;
-  totalAmount: unknown;
-  currencyCode: string;
+  id: string
+  publicReference: string
+  status: string
+  totalAmount: unknown
+  currencyCode: string
   supplier: {
-    displayName?: string | null;
-    tradingName?: string | null;
-    legalName?: string | null;
-    supplierCode?: string | null;
-  };
+    displayName?: string | null
+    tradingName?: string | null
+    legalName?: string | null
+    supplierCode?: string | null
+  }
   goodsReceipts: Array<{
-    id: string;
-    status: string;
-    discrepancyFlag: boolean;
+    id: string
+    status: string
+    discrepancyFlag: boolean
     lines: Array<{
-      acceptedQty: unknown;
-      unitCost: unknown;
-    }>;
-  }>;
-};
+      acceptedQty: unknown
+      unitCost: unknown
+    }>
+  }>
+}
 
 type ManualJournalLineInput = {
-  accountId: string;
-  amountSide: "DEBIT" | "CREDIT";
-  amountPhp: number;
-  lineDescription: string;
-  brandId?: string | null;
-  locationId?: string | null;
-  departmentId?: string | null;
-  costCenterId?: string | null;
-  projectId?: string | null;
-  supplierId?: string | null;
-};
+  accountId: string
+  amountSide: "DEBIT" | "CREDIT"
+  amountPhp: number
+  lineDescription: string
+  brandId?: string | null
+  locationId?: string | null
+  departmentId?: string | null
+  costCenterId?: string | null
+  projectId?: string | null
+  supplierId?: string | null
+}
 
 type ManualJournalDraftInput = {
-  accountingPeriodId: string;
-  journalDate: Date;
-  description: string;
-  businessJustification: string;
-  evidenceReference?: string | null;
-  sourceEventKey?: string | null;
-  lines: ManualJournalLineInput[];
-};
+  accountingPeriodId: string
+  journalDate: Date
+  description: string
+  businessJustification: string
+  evidenceReference?: string | null
+  sourceEventKey?: string | null
+  lines: ManualJournalLineInput[]
+}
 
 type FinanceJournalActionInput = {
-  journalId: string;
-  remarks?: string | null;
-  idempotencyKey?: string | null;
-};
+  journalId: string
+  remarks?: string | null
+  idempotencyKey?: string | null
+}
 
 type FinanceJournalReverseInput = FinanceJournalActionInput & {
-  reversalReason: string;
-};
+  reversalReason: string
+}
 
 type ApInvoiceLineInput = {
-  description: string;
-  invoicedQty: number;
-  unitPrice: number;
-  taxAmount?: number;
-  discountAmount?: number;
-  purchaseOrderLineId?: string | null;
-  goodsReceiptLineId?: string | null;
-  itemId?: string | null;
-  uomId?: string | null;
-};
+  description: string
+  invoicedQty: number
+  unitPrice: number
+  taxAmount?: number
+  discountAmount?: number
+  purchaseOrderLineId?: string | null
+  goodsReceiptLineId?: string | null
+  itemId?: string | null
+  uomId?: string | null
+}
 
 type ApInvoiceDraftInput = {
-  supplierId: string;
-  supplierInvoiceNumber: string;
-  invoiceDate: Date;
-  dueDate?: Date | null;
-  paymentTermsDays?: number | null;
-  purchaseOrderId?: string | null;
-  goodsReceiptId?: string | null;
-  nonPoReason?: string | null;
-  evidenceReference?: string | null;
-  captureIdempotencyKey?: string | null;
-  freightAmount?: number;
-  lines: ApInvoiceLineInput[];
-};
+  supplierId: string
+  supplierInvoiceNumber: string
+  invoiceDate: Date
+  dueDate?: Date | null
+  paymentTermsDays?: number | null
+  purchaseOrderId?: string | null
+  goodsReceiptId?: string | null
+  nonPoReason?: string | null
+  evidenceReference?: string | null
+  captureIdempotencyKey?: string | null
+  freightAmount?: number
+  lines: ApInvoiceLineInput[]
+}
 
 type ApInvoiceActionInput = {
-  apInvoiceId: string;
-  remarks?: string | null;
-};
+  apInvoiceId: string
+  remarks?: string | null
+}
 
 type ApInvoiceBudgetProjectionSource = {
-  id: string;
-  publicReference: string;
-  supplierInvoiceNumber: string;
+  id: string
+  publicReference: string
+  supplierInvoiceNumber: string
   lines: Array<{
-    id: string;
-    lineNumber: number;
-    description: string;
-    budgetLineId: string | null;
-    lineTotalAmount: unknown;
-  }>;
-};
+    id: string
+    lineNumber: number
+    description: string
+    budgetLineId: string | null
+    lineTotalAmount: unknown
+  }>
+}
 
 type SupplierCreditNoteDraftInput = {
-  originalApInvoiceId: string;
-  supplierCreditNoteNumber: string;
-  creditDate: Date;
-  creditAmount: number;
-  reasonCode: string;
-  reasonDescription: string;
-  evidenceReference?: string | null;
-  applicationNotes?: string | null;
-  idempotencyKey?: string | null;
-};
+  originalApInvoiceId: string
+  supplierCreditNoteNumber: string
+  creditDate: Date
+  creditAmount: number
+  reasonCode: string
+  reasonDescription: string
+  evidenceReference?: string | null
+  applicationNotes?: string | null
+  idempotencyKey?: string | null
+}
 
 type SupplierCreditNoteActionInput = {
-  supplierCreditNoteId: string;
-  reason?: string | null;
-};
+  supplierCreditNoteId: string
+  reason?: string | null
+}
 
 type PaymentRequestDraftInput = {
-  apInvoiceId?: string;
-  requestedAmount?: number | null;
-  requestReason: string;
-  evidenceReference?: string | null;
-  notes?: string | null;
-  idempotencyKey?: string | null;
+  apInvoiceId?: string
+  requestedAmount?: number | null
+  requestReason: string
+  evidenceReference?: string | null
+  notes?: string | null
+  idempotencyKey?: string | null
   lines?: Array<{
-    apInvoiceId: string;
-    requestedAmount?: number | null;
-    notes?: string | null;
-  }>;
-};
+    apInvoiceId: string
+    requestedAmount?: number | null
+    notes?: string | null
+  }>
+}
 
 type PaymentRequestActionInput = {
-  paymentRequestId: string;
-  remarks?: string | null;
-};
+  paymentRequestId: string
+  remarks?: string | null
+}
 
 type PaymentReleaseDraftInput = {
-  paymentRequestId: string;
-  bankAccountId: string;
-  releaseAmount?: number | null;
-  method?: "BANK_TRANSFER" | "CHECK" | "CASH" | "MANUAL_REFERENCE";
-  reason: string;
-  evidenceReference?: string | null;
-  scheduledAt?: Date | null;
-  idempotencyKey?: string | null;
-  sourceEventKey?: string | null;
-};
+  paymentRequestId: string
+  bankAccountId: string
+  releaseAmount?: number | null
+  method?: "BANK_TRANSFER" | "CHECK" | "CASH" | "MANUAL_REFERENCE"
+  reason: string
+  evidenceReference?: string | null
+  scheduledAt?: Date | null
+  idempotencyKey?: string | null
+  sourceEventKey?: string | null
+}
 
 type BranchCashDepositDeclarationInput = {
-  bankAccountId: string;
-  depositDate: Date;
-  amountPhp: number;
-  depositSlipNumber?: string | null;
-  evidenceReference?: string | null;
-  notes?: string | null;
-  sourceEventKey?: string | null;
-};
+  bankAccountId: string
+  depositDate: Date
+  amountPhp: number
+  depositSlipNumber?: string | null
+  evidenceReference?: string | null
+  notes?: string | null
+  sourceEventKey?: string | null
+}
 
 type PaymentReleaseActionInput = {
-  paymentReleaseId: string;
-  remarks?: string | null;
-  reason?: string | null;
-  evidenceReference?: string | null;
-  idempotencyKey?: string | null;
-};
+  paymentReleaseId: string
+  remarks?: string | null
+  reason?: string | null
+  evidenceReference?: string | null
+  idempotencyKey?: string | null
+}
 
 type PaymentReleaseExecuteInput = PaymentReleaseActionInput & {
-  releaseReference: string;
-  evidenceReference: string;
-  idempotencyKey: string;
-};
+  releaseReference: string
+  evidenceReference: string
+  idempotencyKey: string
+}
 
 type PaymentReleaseFailureInput = PaymentReleaseActionInput & {
-  failureCode: string;
-};
+  failureCode: string
+}
 
 type PaymentReleaseReconciliationInput = PaymentReleaseActionInput & {
-  outcome: "FULLY_RECONCILED" | "PARTIALLY_RECONCILED" | "EXCEPTION";
-  matchedAmount?: number | null;
-  bankReference?: string | null;
-};
+  outcome: "FULLY_RECONCILED" | "PARTIALLY_RECONCILED" | "EXCEPTION"
+  matchedAmount?: number | null
+  bankReference?: string | null
+}
 
 type PaymentReleaseBankMatchInput = PaymentReleaseActionInput & {
-  reconciliationId: string;
-  statementLineId: string;
-  matchedAmount?: number | null;
-};
+  reconciliationId: string
+  statementLineId: string
+  matchedAmount?: number | null
+}
 
 type FiscalYearSetupInput = {
-  code: string;
-  name: string;
-  startDate: Date;
-  endDate: Date;
-  isDefault?: boolean;
-  openFirstPeriod?: boolean;
-  reason: string;
-};
+  code: string
+  name: string
+  startDate: Date
+  endDate: Date
+  isDefault?: boolean
+  openFirstPeriod?: boolean
+  reason: string
+}
 
 type FiscalYearActionInput = {
-  fiscalYearId: string;
-  reason: string;
-};
+  fiscalYearId: string
+  reason: string
+}
 
 type AccountingPeriodActionInput = {
-  accountingPeriodId: string;
-  reason: string;
-};
+  accountingPeriodId: string
+  reason: string
+}
 
 type BranchCashDepositBankMatchInput = {
-  branchCashDepositId: string;
-  reconciliationId: string;
-  statementLineId: string;
-  matchedAmount?: number | null;
-  reason?: string | null;
-  evidenceReference?: string | null;
-  idempotencyKey?: string | null;
-};
+  branchCashDepositId: string
+  reconciliationId: string
+  statementLineId: string
+  matchedAmount?: number | null
+  reason?: string | null
+  evidenceReference?: string | null
+  idempotencyKey?: string | null
+}
 
 async function requirePaymentReleaseExecutionEvidence(
   session: SessionContext,
   method: PaymentReleaseDraftInput["method"],
   evidenceReference: string
 ) {
-  const evidencePolicy = await getPaymentReleaseEvidencePolicy(session);
+  const evidencePolicy = await getPaymentReleaseEvidencePolicy(session)
   const rule =
     evidencePolicy.policy[method ?? "BANK_TRANSFER"] ??
-    evidencePolicy.policy.BANK_TRANSFER;
+    evidencePolicy.policy.BANK_TRANSFER
   if (rule.executionEvidenceRequired && !evidenceReference.trim()) {
-    throw new Error("PAYMENT_RELEASE_EXECUTION_EVIDENCE_REQUIRED");
+    throw new Error("PAYMENT_RELEASE_EXECUTION_EVIDENCE_REQUIRED")
   }
   return {
     evidenceLabel: rule.evidenceLabel,
     evidencePolicyKey: evidencePolicy.key,
     evidencePolicySourceDecisionId: evidencePolicy.sourceDecisionId,
     evidencePolicyOverridden: evidencePolicy.isOverridden
-  };
+  }
 }
 
 type ApInvoiceMatchLine = {
-  invoiceLineId?: string | null;
-  purchaseOrderLineId?: string | null;
-  goodsReceiptLineId?: string | null;
-  poQty?: number | null;
-  receivedQty: number;
-  invoicedQty: number;
-  poUnitPrice?: number | null;
-  invoicedUnitPrice: number;
-  poLineTotal?: number | null;
-  invoicedLineTotal: number;
-  taxVarianceAmount?: number;
-};
+  invoiceLineId?: string | null
+  purchaseOrderLineId?: string | null
+  goodsReceiptLineId?: string | null
+  poQty?: number | null
+  receivedQty: number
+  invoicedQty: number
+  poUnitPrice?: number | null
+  invoicedUnitPrice: number
+  poLineTotal?: number | null
+  invoicedLineTotal: number
+  taxVarianceAmount?: number
+}
 
 export type ApInvoiceMatchEvaluation = {
-  status: "EXACT_MATCH" | "WITHIN_TOLERANCE" | "VARIANCE_HOLD";
-  exceptionCode?: string;
-  exceptionNotes?: string;
-  qtyVariance: number;
-  amountVariance: number;
-};
+  status: "EXACT_MATCH" | "WITHIN_TOLERANCE" | "VARIANCE_HOLD"
+  exceptionCode?: string
+  exceptionNotes?: string
+  qtyVariance: number
+  amountVariance: number
+}
 
 function money(value: number, currencyCode = "PHP") {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: currencyCode,
     maximumFractionDigits: 0
-  }).format(value);
+  }).format(value)
 }
 
 function number(value: number) {
   return new Intl.NumberFormat("en-PH", {
     maximumFractionDigits: 0
-  }).format(value);
+  }).format(value)
 }
 
 function decimalToNumber(value: unknown) {
   if (typeof value === "number") {
-    return value;
+    return value
   }
   if (typeof value === "string") {
-    return Number(value);
+    return Number(value)
   }
   if (value && typeof value === "object" && "toString" in value) {
-    return Number(value.toString());
+    return Number(value.toString())
   }
-  return 0;
+  return 0
 }
 
 function receivedLineAmount(line: { acceptedQty: unknown; unitCost: unknown }) {
-  return decimalToNumber(line.acceptedQty) * decimalToNumber(line.unitCost);
+  return decimalToNumber(line.acceptedQty) * decimalToNumber(line.unitCost)
 }
 
 function assertPhpOnly(currencyCode: string) {
   if (currencyCode !== "PHP") {
-    throw new Error("FINANCE_JOURNAL_PHP_ONLY");
+    throw new Error("FINANCE_JOURNAL_PHP_ONLY")
   }
 }
 
 function assertApPhpOnly(currencyCode: string) {
   if (currencyCode !== "PHP") {
-    throw new Error("AP_INVOICE_PHP_ONLY");
+    throw new Error("AP_INVOICE_PHP_ONLY")
   }
 }
 
 function roundMoney(value: number) {
-  return Math.round(value * 100) / 100;
+  return Math.round(value * 100) / 100
 }
 
 function lineTotalFromApInput(line: ApInvoiceLineInput) {
   if (!Number.isFinite(line.invoicedQty) || line.invoicedQty <= 0) {
-    throw new Error("AP_INVOICE_LINE_QTY_INVALID");
+    throw new Error("AP_INVOICE_LINE_QTY_INVALID")
   }
   if (!Number.isFinite(line.unitPrice) || line.unitPrice < 0) {
-    throw new Error("AP_INVOICE_LINE_PRICE_INVALID");
+    throw new Error("AP_INVOICE_LINE_PRICE_INVALID")
   }
   if (!line.description.trim()) {
-    throw new Error("AP_INVOICE_LINE_DESCRIPTION_REQUIRED");
+    throw new Error("AP_INVOICE_LINE_DESCRIPTION_REQUIRED")
   }
-  const taxAmount = line.taxAmount ?? 0;
-  const discountAmount = line.discountAmount ?? 0;
+  const taxAmount = line.taxAmount ?? 0
+  const discountAmount = line.discountAmount ?? 0
   if (taxAmount < 0 || discountAmount < 0) {
-    throw new Error("AP_INVOICE_LINE_AMOUNT_INVALID");
+    throw new Error("AP_INVOICE_LINE_AMOUNT_INVALID")
   }
-  return roundMoney(line.invoicedQty * line.unitPrice + taxAmount - discountAmount);
+  return roundMoney(
+    line.invoicedQty * line.unitPrice + taxAmount - discountAmount
+  )
 }
 
 function duplicateFingerprint(input: ApInvoiceDraftInput) {
@@ -762,7 +775,7 @@ function duplicateFingerprint(input: ApInvoiceDraftInput) {
         input.lines.reduce((sum, line) => sum + lineTotalFromApInput(line), 0)
       ].join("|")
     )
-    .digest("hex");
+    .digest("hex")
 }
 
 export function evaluateApInvoiceMatchLine(
@@ -773,23 +786,28 @@ export function evaluateApInvoiceMatchLine(
     return {
       status: "VARIANCE_HOLD",
       exceptionCode: "SOURCE_LINK_REQUIRED",
-      exceptionNotes: "Invoice line must link to both the purchase order line and accepted receipt line.",
+      exceptionNotes:
+        "Invoice line must link to both the purchase order line and accepted receipt line.",
       qtyVariance: line.invoicedQty,
       amountVariance: line.invoicedLineTotal
-    };
+    }
   }
 
-  const qtyVariance = roundMoney(line.invoicedQty - line.receivedQty);
+  const qtyVariance = roundMoney(line.invoicedQty - line.receivedQty)
   const expectedAmount =
-    line.poLineTotal ?? roundMoney(line.receivedQty * (line.poUnitPrice ?? 0));
-  const amountVariance = roundMoney(line.invoicedLineTotal - expectedAmount);
+    line.poLineTotal ?? roundMoney(line.receivedQty * (line.poUnitPrice ?? 0))
+  const amountVariance = roundMoney(line.invoicedLineTotal - expectedAmount)
 
-  if (qtyVariance === 0 && amountVariance === 0 && (line.taxVarianceAmount ?? 0) === 0) {
+  if (
+    qtyVariance === 0 &&
+    amountVariance === 0 &&
+    (line.taxVarianceAmount ?? 0) === 0
+  ) {
     return {
       status: "EXACT_MATCH",
       qtyVariance,
       amountVariance
-    };
+    }
   }
 
   if (
@@ -800,101 +818,108 @@ export function evaluateApInvoiceMatchLine(
     return {
       status: "WITHIN_TOLERANCE",
       exceptionCode: "WITHIN_TOLERANCE",
-      exceptionNotes: "Invoice variance is inside the configured AP review tolerance.",
+      exceptionNotes:
+        "Invoice variance is inside the configured AP review tolerance.",
       qtyVariance,
       amountVariance
-    };
+    }
   }
 
   return {
     status: "VARIANCE_HOLD",
     exceptionCode: qtyVariance !== 0 ? "QTY_VARIANCE" : "AMOUNT_VARIANCE",
-    exceptionNotes: "Invoice line differs from accepted receiving or purchase order basis.",
+    exceptionNotes:
+      "Invoice line differs from accepted receiving or purchase order basis.",
     qtyVariance,
     amountVariance
-  };
+  }
 }
 
 function calculateJournalTotals(lines: ManualJournalLineInput[]) {
   if (lines.length < 2) {
-    throw new Error("FINANCE_JOURNAL_MINIMUM_TWO_LINES");
+    throw new Error("FINANCE_JOURNAL_MINIMUM_TWO_LINES")
   }
 
   return lines.reduce(
     (totals, line) => {
       if (!Number.isFinite(line.amountPhp) || line.amountPhp <= 0) {
-        throw new Error("FINANCE_JOURNAL_LINE_AMOUNT_INVALID");
+        throw new Error("FINANCE_JOURNAL_LINE_AMOUNT_INVALID")
       }
       if (!line.lineDescription.trim()) {
-        throw new Error("FINANCE_JOURNAL_LINE_DESCRIPTION_REQUIRED");
+        throw new Error("FINANCE_JOURNAL_LINE_DESCRIPTION_REQUIRED")
       }
       if (line.amountSide === "DEBIT") {
-        totals.debit += line.amountPhp;
+        totals.debit += line.amountPhp
       } else if (line.amountSide === "CREDIT") {
-        totals.credit += line.amountPhp;
+        totals.credit += line.amountPhp
       } else {
-        throw new Error("FINANCE_JOURNAL_LINE_SIDE_INVALID");
+        throw new Error("FINANCE_JOURNAL_LINE_SIDE_INVALID")
       }
-      return totals;
+      return totals
     },
     { debit: 0, credit: 0 }
-  );
+  )
 }
 
 export function assertBalancedJournal(lines: ManualJournalLineInput[]) {
-  const totals = calculateJournalTotals(lines);
-  if (Math.round(totals.debit * 1000000) !== Math.round(totals.credit * 1000000)) {
-    throw new Error("FINANCE_JOURNAL_NOT_BALANCED");
+  const totals = calculateJournalTotals(lines)
+  if (
+    Math.round(totals.debit * 1000000) !== Math.round(totals.credit * 1000000)
+  ) {
+    throw new Error("FINANCE_JOURNAL_NOT_BALANCED")
   }
-  return totals;
+  return totals
 }
 
 function reverseSide(side: "DEBIT" | "CREDIT"): "DEBIT" | "CREDIT" {
-  return side === "DEBIT" ? "CREDIT" : "DEBIT";
+  return side === "DEBIT" ? "CREDIT" : "DEBIT"
 }
 
-async function nextFinanceJournalReference(companyId: string) {
-  const year = new Date().getUTCFullYear();
-  const count = await prisma.financeJournal.count({
+async function nextFinanceJournalReference(
+  companyId: string,
+  client: typeof prisma | TransactionClient = prisma
+) {
+  const year = new Date().getUTCFullYear()
+  const count = await client.financeJournal.count({
     where: {
       companyId,
       publicReference: { startsWith: `FJ-${year}-` }
     }
-  });
-  return `FJ-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `FJ-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 async function nextApInvoiceReference(companyId: string) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await prisma.apInvoice.count({
     where: {
       companyId,
       publicReference: { startsWith: `AP-INV-${year}-` }
     }
-  });
-  return `AP-INV-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `AP-INV-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 async function nextSupplierCreditNoteReference(companyId: string) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await prisma.supplierCreditNote.count({
     where: {
       companyId,
       publicReference: { startsWith: `AP-CN-${year}-` }
     }
-  });
-  return `AP-CN-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `AP-CN-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 async function nextPaymentRequestReference(companyId: string) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await prisma.paymentRequest.count({
     where: {
       companyId,
       publicReference: { startsWith: `PAY-${year}-` }
     }
-  });
-  return `PAY-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `PAY-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 async function findPaymentRequestApprovalRule(
@@ -914,18 +939,18 @@ async function findPaymentRequestApprovalRule(
       }
     },
     orderBy: { priority: "asc" }
-  });
+  })
 }
 
 async function nextPaymentReleaseReference(companyId: string) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await prisma.paymentRelease.count({
     where: {
       companyId,
       publicReference: { startsWith: `REL-${year}-` }
     }
-  });
-  return `REL-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `REL-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
 async function findPaymentReleaseApprovalRule(
@@ -945,25 +970,28 @@ async function findPaymentReleaseApprovalRule(
       }
     },
     orderBy: { priority: "asc" }
-  });
+  })
 }
 
 async function nextBranchCashDepositReference(companyId: string) {
-  const year = new Date().getUTCFullYear();
+  const year = new Date().getUTCFullYear()
   const count = await prisma.branchCashDeposit.count({
     where: {
       companyId,
       publicReference: { startsWith: `BCD-${year}-` }
     }
-  });
-  return `BCD-${year}-${String(count + 1).padStart(5, "0")}`;
+  })
+  return `BCD-${year}-${String(count + 1).padStart(5, "0")}`
 }
 
-function requireReleaseReason(value: string | null | undefined, errorCode: string) {
+function requireReleaseReason(
+  value: string | null | undefined,
+  errorCode: string
+) {
   if (!value?.trim()) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
-  return value.trim();
+  return value.trim()
 }
 
 function requireReleaseEvidence(
@@ -971,9 +999,9 @@ function requireReleaseEvidence(
   errorCode: string
 ) {
   if (!value?.trim()) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
-  return value.trim();
+  return value.trim()
 }
 
 function assertPaymentReleaseStatus(
@@ -982,19 +1010,19 @@ function assertPaymentReleaseStatus(
   errorCode = "PAYMENT_RELEASE_INVALID_STATUS_TRANSITION"
 ) {
   if (!allowed.includes(status)) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 function assertPaymentReleaseSegregation(
   session: SessionContext,
   release: {
-    createdByUserId: string;
-    releasedByUserId?: string | null;
+    createdByUserId: string
+    releasedByUserId?: string | null
     paymentRequest: {
-      requestedByUserId: string;
-      approvedByUserId?: string | null;
-    };
+      requestedByUserId: string
+      approvedByUserId?: string | null
+    }
   },
   errorCode: string
 ) {
@@ -1004,21 +1032,21 @@ function assertPaymentReleaseSegregation(
     release.paymentRequest.requestedByUserId === session.user.id ||
     release.paymentRequest.approvedByUserId === session.user.id
   ) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 async function writePaymentReleaseAudit(
   tx: TransactionClient,
   input: {
-  session: SessionContext;
-  releaseId: string;
-  eventType: string;
-  beforeStatus: string;
-  afterStatus: string;
-  reason?: string | null;
-  evidenceReference?: string | null;
-  metadata?: Record<string, unknown>;
+    session: SessionContext
+    releaseId: string
+    eventType: string
+    beforeStatus: string
+    afterStatus: string
+    reason?: string | null
+    evidenceReference?: string | null
+    metadata?: Record<string, unknown>
   }
 ) {
   await tx.auditEvent.create({
@@ -1045,36 +1073,51 @@ async function writePaymentReleaseAudit(
         ...(input.metadata ?? {})
       }
     }
-  });
+  })
 }
 
 function assertPaymentRequestEligibleInvoice(invoice: {
-  status: string;
-  matchStatus: string;
-  duplicateRisk: string;
-  currencyCode: string;
-  evidenceReference: string | null;
+  status: string
+  matchStatus: string
+  duplicateRisk: string
+  currencyCode: string
+  evidenceReference: string | null
 }) {
-  assertApPhpOnly(invoice.currencyCode);
-  const eligibleStatus = ["MATCHED", "MATCHED_WITHIN_TOLERANCE", "APPROVED_EXCEPTION"];
-  const eligibleMatch = ["EXACT_MATCH", "WITHIN_TOLERANCE", "APPROVED_EXCEPTION"];
-  if (!eligibleStatus.includes(invoice.status) && !eligibleMatch.includes(invoice.matchStatus)) {
-    throw new Error("PAYMENT_REQUEST_INVOICE_NOT_ELIGIBLE");
+  assertApPhpOnly(invoice.currencyCode)
+  const eligibleStatus = [
+    "MATCHED",
+    "MATCHED_WITHIN_TOLERANCE",
+    "APPROVED_EXCEPTION"
+  ]
+  const eligibleMatch = [
+    "EXACT_MATCH",
+    "WITHIN_TOLERANCE",
+    "APPROVED_EXCEPTION"
+  ]
+  if (
+    !eligibleStatus.includes(invoice.status) &&
+    !eligibleMatch.includes(invoice.matchStatus)
+  ) {
+    throw new Error("PAYMENT_REQUEST_INVOICE_NOT_ELIGIBLE")
   }
-  if (invoice.duplicateRisk === "BLOCKED" || invoice.duplicateRisk === "POTENTIAL") {
-    throw new Error("PAYMENT_REQUEST_DUPLICATE_RISK_BLOCKED");
+  if (
+    invoice.duplicateRisk === "BLOCKED" ||
+    invoice.duplicateRisk === "POTENTIAL"
+  ) {
+    throw new Error("PAYMENT_REQUEST_DUPLICATE_RISK_BLOCKED")
   }
   if (!invoice.evidenceReference) {
-    throw new Error("PAYMENT_REQUEST_EVIDENCE_REQUIRED");
+    throw new Error("PAYMENT_REQUEST_EVIDENCE_REQUIRED")
   }
 }
 
 async function assertJournalAccountsArePostable(
   session: SessionContext,
-  lines: ManualJournalLineInput[]
+  lines: ManualJournalLineInput[],
+  client: typeof prisma | TransactionClient = prisma
 ) {
-  const accountIds = [...new Set(lines.map((line) => line.accountId))];
-  const accounts = await prisma.chartOfAccount.findMany({
+  const accountIds = [...new Set(lines.map((line) => line.accountId))]
+  const accounts = await client.chartOfAccount.findMany({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -1084,17 +1127,18 @@ async function assertJournalAccountsArePostable(
       isHeader: false
     },
     select: { id: true }
-  });
+  })
   if (accounts.length !== accountIds.length) {
-    throw new Error("FINANCE_JOURNAL_ACCOUNT_NOT_POSTABLE");
+    throw new Error("FINANCE_JOURNAL_ACCOUNT_NOT_POSTABLE")
   }
 }
 
 async function requireOpenAccountingPeriod(
   session: SessionContext,
-  accountingPeriodId: string
+  accountingPeriodId: string,
+  client: typeof prisma | TransactionClient = prisma
 ) {
-  const period = await prisma.accountingPeriod.findFirst({
+  const period = await client.accountingPeriod.findFirst({
     where: {
       id: accountingPeriodId,
       tenantId: session.context.tenantId,
@@ -1107,14 +1151,14 @@ async function requireOpenAccountingPeriod(
       endDate: true,
       code: true
     }
-  });
+  })
   if (!period) {
-    throw new Error("ACCOUNTING_PERIOD_NOT_FOUND");
+    throw new Error("ACCOUNTING_PERIOD_NOT_FOUND")
   }
   if (period.status !== "OPEN") {
-    throw new Error("ACCOUNTING_PERIOD_NOT_OPEN");
+    throw new Error("ACCOUNTING_PERIOD_NOT_OPEN")
   }
-  return period;
+  return period
 }
 
 function supplierName(supplier: FinanceSourcePurchaseOrder["supplier"]) {
@@ -1124,59 +1168,62 @@ function supplierName(supplier: FinanceSourcePurchaseOrder["supplier"]) {
     supplier.legalName ??
     supplier.supplierCode ??
     "Supplier"
-  );
+  )
 }
 
-function resolveMatchStatus(order: FinanceSourcePurchaseOrder): FinanceSourceChainRow["matchStatus"] {
+function resolveMatchStatus(
+  order: FinanceSourcePurchaseOrder
+): FinanceSourceChainRow["matchStatus"] {
   const postedReceipts = order.goodsReceipts.filter((receipt) =>
     receipt.status.startsWith("POSTED")
-  );
+  )
   const discrepancyCount = postedReceipts.filter(
-    (receipt) => receipt.discrepancyFlag || receipt.status === "POSTED_WITH_DISCREPANCY"
-  ).length;
+    (receipt) =>
+      receipt.discrepancyFlag || receipt.status === "POSTED_WITH_DISCREPANCY"
+  ).length
 
   if (discrepancyCount > 0) {
-    return "DISCREPANCY_REVIEW";
+    return "DISCREPANCY_REVIEW"
   }
   if (postedReceipts.length === 0) {
-    return "AWAITING_RECEIPT";
+    return "AWAITING_RECEIPT"
   }
   if (order.status === "FULLY_RECEIVED") {
-    return "READY_FOR_INVOICE";
+    return "READY_FOR_INVOICE"
   }
-  return "PARTIAL_RECEIPT";
+  return "PARTIAL_RECEIPT"
 }
 
 export function assertFinanceAccess(session: SessionContext) {
   if (!canUseFinance(session.permissionCodes)) {
-    throw new Error("PERMISSION_DENIED");
+    throw new Error("PERMISSION_DENIED")
   }
 }
 
 function requireText(value: string | null | undefined, errorCode: string) {
-  const trimmed = value?.trim();
+  const trimmed = value?.trim()
   if (!trimmed) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
-  return trimmed;
+  return trimmed
 }
 
 function normalizeFiscalYearCode(value: string) {
   return requireText(value, "FISCAL_YEAR_CODE_REQUIRED")
     .toUpperCase()
-    .replaceAll(/\s+/g, "-");
+    .replaceAll(/\s+/g, "-")
 }
 
 function assertValidDate(value: Date, errorCode: string) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
-    throw new Error(errorCode);
+    throw new Error(errorCode)
   }
 }
 
 function dateOnlyUtc(value: Date) {
   return new Date(
     Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())
-  );
+  )
 }
 
 function addUtcDays(value: Date, days: number) {
@@ -1186,11 +1233,11 @@ function addUtcDays(value: Date, days: number) {
       value.getUTCMonth(),
       value.getUTCDate() + days
     )
-  );
+  )
 }
 
 function nextUtcMonthStart(value: Date) {
-  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 1));
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 1))
 }
 
 function formatPeriodName(startDate: Date) {
@@ -1198,37 +1245,37 @@ function formatPeriodName(startDate: Date) {
     month: "long",
     year: "numeric",
     timeZone: "UTC"
-  }).format(startDate);
+  }).format(startDate)
 }
 
 function buildMonthlyAccountingPeriods(input: {
-  fiscalYearCode: string;
-  fiscalYearStartDate: Date;
-  fiscalYearEndDate: Date;
-  openFirstPeriod?: boolean;
+  fiscalYearCode: string
+  fiscalYearStartDate: Date
+  fiscalYearEndDate: Date
+  openFirstPeriod?: boolean
 }) {
   const periods: Array<{
-    periodNumber: number;
-    code: string;
-    name: string;
-    startDate: Date;
-    endDate: Date;
-    status: "FUTURE" | "OPEN";
-  }> = [];
-  let cursor = dateOnlyUtc(input.fiscalYearStartDate);
-  const fiscalYearEndDate = dateOnlyUtc(input.fiscalYearEndDate);
+    periodNumber: number
+    code: string
+    name: string
+    startDate: Date
+    endDate: Date
+    status: "FUTURE" | "OPEN"
+  }> = []
+  let cursor = dateOnlyUtc(input.fiscalYearStartDate)
+  const fiscalYearEndDate = dateOnlyUtc(input.fiscalYearEndDate)
 
   while (cursor.getTime() <= fiscalYearEndDate.getTime()) {
     if (periods.length >= 24) {
-      throw new Error("FISCAL_YEAR_PERIOD_RANGE_TOO_LONG");
+      throw new Error("FISCAL_YEAR_PERIOD_RANGE_TOO_LONG")
     }
-    const nextMonthStart = nextUtcMonthStart(cursor);
-    const monthEnd = addUtcDays(nextMonthStart, -1);
+    const nextMonthStart = nextUtcMonthStart(cursor)
+    const monthEnd = addUtcDays(nextMonthStart, -1)
     const periodEnd =
       monthEnd.getTime() > fiscalYearEndDate.getTime()
         ? fiscalYearEndDate
-        : monthEnd;
-    const periodNumber = periods.length + 1;
+        : monthEnd
+    const periodNumber = periods.length + 1
     periods.push({
       periodNumber,
       code: `${input.fiscalYearCode}-P${String(periodNumber).padStart(2, "0")}`,
@@ -1236,33 +1283,33 @@ function buildMonthlyAccountingPeriods(input: {
       startDate: cursor,
       endDate: periodEnd,
       status: input.openFirstPeriod && periodNumber === 1 ? "OPEN" : "FUTURE"
-    });
-    cursor = addUtcDays(periodEnd, 1);
+    })
+    cursor = addUtcDays(periodEnd, 1)
   }
 
   if (periods.length === 0) {
-    throw new Error("FISCAL_YEAR_PERIODS_REQUIRED");
+    throw new Error("FISCAL_YEAR_PERIODS_REQUIRED")
   }
 
-  return periods;
+  return periods
 }
 
 async function requireFinanceConfigurationAccess(session: SessionContext) {
-  assertFinanceAccess(session);
-  await requirePermission(session, permissions.financeConfigure);
+  assertFinanceAccess(session)
+  await requirePermission(session, permissions.financeConfigure)
 }
 
 async function writeFinanceConfigurationAudit(
   tx: TransactionClient,
   input: {
-    session: SessionContext;
-    entityType: "FiscalYear" | "AccountingPeriod";
-    entityId: string;
-    eventType: string;
-    beforeData?: Prisma.InputJsonObject | null;
-    afterData?: Prisma.InputJsonObject | null;
-    reason: string;
-    metadata?: Prisma.InputJsonObject;
+    session: SessionContext
+    entityType: "FiscalYear" | "AccountingPeriod"
+    entityId: string
+    eventType: string
+    beforeData?: Prisma.InputJsonObject | null
+    afterData?: Prisma.InputJsonObject | null
+    reason: string
+    metadata?: Prisma.InputJsonObject
   }
 ) {
   await tx.auditEvent.create({
@@ -1285,23 +1332,23 @@ async function writeFinanceConfigurationAudit(
         ...(input.metadata ?? {})
       }
     }
-  });
+  })
 }
 
 export async function createFiscalYearWithMonthlyPeriods(
   session: SessionContext,
   input: FiscalYearSetupInput
 ) {
-  await requireFinanceConfigurationAccess(session);
-  const code = normalizeFiscalYearCode(input.code);
-  const name = requireText(input.name, "FISCAL_YEAR_NAME_REQUIRED");
-  const reason = requireText(input.reason, "FISCAL_YEAR_SETUP_REASON_REQUIRED");
-  assertValidDate(input.startDate, "FISCAL_YEAR_START_DATE_INVALID");
-  assertValidDate(input.endDate, "FISCAL_YEAR_END_DATE_INVALID");
-  const startDate = dateOnlyUtc(input.startDate);
-  const endDate = dateOnlyUtc(input.endDate);
+  await requireFinanceConfigurationAccess(session)
+  const code = normalizeFiscalYearCode(input.code)
+  const name = requireText(input.name, "FISCAL_YEAR_NAME_REQUIRED")
+  const reason = requireText(input.reason, "FISCAL_YEAR_SETUP_REASON_REQUIRED")
+  assertValidDate(input.startDate, "FISCAL_YEAR_START_DATE_INVALID")
+  assertValidDate(input.endDate, "FISCAL_YEAR_END_DATE_INVALID")
+  const startDate = dateOnlyUtc(input.startDate)
+  const endDate = dateOnlyUtc(input.endDate)
   if (endDate.getTime() < startDate.getTime()) {
-    throw new Error("FISCAL_YEAR_DATE_RANGE_INVALID");
+    throw new Error("FISCAL_YEAR_DATE_RANGE_INVALID")
   }
 
   const periods = buildMonthlyAccountingPeriods({
@@ -1309,7 +1356,7 @@ export async function createFiscalYearWithMonthlyPeriods(
     fiscalYearStartDate: startDate,
     fiscalYearEndDate: endDate,
     openFirstPeriod: Boolean(input.openFirstPeriod)
-  });
+  })
 
   return prisma.$transaction(async (tx) => {
     const existingCode = await tx.fiscalYear.findFirst({
@@ -1319,9 +1366,9 @@ export async function createFiscalYearWithMonthlyPeriods(
         code
       },
       select: { id: true }
-    });
+    })
     if (existingCode) {
-      throw new Error("FISCAL_YEAR_CODE_ALREADY_EXISTS");
+      throw new Error("FISCAL_YEAR_CODE_ALREADY_EXISTS")
     }
 
     const overlappingFiscalYear = await tx.fiscalYear.findFirst({
@@ -1334,9 +1381,9 @@ export async function createFiscalYearWithMonthlyPeriods(
       select: {
         code: true
       }
-    });
+    })
     if (overlappingFiscalYear) {
-      throw new Error("FISCAL_YEAR_DATE_RANGE_OVERLAPS");
+      throw new Error("FISCAL_YEAR_DATE_RANGE_OVERLAPS")
     }
 
     const defaultFiscalYear = await tx.fiscalYear.findFirst({
@@ -1346,8 +1393,8 @@ export async function createFiscalYearWithMonthlyPeriods(
         isDefault: true
       },
       select: { id: true }
-    });
-    const isDefault = input.isDefault ?? !defaultFiscalYear;
+    })
+    const isDefault = input.isDefault ?? !defaultFiscalYear
     if (isDefault) {
       await tx.fiscalYear.updateMany({
         where: {
@@ -1358,7 +1405,7 @@ export async function createFiscalYearWithMonthlyPeriods(
         data: {
           isDefault: false
         }
-      });
+      })
     }
 
     const fiscalYear = await tx.fiscalYear.create({
@@ -1391,7 +1438,7 @@ export async function createFiscalYearWithMonthlyPeriods(
           orderBy: { periodNumber: "asc" }
         }
       }
-    });
+    })
 
     await writeFinanceConfigurationAudit(tx, {
       session,
@@ -1412,10 +1459,10 @@ export async function createFiscalYearWithMonthlyPeriods(
         monthlyPeriodsGenerated: true,
         openFirstPeriod: Boolean(input.openFirstPeriod)
       }
-    });
+    })
 
     if (input.openFirstPeriod) {
-      const firstPeriod = fiscalYear.accountingPeriods[0];
+      const firstPeriod = fiscalYear.accountingPeriods[0]
       if (firstPeriod) {
         await writeFinanceConfigurationAudit(tx, {
           session,
@@ -1432,20 +1479,20 @@ export async function createFiscalYearWithMonthlyPeriods(
           metadata: {
             openedFromFiscalYearSetup: true
           }
-        });
+        })
       }
     }
 
-    return fiscalYear;
-  });
+    return fiscalYear
+  })
 }
 
 export async function openFiscalYear(
   session: SessionContext,
   input: FiscalYearActionInput
 ) {
-  await requireFinanceConfigurationAccess(session);
-  const reason = requireText(input.reason, "FISCAL_YEAR_OPEN_REASON_REQUIRED");
+  await requireFinanceConfigurationAccess(session)
+  const reason = requireText(input.reason, "FISCAL_YEAR_OPEN_REASON_REQUIRED")
 
   return prisma.$transaction(async (tx) => {
     const fiscalYear = await tx.fiscalYear.findFirst({
@@ -1454,15 +1501,15 @@ export async function openFiscalYear(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId
       }
-    });
+    })
     if (!fiscalYear) {
-      throw new Error("FISCAL_YEAR_NOT_FOUND");
+      throw new Error("FISCAL_YEAR_NOT_FOUND")
     }
     if (fiscalYear.status === "CLOSED") {
-      throw new Error("FISCAL_YEAR_CLOSED");
+      throw new Error("FISCAL_YEAR_CLOSED")
     }
     if (fiscalYear.status === "OPEN") {
-      return fiscalYear;
+      return fiscalYear
     }
 
     const updated = await tx.fiscalYear.update({
@@ -1470,7 +1517,7 @@ export async function openFiscalYear(
       data: {
         status: "OPEN"
       }
-    });
+    })
     await writeFinanceConfigurationAudit(tx, {
       session,
       entityType: "FiscalYear",
@@ -1479,17 +1526,20 @@ export async function openFiscalYear(
       reason,
       beforeData: { status: fiscalYear.status },
       afterData: { status: updated.status }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function openAccountingPeriod(
   session: SessionContext,
   input: AccountingPeriodActionInput
 ) {
-  await requireFinanceConfigurationAccess(session);
-  const reason = requireText(input.reason, "ACCOUNTING_PERIOD_OPEN_REASON_REQUIRED");
+  await requireFinanceConfigurationAccess(session)
+  const reason = requireText(
+    input.reason,
+    "ACCOUNTING_PERIOD_OPEN_REASON_REQUIRED"
+  )
 
   return prisma.$transaction(async (tx) => {
     const period = await tx.accountingPeriod.findFirst({
@@ -1501,15 +1551,15 @@ export async function openAccountingPeriod(
       include: {
         fiscalYear: true
       }
-    });
+    })
     if (!period) {
-      throw new Error("ACCOUNTING_PERIOD_NOT_FOUND");
+      throw new Error("ACCOUNTING_PERIOD_NOT_FOUND")
     }
     if (["SOFT_CLOSED", "LOCKED"].includes(period.status)) {
-      throw new Error("ACCOUNTING_PERIOD_CLOSE_CONTROL_REQUIRED");
+      throw new Error("ACCOUNTING_PERIOD_CLOSE_CONTROL_REQUIRED")
     }
     if (["OPEN", "REOPENED"].includes(period.status)) {
-      return period;
+      return period
     }
 
     const updatedPeriod = await tx.accountingPeriod.update({
@@ -1517,7 +1567,7 @@ export async function openAccountingPeriod(
       data: {
         status: "OPEN"
       }
-    });
+    })
 
     if (period.fiscalYear.status === "DRAFT") {
       await tx.fiscalYear.update({
@@ -1525,7 +1575,7 @@ export async function openAccountingPeriod(
         data: {
           status: "OPEN"
         }
-      });
+      })
     }
 
     await writeFinanceConfigurationAudit(tx, {
@@ -1541,16 +1591,18 @@ export async function openAccountingPeriod(
       afterData: {
         status: updatedPeriod.status,
         fiscalYearStatus:
-          period.fiscalYear.status === "DRAFT" ? "OPEN" : period.fiscalYear.status
+          period.fiscalYear.status === "DRAFT"
+            ? "OPEN"
+            : period.fiscalYear.status
       },
       metadata: {
         fiscalYearId: period.fiscalYearId,
         fiscalYearCode: period.fiscalYear.code
       }
-    });
+    })
 
-    return updatedPeriod;
-  });
+    return updatedPeriod
+  })
 }
 
 function resolvePaymentReleaseSettlementState(
@@ -1560,18 +1612,18 @@ function resolvePaymentReleaseSettlementState(
   >
 ): PaymentReleaseReportRow["settlementState"] {
   if (["EXCEPTION", "REVERSED", "CANCELLED"].includes(release.status)) {
-    return "EXCEPTION";
+    return "EXCEPTION"
   }
   if (["FULLY_RECONCILED", "PARTIALLY_RECONCILED"].includes(release.status)) {
-    return "RECONCILED";
+    return "RECONCILED"
   }
   if (release.releasedAmount <= 0) {
-    return "NOT_RELEASED";
+    return "NOT_RELEASED"
   }
   if (release.releasedAmount < release.releaseAmount) {
-    return "PARTIALLY_RELEASED";
+    return "PARTIALLY_RELEASED"
   }
-  return "RELEASED";
+  return "RELEASED"
 }
 
 export function buildPaymentReleaseReportRows(
@@ -1581,13 +1633,13 @@ export function buildPaymentReleaseReportRows(
     const remainingAmount = Math.max(
       release.releaseAmount - release.releasedAmount,
       0
-    );
+    )
     const evidenceReadiness = resolveEvidenceReadiness({
       evidenceReference:
         release.evidenceReference && release.releaseReference
           ? release.evidenceReference
           : null
-    });
+    })
     return {
       id: release.id,
       publicReference: release.publicReference,
@@ -1603,7 +1655,8 @@ export function buildPaymentReleaseReportRows(
       currencyCode: release.currencyCode,
       evidenceState: evidenceReadiness.evidenceState,
       evidenceCaptureMode: evidenceReadiness.evidenceCaptureMode,
-      evidenceProductionReadiness: evidenceReadiness.evidenceProductionReadiness,
+      evidenceProductionReadiness:
+        evidenceReadiness.evidenceProductionReadiness,
       evidenceBlockerId: evidenceReadiness.evidenceBlockerId,
       releaseReference: release.releaseReference,
       exportSafeSummary: [
@@ -1616,21 +1669,21 @@ export function buildPaymentReleaseReportRows(
         evidenceReadiness.evidenceState,
         evidenceReadiness.evidenceCaptureMode
       ].join(" / ")
-    };
-  });
+    }
+  })
 }
 
 const paymentReleaseReadinessPriority = {
   HIGH: 0,
   MEDIUM: 1,
   LOW: 2
-} as const;
+} as const
 
 export function buildPaymentReleaseSettlementReadinessRows(
   rows: PaymentReleaseReportRow[]
 ): PaymentReleaseSettlementReadinessRow[] {
   const readinessRows = rows.flatMap((release) => {
-    const issues: PaymentReleaseSettlementReadinessRow[] = [];
+    const issues: PaymentReleaseSettlementReadinessRow[] = []
     if (release.settlementState === "EXCEPTION") {
       issues.push({
         id: `${release.id}:settlement-exception`,
@@ -1648,7 +1701,7 @@ export function buildPaymentReleaseSettlementReadinessRows(
         nextAction:
           "Review hold, failure, reversal, and reconciliation evidence before treating this release as settled.",
         blockerId: null
-      });
+      })
     }
     if (release.settlementState === "NOT_RELEASED") {
       issues.push({
@@ -1667,7 +1720,7 @@ export function buildPaymentReleaseSettlementReadinessRows(
         nextAction:
           "Record release evidence only after payment proof is available and segregation checks pass.",
         blockerId: null
-      });
+      })
     }
     if (release.settlementState === "PARTIALLY_RELEASED") {
       issues.push({
@@ -1686,12 +1739,9 @@ export function buildPaymentReleaseSettlementReadinessRows(
         nextAction:
           "Confirm whether the remaining amount should be released, held, failed, cancelled, or reversed.",
         blockerId: null
-      });
+      })
     }
-    if (
-      release.evidenceState === "MISSING" ||
-      !release.releaseReference
-    ) {
+    if (release.evidenceState === "MISSING" || !release.releaseReference) {
       issues.push({
         id: `${release.id}:missing-evidence`,
         paymentReleaseId: release.id,
@@ -1708,7 +1758,7 @@ export function buildPaymentReleaseSettlementReadinessRows(
         nextAction:
           "Upload method-specific release proof or link approved metadata; production retention and scan/waiver signoff remain for UAT.",
         blockerId: release.evidenceBlockerId ?? phase3EvidenceUploadBlockerId
-      });
+      })
     }
     if (release.settlementState === "RELEASED") {
       issues.push({
@@ -1727,20 +1777,20 @@ export function buildPaymentReleaseSettlementReadinessRows(
         nextAction:
           "Send the release to bank reconciliation and match it to the authorized statement outflow.",
         blockerId: null
-      });
+      })
     }
-    return issues;
-  });
+    return issues
+  })
 
   return readinessRows.sort((left, right) => {
     const priorityDelta =
       paymentReleaseReadinessPriority[left.severity] -
-      paymentReleaseReadinessPriority[right.severity];
+      paymentReleaseReadinessPriority[right.severity]
     if (priorityDelta !== 0) {
-      return priorityDelta;
+      return priorityDelta
     }
-    return left.publicReference.localeCompare(right.publicReference);
-  });
+    return left.publicReference.localeCompare(right.publicReference)
+  })
 }
 
 export function buildBankCashReportRows(
@@ -1749,37 +1799,39 @@ export function buildBankCashReportRows(
   return bankCash.accounts.map((account) => {
     const deposits = bankCash.deposits.filter(
       (deposit) => deposit.bankName === account.bankName
-    );
+    )
     const statementLines = bankCash.statementLines.filter(
       (line) => line.bankName === account.bankName
-    );
+    )
     const reconciliations = bankCash.reconciliations.filter(
       (reconciliation) => reconciliation.bankName === account.bankName
-    );
+    )
     const depositAmountPhp = deposits.reduce(
       (sum, deposit) => sum + deposit.amountPhp,
       0
-    );
+    )
     const unmatchedStatementCount = statementLines.filter(
-      (line) => line.status !== "MATCHED" && line.netAmount !== line.matchedAmount
-    ).length;
+      (line) =>
+        line.status !== "MATCHED" && line.netAmount !== line.matchedAmount
+    ).length
     const varianceAmountPhp = reconciliations.reduce(
       (sum, reconciliation) => sum + Math.abs(reconciliation.varianceAmount),
       0
-    );
+    )
     const evidenceGapCount = deposits.filter(
       (deposit) => !deposit.depositSlipNumber || !deposit.evidenceReference
-    ).length;
+    ).length
     const hasActivity =
-      deposits.length > 0 || statementLines.length > 0 || reconciliations.length > 0;
-    const readinessState =
-      !hasActivity
-        ? "NO_ACTIVITY"
-        : unmatchedStatementCount > 0 ||
-            varianceAmountPhp > 0 ||
-            evidenceGapCount > 0
-          ? "NEEDS_REVIEW"
-          : "READY";
+      deposits.length > 0 ||
+      statementLines.length > 0 ||
+      reconciliations.length > 0
+    const readinessState = !hasActivity
+      ? "NO_ACTIVITY"
+      : unmatchedStatementCount > 0 ||
+          varianceAmountPhp > 0 ||
+          evidenceGapCount > 0
+        ? "NEEDS_REVIEW"
+        : "READY"
     const readinessIssues = [
       evidenceGapCount > 0
         ? `${evidenceGapCount} deposit evidence gap${evidenceGapCount === 1 ? "" : "s"}`
@@ -1790,7 +1842,7 @@ export function buildBankCashReportRows(
       varianceAmountPhp > 0
         ? `PHP ${varianceAmountPhp.toLocaleString("en-PH")} reconciliation variance`
         : null
-    ].filter((issue): issue is string => Boolean(issue));
+    ].filter((issue): issue is string => Boolean(issue))
 
     return {
       id: account.id,
@@ -1820,21 +1872,21 @@ export function buildBankCashReportRows(
         `${statementLines.length} statement line(s)`,
         `${reconciliations.length} reconciliation(s)`
       ].join(" / ")
-    };
-    });
+    }
+  })
 }
 
 const bankCashExceptionPriority = {
   HIGH: 0,
   MEDIUM: 1,
   LOW: 2
-} as const;
+} as const
 
 export function buildBankCashExceptionRows(
   rows: BankCashReportRow[]
 ): BankCashExceptionRow[] {
   const exceptionRows = rows.flatMap((row) => {
-    const issues: BankCashExceptionRow[] = [];
+    const issues: BankCashExceptionRow[] = []
     if (row.evidenceGapCount > 0) {
       issues.push({
         id: `${row.id}:deposit-evidence-gap`,
@@ -1850,7 +1902,7 @@ export function buildBankCashExceptionRows(
         currencyCode: row.currencyCode,
         nextAction:
           "Add deposit slip and evidence metadata before treating cash deposits as close-ready."
-      });
+      })
     }
     if (row.unmatchedStatementCount > 0) {
       issues.push({
@@ -1867,7 +1919,7 @@ export function buildBankCashExceptionRows(
         currencyCode: row.currencyCode,
         nextAction:
           "Match branch deposits or payment releases to statement lines, or document an exception for finance review."
-      });
+      })
     }
     if (row.varianceAmountPhp > 0) {
       issues.push({
@@ -1884,7 +1936,7 @@ export function buildBankCashExceptionRows(
         currencyCode: row.currencyCode,
         nextAction:
           "Resolve or approve the reconciliation variance before period-close signoff."
-      });
+      })
     }
     if (row.readinessState === "NO_ACTIVITY") {
       issues.push({
@@ -1901,35 +1953,39 @@ export function buildBankCashExceptionRows(
         currencyCode: row.currencyCode,
         nextAction:
           "Confirm whether this account should have deposit, statement, or reconciliation activity for the period."
-      });
+      })
     }
-    return issues;
-  });
+    return issues
+  })
 
   return exceptionRows.sort((left, right) => {
     const priorityDelta =
       bankCashExceptionPriority[left.severity] -
-      bankCashExceptionPriority[right.severity];
+      bankCashExceptionPriority[right.severity]
     if (priorityDelta !== 0) {
-      return priorityDelta;
+      return priorityDelta
     }
-    return left.bankName.localeCompare(right.bankName);
-  });
+    return left.bankName.localeCompare(right.bankName)
+  })
 }
 
-function agingBucket(invoiceDate: string, generatedAt: string): PayablesReportRow["ageBucket"] {
-  const ageMs = new Date(generatedAt).getTime() - new Date(invoiceDate).getTime();
-  const ageDays = Math.max(0, Math.floor(ageMs / 86_400_000));
+function agingBucket(
+  invoiceDate: string,
+  generatedAt: string
+): PayablesReportRow["ageBucket"] {
+  const ageMs =
+    new Date(generatedAt).getTime() - new Date(invoiceDate).getTime()
+  const ageDays = Math.max(0, Math.floor(ageMs / 86_400_000))
   if (ageDays <= 30) {
-    return "CURRENT";
+    return "CURRENT"
   }
   if (ageDays <= 60) {
-    return "DAYS_31_60";
+    return "DAYS_31_60"
   }
   if (ageDays <= 90) {
-    return "DAYS_61_90";
+    return "DAYS_61_90"
   }
-  return "DAYS_90_PLUS";
+  return "DAYS_90_PLUS"
 }
 
 export function buildPayablesReportRows(
@@ -1958,7 +2014,8 @@ export function buildPayablesReportRows(
       supplierName: creditNote.supplierName,
       status: creditNote.status,
       amount: creditNote.creditAmount,
-      openAmount: creditNote.status === "CANCELLED" ? 0 : creditNote.creditAmount,
+      openAmount:
+        creditNote.status === "CANCELLED" ? 0 : creditNote.creditAmount,
       currencyCode: creditNote.currencyCode,
       ageBucket: "PENDING_CREDIT" as const,
       detail: `Original invoice ${creditNote.originalInvoiceReference}; reason ${creditNote.reasonCode}`
@@ -1977,7 +2034,11 @@ export function buildPayablesReportRows(
       ageBucket: "PAYMENT_PREP" as const,
       detail: `${request.lineCount} AP invoice line(s); requested by ${request.requestedBy}`
     }))
-  ].sort((a, b) => a.supplierName.localeCompare(b.supplierName) || a.reference.localeCompare(b.reference));
+  ].sort(
+    (a, b) =>
+      a.supplierName.localeCompare(b.supplierName) ||
+      a.reference.localeCompare(b.reference)
+  )
 }
 
 export function buildFinanceFoundationDashboard(
@@ -2026,12 +2087,11 @@ export function buildFinanceFoundationDashboard(
   }
 ): FinanceFoundationDashboard {
   const currencyCode =
-    sourceOrders.find((order) => order.currencyCode)?.currencyCode ??
-    "PHP";
+    sourceOrders.find((order) => order.currencyCode)?.currencyCode ?? "PHP"
   const sourceChain = sourceOrders.map((order) => {
     const postedReceipts = order.goodsReceipts.filter((receipt) =>
       receipt.status.startsWith("POSTED")
-    );
+    )
     const receivedAmount = postedReceipts.reduce(
       (sum, receipt) =>
         sum +
@@ -2040,11 +2100,11 @@ export function buildFinanceFoundationDashboard(
           0
         ),
       0
-    );
+    )
     const discrepancyCount = postedReceipts.filter(
       (receipt) =>
         receipt.discrepancyFlag || receipt.status === "POSTED_WITH_DISCREPANCY"
-    ).length;
+    ).length
 
     return {
       id: order.id,
@@ -2057,37 +2117,37 @@ export function buildFinanceFoundationDashboard(
       discrepancyCount,
       matchStatus: resolveMatchStatus(order),
       sourceHref: `/purchase-orders/${order.id}`
-    };
-  });
+    }
+  })
 
   const openCommitmentAmount = sourceChain
     .filter((row) =>
       ["APPROVED", "ISSUED", "PARTIALLY_RECEIVED"].includes(row.status)
     )
-    .reduce((sum, row) => sum + row.totalAmount, 0);
+    .reduce((sum, row) => sum + row.totalAmount, 0)
   const readyForInvoice = sourceChain.filter(
     (row) => row.matchStatus === "READY_FOR_INVOICE"
-  ).length;
+  ).length
   const discrepancyRows = sourceChain.filter(
     (row) => row.matchStatus === "DISCREPANCY_REVIEW"
-  ).length;
+  ).length
   const receivedAmount = sourceChain.reduce(
     (sum, row) => sum + row.receivedAmount,
     0
-  );
+  )
   const paymentReleaseReportRows =
-    buildPaymentReleaseReportRows(paymentReleases);
+    buildPaymentReleaseReportRows(paymentReleases)
   const paymentReleaseSettlementReadinessRows =
-    buildPaymentReleaseSettlementReadinessRows(paymentReleaseReportRows);
-  const bankCashReportRows = buildBankCashReportRows(bankCash);
-  const bankCashExceptionRows = buildBankCashExceptionRows(bankCashReportRows);
-  const generatedAt = new Date().toISOString();
+    buildPaymentReleaseSettlementReadinessRows(paymentReleaseReportRows)
+  const bankCashReportRows = buildBankCashReportRows(bankCash)
+  const bankCashExceptionRows = buildBankCashExceptionRows(bankCashReportRows)
+  const generatedAt = new Date().toISOString()
   const payablesReportRows = buildPayablesReportRows(
     apInvoices,
     supplierCreditNotes,
     paymentRequests,
     generatedAt
-  );
+  )
 
   return {
     generatedAt,
@@ -2098,8 +2158,12 @@ export function buildFinanceFoundationDashboard(
       locationType: session.context.locationType
     },
     permissions: {
-      canConfigure: session.permissionCodes.includes(permissions.financeConfigure),
-      canViewLedger: session.permissionCodes.includes(permissions.financeLedgerView),
+      canConfigure: session.permissionCodes.includes(
+        permissions.financeConfigure
+      ),
+      canViewLedger: session.permissionCodes.includes(
+        permissions.financeLedgerView
+      ),
       canCreateJournal: session.permissionCodes.includes(
         permissions.financeJournalCreate
       ),
@@ -2109,11 +2173,15 @@ export function buildFinanceFoundationDashboard(
       canApproveJournal: session.permissionCodes.includes(
         permissions.financeJournalApprove
       ),
-      canPostJournal: session.permissionCodes.includes(permissions.financeJournalPost),
+      canPostJournal: session.permissionCodes.includes(
+        permissions.financeJournalPost
+      ),
       canReverseJournal: session.permissionCodes.includes(
         permissions.financeJournalReverse
       ),
-      canViewPayables: session.permissionCodes.includes(permissions.financePayablesView),
+      canViewPayables: session.permissionCodes.includes(
+        permissions.financePayablesView
+      ),
       canCreateApInvoice: session.permissionCodes.includes(
         permissions.financeApInvoiceCreate
       ),
@@ -2162,28 +2230,32 @@ export function buildFinanceFoundationDashboard(
         id: "open-commitments",
         label: "Open supplier commitments",
         displayValue: money(openCommitmentAmount, currencyCode),
-        detail: "Approved, issued, or partially received POs in the selected operating scope.",
+        detail:
+          "Approved, issued, or partially received POs in the selected operating scope.",
         tone: openCommitmentAmount > 0 ? "info" : "neutral"
       },
       {
         id: "received-value",
         label: "Received value basis",
         displayValue: money(receivedAmount, currencyCode),
-        detail: "Accepted receiving value from posted goods receipts; this is not a journal yet.",
+        detail:
+          "Accepted receiving value from posted goods receipts; this is not a journal yet.",
         tone: receivedAmount > 0 ? "success" : "neutral"
       },
       {
         id: "ready-for-invoice",
         label: "Ready for invoice review",
         displayValue: number(readyForInvoice),
-        detail: "Fully received source chains ready for controlled invoice capture and matching.",
+        detail:
+          "Fully received source chains ready for controlled invoice capture and matching.",
         tone: readyForInvoice > 0 ? "success" : "neutral"
       },
       {
         id: "discrepancy-review",
         label: "Discrepancy review",
         displayValue: number(discrepancyRows),
-        detail: "Source chains with receiving discrepancies that must be cleared before payment release.",
+        detail:
+          "Source chains with receiving discrepancies that must be cleared before payment release.",
         tone: discrepancyRows > 0 ? "warning" : "success"
       }
     ],
@@ -2228,13 +2300,13 @@ export function buildFinanceFoundationDashboard(
         tone: "info"
       }
     ]
-  };
+  }
 }
 
 export async function getFinanceFoundationDashboard(
   session: SessionContext
 ): Promise<FinanceFoundationDashboard> {
-  assertFinanceAccess(session);
+  await requireFinanceAccess(session)
 
   const purchaseOrders = await prisma.purchaseOrder.findMany({
     where: {
@@ -2257,7 +2329,7 @@ export async function getFinanceFoundationDashboard(
       updatedAt: "desc"
     },
     take: 10
-  });
+  })
 
   const [
     fiscalYear,
@@ -2475,8 +2547,12 @@ export async function getFinanceFoundationDashboard(
         originalApInvoice: {
           OR: [
             { locationId: session.context.locationId },
-            { purchaseOrder: { deliveryLocationId: session.context.locationId } },
-            { goodsReceipt: { receivingLocationId: session.context.locationId } }
+            {
+              purchaseOrder: { deliveryLocationId: session.context.locationId }
+            },
+            {
+              goodsReceipt: { receivingLocationId: session.context.locationId }
+            }
           ]
         }
       },
@@ -2676,7 +2752,7 @@ export async function getFinanceFoundationDashboard(
       take: 200
     }),
     getPaymentReleaseSettlementPolicy(session)
-  ]);
+  ])
 
   return buildFinanceFoundationDashboard(
     session,
@@ -2750,32 +2826,32 @@ export async function getFinanceFoundationDashboard(
       sourceHref: `/finance/general-ledger/${journal.id}`
     })),
     apInvoices.map((invoice) => {
-      const totalAmount = decimalToNumber(invoice.totalAmount);
+      const totalAmount = decimalToNumber(invoice.totalAmount)
       const preparedAmount = invoice.paymentRequestLines.reduce(
         (sum, line) => sum + decimalToNumber(line.requestedAmount),
         0
-      );
-      const paymentOutstandingAmount = roundMoney(totalAmount - preparedAmount);
+      )
+      const paymentOutstandingAmount = roundMoney(totalAmount - preparedAmount)
       const paymentEligibleStatus = [
         "MATCHED",
         "MATCHED_WITHIN_TOLERANCE",
         "APPROVED_EXCEPTION"
-      ].includes(invoice.status);
+      ].includes(invoice.status)
       const paymentEligibleMatch = [
         "EXACT_MATCH",
         "WITHIN_TOLERANCE",
         "APPROVED_EXCEPTION"
-      ].includes(invoice.matchStatus);
+      ].includes(invoice.matchStatus)
       const hasDuplicateRisk = ["BLOCKED", "POTENTIAL"].includes(
         invoice.duplicateRisk
-      );
-      const evidenceReady = Boolean(invoice.evidenceReference);
+      )
+      const evidenceReady = Boolean(invoice.evidenceReference)
       const paymentReady =
         invoice.currencyCode === "PHP" &&
         (paymentEligibleStatus || paymentEligibleMatch) &&
         !hasDuplicateRisk &&
         evidenceReady &&
-        paymentOutstandingAmount > 0;
+        paymentOutstandingAmount > 0
       const paymentPreparationStatus = paymentReady
         ? "READY"
         : paymentOutstandingAmount <= 0
@@ -2788,7 +2864,7 @@ export async function getFinanceFoundationDashboard(
                 ? "MATCH_NOT_READY"
                 : invoice.currencyCode !== "PHP"
                   ? "CURRENCY_NOT_SUPPORTED"
-                  : "NOT_READY";
+                  : "NOT_READY"
 
       return {
         id: invoice.id,
@@ -2807,7 +2883,7 @@ export async function getFinanceFoundationDashboard(
         lineCount: invoice._count.lines,
         exceptionCount: invoice._count.exceptions,
         sourceHref: `/finance/accounts-payable/${invoice.id}`
-      };
+      }
     }),
     supplierCreditNotes.map((creditNote) => ({
       id: creditNote.id,
@@ -2932,13 +3008,13 @@ export async function getFinanceFoundationDashboard(
         )} / supplier:${order.supplierId}`
       }))
     }
-  );
+  )
 }
 
 export async function buildFinanceFoundationExportRows(
   session: SessionContext
 ): Promise<CsvRow[]> {
-  const dashboard = await getFinanceFoundationDashboard(session);
+  const dashboard = await getFinanceFoundationDashboard(session)
   const rows: CsvRow[] = [
     [
       "Section",
@@ -2951,7 +3027,7 @@ export async function buildFinanceFoundationExportRows(
       "Detail",
       "Scope"
     ]
-  ];
+  ]
 
   for (const metric of dashboard.metrics) {
     rows.push([
@@ -2964,7 +3040,7 @@ export async function buildFinanceFoundationExportRows(
       dashboard.generatedAt,
       metric.detail,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const chain of dashboard.sourceChain) {
@@ -2978,7 +3054,7 @@ export async function buildFinanceFoundationExportRows(
       "",
       `${chain.status}; PO total ${chain.totalAmount}; discrepancies ${chain.discrepancyCount}`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const journal of dashboard.recentJournals) {
@@ -2992,7 +3068,7 @@ export async function buildFinanceFoundationExportRows(
       journal.journalDate,
       `${journal.journalType}; ${journal.lineCount} lines; credit ${journal.totalCreditAmountPhp}`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const invoice of dashboard.apInvoices) {
@@ -3006,7 +3082,7 @@ export async function buildFinanceFoundationExportRows(
       invoice.invoiceDate,
       `${invoice.status}; duplicate risk ${invoice.duplicateRisk}; ${invoice.exceptionCount} exceptions; payment ${invoice.paymentPreparationStatus}; outstanding ${invoice.paymentOutstandingAmount}`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const creditNote of dashboard.supplierCreditNotes) {
@@ -3020,7 +3096,7 @@ export async function buildFinanceFoundationExportRows(
       creditNote.creditDate,
       `Original invoice ${creditNote.originalInvoiceReference}; reason ${creditNote.reasonCode}; evidence ${creditNote.evidenceReference ?? "none"}; no settlement or journal posting`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const request of dashboard.paymentRequests) {
@@ -3034,7 +3110,7 @@ export async function buildFinanceFoundationExportRows(
       request.createdAt,
       `${request.lineCount} lines; requested by ${request.requestedBy}`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const row of dashboard.payablesReportRows) {
@@ -3048,13 +3124,13 @@ export async function buildFinanceFoundationExportRows(
       dashboard.generatedAt,
       `${row.ageBucket}; gross ${row.amount}; ${row.detail}`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const release of dashboard.paymentReleases) {
     const reportRow = dashboard.paymentReleaseReportRows.find(
       (row) => row.id === release.id
-    );
+    )
     rows.push([
       "Payment Release",
       release.publicReference,
@@ -3065,7 +3141,7 @@ export async function buildFinanceFoundationExportRows(
       release.createdAt,
       `${release.status}; ${release.method}; ${release.bankName}; released ${release.releasedAmount}; matched ${release.reconciliationMatchedAmount}; ${release.reconciliationMatchCount} match(es); evidence ${reportRow?.evidenceState ?? "MISSING"}; proof ${release.releaseReference ?? "none"}`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const account of dashboard.bankCash.accounts) {
@@ -3079,7 +3155,7 @@ export async function buildFinanceFoundationExportRows(
       "",
       `${account.accountType}; deposits ${account.depositCount}; statements ${account.statementCount}; reconciliations ${account.reconciliationCount}`,
       account.scopeLabel
-    ]);
+    ])
   }
 
   for (const deposit of dashboard.bankCash.deposits) {
@@ -3093,7 +3169,7 @@ export async function buildFinanceFoundationExportRows(
       deposit.depositDate,
       `Slip ${deposit.depositSlipNumber ?? "none"}; evidence ${deposit.evidenceReference ?? "none"}; declared by ${deposit.declaredBy}`,
       deposit.locationName
-    ]);
+    ])
   }
 
   for (const line of dashboard.bankCash.statementLines) {
@@ -3107,7 +3183,7 @@ export async function buildFinanceFoundationExportRows(
       line.transactionDate,
       `Statement ${line.publicReference}; matched ${line.matchedAmount}`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const reconciliation of dashboard.bankCash.reconciliations) {
@@ -3121,11 +3197,11 @@ export async function buildFinanceFoundationExportRows(
       reconciliation.preparedAt,
       `${reconciliation.matchCount} matches`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   if (session.permissionCodes.includes(permissions.financeBudgetView)) {
-    const budgetDashboard = await getBudgetControlDashboard(session);
+    const budgetDashboard = await getBudgetControlDashboard(session)
     for (const line of budgetDashboard.lines) {
       rows.push([
         "Budget Line",
@@ -3137,7 +3213,7 @@ export async function buildFinanceFoundationExportRows(
         line.periodLabel,
         `Committed ${line.committedAmountPhp}; actual ${line.actualAmountPhp}; remaining ${line.remainingAmountPhp}; utilization ${line.utilizationPct}%; threshold ${line.thresholdState}`,
         line.locationName
-      ]);
+      ])
     }
     for (const commitment of budgetDashboard.commitments) {
       rows.push([
@@ -3150,12 +3226,12 @@ export async function buildFinanceFoundationExportRows(
         commitment.sourceEventAt,
         `Consumed ${commitment.consumedAmountPhp}; ${commitment.sourceSummary}`,
         budgetDashboard.scope.locationName
-      ]);
+      ])
     }
   }
 
   if (session.permissionCodes.includes(permissions.financeExpenseRequestView)) {
-    const expenseDashboard = await getExpenseRequestDashboard(session);
+    const expenseDashboard = await getExpenseRequestDashboard(session)
     for (const expense of expenseDashboard.reportRows) {
       rows.push([
         "Expense Request",
@@ -3167,12 +3243,12 @@ export async function buildFinanceFoundationExportRows(
         expense.dueState,
         `${expense.budgetStatus}; outstanding ${expense.outstandingAmount}; evidence ${expense.evidenceState}; ${expense.sourceLinkCount} source link(s); ${expense.exportSafeSummary}`,
         expense.locationName
-      ]);
+      ])
     }
   }
 
   if (session.permissionCodes.includes(permissions.financeCashAdvanceView)) {
-    const cashAdvanceDashboard = await getCashAdvanceDashboard(session);
+    const cashAdvanceDashboard = await getCashAdvanceDashboard(session)
     for (const advance of cashAdvanceDashboard.reportRows) {
       rows.push([
         "Cash Advance",
@@ -3184,12 +3260,12 @@ export async function buildFinanceFoundationExportRows(
         advance.dueState,
         `Liquidated ${advance.liquidatedAmountPhp}; outstanding ${advance.outstandingAmountPhp}; evidence ${advance.evidenceState}; ${advance.movementCount} movement(s); ${advance.liquidationCount} liquidation(s); ${advance.exportSafeSummary}`,
         advance.locationName
-      ]);
+      ])
     }
   }
 
   if (session.permissionCodes.includes(permissions.financePettyCashView)) {
-    const pettyCashDashboard = await getPettyCashDashboard(session);
+    const pettyCashDashboard = await getPettyCashDashboard(session)
     for (const fund of pettyCashDashboard.reportRows) {
       rows.push([
         "Petty Cash Fund",
@@ -3201,7 +3277,7 @@ export async function buildFinanceFoundationExportRows(
         "",
         `${fund.status}; target ${fund.targetBalancePhp}; available to target ${fund.availableToTargetPhp}; open requests ${fund.openRequestCount}; open liquidations ${fund.openLiquidationCount}; evidence ${fund.evidenceState}; ${fund.exportSafeSummary}`,
         fund.locationName
-      ]);
+      ])
     }
   }
 
@@ -3216,16 +3292,16 @@ export async function buildFinanceFoundationExportRows(
       dashboard.generatedAt,
       guardrail.detail,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
-  return rows;
+  return rows
 }
 
 export async function buildBankCashExportRows(
   session: SessionContext
 ): Promise<CsvRow[]> {
-  const dashboard = await getFinanceFoundationDashboard(session);
+  const dashboard = await getFinanceFoundationDashboard(session)
   const rows: CsvRow[] = [
     [
       "Section",
@@ -3238,7 +3314,7 @@ export async function buildBankCashExportRows(
       "Detail",
       "Scope"
     ]
-  ];
+  ]
 
   for (const report of dashboard.bankCashReportRows) {
     rows.push([
@@ -3251,7 +3327,7 @@ export async function buildBankCashExportRows(
       dashboard.generatedAt,
       `Deposits ${report.depositCount}; statement lines ${report.statementLineCount}; unmatched ${report.unmatchedStatementCount}; reconciliations ${report.reconciliationCount}; variance ${report.varianceAmountPhp}; evidence gaps ${report.evidenceGapCount}; readiness issues ${report.readinessIssues.join(" | ") || "none"}; ${report.exportSafeSummary}`,
       report.scopeLabel
-    ]);
+    ])
   }
 
   for (const account of dashboard.bankCash.accounts) {
@@ -3265,7 +3341,7 @@ export async function buildBankCashExportRows(
       "",
       `${account.accountType}; deposits ${account.depositCount}; statements ${account.statementCount}; reconciliations ${account.reconciliationCount}`,
       account.scopeLabel
-    ]);
+    ])
   }
 
   for (const deposit of dashboard.bankCash.deposits) {
@@ -3279,7 +3355,7 @@ export async function buildBankCashExportRows(
       deposit.depositDate,
       `Slip ${deposit.depositSlipNumber ?? "none"}; evidence ${deposit.evidenceReference ?? "none"}; declared by ${deposit.declaredBy}`,
       deposit.locationName
-    ]);
+    ])
   }
 
   for (const line of dashboard.bankCash.statementLines) {
@@ -3293,7 +3369,7 @@ export async function buildBankCashExportRows(
       line.transactionDate,
       `Statement ${line.publicReference}; matched ${line.matchedAmount}`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   for (const reconciliation of dashboard.bankCash.reconciliations) {
@@ -3307,7 +3383,7 @@ export async function buildBankCashExportRows(
       reconciliation.preparedAt,
       `${reconciliation.matchCount} matches`,
       dashboard.scope.locationName
-    ]);
+    ])
   }
 
   rows.push([
@@ -3320,28 +3396,28 @@ export async function buildBankCashExportRows(
     dashboard.generatedAt,
     "CSV export does not mutate bank accounts, deposits, statement lines, reconciliations, payment releases, AP, or journals.",
     dashboard.scope.locationName
-  ]);
+  ])
 
-  return rows;
+  return rows
 }
 
 export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeApInvoiceCreate);
-  assertApPhpOnly("PHP");
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeApInvoiceCreate)
+  assertApPhpOnly("PHP")
 
-  const supplierInvoiceNumber = input.supplierInvoiceNumber.trim();
+  const supplierInvoiceNumber = input.supplierInvoiceNumber.trim()
   if (!supplierInvoiceNumber) {
-    throw new Error("AP_INVOICE_NUMBER_REQUIRED");
+    throw new Error("AP_INVOICE_NUMBER_REQUIRED")
   }
   if (!input.purchaseOrderId && !input.nonPoReason?.trim()) {
-    throw new Error("AP_INVOICE_NON_PO_REASON_REQUIRED");
+    throw new Error("AP_INVOICE_NON_PO_REASON_REQUIRED")
   }
   if (input.lines.length === 0) {
-    throw new Error("AP_INVOICE_LINES_REQUIRED");
+    throw new Error("AP_INVOICE_LINES_REQUIRED")
   }
   if (input.lines.length > 100) {
-    throw new Error("AP_INVOICE_LINE_LIMIT_EXCEEDED");
+    throw new Error("AP_INVOICE_LINE_LIMIT_EXCEEDED")
   }
 
   const supplier = await prisma.supplier.findFirst({
@@ -3351,9 +3427,9 @@ export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
       companyId: session.context.companyId
     },
     select: { id: true }
-  });
+  })
   if (!supplier) {
-    throw new Error("AP_INVOICE_SUPPLIER_NOT_FOUND");
+    throw new Error("AP_INVOICE_SUPPLIER_NOT_FOUND")
   }
 
   const purchaseOrder = input.purchaseOrderId
@@ -3367,9 +3443,9 @@ export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
         },
         include: { lines: true }
       })
-    : null;
+    : null
   if (input.purchaseOrderId && !purchaseOrder) {
-    throw new Error("AP_INVOICE_PURCHASE_ORDER_NOT_FOUND");
+    throw new Error("AP_INVOICE_PURCHASE_ORDER_NOT_FOUND")
   }
 
   const goodsReceipt = input.goodsReceiptId
@@ -3384,25 +3460,30 @@ export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
         },
         include: { lines: true }
       })
-    : null;
+    : null
   if (input.goodsReceiptId && !goodsReceipt) {
-    throw new Error("AP_INVOICE_GOODS_RECEIPT_NOT_FOUND");
+    throw new Error("AP_INVOICE_GOODS_RECEIPT_NOT_FOUND")
   }
 
   const poLineById = new Map(
     purchaseOrder?.lines.map((line) => [line.id, line]) ?? []
-  );
-  const receiptLineIds = new Set(goodsReceipt?.lines.map((line) => line.id) ?? []);
+  )
+  const receiptLineIds = new Set(
+    goodsReceipt?.lines.map((line) => line.id) ?? []
+  )
   const lines = input.lines.map((line, index) => {
-    const lineTotalAmount = lineTotalFromApInput(line);
+    const lineTotalAmount = lineTotalFromApInput(line)
     const purchaseOrderLine = line.purchaseOrderLineId
       ? poLineById.get(line.purchaseOrderLineId)
-      : null;
+      : null
     if (line.purchaseOrderLineId && !purchaseOrderLine) {
-      throw new Error("AP_INVOICE_PO_LINE_SCOPE_MISMATCH");
+      throw new Error("AP_INVOICE_PO_LINE_SCOPE_MISMATCH")
     }
-    if (line.goodsReceiptLineId && !receiptLineIds.has(line.goodsReceiptLineId)) {
-      throw new Error("AP_INVOICE_GR_LINE_SCOPE_MISMATCH");
+    if (
+      line.goodsReceiptLineId &&
+      !receiptLineIds.has(line.goodsReceiptLineId)
+    ) {
+      throw new Error("AP_INVOICE_GR_LINE_SCOPE_MISMATCH")
     }
     return {
       tenantId: session.context.tenantId,
@@ -3419,22 +3500,31 @@ export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
       taxAmount: line.taxAmount ?? 0,
       discountAmount: line.discountAmount ?? 0,
       lineTotalAmount
-    };
-  });
+    }
+  })
   const subtotalAmount = roundMoney(
-    input.lines.reduce((sum, line) => sum + line.invoicedQty * line.unitPrice, 0)
-  );
-  const taxAmount = roundMoney(input.lines.reduce((sum, line) => sum + (line.taxAmount ?? 0), 0));
+    input.lines.reduce(
+      (sum, line) => sum + line.invoicedQty * line.unitPrice,
+      0
+    )
+  )
+  const taxAmount = roundMoney(
+    input.lines.reduce((sum, line) => sum + (line.taxAmount ?? 0), 0)
+  )
   const discountAmount = roundMoney(
     input.lines.reduce((sum, line) => sum + (line.discountAmount ?? 0), 0)
-  );
-  const freightAmount = input.freightAmount ?? 0;
+  )
+  const freightAmount = input.freightAmount ?? 0
   if (freightAmount < 0) {
-    throw new Error("AP_INVOICE_FREIGHT_INVALID");
+    throw new Error("AP_INVOICE_FREIGHT_INVALID")
   }
-  const totalAmount = roundMoney(subtotalAmount + taxAmount + freightAmount - discountAmount);
-  const fingerprint = duplicateFingerprint(input);
-  const publicReference = await nextApInvoiceReference(session.context.companyId);
+  const totalAmount = roundMoney(
+    subtotalAmount + taxAmount + freightAmount - discountAmount
+  )
+  const fingerprint = duplicateFingerprint(input)
+  const publicReference = await nextApInvoiceReference(
+    session.context.companyId
+  )
 
   return prisma.$transaction(async (tx) => {
     const duplicateCandidate = await tx.apInvoice.findFirst({
@@ -3451,7 +3541,7 @@ export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
         totalAmount: true,
         invoiceDate: true
       }
-    });
+    })
 
     const invoice = await tx.apInvoice.create({
       data: {
@@ -3486,7 +3576,7 @@ export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
         }
       },
       include: { lines: true }
-    });
+    })
 
     if (duplicateCandidate) {
       await tx.apInvoiceDuplicateSignal.create({
@@ -3502,10 +3592,12 @@ export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
           matchedDate: input.invoiceDate,
           duplicateSnapshot: {
             candidateReference: duplicateCandidate.publicReference,
-            candidateTotalAmount: decimalToNumber(duplicateCandidate.totalAmount)
+            candidateTotalAmount: decimalToNumber(
+              duplicateCandidate.totalAmount
+            )
           }
         }
-      });
+      })
     }
 
     await tx.auditEvent.create({
@@ -3529,15 +3621,15 @@ export async function createApInvoiceDraft(input: ApInvoiceDraftInput) {
           noSourceMutation: true
         }
       }
-    });
+    })
 
-    return invoice;
-  });
+    return invoice
+  })
 }
 
 export async function submitApInvoiceForMatch(input: ApInvoiceActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeApInvoiceSubmit);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeApInvoiceSubmit)
 
   return prisma.$transaction(async (tx) => {
     const invoice = await tx.apInvoice.findFirst({
@@ -3552,21 +3644,27 @@ export async function submitApInvoiceForMatch(input: ApInvoiceActionInput) {
         purchaseOrder: true,
         goodsReceipt: true
       }
-    });
+    })
     if (!invoice) {
-      throw new Error("AP_INVOICE_NOT_OPEN_FOR_SUBMIT");
+      throw new Error("AP_INVOICE_NOT_OPEN_FOR_SUBMIT")
     }
     if (invoice.createdByUserId !== session.user.id) {
-      throw new Error("AP_INVOICE_SUBMITTER_MISMATCH");
+      throw new Error("AP_INVOICE_SUBMITTER_MISMATCH")
     }
     if (invoice.purchaseOrder?.deliveryLocationId) {
-      await assertAuthorizedLocation(session, invoice.purchaseOrder.deliveryLocationId);
+      await assertAuthorizedLocation(
+        session,
+        invoice.purchaseOrder.deliveryLocationId
+      )
     }
     if (invoice.goodsReceipt?.receivingLocationId) {
-      await assertAuthorizedLocation(session, invoice.goodsReceipt.receivingLocationId);
+      await assertAuthorizedLocation(
+        session,
+        invoice.goodsReceipt.receivingLocationId
+      )
     }
 
-    const submittedAt = new Date();
+    const submittedAt = new Date()
     const updated = await tx.apInvoice.update({
       where: { id: invoice.id },
       data: {
@@ -3574,7 +3672,7 @@ export async function submitApInvoiceForMatch(input: ApInvoiceActionInput) {
         submittedAt,
         submittedByUserId: session.user.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -3591,10 +3689,10 @@ export async function submitApInvoiceForMatch(input: ApInvoiceActionInput) {
           noSourceMutation: true
         }
       }
-    });
+    })
 
-    return updated;
-  });
+    return updated
+  })
 }
 
 async function projectApInvoiceBudgetCommitments(
@@ -3604,9 +3702,9 @@ async function projectApInvoiceBudgetCommitments(
   matchedAt: Date
 ) {
   for (const line of invoice.lines) {
-    const committedAmountPhp = decimalToNumber(line.lineTotalAmount);
+    const committedAmountPhp = decimalToNumber(line.lineTotalAmount)
     if (!line.budgetLineId || committedAmountPhp <= 0) {
-      continue;
+      continue
     }
 
     await projectBudgetCommitmentFromApprovedSourceEvent(tx, session, {
@@ -3620,13 +3718,13 @@ async function projectApInvoiceBudgetCommitments(
       sourceSummary: `AP invoice ${invoice.publicReference} line ${line.lineNumber}: ${invoice.supplierInvoiceNumber} / ${line.description}`,
       committedAmountPhp,
       status: "PENDING"
-    });
+    })
   }
 }
 
 export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeApInvoiceMatch);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeApInvoiceMatch)
 
   return prisma.$transaction(async (tx) => {
     const invoice = await tx.apInvoice.findFirst({
@@ -3647,18 +3745,24 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
         purchaseOrder: true,
         goodsReceipt: true
       }
-    });
+    })
     if (!invoice) {
-      throw new Error("AP_INVOICE_NOT_READY_FOR_MATCH");
+      throw new Error("AP_INVOICE_NOT_READY_FOR_MATCH")
     }
     if (invoice.createdByUserId === session.user.id) {
-      throw new Error("AP_INVOICE_SELF_REVIEW_DENIED");
+      throw new Error("AP_INVOICE_SELF_REVIEW_DENIED")
     }
     if (invoice.purchaseOrder?.deliveryLocationId) {
-      await assertAuthorizedLocation(session, invoice.purchaseOrder.deliveryLocationId);
+      await assertAuthorizedLocation(
+        session,
+        invoice.purchaseOrder.deliveryLocationId
+      )
     }
     if (invoice.goodsReceipt?.receivingLocationId) {
-      await assertAuthorizedLocation(session, invoice.goodsReceipt.receivingLocationId);
+      await assertAuthorizedLocation(
+        session,
+        invoice.goodsReceipt.receivingLocationId
+      )
     }
 
     await tx.apInvoiceMatchResult.deleteMany({
@@ -3667,9 +3771,9 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
         companyId: session.context.companyId,
         apInvoiceId: invoice.id
       }
-    });
+    })
 
-    const reviewedAt = new Date();
+    const reviewedAt = new Date()
     const matchRows = invoice.lines.map((line) => {
       const evaluation = evaluateApInvoiceMatchLine({
         invoiceLineId: line.id,
@@ -3695,28 +3799,28 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
             ? decimalToNumber(line.purchaseOrderLine.lineTotal)
             : null,
         invoicedLineTotal: decimalToNumber(line.lineTotalAmount)
-      });
+      })
 
       return {
         line,
         evaluation
-      };
-    });
+      }
+    })
     const finalMatchStatus = matchRows.some(
       (row) => row.evaluation.status === "VARIANCE_HOLD"
     )
       ? "VARIANCE_HOLD"
       : matchRows.some((row) => row.evaluation.status === "WITHIN_TOLERANCE")
         ? "WITHIN_TOLERANCE"
-        : "EXACT_MATCH";
+        : "EXACT_MATCH"
     const finalInvoiceStatus =
       finalMatchStatus === "EXACT_MATCH"
         ? "MATCHED"
         : finalMatchStatus === "WITHIN_TOLERANCE"
           ? "MATCHED_WITHIN_TOLERANCE"
-          : "ON_HOLD";
+          : "ON_HOLD"
 
-    const createdResults = [];
+    const createdResults = []
     for (const row of matchRows) {
       const result = await tx.apInvoiceMatchResult.create({
         data: {
@@ -3761,8 +3865,8 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
           reviewedAt,
           reviewedReason: input.remarks?.trim() || null
         }
-      });
-      createdResults.push({ result, evaluation: row.evaluation });
+      })
+      createdResults.push({ result, evaluation: row.evaluation })
     }
 
     await tx.apInvoiceException.updateMany({
@@ -3778,7 +3882,7 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
         resolvedAt: reviewedAt,
         resolutionReason: "Superseded by a new AP match evaluation."
       }
-    });
+    })
 
     for (const created of createdResults.filter(
       (row) => row.evaluation.status === "VARIANCE_HOLD"
@@ -3789,7 +3893,8 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
           companyId: session.context.companyId,
           apInvoiceId: invoice.id,
           matchResultId: created.result.id,
-          exceptionCode: created.evaluation.exceptionCode ?? "AP_MATCH_VARIANCE",
+          exceptionCode:
+            created.evaluation.exceptionCode ?? "AP_MATCH_VARIANCE",
           exceptionType: "THREE_WAY_MATCH",
           status: "OPEN",
           severity: "HIGH",
@@ -3799,7 +3904,7 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
           evidenceReference: invoice.evidenceReference,
           createdByUserId: session.user.id
         }
-      });
+      })
     }
 
     const updated = await tx.apInvoice.update({
@@ -3814,7 +3919,7 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
         reviewedByUserId: session.user.id,
         reviewedAt
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -3838,29 +3943,26 @@ export async function evaluateApInvoiceMatch(input: ApInvoiceActionInput) {
           exceptionCount: createdResults.filter(
             (row) => row.evaluation.status === "VARIANCE_HOLD"
           ).length,
-        noSourceMutation: true
+          noSourceMutation: true
         }
       }
-    });
+    })
 
     if (finalInvoiceStatus !== "ON_HOLD") {
-      await projectApInvoiceBudgetCommitments(
-        tx,
-        session,
-        invoice,
-        reviewedAt
-      );
+      await projectApInvoiceBudgetCommitments(tx, session, invoice, reviewedAt)
     }
 
-    return updated;
-  });
+    return updated
+  })
 }
 
-export async function cancelApInvoice(input: ApInvoiceActionInput & { reason: string }) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeApInvoiceCancel);
+export async function cancelApInvoice(
+  input: ApInvoiceActionInput & { reason: string }
+) {
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeApInvoiceCancel)
   if (!input.reason.trim()) {
-    throw new Error("AP_INVOICE_CANCEL_REASON_REQUIRED");
+    throw new Error("AP_INVOICE_CANCEL_REASON_REQUIRED")
   }
 
   return prisma.$transaction(async (tx) => {
@@ -3880,18 +3982,24 @@ export async function cancelApInvoice(input: ApInvoiceActionInput & { reason: st
           orderBy: { lineNumber: "asc" }
         }
       }
-    });
+    })
     if (!invoice) {
-      throw new Error("AP_INVOICE_NOT_CANCELLABLE");
+      throw new Error("AP_INVOICE_NOT_CANCELLABLE")
     }
     if (invoice.purchaseOrder?.deliveryLocationId) {
-      await assertAuthorizedLocation(session, invoice.purchaseOrder.deliveryLocationId);
+      await assertAuthorizedLocation(
+        session,
+        invoice.purchaseOrder.deliveryLocationId
+      )
     }
     if (invoice.goodsReceipt?.receivingLocationId) {
-      await assertAuthorizedLocation(session, invoice.goodsReceipt.receivingLocationId);
+      await assertAuthorizedLocation(
+        session,
+        invoice.goodsReceipt.receivingLocationId
+      )
     }
 
-    const cancelledAt = new Date();
+    const cancelledAt = new Date()
     const updated = await tx.apInvoice.update({
       where: { id: invoice.id },
       data: {
@@ -3900,7 +4008,7 @@ export async function cancelApInvoice(input: ApInvoiceActionInput & { reason: st
         cancelledByUserId: session.user.id,
         cancelledReason: input.reason.trim()
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -3917,11 +4025,11 @@ export async function cancelApInvoice(input: ApInvoiceActionInput & { reason: st
           noSourceMutation: true
         }
       }
-    });
+    })
 
     for (const line of invoice.lines) {
       if (!line.budgetLineId) {
-        continue;
+        continue
       }
       await reverseBudgetCommitmentFromApprovedSourceEvent(tx, session, {
         sourceType: "AP_INVOICE",
@@ -3929,34 +4037,34 @@ export async function cancelApInvoice(input: ApInvoiceActionInput & { reason: st
         sourceEventKey: `ap_invoice.matched:${line.id}`,
         reversalEventKey: `ap_invoice.cancelled:${line.id}`,
         reason: input.reason.trim()
-      });
+      })
     }
 
-    return updated;
-  });
+    return updated
+  })
 }
 
 export async function createSupplierCreditNoteDraft(
   input: SupplierCreditNoteDraftInput
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeSupplierCreditCreate);
-  assertApPhpOnly("PHP");
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeSupplierCreditCreate)
+  assertApPhpOnly("PHP")
 
-  const supplierCreditNoteNumber = input.supplierCreditNoteNumber.trim();
-  const reasonCode = input.reasonCode.trim();
-  const reasonDescription = input.reasonDescription.trim();
+  const supplierCreditNoteNumber = input.supplierCreditNoteNumber.trim()
+  const reasonCode = input.reasonCode.trim()
+  const reasonDescription = input.reasonDescription.trim()
   if (!supplierCreditNoteNumber) {
-    throw new Error("SUPPLIER_CREDIT_NOTE_NUMBER_REQUIRED");
+    throw new Error("SUPPLIER_CREDIT_NOTE_NUMBER_REQUIRED")
   }
   if (input.creditAmount <= 0) {
-    throw new Error("SUPPLIER_CREDIT_NOTE_AMOUNT_INVALID");
+    throw new Error("SUPPLIER_CREDIT_NOTE_AMOUNT_INVALID")
   }
   if (!reasonCode) {
-    throw new Error("SUPPLIER_CREDIT_NOTE_REASON_CODE_REQUIRED");
+    throw new Error("SUPPLIER_CREDIT_NOTE_REASON_CODE_REQUIRED")
   }
   if (!reasonDescription) {
-    throw new Error("SUPPLIER_CREDIT_NOTE_REASON_DESCRIPTION_REQUIRED");
+    throw new Error("SUPPLIER_CREDIT_NOTE_REASON_DESCRIPTION_REQUIRED")
   }
 
   const originalInvoice = await prisma.apInvoice.findFirst({
@@ -3971,37 +4079,37 @@ export async function createSupplierCreditNoteDraft(
       purchaseOrder: true,
       goodsReceipt: true
     }
-  });
+  })
   if (!originalInvoice) {
-    throw new Error("SUPPLIER_CREDIT_NOTE_ORIGINAL_INVOICE_NOT_FOUND");
+    throw new Error("SUPPLIER_CREDIT_NOTE_ORIGINAL_INVOICE_NOT_FOUND")
   }
   if (originalInvoice.currencyCode !== "PHP") {
-    throw new Error("SUPPLIER_CREDIT_NOTE_CURRENCY_NOT_SUPPORTED");
+    throw new Error("SUPPLIER_CREDIT_NOTE_CURRENCY_NOT_SUPPORTED")
   }
   if (originalInvoice.locationId) {
-    await assertAuthorizedLocation(session, originalInvoice.locationId);
+    await assertAuthorizedLocation(session, originalInvoice.locationId)
   }
   if (originalInvoice.purchaseOrder?.deliveryLocationId) {
     await assertAuthorizedLocation(
       session,
       originalInvoice.purchaseOrder.deliveryLocationId
-    );
+    )
   }
   if (originalInvoice.goodsReceipt?.receivingLocationId) {
     await assertAuthorizedLocation(
       session,
       originalInvoice.goodsReceipt.receivingLocationId
-    );
+    )
   }
-  const originalInvoiceTotal = decimalToNumber(originalInvoice.totalAmount);
+  const originalInvoiceTotal = decimalToNumber(originalInvoice.totalAmount)
   if (input.creditAmount > originalInvoiceTotal) {
-    throw new Error("SUPPLIER_CREDIT_NOTE_AMOUNT_EXCEEDS_INVOICE");
+    throw new Error("SUPPLIER_CREDIT_NOTE_AMOUNT_EXCEEDS_INVOICE")
   }
 
   const publicReference = await nextSupplierCreditNoteReference(
     session.context.companyId
-  );
-  const idempotencyKey = input.idempotencyKey?.trim() || null;
+  )
+  const idempotencyKey = input.idempotencyKey?.trim() || null
 
   return prisma.$transaction(async (tx) => {
     if (idempotencyKey) {
@@ -4013,9 +4121,9 @@ export async function createSupplierCreditNoteDraft(
             idempotencyKey
           }
         }
-      });
+      })
       if (existing) {
-        return existing;
+        return existing
       }
     }
 
@@ -4039,7 +4147,7 @@ export async function createSupplierCreditNoteDraft(
         idempotencyKey,
         createdByUserId: session.user.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -4064,18 +4172,18 @@ export async function createSupplierCreditNoteDraft(
           noJournalPosting: true
         }
       }
-    });
+    })
 
-    return creditNote;
-  });
+    return creditNote
+  })
 }
 
 export async function submitSupplierCreditNoteForApplication(
   input: SupplierCreditNoteActionInput & { remarks?: string | null }
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeSupplierCreditSubmit);
-  const remarks = input.remarks?.trim() || null;
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeSupplierCreditSubmit)
+  const remarks = input.remarks?.trim() || null
 
   return prisma.$transaction(async (tx) => {
     const creditNote = await tx.supplierCreditNote.findFirst({
@@ -4093,27 +4201,27 @@ export async function submitSupplierCreditNoteForApplication(
           }
         }
       }
-    });
+    })
     if (!creditNote) {
-      throw new Error("SUPPLIER_CREDIT_NOTE_NOT_SUBMITTABLE");
+      throw new Error("SUPPLIER_CREDIT_NOTE_NOT_SUBMITTABLE")
     }
     if (creditNote.originalApInvoice.locationId) {
       await assertAuthorizedLocation(
         session,
         creditNote.originalApInvoice.locationId
-      );
+      )
     }
     if (creditNote.originalApInvoice.purchaseOrder?.deliveryLocationId) {
       await assertAuthorizedLocation(
         session,
         creditNote.originalApInvoice.purchaseOrder.deliveryLocationId
-      );
+      )
     }
     if (creditNote.originalApInvoice.goodsReceipt?.receivingLocationId) {
       await assertAuthorizedLocation(
         session,
         creditNote.originalApInvoice.goodsReceipt.receivingLocationId
-      );
+      )
     }
 
     const updated = await tx.supplierCreditNote.update({
@@ -4122,7 +4230,7 @@ export async function submitSupplierCreditNoteForApplication(
         status: "PENDING_APPLICATION",
         ...(remarks ? { applicationNotes: remarks } : {})
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -4137,27 +4245,28 @@ export async function submitSupplierCreditNoteForApplication(
         metadata: {
           remarks,
           originalApInvoiceId: creditNote.originalApInvoiceId,
-          originalInvoiceReference: creditNote.originalApInvoice.publicReference,
+          originalInvoiceReference:
+            creditNote.originalApInvoice.publicReference,
           supplierId: creditNote.supplierId,
           noOriginalInvoiceMutation: true,
           noPaymentSettlement: true,
           noJournalPosting: true
         }
       }
-    });
+    })
 
-    return updated;
-  });
+    return updated
+  })
 }
 
 export async function cancelSupplierCreditNote(
   input: SupplierCreditNoteActionInput & { reason: string }
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeSupplierCreditCancel);
-  const reason = input.reason.trim();
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeSupplierCreditCancel)
+  const reason = input.reason.trim()
   if (!reason) {
-    throw new Error("SUPPLIER_CREDIT_NOTE_CANCEL_REASON_REQUIRED");
+    throw new Error("SUPPLIER_CREDIT_NOTE_CANCEL_REASON_REQUIRED")
   }
 
   return prisma.$transaction(async (tx) => {
@@ -4176,30 +4285,30 @@ export async function cancelSupplierCreditNote(
           }
         }
       }
-    });
+    })
     if (!creditNote) {
-      throw new Error("SUPPLIER_CREDIT_NOTE_NOT_CANCELLABLE");
+      throw new Error("SUPPLIER_CREDIT_NOTE_NOT_CANCELLABLE")
     }
     if (creditNote.originalApInvoice.locationId) {
       await assertAuthorizedLocation(
         session,
         creditNote.originalApInvoice.locationId
-      );
+      )
     }
     if (creditNote.originalApInvoice.purchaseOrder?.deliveryLocationId) {
       await assertAuthorizedLocation(
         session,
         creditNote.originalApInvoice.purchaseOrder.deliveryLocationId
-      );
+      )
     }
     if (creditNote.originalApInvoice.goodsReceipt?.receivingLocationId) {
       await assertAuthorizedLocation(
         session,
         creditNote.originalApInvoice.goodsReceipt.receivingLocationId
-      );
+      )
     }
 
-    const cancelledAt = new Date();
+    const cancelledAt = new Date()
     const updated = await tx.supplierCreditNote.update({
       where: { id: creditNote.id },
       data: {
@@ -4208,7 +4317,7 @@ export async function cancelSupplierCreditNote(
         cancelledByUserId: session.user.id,
         cancellationReason: reason
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -4228,20 +4337,22 @@ export async function cancelSupplierCreditNote(
           noJournalPosting: true
         }
       }
-    });
+    })
 
-    return updated;
-  });
+    return updated
+  })
 }
 
-export async function createPaymentRequestDraft(input: PaymentRequestDraftInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRequestCreate);
+export async function createPaymentRequestDraft(
+  input: PaymentRequestDraftInput
+) {
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRequestCreate)
   if (!input.requestReason.trim()) {
-    throw new Error("PAYMENT_REQUEST_REASON_REQUIRED");
+    throw new Error("PAYMENT_REQUEST_REASON_REQUIRED")
   }
 
-  const idempotencyKey = input.idempotencyKey?.trim() || null;
+  const idempotencyKey = input.idempotencyKey?.trim() || null
   if (idempotencyKey) {
     const existing = await prisma.paymentRequest.findUnique({
       where: {
@@ -4252,9 +4363,9 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
         }
       },
       include: { lines: true }
-    });
+    })
     if (existing) {
-      return existing;
+      return existing
     }
   }
 
@@ -4270,16 +4381,16 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
                 notes: input.notes
               }
             ]
-          : [];
+          : []
     if (inputLines.length === 0) {
-      throw new Error("PAYMENT_REQUEST_LINES_REQUIRED");
+      throw new Error("PAYMENT_REQUEST_LINES_REQUIRED")
     }
     if (inputLines.length > 10) {
-      throw new Error("PAYMENT_REQUEST_LINE_LIMIT_EXCEEDED");
+      throw new Error("PAYMENT_REQUEST_LINE_LIMIT_EXCEEDED")
     }
-    const invoiceIds = inputLines.map((line) => line.apInvoiceId);
+    const invoiceIds = inputLines.map((line) => line.apInvoiceId)
     if (new Set(invoiceIds).size !== invoiceIds.length) {
-      throw new Error("PAYMENT_REQUEST_DUPLICATE_INVOICE_LINE");
+      throw new Error("PAYMENT_REQUEST_DUPLICATE_INVOICE_LINE")
     }
 
     const invoices = await tx.apInvoice.findMany({
@@ -4292,24 +4403,29 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
       include: {
         supplier: true
       }
-    });
+    })
     if (invoices.length !== invoiceIds.length) {
-      throw new Error("PAYMENT_REQUEST_INVOICE_NOT_FOUND");
+      throw new Error("PAYMENT_REQUEST_INVOICE_NOT_FOUND")
     }
-    const invoiceById = new Map(invoices.map((invoice) => [invoice.id, invoice]));
-    const supplierId = invoices[0]?.supplierId;
-    if (!supplierId || invoices.some((invoice) => invoice.supplierId !== supplierId)) {
-      throw new Error("PAYMENT_REQUEST_SUPPLIER_MISMATCH");
+    const invoiceById = new Map(
+      invoices.map((invoice) => [invoice.id, invoice])
+    )
+    const supplierId = invoices[0]?.supplierId
+    if (
+      !supplierId ||
+      invoices.some((invoice) => invoice.supplierId !== supplierId)
+    ) {
+      throw new Error("PAYMENT_REQUEST_SUPPLIER_MISMATCH")
     }
 
-    const preparedLines = [];
+    const preparedLines = []
     for (const [index, line] of inputLines.entries()) {
-      const invoice = invoiceById.get(line.apInvoiceId);
+      const invoice = invoiceById.get(line.apInvoiceId)
       if (!invoice) {
-        throw new Error("PAYMENT_REQUEST_INVOICE_NOT_FOUND");
+        throw new Error("PAYMENT_REQUEST_INVOICE_NOT_FOUND")
       }
-      assertPaymentRequestEligibleInvoice(invoice);
-      const invoiceTotal = decimalToNumber(invoice.totalAmount);
+      assertPaymentRequestEligibleInvoice(invoice)
+      const invoiceTotal = decimalToNumber(invoice.totalAmount)
       const prepared = await tx.paymentRequestLine.aggregate({
         where: {
           apInvoiceId: invoice.id,
@@ -4322,16 +4438,16 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
         _sum: {
           requestedAmount: true
         }
-      });
+      })
       const outstanding = roundMoney(
         invoiceTotal - decimalToNumber(prepared._sum.requestedAmount)
-      );
+      )
       if (outstanding <= 0) {
-        throw new Error("PAYMENT_REQUEST_INVOICE_ALREADY_PREPARED");
+        throw new Error("PAYMENT_REQUEST_INVOICE_ALREADY_PREPARED")
       }
-      const requestedAmount = roundMoney(line.requestedAmount ?? outstanding);
+      const requestedAmount = roundMoney(line.requestedAmount ?? outstanding)
       if (requestedAmount <= 0 || requestedAmount > outstanding) {
-        throw new Error("PAYMENT_REQUEST_AMOUNT_INVALID");
+        throw new Error("PAYMENT_REQUEST_AMOUNT_INVALID")
       }
       preparedLines.push({
         tenantId: session.context.tenantId,
@@ -4345,13 +4461,15 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
         notes: line.notes?.trim() || null,
         createdByUserId: session.user.id,
         invoice
-      });
+      })
     }
     const requestedTotal = roundMoney(
       preparedLines.reduce((sum, line) => sum + line.requestedAmount, 0)
-    );
+    )
 
-    const publicReference = await nextPaymentRequestReference(session.context.companyId);
+    const publicReference = await nextPaymentRequestReference(
+      session.context.companyId
+    )
     const paymentRequest = await tx.paymentRequest.create({
       data: {
         tenantId: session.context.tenantId,
@@ -4375,7 +4493,7 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
         }
       },
       include: { lines: true }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -4394,12 +4512,14 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
         metadata: {
           lineCount: preparedLines.length,
           invoiceStatuses: preparedLines.map((line) => line.invoice.status),
-          invoiceMatchStatuses: preparedLines.map((line) => line.invoice.matchStatus),
+          invoiceMatchStatuses: preparedLines.map(
+            (line) => line.invoice.matchStatus
+          ),
           noSourceMutation: true,
           noPaymentRelease: true
         }
       }
-    });
+    })
 
     const originatingExpenseLinks = await tx.expenseRequestSourceLink.findMany({
       where: {
@@ -4411,28 +4531,29 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
       include: {
         expenseRequest: true
       }
-    });
+    })
 
     for (const originatingExpenseLink of originatingExpenseLinks) {
       const paymentLine = paymentRequest.lines.find(
         (line) => line.apInvoiceId === originatingExpenseLink.sourceDocumentId
-      );
+      )
       const preparedLine = preparedLines.find(
         (line) => line.apInvoiceId === originatingExpenseLink.sourceDocumentId
-      );
+      )
       if (!paymentLine || !preparedLine) {
-        throw new Error("PAYMENT_REQUEST_EXPENSE_LINEAGE_MISMATCH");
+        throw new Error("PAYMENT_REQUEST_EXPENSE_LINEAGE_MISMATCH")
       }
-      const sourceEventKey = `expense_payment_request_handoff_v1:${originatingExpenseLink.sourceDocumentId}`;
+      const sourceEventKey = `expense_payment_request_handoff_v1:${originatingExpenseLink.sourceDocumentId}`
       await tx.expenseRequestSourceLink.upsert({
         where: {
-          tenantId_companyId_sourceDocumentType_sourceDocumentId_sourceEventKey: {
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            sourceDocumentType: "PAYMENT_REQUEST",
-            sourceDocumentId: paymentRequest.id,
-            sourceEventKey
-          }
+          tenantId_companyId_sourceDocumentType_sourceDocumentId_sourceEventKey:
+            {
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              sourceDocumentType: "PAYMENT_REQUEST",
+              sourceDocumentId: paymentRequest.id,
+              sourceEventKey
+            }
         },
         create: {
           tenantId: session.context.tenantId,
@@ -4478,7 +4599,7 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
             noJournalPosting: true
           }
         }
-      });
+      })
 
       await tx.auditEvent.create({
         data: {
@@ -4503,16 +4624,16 @@ export async function createPaymentRequestDraft(input: PaymentRequestDraftInput)
             noJournalPosting: true
           }
         }
-      });
+      })
     }
 
-    return paymentRequest;
-  });
+    return paymentRequest
+  })
 }
 
 export async function submitPaymentRequest(input: PaymentRequestActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRequestCreate);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRequestCreate)
 
   return prisma.$transaction(async (tx) => {
     const request = await tx.paymentRequest.findFirst({
@@ -4528,23 +4649,23 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
           include: { apInvoice: true }
         }
       }
-    });
+    })
     if (!request) {
-      throw new Error("PAYMENT_REQUEST_NOT_OPEN_FOR_SUBMIT");
+      throw new Error("PAYMENT_REQUEST_NOT_OPEN_FOR_SUBMIT")
     }
     if (request.requestedByUserId !== session.user.id) {
-      throw new Error("PAYMENT_REQUEST_SUBMITTER_MISMATCH");
+      throw new Error("PAYMENT_REQUEST_SUBMITTER_MISMATCH")
     }
     for (const line of request.lines) {
-      assertPaymentRequestEligibleInvoice(line.apInvoice);
+      assertPaymentRequestEligibleInvoice(line.apInvoice)
     }
-    const approvalRule = await findPaymentRequestApprovalRule(tx, session);
+    const approvalRule = await findPaymentRequestApprovalRule(tx, session)
     if (!approvalRule || approvalRule.steps.length === 0) {
-      throw new Error("PAYMENT_REQUEST_APPROVAL_RULE_NOT_CONFIGURED");
+      throw new Error("PAYMENT_REQUEST_APPROVAL_RULE_NOT_CONFIGURED")
     }
-    const firstStep = approvalRule.steps[0];
+    const firstStep = approvalRule.steps[0]
     if (!firstStep) {
-      throw new Error("PAYMENT_REQUEST_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+      throw new Error("PAYMENT_REQUEST_APPROVAL_RULE_STEP_NOT_CONFIGURED")
     }
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
@@ -4554,9 +4675,9 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
         documentId: request.id,
         status: "PENDING"
       }
-    });
+    })
     if (existingApproval) {
-      throw new Error("PAYMENT_REQUEST_ALREADY_SUBMITTED");
+      throw new Error("PAYMENT_REQUEST_ALREADY_SUBMITTED")
     }
 
     const approvalInstance = await tx.approvalInstance.create({
@@ -4577,8 +4698,8 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
           }))
         }
       }
-    });
-    const submittedAt = new Date();
+    })
+    const submittedAt = new Date()
     const updated = await tx.paymentRequest.update({
       where: { id: request.id },
       data: {
@@ -4587,7 +4708,7 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
         submittedAt,
         submittedByUserId: session.user.id
       }
-    });
+    })
 
     const auditEvent = await tx.auditEvent.create({
       data: {
@@ -4607,14 +4728,14 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
           noPaymentRelease: true
         }
       }
-    });
+    })
     const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: request.locationId,
       assignedUserId: firstStep.userId,
       assignedRoleId: firstStep.roleId
-    });
+    })
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -4640,15 +4761,15 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
         noBankMutation: true,
         noJournalPosting: true
       }
-    });
+    })
 
-    return updated;
-  });
+    return updated
+  })
 }
 
 export async function approvePaymentRequest(input: PaymentRequestActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRequestApprove);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRequestApprove)
 
   return prisma.$transaction(async (tx) => {
     const request = await tx.paymentRequest.findFirst({
@@ -4664,18 +4785,18 @@ export async function approvePaymentRequest(input: PaymentRequestActionInput) {
           include: { apInvoice: true }
         }
       }
-    });
+    })
     if (!request) {
-      throw new Error("PAYMENT_REQUEST_NOT_AWAITING_APPROVAL");
+      throw new Error("PAYMENT_REQUEST_NOT_AWAITING_APPROVAL")
     }
     if (request.requestedByUserId === session.user.id) {
-      throw new Error("PAYMENT_REQUEST_SELF_APPROVAL_DENIED");
+      throw new Error("PAYMENT_REQUEST_SELF_APPROVAL_DENIED")
     }
     for (const line of request.lines) {
-      assertPaymentRequestEligibleInvoice(line.apInvoice);
+      assertPaymentRequestEligibleInvoice(line.apInvoice)
     }
 
-    const approvedAt = new Date();
+    const approvedAt = new Date()
     const updated = await tx.paymentRequest.update({
       where: { id: request.id },
       data: {
@@ -4683,7 +4804,7 @@ export async function approvePaymentRequest(input: PaymentRequestActionInput) {
         approvedAt,
         approvedByUserId: session.user.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -4702,19 +4823,19 @@ export async function approvePaymentRequest(input: PaymentRequestActionInput) {
           noPaymentRelease: true
         }
       }
-    });
+    })
 
-    return updated;
-  });
+    return updated
+  })
 }
 
 export async function rejectPaymentRequest(
   input: PaymentRequestActionInput & { reason: string }
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRequestApprove);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRequestApprove)
   if (!input.reason.trim()) {
-    throw new Error("PAYMENT_REQUEST_REJECT_REASON_REQUIRED");
+    throw new Error("PAYMENT_REQUEST_REJECT_REASON_REQUIRED")
   }
 
   return prisma.$transaction(async (tx) => {
@@ -4726,14 +4847,14 @@ export async function rejectPaymentRequest(
         locationId: session.context.locationId,
         status: "AWAITING_APPROVAL"
       }
-    });
+    })
     if (!request) {
-      throw new Error("PAYMENT_REQUEST_NOT_AWAITING_APPROVAL");
+      throw new Error("PAYMENT_REQUEST_NOT_AWAITING_APPROVAL")
     }
     if (request.requestedByUserId === session.user.id) {
-      throw new Error("PAYMENT_REQUEST_SELF_REJECTION_DENIED");
+      throw new Error("PAYMENT_REQUEST_SELF_REJECTION_DENIED")
     }
-    const rejectedAt = new Date();
+    const rejectedAt = new Date()
     const updated = await tx.paymentRequest.update({
       where: { id: request.id },
       data: {
@@ -4742,7 +4863,7 @@ export async function rejectPaymentRequest(
         rejectedByUserId: session.user.id,
         rejectionReason: input.reason.trim()
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -4760,41 +4881,59 @@ export async function rejectPaymentRequest(
           noPaymentRelease: true
         }
       }
-    });
+    })
 
-    return updated;
-  });
+    return updated
+  })
 }
 
 export async function cancelPaymentRequest(
   input: PaymentRequestActionInput & { reason: string }
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRequestCreate);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRequestCreate)
   if (!input.reason.trim()) {
-    throw new Error("PAYMENT_REQUEST_CANCEL_REASON_REQUIRED");
+    throw new Error("PAYMENT_REQUEST_CANCEL_REASON_REQUIRED")
   }
 
   return prisma.$transaction(async (tx) => {
+    const grantedPermissionCodes = await lockGrantedFinancePermissions(
+      tx,
+      session,
+      [
+        permissions.financePaymentRequestCreate,
+        permissions.financePaymentRequestApprove
+      ]
+    )
+    if (!grantedPermissionCodes.has(permissions.financePaymentRequestCreate)) {
+      throw new Error("PERMISSION_DENIED")
+    }
     const request = await tx.paymentRequest.findFirst({
       where: {
         id: input.paymentRequestId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         locationId: session.context.locationId,
-        status: { in: ["DRAFT", "SUBMITTED", "AWAITING_APPROVAL", "RETURNED_FOR_REVISION"] }
+        status: {
+          in: [
+            "DRAFT",
+            "SUBMITTED",
+            "AWAITING_APPROVAL",
+            "RETURNED_FOR_REVISION"
+          ]
+        }
       }
-    });
+    })
     if (!request) {
-      throw new Error("PAYMENT_REQUEST_NOT_CANCELLABLE");
+      throw new Error("PAYMENT_REQUEST_NOT_CANCELLABLE")
     }
     if (
       request.requestedByUserId !== session.user.id &&
-      !session.permissionCodes.includes(permissions.financePaymentRequestApprove)
+      !grantedPermissionCodes.has(permissions.financePaymentRequestApprove)
     ) {
-      throw new Error("PAYMENT_REQUEST_CANCEL_PERMISSION_DENIED");
+      throw new Error("PAYMENT_REQUEST_CANCEL_PERMISSION_DENIED")
     }
-    const cancelledAt = new Date();
+    const cancelledAt = new Date()
     const updated = await tx.paymentRequest.update({
       where: { id: request.id },
       data: {
@@ -4803,7 +4942,7 @@ export async function cancelPaymentRequest(
         cancelledByUserId: session.user.id,
         cancellationReason: input.reason.trim()
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -4821,28 +4960,31 @@ export async function cancelPaymentRequest(
           noPaymentRelease: true
         }
       }
-    });
+    })
 
-    return updated;
-  });
+    return updated
+  })
 }
 
 export async function createBranchCashDepositDeclaration(
   input: BranchCashDepositDeclarationInput
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeCashDepositCreate);
-  await assertAuthorizedLocation(session, session.context.locationId);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeCashDepositCreate)
+  await assertAuthorizedLocation(session, session.context.locationId)
   if (!Number.isFinite(input.amountPhp) || input.amountPhp <= 0) {
-    throw new Error("BRANCH_CASH_DEPOSIT_AMOUNT_REQUIRED");
+    throw new Error("BRANCH_CASH_DEPOSIT_AMOUNT_REQUIRED")
   }
-  if (!(input.depositDate instanceof Date) || Number.isNaN(input.depositDate.getTime())) {
-    throw new Error("BRANCH_CASH_DEPOSIT_DATE_REQUIRED");
+  if (
+    !(input.depositDate instanceof Date) ||
+    Number.isNaN(input.depositDate.getTime())
+  ) {
+    throw new Error("BRANCH_CASH_DEPOSIT_DATE_REQUIRED")
   }
 
   const sourceEventKey =
     input.sourceEventKey?.trim() ||
-    `branch-cash-deposit:${session.context.locationId}:${input.bankAccountId}:${input.depositDate.toISOString()}:${input.amountPhp}:${input.depositSlipNumber?.trim() ?? "no-slip"}`;
+    `branch-cash-deposit:${session.context.locationId}:${input.bankAccountId}:${input.depositDate.toISOString()}:${input.amountPhp}:${input.depositSlipNumber?.trim() ?? "no-slip"}`
 
   return prisma.$transaction(async (tx) => {
     const bankAccount = await tx.bankAccount.findFirst({
@@ -4859,9 +5001,9 @@ export async function createBranchCashDepositDeclaration(
         bankName: true,
         maskedAccountNumber: true
       }
-    });
+    })
     if (!bankAccount) {
-      throw new Error("BRANCH_CASH_DEPOSIT_BANK_ACCOUNT_NOT_FOUND");
+      throw new Error("BRANCH_CASH_DEPOSIT_BANK_ACCOUNT_NOT_FOUND")
     }
 
     const existing = await tx.branchCashDeposit.findFirst({
@@ -4870,14 +5012,14 @@ export async function createBranchCashDepositDeclaration(
         companyId: session.context.companyId,
         sourceEventKey
       }
-    });
+    })
     if (existing) {
-      return existing;
+      return existing
     }
 
     const publicReference = await nextBranchCashDepositReference(
       session.context.companyId
-    );
+    )
     const deposit = await tx.branchCashDeposit.create({
       data: {
         tenantId: session.context.tenantId,
@@ -4894,7 +5036,7 @@ export async function createBranchCashDepositDeclaration(
         notes: input.notes?.trim() || null,
         declaredByUserId: session.user.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -4920,29 +5062,29 @@ export async function createBranchCashDepositDeclaration(
           noPaymentRelease: true
         }
       }
-    });
+    })
 
-    return deposit;
-  });
+    return deposit
+  })
 }
 
 export async function matchBranchCashDepositToBankReconciliation(
   input: BranchCashDepositBankMatchInput
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeReconciliationMatch);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeReconciliationMatch)
   const reason = requireReleaseReason(
     input.reason,
     "BRANCH_CASH_DEPOSIT_RECONCILIATION_MATCH_REASON_REQUIRED"
-  );
+  )
   const evidenceReference = requireReleaseEvidence(
     input.evidenceReference,
     "BRANCH_CASH_DEPOSIT_RECONCILIATION_MATCH_EVIDENCE_REQUIRED"
-  );
+  )
   const idempotencyKey = requireReleaseEvidence(
     input.idempotencyKey,
     "BRANCH_CASH_DEPOSIT_RECONCILIATION_MATCH_IDEMPOTENCY_REQUIRED"
-  );
+  )
 
   const existingMatch = await prisma.bankReconciliationMatch.findUnique({
     where: {
@@ -4953,9 +5095,9 @@ export async function matchBranchCashDepositToBankReconciliation(
       }
     },
     include: { branchCashDeposit: true }
-  });
+  })
   if (existingMatch?.branchCashDeposit) {
-    return existingMatch.branchCashDeposit;
+    return existingMatch.branchCashDeposit
   }
 
   return prisma.$transaction(async (tx) => {
@@ -4983,16 +5125,16 @@ export async function matchBranchCashDepositToBankReconciliation(
           }
         }
       }
-    });
+    })
     if (!deposit) {
-      throw new Error("BRANCH_CASH_DEPOSIT_NOT_MATCHABLE");
+      throw new Error("BRANCH_CASH_DEPOSIT_NOT_MATCHABLE")
     }
-    await assertAuthorizedLocation(session, deposit.locationId);
+    await assertAuthorizedLocation(session, deposit.locationId)
     if (deposit.declaredByUserId === session.user.id) {
-      throw new Error("BRANCH_CASH_DEPOSIT_RECONCILIATION_SEGREGATION_REQUIRED");
+      throw new Error("BRANCH_CASH_DEPOSIT_RECONCILIATION_SEGREGATION_REQUIRED")
     }
     if (!deposit.depositSlipNumber && !deposit.evidenceReference) {
-      throw new Error("BRANCH_CASH_DEPOSIT_EVIDENCE_REQUIRED");
+      throw new Error("BRANCH_CASH_DEPOSIT_EVIDENCE_REQUIRED")
     }
 
     const reconciliation = await tx.bankReconciliation.findFirst({
@@ -5004,12 +5146,15 @@ export async function matchBranchCashDepositToBankReconciliation(
         status: { in: ["OPEN", "IN_PROGRESS", "EXCEPTION"] }
       },
       include: { bankAccount: true, statement: true }
-    });
+    })
     if (!reconciliation) {
-      throw new Error("BRANCH_CASH_DEPOSIT_RECONCILIATION_BATCH_NOT_AVAILABLE");
+      throw new Error("BRANCH_CASH_DEPOSIT_RECONCILIATION_BATCH_NOT_AVAILABLE")
     }
     if (reconciliation.bankAccount.locationId) {
-      await assertAuthorizedLocation(session, reconciliation.bankAccount.locationId);
+      await assertAuthorizedLocation(
+        session,
+        reconciliation.bankAccount.locationId
+      )
     }
 
     const statementLine = await tx.bankStatementLine.findFirst({
@@ -5021,35 +5166,44 @@ export async function matchBranchCashDepositToBankReconciliation(
         bankStatementId: reconciliation.bankStatementId,
         status: { in: ["UNMATCHED", "PARTIALLY_MATCHED", "EXCEPTION"] }
       }
-    });
+    })
     if (!statementLine) {
-      throw new Error("BRANCH_CASH_DEPOSIT_STATEMENT_LINE_NOT_AVAILABLE");
+      throw new Error("BRANCH_CASH_DEPOSIT_STATEMENT_LINE_NOT_AVAILABLE")
     }
     if (
       decimalToNumber(statementLine.creditAmount) <= 0 &&
       decimalToNumber(statementLine.netAmount) <= 0
     ) {
-      throw new Error("BRANCH_CASH_DEPOSIT_STATEMENT_LINE_NOT_INFLOW");
+      throw new Error("BRANCH_CASH_DEPOSIT_STATEMENT_LINE_NOT_INFLOW")
     }
 
-    const depositAmount = decimalToNumber(deposit.amountPhp);
+    const depositAmount = decimalToNumber(deposit.amountPhp)
     const depositMatchedAmount = roundMoney(
       deposit.reconciliationMatches.reduce(
         (sum, match) => sum + decimalToNumber(match.matchedAmount),
         0
       )
-    );
-    const depositRemainingAmount = roundMoney(depositAmount - depositMatchedAmount);
-    const lineAmount = Math.abs(decimalToNumber(statementLine.netAmount));
-    const lineMatchedAmount = decimalToNumber(statementLine.matchedAmount);
-    const lineRemainingAmount = roundMoney(lineAmount - lineMatchedAmount);
-    const matchedAmount = roundMoney(input.matchedAmount ?? depositRemainingAmount);
+    )
+    const depositRemainingAmount = roundMoney(
+      depositAmount - depositMatchedAmount
+    )
+    const lineAmount = Math.abs(decimalToNumber(statementLine.netAmount))
+    const lineMatchedAmount = decimalToNumber(statementLine.matchedAmount)
+    const lineRemainingAmount = roundMoney(lineAmount - lineMatchedAmount)
+    const matchedAmount = roundMoney(
+      input.matchedAmount ?? depositRemainingAmount
+    )
 
     if (matchedAmount <= 0) {
-      throw new Error("BRANCH_CASH_DEPOSIT_RECONCILIATION_MATCH_AMOUNT_REQUIRED");
+      throw new Error(
+        "BRANCH_CASH_DEPOSIT_RECONCILIATION_MATCH_AMOUNT_REQUIRED"
+      )
     }
-    if (matchedAmount > depositRemainingAmount || matchedAmount > lineRemainingAmount) {
-      throw new Error("BRANCH_CASH_DEPOSIT_RECONCILIATION_MATCH_AMOUNT_INVALID");
+    if (
+      matchedAmount > depositRemainingAmount ||
+      matchedAmount > lineRemainingAmount
+    ) {
+      throw new Error("BRANCH_CASH_DEPOSIT_RECONCILIATION_MATCH_AMOUNT_INVALID")
     }
 
     const match = await tx.bankReconciliationMatch.create({
@@ -5083,35 +5237,42 @@ export async function matchBranchCashDepositToBankReconciliation(
         reason,
         evidenceReference
       }
-    });
+    })
 
-    const updatedLineMatchedAmount = roundMoney(lineMatchedAmount + matchedAmount);
+    const updatedLineMatchedAmount = roundMoney(
+      lineMatchedAmount + matchedAmount
+    )
     await tx.bankStatementLine.update({
       where: { id: statementLine.id },
       data: {
         matchedAmount: updatedLineMatchedAmount,
         status:
-          updatedLineMatchedAmount >= lineAmount ? "MATCHED" : "PARTIALLY_MATCHED"
+          updatedLineMatchedAmount >= lineAmount
+            ? "MATCHED"
+            : "PARTIALLY_MATCHED"
       }
-    });
+    })
 
     const updatedDepositMatchedAmount = roundMoney(
       depositMatchedAmount + matchedAmount
-    );
+    )
     const updatedDepositStatus =
       updatedDepositMatchedAmount >= depositAmount
         ? "MATCHED"
-        : "QUEUED_FOR_RECONCILIATION";
+        : "QUEUED_FOR_RECONCILIATION"
     const updatedDeposit = await tx.branchCashDeposit.update({
       where: { id: deposit.id },
       data: {
         status: updatedDepositStatus,
         verifiedByUserId:
-          updatedDepositStatus === "MATCHED" ? session.user.id : deposit.verifiedByUserId,
-        verifiedAt: updatedDepositStatus === "MATCHED" ? new Date() : deposit.verifiedAt,
+          updatedDepositStatus === "MATCHED"
+            ? session.user.id
+            : deposit.verifiedByUserId,
+        verifiedAt:
+          updatedDepositStatus === "MATCHED" ? new Date() : deposit.verifiedAt,
         evidenceReference
       }
-    });
+    })
 
     const statementLines = await tx.bankStatementLine.findMany({
       where: {
@@ -5120,7 +5281,7 @@ export async function matchBranchCashDepositToBankReconciliation(
         bankStatementId: reconciliation.bankStatementId
       },
       select: { netAmount: true, matchedAmount: true }
-    });
+    })
     const varianceAmount = roundMoney(
       statementLines.reduce(
         (sum, line) =>
@@ -5132,14 +5293,14 @@ export async function matchBranchCashDepositToBankReconciliation(
           ),
         0
       )
-    );
+    )
     await tx.bankReconciliation.update({
       where: { id: reconciliation.id },
       data: {
         status: varianceAmount === 0 ? "MATCHED" : "IN_PROGRESS",
         varianceAmount
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -5167,20 +5328,22 @@ export async function matchBranchCashDepositToBankReconciliation(
           noJournalPosting: true
         }
       }
-    });
+    })
 
-    return updatedDeposit;
-  });
+    return updatedDeposit
+  })
 }
 
-export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
+export async function createPaymentReleaseDraft(
+  input: PaymentReleaseDraftInput
+) {
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
   if (!input.reason.trim()) {
-    throw new Error("PAYMENT_RELEASE_REASON_REQUIRED");
+    throw new Error("PAYMENT_RELEASE_REASON_REQUIRED")
   }
 
-  const idempotencyKey = input.idempotencyKey?.trim() || null;
+  const idempotencyKey = input.idempotencyKey?.trim() || null
   if (idempotencyKey) {
     const existing = await prisma.paymentRelease.findUnique({
       where: {
@@ -5191,9 +5354,9 @@ export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput)
         }
       },
       include: { allocations: true }
-    });
+    })
     if (existing) {
-      return existing;
+      return existing
     }
   }
 
@@ -5210,12 +5373,12 @@ export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput)
         supplier: true,
         lines: true
       }
-    });
+    })
     if (!request) {
-      throw new Error("PAYMENT_RELEASE_REQUEST_NOT_APPROVED");
+      throw new Error("PAYMENT_RELEASE_REQUEST_NOT_APPROVED")
     }
     if (request.currencyCode !== "PHP") {
-      throw new Error("PAYMENT_RELEASE_PHP_ONLY");
+      throw new Error("PAYMENT_RELEASE_PHP_ONLY")
     }
 
     const bankAccount = await tx.bankAccount.findFirst({
@@ -5227,34 +5390,37 @@ export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput)
         currencyCode: "PHP",
         OR: [{ locationId: null }, { locationId: session.context.locationId }]
       }
-    });
+    })
     if (!bankAccount) {
-      throw new Error("PAYMENT_RELEASE_BANK_ACCOUNT_NOT_AVAILABLE");
+      throw new Error("PAYMENT_RELEASE_BANK_ACCOUNT_NOT_AVAILABLE")
     }
     if (request.lines.length === 0) {
-      throw new Error("PAYMENT_RELEASE_LINES_REQUIRED");
+      throw new Error("PAYMENT_RELEASE_LINES_REQUIRED")
     }
 
-    const requestedTotal = decimalToNumber(request.totalRequestedAmount);
-    const releaseAmount = roundMoney(input.releaseAmount ?? requestedTotal);
+    const requestedTotal = decimalToNumber(request.totalRequestedAmount)
+    const releaseAmount = roundMoney(input.releaseAmount ?? requestedTotal)
     if (releaseAmount <= 0 || releaseAmount > requestedTotal) {
-      throw new Error("PAYMENT_RELEASE_AMOUNT_INVALID");
+      throw new Error("PAYMENT_RELEASE_AMOUNT_INVALID")
     }
     if (releaseAmount !== requestedTotal) {
-      throw new Error("PAYMENT_RELEASE_PARTIAL_NOT_ENABLED");
+      throw new Error("PAYMENT_RELEASE_PARTIAL_NOT_ENABLED")
     }
-    const approvalRule = await findPaymentReleaseApprovalRule(tx, session);
+    const approvalRule = await findPaymentReleaseApprovalRule(tx, session)
     if (!approvalRule || approvalRule.steps.length === 0) {
-      throw new Error("PAYMENT_RELEASE_APPROVAL_RULE_NOT_CONFIGURED");
+      throw new Error("PAYMENT_RELEASE_APPROVAL_RULE_NOT_CONFIGURED")
     }
-    const firstStep = approvalRule.steps[0];
+    const firstStep = approvalRule.steps[0]
     if (!firstStep) {
-      throw new Error("PAYMENT_RELEASE_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+      throw new Error("PAYMENT_RELEASE_APPROVAL_RULE_STEP_NOT_CONFIGURED")
     }
 
-    const publicReference = await nextPaymentReleaseReference(session.context.companyId);
+    const publicReference = await nextPaymentReleaseReference(
+      session.context.companyId
+    )
     const sourceEventKey =
-      input.sourceEventKey?.trim() || `payment-release:${request.id}:${randomUUID()}`;
+      input.sourceEventKey?.trim() ||
+      `payment-release:${request.id}:${randomUUID()}`
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -5273,7 +5439,7 @@ export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput)
           }))
         }
       }
-    });
+    })
     const release = await tx.paymentRelease.create({
       data: {
         id: approvalInstance.documentId,
@@ -5294,7 +5460,8 @@ export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput)
         sourceEventKey,
         idempotencyKey,
         reason: input.reason.trim(),
-        evidenceReference: input.evidenceReference?.trim() || request.evidenceReference,
+        evidenceReference:
+          input.evidenceReference?.trim() || request.evidenceReference,
         scheduledAt: input.scheduledAt ?? null,
         createdByUserId: session.user.id,
         allocations: {
@@ -5305,20 +5472,22 @@ export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput)
             apInvoiceId: line.apInvoiceId,
             allocatedAmount: decimalToNumber(line.requestedAmount),
             requestLineSnapshotAmount: decimalToNumber(line.requestedAmount),
-            invoiceOutstandingSnapshot: decimalToNumber(line.invoiceOutstandingSnapshot),
+            invoiceOutstandingSnapshot: decimalToNumber(
+              line.invoiceOutstandingSnapshot
+            ),
             createdByUserId: session.user.id
           }))
         }
       },
       include: { allocations: true }
-    });
+    })
 
     const allocationTotal = release.allocations.reduce(
       (sum, line) => sum + decimalToNumber(line.allocatedAmount),
       0
-    );
+    )
     if (roundMoney(allocationTotal) !== releaseAmount) {
-      throw new Error("PAYMENT_RELEASE_ALLOCATION_TOTAL_MISMATCH");
+      throw new Error("PAYMENT_RELEASE_ALLOCATION_TOTAL_MISMATCH")
     }
 
     await tx.auditEvent.create({
@@ -5348,14 +5517,14 @@ export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput)
           noJournalPosting: true
         }
       }
-    });
+    })
     const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: session.context.locationId,
       assignedUserId: firstStep.userId,
       assignedRoleId: firstStep.roleId
-    });
+    })
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -5381,20 +5550,20 @@ export async function createPaymentReleaseDraft(input: PaymentReleaseDraftInput)
         noJournalPosting: true,
         noApMutation: true
       }
-    });
+    })
 
-    return release;
-  });
+    return release
+  })
 }
 
 export async function executePaymentRelease(input: PaymentReleaseExecuteInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
-  const releaseReference = input.releaseReference.trim();
-  const evidenceReference = input.evidenceReference.trim();
-  const idempotencyKey = input.idempotencyKey.trim();
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
+  const releaseReference = input.releaseReference.trim()
+  const evidenceReference = input.evidenceReference.trim()
+  const idempotencyKey = input.idempotencyKey.trim()
   if (!releaseReference || !idempotencyKey) {
-    throw new Error("PAYMENT_RELEASE_EXECUTION_EVIDENCE_REQUIRED");
+    throw new Error("PAYMENT_RELEASE_EXECUTION_EVIDENCE_REQUIRED")
   }
 
   const existingAttempt = await prisma.paymentReleaseExecution.findUnique({
@@ -5406,9 +5575,9 @@ export async function executePaymentRelease(input: PaymentReleaseExecuteInput) {
       }
     },
     include: { paymentRelease: true }
-  });
+  })
   if (existingAttempt) {
-    return existingAttempt.paymentRelease;
+    return existingAttempt.paymentRelease
   }
 
   return prisma.$transaction(async (tx) => {
@@ -5425,30 +5594,33 @@ export async function executePaymentRelease(input: PaymentReleaseExecuteInput) {
         bankAccount: true,
         allocations: true
       }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_READY");
+      throw new Error("PAYMENT_RELEASE_NOT_READY")
     }
     if (release.createdByUserId === session.user.id) {
-      throw new Error("PAYMENT_RELEASE_CREATOR_CANNOT_RELEASE");
+      throw new Error("PAYMENT_RELEASE_CREATOR_CANNOT_RELEASE")
     }
     if (release.paymentRequest.requestedByUserId === session.user.id) {
-      throw new Error("PAYMENT_RELEASE_REQUESTER_CANNOT_RELEASE");
+      throw new Error("PAYMENT_RELEASE_REQUESTER_CANNOT_RELEASE")
     }
     if (release.paymentRequest.approvedByUserId === session.user.id) {
-      throw new Error("PAYMENT_RELEASE_APPROVER_CANNOT_RELEASE");
+      throw new Error("PAYMENT_RELEASE_APPROVER_CANNOT_RELEASE")
     }
-    if (release.bankAccount.status !== "ACTIVE" || release.bankAccount.currencyCode !== "PHP") {
-      throw new Error("PAYMENT_RELEASE_BANK_ACCOUNT_NOT_AVAILABLE");
+    if (
+      release.bankAccount.status !== "ACTIVE" ||
+      release.bankAccount.currencyCode !== "PHP"
+    ) {
+      throw new Error("PAYMENT_RELEASE_BANK_ACCOUNT_NOT_AVAILABLE")
     }
     const evidencePolicyMetadata = await requirePaymentReleaseExecutionEvidence(
       session,
       release.method,
       evidenceReference
-    );
+    )
 
-    const releasedAt = new Date();
-    const releaseAmount = decimalToNumber(release.releaseAmount);
+    const releasedAt = new Date()
+    const releaseAmount = decimalToNumber(release.releaseAmount)
     const updatedRelease = await tx.paymentRelease.updateMany({
       where: {
         id: release.id,
@@ -5464,9 +5636,9 @@ export async function executePaymentRelease(input: PaymentReleaseExecuteInput) {
         releaseReference,
         evidenceReference
       }
-    });
+    })
     if (updatedRelease.count !== 1) {
-      throw new Error("PAYMENT_RELEASE_EXECUTION_STATE_CONFLICT");
+      throw new Error("PAYMENT_RELEASE_EXECUTION_STATE_CONFLICT")
     }
 
     await tx.paymentReleaseExecution.create({
@@ -5488,7 +5660,7 @@ export async function executePaymentRelease(input: PaymentReleaseExecuteInput) {
         },
         actorUserId: session.user.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -5517,25 +5689,25 @@ export async function executePaymentRelease(input: PaymentReleaseExecuteInput) {
           ...evidencePolicyMetadata
         }
       }
-    });
+    })
 
     return tx.paymentRelease.findUniqueOrThrow({
       where: { id: release.id }
-    });
-  });
+    })
+  })
 }
 
 export async function holdPaymentRelease(input: PaymentReleaseActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
   const reason = requireReleaseReason(
     input.reason,
     "PAYMENT_RELEASE_HOLD_REASON_REQUIRED"
-  );
+  )
   const evidenceReference = requireReleaseEvidence(
     input.evidenceReference,
     "PAYMENT_RELEASE_HOLD_EVIDENCE_REQUIRED"
-  );
+  )
 
   return prisma.$transaction(async (tx) => {
     const release = await tx.paymentRelease.findFirst({
@@ -5546,9 +5718,9 @@ export async function holdPaymentRelease(input: PaymentReleaseActionInput) {
         locationId: session.context.locationId
       },
       include: { paymentRequest: true }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_FOUND");
+      throw new Error("PAYMENT_RELEASE_NOT_FOUND")
     }
     assertPaymentReleaseStatus(release.status, [
       "READY_FOR_RELEASE",
@@ -5556,12 +5728,12 @@ export async function holdPaymentRelease(input: PaymentReleaseActionInput) {
       "RECONCILIATION_PENDING",
       "PARTIALLY_RECONCILED",
       "EXCEPTION"
-    ]);
+    ])
     assertPaymentReleaseSegregation(
       session,
       release,
       "PAYMENT_RELEASE_HOLD_SEGREGATION_REQUIRED"
-    );
+    )
     const updated = await tx.paymentRelease.update({
       where: { id: release.id },
       data: {
@@ -5571,7 +5743,7 @@ export async function holdPaymentRelease(input: PaymentReleaseActionInput) {
         heldByUserId: session.user.id,
         evidenceReference
       }
-    });
+    })
     await writePaymentReleaseAudit(tx, {
       session,
       releaseId: release.id,
@@ -5584,18 +5756,20 @@ export async function holdPaymentRelease(input: PaymentReleaseActionInput) {
         idempotencyKey: input.idempotencyKey ?? null,
         remarks: input.remarks ?? null
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
-export async function resumePaymentReleaseFromHold(input: PaymentReleaseActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
+export async function resumePaymentReleaseFromHold(
+  input: PaymentReleaseActionInput
+) {
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
   const reason = requireReleaseReason(
     input.reason,
     "PAYMENT_RELEASE_RESUME_REASON_REQUIRED"
-  );
+  )
 
   return prisma.$transaction(async (tx) => {
     const release = await tx.paymentRelease.findFirst({
@@ -5606,27 +5780,27 @@ export async function resumePaymentReleaseFromHold(input: PaymentReleaseActionIn
         locationId: session.context.locationId
       },
       include: { paymentRequest: true }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_FOUND");
+      throw new Error("PAYMENT_RELEASE_NOT_FOUND")
     }
-    assertPaymentReleaseStatus(release.status, ["ON_HOLD"]);
+    assertPaymentReleaseStatus(release.status, ["ON_HOLD"])
     assertPaymentReleaseSegregation(
       session,
       release,
       "PAYMENT_RELEASE_RESUME_SEGREGATION_REQUIRED"
-    );
+    )
     const nextStatus =
       decimalToNumber(release.releasedAmount) > 0
         ? "RECONCILIATION_PENDING"
-        : "READY_FOR_RELEASE";
+        : "READY_FOR_RELEASE"
     const updated = await tx.paymentRelease.update({
       where: { id: release.id },
       data: {
         status: nextStatus,
         holdReason: null
       }
-    });
+    })
     await writePaymentReleaseAudit(tx, {
       session,
       releaseId: release.id,
@@ -5634,26 +5808,27 @@ export async function resumePaymentReleaseFromHold(input: PaymentReleaseActionIn
       beforeStatus: release.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference?.trim() ?? release.evidenceReference,
+      evidenceReference:
+        input.evidenceReference?.trim() ?? release.evidenceReference,
       metadata: {
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function cancelPaymentRelease(input: PaymentReleaseActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
   const reason = requireReleaseReason(
     input.reason,
     "PAYMENT_RELEASE_CANCELLATION_REASON_REQUIRED"
-  );
+  )
   const evidenceReference = requireReleaseEvidence(
     input.evidenceReference,
     "PAYMENT_RELEASE_CANCELLATION_EVIDENCE_REQUIRED"
-  );
+  )
 
   return prisma.$transaction(async (tx) => {
     const release = await tx.paymentRelease.findFirst({
@@ -5664,22 +5839,22 @@ export async function cancelPaymentRelease(input: PaymentReleaseActionInput) {
         locationId: session.context.locationId
       },
       include: { paymentRequest: true }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_FOUND");
+      throw new Error("PAYMENT_RELEASE_NOT_FOUND")
     }
     assertPaymentReleaseStatus(release.status, [
       "READY_FOR_RELEASE",
       "ON_HOLD",
       "EXCEPTION"
-    ]);
+    ])
     assertPaymentReleaseSegregation(
       session,
       release,
       "PAYMENT_RELEASE_CANCEL_SEGREGATION_REQUIRED"
-    );
+    )
     if (decimalToNumber(release.releasedAmount) > 0) {
-      throw new Error("PAYMENT_RELEASE_CANCEL_REQUIRES_REVERSAL");
+      throw new Error("PAYMENT_RELEASE_CANCEL_REQUIRES_REVERSAL")
     }
     const updated = await tx.paymentRelease.update({
       where: { id: release.id },
@@ -5690,7 +5865,7 @@ export async function cancelPaymentRelease(input: PaymentReleaseActionInput) {
         cancellationReason: reason,
         evidenceReference
       }
-    });
+    })
     await writePaymentReleaseAudit(tx, {
       session,
       releaseId: release.id,
@@ -5702,31 +5877,31 @@ export async function cancelPaymentRelease(input: PaymentReleaseActionInput) {
       metadata: {
         idempotencyKey: input.idempotencyKey ?? null
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function markPaymentReleaseExecutionFailed(
   input: PaymentReleaseFailureInput
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
   const reason = requireReleaseReason(
     input.reason,
     "PAYMENT_RELEASE_FAILURE_REASON_REQUIRED"
-  );
+  )
   const evidenceReference = requireReleaseEvidence(
     input.evidenceReference,
     "PAYMENT_RELEASE_FAILURE_EVIDENCE_REQUIRED"
-  );
-  const failureCode = input.failureCode.trim();
+  )
+  const failureCode = input.failureCode.trim()
   const idempotencyKey = requireReleaseEvidence(
     input.idempotencyKey,
     "PAYMENT_RELEASE_FAILURE_IDEMPOTENCY_REQUIRED"
-  );
+  )
   if (!failureCode) {
-    throw new Error("PAYMENT_RELEASE_FAILURE_CODE_REQUIRED");
+    throw new Error("PAYMENT_RELEASE_FAILURE_CODE_REQUIRED")
   }
 
   const existingAttempt = await prisma.paymentReleaseExecution.findUnique({
@@ -5738,9 +5913,9 @@ export async function markPaymentReleaseExecutionFailed(
       }
     },
     include: { paymentRelease: true }
-  });
+  })
   if (existingAttempt) {
-    return existingAttempt.paymentRelease;
+    return existingAttempt.paymentRelease
   }
 
   return prisma.$transaction(async (tx) => {
@@ -5753,15 +5928,15 @@ export async function markPaymentReleaseExecutionFailed(
         status: "READY_FOR_RELEASE"
       },
       include: { paymentRequest: true }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_READY");
+      throw new Error("PAYMENT_RELEASE_NOT_READY")
     }
     assertPaymentReleaseSegregation(
       session,
       release,
       "PAYMENT_RELEASE_FAILURE_SEGREGATION_REQUIRED"
-    );
+    )
     const updatedRelease = await tx.paymentRelease.updateMany({
       where: {
         id: release.id,
@@ -5774,9 +5949,9 @@ export async function markPaymentReleaseExecutionFailed(
         exceptionReason: reason,
         evidenceReference
       }
-    });
+    })
     if (updatedRelease.count !== 1) {
-      throw new Error("PAYMENT_RELEASE_EXECUTION_STATE_CONFLICT");
+      throw new Error("PAYMENT_RELEASE_EXECUTION_STATE_CONFLICT")
     }
 
     await tx.paymentReleaseExecution.create({
@@ -5795,7 +5970,7 @@ export async function markPaymentReleaseExecutionFailed(
         },
         actorUserId: session.user.id
       }
-    });
+    })
     await writePaymentReleaseAudit(tx, {
       session,
       releaseId: release.id,
@@ -5808,26 +5983,26 @@ export async function markPaymentReleaseExecutionFailed(
         failureCode,
         idempotencyKey
       }
-    });
+    })
     return tx.paymentRelease.findUniqueOrThrow({
       where: { id: release.id }
-    });
-  });
+    })
+  })
 }
 
 export async function handoffPaymentReleaseToReconciliation(
   input: PaymentReleaseActionInput
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
   const reason = requireReleaseReason(
     input.reason,
     "PAYMENT_RELEASE_RECONCILIATION_HANDOFF_REASON_REQUIRED"
-  );
+  )
   const evidenceReference = requireReleaseEvidence(
     input.evidenceReference,
     "PAYMENT_RELEASE_RECONCILIATION_HANDOFF_EVIDENCE_REQUIRED"
-  );
+  )
 
   return prisma.$transaction(async (tx) => {
     const release = await tx.paymentRelease.findFirst({
@@ -5838,18 +6013,18 @@ export async function handoffPaymentReleaseToReconciliation(
         locationId: session.context.locationId
       },
       include: { paymentRequest: true }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_FOUND");
+      throw new Error("PAYMENT_RELEASE_NOT_FOUND")
     }
-    assertPaymentReleaseStatus(release.status, ["RELEASED"]);
+    assertPaymentReleaseStatus(release.status, ["RELEASED"])
     const updated = await tx.paymentRelease.update({
       where: { id: release.id },
       data: {
         status: "RECONCILIATION_PENDING",
         evidenceReference
       }
-    });
+    })
     await writePaymentReleaseAudit(tx, {
       session,
       releaseId: release.id,
@@ -5862,24 +6037,24 @@ export async function handoffPaymentReleaseToReconciliation(
         remarks: input.remarks ?? null,
         noBankMutation: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function recordPaymentReleaseReconciliationOutcome(
   input: PaymentReleaseReconciliationInput
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
   const reason = requireReleaseReason(
     input.reason,
     "PAYMENT_RELEASE_RECONCILIATION_REASON_REQUIRED"
-  );
+  )
   const evidenceReference = requireReleaseEvidence(
     input.evidenceReference,
     "PAYMENT_RELEASE_RECONCILIATION_EVIDENCE_REQUIRED"
-  );
+  )
 
   return prisma.$transaction(async (tx) => {
     const release = await tx.paymentRelease.findFirst({
@@ -5890,28 +6065,35 @@ export async function recordPaymentReleaseReconciliationOutcome(
         locationId: session.context.locationId
       },
       include: { paymentRequest: true }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_FOUND");
+      throw new Error("PAYMENT_RELEASE_NOT_FOUND")
     }
-    assertPaymentReleaseStatus(release.status, ["RECONCILIATION_PENDING"]);
+    assertPaymentReleaseStatus(release.status, ["RECONCILIATION_PENDING"])
     const matchedAmount = roundMoney(
       input.matchedAmount ?? decimalToNumber(release.releasedAmount)
-    );
-    if (matchedAmount < 0 || matchedAmount > decimalToNumber(release.releasedAmount)) {
-      throw new Error("PAYMENT_RELEASE_RECONCILIATION_AMOUNT_INVALID");
+    )
+    if (
+      matchedAmount < 0 ||
+      matchedAmount > decimalToNumber(release.releasedAmount)
+    ) {
+      throw new Error("PAYMENT_RELEASE_RECONCILIATION_AMOUNT_INVALID")
     }
-    if (input.outcome === "FULLY_RECONCILED" && matchedAmount !== decimalToNumber(release.releasedAmount)) {
-      throw new Error("PAYMENT_RELEASE_FULL_RECONCILIATION_AMOUNT_MISMATCH");
+    if (
+      input.outcome === "FULLY_RECONCILED" &&
+      matchedAmount !== decimalToNumber(release.releasedAmount)
+    ) {
+      throw new Error("PAYMENT_RELEASE_FULL_RECONCILIATION_AMOUNT_MISMATCH")
     }
     const updated = await tx.paymentRelease.update({
       where: { id: release.id },
       data: {
         status: input.outcome,
         evidenceReference,
-        exceptionReason: input.outcome === "EXCEPTION" ? reason : release.exceptionReason
+        exceptionReason:
+          input.outcome === "EXCEPTION" ? reason : release.exceptionReason
       }
-    });
+    })
     await writePaymentReleaseAudit(tx, {
       session,
       releaseId: release.id,
@@ -5927,28 +6109,28 @@ export async function recordPaymentReleaseReconciliationOutcome(
         noBankMutation: true,
         noApSettlement: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function matchPaymentReleaseToBankReconciliation(
   input: PaymentReleaseBankMatchInput
 ) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeReconciliationMatch);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeReconciliationMatch)
   const reason = requireReleaseReason(
     input.reason,
     "PAYMENT_RELEASE_RECONCILIATION_MATCH_REASON_REQUIRED"
-  );
+  )
   const evidenceReference = requireReleaseEvidence(
     input.evidenceReference,
     "PAYMENT_RELEASE_RECONCILIATION_MATCH_EVIDENCE_REQUIRED"
-  );
+  )
   const idempotencyKey = requireReleaseEvidence(
     input.idempotencyKey,
     "PAYMENT_RELEASE_RECONCILIATION_MATCH_IDEMPOTENCY_REQUIRED"
-  );
+  )
 
   const existingMatch = await prisma.bankReconciliationMatch.findUnique({
     where: {
@@ -5959,9 +6141,9 @@ export async function matchPaymentReleaseToBankReconciliation(
       }
     },
     include: { paymentRelease: true }
-  });
+  })
   if (existingMatch?.paymentRelease) {
-    return existingMatch.paymentRelease;
+    return existingMatch.paymentRelease
   }
 
   return prisma.$transaction(async (tx) => {
@@ -5986,21 +6168,21 @@ export async function matchPaymentReleaseToBankReconciliation(
           }
         }
       }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_MATCHABLE");
+      throw new Error("PAYMENT_RELEASE_NOT_MATCHABLE")
     }
-    await assertAuthorizedLocation(session, release.locationId);
+    await assertAuthorizedLocation(session, release.locationId)
     if (
       release.createdByUserId === session.user.id ||
       release.paymentRequest.requestedByUserId === session.user.id ||
       release.paymentRequest.approvedByUserId === session.user.id ||
       release.releasedByUserId === session.user.id
     ) {
-      throw new Error("PAYMENT_RELEASE_RECONCILIATION_SEGREGATION_REQUIRED");
+      throw new Error("PAYMENT_RELEASE_RECONCILIATION_SEGREGATION_REQUIRED")
     }
     if (!release.releaseReference || !release.evidenceReference) {
-      throw new Error("PAYMENT_RELEASE_RELEASE_EVIDENCE_REQUIRED");
+      throw new Error("PAYMENT_RELEASE_RELEASE_EVIDENCE_REQUIRED")
     }
 
     const reconciliation = await tx.bankReconciliation.findFirst({
@@ -6017,12 +6199,15 @@ export async function matchPaymentReleaseToBankReconciliation(
         bankAccount: true,
         statement: true
       }
-    });
+    })
     if (!reconciliation) {
-      throw new Error("PAYMENT_RELEASE_RECONCILIATION_BATCH_NOT_AVAILABLE");
+      throw new Error("PAYMENT_RELEASE_RECONCILIATION_BATCH_NOT_AVAILABLE")
     }
     if (reconciliation.bankAccount.locationId) {
-      await assertAuthorizedLocation(session, reconciliation.bankAccount.locationId);
+      await assertAuthorizedLocation(
+        session,
+        reconciliation.bankAccount.locationId
+      )
     }
 
     const statementLine = await tx.bankStatementLine.findFirst({
@@ -6036,38 +6221,45 @@ export async function matchPaymentReleaseToBankReconciliation(
           in: ["UNMATCHED", "PARTIALLY_MATCHED", "EXCEPTION"]
         }
       }
-    });
+    })
     if (!statementLine) {
-      throw new Error("PAYMENT_RELEASE_STATEMENT_LINE_NOT_AVAILABLE");
+      throw new Error("PAYMENT_RELEASE_STATEMENT_LINE_NOT_AVAILABLE")
     }
     if (
       decimalToNumber(statementLine.debitAmount) <= 0 &&
       decimalToNumber(statementLine.netAmount) >= 0
     ) {
-      throw new Error("PAYMENT_RELEASE_STATEMENT_LINE_NOT_OUTFLOW");
+      throw new Error("PAYMENT_RELEASE_STATEMENT_LINE_NOT_OUTFLOW")
     }
 
-    const releasedAmount = decimalToNumber(release.releasedAmount);
+    const releasedAmount = decimalToNumber(release.releasedAmount)
     if (releasedAmount <= 0) {
-      throw new Error("PAYMENT_RELEASE_NOT_RELEASED");
+      throw new Error("PAYMENT_RELEASE_NOT_RELEASED")
     }
     const releaseMatchedAmount = roundMoney(
       release.reconciliationMatches.reduce(
         (sum, match) => sum + decimalToNumber(match.matchedAmount),
         0
       )
-    );
-    const releaseRemainingAmount = roundMoney(releasedAmount - releaseMatchedAmount);
-    const lineAmount = Math.abs(decimalToNumber(statementLine.netAmount));
-    const lineMatchedAmount = decimalToNumber(statementLine.matchedAmount);
-    const lineRemainingAmount = roundMoney(lineAmount - lineMatchedAmount);
-    const matchedAmount = roundMoney(input.matchedAmount ?? releaseRemainingAmount);
+    )
+    const releaseRemainingAmount = roundMoney(
+      releasedAmount - releaseMatchedAmount
+    )
+    const lineAmount = Math.abs(decimalToNumber(statementLine.netAmount))
+    const lineMatchedAmount = decimalToNumber(statementLine.matchedAmount)
+    const lineRemainingAmount = roundMoney(lineAmount - lineMatchedAmount)
+    const matchedAmount = roundMoney(
+      input.matchedAmount ?? releaseRemainingAmount
+    )
 
     if (matchedAmount <= 0) {
-      throw new Error("PAYMENT_RELEASE_RECONCILIATION_MATCH_AMOUNT_REQUIRED");
+      throw new Error("PAYMENT_RELEASE_RECONCILIATION_MATCH_AMOUNT_REQUIRED")
     }
-    if (matchedAmount > releaseRemainingAmount || matchedAmount > lineRemainingAmount) {
-      throw new Error("PAYMENT_RELEASE_RECONCILIATION_MATCH_AMOUNT_INVALID");
+    if (
+      matchedAmount > releaseRemainingAmount ||
+      matchedAmount > lineRemainingAmount
+    ) {
+      throw new Error("PAYMENT_RELEASE_RECONCILIATION_MATCH_AMOUNT_INVALID")
     }
 
     const match = await tx.bankReconciliationMatch.create({
@@ -6099,17 +6291,21 @@ export async function matchPaymentReleaseToBankReconciliation(
         reason,
         evidenceReference
       }
-    });
+    })
 
-    const updatedLineMatchedAmount = roundMoney(lineMatchedAmount + matchedAmount);
+    const updatedLineMatchedAmount = roundMoney(
+      lineMatchedAmount + matchedAmount
+    )
     await tx.bankStatementLine.update({
       where: { id: statementLine.id },
       data: {
         matchedAmount: updatedLineMatchedAmount,
         status:
-          updatedLineMatchedAmount >= lineAmount ? "MATCHED" : "PARTIALLY_MATCHED"
+          updatedLineMatchedAmount >= lineAmount
+            ? "MATCHED"
+            : "PARTIALLY_MATCHED"
       }
-    });
+    })
 
     const statementLines = await tx.bankStatementLine.findMany({
       where: {
@@ -6121,7 +6317,7 @@ export async function matchPaymentReleaseToBankReconciliation(
         netAmount: true,
         matchedAmount: true
       }
-    });
+    })
     const varianceAmount = roundMoney(
       statementLines.reduce(
         (sum, line) =>
@@ -6133,29 +6329,29 @@ export async function matchPaymentReleaseToBankReconciliation(
           ),
         0
       )
-    );
+    )
     await tx.bankReconciliation.update({
       where: { id: reconciliation.id },
       data: {
         status: varianceAmount === 0 ? "MATCHED" : "IN_PROGRESS",
         varianceAmount
       }
-    });
+    })
 
     const updatedReleaseMatchedAmount = roundMoney(
       releaseMatchedAmount + matchedAmount
-    );
+    )
     const updatedReleaseStatus =
       updatedReleaseMatchedAmount >= releasedAmount
         ? "FULLY_RECONCILED"
-        : "PARTIALLY_RECONCILED";
+        : "PARTIALLY_RECONCILED"
     const updatedRelease = await tx.paymentRelease.update({
       where: { id: release.id },
       data: {
         status: updatedReleaseStatus,
         evidenceReference
       }
-    });
+    })
 
     await writePaymentReleaseAudit(tx, {
       session,
@@ -6178,23 +6374,25 @@ export async function matchPaymentReleaseToBankReconciliation(
         noJournalPosting: true,
         noSourcePaymentRequestMutation: true
       }
-    });
+    })
 
-    return updatedRelease;
-  });
+    return updatedRelease
+  })
 }
 
-export async function requestPaymentReleaseReversal(input: PaymentReleaseActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financePaymentRelease);
+export async function requestPaymentReleaseReversal(
+  input: PaymentReleaseActionInput
+) {
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financePaymentRelease)
   const reason = requireReleaseReason(
     input.reason,
     "PAYMENT_RELEASE_REVERSAL_REASON_REQUIRED"
-  );
+  )
   const evidenceReference = requireReleaseEvidence(
     input.evidenceReference,
     "PAYMENT_RELEASE_REVERSAL_EVIDENCE_REQUIRED"
-  );
+  )
 
   return prisma.$transaction(async (tx) => {
     const release = await tx.paymentRelease.findFirst({
@@ -6219,12 +6417,12 @@ export async function requestPaymentReleaseReversal(input: PaymentReleaseActionI
           }
         }
       }
-    });
+    })
     if (!release) {
-      throw new Error("PAYMENT_RELEASE_NOT_FOUND");
+      throw new Error("PAYMENT_RELEASE_NOT_FOUND")
     }
     if (release.status === "REVERSED") {
-      return release;
+      return release
     }
     assertPaymentReleaseStatus(release.status, [
       "RELEASED",
@@ -6232,34 +6430,40 @@ export async function requestPaymentReleaseReversal(input: PaymentReleaseActionI
       "PARTIALLY_RECONCILED",
       "FULLY_RECONCILED",
       "EXCEPTION"
-    ]);
+    ])
     assertPaymentReleaseSegregation(
       session,
       release,
       "PAYMENT_RELEASE_REVERSAL_SEGREGATION_REQUIRED"
-    );
+    )
     const closedReconciliationMatch = release.reconciliationMatches.find(
       (match) => match.reconciliation.status === "CLOSED"
-    );
+    )
     if (closedReconciliationMatch) {
-      throw new Error("PAYMENT_RELEASE_REVERSAL_REQUIRES_RECONCILIATION_REOPEN");
+      throw new Error("PAYMENT_RELEASE_REVERSAL_REQUIRES_RECONCILIATION_REOPEN")
     }
     const voidedReconciliationMatch = release.reconciliationMatches.find(
       (match) =>
         match.reconciliation.status === "VOIDED" ||
         match.statementLine.status === "VOIDED"
-    );
+    )
     if (voidedReconciliationMatch) {
-      throw new Error("PAYMENT_RELEASE_REVERSAL_RECONCILIATION_VOIDED");
+      throw new Error("PAYMENT_RELEASE_REVERSAL_RECONCILIATION_VOIDED")
     }
 
-    const reversedMatchIds = release.reconciliationMatches.map((match) => match.id);
+    const reversedMatchIds = release.reconciliationMatches.map(
+      (match) => match.id
+    )
     const impactedStatementLineIds = Array.from(
-      new Set(release.reconciliationMatches.map((match) => match.statementLineId))
-    );
+      new Set(
+        release.reconciliationMatches.map((match) => match.statementLineId)
+      )
+    )
     const impactedReconciliationIds = Array.from(
-      new Set(release.reconciliationMatches.map((match) => match.reconciliationId))
-    );
+      new Set(
+        release.reconciliationMatches.map((match) => match.reconciliationId)
+      )
+    )
 
     if (reversedMatchIds.length > 0) {
       await tx.bankReconciliationMatch.updateMany({
@@ -6279,48 +6483,50 @@ export async function requestPaymentReleaseReversal(input: PaymentReleaseActionI
           reason,
           evidenceReference
         }
-      });
+      })
 
       for (const statementLineId of impactedStatementLineIds) {
         const lineMatches = release.reconciliationMatches.filter(
           (match) => match.statementLineId === statementLineId
-        );
-        const statementLine = lineMatches[0]?.statementLine;
+        )
+        const statementLine = lineMatches[0]?.statementLine
         if (!statementLine) {
-          continue;
+          continue
         }
         const reversedAmount = roundMoney(
           lineMatches.reduce(
             (sum, match) => sum + decimalToNumber(match.matchedAmount),
             0
           )
-        );
-        const lineAmount = Math.abs(decimalToNumber(statementLine.netAmount));
+        )
+        const lineAmount = Math.abs(decimalToNumber(statementLine.netAmount))
         const nextMatchedAmount = Math.max(
           0,
-          roundMoney(decimalToNumber(statementLine.matchedAmount) - reversedAmount)
-        );
+          roundMoney(
+            decimalToNumber(statementLine.matchedAmount) - reversedAmount
+          )
+        )
         const nextStatus =
           nextMatchedAmount <= 0
             ? "UNMATCHED"
             : nextMatchedAmount >= lineAmount
               ? "MATCHED"
-              : "PARTIALLY_MATCHED";
+              : "PARTIALLY_MATCHED"
         await tx.bankStatementLine.update({
           where: { id: statementLine.id },
           data: {
             matchedAmount: nextMatchedAmount,
             status: nextStatus
           }
-        });
+        })
       }
 
       for (const reconciliationId of impactedReconciliationIds) {
         const reconciliation = release.reconciliationMatches.find(
           (match) => match.reconciliationId === reconciliationId
-        )?.reconciliation;
+        )?.reconciliation
         if (!reconciliation) {
-          continue;
+          continue
         }
         const statementLines = await tx.bankStatementLine.findMany({
           where: {
@@ -6332,7 +6538,7 @@ export async function requestPaymentReleaseReversal(input: PaymentReleaseActionI
             netAmount: true,
             matchedAmount: true
           }
-        });
+        })
         const varianceAmount = roundMoney(
           statementLines.reduce(
             (sum, line) =>
@@ -6344,7 +6550,7 @@ export async function requestPaymentReleaseReversal(input: PaymentReleaseActionI
               ),
             0
           )
-        );
+        )
         await tx.bankReconciliation.update({
           where: { id: reconciliationId },
           data: {
@@ -6352,7 +6558,7 @@ export async function requestPaymentReleaseReversal(input: PaymentReleaseActionI
             varianceAmount,
             reason
           }
-        });
+        })
       }
     }
 
@@ -6365,7 +6571,7 @@ export async function requestPaymentReleaseReversal(input: PaymentReleaseActionI
         reversalReason: reason,
         evidenceReference
       }
-    });
+    })
     await writePaymentReleaseAudit(tx, {
       session,
       releaseId: release.id,
@@ -6385,29 +6591,302 @@ export async function requestPaymentReleaseReversal(input: PaymentReleaseActionI
         noJournalPosting: true,
         noSourcePaymentRequestMutation: true
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
-export async function createManualJournalDraft(input: ManualJournalDraftInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeJournalCreate);
-  assertPhpOnly("PHP");
-  const totals = assertBalancedJournal(input.lines);
-  await requireOpenAccountingPeriod(session, input.accountingPeriodId);
-  await assertJournalAccountsArePostable(session, input.lines);
+async function lockGrantedFinancePermissions(
+  tx: TransactionClient,
+  session: SessionContext,
+  permissionCodes: string[]
+) {
+  const grants = await tx.$queryRaw<Array<{ code: string }>>`
+    SELECT permission.code
+    FROM "UserRoleAssignment" AS ura
+    INNER JOIN "Role" AS role ON role.id = ura."roleId"
+    INNER JOIN "RolePermission" AS rp ON rp."roleId" = role.id
+    INNER JOIN "Permission" AS permission ON permission.id = rp."permissionId"
+    WHERE ura."userId" = ${session.user.id}::uuid
+      AND ura.status::text = 'ACTIVE'
+      AND ura."startsAt" <= NOW()
+      AND (ura."endsAt" IS NULL OR ura."endsAt" > NOW())
+      AND role.status::text = 'ACTIVE'
+      AND (role."tenantId" = ${session.context.tenantId}::uuid OR role."tenantId" IS NULL)
+      AND (permission."tenantId" = ${session.context.tenantId}::uuid OR permission."tenantId" IS NULL)
+    FOR UPDATE OF ura, role, rp, permission
+  `
+  const requestedCodes = new Set(permissionCodes)
+  return new Set(
+    grants
+      .map((grant) => grant.code)
+      .filter((permissionCode) => requestedCodes.has(permissionCode))
+  )
+}
 
-  for (const line of input.lines) {
-    if (line.locationId) {
-      await assertAuthorizedLocation(session, line.locationId);
+async function requireManualJournalScopeInTransaction(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    scopeType: "COMPANY" | "BRAND" | "LOCATION" | "DEPARTMENT" | "PROJECT"
+    scopeId: string
+    allowCompanyManage?: boolean
+  }
+) {
+  const assignments = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT usa.id
+    FROM "UserScopeAssignment" AS usa
+    WHERE usa."userId" = ${session.user.id}::uuid
+      AND usa.status::text = 'ACTIVE'
+      AND usa."startsAt" <= NOW()
+      AND (usa."endsAt" IS NULL OR usa."endsAt" > NOW())
+      AND (
+        (usa."scopeType"::text = ${input.scopeType} AND usa."scopeId" = ${input.scopeId}::uuid)
+        OR (
+          ${input.allowCompanyManage === true}
+          AND usa."scopeType"::text = 'COMPANY'
+          AND usa."scopeId" = ${session.context.companyId}::uuid
+          AND usa."accessLevel"::text = 'MANAGE'
+        )
+      )
+    FOR UPDATE OF usa
+  `
+  if (assignments.length === 0) {
+    throw new Error("SCOPE_DENIED")
+  }
+}
+
+async function assertManualJournalProjectScope(
+  tx: TransactionClient,
+  session: SessionContext,
+  projectId: string
+) {
+  const projectPermissionCodes = [
+    permissions.projectView,
+    permissions.projectCreate,
+    permissions.projectManage,
+    permissions.projectManageMembers,
+    permissions.projectRiskCreate,
+    permissions.projectRiskUpdate,
+    permissions.projectRiskResolve,
+    permissions.projectRiskArchive
+  ]
+  const granted = await lockGrantedFinancePermissions(
+    tx,
+    session,
+    projectPermissionCodes
+  )
+  if (granted.size === 0) {
+    throw new Error("PERMISSION_DENIED")
+  }
+
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT project.id
+    FROM "Project" AS project
+    WHERE project.id = ${projectId}::uuid
+      AND project."tenantId" = ${session.context.tenantId}::uuid
+      AND project."companyId" = ${session.context.companyId}::uuid
+    FOR UPDATE OF project
+  `
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT member.id
+    FROM "ProjectMember" AS member
+    WHERE member."projectId" = ${projectId}::uuid
+      AND member."userId" = ${session.user.id}::uuid
+    FOR UPDATE OF member
+  `
+  const project = await tx.project.findFirst({
+    where: {
+      id: projectId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      archivedAt: null
+    },
+    select: {
+      id: true,
+      companyId: true,
+      brandId: true,
+      locationId: true,
+      departmentId: true,
+      sponsorUserId: true,
+      managerUserId: true,
+      isRestricted: true,
+      members: {
+        where: { userId: session.user.id, status: "ACTIVE" },
+        select: { id: true }
+      }
+    }
+  })
+  if (!project) throw new Error("SCOPE_DENIED")
+
+  const activeScopes = await tx.$queryRaw<
+    Array<{ scopeType: string; scopeId: string; accessLevel: string }>
+  >`
+    SELECT
+      usa."scopeType"::text AS "scopeType",
+      usa."scopeId" AS "scopeId",
+      usa."accessLevel"::text AS "accessLevel"
+    FROM "UserScopeAssignment" AS usa
+    WHERE usa."userId" = ${session.user.id}::uuid
+      AND usa.status::text = 'ACTIVE'
+      AND usa."startsAt" <= NOW()
+      AND (usa."endsAt" IS NULL OR usa."endsAt" > NOW())
+    FOR UPDATE OF usa
+  `
+  const hasScope = (scopeType: string, scopeId: string | null) =>
+    scopeId != null &&
+    activeScopes.some(
+      (scope) => scope.scopeType === scopeType && scope.scopeId === scopeId
+    )
+  const isMember = project.members.length > 0
+  const isOwner =
+    project.sponsorUserId === session.user.id ||
+    project.managerUserId === session.user.id
+  const hasProjectScope = hasScope("PROJECT", project.id)
+  const hasCompanyManageScope = activeScopes.some(
+    (scope) =>
+      scope.scopeType === "COMPANY" &&
+      scope.scopeId === project.companyId &&
+      scope.accessLevel === "MANAGE"
+  )
+  const canManageProjects = granted.has(permissions.projectManage)
+  const hasMatchingScope =
+    hasScope("COMPANY", project.companyId) ||
+    hasScope("BRAND", project.brandId) ||
+    hasScope("LOCATION", project.locationId) ||
+    hasScope("DEPARTMENT", project.departmentId) ||
+    hasProjectScope
+  const canAccess = project.isRestricted
+    ? isMember ||
+      hasProjectScope ||
+      (canManageProjects && hasCompanyManageScope)
+    : isMember ||
+      isOwner ||
+      hasMatchingScope ||
+      (canManageProjects && hasCompanyManageScope)
+  if (!canAccess) throw new Error("SCOPE_DENIED")
+}
+
+async function assertManualJournalLineScope(
+  tx: TransactionClient,
+  session: SessionContext,
+  line: ManualJournalLineInput
+) {
+  const locationId = line.locationId ?? session.context.locationId
+  await requireManualJournalScopeInTransaction(tx, session, {
+    scopeType: "LOCATION",
+    scopeId: locationId
+  })
+  const location = await tx.location.findFirst({
+    where: {
+      id: locationId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE"
+    },
+    select: { brandId: true }
+  })
+  if (!location) {
+    throw new Error("SCOPE_DENIED")
+  }
+
+  const brandId = (line.brandId ?? session.context.brandId) || null
+  if (brandId && location.brandId !== brandId) {
+    await requireManualJournalScopeInTransaction(tx, session, {
+      scopeType: "BRAND",
+      scopeId: brandId,
+      allowCompanyManage: true
+    })
+    const brand = await tx.brand.findFirst({
+      where: {
+        id: brandId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
+      select: { id: true }
+    })
+    if (!brand) throw new Error("SCOPE_DENIED")
+  }
+
+  if (line.departmentId) {
+    await requireManualJournalScopeInTransaction(tx, session, {
+      scopeType: "DEPARTMENT",
+      scopeId: line.departmentId,
+      allowCompanyManage: true
+    })
+    const department = await tx.department.findFirst({
+      where: {
+        id: line.departmentId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
+      select: { id: true }
+    })
+    if (!department) throw new Error("SCOPE_DENIED")
+  }
+
+  if (line.costCenterId) {
+    const costCenter = await tx.costCenter.findFirst({
+      where: {
+        id: line.costCenterId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
+      select: { departmentId: true }
+    })
+    if (!costCenter) throw new Error("SCOPE_DENIED")
+    if (
+      line.departmentId &&
+      costCenter.departmentId &&
+      costCenter.departmentId !== line.departmentId
+    ) {
+      throw new Error("SCOPE_DENIED")
+    }
+    if (
+      costCenter.departmentId &&
+      costCenter.departmentId !== line.departmentId
+    ) {
+      await requireManualJournalScopeInTransaction(tx, session, {
+        scopeType: "DEPARTMENT",
+        scopeId: costCenter.departmentId,
+        allowCompanyManage: true
+      })
     }
   }
 
-  const publicReference = await nextFinanceJournalReference(session.context.companyId);
-  const sourceEventKey = input.sourceEventKey?.trim() || `manual:${randomUUID()}`;
+  if (line.projectId) {
+    await assertManualJournalProjectScope(tx, session, line.projectId)
+  }
+}
+
+export async function createManualJournalDraft(input: ManualJournalDraftInput) {
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeJournalCreate)
+  assertPhpOnly("PHP")
+  const totals = assertBalancedJournal(input.lines)
+  const sourceEventKey =
+    input.sourceEventKey?.trim() || `manual:${randomUUID()}`
 
   return prisma.$transaction(async (tx) => {
+    const granted = await lockGrantedFinancePermissions(tx, session, [
+      permissions.financeJournalCreate
+    ])
+    if (!granted.has(permissions.financeJournalCreate)) {
+      throw new Error("PERMISSION_DENIED")
+    }
+    await requireOpenAccountingPeriod(session, input.accountingPeriodId, tx)
+    await assertJournalAccountsArePostable(session, input.lines, tx)
+    for (const line of input.lines) {
+      await assertManualJournalLineScope(tx, session, line)
+    }
+    const publicReference = await nextFinanceJournalReference(
+      session.context.companyId,
+      tx
+    )
+
     const journal = await tx.financeJournal.create({
       data: {
         tenantId: session.context.tenantId,
@@ -6432,25 +6911,25 @@ export async function createManualJournalDraft(input: ManualJournalDraftInput) {
         lines: {
           createMany: {
             data: input.lines.map((line, index) => ({
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            lineNumber: index + 1,
-            accountId: line.accountId,
-            amountSide: line.amountSide,
-            amountPhp: line.amountPhp,
-            lineDescription: line.lineDescription.trim(),
-            brandId: line.brandId ?? session.context.brandId,
-            locationId: line.locationId ?? session.context.locationId,
-            departmentId: line.departmentId ?? null,
-            costCenterId: line.costCenterId ?? null,
-            projectId: line.projectId ?? null,
-            supplierId: line.supplierId ?? null
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              lineNumber: index + 1,
+              accountId: line.accountId,
+              amountSide: line.amountSide,
+              amountPhp: line.amountPhp,
+              lineDescription: line.lineDescription.trim(),
+              brandId: line.brandId ?? session.context.brandId,
+              locationId: line.locationId ?? session.context.locationId,
+              departmentId: line.departmentId ?? null,
+              costCenterId: line.costCenterId ?? null,
+              projectId: line.projectId ?? null,
+              supplierId: line.supplierId ?? null
             }))
           }
         }
       },
       include: { lines: true }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -6472,15 +6951,15 @@ export async function createManualJournalDraft(input: ManualJournalDraftInput) {
           noSourceMutation: true
         }
       }
-    });
+    })
 
-    return journal;
-  });
+    return journal
+  })
 }
 
 export async function submitManualJournal(input: FinanceJournalActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeJournalSubmit);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeJournalSubmit)
 
   return prisma.$transaction(async (tx) => {
     const journal = await tx.financeJournal.findFirst({
@@ -6491,12 +6970,12 @@ export async function submitManualJournal(input: FinanceJournalActionInput) {
         status: "DRAFT"
       },
       include: { lines: true }
-    });
+    })
     if (!journal) {
-      throw new Error("FINANCE_JOURNAL_NOT_OPEN_FOR_SUBMIT");
+      throw new Error("FINANCE_JOURNAL_NOT_OPEN_FOR_SUBMIT")
     }
     if (journal.createdByUserId !== session.user.id) {
-      throw new Error("FINANCE_JOURNAL_SUBMITTER_MISMATCH");
+      throw new Error("FINANCE_JOURNAL_SUBMITTER_MISMATCH")
     }
     assertBalancedJournal(
       journal.lines.map((line) => ({
@@ -6505,9 +6984,9 @@ export async function submitManualJournal(input: FinanceJournalActionInput) {
         amountPhp: decimalToNumber(line.amountPhp),
         lineDescription: line.lineDescription
       }))
-    );
+    )
 
-    const submittedAt = new Date();
+    const submittedAt = new Date()
     const updated = await tx.financeJournal.update({
       where: { id: journal.id },
       data: {
@@ -6515,7 +6994,7 @@ export async function submitManualJournal(input: FinanceJournalActionInput) {
         submittedAt,
         submittedByUserId: session.user.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -6532,14 +7011,14 @@ export async function submitManualJournal(input: FinanceJournalActionInput) {
           noSourceMutation: true
         }
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
 export async function approveManualJournal(input: FinanceJournalActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeJournalApprove);
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeJournalApprove)
 
   return prisma.$transaction(async (tx) => {
     const journal = await tx.financeJournal.findFirst({
@@ -6550,12 +7029,12 @@ export async function approveManualJournal(input: FinanceJournalActionInput) {
         status: "SUBMITTED"
       },
       include: { lines: true }
-    });
+    })
     if (!journal) {
-      throw new Error("FINANCE_JOURNAL_NOT_SUBMITTED_FOR_APPROVAL");
+      throw new Error("FINANCE_JOURNAL_NOT_SUBMITTED_FOR_APPROVAL")
     }
     if (journal.createdByUserId === session.user.id) {
-      throw new Error("FINANCE_JOURNAL_SELF_APPROVAL_DENIED");
+      throw new Error("FINANCE_JOURNAL_SELF_APPROVAL_DENIED")
     }
     assertBalancedJournal(
       journal.lines.map((line) => ({
@@ -6564,9 +7043,9 @@ export async function approveManualJournal(input: FinanceJournalActionInput) {
         amountPhp: decimalToNumber(line.amountPhp),
         lineDescription: line.lineDescription
       }))
-    );
+    )
 
-    const approvedAt = new Date();
+    const approvedAt = new Date()
     const updated = await tx.financeJournal.update({
       where: { id: journal.id },
       data: {
@@ -6574,7 +7053,7 @@ export async function approveManualJournal(input: FinanceJournalActionInput) {
         approvedAt,
         approvedByUserId: session.user.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -6592,15 +7071,18 @@ export async function approveManualJournal(input: FinanceJournalActionInput) {
           noSourceMutation: true
         }
       }
-    });
-    return updated;
-  });
+    })
+    return updated
+  })
 }
 
-export async function postApprovedManualJournal(input: FinanceJournalActionInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeJournalPost);
-  const idempotencyKey = input.idempotencyKey?.trim() || `post:${input.journalId}`;
+export async function postApprovedManualJournal(
+  input: FinanceJournalActionInput
+) {
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeJournalPost)
+  const idempotencyKey =
+    input.idempotencyKey?.trim() || `post:${input.journalId}`
 
   const existingAttempt = await prisma.financeJournalPostingAttempt.findUnique({
     where: {
@@ -6610,9 +7092,9 @@ export async function postApprovedManualJournal(input: FinanceJournalActionInput
       }
     },
     include: { journal: true }
-  });
+  })
   if (existingAttempt?.status === "SUCCEEDED" && existingAttempt.journal) {
-    return existingAttempt.journal;
+    return existingAttempt.journal
   }
 
   return prisma.$transaction(async (tx) => {
@@ -6627,12 +7109,12 @@ export async function postApprovedManualJournal(input: FinanceJournalActionInput
         lines: true,
         accountingPeriod: true
       }
-    });
+    })
     if (!journal) {
-      throw new Error("FINANCE_JOURNAL_NOT_APPROVED_FOR_POSTING");
+      throw new Error("FINANCE_JOURNAL_NOT_APPROVED_FOR_POSTING")
     }
     if (journal.accountingPeriod.status !== "OPEN") {
-      throw new Error("ACCOUNTING_PERIOD_NOT_OPEN");
+      throw new Error("ACCOUNTING_PERIOD_NOT_OPEN")
     }
     assertBalancedJournal(
       journal.lines.map((line) => ({
@@ -6641,7 +7123,7 @@ export async function postApprovedManualJournal(input: FinanceJournalActionInput
         amountPhp: decimalToNumber(line.amountPhp),
         lineDescription: line.lineDescription
       }))
-    );
+    )
 
     const attempt = await tx.financeJournalPostingAttempt.upsert({
       where: {
@@ -6666,9 +7148,9 @@ export async function postApprovedManualJournal(input: FinanceJournalActionInput
         failureCode: null,
         failureReason: null
       }
-    });
+    })
 
-    const postingDate = new Date();
+    const postingDate = new Date()
     const posted = await tx.financeJournal.updateMany({
       where: {
         id: journal.id,
@@ -6682,9 +7164,9 @@ export async function postApprovedManualJournal(input: FinanceJournalActionInput
         postedAt: postingDate,
         postedByUserId: session.user.id
       }
-    });
+    })
     if (posted.count !== 1) {
-      throw new Error("FINANCE_JOURNAL_POSTING_STATE_CONFLICT");
+      throw new Error("FINANCE_JOURNAL_POSTING_STATE_CONFLICT")
     }
 
     await tx.financeJournalPostingAttempt.update({
@@ -6693,7 +7175,7 @@ export async function postApprovedManualJournal(input: FinanceJournalActionInput
         status: "SUCCEEDED",
         resultJournalId: journal.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -6712,19 +7194,22 @@ export async function postApprovedManualJournal(input: FinanceJournalActionInput
           noSourceMutation: true
         }
       }
-    });
+    })
 
     return tx.financeJournal.findUniqueOrThrow({
       where: { id: journal.id },
       include: { lines: true }
-    });
-  });
+    })
+  })
 }
 
-export async function reversePostedFinanceJournal(input: FinanceJournalReverseInput) {
-  const session = await requireSessionContext();
-  await requirePermission(session, permissions.financeJournalReverse);
-  const idempotencyKey = input.idempotencyKey?.trim() || `reverse:${input.journalId}`;
+export async function reversePostedFinanceJournal(
+  input: FinanceJournalReverseInput
+) {
+  const session = await requireSessionContext()
+  await requirePermission(session, permissions.financeJournalReverse)
+  const idempotencyKey =
+    input.idempotencyKey?.trim() || `reverse:${input.journalId}`
 
   const existingAttempt = await prisma.financeJournalPostingAttempt.findUnique({
     where: {
@@ -6734,9 +7219,9 @@ export async function reversePostedFinanceJournal(input: FinanceJournalReverseIn
       }
     },
     include: { journal: true }
-  });
+  })
   if (existingAttempt?.status === "SUCCEEDED" && existingAttempt.journal) {
-    return existingAttempt.journal;
+    return existingAttempt.journal
   }
 
   return prisma.$transaction(async (tx) => {
@@ -6751,12 +7236,12 @@ export async function reversePostedFinanceJournal(input: FinanceJournalReverseIn
         lines: { orderBy: { lineNumber: "asc" } },
         accountingPeriod: true
       }
-    });
+    })
     if (!original) {
-      throw new Error("FINANCE_JOURNAL_NOT_POSTED_FOR_REVERSAL");
+      throw new Error("FINANCE_JOURNAL_NOT_POSTED_FOR_REVERSAL")
     }
     if (original.accountingPeriod.status !== "OPEN") {
-      throw new Error("ACCOUNTING_PERIOD_NOT_OPEN");
+      throw new Error("ACCOUNTING_PERIOD_NOT_OPEN")
     }
 
     const attempt = await tx.financeJournalPostingAttempt.upsert({
@@ -6782,10 +7267,12 @@ export async function reversePostedFinanceJournal(input: FinanceJournalReverseIn
         failureCode: null,
         failureReason: null
       }
-    });
+    })
 
-    const publicReference = await nextFinanceJournalReference(session.context.companyId);
-    const reversedAt = new Date();
+    const publicReference = await nextFinanceJournalReference(
+      session.context.companyId
+    )
+    const reversedAt = new Date()
     const reversalLines = original.lines.map((line) => ({
       accountId: line.accountId,
       amountSide: reverseSide(line.amountSide as "DEBIT" | "CREDIT"),
@@ -6797,8 +7284,8 @@ export async function reversePostedFinanceJournal(input: FinanceJournalReverseIn
       costCenterId: line.costCenterId,
       projectId: line.projectId,
       supplierId: line.supplierId
-    }));
-    const totals = assertBalancedJournal(reversalLines);
+    }))
+    const totals = assertBalancedJournal(reversalLines)
 
     const reversal = await tx.financeJournal.create({
       data: {
@@ -6834,25 +7321,25 @@ export async function reversePostedFinanceJournal(input: FinanceJournalReverseIn
         lines: {
           createMany: {
             data: reversalLines.map((line, index) => ({
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            lineNumber: index + 1,
-            accountId: line.accountId,
-            amountSide: line.amountSide,
-            amountPhp: line.amountPhp,
-            lineDescription: line.lineDescription,
-            brandId: line.brandId,
-            locationId: line.locationId,
-            departmentId: line.departmentId,
-            costCenterId: line.costCenterId,
-            projectId: line.projectId,
-            supplierId: line.supplierId,
-            sourceLineType: "FinanceJournalLine"
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              lineNumber: index + 1,
+              accountId: line.accountId,
+              amountSide: line.amountSide,
+              amountPhp: line.amountPhp,
+              lineDescription: line.lineDescription,
+              brandId: line.brandId,
+              locationId: line.locationId,
+              departmentId: line.departmentId,
+              costCenterId: line.costCenterId,
+              projectId: line.projectId,
+              supplierId: line.supplierId,
+              sourceLineType: "FinanceJournalLine"
             }))
           }
         }
       }
-    });
+    })
 
     await tx.financeJournal.update({
       where: { id: original.id },
@@ -6862,7 +7349,7 @@ export async function reversePostedFinanceJournal(input: FinanceJournalReverseIn
         reversedByUserId: session.user.id,
         reversalReason: input.reversalReason.trim()
       }
-    });
+    })
 
     await tx.financeJournalPostingAttempt.update({
       where: { id: attempt.id },
@@ -6870,7 +7357,7 @@ export async function reversePostedFinanceJournal(input: FinanceJournalReverseIn
         status: "SUCCEEDED",
         resultJournalId: reversal.id
       }
-    });
+    })
 
     await tx.auditEvent.create({
       data: {
@@ -6893,8 +7380,8 @@ export async function reversePostedFinanceJournal(input: FinanceJournalReverseIn
           noSourceMutation: true
         }
       }
-    });
+    })
 
-    return reversal;
-  });
+    return reversal
+  })
 }

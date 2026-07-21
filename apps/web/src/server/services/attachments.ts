@@ -3,15 +3,21 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { assertPermissionAllowed, permissions } from "./authorization";
+import {
+  permissions,
+  requireAnyPermission,
+  requirePermission,
+} from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
 import { getControlledEvidenceStoragePolicy } from "./policySettings";
+import { findAuthorizedProject } from "./projects";
+import { assertWorkforceSourceScopeAccess } from "./workforce";
 
 export const phase3EvidenceUploadBlockerId = "P3-BLOCK-002";
 export const attachmentMaxSizeBytes = 25 * 1024 * 1024;
 export const privateAttachmentStorageProvider = "local-private";
 
-const evidenceAttachmentSourceTypes = [
+export const evidenceAttachmentSourceTypes = [
   "AP_INVOICE",
   "AP_INVOICE_LINE",
   "SUPPLIER_CREDIT_NOTE",
@@ -477,6 +483,12 @@ function requiredViewPermissionsForSourceType(
   sourceType: EvidenceAttachmentSourceType,
 ) {
   switch (sourceType) {
+    case "AP_INVOICE":
+    case "AP_INVOICE_LINE":
+    case "SUPPLIER_CREDIT_NOTE":
+    case "PAYMENT_REQUEST":
+    case "PAYMENT_RELEASE":
+      return [permissions.financePayablesView, permissions.financeView];
     case "EXPENSE_REQUEST":
     case "EXPENSE_REQUEST_LINE":
       return [permissions.financeExpenseRequestView];
@@ -494,36 +506,316 @@ function requiredViewPermissionsForSourceType(
       return [permissions.financeReconciliationView, permissions.financeView];
     case "FINANCE_CLOSE_RUN":
     case "FINANCE_CLOSE_ITEM":
-      return [permissions.financePeriodCloseManage, permissions.financeView];
+      return [permissions.financePeriodCloseManage];
     case "WORKFORCE_EMPLOYEE":
     case "WORKFORCE_ASSIGNMENT":
     case "WORKFORCE_LEAVE":
     case "WORKFORCE_OVERTIME":
-      return [permissions.workforceView];
+      return [permissions.workforceManage, permissions.coreAdminister];
     case "WORKFORCE_SCHEDULE":
       return [permissions.workforceScheduleView, permissions.workforceView];
     case "WORKFORCE_ATTENDANCE_IMPORT":
       return [
-        permissions.workforceAttendanceImportView,
-        permissions.workforceView,
+        permissions.workforceAttendanceImportManage,
+        permissions.coreAdminister,
       ];
     case "PROJECT_REQUIREMENT":
       return [permissions.projectView];
     default:
-      return [permissions.financePayablesView, permissions.financeView];
+      return [];
   }
 }
 
-function assertAnyPermissionAllowed(
-  grantedPermissionCodes: string[],
-  requiredPermissionCodes: string[],
+function requiredWritePermissionsForSourceType(
+  sourceType: EvidenceAttachmentSourceType,
 ) {
+  switch (sourceType) {
+    case "AP_INVOICE":
+    case "AP_INVOICE_LINE":
+      return [permissions.financeApInvoiceCreate];
+    case "SUPPLIER_CREDIT_NOTE":
+      return [permissions.financeSupplierCreditCreate];
+    case "PAYMENT_REQUEST":
+      return [permissions.financePaymentRequestCreate];
+    case "PAYMENT_RELEASE":
+      return [permissions.financePaymentRelease];
+    case "BRANCH_CASH_DEPOSIT":
+      return [permissions.financeCashDepositCreate];
+    case "BANK_RECONCILIATION":
+      return [permissions.financeReconciliationMatch];
+    case "EXPENSE_REQUEST":
+    case "EXPENSE_REQUEST_LINE":
+      return [permissions.financeExpenseRequestCreate];
+    case "CASH_ADVANCE_REQUEST":
+      return [permissions.financeCashAdvanceCreate];
+    case "CASH_ADVANCE_LIQUIDATION":
+    case "CASH_ADVANCE_LIQUIDATION_LINE":
+      return [permissions.financeCashAdvanceLiquidate];
+    case "PETTY_CASH_FUND":
+    case "PETTY_CASH_REQUEST":
+      return [permissions.financePettyCashCreate];
+    case "PETTY_CASH_LIQUIDATION":
+    case "PETTY_CASH_LIQUIDATION_LINE":
+      return [permissions.financePettyCashLiquidate];
+    case "FINANCE_CLOSE_RUN":
+    case "FINANCE_CLOSE_ITEM":
+      return [permissions.financePeriodCloseManage];
+    case "WORKFORCE_EMPLOYEE":
+    case "WORKFORCE_ASSIGNMENT":
+      return [permissions.workforceManage, permissions.coreAdminister];
+    case "WORKFORCE_LEAVE":
+      return [
+        permissions.workforceManage,
+        permissions.workforceLeaveApprove,
+        permissions.coreAdminister,
+      ];
+    case "WORKFORCE_OVERTIME":
+      return [
+        permissions.workforceManage,
+        permissions.workforceOvertimeApprove,
+        permissions.coreAdminister,
+      ];
+    case "WORKFORCE_SCHEDULE":
+      return [permissions.workforceScheduleManage, permissions.coreAdminister];
+    case "WORKFORCE_ATTENDANCE_IMPORT":
+      return [
+        permissions.workforceAttendanceImportManage,
+        permissions.coreAdminister,
+      ];
+    case "PROJECT_REQUIREMENT":
+      return [permissions.projectManage];
+    default:
+      return [];
+  }
+}
+
+async function requireCanonicalEvidenceWritePermission(input: {
+  session: SessionContext;
+  sourceType: EvidenceAttachmentSourceType;
+  sourceRecordId: string;
+}) {
+  try {
+    await requireAnyPermission(
+      input.session,
+      requiredWritePermissionsForSourceType(input.sourceType),
+    );
+    return;
+  } catch (error) {
+    if (
+      input.sourceType !== "PROJECT_REQUIREMENT" ||
+      !(error instanceof Error) ||
+      error.message !== "PERMISSION_DENIED"
+    ) {
+      throw error;
+    }
+  }
+
+  const ownedRequirement = await prisma.projectRequirement.findFirst({
+    where: {
+      id: input.sourceRecordId,
+      tenantId: input.session.context.tenantId,
+      companyId: input.session.context.companyId,
+      ownerUserId: input.session.user.id,
+      archivedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!ownedRequirement) throw new Error("PERMISSION_DENIED");
+  await requirePermission(input.session, permissions.projectView);
+}
+
+type EvidenceSourceScope = {
+  tenantId: string;
+  companyId: string;
+  brandId: string | null;
+  locationId: string | null;
+  departmentId: string | null;
+  projectId: string | null;
+};
+
+type EvidenceAccessScope = {
+  scopeType: string;
+  scopeId: string;
+};
+
+const emptyScopeColumns =
+  'NULL::uuid AS "brandId", NULL::uuid AS "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId"';
+
+function evidenceSourceScopeQuery(sourceType: EvidenceAttachmentSourceType) {
+  switch (sourceType) {
+    case "AP_INVOICE":
+      return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "ApInvoice" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "AP_INVOICE_LINE":
+      return `SELECT l."tenantId", l."companyId", NULL::uuid AS "brandId", i."locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "ApInvoiceLine" l JOIN "ApInvoice" i ON i.id = l."apInvoiceId" WHERE l.id = $1 AND l."tenantId" = $2 AND l."companyId" = $3`;
+    case "SUPPLIER_CREDIT_NOTE":
+      return `SELECT n."tenantId", n."companyId", NULL::uuid AS "brandId", i."locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "SupplierCreditNote" n JOIN "ApInvoice" i ON i.id = n."originalApInvoiceId" WHERE n.id = $1 AND n."tenantId" = $2 AND n."companyId" = $3`;
+    case "PAYMENT_REQUEST":
+      return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "PaymentRequest" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "PAYMENT_RELEASE":
+      return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "PaymentRelease" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "BRANCH_CASH_DEPOSIT":
+      return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "BranchCashDeposit" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "BANK_RECONCILIATION":
+      return `SELECT r."tenantId", r."companyId", NULL::uuid AS "brandId", a."locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "BankReconciliation" r JOIN "BankAccount" a ON a.id = r."bankAccountId" WHERE r.id = $1 AND r."tenantId" = $2 AND r."companyId" = $3`;
+    case "EXPENSE_REQUEST":
+      return `SELECT "tenantId", "companyId", "brandId", "locationId", "departmentId", "projectId" FROM "ExpenseRequest" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "EXPENSE_REQUEST_LINE":
+      return `SELECT l."tenantId", l."companyId", COALESCE(l."brandId", r."brandId") AS "brandId", COALESCE(l."locationId", r."locationId") AS "locationId", COALESCE(l."departmentId", r."departmentId") AS "departmentId", COALESCE(l."projectId", r."projectId") AS "projectId" FROM "ExpenseRequestLine" l JOIN "ExpenseRequest" r ON r.id = l."expenseRequestId" WHERE l.id = $1 AND l."tenantId" = $2 AND l."companyId" = $3`;
+    case "CASH_ADVANCE_REQUEST":
+      return `SELECT "tenantId", "companyId", "brandId", "locationId", "departmentId", "projectId" FROM "CashAdvanceRequest" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "CASH_ADVANCE_LIQUIDATION":
+      return `SELECT l."tenantId", l."companyId", r."brandId", l."locationId", r."departmentId", r."projectId" FROM "CashAdvanceLiquidation" l JOIN "CashAdvanceRequest" r ON r.id = l."cashAdvanceRequestId" WHERE l.id = $1 AND l."tenantId" = $2 AND l."companyId" = $3`;
+    case "CASH_ADVANCE_LIQUIDATION_LINE":
+      return `SELECT l."tenantId", l."companyId", r."brandId", l."locationId", r."departmentId", r."projectId" FROM "CashAdvanceLiquidationLine" l JOIN "CashAdvanceLiquidation" q ON q.id = l."liquidationId" JOIN "CashAdvanceRequest" r ON r.id = q."cashAdvanceRequestId" WHERE l.id = $1 AND l."tenantId" = $2 AND l."companyId" = $3`;
+    case "PETTY_CASH_FUND":
+      return `SELECT "tenantId", "companyId", "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "PettyCashFund" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "PETTY_CASH_REQUEST":
+      return `SELECT r."tenantId", r."companyId", f."brandId", f."locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "PettyCashRequest" r JOIN "PettyCashFund" f ON f.id = r."pettyCashFundId" WHERE r.id = $1 AND r."tenantId" = $2 AND r."companyId" = $3`;
+    case "PETTY_CASH_LIQUIDATION":
+      return `SELECT l."tenantId", l."companyId", f."brandId", f."locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "PettyCashLiquidation" l JOIN "PettyCashFund" f ON f.id = l."pettyCashFundId" WHERE l.id = $1 AND l."tenantId" = $2 AND l."companyId" = $3`;
+    case "PETTY_CASH_LIQUIDATION_LINE":
+      return `SELECT l."tenantId", l."companyId", f."brandId", f."locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "PettyCashLiquidationLine" l JOIN "PettyCashFund" f ON f.id = l."pettyCashFundId" WHERE l.id = $1 AND l."tenantId" = $2 AND l."companyId" = $3`;
+    case "FINANCE_CLOSE_RUN":
+      return `SELECT "tenantId", "companyId", ${emptyScopeColumns} FROM "FinanceCloseRun" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "FINANCE_CLOSE_ITEM":
+      return `SELECT "tenantId", "companyId", ${emptyScopeColumns} FROM "FinanceCloseChecklistItem" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "WORKFORCE_EMPLOYEE":
+      return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "homeLocationId" AS "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "Employee" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "WORKFORCE_ASSIGNMENT":
+      return `SELECT "tenantId", "companyId", "brandId", "locationId", "departmentId", NULL::uuid AS "projectId" FROM "EmployeeAssignment" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "WORKFORCE_LEAVE":
+      return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "EmployeeLeaveRequest" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "WORKFORCE_OVERTIME":
+      return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "EmployeeOvertimeRecord" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "WORKFORCE_SCHEDULE":
+      return `SELECT "tenantId", "companyId", "brandId", "locationId", "departmentId", NULL::uuid AS "projectId" FROM "WorkforceSchedule" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "WORKFORCE_ATTENDANCE_IMPORT":
+      return `SELECT "tenantId", "companyId", "brandId", "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "AttendanceImportBatch" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "PROJECT_REQUIREMENT":
+      return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", NULL::uuid AS "locationId", NULL::uuid AS "departmentId", "projectId" FROM "ProjectRequirement" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+  }
+}
+
+export function evidenceSourceMatchesActiveScope(
+  source: EvidenceSourceScope,
+  scopes: EvidenceAccessScope[],
+) {
+  const hasExactScope = (scopeType: string, scopeId: string | null) =>
+    !scopeId ||
+    scopes.some(
+      (scope) => scope.scopeType === scopeType && scope.scopeId === scopeId,
+    );
+  return (
+    hasExactScope("BRAND", source.brandId) &&
+    hasExactScope("LOCATION", source.locationId) &&
+    hasExactScope("DEPARTMENT", source.departmentId)
+  );
+}
+
+async function evidenceSourceDimensionsMatchActiveCompany(
+  session: SessionContext,
+  source: EvidenceSourceScope,
+) {
+  const [location, brand, department] = await Promise.all([
+    source.locationId
+      ? prisma.location.findFirst({
+          where: {
+            id: source.locationId,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            status: "ACTIVE",
+          },
+          select: { brandId: true },
+        })
+      : null,
+    source.brandId
+      ? prisma.brand.findFirst({
+          where: {
+            id: source.brandId,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            status: "ACTIVE",
+          },
+          select: { id: true },
+        })
+      : null,
+    source.departmentId
+      ? prisma.department.findFirst({
+          where: {
+            id: source.departmentId,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            status: "ACTIVE",
+          },
+          select: { id: true },
+        })
+      : null,
+  ]);
+
+  if (source.locationId && !location) return false;
+  if (source.brandId && !brand) return false;
+  if (source.departmentId && !department) return false;
+  if (source.brandId && source.locationId && location?.brandId !== source.brandId) {
+    return false;
+  }
+  return true;
+}
+
+export async function assertControlledEvidenceSourceAccess(
+  session: SessionContext,
+  sourceType: EvidenceAttachmentSourceType,
+  sourceRecordId: string,
+) {
+  const query = evidenceSourceScopeQuery(sourceType)
+    .replaceAll("$1", "$1::uuid")
+    .replaceAll("$2", "$2::uuid")
+    .replaceAll("$3", "$3::uuid");
+  const rows = await prisma.$queryRawUnsafe<EvidenceSourceScope[]>(
+    query,
+    sourceRecordId,
+    session.context.tenantId,
+    session.context.companyId,
+  );
+  const source = rows[0];
+  if (!source) {
+    throw new Error("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+  }
+
+  if (!(await evidenceSourceDimensionsMatchActiveCompany(session, source))) {
+    throw new Error("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+  }
+
+  if (sourceType.startsWith("WORKFORCE_")) {
+    try {
+      await assertWorkforceSourceScopeAccess(session, source);
+    } catch {
+      throw new Error("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    }
+    return;
+  }
+
+  const now = new Date();
+  const scopes = await prisma.userScopeAssignment.findMany({
+    where: {
+      userId: session.user.id,
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+    },
+    select: { scopeType: true, scopeId: true },
+  });
   if (
-    !requiredPermissionCodes.some((permissionCode) =>
-      grantedPermissionCodes.includes(permissionCode),
-    )
+    sourceType !== "PROJECT_REQUIREMENT" &&
+    !evidenceSourceMatchesActiveScope(source, scopes)
   ) {
-    throw new Error("PERMISSION_DENIED");
+    throw new Error("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+  }
+
+  if (source.projectId) {
+    const project = await findAuthorizedProject(session, source.projectId);
+    if (!project) {
+      throw new Error("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    }
   }
 }
 
@@ -533,7 +825,7 @@ async function logControlledEvidenceAttachmentDenied(input: {
   sourceRecordId?: string;
   attachmentId?: string;
   reasonCode: string;
-  attemptedAction: "LINK" | "ARCHIVE" | "LIST";
+  attemptedAction: "LINK" | "ARCHIVE" | "LIST" | "DOWNLOAD";
 }) {
   const fallbackEntityId = "00000000-0000-0000-0000-000000000000";
   const entityId = z.string().uuid().safeParse(input.sourceRecordId).success
@@ -559,14 +851,49 @@ async function logControlledEvidenceAttachmentDenied(input: {
   });
 }
 
+async function authorizeControlledEvidenceSourceAction(input: {
+  session: SessionContext;
+  sourceType: EvidenceAttachmentSourceType;
+  sourceRecordId: string;
+  attemptedAction: "LINK" | "ARCHIVE" | "LIST";
+}) {
+  try {
+    if (input.attemptedAction === "LIST") {
+      await requireAnyPermission(
+        input.session,
+        requiredViewPermissionsForSourceType(input.sourceType),
+      );
+    } else {
+      await requireCanonicalEvidenceWritePermission(input);
+    }
+    await assertControlledEvidenceSourceAccess(
+      input.session,
+      input.sourceType,
+      input.sourceRecordId,
+    );
+  } catch (error) {
+    await logControlledEvidenceAttachmentDenied({
+      session: input.session,
+      sourceType: input.sourceType,
+      sourceRecordId: input.sourceRecordId,
+      reasonCode:
+        error instanceof Error ? error.message : "CONTROLLED_EVIDENCE_ACCESS_DENIED",
+      attemptedAction: input.attemptedAction,
+    });
+    throw error;
+  }
+}
+
 export async function listControlledEvidenceAttachments(
   input: ListControlledEvidenceAttachmentInput,
 ) {
   const session = await requireSessionContext();
-  assertPermissionAllowed(
-    session.permissionCodes,
-    input.requiredPermissionCode,
-  );
+  await authorizeControlledEvidenceSourceAction({
+    session,
+    sourceType: input.sourceType,
+    sourceRecordId: input.sourceRecordId,
+    attemptedAction: "LIST",
+  });
   const companyId = assertCompanySession(session);
   const sourceKey = input.sourceLineId
     ? buildEvidenceSourceKey({
@@ -605,10 +932,12 @@ export async function linkControlledEvidenceAttachment(
   input: LinkControlledEvidenceAttachmentInput,
 ) {
   const session = await requireSessionContext();
-  assertPermissionAllowed(
-    session.permissionCodes,
-    input.requiredPermissionCode,
-  );
+  await authorizeControlledEvidenceSourceAction({
+    session,
+    sourceType: input.sourceType,
+    sourceRecordId: input.sourceRecordId,
+    attemptedAction: "LINK",
+  });
   const companyId = assertCompanySession(session);
   const validation = validateEvidenceAttachmentLinkInput({
     tenantId: session.context.tenantId,
@@ -777,10 +1106,12 @@ export async function createControlledEvidenceAttachmentMetadataLink(
   input: CreateControlledEvidenceAttachmentMetadataLinkInput,
 ) {
   const session = await requireSessionContext();
-  assertPermissionAllowed(
-    session.permissionCodes,
-    input.requiredPermissionCode,
-  );
+  await authorizeControlledEvidenceSourceAction({
+    session,
+    sourceType: input.sourceType,
+    sourceRecordId: input.sourceRecordId,
+    attemptedAction: "LINK",
+  });
   const companyId = assertCompanySession(session);
   const metadata = validateAttachmentMetadata(input.attachment);
   if (!metadata.normalized) {
@@ -902,10 +1233,12 @@ export async function createControlledEvidenceAttachmentUploadLink(
   input: CreateControlledEvidenceAttachmentUploadLinkInput,
 ) {
   const session = await requireSessionContext();
-  assertPermissionAllowed(
-    session.permissionCodes,
-    input.requiredPermissionCode,
-  );
+  await authorizeControlledEvidenceSourceAction({
+    session,
+    sourceType: input.sourceType,
+    sourceRecordId: input.sourceRecordId,
+    attemptedAction: "LINK",
+  });
   const companyId = assertCompanySession(session);
   const evidenceStoragePolicy = await getControlledEvidenceStoragePolicy(session);
   const policyMaxSizeBytes =
@@ -1097,6 +1430,24 @@ export async function downloadControlledEvidenceAttachment(
   input: DownloadControlledEvidenceAttachmentInput,
 ): Promise<ControlledEvidenceAttachmentDownload> {
   const session = await requireSessionContext();
+  return downloadControlledEvidenceAttachmentForSession(session, input);
+}
+
+function controlledEvidenceDownloadDenialReason(error: unknown) {
+  if (!(error instanceof Error)) return "CONTROLLED_EVIDENCE_DOWNLOAD_DENIED";
+  if (error.message === "PERMISSION_DENIED") return "PERMISSION_DENIED";
+  if (error.message === "CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE") {
+    return "CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE";
+  }
+  if (error.message.includes("CHECKSUM")) return "ATTACHMENT_INTEGRITY_DENIED";
+  if (error.message.includes("SIZE_MISMATCH")) return "ATTACHMENT_INTEGRITY_DENIED";
+  return "CONTROLLED_EVIDENCE_DOWNLOAD_DENIED";
+}
+
+export async function downloadControlledEvidenceAttachmentForSession(
+  session: SessionContext,
+  input: DownloadControlledEvidenceAttachmentInput,
+): Promise<ControlledEvidenceAttachmentDownload> {
   const companyId = assertCompanySession(session);
   const link = await prisma.controlledEvidenceAttachment.findFirst({
     where: {
@@ -1126,31 +1477,48 @@ export async function downloadControlledEvidenceAttachment(
     await logControlledEvidenceAttachmentDenied({
       session,
       reasonCode: "CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND",
-      attemptedAction: "LIST",
+      attemptedAction: "DOWNLOAD",
     });
     throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND");
   }
 
-  assertAnyPermissionAllowed(
-    session.permissionCodes,
-    requiredViewPermissionsForSourceType(
-      link.sourceType as EvidenceAttachmentSourceType,
-    ),
-  );
+  const sourceType = link.sourceType as EvidenceAttachmentSourceType;
+  let buffer: Buffer;
+  try {
+    await requireAnyPermission(
+      session,
+      requiredViewPermissionsForSourceType(sourceType),
+    );
+    await assertControlledEvidenceSourceAccess(
+      session,
+      sourceType,
+      link.sourceRecordId,
+    );
 
-  if (link.attachment.storageProvider !== privateAttachmentStorageProvider) {
-    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_BINARY_NOT_AVAILABLE");
-  }
+    if (link.attachment.storageProvider !== privateAttachmentStorageProvider) {
+      throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_BINARY_NOT_AVAILABLE");
+    }
 
-  const filePath = resolvePrivateAttachmentPath(link.attachment.objectKey);
-  const buffer = await readFile(filePath);
-  if (buffer.byteLength !== link.attachment.sizeBytes) {
-    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_SIZE_MISMATCH");
-  }
+    const filePath = resolvePrivateAttachmentPath(link.attachment.objectKey);
+    buffer = await readFile(filePath);
+    if (buffer.byteLength !== link.attachment.sizeBytes) {
+      throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_SIZE_MISMATCH");
+    }
 
-  const checksum = `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
-  if (link.attachment.checksum && link.attachment.checksum !== checksum) {
-    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_CHECKSUM_MISMATCH");
+    const checksum = `sha256:${createHash("sha256").update(buffer).digest("hex")}`;
+    if (link.attachment.checksum && link.attachment.checksum !== checksum) {
+      throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_CHECKSUM_MISMATCH");
+    }
+  } catch (error) {
+    await logControlledEvidenceAttachmentDenied({
+      session,
+      sourceType: link.sourceType,
+      sourceRecordId: link.sourceRecordId,
+      attachmentId: link.attachmentId,
+      reasonCode: controlledEvidenceDownloadDenialReason(error),
+      attemptedAction: "DOWNLOAD",
+    });
+    throw error;
   }
 
   await prisma.auditEvent.create({
@@ -1185,10 +1553,6 @@ export async function archiveControlledEvidenceAttachment(
   input: ArchiveControlledEvidenceAttachmentInput,
 ) {
   const session = await requireSessionContext();
-  assertPermissionAllowed(
-    session.permissionCodes,
-    input.requiredPermissionCode,
-  );
   const companyId = assertCompanySession(session);
   const values = archiveControlledEvidenceAttachmentSchema.parse(input);
   const link = await prisma.controlledEvidenceAttachment.findFirst({
@@ -1217,7 +1581,17 @@ export async function archiveControlledEvidenceAttachment(
       reasonCode: "CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND",
       attemptedAction: "ARCHIVE",
     });
-    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND");
+    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
+  }
+  try {
+    await authorizeControlledEvidenceSourceAction({
+      session,
+      sourceType: link.sourceType as EvidenceAttachmentSourceType,
+      sourceRecordId: link.sourceRecordId,
+      attemptedAction: "ARCHIVE",
+    });
+  } catch {
+    throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
   }
 
   const archived = await prisma.$transaction(async (tx) => {

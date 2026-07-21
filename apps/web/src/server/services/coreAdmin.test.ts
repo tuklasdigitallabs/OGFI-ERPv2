@@ -104,12 +104,17 @@ describe("core administration audit search wiring", () => {
     ).toThrow("LOW_RISK_SCOPE_USE_QUICK_ASSIGNMENT");
   });
 
-  test("role assignment mutation paths enforce direct assignability in the service layer", () => {
+  test("role grant paths enforce direct assignability while revocation remains available", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const deactivationSource = serviceSource.slice(
+      serviceSource.indexOf("export async function deactivateUserRoleAssignment"),
+      serviceSource.indexOf("export async function requestSensitiveUserRole"),
+    );
 
     expect(serviceSource).toContain("if (initialRole) {\n    assertDirectRoleAssignmentAllowed(initialRole);");
     expect(serviceSource).toContain("assertDirectRoleAssignmentAllowed(role);");
-    expect(serviceSource).toContain("assertDirectRoleAssignmentAllowed(assignment.role);");
+    expect(deactivationSource).not.toContain("assertDirectRoleAssignmentAllowed");
+    expect(deactivationSource).toContain("controlledRevocation: true");
     expect(serviceSource).toContain(".filter((role) => isDirectlyAssignableRole(role))");
     expect(serviceSource).toContain("createCoreAdminUser");
     expect(serviceSource).toContain("createUserRoleAssignment");

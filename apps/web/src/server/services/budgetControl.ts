@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { prisma } from "@ogfi/database";
 import type { TransactionClient } from "@ogfi/database";
-import { canUseFinance, permissions, requirePermission } from "./authorization";
+import {
+  canUseFinance,
+  permissions,
+  requirePermission,
+} from "./authorization";
 import type { SessionContext } from "./context";
 import {
   recordWorkflowNotifications,
@@ -526,6 +530,63 @@ function assertBudgetScope(input: {
     if (!allowedLocationIds.has(locationId)) {
       throw new Error("SCOPE_DENIED");
     }
+  }
+}
+
+async function requireBudgetPermissionInTransaction(
+  tx: TransactionClient,
+  session: SessionContext,
+) {
+  const grants = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT ura.id
+    FROM "UserRoleAssignment" AS ura
+    INNER JOIN "Role" AS role ON role.id = ura."roleId"
+    INNER JOIN "RolePermission" AS rp ON rp."roleId" = role.id
+    INNER JOIN "Permission" AS permission ON permission.id = rp."permissionId"
+    WHERE ura."userId" = ${session.user.id}::uuid
+      AND ura.status::text = 'ACTIVE'
+      AND ura."startsAt" <= NOW()
+      AND (ura."endsAt" IS NULL OR ura."endsAt" > NOW())
+      AND role.status::text = 'ACTIVE'
+      AND (role."tenantId" = ${session.context.tenantId}::uuid OR role."tenantId" IS NULL)
+      AND permission.code = ${permissions.financeBudgetManage}
+      AND (permission."tenantId" = ${session.context.tenantId}::uuid OR permission."tenantId" IS NULL)
+    FOR UPDATE OF ura, role, rp, permission
+  `;
+  if (grants.length === 0) {
+    throw new Error("PERMISSION_DENIED");
+  }
+}
+
+async function requireBudgetScopeInTransaction(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    scopeType: "LOCATION" | "DEPARTMENT";
+    scopeId: string;
+    allowCompanyManage?: boolean;
+  },
+) {
+  const assignments = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT usa.id
+    FROM "UserScopeAssignment" AS usa
+    WHERE usa."userId" = ${session.user.id}::uuid
+      AND usa.status::text = 'ACTIVE'
+      AND usa."startsAt" <= NOW()
+      AND (usa."endsAt" IS NULL OR usa."endsAt" > NOW())
+      AND (
+        (usa."scopeType"::text = ${input.scopeType} AND usa."scopeId" = ${input.scopeId}::uuid)
+        OR (
+          ${input.allowCompanyManage === true}
+          AND usa."scopeType"::text = 'COMPANY'
+          AND usa."scopeId" = ${session.context.companyId}::uuid
+          AND usa."accessLevel"::text = 'MANAGE'
+        )
+      )
+    FOR UPDATE OF usa
+  `;
+  if (assignments.length === 0) {
+    throw new Error("SCOPE_DENIED");
   }
 }
 
@@ -1682,12 +1743,20 @@ export async function createDraftBudget(
     throw new Error("BUDGET_HARD_BLOCK_BELOW_WARNING");
   }
 
-  const allowedLocationIds = new Set(authorizedLocationIds(session));
-  if (!allowedLocationIds.has(locationId)) {
-    throw new Error("SCOPE_DENIED");
-  }
-
   return prisma.$transaction(async (tx) => {
+    await requireBudgetPermissionInTransaction(tx, session);
+    await requireBudgetScopeInTransaction(tx, session, {
+      scopeType: "LOCATION",
+      scopeId: locationId,
+    });
+    if (departmentId) {
+      await requireBudgetScopeInTransaction(tx, session, {
+        scopeType: "DEPARTMENT",
+        scopeId: departmentId,
+        allowCompanyManage: true,
+      });
+    }
+
     const [location, department, account, fiscalYear] = await Promise.all([
       tx.location.findFirst({
         where: {

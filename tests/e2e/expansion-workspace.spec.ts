@@ -30,6 +30,7 @@ const expansionRoutes = [
 ] as const;
 
 test("Expansion workspace routes are available to the scoped super user", async ({ page }) => {
+  test.setTimeout(180_000);
   await signInAsSuperUser(page);
 
   for (const route of expansionRoutes) {

@@ -5,6 +5,7 @@ import {
   attachmentMaxSizeBytes,
   buildEvidenceReadinessRows,
   buildEvidenceSourceKey,
+  evidenceSourceMatchesActiveScope,
   phase3EvidenceUploadBlockerId,
   resolveEvidenceReadiness,
   validateAttachmentMetadata,
@@ -26,6 +27,52 @@ function functionSlice(source: string, functionName: string) {
 }
 
 describe("attachment evidence foundation", () => {
+  it("requires an exact active organizational scope for source evidence", () => {
+    const source = {
+      tenantId: "tenant-a",
+      companyId: "company-a",
+      brandId: "brand-a",
+      locationId: "location-a",
+      departmentId: "department-a",
+      projectId: null,
+    };
+
+    expect(
+      evidenceSourceMatchesActiveScope(source, [
+        { scopeType: "BRAND", scopeId: "brand-a" },
+        { scopeType: "LOCATION", scopeId: "location-a" },
+        { scopeType: "DEPARTMENT", scopeId: "department-a" },
+      ]),
+    ).toBe(true);
+    expect(
+      evidenceSourceMatchesActiveScope(source, [
+        { scopeType: "LOCATION", scopeId: "location-a" },
+      ]),
+    ).toBe(false);
+    expect(
+      evidenceSourceMatchesActiveScope(source, [
+        { scopeType: "LOCATION", scopeId: "location-b" },
+        { scopeType: "DEPARTMENT", scopeId: "department-b" },
+      ]),
+    ).toBe(false);
+    expect(
+      evidenceSourceMatchesActiveScope(source, [
+        { scopeType: "COMPANY", scopeId: "company-a" },
+      ]),
+    ).toBe(false);
+    expect(
+      evidenceSourceMatchesActiveScope(
+        {
+          ...source,
+          brandId: null,
+          locationId: null,
+          departmentId: null,
+        },
+        [],
+      ),
+    ).toBe(true);
+  });
+
   it("treats a reference-only evidence record as demo-complete but upload-deferred", () => {
     expect(
       resolveEvidenceReadiness({
@@ -193,7 +240,7 @@ describe("attachment evidence foundation", () => {
       "createControlledEvidenceAttachmentMetadataLink",
     );
     expect(linkSlice).toContain("requireSessionContext");
-    expect(linkSlice).toContain("assertPermissionAllowed");
+    expect(linkSlice).toContain("authorizeControlledEvidenceSourceAction");
     expect(linkSlice).toContain("assertCompanySession");
     expect(linkSlice).toContain("prisma.attachment.findFirst");
     expect(linkSlice).toContain('status: "ACTIVE"');
@@ -239,7 +286,7 @@ describe("attachment evidence foundation", () => {
     );
     const downloadSlice = functionSlice(
       serviceSource,
-      "downloadControlledEvidenceAttachment",
+      "downloadControlledEvidenceAttachmentForSession",
     );
 
     expect(serviceSource).toContain("privateAttachmentStorageProvider");
@@ -258,8 +305,9 @@ describe("attachment evidence foundation", () => {
     expect(uploadSlice).toContain("retentionPolicy");
     expect(uploadSlice).toContain("recoveryPolicy");
     expect(uploadSlice).toContain("noSourceMutation");
-    expect(downloadSlice).toContain("assertAnyPermissionAllowed");
+    expect(downloadSlice).toContain("requireAnyPermission");
     expect(downloadSlice).toContain("requiredViewPermissionsForSourceType");
+    expect(downloadSlice).toContain("assertControlledEvidenceSourceAccess");
     expect(downloadSlice).toContain("readFile");
     expect(downloadSlice).toContain(
       'eventType: "controlled_evidence_attachment.downloaded"',

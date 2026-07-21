@@ -15,6 +15,12 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     group: "Administration",
     sensitive: true
   },
+  [permissions.tenantRoleAdminister]: {
+    label: "Administer tenant-wide roles",
+    description: "Grant, review, change, or revoke roles whose permissions apply across every company scope assigned to a user.",
+    group: "Administration",
+    sensitive: true
+  },
   [permissions.purchaseRequestCreate]: {
     label: "Create purchase requests",
     description: "Create draft requests for needed goods or services.",

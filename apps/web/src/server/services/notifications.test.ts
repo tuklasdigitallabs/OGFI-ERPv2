@@ -207,7 +207,8 @@ describe("notification foundation wiring", () => {
 
     expect(scanSource).toContain("runRestaurantOpsExceptionReminderScan");
     expect(scanSource).toContain("buildRestaurantOpsReminderInputs");
-    expect(scanSource).toContain("phase2NotificationAccess(session)");
+    expect(scanSource).toContain("getGrantedPermissionCodes(session)");
+    expect(scanSource).toContain("phase2NotificationAccess(permissionCodes)");
     expect(scanSource).toContain("throw new Error(\"PERMISSION_DENIED\")");
     expect(scanSource).toContain("getFoodCostAnalysisDashboard(session)");
     expect(scanSource).toContain("getBranchOperationsDashboard(session)");
@@ -393,7 +394,8 @@ describe("notification foundation wiring", () => {
     );
 
     expect(approvals).toContain("runApprovalReminderScan");
-    expect(scanSource).toContain("canUseApprovals(session.permissionCodes)");
+    expect(scanSource).toContain("getGrantedPermissionCodes(session)");
+    expect(scanSource).toContain("canUseApprovals(permissionCodes)");
     expect(scanSource).toContain("throw new Error(\"PERMISSION_DENIED\")");
     expect(scanSource).toContain("listPendingApprovals(session)");
     expect(scanSource).toContain("recordWorkflowNotifications(tx");
