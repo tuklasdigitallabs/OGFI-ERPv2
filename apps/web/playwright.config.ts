@@ -29,15 +29,11 @@ export default defineConfig({
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
   webServer: {
-    command: isCi
-      ? "pnpm --filter @ogfi/web exec next start -H 127.0.0.1 -p 3100"
-      : "pnpm --filter @ogfi/web exec next dev -H 127.0.0.1 -p 3100",
+    command: "pnpm --filter @ogfi/web exec next dev -H 127.0.0.1 -p 3100",
     env: {
       ...process.env,
-      NODE_ENV: isCi ? "production" : process.env.NODE_ENV,
-      NEXT_DIST_DIR: isCi
-        ? (process.env.NEXT_DIST_DIR ?? ".next-ogfi")
-        : ".next-e2e",
+      NODE_ENV: "development",
+      NEXT_DIST_DIR: ".next-e2e",
     },
     url: "http://127.0.0.1:3100",
     timeout: 120_000,

@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-21 — Authorization and Production-Authenticated E2E Gate Decision
+
+- Added `DEC-0044`, allowing SPF-004 to close from exact-SHA production-build, database authorization, manifest, and isolated development-fixture desktop/mobile E2E evidence.
+- Retained authenticated production-mode `next start` E2E as an explicit SPF-001/SPF-009 production-release blocker requiring ephemeral password/MFA fixtures and a loopback HTTPS proxy.
+- Rejected production demo-authentication bypass and prohibited weakening trusted-origin, secure-cookie, session, MFA, or live-authorization validation for automation.
+
 ## 2026-07-21 — Tenant Role Administration Authorization Decision
 
 - Added `DEC-0043` confirming that `UserRoleAssignment` remains tenant-global while all direct role administration requires `core.tenant_role_administer`.

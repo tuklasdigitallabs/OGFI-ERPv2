@@ -100,4 +100,4 @@ The existing verification path did not provide sufficient production-baseline pr
 
 ## Supersession
 
-This decision is not superseded. A later decision that changes the required production-baseline checks or hosted enforcement must explicitly supersede this record without rewriting historical release evidence.
+`DEC-0044` partially supersedes this record only by allowing SPF-004 authorization closure to use exact-SHA production-build evidence plus database authorization gates, manifest verification, and isolated development-mode fixture browser E2E. Production-mode authenticated `next start` E2E remains mandatory for SPF-001, SPF-009, and production release; every other exact-SHA, hosted-evidence, database, artifact, and branch-protection control in this record remains effective.
