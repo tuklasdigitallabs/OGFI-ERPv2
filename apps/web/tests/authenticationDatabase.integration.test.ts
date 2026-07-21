@@ -15,6 +15,10 @@ import {
   recordMfaFailure,
   rotateSessionInTransaction,
 } from "../src/server/services/authentication";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const describeAuthenticationDatabase =
   process.env.AUTH_DATABASE_INTEGRATION === "yes" ? describe : describe.skip;
@@ -29,7 +33,16 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
   const userB = randomUUID();
 
   beforeAll(async () => {
+    const expectedDatabase =
+      assertDisposableAuthorizationDatabaseConfigured(process.env);
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
+    const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
+      SELECT current_database() AS "currentDatabase"
+    `;
+    if (identity[0]?.currentDatabase !== expectedDatabase) {
+      throw new Error("AUTHORIZATION_DATABASE_IDENTITY_MISMATCH");
+    }
     await prisma.tenant.createMany({
       data: [
         { id: tenantA, name: `Auth tenant A ${suffix}`, loginCode: `auth-a-${suffix}` },
@@ -73,34 +86,6 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
   });
 
   afterAll(async () => {
-    const sessions = await prisma.authSession.findMany({
-      where: { userId: { in: [userA, userB] } },
-      select: { id: true },
-    });
-    const sessionIds = sessions.map(({ id }) => id);
-    await prisma.authLoginAttempt.deleteMany({
-      where: { sessionId: { in: sessionIds } },
-    });
-    await prisma.auditEvent.deleteMany({
-      where: {
-        OR: [
-          { entityType: "AuthSession", entityId: { in: sessionIds } },
-          { entityType: "MfaAuthenticator", tenantId: tenantA },
-        ],
-      },
-    });
-    await prisma.authSession.deleteMany({ where: { userId: { in: [userA, userB] } } });
-    await prisma.mfaAuthenticator.deleteMany({ where: { userId: { in: [userA, userB] } } });
-    await prisma.authActivationToken.deleteMany({
-      where: { targetUserId: { in: [userA, userB] } },
-    });
-    await prisma.authRecoveryRequest.deleteMany({
-      where: { targetUserId: { in: [userA, userB] } },
-    });
-    await prisma.authIdentity.deleteMany({ where: { userId: { in: [userA, userB] } } });
-    await prisma.user.deleteMany({ where: { id: { in: [userA, userB] } } });
-    await prisma.company.deleteMany({ where: { id: { in: [companyA, companyB] } } });
-    await prisma.tenant.deleteMany({ where: { id: { in: [tenantA, tenantB] } } });
     await prisma.$disconnect();
   });
 
@@ -428,7 +413,6 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
     const nonAdmin = randomUUID();
     const roleId = randomUUID();
     let permissionId = randomUUID();
-    let createdPermission = false;
     const loginCode = `bootstrap-${suffix}`;
     const outputFile = path.join(tmpdir(), `ogfi-bootstrap-${randomUUID()}.txt`);
     const secondOutputFile = path.join(tmpdir(), `ogfi-bootstrap-${randomUUID()}.txt`);
@@ -491,7 +475,6 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
             action: "administer",
           },
         });
-        createdPermission = true;
       }
       await prisma.rolePermission.create({
         data: { roleId, permissionId },
@@ -548,29 +531,6 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
     } finally {
       await unlink(outputFile).catch(() => undefined);
       await unlink(secondOutputFile).catch(() => undefined);
-      await prisma.authActivationToken.deleteMany({
-        where: { tenantId: bootstrapTenant },
-      });
-      await prisma.authBootstrapState.deleteMany({
-        where: { tenantId: bootstrapTenant },
-      });
-      await prisma.auditEvent.deleteMany({ where: { tenantId: bootstrapTenant } });
-      await prisma.userScopeAssignment.deleteMany({
-        where: { userId: { in: [bootstrapUser, secondAdmin, nonAdmin] } },
-      });
-      await prisma.userRoleAssignment.deleteMany({
-        where: { userId: { in: [bootstrapUser, secondAdmin, nonAdmin] } },
-      });
-      await prisma.rolePermission.deleteMany({ where: { roleId } });
-      if (createdPermission) {
-        await prisma.permission.deleteMany({ where: { id: permissionId } });
-      }
-      await prisma.role.deleteMany({ where: { id: roleId } });
-      await prisma.user.deleteMany({
-        where: { id: { in: [bootstrapUser, secondAdmin, nonAdmin] } },
-      });
-      await prisma.company.deleteMany({ where: { id: bootstrapCompany } });
-      await prisma.tenant.deleteMany({ where: { id: bootstrapTenant } });
     }
   });
 });

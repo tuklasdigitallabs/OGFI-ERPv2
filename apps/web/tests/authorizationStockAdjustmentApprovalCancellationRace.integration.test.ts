@@ -5,7 +5,10 @@ import { permissions } from "../src/server/services/authorization";
 import type { SessionContext } from "../src/server/services/context";
 import { approveStockAdjustment } from "../src/server/services/approvals";
 import { cancelStockAdjustment } from "../src/server/services/stockAdjustments";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const mockContext = vi.hoisted(() => ({
   requireSessionContext: vi.fn()
@@ -96,6 +99,7 @@ describe(`stock-adjustment final approval versus cancellation (${expectedDatabas
   beforeAll(async () => {
     process.env.AUTH_MODE = "local";
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;

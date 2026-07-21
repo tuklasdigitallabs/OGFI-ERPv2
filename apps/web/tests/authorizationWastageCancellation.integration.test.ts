@@ -3,7 +3,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@ogfi/database";
 import { permissions } from "../src/server/services/authorization";
 import { cancelWastageReport } from "../src/server/services/wastage";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const mockContext = vi.hoisted(() => ({
   requireSessionContext: vi.fn()
@@ -60,6 +63,7 @@ describe(`wastage cancellation database concurrency (${expectedDatabase})`, () =
 
   beforeAll(async () => {
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     mockContext.requireSessionContext.mockResolvedValue(session);
     await prisma.wastageReport.create({
       data: {

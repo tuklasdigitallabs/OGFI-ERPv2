@@ -3,7 +3,7 @@
 **Audience / required role:** All users  
 **Applies to:** Source records, approvals, inventory transactions, project tracker tasks, evidence references, and audit history  
 **Related phase/module:** Phase I and Phase 1.5 / Controls and Traceability  
-**Last verified against:** implemented status fields, audit events, approval decisions, comments, evidence-reference fields, and attachment metadata boundaries
+**Last verified against:** implemented status fields, approval decisions, comments, evidence-reference fields, attachment metadata boundaries, and database append-only guards for protected history; production activation remains subject to the release gate
 
 ## Purpose
 
@@ -41,6 +41,14 @@ Audit history usually includes:
 - Status before and after
 - Remarks or reason where applicable
 
+Three protected types of history are append-only:
+
+- `AuditEvent` records important actions and decisions on ERP records.
+- `ProjectActivityEvent` records project and task activity.
+- `InventoryMovement` records posted stock increases, decreases, and reversals in the inventory ledger.
+
+Append-only means an existing history row cannot be edited, deleted, or cleared in bulk. If information is wrong, an authorized user must use the applicable correction or reversal workflow. The ERP then adds new history while retaining the original entry. The available correction path depends on the record type and its current status.
+
 ## Attachments And Evidence
 
 Current operational workflows often capture evidence references, such as photo IDs, supplier email references, delivery receipt references, or document numbers. Some project features use attachment metadata links. Access to evidence follows the same source-record and project visibility rules.
@@ -50,6 +58,9 @@ Current operational workflows often capture evidence references, such as photo I
 - Do not treat comments as approvals.
 - Do not treat a task status as an operational transaction status.
 - Do not edit posted records directly; use approved reversal or correction workflows.
+- Do not ask an administrator to delete or rewrite audit, project-activity, or inventory-movement history to hide or correct an error.
+- An inventory reversal creates a linked movement; it does not overwrite or remove the original movement. The applicable workflow may require permission, reason, evidence, and approval.
+- A correction does not erase the earlier action. Review the complete sequence of original and corrective entries when investigating a record.
 - Do not share attachment links or exported evidence with unauthorized users.
 - Missing status changes should be investigated through the source record, not recreated in another module.
 

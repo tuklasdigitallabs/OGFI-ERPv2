@@ -1,0 +1,36 @@
+[Unit]
+Description=OGFI ERP controlled PostgreSQL migration and role reconciliation (%i)
+Documentation=file:/opt/ogfi/current/infra/systemd/database/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ogfi-deploy
+Group=ogfi-deploy
+WorkingDirectory=/opt/ogfi/releases/%i
+EnvironmentFile=/etc/ogfi/database/role-contract.env
+LoadCredential=migration_database_url:/etc/ogfi/secrets/database-migrator-url
+LoadCredential=runtime_database_url:/etc/ogfi/secrets/database-runtime-url
+Environment=MIGRATION_DATABASE_URL_FILE=%d/migration_database_url
+Environment=RUNTIME_DATABASE_URL_FILE=%d/runtime_database_url
+Environment=OGFI_REQUIRE_ROOT_OWNED_DATABASE_CREDENTIALS=yes
+UMask=0077
+TimeoutStartSec=30min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/ogfi/releases/%i/release-evidence
+RestrictSUIDSGID=true
+LockPersonality=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+ExecStart=/usr/bin/node /opt/ogfi/releases/%i/scripts/db-migrate-controlled.mjs
+
+# Install with a narrowly scoped sudo rule that permits the deploy automation to
+# start only a reviewed, positively validated release instance.

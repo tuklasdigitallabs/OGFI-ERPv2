@@ -5,7 +5,10 @@ import type { SessionContext } from "../src/server/services/context";
 import type * as WorkforceService from "../src/server/services/workforce";
 import type { getConfiguredContext as GetConfiguredContext } from "../src/server/services/context";
 import type { permissions as PermissionCatalog } from "../src/server/services/authorization";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(process.env);
 if (!process.env.DATABASE_URL) {
@@ -126,6 +129,7 @@ describe("database-backed workforce authorization boundaries", () => {
     ({ getConfiguredContext } = await import("../src/server/services/context"));
 
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;
@@ -615,28 +619,7 @@ describe("database-backed workforce authorization boundaries", () => {
   });
 
   afterAll(async () => {
-    if (!prisma) return;
-    await prisma.notification.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.auditEvent.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.attendanceImportLine.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.attendanceImportBatch.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.workforceScheduleLine.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.workforceSchedule.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.employeeLeaveRequest.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.employeeOvertimeRecord.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.employeeAssignment.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.employee.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.userScopeAssignment.deleteMany({ where: { userId: ids.actorUserId } });
-    await prisma.userRoleAssignment.deleteMany({ where: { userId: ids.actorUserId } });
-    await prisma.rolePermission.deleteMany({ where: { roleId: ids.roleId } });
-    await prisma.role.deleteMany({ where: { id: ids.roleId } });
-    await prisma.user.deleteMany({ where: { id: { in: [ids.actorUserId, ids.ownerUserId] } } });
-    await prisma.location.deleteMany({ where: { id: { in: [ids.locationId, ids.adjacentLocationId] } } });
-    await prisma.department.deleteMany({ where: { id: ids.foreignDepartmentId } });
-    await prisma.brand.deleteMany({ where: { id: { in: [ids.brandId, ids.adjacentBrandId] } } });
-    await prisma.company.deleteMany({ where: { id: { in: [ids.companyId, ids.adjacentCompanyId] } } });
-    await prisma.tenant.deleteMany({ where: { id: ids.tenantId } });
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
   });
 
   it("AUTHZ-WORKFORCE-LIVE-PERMISSION-REVOKED-ALL-BOUNDARIES-NO-MUTATION", async () => {

@@ -47,6 +47,7 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_release?schema=public
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_release?schema=public
+      DISPOSABLE_DATABASE_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       BACKUP_FILE: release-evidence/backups/ogfi-erp-pre-migration-rehearsal.dump
       RELEASE_EVIDENCE_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
       RELEASE_VERSION: ${{ inputs.release_version }}

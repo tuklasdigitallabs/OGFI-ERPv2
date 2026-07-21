@@ -7,7 +7,10 @@ import {
   clearAuthenticatedRequest,
   configureAuthenticatedRequest,
 } from "./authenticatedRequestHarness";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(process.env);
 const routeModules = import.meta.glob("/src/app/\\(app\\)/**/route.ts", {
@@ -32,6 +35,7 @@ describe("protected route authorization matrix", () => {
   beforeAll(async () => {
     ({ prisma } = await import("@ogfi/database"));
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;
@@ -63,18 +67,8 @@ describe("protected route authorization matrix", () => {
 
   afterAll(async () => {
     clearAuthenticatedRequest();
-    if (!prisma) return;
-    await prisma.auditEvent.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.authSession.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.userScopeAssignment.deleteMany({ where: { userId: ids.user } });
-    await prisma.userRoleAssignment.deleteMany({ where: { userId: ids.user } });
-    await prisma.role.deleteMany({ where: { id: ids.role } });
-    await prisma.user.deleteMany({ where: { id: ids.user } });
-    await prisma.location.deleteMany({ where: { id: ids.location } });
-    await prisma.company.deleteMany({ where: { id: ids.company } });
-    await prisma.tenant.deleteMany({ where: { id: ids.tenant } });
-    await prisma.$disconnect();
-  }, 120_000);
+    if (prisma) await prisma.$disconnect();
+  });
 
   it("AUTHZ-ROUTES-LIVE-PERMISSION-DENIAL-ALL-PROTECTED-GETS", async () => {
     const manifestRoutePaths = buildAuthorizationSurfaceManifest()

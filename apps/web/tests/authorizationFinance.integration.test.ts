@@ -12,7 +12,10 @@ import {
   clearAuthenticatedRequest,
   configureAuthenticatedRequest,
 } from "./authenticatedRequestHarness";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(
   process.env,
@@ -270,6 +273,7 @@ describe("finance authorization boundaries against PostgreSQL", () => {
       await import("../src/server/services/pettyCash"));
 
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;
@@ -551,82 +555,8 @@ describe("finance authorization boundaries against PostgreSQL", () => {
   });
 
   afterAll(async () => {
-    if (!prisma) {
-      return;
-    }
     clearAuthenticatedRequest();
-    await prisma.authSession.deleteMany({ where: { id: ids.authSessionId } });
-    await prisma.controlledEvidenceAttachment.deleteMany({
-      where: { id: ids.controlledEvidenceAttachmentId },
-    });
-    await prisma.attachment.deleteMany({
-      where: { id: ids.evidenceAttachmentId },
-    });
-    await prisma.rolePermission.deleteMany({ where: { roleId: ids.roleId } });
-    await prisma.userScopeAssignment.deleteMany({
-      where: { userId: ids.userId },
-    });
-    await prisma.userRoleAssignment.deleteMany({
-      where: { userId: ids.userId },
-    });
-    await prisma.financeJournalLine.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.financeJournal.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.paymentRequest.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.pettyCashLiquidation.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.pettyCashRequest.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.pettyCashFund.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.cashAdvanceLiquidation.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.cashAdvanceRequest.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.expenseRequest.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.supplier.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.budget.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.accountingPeriod.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.fiscalYear.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.chartOfAccount.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.financeAccountClass.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.project.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.department.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.location.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.brand.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.auditEvent.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.role.deleteMany({ where: { id: ids.roleId } });
-    await prisma.user.deleteMany({
-      where: { id: { in: [ids.userId, ids.projectOwnerUserId] } },
-    });
-    await prisma.company.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.tenant.deleteMany({ where: { id: ids.tenantId } });
-    if (createdPermissionIds.length > 0) {
-      await prisma.permission.deleteMany({
-        where: { id: { in: createdPermissionIds } },
-      });
-    }
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
   });
 
   it("FIN-AUTHZ-PERM-001 rejects stale client permission claims before finance mutation", async () => {
@@ -976,14 +906,7 @@ describe("finance authorization boundaries against PostgreSQL", () => {
     });
     const after = await mutationSnapshot();
     expect(after.auditEvents).toBe(before.auditEvents + 1);
-    await prisma.auditEvent.deleteMany({
-      where: {
-        tenantId: ids.tenantId,
-        actorUserId: ids.userId,
-        eventType: "report.export_started",
-      },
-    });
-    expect(await mutationSnapshot()).toEqual(before);
+    expect({ ...after, auditEvents: before.auditEvents }).toEqual(before);
   });
 
   it("FIN-AUTHZ-TOCTOU-001 serializes budget and journal creation against concurrent authority revocation", async () => {

@@ -10,7 +10,10 @@ import type {
 } from "../src/server/services/authenticationAdmin";
 import type { archiveNotification as archiveNotificationType } from "../src/server/services/notifications";
 import type { buildReleaseReadinessExportRows as buildReleaseReadinessExportRowsType } from "../src/server/services/releaseReadiness";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 import {
   authenticationSessionTokenHash,
   clearAuthenticatedRequest,
@@ -232,6 +235,7 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       await import("../src/server/services/operationalReasonCodes"));
 
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;
@@ -453,60 +457,8 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
   });
 
   afterAll(async () => {
-    if (!prisma) return;
     clearAuthenticatedRequest();
-    await prisma.auditEvent.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.authRecoveryRequest.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.breakGlassAccessGrant.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.privilegedMfaEnrollment.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.sensitiveRoleRequest.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.highRiskScopeRequest.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.notification.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.companyPolicySetting.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.authActivationToken.deleteMany({
-      where: { tenantId: ids.tenantId },
-    });
-    await prisma.authSession.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.authIdentity.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.userScopeAssignment.deleteMany({
-      where: {
-        userId: { in: [ids.actorUserId, ids.targetUserId, ids.adjacentUserId] },
-      },
-    });
-    await prisma.userRoleAssignment.deleteMany({
-      where: {
-        userId: { in: [ids.actorUserId, ids.targetUserId, ids.adjacentUserId] },
-      },
-    });
-    await prisma.rolePermission.deleteMany({ where: { roleId: ids.roleId } });
-    await prisma.role.deleteMany({
-      where: { id: { in: [ids.roleId, ids.nonSensitiveRoleId] } },
-    });
-    await prisma.user.deleteMany({
-      where: {
-        id: { in: [ids.actorUserId, ids.targetUserId, ids.adjacentUserId] },
-      },
-    });
-    await prisma.location.deleteMany({
-      where: { id: { in: [ids.locationId, ids.adjacentLocationId] } },
-    });
-    await prisma.company.deleteMany({
-      where: { id: { in: [ids.companyId, ids.adjacentCompanyId] } },
-    });
-    await prisma.tenant.deleteMany({ where: { id: ids.tenantId } });
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
   });
 
   it("AUTHZ-ADMIN-LIVE-PERMISSION-REVOKED-DENIES-READ", async () => {
@@ -948,12 +900,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
         ],
         skipDuplicates: true,
       });
-      await prisma.auditEvent.deleteMany({
-        where: {
-          tenantId: ids.tenantId,
-          entityId: { in: [companyInvalidationId, globalInvalidationId] },
-        },
-      });
       await prisma.authSessionInvalidation.deleteMany({
         where: { id: { in: [companyInvalidationId, globalInvalidationId] } },
       });
@@ -1079,9 +1025,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
     } finally {
       vi.doUnmock("../src/server/services/context");
       vi.resetModules();
-      await prisma.auditEvent.deleteMany({
-        where: { tenantId: ids.tenantId, entityId: invalidationId },
-      });
       await prisma.authSessionInvalidation.deleteMany({
         where: { id: invalidationId },
       });
@@ -1093,7 +1036,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       await prisma.userRoleAssignment.deleteMany({
         where: { id: secondAdminRoleAssignmentId },
       });
-      await prisma.user.deleteMany({ where: { id: secondAdminUserId } });
       clearAuthenticatedRequest();
     }
   });
@@ -1659,8 +1601,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       });
       await prisma.rolePermission.deleteMany({ where: { roleId: foreignRoleId } });
       await prisma.role.delete({ where: { id: foreignRoleId } });
-      await prisma.user.delete({ where: { id: foreignUserId } });
-      await prisma.tenant.delete({ where: { id: foreignTenantId } });
     }
   });
 
@@ -1711,7 +1651,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       await prisma.rolePermission.create({
         data: { roleId: ids.roleId, permissionId: tenantRoleAdminPermissionId },
       });
-      await prisma.auditEvent.delete({ where: { id: tenantAuditId } });
     }
   });
 
@@ -2174,15 +2113,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
           sourceRecordId: { in: assignments.map((assignment) => assignment.id) },
         },
       });
-      await prisma.auditEvent.deleteMany({
-        where: { tenantId: ids.tenantId, entityId: roleId },
-      });
-      await prisma.auditEvent.deleteMany({
-        where: {
-          tenantId: ids.tenantId,
-          entityId: { in: assignments.map((assignment) => assignment.id) },
-        },
-      });
       await prisma.userRoleAssignment.deleteMany({ where: { roleId } });
       await prisma.rolePermission.deleteMany({ where: { roleId } });
       await prisma.role.delete({ where: { id: roleId } });
@@ -2324,16 +2254,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       await prisma.authSessionInvalidation.deleteMany({
         where: { sourceRecordId: requestId },
       });
-      await prisma.auditEvent.deleteMany({
-        where: {
-          tenantId: ids.tenantId,
-          OR: [
-            { entityId: requestId },
-            { entityId: roleId },
-            { entityId: { in: assignments.map(({ id }) => id) } },
-          ],
-        },
-      });
       await prisma.userRoleAssignment.deleteMany({ where: { roleId } });
       await prisma.sensitiveRoleRequest.deleteMany({ where: { id: requestId } });
       await prisma.rolePermission.deleteMany({ where: { roleId } });
@@ -2435,12 +2355,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
         }),
       ).toBe(1);
     } finally {
-      await prisma.auditEvent.deleteMany({
-        where: {
-          tenantId: ids.tenantId,
-          entityId: { in: requests.map(({ id }) => id) },
-        },
-      });
       await prisma.sensitiveRoleRequest.deleteMany({
         where: { id: { in: requests.map(({ id }) => id) } },
       });
@@ -2450,7 +2364,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       await prisma.userScopeAssignment.deleteMany({
         where: { id: requestTargetScopeId },
       });
-      await prisma.user.deleteMany({ where: { id: requestTargetUserId } });
       clearAuthenticatedRequest();
     }
   });
@@ -2530,9 +2443,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
           sourceEventType: "user_role_assignment.deactivated",
           sourceRecordId: assignmentId,
         },
-      });
-      await prisma.auditEvent.deleteMany({
-        where: { tenantId: ids.tenantId, entityId: assignmentId },
       });
       await prisma.userRoleAssignment.deleteMany({
         where: { id: assignmentId },
@@ -2627,15 +2537,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
     } finally {
       await prisma.authSessionInvalidation.deleteMany({
         where: { sourceRecordId: requestId },
-      });
-      await prisma.auditEvent.deleteMany({
-        where: {
-          tenantId: ids.tenantId,
-          OR: [
-            { entityId: requestId },
-            { entityId: { in: assignments.map(({ id }) => id) } },
-          ],
-        },
       });
       await prisma.userRoleAssignment.deleteMany({
         where: { id: { in: assignments.map(({ id }) => id) } },

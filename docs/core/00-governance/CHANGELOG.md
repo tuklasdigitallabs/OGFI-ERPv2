@@ -1,5 +1,13 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-22 — DEC-0049 Append-Only History Implementation Checkpoint
+
+- Recorded the local implementation of unconditional PostgreSQL `UPDATE`, `DELETE`, and `TRUNCATE` guards for `AuditEvent`, `ProjectActivityEvent`, and `InventoryMovement`, while preserving normal reads and append-only inserts.
+- Recorded additive/idempotent seed behavior, positively identified disposable demo/database-test lifecycles, and removal of protected-history cleanup assumptions.
+- Recorded the Hostinger-only owner/migrator/runtime role boundary, controlled migration and verification tools, root-owned credential-file pattern, post-restore ownership/grant reconciliation, and runtime mutation/escalation denials. No AWS integration was introduced.
+- Recorded independent `APPROVED_FOR_REHEARSAL` review of the exact append-only migration hash, PostgreSQL 17.10 guard evidence at 17/17, disposable lifecycle at 11/11, database-role tools at 8/8, and eight fail-closed adversarial drift/repair cases with zero leftover per-run roles. Controlled and adversarial identities are bound before mutation, cross-run substitutions are rejected, and the PostgreSQL 17.10 mismatch-rejection rehearsal left zero adversarial roles. Independent review returned GO for the local checkpoint, and the full lint, typecheck, test, build, release-tool, secret-review, migration-review, and diff gates are clean.
+- Kept SPF-006 open and Hostinger production activation at **NO-GO**. Exact hosted lifecycle/reset execution, root-owned credential and systemd isolation, private database networking, populated protected-history/report/export equivalence, isolated restore and role reconciliation, measured RPO/RTO, and final Security/QA/DevOps/Release acceptance remain required.
+
 ## 2026-07-21 — Controlled Evidence Implementation Foundation
 
 - Recorded the implemented SPF-005 foundation: isolated AES-256-GCM evidence broker, private ClamAV streaming, authorized streamed upload/download, quarantine and exact-version release, PostgreSQL idempotency/quota/upload-lease/rate-limit controls, legal-hold backend and admin retention register, recovery staging/verification tools, Hostinger deployment overlay, and authorization coverage.

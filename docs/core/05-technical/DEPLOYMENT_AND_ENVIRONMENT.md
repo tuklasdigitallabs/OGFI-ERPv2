@@ -224,6 +224,14 @@ Production deployment requires:
 - Application must remain compatible with both old and new schema during rolling release when practical.
 - Never roll back an applied migration blindly if it would destroy live transactional data. Prefer forward-fix migrations.
 
+### 5.1 Hosted PostgreSQL role boundary
+
+Staging and production use three distinct PostgreSQL roles: a non-login object owner, a login migrator that may `SET ROLE` only to that owner, and a login runtime role with no memberships or schema/database creation rights. The application receives only `DATABASE_URL` for `ogfi_stg_runtime` or `ogfi_prod_runtime`. Owner, administrator, `DIRECT_DATABASE_URL`, and migrator credentials are prohibited from the application environment.
+
+On Hostinger, keep the migrator and runtime URLs in separate root-owned mode-`0400` files and keep the non-secret role contract separate from the application environment. Run `pnpm db:migrate:controlled`, or the reviewed `ogfi-db-migrate@<release>.service`, for hosted migrations. The wrapper positively identifies the environment and database, verifies distinct credentials and effective roles, runs Prisma migration deployment with a scrubbed child environment, reconciles ownership/grants, and runs `pnpm db:append-only:contract`. Direct hosted `pnpm db:migrate:deploy` is not an approved release operation.
+
+The role SQL under `infra/hostinger/postgres/` is packaging-neutral: it does not decide whether PostgreSQL is a Hostinger host service or a separately approved private container. Before first deployment, a cluster administrator runs the bootstrap and provisions SCRAM passwords out of band. After every restore, the administrator reruns bootstrap ownership and exact-membership adoption, then the migrator reconciles default/table/column/routine privileges and runs the append-only contract before application traffic resumes. Unexpected schemas or objects, unsafe ownership/default ACLs, or any unapproved callable `SECURITY DEFINER` routine are a release **NO-GO**.
+
 ---
 
 ## 6. Backup and recovery baseline
@@ -248,6 +256,7 @@ At least quarterly, restore a production-like backup into a secure non-productio
 - inventory ledger/balances reconcile at a sample level;
 - attachments are accessible only with correct authorization;
 - critical reports run.
+- restored objects are owned by the reviewed non-login owner and runtime remains unable to mutate append-only history.
 
 The repository provides helper commands for evidence capture:
 

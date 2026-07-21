@@ -1,0 +1,516 @@
+import { randomBytes } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import {
+  assertMarkerRow,
+  assertSafeAdminUrl,
+  assertSafeDisposableTarget,
+  buildPsqlEnvironment,
+  buildRuntimeEnvironment,
+  buildSeedRepeatabilityEnvironment,
+  createDisposablePostgresIdentity,
+  quoteIdentifier,
+  quoteLiteral,
+  scrubDatabaseCredentialEnvironment,
+  shouldRunAdversarialRoleContract,
+  shouldRunSeedRepeatability,
+  targetDatabaseUrl,
+} from "./disposable-postgres-lifecycle.mjs";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.resolve(scriptDir, "..");
+const roleSqlDir = path.join(workspaceRoot, "infra", "hostinger", "postgres");
+const separator = process.argv.indexOf("--");
+const suiteName = process.argv[2];
+const command = separator >= 0 ? process.argv.slice(separator + 1) : [];
+if (!suiteName || command.length === 0) {
+  fail("Usage: run-disposable-postgres-tests.mjs <suite> -- <command> [args...]");
+}
+
+const adminUrl = process.env.DISPOSABLE_DATABASE_ADMIN_URL;
+const parsedAdmin = assertSafeAdminUrl(adminUrl);
+const runId =
+  process.env.AUTHORIZATION_TEST_RUN_ID ??
+  process.env.GITHUB_RUN_ID?.concat("-", process.env.GITHUB_RUN_ATTEMPT ?? "1") ??
+  `${suiteName}-${process.pid}`;
+const identity = createDisposablePostgresIdentity(runId);
+const setupUrl = targetDatabaseUrl(adminUrl, identity.databaseName);
+const migratorPassword = randomBytes(32).toString("base64url");
+const migratorUrl = targetDatabaseUrl(adminUrl, identity.databaseName, {
+  username: identity.migratorRole,
+  password: migratorPassword,
+});
+const runtimePassword = randomBytes(32).toString("base64url");
+const runtimeUrl = targetDatabaseUrl(adminUrl, identity.databaseName, {
+  username: identity.runtimeRole,
+  password: runtimePassword,
+});
+assertSafeDisposableTarget({
+  adminUrl,
+  databaseName: identity.databaseName,
+  runtimeUrl,
+  runtimeRole: identity.runtimeRole,
+});
+
+let databaseCreated = false;
+let markerCreated = false;
+let exitCode = 1;
+try {
+  runPsql(adminUrl, `CREATE DATABASE ${quoteIdentifier(identity.databaseName)}`);
+  databaseCreated = true;
+  installMarker(setupUrl, identity);
+  markerCreated = true;
+  installSetupRoles(setupUrl, identity, migratorPassword, runtimePassword);
+
+  runCommand(
+    pnpmExecutable(),
+    ["db:migrate:deploy"],
+    controlledSetupEnvironment(migratorUrl, identity),
+  );
+  runCommand(
+    pnpmExecutable(),
+    ["db:seed"],
+    controlledSetupEnvironment(migratorUrl, identity),
+  );
+  reconcileRoleContract(migratorUrl, identity);
+  verifyRoleContract(migratorUrl, identity, "owner");
+  verifyRoleContract(runtimeUrl, identity, "runtime");
+  runGuardContract(migratorUrl, identity);
+  verifyRuntimeDestructiveOperationsDenied(runtimeUrl);
+  verifyRuntimeMarkerBoundary(runtimeUrl, identity);
+  verifyMarker(setupUrl, identity);
+  if (shouldRunAdversarialRoleContract(suiteName)) {
+    runAdversarialRoleContract(
+      setupUrl,
+      migratorUrl,
+      runtimeUrl,
+      identity,
+      migratorPassword,
+      runtimePassword,
+    );
+  }
+  if (shouldRunSeedRepeatability(suiteName)) {
+    runSeedRepeatability(runtimeUrl, identity);
+  }
+
+  const childExecutable = command[0] === "pnpm" ? pnpmExecutable() : command[0];
+  const child = spawnSync(childExecutable, command.slice(1), {
+    cwd: workspaceRoot,
+    env: buildRuntimeEnvironment(process.env, runtimeUrl, identity, adminUrl),
+    stdio: "inherit",
+  });
+  if (child.error) throw child.error;
+  exitCode = child.status ?? 1;
+} finally {
+  if (databaseCreated) {
+    if (!markerCreated) {
+      console.error(`Refusing unverified teardown of ${identity.databaseName}.`);
+    } else {
+      verifyMarker(setupUrl, identity);
+      runPsql(
+        adminUrl,
+        `DROP DATABASE ${quoteIdentifier(identity.databaseName)} WITH (FORCE)`,
+      );
+      dropRoles(adminUrl, identity);
+    }
+  }
+}
+process.exitCode = exitCode;
+
+function installMarker(databaseUrl, marker) {
+  runPsql(
+    databaseUrl,
+    `
+      CREATE SCHEMA ogfi_disposable_control;
+      REVOKE ALL ON SCHEMA ogfi_disposable_control FROM PUBLIC;
+      CREATE TABLE ogfi_disposable_control.database_identity (
+        singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+        database_name text NOT NULL,
+        run_id text NOT NULL,
+        nonce_sha256 char(64) NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT database_identity_nonce_sha256 CHECK (nonce_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      REVOKE ALL ON ogfi_disposable_control.database_identity FROM PUBLIC;
+      INSERT INTO ogfi_disposable_control.database_identity
+        (singleton, database_name, run_id, nonce_sha256)
+      VALUES (
+        true,
+        ${quoteLiteral(marker.databaseName)},
+        ${quoteLiteral(marker.runId)},
+        ${quoteLiteral(marker.nonceSha256)}
+      );
+    `,
+  );
+}
+
+function installSetupRoles(targetUrl, marker, migratorPassword, runtimePassword) {
+  runPsqlFile(targetUrl, path.join(roleSqlDir, "bootstrap-roles.sql"), {
+    contract_scope: "disposable",
+    app_environment: "test",
+    database_name: marker.databaseName,
+    owner_role: marker.ownerRole,
+    migrator_role: marker.migratorRole,
+    runtime_role: marker.runtimeRole,
+  });
+  runPsql(
+    targetUrl,
+    `
+      ALTER ROLE ${quoteIdentifier(marker.migratorRole)} PASSWORD ${quoteLiteral(migratorPassword)};
+      ALTER ROLE ${quoteIdentifier(marker.runtimeRole)} PASSWORD ${quoteLiteral(runtimePassword)};
+      CREATE OR REPLACE FUNCTION ogfi_disposable_control.verify_database_identity()
+      RETURNS TABLE (database_name text, run_id text, nonce_sha256 text)
+      LANGUAGE sql
+      SECURITY DEFINER
+      STABLE
+      SET search_path = pg_catalog
+      ROWS 1
+      AS $marker$
+        SELECT identity.database_name, identity.run_id, identity.nonce_sha256::text
+        FROM ogfi_disposable_control.database_identity AS identity
+        WHERE identity.singleton = true
+      $marker$;
+      GRANT CREATE ON SCHEMA ogfi_disposable_control
+        TO ${quoteIdentifier(marker.ownerRole)};
+      ALTER FUNCTION ogfi_disposable_control.verify_database_identity()
+        OWNER TO ${quoteIdentifier(marker.ownerRole)};
+      REVOKE CREATE ON SCHEMA ogfi_disposable_control
+        FROM ${quoteIdentifier(marker.ownerRole)};
+      REVOKE ALL ON FUNCTION ogfi_disposable_control.verify_database_identity() FROM PUBLIC;
+      GRANT EXECUTE ON FUNCTION ogfi_disposable_control.verify_database_identity()
+        TO ${quoteIdentifier(marker.runtimeRole)};
+      GRANT USAGE ON SCHEMA ogfi_disposable_control
+        TO ${quoteIdentifier(marker.ownerRole)}, ${quoteIdentifier(marker.runtimeRole)};
+      GRANT SELECT ON ogfi_disposable_control.database_identity
+        TO ${quoteIdentifier(marker.ownerRole)};
+      REVOKE ALL
+        ON ogfi_disposable_control.database_identity
+        FROM ${quoteIdentifier(marker.runtimeRole)};
+    `,
+  );
+}
+
+function reconcileRoleContract(migratorDatabaseUrl, marker) {
+  runPsqlFile(
+    migratorDatabaseUrl,
+    path.join(roleSqlDir, "reconcile-ownership-and-grants.sql"),
+    roleVariables(marker),
+  );
+}
+
+function verifyRoleContract(databaseUrl, marker, verificationMode) {
+  runPsqlFile(databaseUrl, path.join(roleSqlDir, "verify-role-contract.sql"), {
+    verification_mode: verificationMode,
+    ...roleVariables(marker),
+  });
+}
+
+function roleVariables(marker) {
+  return {
+    database_name: marker.databaseName,
+    owner_role: marker.ownerRole,
+    migrator_role: marker.migratorRole,
+    runtime_role: marker.runtimeRole,
+  };
+}
+
+function runGuardContract(migratorDatabaseUrl, marker) {
+  runCommand(
+    pnpmExecutable(),
+    [
+      "--filter",
+      "@ogfi/database",
+      "exec",
+      "vitest",
+      "run",
+      "src/appendOnlyHistory.integration.test.ts",
+    ],
+    {
+      ...controlledSetupEnvironment(migratorDatabaseUrl, marker),
+      APPEND_ONLY_GUARD_CONTRACT: "yes",
+      OGFI_APPEND_ONLY_EXPECTED_SESSION_USER: marker.migratorRole,
+      OGFI_APPEND_ONLY_EXPECTED_CURRENT_USER: marker.ownerRole,
+    },
+  );
+}
+
+function verifyRuntimeDestructiveOperationsDenied(runtimeDatabaseUrl) {
+  for (const table of ["AuditEvent", "ProjectActivityEvent", "InventoryMovement"]) {
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `UPDATE public.${quoteIdentifier(table)} SET id = id WHERE false`,
+      "42501",
+    );
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `DELETE FROM public.${quoteIdentifier(table)} WHERE false`,
+      "42501",
+    );
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `TRUNCATE TABLE public.${quoteIdentifier(table)} CASCADE`,
+      "42501",
+    );
+  }
+}
+
+function verifyRuntimeMarkerBoundary(runtimeDatabaseUrl, expected) {
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    "SELECT * FROM ogfi_disposable_control.database_identity",
+    "42501",
+  );
+  const output = runPsql(
+    runtimeDatabaseUrl,
+    `SELECT database_name || '|' || run_id || '|' || nonce_sha256
+       FROM ogfi_disposable_control.verify_database_identity()`,
+  ).trim();
+  const [databaseName, runId, nonceSha256, extra] = output.split("|");
+  if (extra !== undefined) throw new Error("DISPOSABLE_DATABASE_MARKER_MALFORMED");
+  assertMarkerRow({ databaseName, runId, nonceSha256 }, expected);
+}
+
+function runSeedRepeatability(runtimeDatabaseUrl, marker) {
+  runCommand(
+    pnpmExecutable(),
+    [
+      "--filter",
+      "@ogfi/database",
+      "exec",
+      "vitest",
+      "run",
+      "src/seed-repeatability.integration.test.ts",
+    ],
+    buildSeedRepeatabilityEnvironment(
+      process.env,
+      runtimeDatabaseUrl,
+      marker,
+      adminUrl,
+    ),
+  );
+}
+
+const adversarialCases = [
+  ["security_definer", "Runtime or PUBLIC can execute a non-extension public routine", "reconcile"],
+  ["column_acl", "PUBLIC or runtime retains a column ACL on AuditEvent", "reconcile"],
+  ["owner_membership", "Owner or runtime role membership closure is not empty", "bootstrap"],
+  ["migrator_membership", "Migrator membership must be exactly owner", "bootstrap"],
+  ["runtime_membership", "Owner or runtime role membership closure is not empty", "bootstrap"],
+  ["wrong_ownership", "A supported public object is not owned by the reviewed owner", "bootstrap"],
+  ["default_privilege", "Owner default privileges contain an unsafe", "reconcile"],
+  ["unexpected_schema", "Unexpected application schema exists", "admin-cleanup"],
+];
+
+function runAdversarialRoleContract(
+  adminTargetUrl,
+  migratorDatabaseUrl,
+  runtimeDatabaseUrl,
+  marker,
+  migratorPassword,
+  runtimePassword,
+) {
+  for (const [driftCase, expectedDiagnostic, repairPath] of adversarialCases) {
+    let cleanupCompleted = false;
+    try {
+      applyAdversarialFixture(adminTargetUrl, marker, "install", driftCase);
+      expectRoleVerifierFailure(
+        migratorDatabaseUrl,
+        marker,
+        expectedDiagnostic,
+        driftCase,
+      );
+
+      if (repairPath === "bootstrap") {
+        installSetupRoles(
+          adminTargetUrl,
+          marker,
+          migratorPassword,
+          runtimePassword,
+        );
+        reconcileRoleContract(migratorDatabaseUrl, marker);
+      } else if (repairPath === "reconcile") {
+        reconcileRoleContract(migratorDatabaseUrl, marker);
+      } else {
+        applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
+      }
+
+      verifyRoleContract(migratorDatabaseUrl, marker, "owner");
+      verifyRoleContract(runtimeDatabaseUrl, marker, "runtime");
+      applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
+      applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
+      cleanupCompleted = true;
+      verifyRoleContract(migratorDatabaseUrl, marker, "owner");
+      verifyRoleContract(runtimeDatabaseUrl, marker, "runtime");
+      console.log(`ADVERSARIAL_ROLE_CONTRACT_PASS | ${driftCase} | ${repairPath}`);
+    } finally {
+      if (!cleanupCompleted) {
+        try {
+          applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
+          applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
+        } catch (error) {
+          console.error(
+            `Adversarial cleanup failed for ${driftCase}: ${error instanceof Error ? error.message : error}`,
+          );
+        }
+      }
+    }
+  }
+}
+
+function applyAdversarialFixture(databaseUrl, marker, fixtureAction, driftCase) {
+  runPsqlFile(
+    databaseUrl,
+    path.join(roleSqlDir, "adversarial-role-drift.sql"),
+    {
+      fixture_action: fixtureAction,
+      drift_case: driftCase,
+      adversarial_role: marker.adversarialRole,
+      ...roleVariables(marker),
+    },
+  );
+}
+
+function expectRoleVerifierFailure(
+  databaseUrl,
+  marker,
+  expectedDiagnostic,
+  driftCase,
+) {
+  const result = executePsqlFile(
+    databaseUrl,
+    path.join(roleSqlDir, "verify-role-contract.sql"),
+    {
+      verification_mode: "owner",
+      ...roleVariables(marker),
+    },
+  );
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  if (result.error) throw result.error;
+  if (result.status === 0 || !output.includes(expectedDiagnostic)) {
+    throw new Error(
+      `ADVERSARIAL_ROLE_CONTRACT_EXPECTED_FAILURE_MISSING:${driftCase}:${expectedDiagnostic}`,
+    );
+  }
+}
+
+function dropRoles(adminDatabaseUrl, marker) {
+  runPsql(
+    adminDatabaseUrl,
+    `DROP ROLE IF EXISTS ${quoteIdentifier(marker.runtimeRole)}, ${quoteIdentifier(marker.migratorRole)}, ${quoteIdentifier(marker.ownerRole)}, ${quoteIdentifier(marker.adversarialRole)}`,
+  );
+}
+
+function verifyMarker(databaseUrl, expected) {
+  const output = runPsql(
+    databaseUrl,
+    `SELECT database_name || '|' || run_id || '|' || nonce_sha256
+       FROM ogfi_disposable_control.database_identity
+      WHERE singleton = true`,
+  ).trim();
+  const [databaseName, runId, nonceSha256, extra] = output.split("|");
+  if (extra !== undefined) throw new Error("DISPOSABLE_DATABASE_MARKER_MALFORMED");
+  assertMarkerRow({ databaseName, runId, nonceSha256 }, expected);
+}
+
+function controlledSetupEnvironment(databaseUrl, marker) {
+  return {
+    ...scrubDatabaseCredentialEnvironment(process.env),
+    DATABASE_URL: databaseUrl,
+    DIRECT_DATABASE_URL: databaseUrl,
+    DEMO_RESET_DATA: "false",
+    OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME: marker.databaseName,
+    OGFI_DISPOSABLE_DATABASE_RUN_ID: marker.runId,
+    OGFI_DISPOSABLE_DATABASE_NONCE_SHA256: marker.nonceSha256,
+  };
+}
+
+function pnpmExecutable() {
+  return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+}
+
+function runPsql(databaseUrl, sql) {
+  const psql = process.env.PSQL_BIN ?? "psql";
+  const result = spawnSync(
+    psql,
+    ["-X", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
+    {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      env: buildPsqlEnvironment(process.env, databaseUrl),
+    },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(result.stderr?.trim() || `psql exited with ${result.status}`);
+  }
+  return result.stdout ?? "";
+}
+
+function runPsqlFile(databaseUrl, file, variables) {
+  const result = executePsqlFile(databaseUrl, file, variables);
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(result.stderr?.trim() || `psql exited with ${result.status}`);
+  }
+  return result.stdout ?? "";
+}
+
+function executePsqlFile(databaseUrl, file, variables) {
+  const psql = process.env.PSQL_BIN ?? "psql";
+  const args = ["-X", "-v", "ON_ERROR_STOP=1"];
+  for (const [key, value] of Object.entries(variables)) {
+    args.push("-v", `${key}=${value}`);
+  }
+  args.push("-f", file);
+  const result = spawnSync(psql, args, {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    env: buildPsqlEnvironment(process.env, databaseUrl),
+  });
+  return result;
+}
+
+function expectPsqlFailure(databaseUrl, sql, expectedSqlState) {
+  const psql = process.env.PSQL_BIN ?? "psql";
+  const result = spawnSync(
+    psql,
+    [
+      "-X",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-v",
+      "VERBOSITY=verbose",
+      "-c",
+      sql,
+    ],
+    {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      env: buildPsqlEnvironment(process.env, databaseUrl),
+    },
+  );
+  if (result.error) throw result.error;
+  if (result.status === 0 || !result.stderr?.includes(expectedSqlState)) {
+    throw new Error(
+      `Expected PostgreSQL ${expectedSqlState} for restricted runtime operation: ${sql}`,
+    );
+  }
+}
+
+function runCommand(executable, args, env) {
+  const result = spawnSync(executable, args, {
+    cwd: workspaceRoot,
+    env,
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`${executable} ${args.join(" ")} exited with ${result.status}`);
+  }
+}
+
+function fail(message) {
+  console.error(message);
+  process.exit(1);
+}

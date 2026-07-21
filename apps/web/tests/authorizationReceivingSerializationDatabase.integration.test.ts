@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { SessionContext } from "../src/server/services/context";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const mockContext = vi.hoisted(() => ({
   requireSessionContext: vi.fn()
@@ -47,6 +50,7 @@ describe.skipIf(!databaseEnabled)(
       );
       ({ prisma } = await import("@ogfi/database"));
       await prisma.$connect();
+      await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
       const identity = await prisma.$queryRaw<
         Array<{ currentDatabase: string }>
       >`SELECT current_database() AS "currentDatabase"`;

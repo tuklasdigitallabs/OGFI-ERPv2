@@ -30,6 +30,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_ci?schema=public
       DIRECT_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ogfi_ci?schema=public
+      DISPOSABLE_DATABASE_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
       DEMO_USER_EMAIL: user@example.test
       DEMO_APPROVER_EMAIL: approver@example.test
       DEMO_ADMIN_EMAIL: admin@example.test
@@ -46,6 +47,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:secret-review
       - run: pnpm release:tools:test
+      - run: pnpm test:disposable-db-lifecycle
       - run: pnpm release:migration-review
       - run: pnpm db:generate
       - run: pnpm db:migrate:deploy

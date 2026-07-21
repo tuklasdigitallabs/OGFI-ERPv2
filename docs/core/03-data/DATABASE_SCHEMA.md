@@ -15,7 +15,7 @@
 5. Store money in integer minor units or fixed-precision decimals; never use floating-point values for currency.
 6. Inventory balances are derived from an immutable movement ledger and may be cached for performance.
 7. Workflow state transitions must be validated in application code and protected with database constraints where practical.
-8. Audit records are append-only.
+8. `AuditEvent`, `ProjectActivityEvent`, and posted `InventoryMovement` records are append-only. PostgreSQL rejects `UPDATE`, `DELETE`, and `TRUNCATE`; corrections use new events or linked reversal movements.
 9. Soft deletion is allowed only for safe master data and must preserve historical references. Controlled transactions use cancellation/reversal.
 10. Dates and timestamps are stored in UTC; company/location timezone is stored in configuration and used for display and operational cut-offs.
 
@@ -295,6 +295,8 @@ Current implementation note: `WastageReport` and `WastageLine` support scoped wa
 | `audit_events` | id, tenant_id, company_id nullable, actor_user_id nullable, event_type, entity_type, entity_id, occurred_at, request_id, ip_address nullable, before_data nullable, after_data nullable, metadata | Append-only; no user-facing update/delete route. |
 
 Current implementation note: `Notification` is implemented as an in-app, recipient-scoped table for workflow attention records. It stores tenant/company/location scope, source entity reference, deep link, source event key, read/archive state, and metadata. The first fanout slice creates idempotent approval notifications for Purchase Request submission, Purchase Order submission, and Purchase Order remaining-balance closure requests. Email, reminder/escalation jobs, notification preferences, and broader workflow fanout remain future controlled transitions.
+
+Append-only enforcement note: under `DEC-0049`, the physical Prisma tables `AuditEvent`, `ProjectActivityEvent`, and `InventoryMovement` each have an unconditional PostgreSQL `ENABLE ALWAYS` statement trigger that rejects `UPDATE`, `DELETE`, and `TRUNCATE` with SQLSTATE `55000`. The migration is additive and does not rewrite existing rows. `SELECT` and append-only `INSERT` remain valid; inventory corrections use a new linked `REVERSAL` movement and audit/project corrections use a new explanatory event. Hosted ownership and grants separate the non-login owner, controlled migrator, and membership-free runtime. The runtime receives only `SELECT` and `INSERT` on these protected tables and cannot alter or disable the controls. Deployment or restore remains fail-closed until the exact release passes ownership, effective-grant, mutation-denial, positive-insert, escalation, snapshot-equivalence, and reconciliation checks from the actual Hostinger connections.
 
 ---
 

@@ -44,11 +44,8 @@ Before application deployment:
 Public internet
   │
   └── Caddy: 80/443 only
-        │
-        └── Docker internal network
-              ├── web
-              ├── postgres
-              └── object storage
+        ├── Docker internal network: web and controlled evidence services
+        └── Private PostgreSQL endpoint: host service or separately approved container
 ```
 
 Rules:
@@ -80,7 +77,7 @@ Do not point both environments to the same database, attachment bucket/prefix, e
 
 1. CI checks pass on the release candidate.
 2. Build image or pull the approved Git commit on the VPS.
-3. Run database migration using the approved migration command.
+3. Run database migration through `ogfi-db-migrate@<validated-release>.service`; do not expose the migrator URL to the application or run direct hosted Prisma deploy.
 4. Start or update services with Docker Compose.
 5. Run health checks.
 6. Perform smoke tests:
@@ -95,6 +92,14 @@ Do not point both environments to the same database, attachment bucket/prefix, e
 7. Watch logs and error monitoring after deployment.
 8. Record release version, migration version, deployer, timestamp, and any rollback plan.
 
+### 5.1 PostgreSQL role bootstrap and verification
+
+Install the templates under `infra/systemd/database/` and follow their README. Keep `/etc/ogfi/database/role-contract.env` non-secret, store the migrator/runtime URLs as separate root-owned mode-`0400` files, and keep the application environment root-owned with the runtime `DATABASE_URL` only. The app environment must contain no `DIRECT_DATABASE_URL`, admin/owner credential, migrator credential, or migrator username.
+
+Before first use, and again after a restore that does not preserve owners/privileges, a cluster administrator runs `infra/hostinger/postgres/bootstrap-roles.sql` against the positively identified target. Passwords are set in a separate secret ceremony and are never passed as SQL variables or committed files. The controlled migration then reconciles grants and proves exact memberships, supported object ownership, safe defaults and routine/column ACLs, owner-side append-only guards, runtime `SELECT`/`INSERT`, DDL/TEMP denials, and escalation denials. Enable the daily `ogfi-db-role-verify.timer` and alert on failure or a missed run.
+
+This control does not select PostgreSQL packaging. The database remains on a private Hostinger endpoint whether the approved design is a host service or a dedicated container. Production remains **NO-GO** until that packaging decision, credential custody, restore reconciliation evidence, and exact-release role-contract evidence are approved.
+
 ---
 
 ## 6. Backup and recovery minimums
@@ -106,6 +111,7 @@ Before production go-live, implement and test:
 - Attachment/object-storage backup or replication strategy.
 - Retention schedule approved by management.
 - Restore test into an isolated environment.
+- Post-restore owner/grant reconciliation and `pnpm db:append-only:contract` evidence before traffic resumes.
 - Written recovery owner and emergency contact path.
 
 A backup that has never been restored is not a verified recovery plan.

@@ -27,7 +27,10 @@ import type {
   setEvidenceLegalHold as setEvidenceLegalHoldType,
   setEvidenceLegalHoldForSession as setEvidenceLegalHoldForSessionType,
 } from "../src/server/services/evidenceRetention";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 import {
   authenticationSessionTokenHash,
   clearAuthenticatedRequest,
@@ -127,6 +130,7 @@ describe("controlled evidence database authorization matrix", () => {
       setEvidenceLegalHoldForSession,
     } = await import("../src/server/services/evidenceRetention"));
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;
@@ -344,61 +348,7 @@ describe("controlled evidence database authorization matrix", () => {
 
   afterAll(async () => {
     clearAuthenticatedRequest();
-    if (!prisma) return;
-    await prisma.auditEvent.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.projectActivityEvent.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.controlledEvidenceAttachment.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.projectAttachment.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.attachmentUploadIntent.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.attachmentCompanyQuotaUsage.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.attachment.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.projectRequirement.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.projectMember.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.project.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.attendanceImportBatch.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.workforceSchedule.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.employeeOvertimeRecord.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.employeeLeaveRequest.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.employeeAssignment.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.employee.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.financeCloseChecklistItem.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.financeCloseRun.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.pettyCashLiquidationLine.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.pettyCashLiquidation.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.pettyCashRequest.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.pettyCashFund.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.cashAdvanceLiquidationLine.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.cashAdvanceLiquidation.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.cashAdvanceRequest.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.expenseRequestLine.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.expenseRequest.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.expenseRequest.deleteMany({ where: { tenantId: ids.foreignTenant } });
-    await prisma.bankReconciliation.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.branchCashDeposit.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.paymentRelease.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.paymentRequest.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.supplierCreditNote.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.apInvoiceLine.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.apInvoice.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.bankStatement.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.bankAccount.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.accountingPeriod.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.fiscalYear.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.chartOfAccount.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.financeAccountClass.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.supplier.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.authSession.deleteMany({ where: { id: ids.authSession } });
-    await prisma.userScopeAssignment.deleteMany({ where: { userId: ids.user } });
-    await prisma.userRoleAssignment.deleteMany({ where: { userId: ids.user } });
-    await prisma.rolePermission.deleteMany({ where: { roleId: ids.role } });
-    await prisma.role.deleteMany({ where: { id: ids.role } });
-    await prisma.user.deleteMany({ where: { id: { in: [ids.user, ids.foreignUser] } } });
-    await prisma.location.deleteMany({ where: { tenantId: { in: [ids.tenant, ids.foreignTenant] } } });
-    await prisma.department.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.brand.deleteMany({ where: { tenantId: ids.tenant } });
-    await prisma.company.deleteMany({ where: { tenantId: { in: [ids.tenant, ids.foreignTenant] } } });
-    await prisma.tenant.deleteMany({ where: { id: { in: [ids.tenant, ids.foreignTenant] } } });
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
     if (attachmentRoot) await rm(attachmentRoot, { recursive: true, force: true });
     delete process.env.OGFI_PRIVATE_ATTACHMENT_ROOT;
     delete process.env.APP_ENV;
@@ -408,7 +358,7 @@ describe("controlled evidence database authorization matrix", () => {
     delete process.env.EVIDENCE_LOCAL_SCAN_MODE;
     delete process.env.EVIDENCE_MAX_UPLOAD_BYTES;
     delete process.env.EVIDENCE_DEFAULT_COMPANY_QUOTA_BYTES;
-  }, 120_000);
+  });
 
   it("denies every location-bound evidence family at an adjacent location", async () => {
     expect(locationBoundTypes).toHaveLength(22);

@@ -1,0 +1,12 @@
+[Unit]
+Description=Verify OGFI ERP hosted PostgreSQL role contract daily
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1d
+RandomizedDelaySec=15min
+Persistent=true
+Unit=ogfi-db-role-verify.service
+
+[Install]
+WantedBy=timers.target

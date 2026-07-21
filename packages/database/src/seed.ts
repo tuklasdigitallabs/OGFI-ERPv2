@@ -1,5 +1,11 @@
+import { createHash } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./client";
 import { phase2WorkflowPolicySeedRows } from "./phase2-workflow-policies";
+import {
+  assertSingleCanonicalSeedInventoryMovement,
+  type SeedInventoryMovement,
+} from "./seed-inventory-movement";
 
 const ids = {
   tenantId: "00000000-0000-4000-8000-000000000001",
@@ -4149,297 +4155,6 @@ async function existingRolePermissionRows(
   return rows.filter((row) => permissionIds.has(row.permissionId));
 }
 
-async function resetDemoData() {
-  await prisma.attendanceImportLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.attendanceImportBatch.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.workforceScheduleLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.workforceSchedule.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.employeeComplianceDocument.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.employeeTrainingRecord.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.employeeOvertimeRecord.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.employeeLeaveRequest.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.employeeAssignment.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.employee.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.paymentReleaseExecution.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.paymentReleaseAllocation.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.paymentRelease.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.bankReconciliationMatch.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.bankReconciliation.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.bankStatementLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.bankStatement.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.branchCashDeposit.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.bankAccount.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.paymentRequestLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.paymentRequest.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.apInvoiceDuplicateSignal.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.apInvoiceException.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.apInvoiceMatchResult.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.apInvoiceLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.apInvoice.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.expenseRequestSourceLink.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.expenseRequestLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.expenseRequest.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.budgetCommitment.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.budgetRevision.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.budgetLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.budget.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.financeJournalPostingAttempt.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.financeJournalLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.financeJournal.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.financePostingRuleDimensionRequirement.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.financePostingRuleAccountMap.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.financePostingRule.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.chartOfAccount.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.financeAccountClass.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.accountingPeriod.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.fiscalYear.deleteMany({ where: { companyId: ids.companyId } });
-
-  await prisma.projectRecordLink.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectRisk.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectBlocker.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectAttachment.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectRequirement.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectComment.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectTaskChecklistItem.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectTaskAssignee.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectMilestone.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectActivityEvent.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.projectTask.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectMember.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.project.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.projectTemplate.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-
-  await prisma.branchOperationalChecklistLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.branchOperationalChecklist.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.foodSafetyReading.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.foodSafetyLog.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.operationalIncident.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.maintenanceTicket.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.menuPrice.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.restaurantSalesImportLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.restaurantSalesImportBatch.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.menuItem.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.recipeLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.recipeVersion.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.recipe.deleteMany({ where: { companyId: ids.companyId } });
-
-  await prisma.approvalInstanceStep.deleteMany({
-    where: { approvalInstance: { companyId: ids.companyId } },
-  });
-  await prisma.approvalInstance.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.notification.deleteMany({ where: { companyId: ids.companyId } });
-
-  await prisma.goodsReceiptLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.goodsReceipt.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.inventoryTransferReceiptLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.inventoryTransferReceipt.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.inventoryTransferLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.inventoryTransfer.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.wastageLine.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.wastageReport.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.stockAdjustmentLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.stockAdjustment.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.stockCountLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.stockCountSession.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.inventoryMovement.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.inventoryBalance.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-
-  await prisma.purchaseOrderBalanceClosure.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.purchaseOrderAmendment.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.purchaseOrderLine.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.purchaseOrder.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.quotationRecommendation.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.supplierQuotationLine.deleteMany({
-    where: { supplierQuotation: { companyId: ids.companyId } },
-  });
-  await prisma.supplierQuotation.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.quotationRequest.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.purchaseRequestComment.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.purchaseRequestLine.deleteMany({
-    where: { purchaseRequest: { companyId: ids.companyId } },
-  });
-  await prisma.purchaseRequest.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-
-  await prisma.auditEvent.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.operationalReasonCode.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.supplierPriceHistory.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.supplierItemLink.deleteMany({
-    where: { companyId: ids.companyId },
-  });
-  await prisma.supplierContact.deleteMany({
-    where: { supplier: { companyId: ids.companyId } },
-  });
-  await prisma.supplier.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.itemUomConversion.deleteMany({
-    where: { item: { companyId: ids.companyId } },
-  });
-  await prisma.item.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.itemCategory.deleteMany({ where: { companyId: ids.companyId } });
-  await prisma.uom.deleteMany({ where: { companyId: ids.companyId } });
-}
-
 async function seedOperationalReasonCodes() {
   const reasonCodes = [
     {
@@ -6741,6 +6456,141 @@ async function seedPhase2MaintenanceDemoData() {
   }
 }
 
+function deterministicSeedUuid(namespace: string, sourceKey: string) {
+  const hex = createHash("sha256")
+    .update(`${namespace}:${sourceKey}`)
+    .digest("hex")
+    .slice(0, 32)
+    .split("");
+  hex[12] = "4";
+  hex[16] = "8";
+  const normalized = hex.join("");
+  return `${normalized.slice(0, 8)}-${normalized.slice(8, 12)}-${normalized.slice(12, 16)}-${normalized.slice(16, 20)}-${normalized.slice(20)}`;
+}
+
+function seedMovementLotKey(movement: SeedInventoryMovement) {
+  const lotNumber = movement.lotNumber ?? null;
+  const expiryDate = movement.expiryDate
+    ? new Date(movement.expiryDate).toISOString().slice(0, 10)
+    : null;
+  return lotNumber && expiryDate
+    ? `${lotNumber}|${expiryDate}`
+    : "NOLOT|NOEXP";
+}
+
+async function assertSeedInventoryBalanceMatchesLedger(
+  tx: Prisma.TransactionClient,
+  movement: SeedInventoryMovement,
+) {
+  const lotKey = seedMovementLotKey(movement);
+  const balance = await tx.inventoryBalance.findUnique({
+    where: {
+      inventoryLocationId_itemId_lotKey: {
+        inventoryLocationId: movement.inventoryLocationId,
+        itemId: movement.itemId,
+        lotKey,
+      },
+    },
+    select: { qtyOnHand: true },
+  });
+  if (!balance) {
+    throw new Error(
+      `SEED_INVENTORY_BALANCE_MISSING:${movement.sourceEventKey}:${lotKey}`,
+    );
+  }
+
+  const ledger = await tx.inventoryMovement.aggregate({
+    where: {
+      tenantId: movement.tenantId,
+      companyId: movement.companyId,
+      inventoryLocationId: movement.inventoryLocationId,
+      itemId: movement.itemId,
+      lotNumber: movement.lotNumber ?? null,
+      expiryDate: movement.expiryDate ? new Date(movement.expiryDate) : null,
+    },
+    _sum: { quantityDeltaBaseUom: true },
+  });
+  const expectedQuantity = Number(
+    ledger._sum.quantityDeltaBaseUom ?? 0,
+  ).toFixed(6);
+  const actualQuantity = Number(balance.qtyOnHand).toFixed(6);
+  if (actualQuantity !== expectedQuantity) {
+    throw new Error(
+      `SEED_INVENTORY_BALANCE_LEDGER_MISMATCH:${movement.sourceEventKey}:${lotKey}`,
+    );
+  }
+}
+
+function isPrismaUniqueConflict(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
+}
+
+async function ensureSeedInventoryMovement(
+  movement: SeedInventoryMovement,
+  applyBalanceDelta: (tx: Prisma.TransactionClient) => Promise<void>,
+) {
+  const verifyExisting = async (tx: Prisma.TransactionClient) => {
+    const existingMovements = await tx.inventoryMovement.findMany({
+      where: {
+        tenantId: movement.tenantId,
+        companyId: movement.companyId,
+        sourceDocumentType: movement.sourceDocumentType,
+        sourceEventKey: movement.sourceEventKey,
+      },
+    });
+    const existingMovement = assertSingleCanonicalSeedInventoryMovement(
+      existingMovements,
+      movement,
+    );
+    const sourceDocumentIdentityRows = await tx.inventoryMovement.findMany({
+      where: {
+        tenantId: movement.tenantId,
+        companyId: movement.companyId,
+        sourceDocumentType: movement.sourceDocumentType,
+        sourceDocumentId: existingMovement.sourceDocumentId,
+      },
+      select: { id: true },
+    });
+    if (sourceDocumentIdentityRows.length !== 1) {
+      throw new Error(
+        `SEED_IMMUTABLE_MOVEMENT_SOURCE_DOCUMENT_ID_DUPLICATE:${movement.sourceEventKey}`,
+      );
+    }
+    await assertSeedInventoryBalanceMatchesLedger(tx, movement);
+  };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existingMovements = await tx.inventoryMovement.findMany({
+        where: {
+          tenantId: movement.tenantId,
+          companyId: movement.companyId,
+          sourceDocumentType: movement.sourceDocumentType,
+          sourceEventKey: movement.sourceEventKey,
+        },
+      });
+      if (existingMovements.length > 0) {
+        await verifyExisting(tx);
+        return;
+      }
+
+      await tx.inventoryMovement.create({ data: movement });
+      await applyBalanceDelta(tx);
+      await verifyExisting(tx);
+    });
+  } catch (error) {
+    if (!isPrismaUniqueConflict(error)) {
+      throw error;
+    }
+    await prisma.$transaction(verifyExisting);
+  }
+}
+
 async function seedOpeningInventoryBalances() {
   const inventoryLocations = await prisma.inventoryLocation.findMany({
     where: {
@@ -6759,6 +6609,7 @@ async function seedOpeningInventoryBalances() {
       locationId: true,
       code: true,
     },
+    orderBy: { id: "asc" },
   });
   const locationByInventoryId = new Map(
     inventoryLocations.map((inventoryLocation) => [
@@ -6815,8 +6666,6 @@ async function seedOpeningInventoryBalances() {
   });
 
   const openingDate = new Date("2026-07-01T01:00:00.000Z");
-  let sequence = 1;
-
   for (const inventoryLocation of inventoryLocations) {
     const isWarehouse =
       inventoryLocation.id === ids.warehouseInventoryLocationId;
@@ -6839,87 +6688,68 @@ async function seedOpeningInventoryBalances() {
         lotNumber && expiryDate
           ? `${lotNumber}|${expiryDate.toISOString().slice(0, 10)}`
           : "NOLOT|NOEXP";
-      const sourceDocumentId = `10000000-0000-4000-8001-${String(
-        sequence,
-      ).padStart(12, "0")}`;
       const sourceEventKey = `opening:${inventoryLocation.id}:${item.id}`;
+      const sourceDocumentId = deterministicSeedUuid(
+        "demo-opening-document",
+        sourceEventKey,
+      );
 
-      await prisma.inventoryMovement.upsert({
-        where: {
-          tenantId_companyId_sourceDocumentType_sourceDocumentId_sourceEventKey:
-            {
-              tenantId: ids.tenantId,
-              companyId: ids.companyId,
-              sourceDocumentType: "DEMO_OPENING_BALANCE",
-              sourceDocumentId,
-              sourceEventKey,
+      const movement = {
+        id: deterministicSeedUuid("demo-opening-movement", sourceEventKey),
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        inventoryLocationId: inventoryLocation.id,
+        relatedInventoryLocationId: null,
+        itemId: item.id,
+        movementType: "OPENING_BALANCE_IN" as const,
+        occurredAt: openingDate,
+        enteredQuantity: quantity,
+        enteredUomId: item.baseUomId,
+        quantityDeltaBaseUom: quantity,
+        baseUomId: item.baseUomId,
+        lotNumber,
+        expiryDate,
+        unitCost: null,
+        totalCost: null,
+        sourceDocumentType: "DEMO_OPENING_BALANCE",
+        sourceDocumentId,
+        sourceDocumentLineId: null,
+        sourceEventKey,
+        reasonCode: "OPENING_BALANCE",
+        notes: `Demo opening balance for ${
+          locationByInventoryId.get(inventoryLocation.id)?.code ??
+          "inventory location"
+        }.`,
+        reversalOfMovementId: null,
+        postedByUserId: ids.adminUserId,
+      } satisfies SeedInventoryMovement;
+
+      await ensureSeedInventoryMovement(movement, async (tx) => {
+        await tx.inventoryBalance.upsert({
+          where: {
+            inventoryLocationId_itemId_lotKey: {
+              inventoryLocationId: inventoryLocation.id,
+              itemId: item.id,
+              lotKey,
             },
-        },
-        create: {
-          tenantId: ids.tenantId,
-          companyId: ids.companyId,
-          inventoryLocationId: inventoryLocation.id,
-          itemId: item.id,
-          movementType: "OPENING_BALANCE_IN",
-          occurredAt: openingDate,
-          enteredQuantity: quantity,
-          enteredUomId: item.baseUomId,
-          quantityDeltaBaseUom: quantity,
-          baseUomId: item.baseUomId,
-          lotNumber,
-          expiryDate,
-          sourceDocumentType: "DEMO_OPENING_BALANCE",
-          sourceDocumentId,
-          sourceEventKey,
-          reasonCode: "OPENING_BALANCE",
-          notes: `Demo opening balance for ${
-            locationByInventoryId.get(inventoryLocation.id)?.code ??
-            "inventory location"
-          }.`,
-          postedByUserId: ids.adminUserId,
-        },
-        update: {
-          occurredAt: openingDate,
-          enteredQuantity: quantity,
-          quantityDeltaBaseUom: quantity,
-          lotNumber,
-          expiryDate,
-          reasonCode: "OPENING_BALANCE",
-          notes: `Demo opening balance for ${
-            locationByInventoryId.get(inventoryLocation.id)?.code ??
-            "inventory location"
-          }.`,
-        },
-      });
-
-      await prisma.inventoryBalance.upsert({
-        where: {
-          inventoryLocationId_itemId_lotKey: {
+          },
+          create: {
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
             inventoryLocationId: inventoryLocation.id,
             itemId: item.id,
             lotKey,
+            lotNumber,
+            expiryDate,
+            baseUomId: item.baseUomId,
+            qtyOnHand: quantity,
           },
-        },
-        create: {
-          tenantId: ids.tenantId,
-          companyId: ids.companyId,
-          inventoryLocationId: inventoryLocation.id,
-          itemId: item.id,
-          lotKey,
-          lotNumber,
-          expiryDate,
-          baseUomId: item.baseUomId,
-          qtyOnHand: quantity,
-        },
-        update: {
-          lotNumber,
-          expiryDate,
-          baseUomId: item.baseUomId,
-          qtyOnHand: quantity,
-        },
+          update: {
+            qtyOnHand: { increment: quantity },
+          },
+        });
       });
 
-      sequence += 1;
     }
   }
 }
@@ -7048,88 +6878,98 @@ async function seedPhase2ActualConsumptionDemoData() {
   const unitPriceByItemId = new Map(
     prices.map((price) => [price.itemId, Number(price.unitPrice)]),
   );
-  let sequence = 1;
-
   for (const branch of branchConsumptions) {
     for (const line of branch.lines) {
       const item = itemByCode.get(line.itemCode);
       if (!item) {
         throw new Error(`MISSING_ACTUAL_CONSUMPTION_ITEM:${line.itemCode}`);
       }
-      const balance = await prisma.inventoryBalance.findFirst({
-        where: {
-          companyId: ids.companyId,
-          inventoryLocationId: branch.inventoryLocationId,
-          itemId: item.id,
-        },
-        orderBy: { updatedAt: "desc" },
-      });
       const unitCost = unitPriceByItemId.get(item.id) ?? 0;
       const totalCost = Number((line.quantity * unitCost).toFixed(2));
-      const sourceDocumentId = `22000000-0000-4000-8000-${String(
-        sequence,
-      ).padStart(12, "0")}`;
       const sourceEventKey = `phase2_actual:${branch.inventoryLocationId}:${item.id}:${line.movementType}`;
+      const sourceDocumentId = deterministicSeedUuid(
+        "demo-actual-consumption-document",
+        sourceEventKey,
+      );
 
-      await prisma.inventoryMovement.upsert({
+      const openingMovement = await prisma.inventoryMovement.findFirst({
         where: {
-          tenantId_companyId_sourceDocumentType_sourceDocumentId_sourceEventKey:
-            {
-              tenantId: ids.tenantId,
-              companyId: ids.companyId,
-              sourceDocumentType: "DEMO_PHASE2_ACTUAL_CONSUMPTION",
-              sourceDocumentId,
-              sourceEventKey,
-            },
-        },
-        create: {
-          id: `22000000-0000-4000-8001-${String(sequence).padStart(12, "0")}`,
           tenantId: ids.tenantId,
           companyId: ids.companyId,
           inventoryLocationId: branch.inventoryLocationId,
           itemId: item.id,
-          movementType: line.movementType as
-            | "WASTAGE_OUT"
-            | "ADJUSTMENT_OUT"
-            | "COUNT_VARIANCE_OUT",
-          occurredAt: new Date("2026-07-02T14:30:00.000Z"),
-          enteredQuantity: line.quantity,
-          enteredUomId: item.baseUomId,
-          quantityDeltaBaseUom: -Math.abs(line.quantity),
-          baseUomId: item.baseUomId,
-          lotNumber: balance?.lotNumber ?? null,
-          expiryDate: balance?.expiryDate ?? null,
-          unitCost,
-          totalCost,
-          sourceDocumentType: "DEMO_PHASE2_ACTUAL_CONSUMPTION",
-          sourceDocumentId,
-          sourceEventKey,
-          reasonCode: "PHASE2_ACTUAL_CONSUMPTION_DEMO",
-          notes: `Demo Phase II actual consumption snapshot for ${branch.locationLabel}.`,
-          postedByUserId: ids.adminUserId,
+          sourceDocumentType: "DEMO_OPENING_BALANCE",
+          sourceEventKey: `opening:${branch.inventoryLocationId}:${item.id}`,
         },
-        update: {
-          occurredAt: new Date("2026-07-02T14:30:00.000Z"),
-          enteredQuantity: line.quantity,
-          quantityDeltaBaseUom: -Math.abs(line.quantity),
-          lotNumber: balance?.lotNumber ?? null,
-          expiryDate: balance?.expiryDate ?? null,
-          unitCost,
-          totalCost,
-          reasonCode: "PHASE2_ACTUAL_CONSUMPTION_DEMO",
-          notes: `Demo Phase II actual consumption snapshot for ${branch.locationLabel}.`,
-        },
+        select: { lotNumber: true, expiryDate: true },
       });
+      if (!openingMovement) {
+        throw new Error(
+          `MISSING_ACTUAL_CONSUMPTION_OPENING_MOVEMENT:${branch.inventoryLocationId}:${item.itemCode}`,
+        );
+      }
 
-      if (balance) {
-        await prisma.inventoryBalance.update({
+      const lotKey =
+        openingMovement.lotNumber && openingMovement.expiryDate
+          ? `${openingMovement.lotNumber}|${openingMovement.expiryDate.toISOString().slice(0, 10)}`
+          : "NOLOT|NOEXP";
+      const movement = {
+        id: deterministicSeedUuid(
+          "demo-actual-consumption-movement",
+          sourceEventKey,
+        ),
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        inventoryLocationId: branch.inventoryLocationId,
+        relatedInventoryLocationId: null,
+        itemId: item.id,
+        movementType: line.movementType as
+          | "WASTAGE_OUT"
+          | "ADJUSTMENT_OUT"
+          | "COUNT_VARIANCE_OUT",
+        occurredAt: new Date("2026-07-02T14:30:00.000Z"),
+        enteredQuantity: line.quantity,
+        enteredUomId: item.baseUomId,
+        quantityDeltaBaseUom: -Math.abs(line.quantity),
+        baseUomId: item.baseUomId,
+        lotNumber: openingMovement.lotNumber,
+        expiryDate: openingMovement.expiryDate,
+        unitCost,
+        totalCost,
+        sourceDocumentType: "DEMO_PHASE2_ACTUAL_CONSUMPTION",
+        sourceDocumentId,
+        sourceDocumentLineId: null,
+        sourceEventKey,
+        reasonCode: "PHASE2_ACTUAL_CONSUMPTION_DEMO",
+        notes: `Demo Phase II actual consumption snapshot for ${branch.locationLabel}.`,
+        reversalOfMovementId: null,
+        postedByUserId: ids.adminUserId,
+      } satisfies SeedInventoryMovement;
+
+      await ensureSeedInventoryMovement(movement, async (tx) => {
+        const balance = await tx.inventoryBalance.findUnique({
+          where: {
+            inventoryLocationId_itemId_lotKey: {
+              inventoryLocationId: branch.inventoryLocationId,
+              itemId: item.id,
+              lotKey,
+            },
+          },
+          select: { id: true },
+        });
+        if (!balance) {
+          throw new Error(
+            `MISSING_ACTUAL_CONSUMPTION_BALANCE:${branch.inventoryLocationId}:${item.itemCode}:${lotKey}`,
+          );
+        }
+
+        await tx.inventoryBalance.update({
           where: { id: balance.id },
           data: {
-            qtyOnHand: Math.max(0, Number(balance.qtyOnHand) - line.quantity),
+            qtyOnHand: { decrement: line.quantity },
           },
         });
-      }
-      sequence += 1;
+      });
     }
   }
 }
@@ -7150,15 +6990,6 @@ async function main() {
   const adminEmail = process.env.DEMO_ADMIN_EMAIL ?? "erp.admin@ogfi.example";
   const superEmail =
     process.env.DEMO_SUPER_USER_EMAIL ?? "super.admin@ogfi.example";
-  const shouldResetDemoData = process.env.DEMO_RESET_DATA === "true";
-
-  if (shouldResetDemoData) {
-    await resetDemoData();
-    console.log(
-      "Cleared local demo operational, project, supplier, and item data.",
-    );
-  }
-
   await prisma.tenant.upsert({
     where: { id: ids.tenantId },
     create: {

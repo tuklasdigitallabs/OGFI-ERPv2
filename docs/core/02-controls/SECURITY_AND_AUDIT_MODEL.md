@@ -168,7 +168,11 @@ related record and human-readable reference
 
 ### 6.3 Immutability rules
 
-- `audit_events` are append-only.
+- `AuditEvent`, `ProjectActivityEvent`, and `InventoryMovement` are protected history under `DEC-0049`. PostgreSQL rejects every `UPDATE`, `DELETE`, and `TRUNCATE` against these tables through unconditional `ENABLE ALWAYS` statement triggers. There is no application-callable bypass.
+- Ordinary application transactions may `SELECT` and append new rows. Corrections append a new audit/activity event or an authorized linked inventory reversal movement; they do not rewrite or erase the original row.
+- Hosted staging and production separate a non-login object owner, a controlled login migrator that assumes only that owner, and a membership-free login runtime. The application receives only the runtime credential. The runtime has only `SELECT` and `INSERT` on protected history and cannot own protected objects, read `_prisma_migrations`, alter or disable guards, create schemas/databases, or assume the owner/migrator role.
+- Migration, ownership/grant reconciliation, and append-only contract verification run through the controlled Hostinger deployment path. A missing trigger, ownership/grant drift, exposed administrative or migrator credential, failed mutation denial, failed positive insert, or available escalation path is a release **NO-GO**.
+- Automated integration tests and demo resets rebuild only uniquely named, positively marked disposable databases. They must not delete or truncate protected history in shared, staging, production, live, pilot, or UAT databases.
 - There is no standard UI or API to edit/delete an audit event.
 - Corrections produce another event explaining the corrective action.
 - Retention policies should preserve operational and financial audit history according to company/legal requirements.

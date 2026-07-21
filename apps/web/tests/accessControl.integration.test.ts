@@ -14,7 +14,10 @@ import type { assertControlledEvidenceSourceAccess as assertControlledEvidenceSo
 import type { downloadControlledEvidenceAttachmentForSession as downloadControlledEvidenceAttachmentForSessionType } from "../src/server/services/attachments";
 import type { evidenceAttachmentSourceTypes as evidenceAttachmentSourceTypesType } from "../src/server/services/attachments";
 import type { postInventoryMovement as postInventoryMovementType } from "../src/server/services/inventory";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(process.env);
 if (!process.env.DATABASE_URL) {
@@ -85,6 +88,7 @@ describe("database-backed access control", () => {
     ({ postInventoryMovement } = await import("../src/server/services/inventory"));
 
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;
@@ -460,66 +464,7 @@ describe("database-backed access control", () => {
   });
 
   afterAll(async () => {
-    if (!prisma) {
-      return;
-    }
-
-    await prisma.auditEvent.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.controlledEvidenceAttachment.deleteMany({
-      where: { id: ids.controlledEvidenceLinkId },
-    });
-    await prisma.attachment.deleteMany({ where: { id: ids.attachmentId } });
-    await prisma.expenseRequest.deleteMany({ where: { id: ids.projectLinkedExpenseId } });
-    await prisma.projectMember.deleteMany({ where: { userId: ids.userId } });
-    await prisma.employee.deleteMany({ where: { id: ids.adjacentEmployeeId } });
-    await prisma.inventoryLocation.deleteMany({
-      where: { id: ids.adjacentInventoryLocationId },
-    });
-    await prisma.project.deleteMany({
-      where: {
-        id: {
-          in: [
-            ids.unrestrictedProjectId,
-            ids.restrictedProjectId,
-            ids.brandProjectId,
-            ids.adjacentBrandProjectId,
-            ids.departmentProjectId,
-            ids.adjacentDepartmentProjectId,
-            ids.adjacentCompanyProjectId,
-          ],
-        },
-      },
-    });
-    await prisma.userScopeAssignment.deleteMany({ where: { userId: ids.userId } });
-    await prisma.userRoleAssignment.deleteMany({ where: { userId: ids.userId } });
-    await prisma.rolePermission.deleteMany({
-      where: { roleId: { in: [ids.roleId, ids.otherTenantRoleId] } }
-    });
-    await prisma.permission.deleteMany({
-      where: { id: { in: [ids.permissionId, ids.otherTenantPermissionId] } }
-    });
-    await prisma.role.deleteMany({
-      where: { id: { in: [ids.roleId, ids.otherTenantRoleId] } }
-    });
-    await prisma.user.deleteMany({
-      where: { id: { in: [ids.userId, ids.fixtureOwnerUserId] } },
-    });
-    await prisma.location.deleteMany({
-      where: { id: { in: [ids.locationId, ids.adjacentLocationId] } },
-    });
-    await prisma.brand.deleteMany({
-      where: { id: { in: [ids.brandId, ids.adjacentBrandId] } },
-    });
-    await prisma.department.deleteMany({
-      where: { id: { in: [ids.departmentId, ids.adjacentDepartmentId] } },
-    });
-    await prisma.company.deleteMany({
-      where: { id: { in: [ids.companyId, ids.adjacentCompanyId] } },
-    });
-    await prisma.tenant.deleteMany({
-      where: { id: { in: [ids.tenantId, ids.otherTenantId] } }
-    });
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
     if (attachmentRoot) {
       await rm(attachmentRoot, { recursive: true, force: true });
     }

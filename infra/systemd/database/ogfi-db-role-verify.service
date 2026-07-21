@@ -1,0 +1,33 @@
+[Unit]
+Description=OGFI ERP hosted PostgreSQL append-only role contract verification
+Documentation=file:/opt/ogfi/current/infra/systemd/database/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ogfi-deploy
+Group=ogfi-deploy
+WorkingDirectory=/opt/ogfi/current
+EnvironmentFile=/etc/ogfi/database/role-contract.env
+LoadCredential=migration_database_url:/etc/ogfi/secrets/database-migrator-url
+LoadCredential=runtime_database_url:/etc/ogfi/secrets/database-runtime-url
+Environment=MIGRATION_DATABASE_URL_FILE=%d/migration_database_url
+Environment=RUNTIME_DATABASE_URL_FILE=%d/runtime_database_url
+Environment=OGFI_REQUIRE_ROOT_OWNED_DATABASE_CREDENTIALS=yes
+UMask=0077
+TimeoutStartSec=5min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/ogfi/current/release-evidence
+RestrictSUIDSGID=true
+LockPersonality=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+ExecStart=/usr/bin/node /opt/ogfi/current/scripts/db-append-only-contract.mjs

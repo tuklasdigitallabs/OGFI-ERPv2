@@ -6,7 +6,10 @@ import type {
   postInventoryMovement as postInventoryMovementType,
   postInventoryMovementInTransaction as postInventoryMovementInTransactionType,
 } from "../src/server/services/inventory";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 import {
   authenticationSessionTokenHash,
   clearAuthenticatedRequest,
@@ -123,6 +126,7 @@ describe("procurement and inventory authorization boundaries", () => {
       "../src/server/services/inventory"
     ));
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;
@@ -826,223 +830,8 @@ describe("procurement and inventory authorization boundaries", () => {
   });
 
   afterAll(async () => {
-    if (!prisma) return;
     clearAuthenticatedRequest();
-    await prisma.notification.deleteMany({
-      where: { tenantId: { in: [ids.tenantId, ids.foreignTenantId] } },
-    });
-    await prisma.auditEvent.deleteMany({
-      where: { tenantId: { in: [ids.tenantId, ids.foreignTenantId] } },
-    });
-    await prisma.authSession.deleteMany({ where: { id: ids.authSessionId } });
-    await prisma.inventoryTransferReceipt.deleteMany({
-      where: {
-        inventoryTransferId: {
-          in: [ids.transferWrongSourceId, ids.transferWrongDestinationId],
-        },
-      },
-    });
-    await prisma.inventoryTransfer.deleteMany({
-      where: { id: { in: [ids.transferWrongSourceId, ids.transferWrongDestinationId] } },
-    });
-    await prisma.stockCountLine.deleteMany({
-      where: {
-        stockCountSessionId: {
-          in: [
-            ids.adjacentStockCountId,
-            ids.scopedReviewedStockCountId,
-            ids.scopedDraftStockCountId,
-          ],
-        },
-      },
-    });
-    await prisma.stockCountSession.deleteMany({
-      where: {
-        id: {
-          in: [
-            ids.adjacentStockCountId,
-            ids.scopedReviewedStockCountId,
-            ids.scopedDraftStockCountId,
-          ],
-        },
-      },
-    });
-    await prisma.approvalInstanceStep.deleteMany({
-      where: {
-        approvalInstanceId: {
-          in: [
-            ids.approveDispatchApprovalId,
-            ids.rejectDispatchApprovalId,
-            ids.multiStepApprovalId,
-            ids.recipientRevocationApprovalId,
-            ids.requesterOnlyNextStepApprovalId,
-            ids.mixedNextStepApprovalId,
-            ids.finalOutcomeApprovalId,
-            ids.expiryApprovalId,
-            ids.reassignedApprovalId,
-            ids.staleAuthorityApprovalId,
-          ],
-        },
-      },
-    });
-    await prisma.approvalInstance.deleteMany({
-      where: {
-        id: {
-          in: [
-            ids.approveDispatchApprovalId,
-            ids.rejectDispatchApprovalId,
-            ids.multiStepApprovalId,
-            ids.recipientRevocationApprovalId,
-            ids.requesterOnlyNextStepApprovalId,
-            ids.mixedNextStepApprovalId,
-            ids.finalOutcomeApprovalId,
-            ids.expiryApprovalId,
-            ids.reassignedApprovalId,
-            ids.staleAuthorityApprovalId,
-          ],
-        },
-      },
-    });
-    await prisma.approvalRule.deleteMany({ where: { id: ids.approvalRuleId } });
-    await prisma.purchaseRequestComment.deleteMany({
-      where: {
-        purchaseRequestId: {
-          in: [
-            ids.scopedPurchaseRequestId,
-            ids.adjacentPurchaseRequestId,
-            ids.approvedPurchaseRequestId,
-            ids.multiStepPurchaseRequestId,
-            ids.recipientRevocationPurchaseRequestId,
-            ids.requesterOnlyNextStepPurchaseRequestId,
-            ids.mixedNextStepPurchaseRequestId,
-            ids.finalOutcomePurchaseRequestId,
-            ids.expiryPurchaseRequestId,
-            ids.reassignedPurchaseRequestId,
-            ids.staleAuthorityPurchaseRequestId,
-          ],
-        },
-      },
-    });
-    await prisma.purchaseRequestLine.deleteMany({
-      where: {
-        purchaseRequestId: {
-          in: [
-            ids.scopedPurchaseRequestId,
-            ids.adjacentPurchaseRequestId,
-            ids.approvedPurchaseRequestId,
-            ids.multiStepPurchaseRequestId,
-            ids.recipientRevocationPurchaseRequestId,
-            ids.requesterOnlyNextStepPurchaseRequestId,
-            ids.mixedNextStepPurchaseRequestId,
-            ids.finalOutcomePurchaseRequestId,
-            ids.expiryPurchaseRequestId,
-            ids.reassignedPurchaseRequestId,
-            ids.staleAuthorityPurchaseRequestId,
-          ],
-        },
-      },
-    });
-    await prisma.purchaseRequest.deleteMany({
-      where: {
-        id: {
-          in: [
-            ids.scopedPurchaseRequestId,
-            ids.adjacentPurchaseRequestId,
-            ids.approvedPurchaseRequestId,
-            ids.multiStepPurchaseRequestId,
-            ids.recipientRevocationPurchaseRequestId,
-            ids.requesterOnlyNextStepPurchaseRequestId,
-            ids.mixedNextStepPurchaseRequestId,
-            ids.finalOutcomePurchaseRequestId,
-            ids.expiryPurchaseRequestId,
-            ids.reassignedPurchaseRequestId,
-            ids.staleAuthorityPurchaseRequestId,
-          ],
-        },
-      },
-    });
-    await prisma.inventoryMovement.deleteMany({
-      where: { tenantId: { in: [ids.tenantId, ids.foreignTenantId] } },
-    });
-    await prisma.inventoryBalance.deleteMany({
-      where: { tenantId: { in: [ids.tenantId, ids.foreignTenantId] } },
-    });
-    await prisma.item.deleteMany({
-      where: { id: { in: [ids.itemId, ids.adjacentCompanyItemId] } },
-    });
-    await prisma.itemCategory.deleteMany({
-      where: { id: { in: [ids.categoryId, ids.adjacentCompanyCategoryId] } },
-    });
-    await prisma.uom.deleteMany({
-      where: { id: { in: [ids.uomId, ids.adjacentCompanyUomId] } },
-    });
-    await prisma.inventoryLocation.deleteMany({
-      where: {
-        id: {
-          in: [
-            ids.inventoryLocationId,
-            ids.adjacentInventoryLocationId,
-            ids.adjacentCompanyInventoryLocationId,
-            ids.foreignInventoryLocationId,
-          ],
-        },
-      },
-    });
-    await prisma.location.deleteMany({
-      where: {
-        id: {
-          in: [
-            ids.locationId,
-            ids.adjacentLocationId,
-            ids.adjacentCompanyLocationId,
-            ids.foreignLocationId,
-          ],
-        },
-      },
-    });
-    await prisma.userScopeAssignment.deleteMany({
-      where: {
-        id: {
-          in: [
-            ids.userScopeAssignmentId,
-            ids.approvalRequesterScopeAssignmentId,
-            ids.nextApproverScopeAssignmentId,
-          ],
-        },
-      },
-    });
-    await prisma.userRoleAssignment.deleteMany({
-      where: {
-        userId: {
-          in: [ids.userId, ids.approvalRequesterId, ids.nextApproverId],
-        },
-      },
-    });
-    await prisma.rolePermission.deleteMany({
-      where: { roleId: { in: [ids.roleId, ids.nextRecipientRoleId] } },
-    });
-    await prisma.role.deleteMany({
-      where: { id: { in: [ids.roleId, ids.nextRecipientRoleId] } },
-    });
-    await prisma.user.deleteMany({
-      where: {
-        id: {
-          in: [ids.userId, ids.approvalRequesterId, ids.nextApproverId],
-        },
-      },
-    });
-    await prisma.company.deleteMany({
-      where: {
-        id: { in: [ids.companyId, ids.adjacentCompanyId, ids.foreignCompanyId] },
-      },
-    });
-    await prisma.auditEvent.deleteMany({
-      where: { tenantId: { in: [ids.tenantId, ids.foreignTenantId] } },
-    });
-    await prisma.tenant.deleteMany({
-      where: { id: { in: [ids.tenantId, ids.foreignTenantId] } },
-    });
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
   });
 
   function movementInput(inventoryLocationId: string, itemId = ids.itemId) {
@@ -2095,9 +1884,6 @@ describe("procurement and inventory authorization boundaries", () => {
     } finally {
       await prisma.notification.deleteMany({
         where: { tenantId: ids.tenantId, entityId: fixture.closureId },
-      });
-      await prisma.auditEvent.deleteMany({
-        where: { tenantId: ids.tenantId, entityId: { in: [fixture.closureId, fixture.purchaseOrderId] } },
       });
       await prisma.approvalInstanceStep.deleteMany({
         where: { approvalInstanceId: fixture.approvalId },

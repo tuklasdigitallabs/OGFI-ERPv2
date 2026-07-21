@@ -11,7 +11,10 @@ import type {
 } from "../src/server/services/workforce";
 import type { issueAuthenticationActivation as issueAuthenticationActivationType } from "../src/server/services/authenticationAdmin";
 import type { submitProjectRequirementForSession as submitProjectRequirementForSessionType } from "../src/server/services/projectRequirements";
-import { assertDisposableAuthorizationDatabaseConfigured } from "./authorizationDatabaseSafety";
+import {
+  assertDisposableAuthorizationDatabaseConfigured,
+  assertDisposableAuthorizationDatabaseMarker,
+} from "./authorizationDatabaseSafety";
 
 const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(process.env);
 if (!process.env.DATABASE_URL) {
@@ -63,6 +66,7 @@ describe("database-backed named authorization adapters", () => {
     ));
 
     await prisma.$connect();
+    await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
       SELECT current_database() AS "currentDatabase"
     `;
@@ -285,29 +289,7 @@ describe("database-backed named authorization adapters", () => {
   });
 
   afterAll(async () => {
-    if (!prisma) return;
-    await prisma.auditEvent.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.projectActivityEvent.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.employeeLeaveRequest.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.employeeAssignment.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.employee.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.projectRequirement.deleteMany({ where: { id: ids.projectRequirementId } });
-    await prisma.projectMember.deleteMany({ where: { projectId: ids.projectId } });
-    await prisma.project.deleteMany({ where: { id: ids.projectId } });
-    await prisma.authActivationToken.deleteMany({ where: { tenantId: ids.tenantId } });
-    await prisma.userScopeAssignment.deleteMany({ where: { userId: ids.actorUserId } });
-    await prisma.userRoleAssignment.deleteMany({ where: { userId: ids.actorUserId } });
-    await prisma.rolePermission.deleteMany({ where: { roleId: ids.roleId } });
-    await prisma.role.deleteMany({ where: { id: ids.roleId } });
-    await prisma.user.deleteMany({
-      where: { id: { in: [ids.actorUserId, ids.ownerUserId] } },
-    });
-    await prisma.location.deleteMany({
-      where: { id: { in: [ids.locationId, ids.adjacentLocationId] } },
-    });
-    await prisma.company.deleteMany({ where: { id: ids.companyId } });
-    await prisma.tenant.deleteMany({ where: { id: ids.tenantId } });
-    await prisma.$disconnect();
+    if (prisma) await prisma.$disconnect();
   });
 
   it("AUTHZ-ADAPTER-LIVE-PERMISSION-DB-DENIED-WRITE-NO-MUTATION", async () => {

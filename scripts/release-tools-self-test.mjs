@@ -51,6 +51,7 @@ const evidenceLines = [
 ];
 
 try {
+  testDatabaseRoleTooling();
   testEvidenceInitializer();
   testReleaseReadinessRegisterExport();
   testPostgresToolEnvValidation();
@@ -107,6 +108,24 @@ try {
   console.log(`Release helper self-test evidence written: ${outputFile}`);
 } finally {
   rmSync(tempRoot, { recursive: true, force: true });
+}
+
+function testDatabaseRoleTooling() {
+  evidenceLines.push("CHECK | Controlled PostgreSQL role tooling");
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--test",
+      "scripts/db-migrate-controlled.test.mjs",
+      "scripts/db-append-only-contract.test.mjs",
+    ],
+    { cwd: workspaceRoot, encoding: "utf8" },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `Controlled PostgreSQL role tooling self-test failed.\n${result.stdout ?? ""}\n${result.stderr ?? ""}`,
+    );
+  }
 }
 
 function testEvidenceInitializer() {
