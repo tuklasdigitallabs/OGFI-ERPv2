@@ -678,23 +678,20 @@ export default async function WorkforcePage() {
       permissions.workforceAttendanceImportView
     );
   const canExportWorkforceCsv = canExportWorkforce(session);
-  const canViewWorkforceRegistry =
-    canManageWorkforce ||
-    session.permissionCodes.includes(permissions.workforceView);
   const evidenceBySource =
     await listWorkforceControlledEvidenceAttachmentsBatch({
-      WORKFORCE_EMPLOYEE: canViewWorkforceRegistry
+      WORKFORCE_EMPLOYEE: canManageWorkforce
         ? dashboard.employees.map((employee) => employee.id)
         : [],
-      WORKFORCE_ASSIGNMENT: canViewWorkforceRegistry
+      WORKFORCE_ASSIGNMENT: canManageWorkforce
         ? dashboard.assignments.map((assignment) => assignment.id)
         : [],
       WORKFORCE_LEAVE:
-        canViewWorkforceRegistry || canApproveLeave
+        canManageWorkforce || canApproveLeave
           ? dashboard.leaveRequests.map((request) => request.id)
           : [],
       WORKFORCE_OVERTIME:
-        canViewWorkforceRegistry || canApproveOvertime
+        canManageWorkforce || canApproveOvertime
           ? dashboard.overtimeRecords.map((record) => record.id)
           : [],
       WORKFORCE_SCHEDULE: canViewSchedules

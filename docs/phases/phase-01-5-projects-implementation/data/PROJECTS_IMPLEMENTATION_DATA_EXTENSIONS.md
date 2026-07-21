@@ -64,7 +64,7 @@ Stores project membership and project role. Unique on `(project_id, user_id)`.
 
 - `project_task_assignees`: multi-assignee table.
 - `project_task_checklist_items`: ordered task checklist, completion actor/time.
-- `project_attachments`: project-scoped links from a task/comment to shared `attachments` metadata. Stores tenant/company/project scope, exactly one parent, purpose, caption, archive actor/time/reason, and activity-backed lifecycle. It does not store file bytes, object keys, public URLs, or operational source-record payloads.
+- `project_attachments`: project-scoped links from a task, comment, or project requirement to shared `attachments` metadata. Valid contexts are task-only, comment-only, requirement-only, or a task plus its matching task-bound requirement. Comment links cannot also be task/requirement links, and database controls reject a task that differs from the requirement's task. The record stores tenant/company/project scope, purpose, caption, archive actor/time/reason, and activity-backed lifecycle. It does not store file bytes, object keys, public URLs, or operational source-record payloads.
 - `project_task_dependencies`: informational dependency links; Phase 1.5 does not calculate critical path.
 - `project_milestones`: title, target date, status, owner, at-risk flag.
 - `project_risks`: implemented advisory project risk lifecycle with severity, likelihood, impact, mitigation, owner, target date, resolution state, and activity history.

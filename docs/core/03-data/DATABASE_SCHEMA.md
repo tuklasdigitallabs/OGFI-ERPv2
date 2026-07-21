@@ -375,5 +375,6 @@ Phase 1.5 adds a project domain module. It must be implemented as a separate Pri
 - Use explicit join tables for project members and task assignees.
 - Use a polymorphic reference service or constrained typed reference table for `project_record_links`. It must store record type, record ID, display-safe label snapshot, and link metadata while enforcing permission checks at read time.
 - Do not use project task status to drive source-record state.
+- A project attachment has one valid context: task-only, comment-only, requirement-only, or a task plus its matching task-bound requirement. Database checks reject parentless or comment-mixed rows, and database triggers reject task/requirement mismatch or later requirement-task drift.
 - Add indexes for `company_id`, `project_id`, `status`, `due_at`, `assignee`, `is_blocked`, and activity timestamps.
 - Use transaction boundaries for activity creation plus the corresponding state mutation.

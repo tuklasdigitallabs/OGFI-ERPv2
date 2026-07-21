@@ -173,7 +173,8 @@ export type WorkforceControlledEvidenceAttachmentBatch = Record<
 export type ArchiveControlledEvidenceAttachmentInput = {
   controlledEvidenceAttachmentId: string;
   archiveReason: string;
-  requiredPermissionCode: string;
+  /** @deprecated Authorization is derived from the persisted source type. */
+  requiredPermissionCode?: string;
 };
 
 export type CreateControlledEvidenceAttachmentMetadataLinkInput = Omit<
@@ -284,8 +285,24 @@ const evidenceAttachmentLinkSchema = z.object({
 const archiveControlledEvidenceAttachmentSchema = z.object({
   controlledEvidenceAttachmentId: z.string().uuid(),
   archiveReason: z.string().trim().min(5).max(1000),
-  requiredPermissionCode: z.string().trim().min(2).max(120),
+  requiredPermissionCode: z.string().trim().min(2).max(120).optional(),
 });
+
+const loggedControlledEvidenceDenialErrors = new WeakSet<object>();
+
+function markControlledEvidenceDenialLogged(error: unknown) {
+  if (typeof error === "object" && error !== null) {
+    loggedControlledEvidenceDenialErrors.add(error);
+  }
+}
+
+function wasControlledEvidenceDenialLogged(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    loggedControlledEvidenceDenialErrors.has(error)
+  );
+}
 
 export function normalizeEvidenceReference(value?: string | null) {
   const trimmed = value?.trim();
@@ -918,6 +935,7 @@ export async function authorizeControlledEvidenceSourceAction(input: {
           : "CONTROLLED_EVIDENCE_ACCESS_DENIED",
       attemptedAction: input.attemptedAction,
     });
+    markControlledEvidenceDenialLogged(error);
     throw error;
   }
 }
@@ -1735,11 +1753,13 @@ export async function downloadControlledEvidenceAttachmentForSession(
       input.controlledEvidenceAttachmentId,
     );
   } catch (error) {
-    await logControlledEvidenceAttachmentDenied({
-      session,
-      reasonCode: controlledEvidenceDownloadDenialReason(error),
-      attemptedAction: "DOWNLOAD",
-    });
+    if (!wasControlledEvidenceDenialLogged(error)) {
+      await logControlledEvidenceAttachmentDenied({
+        session,
+        reasonCode: controlledEvidenceDownloadDenialReason(error),
+        attemptedAction: "DOWNLOAD",
+      });
+    }
     throw new Error("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
   }
 }

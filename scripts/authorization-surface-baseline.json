@@ -33389,7 +33389,7 @@
   {
     "id": "server/services/workforce.ts#assertWorkforceEvidenceSourceBatchAccess",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.workforceView | permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleView | permissions.workforceScheduleManage | permissions.workforceAttendanceImportView | permissions.workforceAttendanceImportManage",
+    "permission": "permissions.workforceManage | permissions.coreAdminister | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleView | permissions.workforceScheduleManage | permissions.workforceAttendanceImportView | permissions.workforceAttendanceImportManage",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",

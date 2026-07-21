@@ -1031,6 +1031,23 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "expectedRecoveryTime": "Measure forward correction and isolated restore against the approved evidence RPO/RTO during hosted rehearsal; do not assume rollback by rerunning older defaults.",
     "reviewerIdentity": "Independent Database re-review approved this exact hash for isolated rehearsal only; Product, Security, QA, Release, populated-predecessor, and restore acceptance remain required for production",
     "reviewedAtUtc": "2026-07-21T16:44:19Z"
+  },
+  {
+    "migration": "20260721200000_project_requirement_attachment_context",
+    "sha256": "78097f394b1683ec91de17d9a7785d35e0ef7adab6ad34ff92822574926bb526",
+    "risk": "Replacing the original task/comment-only ProjectAttachment check and adding cross-record task-context triggers can block deployment if legacy comment/requirement or mismatched task/requirement rows exist. An over-broad context rule could admit ambiguous evidence ownership, while an over-narrow rule would keep valid project-level requirement uploads unusable.",
+    "expectedDataEffect": "No row update, delete, backfill, or evidence-byte change. Preserve every existing task-only, comment-only, and correctly matched task/requirement attachment; permit future requirement-only links; install a partial active requirement/attachment uniqueness index and fail-closed triggers that keep ProjectAttachment.taskId equal to ProjectRequirement.taskId.",
+    "recovery": "Any invalid predecessor row, timeout, validation failure, uniqueness failure, or trigger-installation failure rolls back the explicit transaction. Correct only the reported predecessor inconsistency through a separately reviewed evidence-preserving forward fix, then retry. After requirement-only rows exist, retain the widened compatible constraint during application rollback and prefer a reviewed forward fix or paired backup restore over restoring the old constraint.",
+    "reviewerStatus": "APPROVED_FOR_REHEARSAL",
+    "failurePoint": "Preflight detection of an orphan, comment-mixed, or mismatched task/requirement row; check validation; partial unique-index creation; lock/statement timeout; trigger compilation; or an unreviewed direct writer that attempts an inconsistent task context.",
+    "transactionBehavior": "Explicit PostgreSQL transaction with SET LOCAL lock_timeout='5s' and statement_timeout='5min'; preflight, replacement check, unique index, and both cross-record consistency triggers commit or roll back together.",
+    "reversibility": "Application rollback can retain the expanded backward-compatible constraint. Database rollback to the original task/comment-only check is unsafe after requirement-only links exist and must never delete or fabricate evidence/tasks; use a reviewed forward fix or verified paired restore.",
+    "decisionTrigger": "Stop rehearsal or promotion on SQL error, timeout, checksum mismatch, ProjectAttachment count/content delta, any invalid row shape, any requirement/task mismatch, unexpected duplicate active requirement link, second-deploy delta, restore non-equivalence, schema drift, or project/evidence authorization regression.",
+    "owner": "Database Engineering with Architecture and Release Manager approval; QA independently verifies row-shape, authorization, idempotency, archive, and rollback evidence.",
+    "verification": "Three independent reviews selected the fail-closed context migration with High confidence. Local PostgreSQL 17 developer validation applied the migration to a seeded database containing a task-bound requirement attachment, preserved existing data, and passed all 19 controlled-evidence database authorization scenarios including a taskless project-requirement upload. The 15 database contract tests also passed. A fresh exact-SHA populated-predecessor rehearsal with invalid-shape and mismatched-task negative fixtures, second-deploy idempotency, paired restore equivalence, and schema drift remains required before production acceptance.",
+    "expectedRecoveryTime": "Local failure is bounded by the configured five-second lock and five-minute statement timeouts. Measure full validation/index duration and paired restore against the approved evidence RPO/RTO during hosted rehearsal.",
+    "reviewerIdentity": "Ligaya database, Hiraya architecture, and Lualhati QA independent review; confirmed by Codex Decision Chair",
+    "reviewedAtUtc": "2026-07-21T17:30:00Z"
   }
 ]
 ```

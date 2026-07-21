@@ -486,20 +486,17 @@ export function workforceEvidenceViewPermissions(
     case "WORKFORCE_EMPLOYEE":
     case "WORKFORCE_ASSIGNMENT":
       return [
-        permissions.workforceView,
         permissions.workforceManage,
         permissions.coreAdminister
       ];
     case "WORKFORCE_LEAVE":
       return [
-        permissions.workforceView,
         permissions.workforceManage,
         permissions.workforceLeaveApprove,
         permissions.coreAdminister
       ];
     case "WORKFORCE_OVERTIME":
       return [
-        permissions.workforceView,
         permissions.workforceManage,
         permissions.workforceOvertimeApprove,
         permissions.coreAdminister
@@ -508,7 +505,6 @@ export function workforceEvidenceViewPermissions(
       return [
         permissions.workforceScheduleView,
         permissions.workforceScheduleManage,
-        permissions.workforceView,
         permissions.coreAdminister
       ];
     case "WORKFORCE_ATTENDANCE_IMPORT":

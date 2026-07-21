@@ -330,6 +330,8 @@ describe("controlled evidence database authorization matrix", () => {
       availabilityState: "AVAILABLE",
       physicalState: "DURABLE",
       scanVerifiedObjectVersionId: objectVersionId,
+      uploadVerifiedAt: fixtureDate,
+      scanCompletedAt: fixtureDate,
       availableAt: fixtureDate,
       uploadedByUserId: ids.user,
     } });
@@ -444,9 +446,7 @@ describe("controlled evidence database authorization matrix", () => {
     await expect(
       issueEvidenceUploadIntentForSession(
         session,
-        uploadInput("PROJECT_REQUIREMENT", sourceRecordId, {
-          requiredForAction: "PROJECT_REQUIREMENT_SUBMISSION",
-        }),
+        uploadInput("PROJECT_REQUIREMENT", sourceRecordId),
         { config: localEvidenceConfig, objectStorage: localObjectStorage },
       ),
     ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
@@ -722,9 +722,14 @@ describe("controlled evidence database authorization matrix", () => {
       { config: localEvidenceConfig, objectStorage: delayedStorage },
     );
     await writeEntered;
+    const issuedTiming =
+      await prisma.attachmentUploadIntent.findUniqueOrThrow({
+        where: { id: issued.intentId },
+        select: { createdAt: true },
+      });
     await prisma.attachmentUploadIntent.update({
       where: { id: issued.intentId },
-      data: { expiresAt: new Date(Date.now() - 1_000) },
+      data: { expiresAt: new Date(issuedTiming.createdAt.getTime() + 1) },
     });
     const beforeExpiry = await prisma.attachmentCompanyQuotaUsage.findFirstOrThrow({
       where: { tenantId: ids.tenant, companyId: ids.company },
@@ -766,32 +771,46 @@ describe("controlled evidence database authorization matrix", () => {
         removedByUserId: null,
       },
     });
-    const issued = await issueEvidenceUploadIntentForSession(
-      session,
-      uploadInput("PROJECT_REQUIREMENT", sourceRecordId, {
-        requiredForAction: undefined,
-      }),
-      { config: localEvidenceConfig, objectStorage: localObjectStorage },
-    );
-    const link = await prisma.controlledEvidenceAttachment.findFirstOrThrow({
-      where: { attachmentId: issued.attachmentId },
-      select: { id: true, requiredForAction: true },
-    });
-    expect(link.requiredForAction).toBe("PROJECT_REQUIREMENT_SUBMIT");
-    await expect(
-      archiveControlledEvidenceAttachment({
-        controlledEvidenceAttachmentId: link.id,
-        archiveReason: "Crafted null marker must not remove required evidence",
-      }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
-    await prisma.projectMember.updateMany({
-      where: { projectId: ids.restrictedProject, userId: ids.user },
-      data: {
-        status: "INACTIVE",
-        removedAt: new Date(),
-        removedByUserId: ids.user,
-      },
-    });
+    try {
+      const issued = await issueEvidenceUploadIntentForSession(
+        session,
+        uploadInput("PROJECT_REQUIREMENT", sourceRecordId, {
+          requiredForAction: undefined,
+        }),
+        { config: localEvidenceConfig, objectStorage: localObjectStorage },
+      );
+      const [link, projectLink] = await Promise.all([
+        prisma.controlledEvidenceAttachment.findFirstOrThrow({
+          where: { attachmentId: issued.attachmentId },
+          select: { id: true, requiredForAction: true },
+        }),
+        prisma.projectAttachment.findFirstOrThrow({
+          where: { attachmentId: issued.attachmentId },
+          select: { requirementId: true, taskId: true, commentId: true },
+        }),
+      ]);
+      expect(link.requiredForAction).toBe("PROJECT_REQUIREMENT_SUBMIT");
+      expect(projectLink).toEqual({
+        requirementId: sourceRecordId,
+        taskId: null,
+        commentId: null,
+      });
+      await expect(
+        archiveControlledEvidenceAttachment({
+          controlledEvidenceAttachmentId: link.id,
+          archiveReason: "Crafted null marker must not remove required evidence",
+        }),
+      ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
+    } finally {
+      await prisma.projectMember.updateMany({
+        where: { projectId: ids.restrictedProject, userId: ids.user },
+        data: {
+          status: "INACTIVE",
+          removedAt: new Date(),
+          removedByUserId: ids.user,
+        },
+      });
+    }
   });
 
   it("derives finance preservation and rejects a crafted requirement tag", async () => {
@@ -997,6 +1016,8 @@ describe("controlled evidence database authorization matrix", () => {
         legalHold: true,
         legalHoldSetAt: fixtureDate,
         legalHoldSetByUserId: ids.user,
+        legalHoldAuthority: "OGFI Legal",
+        legalHoldCaseReference: `AUTHZ-${suffix}`,
         legalHoldReason: "Authorization legal hold fixture",
       },
     });
@@ -1015,6 +1036,8 @@ describe("controlled evidence database authorization matrix", () => {
           legalHold: true,
           legalHoldSetAt: true,
           legalHoldSetByUserId: true,
+          legalHoldAuthority: true,
+          legalHoldCaseReference: true,
           legalHoldReason: true,
         },
       }),
@@ -1022,6 +1045,8 @@ describe("controlled evidence database authorization matrix", () => {
       legalHold: true,
       legalHoldSetAt: fixtureDate,
       legalHoldSetByUserId: ids.user,
+      legalHoldAuthority: "OGFI Legal",
+      legalHoldCaseReference: `AUTHZ-${suffix}`,
       legalHoldReason: "Authorization legal hold fixture",
     });
     await prisma.attachment.update({
@@ -1030,6 +1055,8 @@ describe("controlled evidence database authorization matrix", () => {
         legalHold: false,
         legalHoldSetAt: null,
         legalHoldSetByUserId: null,
+        legalHoldAuthority: null,
+        legalHoldCaseReference: null,
         legalHoldReason: null,
       },
     });

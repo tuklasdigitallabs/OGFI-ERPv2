@@ -551,11 +551,14 @@ describe("workforce foundation controls", () => {
     expect(workforcePageSource).toContain(
       "permissions.workforceAttendanceImportManage"
     );
-    expect(workforcePageSource).toContain("canViewWorkforceRegistry");
+    expect(workforcePageSource).not.toContain("canViewWorkforceRegistry");
     expect(workforcePageSource).toContain("canViewSchedules");
     expect(workforcePageSource).toContain("canViewAttendance");
     expect(workforcePageSource).toContain(
-      "WORKFORCE_EMPLOYEE: canViewWorkforceRegistry"
+      "WORKFORCE_EMPLOYEE: canManageWorkforce"
+    );
+    expect(workforcePageSource).toContain(
+      "WORKFORCE_ASSIGNMENT: canManageWorkforce"
     );
     expect(workforcePageSource).toContain(
       "WORKFORCE_SCHEDULE: canViewSchedules"
