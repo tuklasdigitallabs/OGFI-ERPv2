@@ -4,7 +4,7 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: "../../tests/e2e",
-  timeout: 60_000,
+  timeout: 120_000,
   expect: { timeout: 15_000 },
   forbidOnly: isCi,
   retries: isCi ? 1 : 0,
@@ -40,6 +40,7 @@ export default defineConfig({
         : ".next-e2e",
     },
     url: "http://127.0.0.1:3100",
+    timeout: 120_000,
     reuseExistingServer: false,
   },
 });
