@@ -191,14 +191,15 @@ related record and human-readable reference
 
 ## 8. Attachment and document security
 
-- Store attachment metadata in PostgreSQL and file bytes in a private storage provider. The current Phase 3 pilot provider is `local-private`; S3-compatible object storage remains the preferred production provider once deployment storage is selected.
-- Use server-mediated private upload/download controls. Phase 3 controlled evidence downloads are permission-checked per source record and write download audit events.
+- Store attachment metadata and workflow state in PostgreSQL and file bytes outside the database. Under `DEC-0045`, production uses AWS S3 with GuardDuty Malware Protection behind provider-neutral `ObjectStorageAdapter` and `MalwareScanAdapter` boundaries. `local-private` is allowed only for local development and controlled UAT and must fail closed in production.
+- Use one private, GuardDuty-protected bucket per environment. Upload through short-lived, server-issued intent for an exact opaque quarantine key; never grant users bucket listing, arbitrary-key write, scan-tag mutation, retention-bypass, or KMS administration rights. Downloads remain permission-checked per source record and write download audit events.
 - Validate file type and size before upload. The current configurable evidence-storage policy uses an allowlist, a 10 MB default pilot limit, and the existing platform hard cap.
-- Store checksum and original filename for traceability. Private downloads verify checksum before serving the file.
+- Enable S3 Versioning and store checksum, original filename, opaque object key, and immutable object version ID for traceability. All scan checks, availability transitions, downloads, retention, recovery, and audit references address the exact version. A clean object remains on its original quarantine key/version; normal release must not use `CopyObject` promotion.
 - Restrict attachment visibility by tenant, company, document scope, and role. Users with task or workflow visibility alone do not automatically receive source-record evidence access.
 - Require attachment purpose labels: invoice, delivery receipt, quotation, photo evidence, supplier document, approval support, payment proof, close support, workforce document, other.
-- Malware scanning is a production control. The current Phase 3 policy records a local-private scan waiver for UAT; production must either approve the waiver with owner signoff or enable a scanner before go-live.
-- Attachments follow `security.retention.matrix` and `security.backup_restore.default_policy`; recovery proof remains a release-readiness evidence item before production use.
+- Malware scanning is mandatory in production. Availability requires both the exact S3 version tag `GuardDutyMalwareScanStatus=NO_THREATS_FOUND` and matching PostgreSQL clean/available state. Threat, unsupported, access-denied, failed, missing, stale, timeout, and indeterminate results remain quarantined and unavailable; no production scan waiver is allowed.
+- Treat EventBridge/API Destination delivery only as a non-authoritative wake-up. Re-read the exact S3 version/tag and use an idempotent compare-and-set transition; use bounded PostgreSQL-backed cron reconciliation for missed, duplicate, or stale events without Redis or a queue.
+- Use SSE-KMS, Object Lock Governance, and cross-account replication/backup. Compliance mode is prohibited without explicit Legal approval. Attachments follow approved retention/legal-hold classes and recovery policy; hosted staging scan, replication/backup, and version-aware restore proof remain production-readiness gates.
 
 ---
 

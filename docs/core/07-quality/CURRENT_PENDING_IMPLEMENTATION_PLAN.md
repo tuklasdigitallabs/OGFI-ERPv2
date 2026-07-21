@@ -27,7 +27,7 @@ These items must be completed once at platform level. A workspace must not be ce
 | SPF-002 | Migration and data-safety verification | Review all pending migrations, deploy them to a disposable environment, compare pre/post snapshots, and verify rollback considerations | Complete; exact-SHA PostgreSQL 17 rehearsal and checksum-backed evidence accepted under `DEC-0039` |
 | SPF-003 | Authentication and privileged access | Confirm production identity provider or login path, privileged MFA enforcement, session invalidation, and break-glass runtime behavior | Implementation complete; production enablement remains blocked on hosted restore/locking evidence and accountable-owner policy signoff |
 | SPF-004 | Authorization regression gate | Verify tenant, company, brand, location, department, project membership, restricted-project, and direct-route/API enforcement | Complete; exact-SHA hosted production build, database authorization, manifest, and isolated development-fixture desktop/mobile E2E accepted under `DEC-0044` |
-| SPF-005 | Controlled evidence uploads | Complete the hybrid evidence model described in Section 3 | Pending; production blocker `DGB-012` |
+| SPF-005 | Controlled evidence uploads | Complete the hybrid evidence model described in Section 3 | In progress under confirmed `DEC-0045`; production activation evidence remains a blocker |
 | SPF-006 | Audit and activity integrity | Verify important create, update, transition, approve, post, reverse, cancel, archive, upload, download, export, and denied actions produce the required immutable history; bound or aggregate repeated denied-event writes so enumeration attempts cannot amplify audit storage without limit | Pending cross-workspace verification |
 | SPF-007 | Shared UX states | Standardize loading, empty, error, denied, disabled-with-reason, validation, conflict, retry, and mobile states | Pending workspace verification |
 | SPF-008 | Operational list behavior | Verify server-backed search, filters, pagination, export, responsive tables/cards, and selected-record task flows | Pending workspace verification |
@@ -114,6 +114,12 @@ Text alone must not satisfy high-risk evidence requirements unless an approved p
 - Add cross-tenant, cross-company, cross-location, unauthorized-source, and restricted-project denial tests.
 
 The current `local-private` provider remains suitable for local development and controlled demonstration only. It must not be represented as the final production storage design without the required security, scanning, retention, and recovery approvals.
+
+### SPF-005 decision status — July 21, 2026
+
+- `DEC-0045` confirms AWS S3 with GuardDuty Malware Protection behind provider-neutral storage and scan adapters, using one private protected bucket per environment, opaque immutable object versions, and an exact-version GuardDuty-tag plus PostgreSQL-state availability gate.
+- EventBridge callbacks are non-authoritative wake-up signals. Exact S3 version/tag revalidation, idempotent database transitions, and bounded PostgreSQL-backed reconciliation are required; Redis or a queue is not introduced in this release.
+- Local-private storage and scan waivers remain limited to local development and controlled UAT. Production must fail closed until AWS account/Region/residency, KMS/IAM/GuardDuty ownership, retention/legal-hold authority, quotas, RPO/RTO, recovery, budget, incident ownership, and hosted staging/restore evidence are configured and approved.
 
 ## 4. Workspace Completion Sequence
 

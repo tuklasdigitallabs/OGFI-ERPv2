@@ -1,5 +1,12 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-21 — Controlled Evidence Storage and Malware-Scanning Decision
+
+- Added `DEC-0045`, confirming AWS S3 with GuardDuty Malware Protection behind provider-neutral storage and scanning adapters for production controlled evidence.
+- Confirmed one private, protected bucket per environment, opaque quarantine keys, immutable exact object versions, dual GuardDuty-tag/PostgreSQL release state, non-authoritative EventBridge callback processing, and bounded database-backed reconciliation without Redis or a queue.
+- Required S3 Versioning, SSE-KMS, Object Lock Governance, and cross-account replication/backup; prohibited Object Lock Compliance mode without explicit Legal approval and prohibited production `local-private` fallback or a malware-scan waiver.
+- Kept account/Region/residency, ownership, budget, retention/legal hold, quota, RPO/RTO, incident/recovery ownership, and hosted staging/restore evidence open as production activation gates.
+
 ## 2026-07-21 — Authorization and Production-Authenticated E2E Gate Decision
 
 - Added `DEC-0044`, allowing SPF-004 to close from exact-SHA production-build, database authorization, manifest, and isolated development-fixture desktop/mobile E2E evidence.

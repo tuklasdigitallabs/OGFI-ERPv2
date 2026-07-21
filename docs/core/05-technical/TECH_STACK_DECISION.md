@@ -11,7 +11,7 @@
 
 OGFI ERP will be built as a TypeScript modular monolith, initially deployed to the Hostinger VPS through Docker Compose.
 
-The application will use a single Next.js web application for the Modern SaaS interface and Phase I API surface, a PostgreSQL transactional database, and S3-compatible attachment storage. The platform must remain tenant-ready for future sale to other restaurant groups. Redis-backed workers are a future capability only and are not part of the current Phase I / Phase 1.5 no-queueing release scope.
+The application will use a single Next.js web application for the Modern SaaS interface and Phase I API surface, a PostgreSQL transactional database, and provider-neutral attachment-storage and malware-scan interfaces. Under `DEC-0045`, the production implementation is AWS S3 with GuardDuty Malware Protection; local-private storage is limited to local development and controlled UAT. The platform must remain tenant-ready for future sale to other restaurant groups. Redis-backed workers are a future capability only and are not part of the current Phase I / Phase 1.5 no-queueing release scope.
 
 ```text
 Browser: desktop / tablet / mobile
@@ -21,7 +21,7 @@ Caddy reverse proxy + HTTPS
         │
         ├── Next.js web application
         ├── PostgreSQL
-        └── S3-compatible object storage
+        └── AWS S3 + GuardDuty Malware Protection (production)
 ```
 
 This is intentionally a modular monolith, not microservices. Purchasing, approval, receiving, transfer, and inventory posting need reliable, low-latency transactional behavior. Separate services will be considered only when a proven operational reason exists.
@@ -43,7 +43,7 @@ This is intentionally a modular monolith, not microservices. Purchasing, approva
 | Authentication | Provider-neutral application identity boundary with tenant-qualified local credentials, `@node-rs/argon2` Argon2id hashing, `otpauth` runtime TOTP, and opaque PostgreSQL-backed sessions under `DEC-0040`; keep the session contract Auth.js-compatible for optional later OIDC | ERP roles and scopes remain custom server-side authorization. Raw passwords, TOTP secrets, recovery codes, and session tokens are never stored or logged; `qrcode` renders the local authenticator enrollment URI only. |
 | Authorization | Custom RBAC + scoped assignments | Role controls capability; assignments control tenant/company/brand/location/department/project reach. |
 | Background jobs | Deferred Redis + BullMQ capability | Not included in the current Phase I / Phase 1.5 release. Current release uses in-app notifications and manual reminder scans without worker, scheduler, Redis, or queue-dependent acceptance criteria. |
-| File storage | S3-compatible object-storage interface | Initial development/staging may use MinIO; production provider remains portable. Store only attachment metadata in PostgreSQL. |
+| File storage and malware scanning | Provider-neutral `ObjectStorageAdapter` and `MalwareScanAdapter`; AWS S3 + GuardDuty Malware Protection in production under `DEC-0045` | Use one private protected bucket per environment, opaque quarantine keys, immutable exact versions, S3 Versioning, SSE-KMS, Object Lock Governance, dual tag/database availability state, and cross-account replication/backup. Store metadata and scan/workflow state in PostgreSQL, not file bytes. |
 | Reverse proxy | Caddy | TLS termination, domain routing, and proxying to internal containers. |
 | Containers | Docker Compose | Separate services, volumes, internal networking, repeatable deployments. |
 | Testing | Vitest + Playwright | Unit/integration testing plus end-to-end tests for critical Phase I workflows. |
@@ -108,7 +108,7 @@ Do not create the package merely as an empty abstraction. Start it once at least
 Local development happens in VS Code using Git, Docker Desktop or Docker Engine, and the monorepo.
 
 - Web runs with development reload.
-- PostgreSQL and MinIO run in local containers. Redis is optional and only needed when a future approved worker/queue scope is active.
+- PostgreSQL and local-private/MinIO-compatible storage may run in local containers. The local adapter is not a production fallback. Redis is optional and only needed when a future approved worker/queue scope is active.
 - Use fake/test email delivery locally.
 - Use synthetic seed data, never copied production data unless formally anonymized.
 
@@ -120,7 +120,7 @@ Create a separate staging deployment before production:
 staging-erp.<approved-domain>
 ```
 
-Staging must have separate database, object-storage bucket/prefix, credentials, and environment file from production. It may share a sufficiently sized VPS initially, but services and volumes must remain isolated. If a future approved release activates Redis, staging must also use a separate Redis namespace or instance.
+Staging must have a separate database, private S3 bucket, KMS key/grants, GuardDuty protection plan, credentials, and environment file from production. It may share a sufficiently sized VPS initially, but application services and volumes must remain isolated. If a future approved release activates Redis, staging must also use a separate Redis namespace or instance.
 
 ### 4.3 Production
 
@@ -128,7 +128,7 @@ Staging must have separate database, object-storage bucket/prefix, credentials, 
 erp.<approved-domain>
 ```
 
-Production services are private except Caddy’s HTTPS entry points. PostgreSQL and MinIO/object-storage admin panels must not be exposed publicly. If a future approved release activates Redis or workers, Redis and internal worker ports must also remain private.
+Production services are private except Caddy’s HTTPS entry points. PostgreSQL must not be exposed publicly. Production evidence uses private AWS S3 access through application-issued exact-key intents and authorized exact-version reads; there is no public storage administration surface. If a future approved release activates Redis or workers, Redis and internal worker ports must also remain private.
 
 ---
 
@@ -142,7 +142,8 @@ Initial service layout:
 Caddy
 ├── ogfi-erp-web
 ├── postgres
-├── minio (development / staging or approved production use)
+├── local-private object storage (development / controlled UAT only)
+├── AWS S3 + GuardDuty (external production evidence service)
 └── backup process
 ```
 
@@ -162,6 +163,9 @@ Required practices:
 ## 6. Data, security, and operational decisions
 
 - PostgreSQL stores structured business data, audit references, and attachment metadata; it does not store the attachment binaries.
+- Production evidence objects use opaque quarantine keys and immutable exact S3 versions. A file becomes available only when the exact version has the GuardDuty `NO_THREATS_FOUND` tag and PostgreSQL records matching clean/available state.
+- EventBridge/API Destination delivery is a non-authoritative scan wake-up. The application revalidates the exact object version/tag and uses idempotent compare-and-set; bounded database-backed cron reconciliation handles missed or duplicate delivery without Redis or a queue.
+- Production evidence storage uses SSE-KMS, Object Lock Governance, and cross-account replication/backup. Object Lock Compliance mode requires explicit Legal approval and a new or supplemental material decision.
 - All timestamps are stored in UTC. Operational display defaults to `Asia/Manila` for OGFI.
 - Tenant isolation begins in Phase I: tenant/company/scope filtering must be implemented at the database access boundary.
 - All controlled workflow actions use service-layer authorization, validation, transaction handling, audit logging, and idempotency protections where retries may occur.
@@ -177,7 +181,7 @@ These do not block Phase I scaffold, but must be finalized before production go-
 
 1. Approved production domain and DNS management owner.
 2. Email provider and sender domain for notification delivery.
-3. Production object-storage provider: self-hosted MinIO, Cloudflare R2, AWS S3, Backblaze B2, or another approved S3-compatible service.
+3. AWS evidence activation values under `DEC-0045`: account, Region/data residency, environment buckets, KMS/IAM/GuardDuty/backup/recovery/incident owners, budget and alarms, retention/legal-hold and governance-bypass authority, quotas, RPO/RTO, recovery procedures, and hosted staging/restore proof.
 4. Error-monitoring provider and alert recipients.
 5. Exact VPS specification and whether staging will use a separate VPS before pilot rollout.
 6. Backup destination, retention period, restore owner, and restore-test schedule.
