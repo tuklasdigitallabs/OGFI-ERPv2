@@ -354,6 +354,7 @@ export function transferDashboardProfileWhere(
 }
 
 const transferDashboardTaskCandidateLimit = 8;
+const transferMyTaskPageSize = 25;
 
 export type TransferDashboardRead = {
   followUpCount: number;
@@ -366,6 +367,127 @@ export type TransferDashboardRead = {
     createdAt: string;
   }>;
 };
+
+export type TransferMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    publicReference: string;
+    status: string;
+    actionLabel: "Dispatch transfer" | "Receive transfer";
+    sourceLocationName: string;
+    destinationLocationName: string;
+    createdAt: string;
+  }>;
+  nextCursor: { createdAt: string; id: string } | null;
+};
+
+/**
+ * Returns only transfer actions that are currently executable in the selected
+ * location. Dispute settlement is intentionally excluded until the task
+ * projection can carry and verify its stricter independent-actor rule.
+ */
+export async function listTransferMyTaskPage(
+  session: SessionContext,
+  input: {
+    after?: { createdAt: string; id: string };
+    take?: number;
+  } = {}
+): Promise<TransferMyTaskPage> {
+  await requireTransferRead(session);
+
+  const actionPredicates: Prisma.InventoryTransferWhereInput[] = [
+    ...(session.permissionCodes.includes(permissions.transferDispatch)
+      ? [
+          {
+            sourceLocationId: session.context.locationId,
+            status: "REQUESTED"
+          }
+        ]
+      : []),
+    ...(session.permissionCodes.includes(permissions.transferReceive)
+      ? [
+          {
+            destinationLocationId: session.context.locationId,
+            status: { in: ["DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"] },
+            dispatchedByUserId: { not: session.user.id }
+          }
+        ]
+      : [])
+  ];
+  if (actionPredicates.length === 0) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+
+  const take = Math.min(Math.max(input.take ?? transferMyTaskPageSize, 1), 50);
+  const cursorDate = input.after ? new Date(input.after.createdAt) : null;
+  if (cursorDate && Number.isNaN(cursorDate.getTime())) {
+    throw new Error("TRANSFER_MY_TASK_CURSOR_INVALID");
+  }
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    AND: [
+      { OR: actionPredicates },
+      ...(cursorDate && input.after
+        ? [
+            {
+              OR: [
+                { createdAt: { gt: cursorDate } },
+                { createdAt: cursorDate, id: { gt: input.after.id } }
+              ]
+            }
+          ]
+        : [])
+    ]
+  } satisfies Prisma.InventoryTransferWhereInput;
+  const select = {
+    id: true,
+    publicReference: true,
+    status: true,
+    createdAt: true,
+    sourceLocationId: true,
+    destinationLocationId: true,
+    sourceLocation: { select: { name: true } },
+    destinationLocation: { select: { name: true } }
+  } satisfies Prisma.InventoryTransferSelect;
+  const countWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    OR: actionPredicates
+  } satisfies Prisma.InventoryTransferWhereInput;
+  const [totalCount, rows] = await Promise.all([
+    prisma.inventoryTransfer.count({ where: countWhere }),
+    prisma.inventoryTransfer.findMany({
+      where,
+      select,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: take + 1
+    })
+  ]);
+  const pageRows = rows.slice(0, take);
+  const lastRow = pageRows.at(-1);
+
+  return {
+    totalCount,
+    items: pageRows.map((transfer) => ({
+      taskId: `transfer-${transfer.id}`,
+      publicReference: transfer.publicReference,
+      status: transfer.status,
+      actionLabel:
+        transfer.sourceLocationId === session.context.locationId
+          ? "Dispatch transfer"
+          : "Receive transfer",
+      sourceLocationName: transfer.sourceLocation.name,
+      destinationLocationName: transfer.destinationLocation.name,
+      createdAt: transfer.createdAt.toISOString()
+    })),
+    nextCursor:
+      rows.length > take && lastRow
+        ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
+        : null
+  };
+}
 
 /**
  * Returns only the dashboard's transfer follow-up aggregate and a bounded

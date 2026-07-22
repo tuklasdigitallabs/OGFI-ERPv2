@@ -14,6 +14,7 @@ import {
   assertTransferCanSubmit,
   assertTransferLocationsDistinct,
   getTransferDashboardRead,
+  listTransferMyTaskPage,
   listInventoryTransfersDashboardProfilePage,
   resolveTransferDashboardProfile,
   transferDashboardProfileHref,
@@ -180,6 +181,70 @@ describe("inventory transfer foundation rules", () => {
       getTransferDashboardRead({ ...dashboardSession, permissionCodes: [] } as never)
     ).rejects.toThrow("PERMISSION_DENIED");
     expect(mockPrisma.inventoryTransfer.count).not.toHaveBeenCalled();
+  });
+
+  test("My Tasks preserves dispatch and receipt direction with the receiver segregation rule", async () => {
+    mockPrisma.inventoryTransfer.count.mockResolvedValue(2);
+    mockPrisma.inventoryTransfer.findMany.mockResolvedValue([
+      {
+        id: "transfer-1",
+        publicReference: "TR-2026-00001",
+        status: "REQUESTED",
+        createdAt: new Date("2026-07-20T00:00:00.000Z"),
+        sourceLocationId: dashboardSession.context.locationId,
+        destinationLocationId: "00000000-0000-4000-8000-000000000006",
+        sourceLocation: { name: "BGC" },
+        destinationLocation: { name: "Main Warehouse" }
+      },
+      {
+        id: "transfer-2",
+        publicReference: "TR-2026-00002",
+        status: "DISPATCHED",
+        createdAt: new Date("2026-07-21T00:00:00.000Z"),
+        sourceLocationId: "00000000-0000-4000-8000-000000000006",
+        destinationLocationId: dashboardSession.context.locationId,
+        sourceLocation: { name: "Main Warehouse" },
+        destinationLocation: { name: "BGC" }
+      }
+    ]);
+
+    await expect(
+      listTransferMyTaskPage(
+        {
+          ...dashboardSession,
+          permissionCodes: [permissions.transferDispatch, permissions.transferReceive]
+        } as never,
+        { take: 1 }
+      )
+    ).resolves.toEqual({
+      totalCount: 2,
+      items: [
+        expect.objectContaining({
+          taskId: "transfer-transfer-1",
+          actionLabel: "Dispatch transfer"
+        })
+      ],
+      nextCursor: {
+        createdAt: "2026-07-20T00:00:00.000Z",
+        id: "transfer-1"
+      }
+    });
+    expect(mockPrisma.inventoryTransfer.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        OR: expect.arrayContaining([
+          expect.objectContaining({
+            sourceLocationId: dashboardSession.context.locationId,
+            status: "REQUESTED"
+          }),
+          expect.objectContaining({
+            destinationLocationId: dashboardSession.context.locationId,
+            dispatchedByUserId: { not: dashboardSession.user.id }
+          })
+        ])
+      })
+    });
   });
 
   test("requires distinct source and destination locations", () => {
