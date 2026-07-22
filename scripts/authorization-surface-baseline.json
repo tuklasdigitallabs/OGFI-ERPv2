@@ -17552,6 +17552,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/branchOperations.ts#getBranchOperationsDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.branchOperationsView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/branchOperations.ts#returnBranchOperationChecklistForCorrection",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.branchOperationsCorrect",
@@ -25185,6 +25206,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/foodSafety.ts#getFoodSafetyDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.foodSafetyView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/foodSafety.ts#getFoodSafetyLogSummary",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.foodSafetyView",
@@ -25423,6 +25465,27 @@
   },
   {
     "id": "server/services/incidents.ts#getIncidentDashboard",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.incidentView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/incidents.ts#getIncidentDashboardRead",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.incidentView",
     "scopeDimensions": [
@@ -26237,6 +26300,27 @@
   },
   {
     "id": "server/services/maintenance.ts#getMaintenanceDashboard",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.maintenanceView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/maintenance.ts#getMaintenanceDashboardRead",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.maintenanceView",
     "scopeDimensions": [
