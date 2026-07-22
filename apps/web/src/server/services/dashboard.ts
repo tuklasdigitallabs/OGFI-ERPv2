@@ -14,6 +14,7 @@ import {
   canUseWastageReports,
   permissions
 } from "./authorization";
+import { type ApprovalQueueItem } from "./approvals";
 import type { SessionContext } from "./context";
 import {
   getBranchOperationsDashboard,
@@ -174,7 +175,9 @@ export type OperationalDashboard = {
 };
 
 export type OperationalDashboardSource = {
+  approvals?: ApprovalQueueItem[];
   approvalPreviewUnavailable?: boolean;
+  hasUnavailableSource?: boolean;
   purchaseRequests?: PurchaseRequest[];
   purchaseRequestDashboard?: PurchaseRequestDashboardRead;
   purchaseOrders?: PurchaseOrderSummary[];
@@ -433,6 +436,17 @@ export function buildOperationalDashboardModel(
     source.purchaseOrderDashboard?.primaryCurrency ??
     source.purchaseOrders?.find((order) => order.currencyCode)?.currencyCode ??
     "PHP";
+
+  if (source.approvals) {
+    cards.push({
+      id: "pending-approvals",
+      label: "Pending Approvals",
+      value: source.approvals.length,
+      href: "/approvals",
+      description: "Assigned decisions only",
+      tone: cardTone(source.approvals.length),
+    });
+  }
 
   if (source.purchaseRequests || source.purchaseRequestDashboard) {
     const value = source.purchaseRequestDashboard
@@ -1295,6 +1309,18 @@ export function buildOperationalDashboardModel(
   }
 
   sourceHealth.push(
+    ...(source.hasUnavailableSource
+      ? [
+          {
+            id: "dashboard-source-unavailable",
+            label: "Dashboard source status",
+            displayValue: "Some data unavailable",
+            detail:
+              "Some dashboard summaries could not be refreshed. Open the source workspace for the authoritative current record.",
+            tone: "warning" as const,
+          },
+        ]
+      : []),
     {
       id: "dashboard-trust-gate",
       label: "Reporting trust gate",
@@ -1342,9 +1368,25 @@ export function buildOperationalDashboardModel(
     }
   );
 
+  const approvalQueueDrafts = source.approvals?.map((approval) => ({
+    id: approval.approvalInstanceId,
+    label: approval.documentType,
+    reference: approval.publicReference,
+    detail: `${approval.requesterName} / ${approval.locationName}`,
+    status: approval.status,
+    href: `/approvals/${approval.approvalInstanceId}`,
+    tone: "warning" as const,
+    nextAction: "Review assigned approval",
+    nextActor: session.user.displayName,
+    priority: "HIGH" as const,
+    locationName: approval.locationName,
+    ownerLabel: session.user.displayName,
+    dueAt: approval.requiredDate,
+    isOverdue: isDateOverdue(approval.requiredDate),
+  })) ?? [];
   const approvalQueueContract = buildDashboardQueueContract(
     session,
-    [],
+    approvalQueueDrafts,
     approvalQueueDisplayLimit
   );
   if (source.approvalPreviewUnavailable) {
@@ -1376,7 +1418,9 @@ export function buildOperationalDashboardModel(
       isOverridden: source.dashboardTrustGate?.isOverridden ?? false,
       sourceDecisionId: source.dashboardTrustGate?.sourceDecisionId ?? "DEC-0036"
     },
-    approvalQueue: [],
+    approvalQueue: toLegacyDashboardQueueItems(
+      approvalQueueDrafts.slice(0, approvalQueueDisplayLimit),
+    ),
     exceptionQueue: toLegacyDashboardQueueItems(
       exceptionQueue.slice(0, exceptionQueueDisplayLimit)
     ),
@@ -1390,7 +1434,7 @@ export async function getOperationalDashboard(
 ): Promise<OperationalDashboard> {
   const source: OperationalDashboardSource = {};
 
-  await Promise.all([
+  const sourceResults = await Promise.allSettled([
     canUseApprovals(session.permissionCodes)
       ? Promise.resolve().then(() => {
           source.approvalPreviewUnavailable = true;
@@ -1470,6 +1514,9 @@ export async function getOperationalDashboard(
       source.dashboardTrustGate = dashboardTrustGate;
     })
   ]);
+  source.hasUnavailableSource = sourceResults.some(
+    (result) => result.status === "rejected",
+  );
 
   return buildOperationalDashboardModel(session, source);
 }

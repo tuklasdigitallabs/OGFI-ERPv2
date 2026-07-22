@@ -781,4 +781,19 @@ describe("operational dashboard model", () => {
     expect(dashboardPageSource).toContain("Approval preview is temporarily unavailable");
     expect(dashboardPageSource).toContain("Open Approval Inbox");
   });
+
+  it("reports a generic source-refresh warning without exposing an internal failure", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      hasUnavailableSource: true,
+    });
+
+    expect(dashboard.sourceHealth).toContainEqual(
+      expect.objectContaining({
+        id: "dashboard-source-unavailable",
+        displayValue: "Some data unavailable",
+      }),
+    );
+    expect(dashboard.sourceHealth.find((metric) => metric.id === "dashboard-source-unavailable")?.detail)
+      .not.toContain("Error");
+  });
 });
