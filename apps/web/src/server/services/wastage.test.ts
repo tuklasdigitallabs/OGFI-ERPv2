@@ -8,10 +8,67 @@ import {
   assertWastageCanReview,
   assertWastageCanSubmit,
   assertWastageQuantity,
-  buildWastagePolicyEvaluation
+  buildWastagePolicyEvaluation,
+  resolveWastageDashboardProfile,
+  wastageDashboardProfileHref,
+  wastageDashboardProfileWhere
 } from "./wastage";
 
+const dashboardSession = {
+  context: {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    companyId: "00000000-0000-4000-8000-000000000002",
+    locationId: "00000000-0000-4000-8000-000000000004"
+  }
+};
+
 describe("wastage foundation rules", () => {
+  test("resolves only the closed wastage exception profile and canonical scoped predicate", () => {
+    expect(resolveWastageDashboardProfile("wastage-exceptions-v1")).toBe(
+      "wastage-exceptions-v1"
+    );
+    expect(resolveWastageDashboardProfile("all")).toBeNull();
+    expect(resolveWastageDashboardProfile(undefined)).toBeNull();
+    expect(wastageDashboardProfileHref("wastage-exceptions-v1", 2)).toBe(
+      "/wastage?dashboard=wastage-exceptions-v1&page=2"
+    );
+    expect(
+      wastageDashboardProfileWhere(
+        dashboardSession as never,
+        "wastage-exceptions-v1"
+      )
+    ).toEqual({
+      tenantId: dashboardSession.context.tenantId,
+      companyId: dashboardSession.context.companyId,
+      inventoryLocation: { locationId: dashboardSession.context.locationId },
+      OR: [
+        { status: { in: ["PENDING_APPROVAL", "APPROVED", "POSTING", "RETURNED"] } },
+        { evidenceRequired: true, evidenceSatisfied: false }
+      ]
+    });
+  });
+
+  test("dashboard, paged profile, and export use the canonical exception predicate", () => {
+    const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
+    const page = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/wastage/page.tsx"),
+      "utf8"
+    );
+    const route = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/wastage/export/route.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("wastageDashboardProfileWhere(");
+    expect(source).toContain('"wastage-exceptions-v1"');
+    expect(source).toContain("listWastageDashboardProfilePage");
+    expect(source).toContain("take: wastageDashboardProfilePageSize");
+    expect(page).toContain("!profile && canCreateWastage");
+    expect(page).toContain("This read-only");
+    expect(route).toContain("listWastageReports(session, profile ?? undefined)");
+    expect(route).toContain("Unsupported wastage dashboard profile.");
+  });
+
   test("list page copy matches implemented approval, posting, and reversal workflow", () => {
     const source = readFileSync(
       path.resolve(__dirname, "../../app/(app)/wastage/page.tsx"),

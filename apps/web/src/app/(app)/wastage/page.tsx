@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink } from "@ogfi/ui";
+import { Badge, ButtonLink, EmptyState, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { TaskSheet } from "@/components/TaskSheet";
@@ -18,8 +18,11 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportWastageReports } from "@/server/services/exportAuthorization";
 import {
   createWastageReport,
+  listWastageDashboardProfilePage,
   listWastageFormOptions,
-  listWastageReports
+  listWastageReports,
+  resolveWastageDashboardProfile,
+  wastageDashboardProfileHref
 } from "@/server/services/wastage";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +30,19 @@ export const dynamic = "force-dynamic";
 type WastagePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+function getStringParam(
+  searchParams: Record<string, string | string[] | undefined>,
+  key: string
+) {
+  const value = searchParams[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getPage(searchParams: Record<string, string | string[] | undefined>) {
+  const page = Number.parseInt(getStringParam(searchParams, "page") ?? "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
 
 async function createWastageAction(formData: FormData) {
   "use server";
@@ -83,13 +99,24 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
     );
   }
 
-  const [reports, formOptions] = await Promise.all([
-    listWastageReports(session),
-    canCreateWastage ? listWastageFormOptions(session) : Promise.resolve(null)
-  ]);
+  const params = searchParams ? await searchParams : {};
+  const profileParam = getStringParam(params, "dashboard");
+  const profile = resolveWastageDashboardProfile(profileParam);
+  if (profileParam && !profile) {
+    redirect("/wastage");
+  }
+  const profilePage = profile
+    ? await listWastageDashboardProfilePage(session, profile, getPage(params))
+    : null;
+  const [workspaceReports, formOptions] = profile
+    ? [null, null]
+    : await Promise.all([
+        listWastageReports(session),
+        canCreateWastage ? listWastageFormOptions(session) : Promise.resolve(null)
+      ]);
+  const reports = profilePage?.reports ?? workspaceReports ?? [];
   const firstInventoryLocation = formOptions?.inventoryLocations[0];
   const firstItem = formOptions?.items[0];
-  const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
 
   return (
@@ -115,7 +142,7 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
         </p>
       </div>
       <div className="space-y-4">
-        {canCreateWastage ? (
+        {!profile && canCreateWastage ? (
           <div className="flex justify-end">
             <TaskSheet title="Log Wastage" description="Capture loss quantities, reasons, and line evidence before review." trigger={<span>Log Wastage</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
               {!firstInventoryLocation || !firstItem ? (
@@ -139,17 +166,24 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
         <section className="ogfi-data-surface">
           <div className="ogfi-section-header">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">Wastage Reports</h2>
+              <h2 className="text-lg font-bold text-slate-950">
+                {profile ? "Wastage Exceptions" : "Wastage Reports"}
+              </h2>
               <p className="text-sm text-slate-500">
-                Approved reports can be posted separately. Post Wastage action creates WASTAGE_OUT
-                inventory movements and updates balances.
+                {profile
+                  ? `${profilePage?.totalItems ?? 0} reports requiring follow-up at the selected inventory location`
+                  : "Approved reports can be posted separately. Post Wastage action creates WASTAGE_OUT inventory movements and updates balances."}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Badge tone="info">{session.context.locationName}</Badge>
+              {profile ? (
+                <ButtonLink href="/wastage">View all wastage reports</ButtonLink>
+              ) : (
+                <Badge tone="info">{session.context.locationName}</Badge>
+              )}
               {canExportWastage ? (
                 <ButtonLink
-                  href="/wastage/export"
+                  href={profile ? `/wastage/export?dashboard=${profile}` : "/wastage/export"}
                   className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
@@ -157,13 +191,23 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
               ) : null}
             </div>
           </div>
+          {profile ? (
+            <div className="border-b border-slate-100 bg-blue-50 p-4 text-sm text-slate-700">
+              Showing the dashboard exception population only: pending approval,
+              approved, posting, or returned reports, plus any report missing
+              required evidence, for the selected inventory location. This read-only
+              profile does not grant wastage or inventory actions; opening a report
+              follows its controlled server workflow and re-authorizes the action.
+            </div>
+          ) : null}
           {reports.length === 0 ? (
-            <div className="ogfi-empty-state">
-              <p className="font-semibold text-slate-900">No wastage reports yet</p>
-              <p className="mt-1 text-sm text-slate-600">
-                Log wastage when stock is spoiled, damaged, expired, consumed, or
-                otherwise lost with a documented reason.
-              </p>
+            <div className="p-5">
+              <EmptyState
+                title={profile ? "No wastage exceptions" : "No wastage reports yet"}
+                description={profile
+                  ? "No pending, approved, posting, returned, or evidence-incomplete reports are in the selected inventory-location scope."
+                  : "Log wastage when stock is spoiled, damaged, expired, consumed, or otherwise lost with a documented reason."}
+              />
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -218,6 +262,15 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
               ))}
             </div>
           )}
+          {profile && reports.length > 0 ? (
+            <PaginationBar
+              page={profilePage?.page ?? 1}
+              pageSize={profilePage?.pageSize ?? 25}
+              totalItems={profilePage?.totalItems ?? reports.length}
+              itemLabel="wastage reports"
+              getPageHref={(nextPage) => wastageDashboardProfileHref(profile, nextPage)}
+            />
+          ) : null}
         </section>
       </div>
     </AppShell>

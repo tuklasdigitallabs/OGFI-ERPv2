@@ -68,6 +68,7 @@ import {
 import {
   getWastageDashboardRead,
   listWastageReports,
+  wastageDashboardProfileHref,
   type WastageDashboardRead
 } from "./wastage";
 import {
@@ -673,7 +674,7 @@ export function buildOperationalDashboardModel(
       id: "wastage-exceptions",
       label: "Wastage Exceptions",
       value,
-      href: "/wastage",
+      href: wastageDashboardProfileHref("wastage-exceptions-v1"),
       description: "Pending, returned, or missing evidence",
       tone: cardTone(value)
     });

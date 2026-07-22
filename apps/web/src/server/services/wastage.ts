@@ -1,4 +1,4 @@
-import { prisma, type TransactionClient } from "@ogfi/database";
+import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { WASTAGE_MAX_LINES } from "../../lib/workflowLimits";
@@ -395,7 +395,50 @@ const wastageDashboardExceptionStatuses = [
   "APPROVED",
   "POSTING",
   "RETURNED",
-];
+] as const;
+
+export const wastageDashboardProfiles = ["wastage-exceptions-v1"] as const;
+export type WastageDashboardProfile =
+  (typeof wastageDashboardProfiles)[number];
+
+const wastageDashboardProfilePageSize = 25;
+
+/** Resolves only the server-owned dashboard profile; caller filters are ignored. */
+export function resolveWastageDashboardProfile(
+  value: string | undefined
+): WastageDashboardProfile | null {
+  return value === "wastage-exceptions-v1" ? value : null;
+}
+
+export function wastageDashboardProfileHref(
+  profile: WastageDashboardProfile,
+  page = 1
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+  return `/wastage?${params.toString()}`;
+}
+
+/** Closed, server-owned dashboard exception population. */
+export function wastageDashboardProfileWhere(
+  session: SessionContext,
+  profile: WastageDashboardProfile
+) {
+  // Keep this predicate aligned with the dashboard count and profile export.
+  if (profile === "wastage-exceptions-v1") {
+    return {
+      ...scopedWastageWhere(session),
+      OR: [
+        { status: { in: [...wastageDashboardExceptionStatuses] } },
+        { evidenceRequired: true, evidenceSatisfied: false }
+      ]
+    } satisfies Prisma.WastageReportWhereInput;
+  }
+
+  throw new Error("WASTAGE_DASHBOARD_PROFILE_UNSUPPORTED");
+}
 
 export type WastageDashboardTaskCandidate = {
   id: string;
@@ -423,13 +466,7 @@ export async function getWastageDashboardRead(
 ): Promise<WastageDashboardRead> {
   await requireWastageRead(session);
 
-  const where = {
-    ...scopedWastageWhere(session),
-    OR: [
-      { status: { in: wastageDashboardExceptionStatuses } },
-      { evidenceRequired: true, evidenceSatisfied: false },
-    ],
-  };
+  const where = wastageDashboardProfileWhere(session, "wastage-exceptions-v1");
   const [exceptionCount, taskCandidates] = await Promise.all([
     prisma.wastageReport.count({ where }),
     prisma.wastageReport.findMany({
@@ -712,11 +749,16 @@ export async function listWastageFormOptions(session: SessionContext) {
   };
 }
 
-export async function listWastageReports(session: SessionContext) {
+export async function listWastageReports(
+  session: SessionContext,
+  profile?: WastageDashboardProfile
+) {
   await requireWastageRead(session);
 
   const reports = await prisma.wastageReport.findMany({
-    where: scopedWastageWhere(session),
+    where: profile
+      ? wastageDashboardProfileWhere(session, profile)
+      : scopedWastageWhere(session),
     include: {
       inventoryLocation: true,
       reportedBy: true,
@@ -756,6 +798,79 @@ export async function listWastageReports(session: SessionContext) {
       0
     )
   }));
+}
+
+export type WastageExceptionProfilePage = {
+  reports: Awaited<ReturnType<typeof listWastageReports>>;
+  totalItems: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function listWastageDashboardProfilePage(
+  session: SessionContext,
+  profile: WastageDashboardProfile,
+  requestedPage: number
+): Promise<WastageExceptionProfilePage> {
+  await requireWastageRead(session);
+
+  const page = Number.isFinite(requestedPage) && requestedPage > 0
+    ? Math.floor(requestedPage)
+    : 1;
+  const where = wastageDashboardProfileWhere(session, profile);
+  const totalItems = await prisma.wastageReport.count({ where });
+  const safePage = Math.min(
+    page,
+    Math.max(1, Math.ceil(totalItems / wastageDashboardProfilePageSize))
+  );
+  const reports = await prisma.wastageReport.findMany({
+    where,
+    include: {
+      inventoryLocation: true,
+      reportedBy: true,
+      reviewedBy: true,
+      postedBy: true,
+      reversedBy: true,
+      lines: true
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (safePage - 1) * wastageDashboardProfilePageSize,
+    take: wastageDashboardProfilePageSize
+  });
+
+  return {
+    reports: reports.map((report) => ({
+      id: report.id,
+      publicReference: report.publicReference,
+      status: report.status,
+      wastageType: report.wastageType,
+      reasonCode: report.reasonCode,
+      inventoryLocationName: report.inventoryLocation.name,
+      reportedByName: report.reportedBy.displayName,
+      reviewedByName: report.reviewedBy?.displayName ?? null,
+      postedByName: report.postedBy?.displayName ?? null,
+      reversedByName: report.reversedBy?.displayName ?? null,
+      createdAt: report.createdAt.toISOString(),
+      submittedAt: report.submittedAt?.toISOString() ?? null,
+      reviewedAt: report.reviewedAt?.toISOString() ?? null,
+      postedAt: report.postedAt?.toISOString() ?? null,
+      reversedAt: report.reversedAt?.toISOString() ?? null,
+      cancelledAt: report.cancelledAt?.toISOString() ?? null,
+      totalEstimatedCost: Number(report.totalEstimatedCost),
+      policyFlags: parseWastagePolicyFlags(report.policyFlags),
+      policyFlagLabels: formatWastagePolicyFlagLabels(report.policyFlags),
+      evidenceRequired: report.evidenceRequired,
+      evidenceSatisfied: report.evidenceSatisfied,
+      lineCount: report.lines.length,
+      totalQuantity: report.lines.reduce(
+        (total, line) => total + Number(line.quantityBaseUom),
+        0
+      )
+    })),
+    totalItems,
+    page: safePage,
+    pageSize: wastageDashboardProfilePageSize
+  };
 }
 
 export async function getWastageReport(session: SessionContext, id: string) {
