@@ -115,6 +115,20 @@ async function gotoCoreAdmin(page: Page) {
   await expect(page.getByRole("heading", { name: "Core Administration" })).toBeVisible();
 }
 
+test("dashboard keeps the priority preview readable at desktop and mobile widths", async ({ page }) => {
+  await signInAs(page, requesterEmail, "/dashboard", "Company Overview");
+
+  await expect(page.getByRole("heading", { name: "Today’s work" })).toBeVisible();
+  await expect(page.getByText("A bounded priority preview of records assigned to you or requiring attention in the selected scope.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Assigned approvals" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Operational exceptions" })).toBeVisible();
+  expect(
+    await page
+      .locator("html")
+      .evaluate((documentElement: HTMLElement) => documentElement.scrollWidth <= window.innerWidth),
+  ).toBe(true);
+});
+
 test("non-admin users cannot open core administration", async ({ page }) => {
   await signInAs(
     page,
