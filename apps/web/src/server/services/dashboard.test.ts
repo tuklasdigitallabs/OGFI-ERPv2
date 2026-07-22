@@ -842,6 +842,16 @@ describe("operational dashboard model", () => {
     expect(dashboardServiceSource).not.toContain("getFoodSafetyDashboard(session)");
   });
 
+  it("uses the bounded Incident read instead of the full incident workspace read", () => {
+    const dashboardServiceSource = readFileSync(
+      path.resolve(__dirname, "dashboard.ts"),
+      "utf8",
+    );
+
+    expect(dashboardServiceSource).toContain("getIncidentDashboardRead(session)");
+    expect(dashboardServiceSource).not.toContain("getIncidentDashboard(session)");
+  });
+
   it("reports each unavailable dashboard source without exposing an internal failure", () => {
     const dashboard = buildOperationalDashboardModel(session, {
       unavailableSources: [

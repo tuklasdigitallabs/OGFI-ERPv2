@@ -29,7 +29,11 @@ import {
   type FoodSafetyDashboard,
   type FoodSafetyDashboardRead
 } from "./foodSafety";
-import { getIncidentDashboard, type IncidentDashboard } from "./incidents";
+import {
+  getIncidentDashboardRead,
+  type IncidentDashboard,
+  type IncidentDashboardRead
+} from "./incidents";
 import {
   getInventoryBalanceReconciliation,
   listInventoryBalances
@@ -209,6 +213,7 @@ export type OperationalDashboardSource = {
   foodSafety?: FoodSafetyDashboard;
   foodSafetyDashboard?: FoodSafetyDashboardRead;
   incidents?: IncidentDashboard;
+  incidentDashboard?: IncidentDashboardRead;
   maintenance?: MaintenanceDashboard;
   branchOperationsDashboard?: BranchOperationsDashboardRead;
   dashboardTrustGate?: Awaited<ReturnType<typeof getDashboardTrustGatePolicy>>;
@@ -1171,52 +1176,56 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.incidents) {
+  if (source.incidents || source.incidentDashboard) {
+    const incidents = source.incidentDashboard ?? source.incidents!;
     const openIncidentCount =
-      source.incidents.statusCounts.OPEN +
-      source.incidents.statusCounts.IN_PROGRESS +
-      source.incidents.statusCounts.PENDING_REVIEW;
+      incidents.statusCounts.OPEN +
+      incidents.statusCounts.IN_PROGRESS +
+      incidents.statusCounts.PENDING_REVIEW;
     cards.push({
       id: "open-operational-incidents",
       label: "Open Incidents",
       value: openIncidentCount,
       href: "/incidents",
-      description: `${source.incidents.overdueIncidents} overdue corrective action${source.incidents.overdueIncidents === 1 ? "" : "s"}`,
+      description: `${incidents.overdueIncidents} overdue corrective action${incidents.overdueIncidents === 1 ? "" : "s"}`,
       tone: cardTone(openIncidentCount)
     });
     metrics.push(
       {
         id: "incident-critical-count",
         label: "Critical incidents",
-        displayValue: number(source.incidents.severityCounts.CRITICAL),
+        displayValue: number(incidents.severityCounts.CRITICAL),
         detail: "Critical incident records in current scope",
         href: "/incidents",
-        tone: source.incidents.severityCounts.CRITICAL > 0 ? "warning" : "success"
+        tone: incidents.severityCounts.CRITICAL > 0 ? "warning" : "success"
       },
       {
         id: "incident-pending-review-count",
         label: "Incident review",
-        displayValue: number(source.incidents.statusCounts.PENDING_REVIEW),
+        displayValue: number(incidents.statusCounts.PENDING_REVIEW),
         detail: "Incidents waiting for closure review",
         href: "/incidents",
         tone:
-          source.incidents.statusCounts.PENDING_REVIEW > 0 ? "warning" : "success"
+          incidents.statusCounts.PENDING_REVIEW > 0 ? "warning" : "success"
       },
       {
         id: "incident-overdue-count",
         label: "Incident overdue",
-        displayValue: number(source.incidents.overdueIncidents),
+        displayValue: number(incidents.overdueIncidents),
         detail: "Incidents past corrective-action due date",
         href: "/incidents",
-        tone: source.incidents.overdueIncidents > 0 ? "warning" : "success"
+        tone: incidents.overdueIncidents > 0 ? "warning" : "success"
       }
     );
 
-    for (const incident of source.incidents.incidents
-      .filter((incidentSummary) =>
-        ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"].includes(incidentSummary.status)
-      )
-      .slice(0, 3)) {
+    const incidentCandidates = source.incidentDashboard
+      ? source.incidentDashboard.followUpCandidates
+      : source.incidents!.incidents
+          .filter((incidentSummary) =>
+            ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"].includes(incidentSummary.status)
+          )
+          .slice(0, 3);
+    for (const incident of incidentCandidates) {
       exceptionQueue.push({
         id: `incident-${incident.id}`,
         label: "Incident follow-up",
@@ -1237,7 +1246,7 @@ export function buildOperationalDashboardModel(
               ? "HIGH"
               : "NORMAL",
         severityLabel: incident.severity,
-        locationName: incident.locationName,
+        locationName: session.context.locationName,
         ownerLabel: incident.ownerName ?? "Not assigned",
         dueAt: incident.dueAt,
         sourceAgeAt: incident.incidentDate,
@@ -1570,8 +1579,8 @@ export async function getOperationalDashboard(
     {
       unavailableSource: { id: "incidents", label: "Incidents", href: "/incidents" },
       read: canUseIncidents(session.permissionCodes)
-      ? getIncidentDashboard(session).then((incidents) => {
-          source.incidents = incidents;
+      ? getIncidentDashboardRead(session).then((incidentDashboard) => {
+          source.incidentDashboard = incidentDashboard;
         })
       : Promise.resolve()
     },

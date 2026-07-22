@@ -153,6 +153,24 @@ export type IncidentDashboard = {
   incidents: OperationalIncidentSummary[];
 };
 
+export type IncidentDashboardCandidate = {
+  id: string;
+  incidentNumber: string;
+  incidentDate: string;
+  severity: string;
+  status: string;
+  title: string;
+  ownerName: string | null;
+  dueAt: string | null;
+};
+
+export type IncidentDashboardRead = {
+  overdueIncidents: number;
+  statusCounts: IncidentStatusCounts;
+  severityCounts: IncidentSeverityCounts;
+  followUpCandidates: IncidentDashboardCandidate[];
+};
+
 export type IncidentExportFilters = {
   q?: string;
   status?: string;
@@ -437,6 +455,104 @@ export async function getIncidentDashboard(
     statusCounts,
     severityCounts,
     incidents: summaries
+  };
+}
+
+export async function getIncidentDashboardRead(
+  session: SessionContext
+): Promise<IncidentDashboardRead> {
+  assertIncidentAccess(session);
+  const where: Prisma.OperationalIncidentWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId
+  };
+  const todayDate = dateOnlyInTimeZone(new Date());
+  const [statusRows, severityRows, overdueIncidents, candidates] = await Promise.all([
+    prisma.operationalIncident.groupBy({
+      by: ["status"],
+      where,
+      _count: { _all: true }
+    }),
+    prisma.operationalIncident.groupBy({
+      by: ["severity"],
+      where,
+      _count: { _all: true }
+    }),
+    prisma.operationalIncident.count({
+      where: {
+        ...where,
+        dueAt: { lt: new Date(`${todayDate}T00:00:00.000Z`) },
+        resolvedAt: null
+      }
+    }),
+    prisma.operationalIncident.findMany({
+      where: { ...where, status: { in: [...resolvableIncidentStatuses] } },
+      orderBy: [{ severity: "desc" }, { incidentDate: "desc" }],
+      take: 3,
+      select: {
+        id: true,
+        incidentNumber: true,
+        incidentDate: true,
+        severity: true,
+        status: true,
+        title: true,
+        ownerUserId: true,
+        dueAt: true
+      }
+    })
+  ]);
+  const statusCounts: IncidentStatusCounts = {
+    OPEN: 0,
+    IN_PROGRESS: 0,
+    PENDING_REVIEW: 0,
+    RESOLVED: 0,
+    CANCELLED: 0
+  };
+  for (const row of statusRows) {
+    if (row.status in statusCounts) {
+      statusCounts[row.status as keyof IncidentStatusCounts] = row._count._all;
+    }
+  }
+  const severityCounts: IncidentSeverityCounts = {
+    CRITICAL: 0,
+    HIGH: 0,
+    MEDIUM: 0,
+    LOW: 0
+  };
+  for (const row of severityRows) {
+    if (row.severity in severityCounts) {
+      severityCounts[row.severity as keyof IncidentSeverityCounts] = row._count._all;
+    }
+  }
+  const ownerIds = candidates.flatMap((candidate) =>
+    candidate.ownerUserId ? [candidate.ownerUserId] : []
+  );
+  const owners = ownerIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: ownerIds }, tenantId: session.context.tenantId },
+        select: { id: true, displayName: true, email: true }
+      })
+    : [];
+  const ownerNameById = userDisplayNameById(owners);
+
+  return {
+    overdueIncidents,
+    statusCounts,
+    severityCounts,
+    followUpCandidates: candidates.map((candidate) => ({
+      id: candidate.id,
+      incidentNumber: candidate.incidentNumber,
+      incidentDate: candidate.incidentDate.toISOString().slice(0, 10),
+      severity: candidate.severity,
+      status: candidate.status,
+      title: candidate.title,
+      ownerName: candidate.ownerUserId
+        ? ownerNameById.get(candidate.ownerUserId) ?? "Unknown user"
+        : null,
+      dueAt: dateOrNull(candidate.dueAt)
+    }))
   };
 }
 

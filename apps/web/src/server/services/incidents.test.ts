@@ -693,6 +693,10 @@ describe("Phase 2 incident management foundation", () => {
 
   it("keeps incidents controlled and separate from controlled source records", () => {
     expect(serviceSource).toContain("getIncidentDashboard");
+    expect(serviceSource).toContain("getIncidentDashboardRead");
+    expect(serviceSource).toContain("followUpCandidates");
+    expect(serviceSource).toContain("take: 3");
+    expect(serviceSource).toContain('by: ["status"]');
     expect(serviceSource).toContain("getOperationalIncidentSummary");
     expect(serviceSource).toContain("buildIncidentExportRows");
     expect(serviceSource).toContain("filterIncidents");
