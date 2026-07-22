@@ -9,7 +9,10 @@ import { getFinancePeriodClosePolicy } from "./policySettings";
 import {
   activateApprovalStepWithEligibility,
   assertAnyEligibleApprovalActorForStep,
-  configureApprovalStepRouting
+  configureApprovalStepRouting,
+  normalizedApprovalRoutingEnabled,
+  prepareNormalizedApprovalDecisionPreflight,
+  type NormalizedApprovalDecisionPreflight
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 
@@ -211,7 +214,12 @@ function asConfigObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function readPendingCloseApprovalAction(configSnapshot: unknown) {
+function readPendingCloseApprovalAction(configSnapshot: unknown): {
+  approvalAction: PeriodCloseSensitiveApprovalAction;
+  reason: string | null;
+  evidenceReference: string | null;
+  requestedByUserId: string | null;
+} {
   const config = asConfigObject(configSnapshot);
   const pending = asConfigObject(config.pendingSensitiveApproval);
   const approvalAction = pending.approvalAction;
@@ -1622,6 +1630,15 @@ export async function requestPeriodCloseSensitiveActionApproval(
   );
 
   return prisma.$transaction(async (tx) => {
+    const lockedRuns = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT run.id
+        FROM "FinanceCloseRun" run
+       WHERE run.id = ${input.financeCloseRunId}::uuid
+         AND run."tenantId" = ${session.context.tenantId}::uuid
+         AND run."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF run
+    `;
+    if (lockedRuns.length !== 1) throw new Error("PERIOD_CLOSE_RUN_NOT_FOUND");
     const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
     assertSensitiveApprovalActionAllowed(run, input.approvalAction);
 
@@ -1856,21 +1873,9 @@ export async function lockAccountingPeriodFromCloseRun(
   session: SessionContext,
   input: PeriodCloseActionInput
 ) {
-  await requirePermission(session, permissions.financePeriodCloseManage);
-  const reason = requireCloseReason(
-    input.reason,
-    "PERIOD_CLOSE_LOCK_REASON_REQUIRED"
-  );
-  const evidenceReference = requireCloseEvidence(
-    input.evidenceReference,
-    "PERIOD_CLOSE_LOCK_EVIDENCE_REQUIRED"
-  );
-  return prisma.$transaction(async (tx) => {
-    return lockAccountingPeriodFromCloseRunTx(tx, session, {
-      ...input,
-      reason,
-      evidenceReference
-    });
+  return requestPeriodCloseSensitiveActionApproval(session, {
+    ...input,
+    approvalAction: "LOCK_PERIOD"
   });
 }
 
@@ -2031,21 +2036,9 @@ export async function reopenAccountingPeriodFromCloseRun(
   session: SessionContext,
   input: PeriodCloseActionInput
 ) {
-  await requirePermission(session, permissions.financePeriodCloseManage);
-  const reason = requireCloseReason(
-    input.reason,
-    "PERIOD_CLOSE_REOPEN_REASON_REQUIRED"
-  );
-  const evidenceReference = requireCloseEvidence(
-    input.evidenceReference,
-    "PERIOD_CLOSE_REOPEN_EVIDENCE_REQUIRED"
-  );
-  return prisma.$transaction(async (tx) => {
-    return reopenAccountingPeriodFromCloseRunTx(tx, session, {
-      ...input,
-      reason,
-      evidenceReference
-    });
+  return requestPeriodCloseSensitiveActionApproval(session, {
+    ...input,
+    approvalAction: "REOPEN_PERIOD"
   });
 }
 
@@ -2110,6 +2103,145 @@ async function findActionableFinanceCloseRunApproval(
   return { approval, step, run, pendingAction };
 }
 
+async function prepareFinanceCloseApprovalDecision(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    approvalInstanceId: string;
+    currentStepId: string;
+    currentStepOrder: number;
+    includeNextStep: boolean;
+  }
+) {
+  if (!normalizedApprovalRoutingEnabled()) return null;
+  return prepareNormalizedApprovalDecisionPreflight(tx, session, input);
+}
+
+async function lockAndRevalidateFinanceCloseApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    financeCloseRunId: string;
+    expectedVersion: number;
+    expectedApprovalAction: PeriodCloseSensitiveApprovalAction;
+    expectedRequestedByUserId: string | null;
+  }
+) {
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT run.id
+      FROM "FinanceCloseRun" run
+     WHERE run.id = ${input.financeCloseRunId}::uuid
+       AND run."tenantId" = ${session.context.tenantId}::uuid
+       AND run."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF run
+  `;
+  if (locked.length !== 1) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+
+  const run = await tx.financeCloseRun.findUnique({
+    where: { id: input.financeCloseRunId },
+    select: {
+      version: true,
+      initiatedByUserId: true,
+      configSnapshot: true
+    }
+  });
+  if (!run || run.version !== input.expectedVersion) {
+    throw new Error("APPROVAL_SOURCE_STATE_CHANGED");
+  }
+  const pendingAction = readPendingCloseApprovalAction(run.configSnapshot);
+  if (
+    pendingAction.approvalAction !== input.expectedApprovalAction ||
+    pendingAction.requestedByUserId !== input.expectedRequestedByUserId
+  ) {
+    throw new Error("APPROVAL_SOURCE_STATE_CHANGED");
+  }
+  if (
+    run.initiatedByUserId === session.user.id ||
+    pendingAction.requestedByUserId === session.user.id
+  ) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+}
+
+async function resolveFinanceCloseNextApprovalStep(
+  tx: TransactionClient,
+  input: {
+    approvalInstanceId: string;
+    currentStepOrder: number;
+    normalizedPreflight: NormalizedApprovalDecisionPreflight | null;
+  }
+) {
+  if (input.normalizedPreflight) return input.normalizedPreflight.nextStep;
+  return tx.approvalInstanceStep.findFirst({
+    where: {
+      approvalInstanceId: input.approvalInstanceId,
+      stepOrder: { gt: input.currentStepOrder },
+      status: "WAITING"
+    },
+    orderBy: { stepOrder: "asc" }
+  });
+}
+
+async function decideFinanceCloseApprovalStep(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    approvalInstanceId: string;
+    currentStepId: string;
+    currentStepOrder: number;
+    status: "APPROVED" | "REJECTED";
+    remarks?: string;
+  }
+) {
+  const updated = await tx.approvalInstanceStep.updateMany({
+    where: {
+      id: input.currentStepId,
+      approvalInstanceId: input.approvalInstanceId,
+      stepOrder: input.currentStepOrder,
+      status: "PENDING",
+      approvalInstance: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING",
+        currentStepOrder: input.currentStepOrder
+      }
+    },
+    data: {
+      status: input.status,
+      actedAt: new Date(),
+      actedByUserId: session.user.id,
+      ...(input.remarks ? { remarks: input.remarks } : {})
+    }
+  });
+  if (updated.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
+}
+
+async function transitionFinanceCloseApprovalInstance(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    approvalInstanceId: string;
+    currentStepOrder: number;
+    status?: "APPROVED" | "REJECTED";
+    nextStepOrder: number | null;
+  }
+) {
+  const updated = await tx.approvalInstance.updateMany({
+    where: {
+      id: input.approvalInstanceId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "PENDING",
+      currentStepOrder: input.currentStepOrder
+    },
+    data: {
+      ...(input.status ? { status: input.status } : {}),
+      currentStepOrder: input.nextStepOrder
+    }
+  });
+  if (updated.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
+}
+
 export async function approveFinanceCloseRunApproval(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.financePeriodCloseManage);
@@ -2132,23 +2264,34 @@ export async function approveFinanceCloseRunApproval(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "APPROVED",
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        ...(values.remarks ? { remarks: values.remarks } : {})
+    const normalizedPreflight = await prepareFinanceCloseApprovalDecision(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
       }
+    );
+    await lockAndRevalidateFinanceCloseApprovalSource(tx, session, {
+      financeCloseRunId: run.id,
+      expectedVersion: run.version,
+      expectedApprovalAction: pendingAction.approvalAction,
+      expectedRequestedByUserId: pendingAction.requestedByUserId
+    });
+    await decideFinanceCloseApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      ...(values.remarks ? { remarks: values.remarks } : {})
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveFinanceCloseNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -2161,9 +2304,10 @@ export async function approveFinanceCloseRunApproval(formData: FormData) {
           source: "finance_close.approval_step_advance"
         }
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionFinanceCloseApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
       await writeCloseAudit(tx, {
         session,
@@ -2187,12 +2331,11 @@ export async function approveFinanceCloseRunApproval(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionFinanceCloseApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
 
     if (pendingAction.approvalAction === "LOCK_PERIOD") {
@@ -2248,14 +2391,24 @@ export async function rejectFinanceCloseRunApproval(formData: FormData) {
     );
 
   await prisma.$transaction(async (tx) => {
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
-      data: {
-        status: "REJECTED",
-        actedAt: new Date(),
-        actedByUserId: session.user.id,
-        remarks: values.remarks
-      }
+    await prepareFinanceCloseApprovalDecision(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await lockAndRevalidateFinanceCloseApprovalSource(tx, session, {
+      financeCloseRunId: run.id,
+      expectedVersion: run.version,
+      expectedApprovalAction: pendingAction.approvalAction,
+      expectedRequestedByUserId: pendingAction.requestedByUserId
+    });
+    await decideFinanceCloseApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      status: "REJECTED",
+      ...(values.remarks ? { remarks: values.remarks } : {})
     });
     await tx.approvalInstanceStep.updateMany({
       where: {
@@ -2264,20 +2417,27 @@ export async function rejectFinanceCloseRunApproval(formData: FormData) {
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "REJECTED",
-        currentStepOrder: null
-      }
+    await transitionFinanceCloseApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "REJECTED",
+      nextStepOrder: null
     });
-    await tx.financeCloseRun.update({
-      where: { id: run.id },
+    const sourceUpdate = await tx.financeCloseRun.updateMany({
+      where: {
+        id: run.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        version: run.version
+      },
       data: {
         configSnapshot: withoutPendingCloseApproval(run.configSnapshot),
         version: { increment: 1 }
       }
     });
+    if (sourceUpdate.count !== 1) {
+      throw new Error("APPROVAL_SOURCE_STATE_CHANGED");
+    }
     await writeCloseAudit(tx, {
       session,
       entityType: "FinanceCloseRun",

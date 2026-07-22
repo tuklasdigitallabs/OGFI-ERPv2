@@ -26,7 +26,7 @@ function decisionForm(approvalInstanceId: string) {
   return form;
 }
 
-async function createScenario(actorCount = 1, stepCount = 1): Promise<Scenario> {
+async function createScenario(actorCount = 1, stepCount = 1, configureRouting = true): Promise<Scenario> {
   const ids = { tenant: randomUUID(), company: randomUUID(), brand: randomUUID(), location: randomUUID(), requester: randomUUID(), role: randomUUID(), rule: randomUUID(), request: randomUUID(), approval: randomUUID(), step: randomUUID() };
   const suffix = ids.tenant.slice(0, 8);
   const dueAt = new Date(Date.now() + 7 * 24 * 60 * 60_000);
@@ -53,8 +53,10 @@ async function createScenario(actorCount = 1, stepCount = 1): Promise<Scenario> 
   if (nextStepId) {
     await prisma.approvalInstanceStep.create({ data: { id: nextStepId, approvalInstanceId: ids.approval, stepOrder: 2, assignedRoleId: ids.role, status: "WAITING" } });
   }
-  await prisma.$transaction((tx) => configureApprovalStepRouting(tx, { approvalInstanceStepId: ids.step, tenantId: ids.tenant, companyId: ids.company, routingPolicy: approvalRoutingPolicies.PurchaseRequest, requiredPermissionCode: permissions.purchaseRequestApprove, activatedAt: new Date(), dueAt, activationAudit: { actorUserId: null, source: "approval-action-postgresql-fixture" }, scopeGroups: [{ groupOrder: 1, targetMatchMode: "ANY", targets: [{ scopeType: "LOCATION", companyId: ids.company, locationId: ids.location }] }], prohibitedActors: [{ userId: ids.requester, reasonCode: "REQUESTER" }] }));
-  if (nextStepId) {
+  if (configureRouting) {
+    await prisma.$transaction((tx) => configureApprovalStepRouting(tx, { approvalInstanceStepId: ids.step, tenantId: ids.tenant, companyId: ids.company, routingPolicy: approvalRoutingPolicies.PurchaseRequest, requiredPermissionCode: permissions.purchaseRequestApprove, activatedAt: new Date(), dueAt, activationAudit: { actorUserId: null, source: "approval-action-postgresql-fixture" }, scopeGroups: [{ groupOrder: 1, targetMatchMode: "ANY", targets: [{ scopeType: "LOCATION", companyId: ids.company, locationId: ids.location }] }], prohibitedActors: [{ userId: ids.requester, reasonCode: "REQUESTER" }] }));
+  }
+  if (nextStepId && configureRouting) {
     await prisma.$transaction((tx) => configureApprovalStepRouting(tx, { approvalInstanceStepId: nextStepId, tenantId: ids.tenant, companyId: ids.company, routingPolicy: approvalRoutingPolicies.PurchaseRequest, requiredPermissionCode: permissions.purchaseRequestApprove, activatedAt: null, dueAt, scopeGroups: [{ groupOrder: 1, targetMatchMode: "ANY", targets: [{ scopeType: "LOCATION", companyId: ids.company, locationId: ids.location }] }], prohibitedActors: [{ userId: ids.requester, reasonCode: "REQUESTER" }, ...(actors[1] ? [{ userId: actors[0]!.userId, reasonCode: "PRIOR_APPROVER" }] : [])] }));
   }
   return { tenantId: ids.tenant, companyId: ids.company, roleId: ids.role, permissionId: permission.id, purchaseRequestId: ids.request, approvalInstanceId: ids.approval, stepId: ids.step, nextStepId, actors };
@@ -75,7 +77,11 @@ describe.skipIf(!runPg).sequential("normalized approval action-time authority Po
   beforeAll(() => { priorRoutingFlag = process.env.APPROVAL_ROUTING_V1_ENABLED; process.env.APPROVAL_ROUTING_V1_ENABLED = "true"; });
   afterAll(() => { if (priorRoutingFlag === undefined) delete process.env.APPROVAL_ROUTING_V1_ENABLED; else process.env.APPROVAL_ROUTING_V1_ENABLED = priorRoutingFlag; });
 
-  test.each(["permission", "role", "scope"] as const)("inbox read followed by %s revocation rejects with zero mutation", async (revocation) => {
+  test.each([
+    ["permission", "PERMISSION_DENIED"],
+    ["role", "PERMISSION_DENIED"],
+    ["scope", "APPROVAL_SCOPE_DENIED"]
+  ] as const)("inbox read followed by %s revocation rejects with zero mutation", async (revocation, expectedError) => {
     const scenario = await createScenario();
     const actor = scenario.actors[0]!;
     expect((await listEligibleApprovalStepPage(actor.session)).items.map((item) => item.approvalInstanceStepId)).toEqual([scenario.stepId]);
@@ -84,7 +90,16 @@ describe.skipIf(!runPg).sequential("normalized approval action-time authority Po
     else if (revocation === "role") await prisma.userRoleAssignment.update({ where: { id: actor.roleAssignmentId }, data: { status: "INACTIVE" } });
     else await prisma.userScopeAssignment.update({ where: { id: actor.scopeAssignmentId }, data: { status: "INACTIVE" } });
     mockContext.requireSessionContext.mockResolvedValueOnce(actor.session);
-    await expect(approvePurchaseRequest(decisionForm(scenario.approvalInstanceId))).rejects.toThrow(/(?:PERMISSION_DENIED|APPROVAL_SCOPE_DENIED|APPROVAL_AUTHORITY_STALE|APPROVAL_ROUTING_BACKFILL_REQUIRED)/);
+    await expect(approvePurchaseRequest(decisionForm(scenario.approvalInstanceId))).rejects.toThrow(expectedError);
+    expect(await mutationSnapshot(scenario)).toEqual(before);
+  });
+
+  test("a legacy runtime step fails closed before any workflow mutation", async () => {
+    const scenario = await createScenario(1, 1, false);
+    const before = await mutationSnapshot(scenario);
+    mockContext.requireSessionContext.mockResolvedValueOnce(scenario.actors[0]!.session);
+
+    await expect(approvePurchaseRequest(decisionForm(scenario.approvalInstanceId))).rejects.toThrow("APPROVAL_ROUTING_BACKFILL_REQUIRED");
     expect(await mutationSnapshot(scenario)).toEqual(before);
   });
 

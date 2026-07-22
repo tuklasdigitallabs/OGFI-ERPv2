@@ -220,8 +220,6 @@ describe("period close readiness foundation", () => {
     expect(serviceSource).toContain("PERIOD_CLOSE_EXCEPTION_RESOLUTION_EVIDENCE_REQUIRED");
     expect(serviceSource).toContain("PERIOD_CLOSE_EXCEPTION_WAIVER_EVIDENCE_REQUIRED");
     expect(serviceSource).toContain("PERIOD_CLOSE_COMPLETION_EVIDENCE_REQUIRED");
-    expect(serviceSource).toContain("PERIOD_CLOSE_LOCK_EVIDENCE_REQUIRED");
-    expect(serviceSource).toContain("PERIOD_CLOSE_REOPEN_EVIDENCE_REQUIRED");
     expect(serviceSource).toContain("PERIOD_CLOSE_CANCELLATION_EVIDENCE_REQUIRED");
     expect(serviceSource).toContain("PERIOD_CLOSE_APPROVAL_EVIDENCE_REQUIRED");
     expect(serviceSource).toContain("accountingPeriodSoftClosed");
@@ -277,6 +275,8 @@ describe("period close readiness foundation", () => {
     expect(serviceSource).toContain("SELF_APPROVAL_BLOCKED");
     expect(serviceSource).toContain("PERIOD_CLOSE_APPROVAL_ALREADY_PENDING");
     expect(serviceSource).toContain("PERIOD_CLOSE_APPROVAL_RULE_NOT_CONFIGURED");
+    expect(serviceSource).toContain('approvalAction: "LOCK_PERIOD"');
+    expect(serviceSource).toContain('approvalAction: "REOPEN_PERIOD"');
   });
 
   it("wires period-close readiness actions through the page server actions", () => {

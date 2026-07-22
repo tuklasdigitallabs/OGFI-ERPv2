@@ -71,6 +71,25 @@ export type ApprovalStepEligibilityIdentity = {
   now?: Date;
 };
 
+export type NormalizedApprovalDecisionPreflightInput = {
+  approvalInstanceId: string;
+  currentStepId: string;
+  currentStepOrder: number;
+  includeNextStep: boolean;
+};
+
+export type LockedNormalizedApprovalStepRouting = {
+  id: string;
+  stepOrder: number;
+  assignedUserId: string | null;
+  assignedRoleId: string | null;
+};
+
+export type NormalizedApprovalDecisionPreflight = {
+  nextStep: LockedNormalizedApprovalStepRouting | null;
+  directRecipientUserId: string | null;
+};
+
 type ApprovalStepActivationInput = ApprovalStepEligibilityIdentity & {
   activatedAt?: Date;
   activationAudit: ApprovalStepActivationAuditInput;
@@ -643,6 +662,272 @@ export async function assertEligibleApprovalStep(
     throw new Error("APPROVAL_AUTHORITY_STALE");
   }
   return page.items[0];
+}
+
+type LockedApprovalDecisionActor = {
+  id: string;
+  status: string;
+  privilegeEpoch: number;
+};
+
+type LockedApprovalDecisionSession = {
+  status: string;
+  privilegeEpochAtIssue: number;
+  idleExpiresAt: Date;
+  absoluteExpiresAt: Date;
+};
+
+function sameLockedApprovalRouting(
+  left: LockedNormalizedApprovalStepRouting | null,
+  right: LockedNormalizedApprovalStepRouting | null
+) {
+  return (
+    left?.id === right?.id &&
+    left?.stepOrder === right?.stepOrder &&
+    left?.assignedUserId === right?.assignedUserId &&
+    left?.assignedRoleId === right?.assignedRoleId
+  );
+}
+
+async function readNormalizedApprovalDecisionRouting(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: NormalizedApprovalDecisionPreflightInput
+) {
+  const currentStep = await tx.approvalInstanceStep.findFirst({
+    where: {
+      id: input.currentStepId,
+      approvalInstanceId: input.approvalInstanceId,
+      stepOrder: input.currentStepOrder,
+      approvalInstance: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
+      }
+    },
+    select: {
+      id: true,
+      stepOrder: true,
+      assignedUserId: true,
+      assignedRoleId: true
+    }
+  });
+  if (!currentStep) throw new Error("APPROVAL_NOT_ACTIONABLE");
+
+  const nextStep = input.includeNextStep
+    ? await tx.approvalInstanceStep.findFirst({
+        where: {
+          approvalInstanceId: input.approvalInstanceId,
+          stepOrder: { gt: input.currentStepOrder },
+          status: "WAITING",
+          approvalInstance: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId
+          }
+        },
+        orderBy: { stepOrder: "asc" },
+        select: {
+          id: true,
+          stepOrder: true,
+          assignedUserId: true,
+          assignedRoleId: true
+        }
+      })
+    : null;
+  return { currentStep, nextStep };
+}
+
+async function lockNormalizedApprovalDecisionAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: NormalizedApprovalDecisionPreflightInput
+) {
+  const lockedInstances = await tx.$queryRaw<
+    Array<{
+      approvalStatus: string;
+      currentStepOrder: number | null;
+    }>
+  >`
+    SELECT ai.status AS "approvalStatus",
+           ai."currentStepOrder"
+      FROM "ApprovalInstance" ai
+     WHERE ai.id = ${input.approvalInstanceId}::uuid
+       AND ai."tenantId" = ${session.context.tenantId}::uuid
+       AND ai."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF ai
+  `;
+  const lockedInstance = lockedInstances[0];
+  if (
+    !lockedInstance ||
+    lockedInstance.approvalStatus !== "PENDING" ||
+    lockedInstance.currentStepOrder !== input.currentStepOrder
+  ) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+
+  const lockedSteps = await tx.$queryRaw<
+    Array<{
+      id: string;
+      stepOrder: number;
+      assignedUserId: string | null;
+      assignedRoleId: string | null;
+    }>
+  >`
+    SELECT step.id,
+           step."stepOrder",
+           step."assignedUserId",
+           step."assignedRoleId"
+      FROM "ApprovalInstanceStep" step
+     WHERE step.id = ${input.currentStepId}::uuid
+       AND step."approvalInstanceId" = ${input.approvalInstanceId}::uuid
+       AND step."stepOrder" = ${input.currentStepOrder}
+       AND step.status = 'PENDING'::"ApprovalStepStatus"
+     FOR UPDATE OF step
+  `;
+  const currentStep = lockedSteps[0];
+  if (!currentStep) throw new Error("APPROVAL_NOT_ACTIONABLE");
+
+  const nextRows = input.includeNextStep
+    ? await tx.$queryRaw<LockedNormalizedApprovalStepRouting[]>`
+        SELECT step.id,
+               step."stepOrder",
+               step."assignedUserId",
+               step."assignedRoleId"
+          FROM "ApprovalInstanceStep" step
+         WHERE step."approvalInstanceId" = ${input.approvalInstanceId}::uuid
+           AND step."stepOrder" > ${input.currentStepOrder}
+           AND step.status = 'WAITING'::"ApprovalStepStatus"
+         ORDER BY step."stepOrder" ASC
+         LIMIT 1
+         FOR UPDATE OF step
+      `
+    : [];
+
+  return {
+    currentStep: {
+      id: currentStep.id,
+      stepOrder: currentStep.stepOrder,
+      assignedUserId: currentStep.assignedUserId,
+      assignedRoleId: currentStep.assignedRoleId
+    },
+    nextStep: nextRows[0] ?? null
+  };
+}
+
+/**
+ * Canonical normalized-routing authority preflight. It completes every read,
+ * actor/session lock, workflow lock, structural check, and live eligibility
+ * revalidation while the approval is still in its steady pre-decision state.
+ */
+export async function prepareNormalizedApprovalDecisionPreflight(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: NormalizedApprovalDecisionPreflightInput
+): Promise<NormalizedApprovalDecisionPreflight> {
+  const preliminary = await readNormalizedApprovalDecisionRouting(
+    tx,
+    session,
+    input
+  );
+  const preliminaryAnchor = preliminary.nextStep
+    ? await findAnyEligibleApprovalActorForStep(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceStepId: preliminary.nextStep.id
+      })
+    : null;
+  if (preliminary.nextStep && !preliminaryAnchor) {
+    throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
+  }
+
+  const lockedActors = new Map<string, LockedApprovalDecisionActor>();
+  const actorIds = [session.user.id, preliminaryAnchor?.userId]
+    .filter((id): id is string => Boolean(id))
+    .filter((id, index, values) => values.indexOf(id) === index)
+    .sort();
+  for (const userId of actorIds) {
+    const rows = await tx.$queryRaw<LockedApprovalDecisionActor[]>`
+      SELECT id, status, "privilegeEpoch"
+        FROM "User"
+       WHERE id = ${userId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+       FOR SHARE
+    `;
+    const lockedActor = rows[0];
+    if (rows.length !== 1 || !lockedActor) {
+      throw new Error("APPROVAL_AUTHORITY_STALE");
+    }
+    lockedActors.set(userId, lockedActor);
+  }
+
+  let lockedSession: LockedApprovalDecisionSession | undefined;
+  if (session.authentication?.sessionId) {
+    const rows = await tx.$queryRaw<LockedApprovalDecisionSession[]>`
+      SELECT status, "privilegeEpochAtIssue", "idleExpiresAt", "absoluteExpiresAt"
+        FROM "AuthSession"
+       WHERE id = ${session.authentication.sessionId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "userId" = ${session.user.id}::uuid
+       FOR SHARE
+    `;
+    lockedSession = rows[0];
+  }
+
+  const lockedRouting = await lockNormalizedApprovalDecisionAuthority(
+    tx,
+    session,
+    input
+  );
+  if (
+    !sameLockedApprovalRouting(preliminary.currentStep, lockedRouting.currentStep) ||
+    !sameLockedApprovalRouting(preliminary.nextStep, lockedRouting.nextStep)
+  ) {
+    throw new Error("APPROVAL_NEXT_STEP_ROUTING_CHANGED");
+  }
+
+  await assertApprovalRoutingRuntimeReady(
+    session.context.tenantId,
+    session.context.companyId,
+    tx
+  );
+
+  const now = new Date();
+  const actingUser = lockedActors.get(session.user.id);
+  if (!actingUser || actingUser.status !== "ACTIVE") {
+    throw new Error("APPROVAL_AUTHORITY_STALE");
+  }
+  if (
+    session.authentication?.sessionId &&
+    (!lockedSession ||
+      lockedSession.status !== "ACTIVE" ||
+      lockedSession.privilegeEpochAtIssue !== actingUser.privilegeEpoch ||
+      lockedSession.idleExpiresAt <= now ||
+      lockedSession.absoluteExpiresAt <= now)
+  ) {
+    throw new Error("APPROVAL_AUTHORITY_STALE");
+  }
+  await assertEligibleApprovalStep(session, input.currentStepId, tx, now);
+
+  if (lockedRouting.nextStep) {
+    const anchorUserId = preliminaryAnchor?.userId;
+    if (!anchorUserId || !lockedActors.has(anchorUserId)) {
+      throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
+    }
+    const revalidatedAnchor = await findAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: lockedRouting.nextStep.id,
+      actorUserId: anchorUserId,
+      now
+    });
+    if (!revalidatedAnchor) {
+      throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
+    }
+  }
+
+  return {
+    nextStep: lockedRouting.nextStep,
+    directRecipientUserId: lockedRouting.nextStep?.assignedUserId ?? null
+  };
 }
 
 export async function assertApprovalRoutingRuntimeReady(

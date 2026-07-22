@@ -28,10 +28,10 @@ import { projectBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl"
 import {
   activateApprovalStepWithEligibility,
   assertApprovalRoutingRuntimeReady,
-  assertEligibleApprovalStep,
-  findAnyEligibleApprovalActorForStep,
   listEligibleApprovalStepPage,
-  normalizedApprovalRoutingEnabled
+  normalizedApprovalRoutingEnabled,
+  prepareNormalizedApprovalDecisionPreflight,
+  type NormalizedApprovalDecisionPreflight
 } from "./approvalRouting";
 
 export type ApprovalQueueItem = {
@@ -363,16 +363,6 @@ async function assertLiveApprovalAuthority(
     }
   }
 
-  if (normalizedApprovalRoutingEnabled()) {
-    await assertApprovalRoutingRuntimeReady(
-      session.context.tenantId,
-      session.context.companyId,
-      tx
-    );
-    await assertEligibleApprovalStep(session, input.stepId, tx, now);
-    return;
-  }
-
   const eligible = await findEligibleApprovalActor(tx, session, {
     userId: session.user.id,
     assignedUserId: authority.assignedUserId,
@@ -529,30 +519,31 @@ async function prepareApprovalDecisionAuthority(
   input: ApprovalStepAdvanceInput,
   includeNextStep: boolean
 ) {
+  if (normalizedApprovalRoutingEnabled()) {
+    return prepareNormalizedApprovalDecisionPreflight(tx, session, {
+      approvalInstanceId: input.approvalId,
+      currentStepId: input.stepId,
+      currentStepOrder: input.stepOrder,
+      includeNextStep
+    });
+  }
+
   const preliminaryNextStep = includeNextStep
     ? await findNextApprovalStep(tx, input, false)
     : null;
   const preliminaryEligibleActor = preliminaryNextStep
-    ? normalizedApprovalRoutingEnabled()
-      ? await findAnyEligibleApprovalActorForStep(tx, {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          approvalInstanceStepId: preliminaryNextStep.id
-        })
-      : await findEligibleApprovalActor(tx, session, {
-          assignedUserId: preliminaryNextStep.assignedUserId,
-          assignedRoleId: preliminaryNextStep.assignedRoleId,
-          locationId: input.locationId,
-          requiredPermissionCode: input.requiredPermissionCode,
-          prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
-        })
+    ? await findEligibleApprovalActor(tx, session, {
+        assignedUserId: preliminaryNextStep.assignedUserId,
+        assignedRoleId: preliminaryNextStep.assignedRoleId,
+        locationId: input.locationId,
+        requiredPermissionCode: input.requiredPermissionCode,
+        prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
+      })
     : null;
   if (preliminaryNextStep && !preliminaryEligibleActor) {
     throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
   }
-  const preliminaryEligibleActorUserId = normalizedApprovalRoutingEnabled()
-    ? (preliminaryEligibleActor as { userId: string } | null)?.userId
-    : (preliminaryEligibleActor as { id: string } | null)?.id;
+  const preliminaryEligibleActorUserId = preliminaryEligibleActor?.id;
 
   const lockedUserIds = [session.user.id, preliminaryEligibleActorUserId]
     .filter((id): id is string => Boolean(id))
@@ -587,22 +578,13 @@ async function prepareApprovalDecisionAuthority(
   if (!lockedNextStep) {
     return { nextStep: null, directRecipientUserId: null };
   }
-  const revalidatedEligibleActor = normalizedApprovalRoutingEnabled()
-      ? await findAnyEligibleApprovalActorForStep(tx, {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          approvalInstanceStepId: lockedNextStep.id,
-          ...(preliminaryEligibleActorUserId
-            ? { actorUserId: preliminaryEligibleActorUserId }
-            : {})
-        })
-    : await findEligibleApprovalActor(tx, session, {
-        assignedUserId: lockedNextStep.assignedUserId,
-        assignedRoleId: lockedNextStep.assignedRoleId,
-        locationId: input.locationId,
-        requiredPermissionCode: input.requiredPermissionCode,
-        prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
-      });
+  const revalidatedEligibleActor = await findEligibleApprovalActor(tx, session, {
+    assignedUserId: lockedNextStep.assignedUserId,
+    assignedRoleId: lockedNextStep.assignedRoleId,
+    locationId: input.locationId,
+    requiredPermissionCode: input.requiredPermissionCode,
+    prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
+  });
   if (!revalidatedEligibleActor) {
     throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
   }
@@ -670,31 +652,97 @@ async function activateNextApprovalStep(
   });
 }
 
-async function assertNormalizedApprovalAuthority(
+async function prepareSpecializedApprovalDecisionAuthority(
   tx: TransactionClient,
   session: SessionContext,
-  approvalInstanceStepId: string
+  input: {
+    approvalInstanceId: string;
+    currentStepId: string;
+    currentStepOrder: number;
+    includeNextStep: boolean;
+  }
 ) {
-  if (!normalizedApprovalRoutingEnabled()) return;
-  const locked = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT step.id
-      FROM "ApprovalInstanceStep" step
-      JOIN "ApprovalInstance" ai ON ai.id = step."approvalInstanceId"
-     WHERE step.id = ${approvalInstanceStepId}::uuid
-       AND step.status = 'PENDING'::"ApprovalStepStatus"
-       AND step."stepOrder" = ai."currentStepOrder"
-       AND ai.status = 'PENDING'::"ApprovalStatus"
-       AND ai."tenantId" = ${session.context.tenantId}::uuid
-       AND ai."companyId" = ${session.context.companyId}::uuid
-     FOR UPDATE OF ai, step
-  `;
-  if (!locked[0]) throw new Error("APPROVAL_NOT_ACTIONABLE");
-  await assertApprovalRoutingRuntimeReady(
-    session.context.tenantId,
-    session.context.companyId,
-    tx
-  );
-  await assertEligibleApprovalStep(session, approvalInstanceStepId, tx);
+  if (!normalizedApprovalRoutingEnabled()) return null;
+  return prepareNormalizedApprovalDecisionPreflight(tx, session, input);
+}
+
+async function resolveSpecializedNextApprovalStep(
+  tx: TransactionClient,
+  input: {
+    approvalInstanceId: string;
+    currentStepOrder: number;
+    normalizedPreflight: NormalizedApprovalDecisionPreflight | null;
+  }
+) {
+  if (input.normalizedPreflight) return input.normalizedPreflight.nextStep;
+  return tx.approvalInstanceStep.findFirst({
+    where: {
+      approvalInstanceId: input.approvalInstanceId,
+      stepOrder: { gt: input.currentStepOrder },
+      status: "WAITING"
+    },
+    orderBy: { stepOrder: "asc" },
+    select: {
+      id: true,
+      stepOrder: true,
+      assignedUserId: true,
+      assignedRoleId: true
+    }
+  });
+}
+
+async function decideSpecializedCurrentApprovalStep(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    approvalInstanceId: string;
+    currentStepId: string;
+    currentStepOrder: number;
+    data: Prisma.ApprovalInstanceStepUpdateManyMutationInput;
+  }
+) {
+  const updated = await tx.approvalInstanceStep.updateMany({
+    where: {
+      id: input.currentStepId,
+      approvalInstanceId: input.approvalInstanceId,
+      stepOrder: input.currentStepOrder,
+      status: "PENDING",
+      approvalInstance: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING",
+        currentStepOrder: input.currentStepOrder
+      }
+    },
+    data: input.data
+  });
+  if (updated.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
+}
+
+async function transitionSpecializedApprovalInstance(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    approvalInstanceId: string;
+    currentStepOrder: number;
+    status?: "APPROVED" | "RETURNED" | "REJECTED";
+    nextStepOrder: number | null;
+  }
+) {
+  const updated = await tx.approvalInstance.updateMany({
+    where: {
+      id: input.approvalInstanceId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "PENDING",
+      currentStepOrder: input.currentStepOrder
+    },
+    data: {
+      ...(input.status ? { status: input.status } : {}),
+      currentStepOrder: input.nextStepOrder
+    }
+  });
+  if (updated.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
 }
 
 async function approveCurrentStepAndAdvance(
@@ -6283,9 +6331,20 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -6294,13 +6353,10 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -6309,11 +6365,12 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
-      await tx.employeeLeaveRequest.updateMany({
+      const advancedRequest = await tx.employeeLeaveRequest.updateMany({
         where: {
           id: request.id,
           tenantId: session.context.tenantId,
@@ -6327,6 +6384,9 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
           updatedByUserId: session.user.id
         }
       });
+      if (advancedRequest.count !== 1) {
+        throw new Error("APPROVAL_SOURCE_STATE_CHANGED");
+      }
       await tx.auditEvent.create({
         data: {
           tenantId: session.context.tenantId,
@@ -6354,12 +6414,11 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedRequest = await tx.employeeLeaveRequest.updateMany({
       where: {
@@ -6421,9 +6480,16 @@ async function closeEmployeeLeaveRequestWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: approvalStatus,
         actedAt: new Date(),
@@ -6438,12 +6504,11 @@ async function closeEmployeeLeaveRequestWithDecision(
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: approvalStatus,
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: approvalStatus,
+      nextStepOrder: null
     });
     const updatedRequest = await tx.employeeLeaveRequest.updateMany({
       where: {
@@ -6497,9 +6562,20 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -6508,13 +6584,10 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -6523,11 +6596,12 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
-      await tx.employeeOvertimeRecord.updateMany({
+      const advancedRecord = await tx.employeeOvertimeRecord.updateMany({
         where: {
           id: record.id,
           tenantId: session.context.tenantId,
@@ -6539,6 +6613,9 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
           updatedByUserId: session.user.id
         }
       });
+      if (advancedRecord.count !== 1) {
+        throw new Error("APPROVAL_SOURCE_STATE_CHANGED");
+      }
       await tx.auditEvent.create({
         data: {
           tenantId: session.context.tenantId,
@@ -6566,12 +6643,11 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedRecord = await tx.employeeOvertimeRecord.updateMany({
       where: {
@@ -6626,9 +6702,16 @@ export async function rejectEmployeeOvertimeRecordApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "REJECTED",
         actedAt: new Date(),
@@ -6643,12 +6726,11 @@ export async function rejectEmployeeOvertimeRecordApproval(formData: FormData) {
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "REJECTED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "REJECTED",
+      nextStepOrder: null
     });
     const updatedRecord = await tx.employeeOvertimeRecord.updateMany({
       where: {
@@ -6700,9 +6782,20 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -6711,13 +6804,10 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -6726,11 +6816,12 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
-      await tx.workforceSchedule.updateMany({
+      const advancedSchedule = await tx.workforceSchedule.updateMany({
         where: {
           id: schedule.id,
           tenantId: session.context.tenantId,
@@ -6742,6 +6833,9 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
           reason: values.remarks?.trim() ?? schedule.reason
         }
       });
+      if (advancedSchedule.count !== 1) {
+        throw new Error("APPROVAL_SOURCE_STATE_CHANGED");
+      }
       await tx.auditEvent.create({
         data: {
           tenantId: session.context.tenantId,
@@ -6770,12 +6864,11 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedSchedule = await tx.workforceSchedule.updateMany({
       where: {
@@ -6836,9 +6929,16 @@ async function closeWorkforceScheduleWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: approvalStatus,
         actedAt: new Date(),
@@ -6853,12 +6953,11 @@ async function closeWorkforceScheduleWithDecision(
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: approvalStatus,
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: approvalStatus,
+      nextStepOrder: null
     });
     const updatedSchedule = await tx.workforceSchedule.updateMany({
       where: {
@@ -6914,9 +7013,20 @@ export async function approveAttendanceImportBatchApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -6925,13 +7035,10 @@ export async function approveAttendanceImportBatchApproval(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -6940,9 +7047,10 @@ export async function approveAttendanceImportBatchApproval(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
       await tx.auditEvent.create({
         data: {
@@ -6969,12 +7077,11 @@ export async function approveAttendanceImportBatchApproval(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedBatch = await tx.attendanceImportBatch.updateMany({
       where: {
@@ -7048,9 +7155,16 @@ async function closeAttendanceImportBatchWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: approvalStatus,
         actedAt: new Date(),
@@ -7065,12 +7179,11 @@ async function closeAttendanceImportBatchWithDecision(
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: approvalStatus,
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: approvalStatus,
+      nextStepOrder: null
     });
     const updatedBatch = await tx.attendanceImportBatch.updateMany({
       where: {
@@ -7301,9 +7414,20 @@ export async function approveBudgetRevision(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -7312,13 +7436,10 @@ export async function approveBudgetRevision(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -7327,9 +7448,10 @@ export async function approveBudgetRevision(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
       await tx.auditEvent.create({
         data: {
@@ -7373,12 +7495,11 @@ export async function approveBudgetRevision(formData: FormData) {
       noPaymentMutation: true,
       noJournalPosting: true
     };
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedRevision = await tx.budgetRevision.updateMany({
       where: {
@@ -7439,9 +7560,20 @@ export async function approveExpenseRequest(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -7450,13 +7582,10 @@ export async function approveExpenseRequest(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -7465,9 +7594,10 @@ export async function approveExpenseRequest(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
       await tx.auditEvent.create({
         data: {
@@ -7494,12 +7624,11 @@ export async function approveExpenseRequest(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedRequest = await tx.expenseRequest.updateMany({
       where: {
@@ -7566,9 +7695,16 @@ async function closeExpenseRequestWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: approvalStatus,
         actedAt: new Date(),
@@ -7583,12 +7719,11 @@ async function closeExpenseRequestWithDecision(
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: approvalStatus,
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: approvalStatus,
+      nextStepOrder: null
     });
     const updatedRequest = await tx.expenseRequest.updateMany({
       where: {
@@ -7660,9 +7795,20 @@ export async function approveCashAdvanceRequest(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -7671,13 +7817,10 @@ export async function approveCashAdvanceRequest(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -7686,9 +7829,10 @@ export async function approveCashAdvanceRequest(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
       await tx.auditEvent.create({
         data: {
@@ -7716,12 +7860,11 @@ export async function approveCashAdvanceRequest(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedRequest = await tx.cashAdvanceRequest.updateMany({
       where: {
@@ -7791,9 +7934,16 @@ async function closeCashAdvanceRequestWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: approvalStatus,
         actedAt: new Date(),
@@ -7808,12 +7958,11 @@ async function closeCashAdvanceRequestWithDecision(
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: approvalStatus,
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: approvalStatus,
+      nextStepOrder: null
     });
     const updatedRequest = await tx.cashAdvanceRequest.updateMany({
       where: {
@@ -7881,9 +8030,20 @@ export async function approvePettyCashRequest(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -7892,13 +8052,10 @@ export async function approvePettyCashRequest(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -7907,9 +8064,10 @@ export async function approvePettyCashRequest(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
       await tx.auditEvent.create({
         data: {
@@ -7937,12 +8095,11 @@ export async function approvePettyCashRequest(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedRequest = await tx.pettyCashRequest.updateMany({
       where: {
@@ -8005,9 +8162,16 @@ async function closePettyCashRequestWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: approvalStatus,
         actedAt: new Date(),
@@ -8022,12 +8186,11 @@ async function closePettyCashRequestWithDecision(
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: approvalStatus,
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: approvalStatus,
+      nextStepOrder: null
     });
     const updatedRequest = await tx.pettyCashRequest.updateMany({
       where: {
@@ -8092,9 +8255,20 @@ export async function approvePaymentRequestApproval(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -8103,13 +8277,10 @@ export async function approvePaymentRequestApproval(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -8118,9 +8289,10 @@ export async function approvePaymentRequestApproval(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
       await tx.auditEvent.create({
         data: {
@@ -8147,12 +8319,11 @@ export async function approvePaymentRequestApproval(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedRequest = await tx.paymentRequest.updateMany({
       where: {
@@ -8209,9 +8380,16 @@ async function closePaymentRequestWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: approvalStatus,
         actedAt: new Date(),
@@ -8226,12 +8404,11 @@ async function closePaymentRequestWithDecision(
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: approvalStatus,
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: approvalStatus,
+      nextStepOrder: null
     });
     const updatedRequest = await tx.paymentRequest.updateMany({
       where: {
@@ -8295,9 +8472,20 @@ export async function approvePaymentReleaseApproval(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
+      tx,
+      session,
+      {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: true
+      }
+    );
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "APPROVED",
         actedAt: new Date(),
@@ -8306,13 +8494,10 @@ export async function approvePaymentReleaseApproval(formData: FormData) {
       }
     });
 
-    const nextStep = await tx.approvalInstanceStep.findFirst({
-      where: {
-        approvalInstanceId: approval.id,
-        stepOrder: { gt: step.stepOrder },
-        status: "WAITING"
-      },
-      orderBy: { stepOrder: "asc" }
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
     });
 
     if (nextStep) {
@@ -8321,9 +8506,10 @@ export async function approvePaymentReleaseApproval(formData: FormData) {
         approvalInstanceStepId: nextStep.id,
         source: "approvals.specialized_handler"
       });
-      await tx.approvalInstance.update({
-        where: { id: approval.id },
-        data: { currentStepOrder: nextStep.stepOrder }
+      await transitionSpecializedApprovalInstance(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        nextStepOrder: nextStep.stepOrder
       });
       await tx.auditEvent.create({
         data: {
@@ -8351,12 +8537,11 @@ export async function approvePaymentReleaseApproval(formData: FormData) {
       return;
     }
 
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "APPROVED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "APPROVED",
+      nextStepOrder: null
     });
     const updatedRelease = await tx.paymentRelease.updateMany({
       where: {
@@ -8407,9 +8592,16 @@ export async function rejectPaymentReleaseApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status: "REJECTED",
         actedAt: new Date(),
@@ -8424,12 +8616,11 @@ export async function rejectPaymentReleaseApproval(formData: FormData) {
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status: "REJECTED",
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status: "REJECTED",
+      nextStepOrder: null
     });
     const updatedRelease = await tx.paymentRelease.updateMany({
       where: {
@@ -8486,9 +8677,16 @@ async function closeBudgetRevisionWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    await assertNormalizedApprovalAuthority(tx, session, step.id);
-    await tx.approvalInstanceStep.update({
-      where: { id: step.id },
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
+      includeNextStep: false
+    });
+    await decideSpecializedCurrentApprovalStep(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepId: step.id,
+      currentStepOrder: step.stepOrder,
       data: {
         status,
         actedAt: new Date(),
@@ -8503,12 +8701,11 @@ async function closeBudgetRevisionWithDecision(
       },
       data: { status: "SKIPPED" }
     });
-    await tx.approvalInstance.update({
-      where: { id: approval.id },
-      data: {
-        status,
-        currentStepOrder: null
-      }
+    await transitionSpecializedApprovalInstance(tx, session, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      status,
+      nextStepOrder: null
     });
     const updatedRevision = await tx.budgetRevision.updateMany({
       where: {

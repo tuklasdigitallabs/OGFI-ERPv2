@@ -349,6 +349,48 @@ describe.skipIf(!runPg).sequential(
       }
     });
 
+    test("keeps normalized step order immutable and indexes company readiness", async () => {
+      const before = await prisma.approvalInstanceStep.findUniqueOrThrow({
+        where: { id: fixture.eligibleStepId },
+        select: { stepOrder: true, routingSchemaVersion: true },
+      });
+      expect(before.routingSchemaVersion).toBe(1);
+      await expect(
+        prisma.$executeRaw`
+          UPDATE "ApprovalInstanceStep"
+             SET "stepOrder" = ${before.stepOrder + 10}
+           WHERE id = ${fixture.eligibleStepId}::uuid
+        `,
+      ).rejects.toMatchObject({
+        code: "P2010",
+        meta: { code: "55000" },
+      });
+      expect(
+        await prisma.approvalInstanceStep.findUniqueOrThrow({
+          where: { id: fixture.eligibleStepId },
+          select: { stepOrder: true },
+        }),
+      ).toEqual({ stepOrder: before.stepOrder });
+
+      const controls = await prisma.$queryRaw<
+        Array<{ triggerEnabled: string; indexName: string | null }>
+      >`
+        SELECT trigger.tgenabled AS "triggerEnabled",
+               index.indexname AS "indexName"
+          FROM pg_trigger trigger
+          JOIN pg_class relation ON relation.oid = trigger.tgrelid
+          LEFT JOIN pg_indexes index
+            ON index.schemaname = 'public'
+           AND index.indexname = 'ApprovalInstance_tenantId_companyId_status_idx'
+         WHERE relation.relname = 'ApprovalInstanceStep'
+           AND trigger.tgname = 'ApprovalInstanceStep_step_order_immutable_trg'
+      `;
+      expect(controls).toEqual([{
+        triggerEnabled: "A",
+        indexName: "ApprovalInstance_tenantId_companyId_status_idx",
+      }]);
+    });
+
     test("migration 18000 installs the exact partial uniqueness guard", async () => {
       const indexes = await prisma.$queryRaw<
         Array<{ indexName: string; indexDefinition: string }>
@@ -748,11 +790,13 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     await createLegacyApproval("PurchaseRequest", inactivePrId);
     sourceReaders.push(() => prisma.purchaseRequest.findUniqueOrThrow({ where: { id: inactivePrId } }));
 
+    await createLegacyApproval("PurchaseRequest", id());
+
     const beforeSources = await Promise.all(sourceReaders.map((read) => read()));
     const result = await runApprovalRoutingBackfill({ tenantId: ids.tenant, companyId: ids.company, apply: true, batchSize: 100 });
     expect(result).toMatchObject({
       mode: "APPLY",
-      scanned: 26,
+      scanned: 27,
       eligible: 1,
       applied: 1,
       alreadyCurrent: 18,
@@ -761,11 +805,12 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
         SOURCE_LOCATION_REQUIRED: 1,
         SOURCE_STATUS_INVALID: 1,
         SOURCE_SCOPE_MISMATCH: 1,
+        SOURCE_NOT_FOUND: 1,
         CURRENT_ELIGIBLE_ACTOR_MISSING: 1,
       },
       hasMore: false,
     });
-    expect(result.blockers).toHaveLength(7);
+    expect(result.blockers).toHaveLength(8);
     expect(await Promise.all(sourceReaders.map((read) => read()))).toEqual(beforeSources);
     expect(await prisma.approvalInstanceStep.findUniqueOrThrow({ where: { id: companyFallback.stepId }, select: { routingSchemaVersion: true } })).toEqual({ routingSchemaVersion: 1 });
     const fallbackGroup = await prisma.approvalInstanceStepScopeGroup.findFirstOrThrow({ where: { approvalInstanceStepId: companyFallback.stepId }, include: { targets: true } });

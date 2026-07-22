@@ -136,11 +136,23 @@ describe("normalized approval routing controls", () => {
 
   test("centralizes all next-step activation and normalized action-time checks", () => {
     const source = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
+    const routingSource = readFileSync(
+      path.resolve(__dirname, "approvalRouting.ts"),
+      "utf8"
+    );
+    const financeCloseSource = readFileSync(
+      path.resolve(__dirname, "financePeriodClose.ts"),
+      "utf8"
+    );
     expect(source.match(/data: \{ status: "PENDING" \}/g)).toHaveLength(1);
     expect(source.match(/await activateNextApprovalStep\(tx, session/g)).toHaveLength(11);
-    expect(source.match(/assertNormalizedApprovalAuthority\(tx, session, step\.id\)/g)).toHaveLength(20);
-    expect(source).toContain("FOR UPDATE OF ai, step");
-    expect(source).toContain("assertApprovalRoutingRuntimeReady");
+    expect(source.match(/prepareSpecializedApprovalDecisionAuthority\(/g)).toHaveLength(21);
+    expect(source).toContain("prepareNormalizedApprovalDecisionPreflight");
+    expect(financeCloseSource.match(/prepareFinanceCloseApprovalDecision\(/g)).toHaveLength(3);
+    expect(financeCloseSource).toContain("prepareNormalizedApprovalDecisionPreflight");
+    expect(routingSource).toContain("FOR UPDATE OF ai");
+    expect(routingSource).toContain("FOR UPDATE OF step");
+    expect(routingSource).toContain("assertApprovalRoutingRuntimeReady");
     expect(source).not.toContain("assertApprovalRoutingCutoverReady");
     expect(source).not.toContain("inspectApprovalRoutingReadiness");
   });

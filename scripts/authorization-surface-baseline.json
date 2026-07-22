@@ -13679,6 +13679,43 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
+    "id": "server/services/approvalRouting.ts#prepareNormalizedApprovalDecisionPreflight",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "tenant/company routing lock",
+      "live actor and session revalidation",
+      "deterministic next-recipient anchor"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "revoked or unassigned actor cannot mutate approval or source"
+    ]
+  },
+  {
     "id": "server/services/approvalRoutingBackfill.ts#inspectApprovalRoutingReadiness",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
