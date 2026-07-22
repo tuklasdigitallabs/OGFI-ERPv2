@@ -390,6 +390,7 @@ function scopedWastageWhere(session: SessionContext, id?: string) {
 }
 
 const wastageDashboardTaskCandidateLimit = 8;
+const wastageMyTaskPageSize = 25;
 const wastageDashboardExceptionStatuses = [
   "PENDING_APPROVAL",
   "APPROVED",
@@ -456,6 +457,109 @@ export type WastageDashboardRead = {
   exceptionCount: number;
   taskCandidates: WastageDashboardTaskCandidate[];
 };
+
+export type WastageMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    publicReference: string;
+    status: "SUBMITTED" | "APPROVED";
+    actionLabel: "Review wastage report" | "Post wastage";
+    inventoryLocationName: string;
+    createdAt: string;
+  }>;
+  nextCursor: { createdAt: string; id: string } | null;
+};
+
+/**
+ * Returns only currently actionable wastage controls for the authenticated
+ * reviewer or poster. Draft and returned reports deliberately remain out of
+ * this first My Tasks source contract: their correction workflow is not yet a
+ * focused editable surface, so surfacing them as a task would promise an
+ * action the current detail page cannot complete.
+ */
+export async function listWastageMyTaskPage(
+  session: SessionContext,
+  input: {
+    after?: { createdAt: string; id: string };
+    take?: number;
+  } = {}
+): Promise<WastageMyTaskPage> {
+  await requireWastageRead(session);
+
+  const actionStatuses = [
+    ...(session.permissionCodes.includes(permissions.wastageReview)
+      ? ["SUBMITTED" as const]
+      : []),
+    ...(session.permissionCodes.includes(permissions.wastagePost)
+      ? ["APPROVED" as const]
+      : [])
+  ];
+  if (actionStatuses.length === 0) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+
+  const take = Math.min(Math.max(input.take ?? wastageMyTaskPageSize, 1), 50);
+  const cursorDate = input.after ? new Date(input.after.createdAt) : null;
+  if (cursorDate && Number.isNaN(cursorDate.getTime())) {
+    throw new Error("WASTAGE_MY_TASK_CURSOR_INVALID");
+  }
+
+  const where = {
+    ...scopedWastageWhere(session),
+    status: { in: actionStatuses },
+    ...(cursorDate && input.after
+      ? {
+          OR: [
+            { createdAt: { gt: cursorDate } },
+            { createdAt: cursorDate, id: { gt: input.after.id } }
+          ]
+        }
+      : {})
+  } satisfies Prisma.WastageReportWhereInput;
+  const select = {
+    id: true,
+    publicReference: true,
+    status: true,
+    createdAt: true,
+    inventoryLocation: { select: { name: true } }
+  } satisfies Prisma.WastageReportSelect;
+  const [totalCount, rows] = await Promise.all([
+    prisma.wastageReport.count({
+      where: {
+        ...scopedWastageWhere(session),
+        status: { in: actionStatuses }
+      }
+    }),
+    prisma.wastageReport.findMany({
+      where,
+      select,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: take + 1
+    })
+  ]);
+  const pageRows = rows.slice(0, take);
+  const lastRow = pageRows.at(-1);
+
+  return {
+    totalCount,
+    items: pageRows.map((report) => ({
+      taskId: `wastage-${report.id}`,
+      publicReference: report.publicReference,
+      status: report.status as "SUBMITTED" | "APPROVED",
+      actionLabel:
+        report.status === "SUBMITTED"
+          ? "Review wastage report"
+          : "Post wastage",
+      inventoryLocationName: report.inventoryLocation.name,
+      createdAt: report.createdAt.toISOString()
+    })),
+    nextCursor:
+      rows.length > take && lastRow
+        ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
+        : null
+  };
+}
 
 /**
  * Dashboard-only wastage read. It keeps the service's location scope while

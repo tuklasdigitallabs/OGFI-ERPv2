@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { permissions } from "./authorization";
 import {
   assertWastageCanCancel,
   assertWastageCanPost,
@@ -9,10 +10,17 @@ import {
   assertWastageCanSubmit,
   assertWastageQuantity,
   buildWastagePolicyEvaluation,
+  listWastageMyTaskPage,
   resolveWastageDashboardProfile,
   wastageDashboardProfileHref,
   wastageDashboardProfileWhere
 } from "./wastage";
+
+const mockPrisma = vi.hoisted(() => ({
+  wastageReport: { count: vi.fn(), findMany: vi.fn() }
+}));
+
+vi.mock("@ogfi/database", () => ({ prisma: mockPrisma }));
 
 const dashboardSession = {
   context: {
@@ -127,6 +135,58 @@ describe("wastage foundation rules", () => {
     const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
 
     expect(source).toContain("canUseWastageReports(session.permissionCodes)");
+  });
+
+  test("My Tasks returns only authorized review or post controls with an exact count and cursor", async () => {
+    mockPrisma.wastageReport.count.mockResolvedValue(2);
+    mockPrisma.wastageReport.findMany.mockResolvedValue([
+      {
+        id: "report-1",
+        publicReference: "WST-2026-00001",
+        status: "SUBMITTED",
+        createdAt: new Date("2026-07-20T00:00:00.000Z"),
+        inventoryLocation: { name: "Branch Stock" }
+      },
+      {
+        id: "report-2",
+        publicReference: "WST-2026-00002",
+        status: "APPROVED",
+        createdAt: new Date("2026-07-21T00:00:00.000Z"),
+        inventoryLocation: { name: "Branch Stock" }
+      }
+    ]);
+    const session = {
+      user: { id: "user-1" },
+      context: dashboardSession.context,
+      permissionCodes: [permissions.wastageReview, permissions.wastagePost]
+    };
+
+    await expect(listWastageMyTaskPage(session as never, { take: 1 })).resolves.toEqual({
+      totalCount: 2,
+      items: [
+        expect.objectContaining({
+          taskId: "wastage-report-1",
+          actionLabel: "Review wastage report"
+        })
+      ],
+      nextCursor: {
+        createdAt: "2026-07-20T00:00:00.000Z",
+        id: "report-1"
+      }
+    });
+    expect(mockPrisma.wastageReport.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        status: { in: ["SUBMITTED", "APPROVED"] }
+      })
+    });
+    expect(mockPrisma.wastageReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: 2
+      })
+    );
   });
 
   test("requires positive wastage quantities", () => {
