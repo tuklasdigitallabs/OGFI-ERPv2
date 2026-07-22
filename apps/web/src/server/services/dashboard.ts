@@ -276,40 +276,63 @@ const branchChecklistReviewStatuses = new Set(["SUBMITTED", "MANAGER_REVIEW"]);
 const foodSafetyReviewStatuses = new Set(["SUBMITTED", "EXCEPTION_REVIEW"]);
 const approvalQueueDisplayLimit = 5;
 const exceptionQueueDisplayLimit = 8;
+const defaultOperationalTimeZone = "Asia/Manila";
 
-function dateOnly(value: string) {
+export function dashboardOperationalDate(
+  value: string,
+  timeZone = defaultOperationalTimeZone
+) {
   const timestamp = new Date(value).getTime();
-  return Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString().slice(0, 10);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+  const dateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(timestamp));
+  const year = dateParts.find((part) => part.type === "year")?.value;
+  const month = dateParts.find((part) => part.type === "month")?.value;
+  const day = dateParts.find((part) => part.type === "day")?.value;
+  return year && month && day ? `${year}-${month}-${day}` : null;
 }
 
-function dueState(dueAt: string | null | undefined, isOverdue: boolean | undefined) {
+export function dashboardDueState(
+  dueAt: string | null | undefined,
+  isOverdue: boolean | undefined,
+  now = new Date()
+) {
   if (isOverdue) {
     return 0;
   }
   if (!dueAt) {
     return 2;
   }
-  const dueDate = dateOnly(dueAt);
+  const dueDate = dashboardOperationalDate(dueAt);
   if (!dueDate) {
     return 2;
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dashboardOperationalDate(now.toISOString());
   return dueDate === today ? 1 : 2;
 }
 
 function isDateOverdue(value: string | null | undefined) {
-  const dueDate = value ? dateOnly(value) : null;
-  return dueDate !== null && dueDate < new Date().toISOString().slice(0, 10);
+  const dueDate = value ? dashboardOperationalDate(value) : null;
+  const today = dashboardOperationalDate(new Date().toISOString());
+  return dueDate !== null && today !== null && dueDate < today;
 }
 
 function queueAgeLabel(draft: DashboardQueueItemDraft) {
-  const sourceAgeDate = draft.sourceAgeAt ? dateOnly(draft.sourceAgeAt) : null;
-  const dueDate = draft.dueAt ? dateOnly(draft.dueAt) : null;
+  const sourceAgeDate = draft.sourceAgeAt
+    ? dashboardOperationalDate(draft.sourceAgeAt)
+    : null;
+  const dueDate = draft.dueAt ? dashboardOperationalDate(draft.dueAt) : null;
   const dueLabel = draft.isOverdue
     ? dueDate
       ? `Overdue since ${dueDate}`
       : "Overdue"
-    : dueState(draft.dueAt, false) === 1
+    : dashboardDueState(draft.dueAt, false) === 1
       ? "Due today"
       : dueDate
         ? `Due ${dueDate}`
@@ -344,7 +367,8 @@ function buildDashboardQueueContract(
       }
 
       const dueDifference =
-        dueState(left.dueAt, left.isOverdue) - dueState(right.dueAt, right.isOverdue);
+        dashboardDueState(left.dueAt, left.isOverdue) -
+        dashboardDueState(right.dueAt, right.isOverdue);
       if (dueDifference !== 0) {
         return dueDifference;
       }

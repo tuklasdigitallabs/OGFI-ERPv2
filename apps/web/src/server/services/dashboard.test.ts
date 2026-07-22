@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildOperationalDashboardModel } from "./dashboard";
+import {
+  buildOperationalDashboardModel,
+  dashboardDueState,
+  dashboardOperationalDate
+} from "./dashboard";
 import type { SessionContext } from "./context";
 
 const dashboardPageSource = readFileSync(
@@ -31,6 +35,19 @@ const session: SessionContext = {
 };
 
 describe("operational dashboard model", () => {
+  it("uses the Manila operating date for dashboard timing", () => {
+    expect(dashboardOperationalDate("2026-07-22T17:00:00.000Z")).toBe(
+      "2026-07-23"
+    );
+    expect(
+      dashboardDueState(
+        "2026-07-22T17:00:00.000Z",
+        false,
+        new Date("2026-07-22T16:30:00.000Z")
+      )
+    ).toBe(1);
+  });
+
   it("only renders widgets for supplied authorized source records", () => {
     const dashboard = buildOperationalDashboardModel(
       { ...session, permissionCodes: ["inventory.stock_count.review"] },
