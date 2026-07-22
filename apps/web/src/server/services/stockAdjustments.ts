@@ -251,6 +251,7 @@ export function stockAdjustmentDashboardProfileWhere(
 }
 
 const stockAdjustmentDashboardTaskCandidateLimit = 8;
+const stockAdjustmentMyTaskPageSize = 25;
 
 export type StockAdjustmentDashboardTaskCandidate = {
   id: string;
@@ -266,6 +267,101 @@ export type StockAdjustmentDashboardRead = {
   exceptionCount: number;
   taskCandidates: StockAdjustmentDashboardTaskCandidate[];
 };
+
+export type StockAdjustmentMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    publicReference: string;
+    adjustmentType: string;
+    actionLabel: "Post stock adjustment";
+    inventoryLocationName: string;
+    createdAt: string;
+  }>;
+  nextCursor: { createdAt: string; id: string } | null;
+};
+
+/**
+ * Returns the currently postable adjustment controls for the authenticated
+ * user. Approval work remains in its authoritative Approval Inbox, and draft
+ * correction work remains outside this initial task contract until it has a
+ * focused editable surface.
+ */
+export async function listStockAdjustmentMyTaskPage(
+  session: SessionContext,
+  input: {
+    after?: { createdAt: string; id: string };
+    take?: number;
+  } = {}
+): Promise<StockAdjustmentMyTaskPage> {
+  await requireStockAdjustmentRead(session);
+  if (!session.permissionCodes.includes(permissions.stockAdjustmentPost)) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+
+  const take = Math.min(
+    Math.max(input.take ?? stockAdjustmentMyTaskPageSize, 1),
+    50
+  );
+  const cursorDate = input.after ? new Date(input.after.createdAt) : null;
+  if (cursorDate && Number.isNaN(cursorDate.getTime())) {
+    throw new Error("STOCK_ADJUSTMENT_MY_TASK_CURSOR_INVALID");
+  }
+
+  const where = {
+    ...scopedStockAdjustmentWhere(session),
+    status: "APPROVED",
+    postedAt: null,
+    ...(cursorDate && input.after
+      ? {
+          OR: [
+            { createdAt: { gt: cursorDate } },
+            { createdAt: cursorDate, id: { gt: input.after.id } }
+          ]
+        }
+      : {})
+  } satisfies Prisma.StockAdjustmentWhereInput;
+  const select = {
+    id: true,
+    publicReference: true,
+    adjustmentType: true,
+    createdAt: true,
+    inventoryLocation: { select: { name: true } }
+  } satisfies Prisma.StockAdjustmentSelect;
+  const [totalCount, rows] = await Promise.all([
+    prisma.stockAdjustment.count({
+      where: {
+        ...scopedStockAdjustmentWhere(session),
+        status: "APPROVED",
+        postedAt: null
+      }
+    }),
+    prisma.stockAdjustment.findMany({
+      where,
+      select,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: take + 1
+    })
+  ]);
+  const pageRows = rows.slice(0, take);
+  const lastRow = pageRows.at(-1);
+
+  return {
+    totalCount,
+    items: pageRows.map((adjustment) => ({
+      taskId: `stock-adjustment-${adjustment.id}`,
+      publicReference: adjustment.publicReference,
+      adjustmentType: adjustment.adjustmentType,
+      actionLabel: "Post stock adjustment",
+      inventoryLocationName: adjustment.inventoryLocation.name,
+      createdAt: adjustment.createdAt.toISOString()
+    })),
+    nextCursor:
+      rows.length > take && lastRow
+        ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
+        : null
+  };
+}
 
 /**
  * Dashboard-only stock-adjustment read. It deliberately excludes adjustment

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { permissions } from "./authorization";
 import {
   assertStockAdjustmentCanCancel,
   assertStockAdjustmentCanPost,
@@ -9,10 +10,17 @@ import {
   assertStockAdjustmentQuantity,
   assertOpeningBalanceIsPostable,
   calculateAdjustmentDelta,
+  listStockAdjustmentMyTaskPage,
   resolveStockAdjustmentDashboardProfile,
   stockAdjustmentDashboardProfileHref,
   stockAdjustmentDashboardProfileWhere
 } from "./stockAdjustments";
+
+const mockPrisma = vi.hoisted(() => ({
+  stockAdjustment: { count: vi.fn(), findMany: vi.fn() }
+}));
+
+vi.mock("@ogfi/database", () => ({ prisma: mockPrisma }));
 
 const dashboardSession = {
   context: {
@@ -96,6 +104,55 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(source).toContain("StockCountVarianceAdjustment");
     expect(source).toContain("approvalRuleTransactionType: transactionType");
     expect(source).not.toContain("nonPostingFoundation: true");
+  });
+
+  test("My Tasks returns only authorized unposted approved adjustments with exact count and cursor", async () => {
+    mockPrisma.stockAdjustment.count.mockResolvedValue(2);
+    mockPrisma.stockAdjustment.findMany.mockResolvedValue([
+      {
+        id: "adjustment-1",
+        publicReference: "ADJ-2026-00001",
+        adjustmentType: "DECREASE",
+        createdAt: new Date("2026-07-20T00:00:00.000Z"),
+        inventoryLocation: { name: "Branch Stock" }
+      },
+      {
+        id: "adjustment-2",
+        publicReference: "ADJ-2026-00002",
+        adjustmentType: "INCREASE",
+        createdAt: new Date("2026-07-21T00:00:00.000Z"),
+        inventoryLocation: { name: "Branch Stock" }
+      }
+    ]);
+    const session = {
+      user: { id: "user-1" },
+      context: dashboardSession.context,
+      permissionCodes: [permissions.stockAdjustmentPost]
+    };
+
+    await expect(
+      listStockAdjustmentMyTaskPage(session as never, { take: 1 })
+    ).resolves.toEqual({
+      totalCount: 2,
+      items: [
+        expect.objectContaining({
+          taskId: "stock-adjustment-adjustment-1",
+          actionLabel: "Post stock adjustment"
+        })
+      ],
+      nextCursor: {
+        createdAt: "2026-07-20T00:00:00.000Z",
+        id: "adjustment-1"
+      }
+    });
+    expect(mockPrisma.stockAdjustment.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        status: "APPROVED",
+        postedAt: null
+      })
+    });
   });
 
   test("stock adjustment approval submission uses normalized routing without role fanout", () => {
