@@ -142,7 +142,8 @@ describe("stock adjustment controlled workflow rules", () => {
       ],
       nextCursor: {
         createdAt: "2026-07-20T00:00:00.000Z",
-        id: "adjustment-1"
+        sourceType: "STOCK_ADJUSTMENT",
+        recordId: "adjustment-1"
       }
     });
     expect(mockPrisma.stockAdjustment.count).toHaveBeenCalledWith({

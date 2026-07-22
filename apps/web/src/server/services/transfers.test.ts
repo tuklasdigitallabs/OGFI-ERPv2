@@ -226,7 +226,8 @@ describe("inventory transfer foundation rules", () => {
       ],
       nextCursor: {
         createdAt: "2026-07-20T00:00:00.000Z",
-        id: "transfer-1"
+        sourceType: "TRANSFER",
+        recordId: "transfer-1"
       }
     });
     expect(mockPrisma.inventoryTransfer.count).toHaveBeenCalledWith({

@@ -6,6 +6,10 @@ import { assertAuthorizedLocation, requireSessionContext, type SessionContext } 
 import type { CsvRow } from "./csv";
 import { postInventoryMovementInTransaction } from "./inventory";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
+import {
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 
 const optionalDateSchema = z
   .string()
@@ -379,7 +383,7 @@ export type TransferMyTaskPage = {
     destinationLocationName: string;
     createdAt: string;
   }>;
-  nextCursor: { createdAt: string; id: string } | null;
+  nextCursor: DashboardTaskCursor | null;
 };
 
 /**
@@ -390,7 +394,7 @@ export type TransferMyTaskPage = {
 export async function listTransferMyTaskPage(
   session: SessionContext,
   input: {
-    after?: { createdAt: string; id: string };
+    after?: DashboardTaskCursor;
     take?: number;
   } = {}
 ): Promise<TransferMyTaskPage> {
@@ -420,25 +424,13 @@ export async function listTransferMyTaskPage(
   }
 
   const take = Math.min(Math.max(input.take ?? transferMyTaskPageSize, 1), 50);
-  const cursorDate = input.after ? new Date(input.after.createdAt) : null;
-  if (cursorDate && Number.isNaN(cursorDate.getTime())) {
-    throw new Error("TRANSFER_MY_TASK_CURSOR_INVALID");
-  }
+  const afterWhere = dashboardTaskAfterWhere("TRANSFER", input.after);
   const where = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     AND: [
       { OR: actionPredicates },
-      ...(cursorDate && input.after
-        ? [
-            {
-              OR: [
-                { createdAt: { gt: cursorDate } },
-                { createdAt: cursorDate, id: { gt: input.after.id } }
-              ]
-            }
-          ]
-        : [])
+      ...(afterWhere ? [afterWhere] : [])
     ]
   } satisfies Prisma.InventoryTransferWhereInput;
   const select = {
@@ -484,7 +476,11 @@ export async function listTransferMyTaskPage(
     })),
     nextCursor:
       rows.length > take && lastRow
-        ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
+        ? {
+            createdAt: lastRow.createdAt.toISOString(),
+            sourceType: "TRANSFER",
+            recordId: lastRow.id
+          }
         : null
   };
 }

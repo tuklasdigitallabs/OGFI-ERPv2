@@ -26,6 +26,10 @@ import {
   inventoryItemLotExpiryRequirements
 } from "./policySettings";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
+import {
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 
 const wastageTypes = [
   "SPOILAGE_EXPIRY",
@@ -468,7 +472,7 @@ export type WastageMyTaskPage = {
     inventoryLocationName: string;
     createdAt: string;
   }>;
-  nextCursor: { createdAt: string; id: string } | null;
+  nextCursor: DashboardTaskCursor | null;
 };
 
 /**
@@ -481,7 +485,7 @@ export type WastageMyTaskPage = {
 export async function listWastageMyTaskPage(
   session: SessionContext,
   input: {
-    after?: { createdAt: string; id: string };
+    after?: DashboardTaskCursor;
     take?: number;
   } = {}
 ): Promise<WastageMyTaskPage> {
@@ -500,22 +504,12 @@ export async function listWastageMyTaskPage(
   }
 
   const take = Math.min(Math.max(input.take ?? wastageMyTaskPageSize, 1), 50);
-  const cursorDate = input.after ? new Date(input.after.createdAt) : null;
-  if (cursorDate && Number.isNaN(cursorDate.getTime())) {
-    throw new Error("WASTAGE_MY_TASK_CURSOR_INVALID");
-  }
+  const afterWhere = dashboardTaskAfterWhere("WASTAGE", input.after);
 
   const where = {
     ...scopedWastageWhere(session),
     status: { in: actionStatuses },
-    ...(cursorDate && input.after
-      ? {
-          OR: [
-            { createdAt: { gt: cursorDate } },
-            { createdAt: cursorDate, id: { gt: input.after.id } }
-          ]
-        }
-      : {})
+    ...(afterWhere ? { AND: [afterWhere] } : {})
   } satisfies Prisma.WastageReportWhereInput;
   const select = {
     id: true,
@@ -556,7 +550,11 @@ export async function listWastageMyTaskPage(
     })),
     nextCursor:
       rows.length > take && lastRow
-        ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
+        ? {
+            createdAt: lastRow.createdAt.toISOString(),
+            sourceType: "WASTAGE",
+            recordId: lastRow.id
+          }
         : null
   };
 }

@@ -171,7 +171,8 @@ describe("wastage foundation rules", () => {
       ],
       nextCursor: {
         createdAt: "2026-07-20T00:00:00.000Z",
-        id: "report-1"
+        sourceType: "WASTAGE",
+        recordId: "report-1"
       }
     });
     expect(mockPrisma.wastageReport.count).toHaveBeenCalledWith({

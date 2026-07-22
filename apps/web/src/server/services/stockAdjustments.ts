@@ -34,6 +34,10 @@ import {
   inventoryItemLotExpiryRequirements
 } from "./policySettings";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
+import {
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 
 const manualAdjustmentTypes = ["INCREASE", "DECREASE", "OPENING_BALANCE"] as const;
 
@@ -278,7 +282,7 @@ export type StockAdjustmentMyTaskPage = {
     inventoryLocationName: string;
     createdAt: string;
   }>;
-  nextCursor: { createdAt: string; id: string } | null;
+  nextCursor: DashboardTaskCursor | null;
 };
 
 /**
@@ -290,7 +294,7 @@ export type StockAdjustmentMyTaskPage = {
 export async function listStockAdjustmentMyTaskPage(
   session: SessionContext,
   input: {
-    after?: { createdAt: string; id: string };
+    after?: DashboardTaskCursor;
     take?: number;
   } = {}
 ): Promise<StockAdjustmentMyTaskPage> {
@@ -303,23 +307,13 @@ export async function listStockAdjustmentMyTaskPage(
     Math.max(input.take ?? stockAdjustmentMyTaskPageSize, 1),
     50
   );
-  const cursorDate = input.after ? new Date(input.after.createdAt) : null;
-  if (cursorDate && Number.isNaN(cursorDate.getTime())) {
-    throw new Error("STOCK_ADJUSTMENT_MY_TASK_CURSOR_INVALID");
-  }
+  const afterWhere = dashboardTaskAfterWhere("STOCK_ADJUSTMENT", input.after);
 
   const where = {
     ...scopedStockAdjustmentWhere(session),
     status: "APPROVED",
     postedAt: null,
-    ...(cursorDate && input.after
-      ? {
-          OR: [
-            { createdAt: { gt: cursorDate } },
-            { createdAt: cursorDate, id: { gt: input.after.id } }
-          ]
-        }
-      : {})
+    ...(afterWhere ? { AND: [afterWhere] } : {})
   } satisfies Prisma.StockAdjustmentWhereInput;
   const select = {
     id: true,
@@ -358,7 +352,11 @@ export async function listStockAdjustmentMyTaskPage(
     })),
     nextCursor:
       rows.length > take && lastRow
-        ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
+        ? {
+            createdAt: lastRow.createdAt.toISOString(),
+            sourceType: "STOCK_ADJUSTMENT",
+            recordId: lastRow.id
+          }
         : null
   };
 }
