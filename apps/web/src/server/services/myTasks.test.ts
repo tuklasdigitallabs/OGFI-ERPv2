@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
   transfers: vi.fn(),
   wastage: vi.fn(),
   adjustments: vi.fn(),
-  purchaseRequests: vi.fn()
+  purchaseRequests: vi.fn(),
+  purchaseOrders: vi.fn()
 }));
 
 vi.mock("./transfers", () => ({ listTransferMyTaskPage: mocks.transfers }));
@@ -20,6 +21,9 @@ vi.mock("./stockAdjustments", () => ({
 }));
 vi.mock("./purchaseRequests", () => ({
   listPurchaseRequestMyTaskPage: mocks.purchaseRequests
+}));
+vi.mock("./purchaseOrders", () => ({
+  listPurchaseOrderMyTaskPage: mocks.purchaseOrders
 }));
 
 const session = {
@@ -64,6 +68,11 @@ describe("My Tasks queue", () => {
       totalCount: 1,
       nextCursor: null,
       items: [{ taskId: "purchase-request-pr1", recordId: "pr1", publicReference: "PR-1", status: "DRAFT", actionLabel: "Submit purchase request", requestLocationName: "Branch", requiredDate: "2026-07-25", createdAt: "2026-07-19T00:00:00.000Z" }]
+    });
+    mocks.purchaseOrders.mockResolvedValue({
+      totalCount: 1,
+      nextCursor: null,
+      items: [{ taskId: "purchase-order-po1", recordId: "po1", publicReference: "PO-1", status: "APPROVED", actionLabel: "Send PO to supplier", supplierName: "Supplier", deliveryLocationName: "Branch", createdAt: "2026-07-19T00:00:00.000Z" }]
     });
   });
 
@@ -111,6 +120,18 @@ describe("My Tasks queue", () => {
       totalCount: 1,
       enrolledSources: [{ type: "PURCHASE_REQUEST", label: "Purchase requests" }],
       items: [{ taskId: "purchase-request-pr1", sourceType: "PURCHASE_REQUEST" }]
+    });
+  });
+
+  test("enrolls only the explicit Purchase Order submit or issue controls", async () => {
+    await expect(
+      getMyTasksPage(
+        { ...session, permissionCodes: [permissions.purchaseOrderIssue] } as never
+      )
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      enrolledSources: [{ type: "PURCHASE_ORDER", label: "Purchase orders" }],
+      items: [{ taskId: "purchase-order-po1", sourceType: "PURCHASE_ORDER" }]
     });
   });
 });

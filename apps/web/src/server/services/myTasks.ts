@@ -4,7 +4,8 @@ import {
   canUseTransfers,
   canUseWastageReports,
   canUseReceiving,
-  canUsePurchaseRequests
+  canUsePurchaseRequests,
+  canReadPurchaseOrders
 } from "./authorization";
 import {
   signInternalServerValue,
@@ -20,6 +21,7 @@ import {
 import { listStockAdjustmentMyTaskPage } from "./stockAdjustments";
 import { listReceivingMyTaskPage } from "./receiving";
 import { listPurchaseRequestMyTaskPage } from "./purchaseRequests";
+import { listPurchaseOrderMyTaskPage } from "./purchaseOrders";
 import { listTransferMyTaskPage } from "./transfers";
 import { listWastageMyTaskPage } from "./wastage";
 
@@ -160,6 +162,25 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
             sourceLabel: "Purchase request",
             locationLabel: `${item.requestLocationName} · required ${item.requiredDate}`,
             href: `/purchase-requests/${item.recordId}`
+          }))
+        };
+      }
+    });
+  }
+  if (canReadPurchaseOrders(session.permissionCodes)) {
+    sources.push({
+      type: "PURCHASE_ORDER",
+      label: "Purchase orders",
+      read: async (after, take) => {
+        const page = await listPurchaseOrderMyTaskPage(session, { take, ...(after ? { after } : {}) });
+        return {
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            sourceType: "PURCHASE_ORDER" as const,
+            sourceLabel: "Purchase order",
+            locationLabel: `${item.deliveryLocationName} · ${item.supplierName}`,
+            href: `/purchase-orders/${item.recordId}`
           }))
         };
       }

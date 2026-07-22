@@ -25,7 +25,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 
 1. Confirm your active location in the header.
 2. Open `Operations Dashboard` and review `Today’s work` first. It lists the highest-priority assigned approvals and operational exceptions visible in your selected scope.
-3. Open `My Tasks` when you need the current paginated operational action queue. It presently includes your own draft Purchase Request submission, eligible Transfer, Wastage, Stock Adjustment, and draft Receiving Report posting actions only.
+3. Open `My Tasks` when you need the current paginated operational action queue. It presently includes your own draft Purchase Request submission, eligible draft Purchase Order submission or approved PO supplier-send actions, Transfer, Wastage, Stock Adjustment, and draft Receiving Report posting actions only.
 4. Read the location, owner, timing, severity, status, and next-action labels before opening a source record.
 5. Select `Open` or `Open approvals` to continue in the relevant controlled workspace. The `Open POs`, `Open PRs`, and `Transfer Follow-up` cards open their selected location's closed source-list views.
 5. Open `Approval Inbox` to review assigned approval decisions.

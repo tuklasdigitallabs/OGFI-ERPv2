@@ -7,6 +7,7 @@
  */
 export const dashboardTaskSources = [
   "PURCHASE_REQUEST",
+  "PURCHASE_ORDER",
   "TRANSFER",
   "WASTAGE",
   "STOCK_ADJUSTMENT",

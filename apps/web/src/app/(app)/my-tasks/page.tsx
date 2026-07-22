@@ -48,7 +48,7 @@ export default async function MyTasksPage({
             <div>
               <h2 className="text-base font-bold text-slate-950">Current action queue</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                This initial queue includes requester-owned Purchase Request submission plus actionable Transfer, Wastage, Stock Adjustment, and Receiving controls. Use each source workspace for other approved work.
+                This initial queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, and Receiving controls. Use each source workspace for other approved work.
               </p>
             </div>
           </div>

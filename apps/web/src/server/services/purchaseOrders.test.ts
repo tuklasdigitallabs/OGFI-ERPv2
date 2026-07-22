@@ -31,6 +31,18 @@ import { canReadPurchaseOrders } from "./authorization";
 import { assertSupplierStatusAllowedForPurchaseOrder } from "./policySettings";
 
 describe("purchase order lifecycle rules", () => {
+  test("My Tasks uses only explicit draft-submit and approved-issue PO actions", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+    const start = source.indexOf("export async function listPurchaseOrderMyTaskPage");
+    const end = source.indexOf("export async function getPurchaseOrderDashboardRead", start);
+    const taskPage = source.slice(start, end);
+
+    expect(taskPage).toContain('"DRAFT" as const');
+    expect(taskPage).toContain('"APPROVED" as const');
+    expect(taskPage).toContain("purchaseOrderSubmit");
+    expect(taskPage).toContain("purchaseOrderIssue");
+  });
+
   test("all three PO approval activations use normalized fail-closed routing", () => {
     const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
 

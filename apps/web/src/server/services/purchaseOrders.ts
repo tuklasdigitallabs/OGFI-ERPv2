@@ -24,6 +24,10 @@ import {
   getPurchasingSupplierPolicy,
 } from "./policySettings";
 import { reverseBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
+import {
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 
 const createPurchaseOrderSchema = z.object({
   quotationRecommendationId: z.string().uuid(),
@@ -747,6 +751,74 @@ export type PurchaseOrderDashboardRead = {
     daysOverdue: number;
   }>;
 };
+
+export type PurchaseOrderMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    recordId: string;
+    publicReference: string;
+    status: "DRAFT" | "APPROVED";
+    actionLabel: "Submit purchase order" | "Send PO to supplier";
+    supplierName: string;
+    deliveryLocationName: string;
+    createdAt: string;
+  }>;
+  nextCursor: DashboardTaskCursor | null;
+};
+
+const purchaseOrderMyTaskPageSize = 25;
+
+/** Returns only PO actions whose existing detail controls are available to the current role. */
+export async function listPurchaseOrderMyTaskPage(
+  session: SessionContext,
+  input: { after?: DashboardTaskCursor; take?: number } = {}
+): Promise<PurchaseOrderMyTaskPage> {
+  await requirePurchaseOrderRead(session);
+  const actionStatuses = [
+    ...(session.permissionCodes.includes(permissions.purchaseOrderSubmit) ? ["DRAFT" as const] : []),
+    ...(session.permissionCodes.includes(permissions.purchaseOrderIssue) ? ["APPROVED" as const] : [])
+  ];
+  if (actionStatuses.length === 0) return { totalCount: 0, items: [], nextCursor: null };
+  const take = Math.min(Math.max(input.take ?? purchaseOrderMyTaskPageSize, 1), 50);
+  const afterWhere = dashboardTaskAfterWhere("PURCHASE_ORDER", input.after);
+  const scope = {
+    ...purchaseOrderScope(session),
+    status: { in: actionStatuses }
+  } satisfies Prisma.PurchaseOrderWhereInput;
+  const [totalCount, rows] = await Promise.all([
+    prisma.purchaseOrder.count({ where: scope }),
+    prisma.purchaseOrder.findMany({
+      where: { ...scope, ...(afterWhere ? { AND: [afterWhere] } : {}) },
+      select: {
+        id: true,
+        publicReference: true,
+        status: true,
+        createdAt: true,
+        supplier: { select: { tradingName: true, legalName: true } },
+        deliveryLocation: { select: { name: true } }
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: take + 1
+    })
+  ]);
+  const pageRows = rows.slice(0, take);
+  const lastRow = pageRows.at(-1);
+  return {
+    totalCount,
+    items: pageRows.map((order) => ({
+      taskId: `purchase-order-${order.id}`,
+      recordId: order.id,
+      publicReference: order.publicReference,
+      status: order.status as "DRAFT" | "APPROVED",
+      actionLabel: order.status === "DRAFT" ? "Submit purchase order" : "Send PO to supplier",
+      supplierName: order.supplier.tradingName ?? order.supplier.legalName,
+      deliveryLocationName: order.deliveryLocation.name,
+      createdAt: order.createdAt.toISOString()
+    })),
+    nextCursor: rows.length > take && lastRow ? { createdAt: lastRow.createdAt.toISOString(), sourceType: "PURCHASE_ORDER", recordId: lastRow.id } : null
+  };
+}
 
 /**
  * Dashboard-only PO read. Keep source authorization and selected location scope
