@@ -13,8 +13,12 @@ import {
 } from "./context";
 import {
   recordWorkflowNotifications,
-  resolveScopedNotificationRecipients,
 } from "./notifications";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import {
   assertSupplierStatusAllowedForPurchaseOrder,
   getPurchasingSupplierPolicy,
@@ -1571,6 +1575,78 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
       throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
     }
 
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+
+    const approvalInstance = await tx.approvalInstance.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "PurchaseOrder",
+        documentId: order.id,
+        approvalRuleId: approvalRule.id,
+        currentStepOrder: firstStep.stepOrder,
+        steps: {
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
+            stepOrder: step.stepOrder,
+            assignedRoleId: step.roleId,
+            assignedUserId: step.userId,
+            status: step.activationStatus,
+          })),
+        },
+      },
+    });
+
+    const prohibitedActors = Array.from(new Map([
+      [order.createdByUserId, {
+        userId: order.createdByUserId,
+        reasonCode: "CREATOR"
+      }],
+      [order.purchaseRequest.requesterUserId, {
+        userId: order.purchaseRequest.requesterUserId,
+        reasonCode: "REQUESTER"
+      }],
+      [order.quotationRecommendation.preparedByUserId, {
+        userId: order.quotationRecommendation.preparedByUserId,
+        reasonCode: "PREPARER"
+      }]
+    ]).values());
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("PurchaseOrder"),
+        requiredPermissionCode: permissions.purchaseOrderApprove,
+        dueAt: order.expectedDeliveryDate,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "purchase-order-submission"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: order.deliveryLocationId
+          }]
+        }],
+        prohibitedActors
+      });
+    }
+    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    });
+
     const updated = await tx.purchaseOrder.updateMany({
       where: {
         id: order.id,
@@ -1586,25 +1662,6 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
     if (updated.count !== 1) {
       throw new Error("PURCHASE_ORDER_NOT_DRAFT_FOR_APPROVAL");
     }
-
-    const approvalInstance = await tx.approvalInstance.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        documentType: "PurchaseOrder",
-        documentId: order.id,
-        approvalRuleId: approvalRule.id,
-        currentStepOrder: firstStep.stepOrder,
-        steps: {
-          create: approvalRule.steps.map((step, index) => ({
-            stepOrder: step.stepOrder,
-            assignedRoleId: step.roleId,
-            assignedUserId: step.userId,
-            status: index === 0 ? "PENDING" : "WAITING",
-          })),
-        },
-      },
-    });
 
     const auditEvent = await tx.auditEvent.create({
       data: {
@@ -1630,18 +1687,11 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
       },
     });
 
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: order.deliveryLocationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId,
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: order.deliveryLocationId,
-      recipientUserIds,
+      recipientUserIds: [firstEligibleActor.userId],
       notificationType: "APPROVE_PURCHASE_ORDER",
       priority: "NORMAL",
       title: `Approve Purchase Order ${order.publicReference}`,
@@ -2042,8 +2092,88 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
       (total, line) => total + line.closedValue,
       0,
     );
+    const firstStep = approvalRule.steps[0];
+    if (!firstStep) {
+      throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+    }
+
+    const closureId = randomUUID();
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+
+    const approvalInstance = await tx.approvalInstance.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "PurchaseOrderBalanceClosure",
+        documentId: closureId,
+        approvalRuleId: approvalRule.id,
+        currentStepOrder: firstStep.stepOrder,
+        steps: {
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
+            stepOrder: step.stepOrder,
+            assignedRoleId: step.roleId,
+            assignedUserId: step.userId,
+            status: step.activationStatus,
+          })),
+        },
+      },
+    });
+
+    const prohibitedActors = Array.from(new Map([
+      [session.user.id, { userId: session.user.id, reasonCode: "REQUESTER" }],
+      [order.createdByUserId, {
+        userId: order.createdByUserId,
+        reasonCode: "CREATOR"
+      }],
+      [order.purchaseRequest.requesterUserId, {
+        userId: order.purchaseRequest.requesterUserId,
+        reasonCode: "REQUESTER"
+      }],
+      [order.quotationRecommendation.preparedByUserId, {
+        userId: order.quotationRecommendation.preparedByUserId,
+        reasonCode: "PREPARER"
+      }]
+    ]).values());
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("PurchaseOrderBalanceClosure"),
+        requiredPermissionCode: permissions.purchaseOrderApprove,
+        dueAt: order.expectedDeliveryDate,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "purchase-order-balance-closure-request"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: order.deliveryLocationId
+          }]
+        }],
+        prohibitedActors
+      });
+    }
+    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    });
+
     const closure = await tx.purchaseOrderBalanceClosure.create({
       data: {
+        id: closureId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         purchaseOrderId: order.id,
@@ -2055,30 +2185,6 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
         lineSnapshot: currentLineSnapshot,
         totalClosedQuantity: currentOutstandingQty,
         totalClosedValue: currentClosedValue,
-      },
-    });
-
-    const firstStep = approvalRule.steps[0];
-    if (!firstStep) {
-      throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
-    }
-
-    const approvalInstance = await tx.approvalInstance.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        documentType: "PurchaseOrderBalanceClosure",
-        documentId: closure.id,
-        approvalRuleId: approvalRule.id,
-        currentStepOrder: firstStep.stepOrder,
-        steps: {
-          create: approvalRule.steps.map((step, index) => ({
-            stepOrder: step.stepOrder,
-            assignedRoleId: step.roleId,
-            assignedUserId: step.userId,
-            status: index === 0 ? "PENDING" : "WAITING",
-          })),
-        },
       },
     });
 
@@ -2107,18 +2213,11 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
       },
     });
 
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: order.deliveryLocationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId,
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: order.deliveryLocationId,
-      recipientUserIds,
+      recipientUserIds: [firstEligibleActor.userId],
       notificationType: "APPROVE_PO_BALANCE_CLOSURE",
       priority: "NORMAL",
       title: `Approve Balance Closure ${order.publicReference}`,
@@ -2281,8 +2380,88 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
       expectedDeliveryDate: values.expectedDeliveryDate,
     });
 
+    const firstStep = approvalRule.steps[0];
+    if (!firstStep) {
+      throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+    }
+
+    const amendmentId = randomUUID();
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+
+    const approvalInstance = await tx.approvalInstance.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "PurchaseOrderAmendment",
+        documentId: amendmentId,
+        approvalRuleId: approvalRule.id,
+        currentStepOrder: firstStep.stepOrder,
+        steps: {
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
+            stepOrder: step.stepOrder,
+            assignedRoleId: step.roleId,
+            assignedUserId: step.userId,
+            status: step.activationStatus,
+          })),
+        },
+      },
+    });
+
+    const prohibitedActors = Array.from(new Map([
+      [session.user.id, { userId: session.user.id, reasonCode: "REQUESTER" }],
+      [order.createdByUserId, {
+        userId: order.createdByUserId,
+        reasonCode: "CREATOR"
+      }],
+      [order.purchaseRequest.requesterUserId, {
+        userId: order.purchaseRequest.requesterUserId,
+        reasonCode: "REQUESTER"
+      }],
+      [order.quotationRecommendation.preparedByUserId, {
+        userId: order.quotationRecommendation.preparedByUserId,
+        reasonCode: "PREPARER"
+      }]
+    ]).values());
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("PurchaseOrderAmendment"),
+        requiredPermissionCode: permissions.purchaseOrderApprove,
+        dueAt: order.expectedDeliveryDate,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "purchase-order-amendment-request"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: order.deliveryLocationId
+          }]
+        }],
+        prohibitedActors
+      });
+    }
+    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    });
+
     const amendment = await tx.purchaseOrderAmendment.create({
       data: {
+        id: amendmentId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         purchaseOrderId: order.id,
@@ -2292,30 +2471,6 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
         supplierNoticeUnavailableReason,
         beforeSnapshot,
         proposedSnapshot,
-      },
-    });
-
-    const firstStep = approvalRule.steps[0];
-    if (!firstStep) {
-      throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
-    }
-
-    const approvalInstance = await tx.approvalInstance.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        documentType: "PurchaseOrderAmendment",
-        documentId: amendment.id,
-        approvalRuleId: approvalRule.id,
-        currentStepOrder: firstStep.stepOrder,
-        steps: {
-          create: approvalRule.steps.map((step, index) => ({
-            stepOrder: step.stepOrder,
-            assignedRoleId: step.roleId,
-            assignedUserId: step.userId,
-            status: index === 0 ? "PENDING" : "WAITING",
-          })),
-        },
       },
     });
 
@@ -2357,18 +2512,11 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
       },
     });
 
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: order.deliveryLocationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId,
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: order.deliveryLocationId,
-      recipientUserIds,
+      recipientUserIds: [firstEligibleActor.userId],
       notificationType: "APPROVE_PO_AMENDMENT",
       priority: "NORMAL",
       title: `Approve PO Amendment ${order.publicReference}`,

@@ -57,6 +57,7 @@ Rules:
 - Default Compose startup must exclude Redis and worker services for the current release. Use only an explicit future-worker profile after a separate approved technical decision.
 - Production deployments must expose only the reverse proxy public ports. PostgreSQL and object-storage administrative ports must stay private to the host/container network or localhost-bound maintenance access.
 - Health endpoints must be protected or provide only safe status output.
+- Hosted staging and production set `AUTH_TRUSTED_PROXY_MODE=caddy_single_hop`. Caddy removes inbound `Forwarded`, `X-Real-IP`, and `X-Forwarded-For` and supplies exactly one direct-peer `X-Forwarded-For` value. The web container publishes no host port. Do not add a CDN, second proxy hop, or public web port without revisiting this trust contract.
 
 ---
 
@@ -99,6 +100,12 @@ Install the templates under `infra/systemd/database/` and follow their README. K
 Before first use, and again after a restore that does not preserve owners/privileges, a cluster administrator runs `infra/hostinger/postgres/bootstrap-roles.sql` against the positively identified target. Passwords are set in a separate secret ceremony and are never passed as SQL variables or committed files. The controlled migration then reconciles grants and proves exact memberships, supported object ownership, safe defaults and routine/column ACLs, owner-side append-only guards, runtime `SELECT`/`INSERT`, DDL/TEMP denials, and escalation denials. Enable the daily `ogfi-db-role-verify.timer` and alert on failure or a missed run.
 
 This control does not select PostgreSQL packaging. The database remains on a private Hostinger endpoint whether the approved design is a host service or a dedicated container. Production remains **NO-GO** until that packaging decision, credential custody, restore reconciliation evidence, and exact-release role-contract evidence are approved.
+
+### 5.2 Authentication monitoring and approval-routing cutover
+
+Install the authentication-throttle and authorization-denial health, cleanup, finalization, and alert units from `infra/systemd/database/`. Their environment and bearer-token files must be root-owned mode `0400`; metrics and health endpoints bind only to loopback/private networking. Prove timer overlap protection, restart recovery, missed-run detection, alert delivery, acknowledgement, and escalation before production activation. Calibrate Argon2, edge-rate, database-pressure, and alert thresholds under staged hostile load; the blank production thresholds intentionally fail closed.
+
+Keep `APPROVAL_ROUTING_V1_ENABLED=false` until the controlled migration, approval-routing database suite, dry-run and idempotent apply backfill, zero-blocker report, executable 18-document-type matrix, and authenticated production-mode role-scoped browser smoke test pass for the exact release. Record cutover evidence and an accountable rollback owner, then enable the flag and repeat approval-inbox/action smoke checks. Roll back by disabling the flag; preserve every routing snapshot, approval step, notification, and audit record.
 
 ---
 

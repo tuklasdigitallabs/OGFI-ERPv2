@@ -1,4 +1,5 @@
 import { prisma, type TransactionClient } from "@ogfi/database";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   assertAuthorizedLocation,
@@ -13,8 +14,12 @@ import {
 } from "./authorization";
 import {
   recordWorkflowNotifications,
-  resolveScopedNotificationRecipients,
 } from "./notifications";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
 import { getPurchasingControlPolicy } from "./policySettings";
 import { reverseBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
@@ -1203,14 +1208,13 @@ export async function submitPurchaseRequest(id: string) {
       throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
     }
 
-    await tx.purchaseRequest.update({
-      where: { id },
-      data: {
-        status: "PENDING_APPROVAL",
-        currentApprovalStep: firstStep.stepOrder,
-        version: { increment: 1 },
-      },
-    });
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
 
     const approvalInstance = await tx.approvalInstance.create({
       data: {
@@ -1222,13 +1226,56 @@ export async function submitPurchaseRequest(id: string) {
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING",
+            status: step.activationStatus,
           })),
         },
+      },
+    });
+
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("PurchaseRequest"),
+        requiredPermissionCode: permissions.purchaseRequestApprove,
+        dueAt: new Date(`${existing.requiredDate}T00:00:00.000Z`),
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "purchase-request-submission"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: existing.requestLocationId
+          }]
+        }],
+        prohibitedActors: [{
+          userId: existing.requesterUserId,
+          reasonCode: "REQUESTER"
+        }]
+      });
+    }
+    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    });
+
+    await tx.purchaseRequest.update({
+      where: { id },
+      data: {
+        status: "PENDING_APPROVAL",
+        currentApprovalStep: firstStep.stepOrder,
+        version: { increment: 1 },
       },
     });
 
@@ -1260,18 +1307,11 @@ export async function submitPurchaseRequest(id: string) {
       },
     });
 
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: session.context.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId,
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: session.context.locationId,
-      recipientUserIds,
+      recipientUserIds: [firstEligibleActor.userId],
       notificationType: "APPROVE_PURCHASE_REQUEST",
       priority: "NORMAL",
       title: `Approve Purchase Request ${existing.publicReference}`,

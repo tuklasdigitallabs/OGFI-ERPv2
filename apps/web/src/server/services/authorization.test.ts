@@ -49,7 +49,19 @@ describe("module access permission helpers", () => {
       permissions.purchaseRequestApprove,
       permissions.quoteApprove,
       permissions.purchaseOrderApprove,
-      permissions.wastageApprove
+      permissions.wastageApprove,
+      permissions.stockAdjustmentApprove,
+      permissions.financeBudgetApprove,
+      permissions.financeExpenseRequestApprove,
+      permissions.financeCashAdvanceApprove,
+      permissions.financePettyCashApprove,
+      permissions.financePaymentRequestApprove,
+      permissions.financePaymentRelease,
+      permissions.financePeriodCloseManage,
+      permissions.workforceLeaveApprove,
+      permissions.workforceOvertimeApprove,
+      permissions.workforceScheduleManage,
+      permissions.workforceAttendanceImportManage
     ]) {
       expect(canUseApprovals([permission]), permission).toBe(true);
     }

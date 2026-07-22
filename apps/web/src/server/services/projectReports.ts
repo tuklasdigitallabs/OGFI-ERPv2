@@ -1,4 +1,5 @@
 import { prisma } from "@ogfi/database";
+import { recordSessionDeniedDecisionSafely } from "./authorizationDenials";
 import type { CsvRow } from "./csv";
 import { canUseProjects, getGrantedPermissionCodes } from "./authorization";
 import { getExportFailureReasonCode } from "./exportErrors";
@@ -54,6 +55,14 @@ export async function logProjectExportAudit(input: {
   rowCount?: number;
   reasonCode?: string;
 }) {
+  if (input.eventType === "project_report.export_denied") {
+    await recordSessionDeniedDecisionSafely(input.session, {
+      action: "EXPORT",
+      reason: "PERMISSION_MISSING",
+      resource: "PROJECTS"
+    });
+    return;
+  }
   const exportPolicy =
     input.eventType === "project_report.export_started"
       ? await assertReportExportScopeFilters(input.session)

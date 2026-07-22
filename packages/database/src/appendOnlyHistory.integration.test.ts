@@ -339,6 +339,13 @@ describeGuardContract("DEC-0049 append-only PostgreSQL guards", () => {
         await transaction.$executeRawUnsafe(
           'ALTER TABLE public."AuditEvent" DISABLE TRIGGER "AuditEvent_append_only_guard_trg"',
         );
+        // AuditEvent now has append-only AuthorizationDenialBucket evidence
+        // dependents. Disable that removal guard inside the same deliberately
+        // doomed transaction so this probe still reaches the unexpected-
+        // success sentinel instead of being stopped by the newer child guard.
+        await transaction.$executeRawUnsafe(
+          'ALTER TABLE public."AuthorizationDenialBucket" DISABLE TRIGGER "AuthorizationDenialBucket_no_remove_trg"',
+        );
         await transaction.$executeRawUnsafe(
           'TRUNCATE TABLE public."AuditEvent" CASCADE',
         );
@@ -369,6 +376,17 @@ describeGuardContract("DEC-0049 append-only PostgreSQL guards", () => {
         WHERE namespace.nspname = 'public'
           AND relation.relname = 'AuditEvent'
           AND trigger.tgname = 'AuditEvent_append_only_guard_trg'
+      `),
+    ).toEqual([{ triggerEnabled: "A" }]);
+    expect(
+      await prisma.$queryRawUnsafe<Array<{ triggerEnabled: string }>>(`
+        SELECT trigger.tgenabled AS "triggerEnabled"
+        FROM pg_catalog.pg_trigger trigger
+        JOIN pg_catalog.pg_class relation ON relation.oid = trigger.tgrelid
+        JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = 'public'
+          AND relation.relname = 'AuthorizationDenialBucket'
+          AND trigger.tgname = 'AuthorizationDenialBucket_no_remove_trg'
       `),
     ).toEqual([{ triggerEnabled: "A" }]);
   });

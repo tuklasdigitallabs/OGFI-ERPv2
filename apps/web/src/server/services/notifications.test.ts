@@ -33,8 +33,9 @@ describe("notification foundation wiring", () => {
     const quotes = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
 
     for (const source of [purchaseRequests, purchaseOrders, quotes]) {
-      expect(source).toContain("resolveScopedNotificationRecipients");
+      expect(source).toContain("assertAnyEligibleApprovalActorForStep");
       expect(source).toContain("recordWorkflowNotifications");
+      expect(source).toContain("recipientUserIds: [firstEligibleActor.userId]");
       expect(source).toContain("sourceEventKey: auditEvent.id");
       expect(source).toContain("deepLink: `/approvals/${approvalInstance.id}`");
     }

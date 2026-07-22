@@ -107,6 +107,58 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'A non-extension public routine is not owned by the reviewed owner';
   END IF;
+
+  -- These routines enforce controls that must remain effective even for
+  -- replication-role sessions. Attest the reviewed implementation body as
+  -- well as its owner, language, security mode, and fixed search path so a
+  -- same-named replacement cannot satisfy this contract.
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('public.enforce_authorization_denial_bucket_update()'::regprocedure,
+        'e6eb9e27334f4e451eccd5367ffab6ec', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_authorization_denial_bucket_events()'::regprocedure,
+        '08c472850d75a36d7313f9ed6786b93f', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.reject_authorization_denial_bucket_removal()'::regprocedure,
+        'cb7c5e9532debc0c8bd28552fe79e936', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_approval_step_routing_context()'::regprocedure,
+        '8236d6ab3bf2408fc2ecd1417932e327', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.reject_immutable_approval_routing_child_mutation()'::regprocedure,
+        'ea12e58f5dcf9c5025dccf29340ad3fb', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.enforce_authentication_throttle_window_transition()'::regprocedure,
+        'e07a390bc1869b04a2fc6bbb067dc2aa', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.reject_authentication_throttle_window_truncate()'::regprocedure,
+        'eef7d174af42a6c70b80228e8738f392', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.enforce_authentication_throttle_control_transition()'::regprocedure,
+        'e24f19d2cbda20982336b421bbf69d8a', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.reject_authentication_throttle_control_remove()'::regprocedure,
+        'f2c71fece9108f7a98e0ccaf45df2017', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.lock_authentication_throttle_control()'::regprocedure,
+        '514b6a660f2fbd81b417bfd261dd7ac1', 'sql', true,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.operator_transition_authentication_throttle_control(bigint,"AuthenticationThrottleControlStatus",integer,text,text)'::regprocedure,
+        '62201f7bcbba7a8e20beff3d988b8f40', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[])
+    ) AS expected(function_oid, source_md5, language_name, security_definer, settings)
+    JOIN pg_proc p ON p.oid = expected.function_oid
+    JOIN pg_language l ON l.oid = p.prolang
+    WHERE md5(p.prosrc) <> expected.source_md5
+      OR l.lanname <> expected.language_name
+      OR p.proowner <> owner_oid
+      OR p.prosecdef <> expected.security_definer
+      OR p.proconfig IS DISTINCT FROM expected.settings
+  ) THEN
+    RAISE EXCEPTION 'Reviewed control function semantics drifted';
+  END IF;
   IF EXISTS (
     SELECT 1 FROM pg_type t
     JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -173,6 +225,287 @@ BEGIN
     IF NOT FOUND THEN RAISE EXCEPTION '% append-only trigger contract is incomplete', protected_table; END IF;
   END LOOP;
 
+  IF to_regclass('public."AuthorizationDenialBucket"') IS NULL THEN
+    RAISE EXCEPTION 'AuthorizationDenialBucket is missing';
+  END IF;
+  IF NOT has_table_privilege(runtime_role, 'public."AuthorizationDenialBucket"', 'SELECT')
+     OR NOT has_table_privilege(runtime_role, 'public."AuthorizationDenialBucket"', 'INSERT') THEN
+    RAISE EXCEPTION 'AuthorizationDenialBucket required runtime privileges are missing';
+  END IF;
+  FOREACH destructive_privilege IN ARRAY ARRAY['UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+  LOOP
+    IF has_table_privilege(runtime_role, 'public."AuthorizationDenialBucket"', destructive_privilege) THEN
+      RAISE EXCEPTION '% table-wide runtime privilege exists on AuthorizationDenialBucket', destructive_privilege;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_attribute a
+    WHERE a.attrelid = 'public."AuthorizationDenialBucket"'::regclass
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND has_column_privilege(runtime_role, a.attrelid, a.attnum, 'UPDATE')
+      AND a.attname <> ALL (ARRAY['denialCount', 'lastDeniedAt', 'updatedAt', 'finalizedAt', 'finalAuditEventId'])
+  ) THEN
+    RAISE EXCEPTION 'Runtime can update an unauthorized AuthorizationDenialBucket column';
+  END IF;
+  IF EXISTS (
+    SELECT required_column
+    FROM unnest(ARRAY['denialCount', 'lastDeniedAt', 'updatedAt', 'finalizedAt', 'finalAuditEventId']) AS required(required_column)
+    WHERE NOT has_column_privilege(
+      runtime_role,
+      'public."AuthorizationDenialBucket"'::regclass,
+      required_column,
+      'UPDATE'
+    )
+  ) THEN
+    RAISE EXCEPTION 'AuthorizationDenialBucket required runtime update columns are incomplete';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+    WHERE t.tgrelid = 'public."AuthorizationDenialBucket"'::regclass
+      AND NOT t.tgisinternal
+      AND (
+        (t.tgname = 'AuthorizationDenialBucket_10_update_integrity_trg' AND t.tgenabled = 'A' AND t.tgtype = 19
+          AND t.tgfoid = 'public.enforce_authorization_denial_bucket_update()'::regprocedure)
+        OR (t.tgname = 'AuthorizationDenialBucket_20_event_integrity_trg' AND t.tgenabled = 'A' AND t.tgtype = 23
+          AND t.tgfoid = 'public.validate_authorization_denial_bucket_events()'::regprocedure)
+        OR (t.tgname = 'AuthorizationDenialBucket_no_remove_trg' AND t.tgenabled = 'A' AND t.tgtype = 42
+          AND t.tgfoid = 'public.reject_authorization_denial_bucket_removal()'::regprocedure)
+      )
+    GROUP BY t.tgrelid
+    HAVING count(*) = 3
+  ) THEN
+    RAISE EXCEPTION 'AuthorizationDenialBucket trigger contract is incomplete';
+  END IF;
+
+  IF to_regclass('public."AuthenticationThrottleWindow"') IS NULL THEN
+    RAISE EXCEPTION 'AuthenticationThrottleWindow is missing';
+  END IF;
+  IF NOT has_table_privilege(runtime_role, 'public."AuthenticationThrottleWindow"', 'SELECT')
+     OR NOT has_table_privilege(runtime_role, 'public."AuthenticationThrottleWindow"', 'INSERT')
+     OR NOT has_table_privilege(runtime_role, 'public."AuthenticationThrottleWindow"', 'DELETE') THEN
+    RAISE EXCEPTION 'AuthenticationThrottleWindow required runtime DML is incomplete';
+  END IF;
+  FOREACH destructive_privilege IN ARRAY ARRAY['UPDATE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+  LOOP
+    IF has_table_privilege(runtime_role, 'public."AuthenticationThrottleWindow"', destructive_privilege) THEN
+      RAISE EXCEPTION '% table-wide runtime privilege exists on AuthenticationThrottleWindow', destructive_privilege;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_attribute a
+    WHERE a.attrelid = 'public."AuthenticationThrottleWindow"'::regclass
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND has_column_privilege(runtime_role, a.attrelid, a.attnum, 'UPDATE')
+      AND a.attname <> ALL (ARRAY[
+        'requestCount', 'failureReservationCount', 'successCount', 'deniedCount',
+        'lastRequestAt', 'thresholdReachedAt', 'updatedAt'
+      ])
+  ) THEN
+    RAISE EXCEPTION 'Runtime can update an unauthorized AuthenticationThrottleWindow column';
+  END IF;
+  IF EXISTS (
+    SELECT required_column
+    FROM unnest(ARRAY[
+      'requestCount', 'failureReservationCount', 'successCount', 'deniedCount',
+      'lastRequestAt', 'thresholdReachedAt', 'updatedAt'
+    ]) AS required(required_column)
+    WHERE NOT has_column_privilege(
+      runtime_role,
+      'public."AuthenticationThrottleWindow"'::regclass,
+      required_column,
+      'UPDATE'
+    )
+  ) THEN
+    RAISE EXCEPTION 'AuthenticationThrottleWindow required runtime update columns are incomplete';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+    WHERE t.tgrelid = 'public."AuthenticationThrottleWindow"'::regclass
+      AND NOT t.tgisinternal
+      AND (
+        (t.tgname = 'AuthenticationThrottleWindow_transition_trg' AND t.tgenabled = 'A' AND t.tgtype = 31
+          AND t.tgfoid = 'public.enforce_authentication_throttle_window_transition()'::regprocedure)
+        OR (t.tgname = 'AuthenticationThrottleWindow_truncate_trg' AND t.tgenabled = 'A' AND t.tgtype = 34
+          AND t.tgfoid = 'public.reject_authentication_throttle_window_truncate()'::regprocedure)
+      )
+    GROUP BY t.tgrelid
+    HAVING count(*) = 2
+  ) THEN
+    RAISE EXCEPTION 'AuthenticationThrottleWindow ENABLE ALWAYS trigger contract is incomplete';
+  END IF;
+
+  IF to_regclass('public."AuthenticationThrottleControl"') IS NULL THEN
+    RAISE EXCEPTION 'AuthenticationThrottleControl is missing';
+  END IF;
+  IF NOT has_table_privilege(runtime_role, 'public."AuthenticationThrottleControl"', 'SELECT') THEN
+    RAISE EXCEPTION 'AuthenticationThrottleControl runtime read privilege is missing';
+  END IF;
+  FOREACH destructive_privilege IN ARRAY ARRAY[
+    'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES'
+  ]
+  LOOP
+    IF has_table_privilege(runtime_role, 'public."AuthenticationThrottleControl"', destructive_privilege) THEN
+      RAISE EXCEPTION '% unauthorized runtime privilege exists on AuthenticationThrottleControl', destructive_privilege;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute a
+    WHERE a.attrelid = 'public."AuthenticationThrottleControl"'::regclass
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND (
+        has_column_privilege(runtime_role, a.attrelid, a.attnum, 'INSERT')
+        OR has_column_privilege(runtime_role, a.attrelid, a.attnum, 'UPDATE')
+        OR has_column_privilege(runtime_role, a.attrelid, a.attnum, 'REFERENCES')
+      )
+  ) THEN
+    RAISE EXCEPTION 'Runtime has unauthorized AuthenticationThrottleControl column privileges';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+    WHERE t.tgrelid = 'public."AuthenticationThrottleControl"'::regclass
+      AND NOT t.tgisinternal
+      AND (
+        (t.tgname = 'AuthenticationThrottleControl_transition_trg' AND t.tgenabled = 'A' AND t.tgtype = 19
+          AND t.tgfoid = 'public.enforce_authentication_throttle_control_transition()'::regprocedure)
+        OR (t.tgname = 'AuthenticationThrottleControl_no_remove_trg' AND t.tgenabled = 'A' AND t.tgtype = 42
+          AND t.tgfoid = 'public.reject_authentication_throttle_control_remove()'::regprocedure)
+      )
+    GROUP BY t.tgrelid
+    HAVING count(*) = 2
+  ) THEN
+    RAISE EXCEPTION 'AuthenticationThrottleControl ENABLE ALWAYS trigger contract is incomplete';
+  END IF;
+  IF to_regprocedure('public.operator_transition_authentication_throttle_control(bigint,"AuthenticationThrottleControlStatus",integer,text,text)') IS NULL THEN
+    RAISE EXCEPTION 'AuthenticationThrottleControl operator CAS function is missing';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    WHERE p.oid = 'public.operator_transition_authentication_throttle_control(bigint,"AuthenticationThrottleControlStatus",integer,text,text)'::regprocedure
+      AND (
+        p.proowner <> owner_oid
+        OR p.prosecdef
+        OR p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, public']::text[]
+      )
+  ) THEN
+    RAISE EXCEPTION 'AuthenticationThrottleControl operator CAS function semantics drifted';
+  END IF;
+  IF has_function_privilege(
+       runtime_role,
+       'public.operator_transition_authentication_throttle_control(bigint,"AuthenticationThrottleControlStatus",integer,text,text)',
+       'EXECUTE'
+     ) THEN
+    RAISE EXCEPTION 'Runtime can execute AuthenticationThrottleControl operator CAS function';
+  END IF;
+  IF NOT has_function_privilege(
+       migrator_role,
+       'public.operator_transition_authentication_throttle_control(bigint,"AuthenticationThrottleControlStatus",integer,text,text)',
+       'EXECUTE'
+     ) THEN
+    RAISE EXCEPTION 'Migrator cannot execute AuthenticationThrottleControl operator CAS function';
+  END IF;
+  PERFORM 1
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  JOIN pg_language l ON l.oid = p.prolang
+  WHERE n.nspname = 'public'
+    AND p.proname = 'lock_authentication_throttle_control'
+    AND pg_get_function_identity_arguments(p.oid) = ''
+    AND p.pronargs = 0 AND p.proretset
+    AND p.prorettype = 'public."AuthenticationThrottleControl"'::regtype
+    AND l.lanname = 'sql' AND p.provolatile = 'v' AND p.prosecdef
+    AND p.proowner = owner_oid
+    AND p.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
+    AND position('FROM public."AuthenticationThrottleControl"' IN pg_get_functiondef(p.oid)) > 0
+    AND position('FOR SHARE' IN pg_get_functiondef(p.oid)) > 0
+    AND has_function_privilege(runtime_role, p.oid, 'EXECUTE')
+    AND EXISTS (
+      SELECT 1 FROM aclexplode(p.proacl) acl
+      WHERE acl.grantee = runtime_oid
+        AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM aclexplode(p.proacl) acl
+      WHERE acl.grantee NOT IN (owner_oid, runtime_oid)
+    );
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'AuthenticationThrottleControl shared-lock function contract is unsafe or incomplete';
+  END IF;
+
+  IF to_regclass('public."AuthLoginAttempt"') IS NULL THEN
+    RAISE EXCEPTION 'AuthLoginAttempt is missing';
+  END IF;
+  IF NOT has_table_privilege(runtime_role, 'public."AuthLoginAttempt"', 'SELECT')
+     OR NOT has_table_privilege(runtime_role, 'public."AuthLoginAttempt"', 'DELETE') THEN
+    RAISE EXCEPTION 'AuthLoginAttempt cleanup privileges are missing';
+  END IF;
+  FOREACH destructive_privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+  LOOP
+    IF has_table_privilege(runtime_role, 'public."AuthLoginAttempt"', destructive_privilege) THEN
+      RAISE EXCEPTION '% unauthorized runtime privilege exists on AuthLoginAttempt', destructive_privilege;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute a
+    WHERE a.attrelid = 'public."AuthLoginAttempt"'::regclass
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND (
+        has_column_privilege(runtime_role, a.attrelid, a.attnum, 'INSERT')
+        OR has_column_privilege(runtime_role, a.attrelid, a.attnum, 'UPDATE')
+        OR has_column_privilege(runtime_role, a.attrelid, a.attnum, 'REFERENCES')
+      )
+  ) THEN
+    RAISE EXCEPTION 'Runtime has unauthorized AuthLoginAttempt column privileges';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('ApprovalInstanceStep', 'ApprovalInstanceStep_routing_context_trg', 23::smallint,
+        'public.validate_approval_step_routing_context()'::regprocedure),
+      ('ApprovalInstanceStepScopeGroup', 'ApprovalStepScopeGroup_immutable_trg', 31::smallint,
+        'public.reject_immutable_approval_routing_child_mutation()'::regprocedure),
+      ('ApprovalInstanceStepScopeTarget', 'ApprovalStepScopeTarget_context_trg', 23::smallint,
+        'public.validate_approval_step_routing_context()'::regprocedure),
+      ('ApprovalInstanceStepScopeTarget', 'ApprovalStepScopeTarget_immutable_trg', 31::smallint,
+        'public.reject_immutable_approval_routing_child_mutation()'::regprocedure),
+      ('ApprovalInstanceStepProhibitedActor', 'ApprovalStepProhibitedActor_context_trg', 23::smallint,
+        'public.validate_approval_step_routing_context()'::regprocedure),
+      ('ApprovalInstanceStepProhibitedActor', 'ApprovalStepProhibitedActor_immutable_trg', 31::smallint,
+        'public.reject_immutable_approval_routing_child_mutation()'::regprocedure)
+    ) AS expected(table_name, trigger_name, trigger_type, function_oid)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.trigger_name
+        AND NOT t.tgisinternal
+        AND t.tgenabled = 'A'
+        AND t.tgtype = expected.trigger_type
+        AND t.tgfoid = expected.function_oid
+    )
+  ) THEN
+    RAISE EXCEPTION 'Approval routing child trigger semantics drifted';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('public.validate_approval_step_routing_context()'::regprocedure),
+      ('public.reject_immutable_approval_routing_child_mutation()'::regprocedure)
+    ) AS expected(function_oid)
+    JOIN pg_proc p ON p.oid = expected.function_oid
+    WHERE p.proowner <> owner_oid
+      OR p.prosecdef
+      OR p.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog, public']::text[]
+  ) THEN
+    RAISE EXCEPTION 'Approval routing child trigger function semantics drifted';
+  END IF;
+
   IF EXISTS (
     SELECT 1 FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -182,6 +515,11 @@ BEGIN
         WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
       )
       AND has_function_privilege(runtime_role, p.oid, 'EXECUTE')
+      AND NOT (
+        n.nspname = 'public'
+        AND p.proname = 'lock_authentication_throttle_control'
+        AND pg_get_function_identity_arguments(p.oid) = ''
+      )
   ) THEN
     RAISE EXCEPTION 'Runtime or PUBLIC can execute a non-extension public routine';
   END IF;
@@ -244,6 +582,11 @@ BEGIN
         database_name ~ '^ogfi_(test|ci|rehearsal|disposable|demo_disposable)_'
         AND n.nspname = 'ogfi_disposable_control'
         AND p.proname = 'verify_database_identity'
+        AND pg_get_function_identity_arguments(p.oid) = ''
+      )
+      AND NOT (
+        n.nspname = 'public'
+        AND p.proname = 'lock_authentication_throttle_control'
         AND pg_get_function_identity_arguments(p.oid) = ''
       )
   ) THEN

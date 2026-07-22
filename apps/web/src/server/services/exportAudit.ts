@@ -1,6 +1,7 @@
 import { prisma } from "@ogfi/database";
 import type { SessionContext } from "./context";
 import type { CsvRow } from "./csv";
+import { recordSessionDeniedDecisionSafely } from "./authorizationDenials";
 import { getExportFailureReasonCode } from "./exportErrors";
 import { getReportExportPolicy } from "./policySettings";
 
@@ -36,6 +37,14 @@ export async function logOperationalExportAudit(input: {
   reasonCode?: string;
   metadata?: Record<string, unknown>;
 }) {
+  if (input.eventType === "report.export_denied") {
+    await recordSessionDeniedDecisionSafely(input.session, {
+      action: "EXPORT",
+      reason: "PERMISSION_MISSING",
+      resource: "REPORTING"
+    });
+    return;
+  }
   const exportPolicy =
     input.eventType === "report.export_started"
       ? await assertReportExportScopeFilters(input.session)

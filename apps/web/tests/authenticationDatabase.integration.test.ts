@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,9 +12,15 @@ import {
   type TransactionClient,
 } from "@ogfi/database";
 import {
+  finalizeMfaAuthenticationInTransaction,
+  finalizePasswordAuthenticationInTransaction,
+  hashPassword,
   recordMfaFailure,
   rotateSessionInTransaction,
 } from "../src/server/services/authentication";
+import {
+  reserveAuthenticationAttempt,
+} from "../src/server/services/authenticationThrottle";
 import {
   assertDisposableAuthorizationDatabaseConfigured,
   assertDisposableAuthorizationDatabaseMarker,
@@ -31,8 +37,11 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
   const companyB = randomUUID();
   const userA = randomUUID();
   const userB = randomUUID();
+  const originalThrottleHmacKey = process.env.AUTH_THROTTLE_HMAC_KEY;
 
   beforeAll(async () => {
+    process.env.AUTH_THROTTLE_HMAC_KEY ??= "database-test-auth-throttle-key-material";
+    process.env.AUTH_SECRET = "database-test-auth-secret-material";
     const expectedDatabase =
       assertDisposableAuthorizationDatabaseConfigured(process.env);
     await prisma.$connect();
@@ -87,6 +96,12 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
 
   afterAll(async () => {
     await prisma.$disconnect();
+    if (originalThrottleHmacKey === undefined) {
+      delete process.env.AUTH_THROTTLE_HMAC_KEY;
+    } else {
+      process.env.AUTH_THROTTLE_HMAC_KEY = originalThrottleHmacKey;
+    }
+    delete process.env.AUTH_SECRET;
   });
 
   it("rejects a cross-tenant identity even when both records exist", async () => {
@@ -235,6 +250,10 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
           status: "ACTIVE",
           assuranceLevel: "MFA",
           mfaAuthenticatedAt: new Date(),
+          fingerprint: {
+            sourceAddress: "203.0.113.77",
+            userAgent: "current-mfa-client",
+          },
         }),
       );
     const results = await Promise.allSettled([rotate(), rotate()]);
@@ -247,9 +266,106 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
     expect(replacement[0]?.absoluteExpiresAt.toISOString()).toBe(
       absoluteExpiresAt.toISOString(),
     );
+    expect(replacement[0]).toMatchObject({
+      sourceAddressHash: createHmac(
+        "sha256",
+        process.env.AUTH_SECRET!,
+      ).update("203.0.113.77").digest("hex"),
+      userAgentHash: createHmac(
+        "sha256",
+        process.env.AUTH_SECRET!,
+      ).update("current-mfa-client").digest("hex"),
+    });
   });
 
-  it("persists failed MFA attempts without storing a submitted code", async () => {
+  it("rejects a stale verified password and atomically consumes success exactly once", async () => {
+    const identityId = randomUUID();
+    const normalizedIdentifier = `atomic-${suffix}@example.test`;
+    const oldHash = await hashPassword("Old-Password-For-Race-42");
+    const newHash = await hashPassword("New-Password-For-Race-42");
+    await prisma.authIdentity.create({
+      data: {
+        id: identityId,
+        tenantId: tenantA,
+        userId: userA,
+        provider: "LOCAL",
+        normalizedIdentifier,
+        passwordCredential: { create: { passwordHash: oldHash } },
+      },
+    });
+    const reserve = async (sourceSignal: string) => {
+      const result = await reserveAuthenticationAttempt({
+        attemptType: "PASSWORD",
+        identifierSignal: `auth-a-${suffix}:${normalizedIdentifier}`,
+        sourceSignal,
+        tenantId: tenantA,
+        accountUserId: userA,
+      });
+      if (!result.allowed) throw new Error("expected allowed reservation");
+      return result.reservation;
+    };
+    const staleReservation = await reserve("203.0.113.80");
+    await prisma.passwordCredential.update({
+      where: { authIdentityId: identityId },
+      data: { passwordHash: newHash },
+    });
+    await expect(
+      prisma.$transaction((tx) =>
+        finalizePasswordAuthenticationInTransaction(tx, {
+          identityId,
+          tenantCode: `auth-a-${suffix}`,
+          normalizedIdentifier,
+          verifiedPasswordHash: oldHash,
+          fingerprint: {
+            sourceAddress: "203.0.113.80",
+            userAgent: "stale-race-client",
+          },
+          reservation: staleReservation,
+        }),
+      ),
+    ).rejects.toThrow("LOGIN_CREDENTIALS_INVALID");
+    expect(
+      await prisma.authSession.count({ where: { authIdentityId: identityId } }),
+    ).toBe(0);
+    expect(
+      await prisma.auditEvent.count({ where: { id: staleReservation.id } }),
+    ).toBe(0);
+
+    const reservation = await reserve("203.0.113.81");
+    const finalize = (proof = reservation.proof) =>
+      prisma.$transaction((tx) =>
+        finalizePasswordAuthenticationInTransaction(tx, {
+          identityId,
+          tenantCode: `auth-a-${suffix}`,
+          normalizedIdentifier,
+          verifiedPasswordHash: newHash,
+          fingerprint: {
+            sourceAddress: "203.0.113.81",
+            userAgent: "atomic-success-client",
+          },
+          reservation: { ...reservation, proof },
+        }),
+      );
+    await expect(finalize("0".repeat(64))).rejects.toThrow();
+    expect(
+      await prisma.authSession.count({ where: { authIdentityId: identityId } }),
+    ).toBe(0);
+    expect(await prisma.auditEvent.count({ where: { id: reservation.id } })).toBe(0);
+
+    await expect(finalize()).resolves.toMatchObject({ status: "ACTIVE" });
+    await expect(finalize()).rejects.toThrow();
+    expect(
+      await prisma.authSession.count({ where: { authIdentityId: identityId } }),
+    ).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { id: reservation.id } })).toBe(1);
+    const counters = await prisma.authenticationThrottleWindow.findMany({
+      where: { id: { in: reservation.bucketIds } },
+    });
+    expect(counters).toHaveLength(reservation.bucketIds.length);
+    expect(counters.every((row) => row.successCount === 1n)).toBe(true);
+  });
+
+  it("atomically retains failed MFA throttle reservations and bounded denial evidence", async () => {
     const pending = await prisma.authSession.create({
       data: {
         tenantId: tenantA,
@@ -263,19 +379,75 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
       },
       include: { user: true },
     });
-    await recordMfaFailure(pending);
-    const [updated, attempts, events] = await Promise.all([
+    await expect(recordMfaFailure(pending)).resolves.toBe("MFA_CODE_INVALID");
+    const [updated, throttleWindows, denialBuckets, events] = await Promise.all([
       prisma.authSession.findUniqueOrThrow({ where: { id: pending.id } }),
-      prisma.authLoginAttempt.findMany({ where: { sessionId: pending.id } }),
+      prisma.authenticationThrottleWindow.findMany({
+        where: { accountUserId: userA, attemptType: "MFA" },
+      }),
+      prisma.authorizationDenialBucket.findMany({
+        where: {
+          tenantId: tenantA,
+          actorUserId: userA,
+          action: "AUTHENTICATE",
+          reason: "AUTHENTICATION_REQUIRED",
+          resource: "AUTHENTICATION",
+        },
+      }),
       prisma.auditEvent.findMany({
         where: { entityType: "AuthSession", entityId: pending.id },
       }),
     ]);
     expect(updated.challengeFailureCount).toBe(1);
-    expect(attempts).toHaveLength(1);
-    expect(attempts[0]).toMatchObject({ attemptType: "MFA", succeeded: false });
-    expect(JSON.stringify(attempts[0])).not.toContain("submittedCode");
-    expect(events.some(({ eventType }) => eventType === "auth.mfa.challenge_failed")).toBe(true);
+    expect(throttleWindows).toHaveLength(1);
+    expect(throttleWindows[0]?.failureReservationCount).toBe(1n);
+    expect(denialBuckets).toHaveLength(1);
+    expect(denialBuckets[0]?.denialCount).toBe(1n);
+    expect(
+      JSON.stringify(
+        { throttleWindows, denialBuckets },
+        (_key, value) => typeof value === "bigint" ? value.toString() : value,
+      ),
+    ).not.toContain("submittedCode");
+    expect(events.some(({ eventType }) => eventType === "auth.mfa.challenge_failed")).toBe(false);
+  });
+
+  it("locks an MFA challenge once under concurrent final failures", async () => {
+    const pending = await prisma.authSession.create({
+      data: {
+        tenantId: tenantA,
+        userId: userA,
+        tokenHash: `concurrent-failure-${suffix}`,
+        status: "PENDING_MFA",
+        assuranceLevel: "PASSWORD",
+        privilegeEpochAtIssue: 0,
+        challengeFailureCount: 4,
+        idleExpiresAt: new Date(Date.now() + 10 * 60_000),
+        absoluteExpiresAt: new Date(Date.now() + 60 * 60_000),
+      },
+      include: { user: true },
+    });
+    const outcomes = await Promise.allSettled([
+      recordMfaFailure(pending),
+      recordMfaFailure(pending),
+    ]);
+    expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    const [locked, lockEvents] = await Promise.all([
+      prisma.authSession.findUniqueOrThrow({ where: { id: pending.id } }),
+      prisma.auditEvent.findMany({
+        where: {
+          entityType: "AuthSession",
+          entityId: pending.id,
+          eventType: "auth.mfa.challenge_locked",
+        },
+      }),
+    ]);
+    expect(locked).toMatchObject({
+      status: "REVOKED",
+      challengeFailureCount: 5,
+    });
+    expect(lockEvents).toHaveLength(1);
   });
 
   it("refuses to rotate an expired challenge", async () => {
@@ -350,6 +522,165 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
     ).toBe(true);
   });
 
+  it("consumes one recovery code once through the locked active authenticator", async () => {
+    const currentUser = await prisma.user.findUniqueOrThrow({ where: { id: userA } });
+    const authenticator = await prisma.mfaAuthenticator.create({
+      data: {
+        tenantId: tenantA,
+        userId: userA,
+        label: `Recovery race ${suffix}`,
+        status: "ACTIVE",
+        encryptedSecret: "recovery-race-encrypted",
+        secretIv: "recovery-race-iv",
+        secretAuthTag: "recovery-race-tag",
+        keyVersion: 2,
+        verifiedAt: new Date(),
+      },
+    });
+    const recovery = await prisma.mfaRecoveryCode.create({
+      data: {
+        authenticatorId: authenticator.id,
+        codeHash: createHmac("sha256", process.env.AUTH_SECRET!)
+          .update(`recovery-${suffix}`)
+          .digest("hex"),
+      },
+    });
+    const sessions = await Promise.all(
+      ["one", "two"].map((label) =>
+        prisma.authSession.create({
+          data: {
+            tenantId: tenantA,
+            userId: userA,
+            tokenHash: `recovery-${label}-${suffix}`,
+            status: "PENDING_MFA",
+            assuranceLevel: "PASSWORD",
+            privilegeEpochAtIssue: currentUser.privilegeEpoch,
+            idleExpiresAt: new Date(Date.now() + 10 * 60_000),
+            absoluteExpiresAt: new Date(Date.now() + 60 * 60_000),
+          },
+        }),
+      ),
+    );
+    const reservations = await Promise.all(
+      ["203.0.113.91", "203.0.113.92"].map(async (sourceSignal) => {
+        const reserved = await reserveAuthenticationAttempt({
+          attemptType: "MFA",
+          identifierSignal: `${tenantA}:${userA}`,
+          sourceSignal,
+          tenantId: tenantA,
+          accountUserId: userA,
+        });
+        if (!reserved.allowed) throw new Error("expected allowed MFA reservation");
+        return reserved.reservation;
+      }),
+    );
+    const outcomes = await Promise.allSettled(
+      sessions.map((session, index) =>
+        prisma.$transaction((tx) =>
+          finalizeMfaAuthenticationInTransaction(tx, {
+            sessionId: session.id,
+            authenticator,
+            usedCounter: null,
+            recoveryCodeId: recovery.id,
+            fingerprint: {
+              sourceAddress: `203.0.113.${91 + index}`,
+              userAgent: `recovery-race-${index}`,
+            },
+            reservation: reservations[index]!,
+          }),
+        ),
+      ),
+    );
+    expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    expect(
+      (await prisma.mfaRecoveryCode.findUniqueOrThrow({ where: { id: recovery.id } }))
+        .consumedAt,
+    ).not.toBeNull();
+    await prisma.mfaAuthenticator.update({
+      where: { id: authenticator.id },
+      data: { status: "REVOKED", revokedAt: new Date() },
+    });
+  });
+
+  it("cannot establish an authoritative MFA session across authenticator revocation and account reset", async () => {
+    const currentUser = await prisma.user.findUniqueOrThrow({ where: { id: userA } });
+    const authenticator = await prisma.mfaAuthenticator.create({
+      data: {
+        tenantId: tenantA,
+        userId: userA,
+        label: `Revocation race ${suffix}`,
+        status: "ACTIVE",
+        encryptedSecret: "revocation-race-encrypted",
+        secretIv: "revocation-race-iv",
+        secretAuthTag: "revocation-race-tag",
+        keyVersion: 2,
+        verifiedAt: new Date(),
+      },
+    });
+    const pending = await prisma.authSession.create({
+      data: {
+        tenantId: tenantA,
+        userId: userA,
+        tokenHash: `authenticator-revoke-race-${suffix}`,
+        status: "PENDING_MFA",
+        assuranceLevel: "PASSWORD",
+        privilegeEpochAtIssue: currentUser.privilegeEpoch,
+        idleExpiresAt: new Date(Date.now() + 10 * 60_000),
+        absoluteExpiresAt: new Date(Date.now() + 60 * 60_000),
+      },
+    });
+    const reserved = await reserveAuthenticationAttempt({
+      attemptType: "MFA",
+      identifierSignal: `${tenantA}:${userA}`,
+      sourceSignal: "203.0.113.93",
+      tenantId: tenantA,
+      accountUserId: userA,
+    });
+    if (!reserved.allowed) throw new Error("expected allowed MFA reservation");
+    await Promise.allSettled([
+      prisma.$transaction((tx) =>
+        finalizeMfaAuthenticationInTransaction(tx, {
+          sessionId: pending.id,
+          authenticator,
+          usedCounter: 9_000_000_000n,
+          recoveryCodeId: null,
+          fingerprint: {
+            sourceAddress: "203.0.113.93",
+            userAgent: "authenticator-revocation-race",
+          },
+          reservation: reserved.reservation,
+        }),
+      ),
+      prisma.$transaction(async (tx) => {
+        await tx.mfaAuthenticator.update({
+          where: { id: authenticator.id },
+          data: { status: "REVOKED", revokedAt: new Date() },
+        });
+        await tx.user.update({
+          where: { id: userA },
+          data: { privilegeEpoch: { increment: 1 } },
+        });
+        await tx.authSession.updateMany({
+          where: {
+            userId: userA,
+            status: { in: ["ACTIVE", "PENDING_MFA", "MFA_ENROLLMENT_REQUIRED"] },
+          },
+          data: { status: "REVOKED", revokedAt: new Date() },
+        });
+      }),
+    ]);
+    const [resetUser, activeSessions] = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { id: userA } }),
+      prisma.authSession.findMany({ where: { userId: userA, status: "ACTIVE" } }),
+    ]);
+    expect(
+      activeSessions.some(
+        ({ privilegeEpochAtIssue }) => privilegeEpochAtIssue === resetUser.privilegeEpoch,
+      ),
+    ).toBe(false);
+  });
+
   it("resumes interrupted MFA encryption rotation and rejects a wrong previous key", async () => {
     const currentKey = Buffer.alloc(32, 7);
     const previousKey = Buffer.alloc(32, 6);
@@ -376,7 +707,11 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
     ).rejects.toThrow();
     expect(
       await prisma.mfaAuthenticator.count({
-        where: { userId: userA, keyVersion: 1 },
+        where: {
+          userId: userA,
+          keyVersion: 1,
+          label: { startsWith: "Rotation" },
+        },
       }),
     ).toBe(2);
 

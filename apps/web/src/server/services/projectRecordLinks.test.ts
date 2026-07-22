@@ -65,16 +65,25 @@ describe("project record link boundary controls", () => {
     expect(source).toContain("reportedByUserId === session.user.id");
   });
 
-  test("denied source-link attempts write non-source audit events", () => {
+  test("denied source-link attempts use bounded dimensions without target data", () => {
     const source = readFileSync(path.resolve(__dirname, "projectRecordLinks.ts"), "utf8");
+    const writer = source.slice(
+      source.indexOf("async function logProjectRecordLinkDenied"),
+      source.indexOf("export function assertSafeSourceSummary")
+    );
+    const recorderInput = writer.slice(writer.indexOf("recordSessionDeniedDecisionSafely("));
 
     expect(source).toContain("logProjectRecordLinkDenied");
-    expect(source).toContain("project_record_link.denied");
-    expect(source).toContain('entityType: "Project"');
+    expect(writer).toContain("recordSessionDeniedDecisionSafely");
+    expect(source).not.toContain("getAuthorizationDenialWindowMinutes");
+    expect(writer).not.toContain("auditEvent.create");
+    expect(recorderInput).not.toContain("sourceRecordId:");
+    expect(recorderInput).not.toContain("projectId:");
+    expect(recorderInput).not.toContain("taskId:");
+    expect(recorderInput).not.toContain("milestoneId:");
     expect(source).toContain('attemptedAction: "CREATE"');
     expect(source).toContain('attemptedAction: "READ"');
-    expect(source).not.toContain('entityType: "InventoryMovement"');
-    expect(source).not.toContain('entityType: "ApprovalInstance"');
+    expect(source).toContain("const firstDenied = summaries.find");
   });
 
   test("document references resolve to canonical authorized source records before storage", () => {

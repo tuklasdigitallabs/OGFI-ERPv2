@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@ogfi/database";
 import type { TransactionClient } from "@ogfi/database";
 import {
@@ -9,8 +9,12 @@ import {
 import type { SessionContext } from "./context";
 import {
   recordWorkflowNotifications,
-  resolveScopedNotificationRecipients,
 } from "./notifications";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting,
+} from "./approvalRouting";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { getBudgetSourceHookPolicy } from "./policySettings";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "destructive";
@@ -2163,10 +2167,19 @@ export async function submitBudgetRevisionForReview(
     if (existingApproval) {
       throw new Error("BUDGET_REVISION_ALREADY_SUBMITTED");
     }
-    const updated = await tx.budgetRevision.update({
-      where: { id: revision.id },
-      data: { status: "SUBMITTED" },
-    });
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const,
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) {
+      throw new Error("BUDGET_REVISION_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
+    const locationIds = [...new Set([
+      revision.budget.locationId,
+      ...revision.budget.lines.map((line) => line.locationId),
+    ].filter((locationId): locationId is string => Boolean(locationId)))].sort();
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -2177,14 +2190,57 @@ export async function submitBudgetRevisionForReview(
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING",
+            status: step.activationStatus,
           })),
         },
       },
+    });
+    const prohibitedActors = [{
+      userId: revision.requestedByUserId,
+      reasonCode: "REQUESTER",
+    }];
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("BudgetRevision"),
+        requiredPermissionCode: permissions.financeBudgetApprove,
+        dueAt: revision.effectiveFrom ?? null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "budget_revision.submit",
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: locationIds.length > 0 ? "ALL" : "ANY",
+          targets: locationIds.length > 0
+            ? locationIds.map((locationId) => ({
+                scopeType: "LOCATION" as const,
+                companyId: session.context.companyId,
+                locationId,
+              }))
+            : [{
+                scopeType: "COMPANY" as const,
+                companyId: session.context.companyId,
+              }],
+        }],
+        prohibitedActors,
+      });
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+    });
+    const updated = await tx.budgetRevision.update({
+      where: { id: revision.id },
+      data: { status: "SUBMITTED" },
     });
     const auditEvent = await writeBudgetAudit(tx, {
       session,
@@ -2205,18 +2261,11 @@ export async function submitBudgetRevisionForReview(
       },
     });
     const locationId = budgetApprovalLocationId(revision.budget);
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
+    if (firstStep.userId) await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId,
-    });
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId,
-      recipientUserIds,
+      recipientUserIds: [firstStep.userId],
       notificationType: "APPROVE_BUDGET_REVISION",
       priority: "NORMAL",
       title: `Approve Budget Revision ${revision.budget.publicReference} R${revision.revisionNumber}`,

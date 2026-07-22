@@ -7,14 +7,17 @@ import {
 } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
+  getApprovalDetail,
+  listNormalizedApprovalInboxPage,
   listPendingApprovals,
   type ApprovalQueueItem
 } from "@/server/services/approvals";
+import { normalizedApprovalRoutingEnabled } from "@/server/services/approvalRouting";
 import type { PurchaseRequestSlaStatus } from "@/server/services/purchaseRequests";
 
 export const dynamic = "force-dynamic";
 
-type ApprovalInboxTab = "inbox" | "due-soon" | "returned" | "audit";
+type ApprovalInboxTab = "inbox" | "due-soon";
 
 type ApprovalsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -32,10 +35,7 @@ function getStringParam(
 
 function getTab(searchParams: Record<string, string | string[] | undefined>): ApprovalInboxTab {
   const tab = getStringParam(searchParams, "tab");
-  if (tab === "due-soon" || tab === "returned" || tab === "audit") {
-    return tab;
-  }
-  return "inbox";
+  return tab === "due-soon" ? tab : "inbox";
 }
 
 function getPage(searchParams: Record<string, string | string[] | undefined>) {
@@ -108,30 +108,67 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
   const params = searchParams ? await searchParams : {};
   const activeTab = getTab(params);
   const page = getPage(params);
-  const approvals = await listPendingApprovals(session);
-  const urgentApprovals = approvals.filter(isDueSoon);
-  const visibleApprovals =
-    activeTab === "due-soon" ? urgentApprovals : activeTab === "inbox" ? approvals : [];
-  const pageCount = Math.max(1, Math.ceil(visibleApprovals.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const pagedApprovals = visibleApprovals.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE
-  );
+  const normalizedRouting = normalizedApprovalRoutingEnabled();
+  let approvals: ApprovalQueueItem[];
+  let urgentApprovals: ApprovalQueueItem[];
+  let pagedApprovals: ApprovalQueueItem[];
+  let approvalCount: number;
+  let urgentApprovalCount: number;
+  let visibleApprovalCount: number;
+  let safePage: number;
+
+  if (normalizedRouting) {
+    const dueBefore = new Date(Date.now() + 86_400_000);
+    const [inboxPage, dueSoonPage] = await Promise.all([
+      listNormalizedApprovalInboxPage(session, {
+        page: activeTab === "inbox" ? page : 1,
+        pageSize: activeTab === "inbox" ? PAGE_SIZE : 1
+      }),
+      listNormalizedApprovalInboxPage(session, {
+        page: activeTab === "due-soon" ? page : 1,
+        pageSize: activeTab === "due-soon" ? PAGE_SIZE : 1,
+        view: "DUE_SOON",
+        dueBefore
+      })
+    ]);
+    approvalCount = inboxPage.totalItems;
+    urgentApprovalCount = dueSoonPage.totalItems;
+    visibleApprovalCount = activeTab === "due-soon" ? urgentApprovalCount : approvalCount;
+    const pageCount = Math.max(1, Math.ceil(visibleApprovalCount / PAGE_SIZE));
+    safePage = Math.min(page, pageCount);
+    let selectedPage = activeTab === "due-soon" ? dueSoonPage : inboxPage;
+    if (safePage !== page) {
+      selectedPage = await listNormalizedApprovalInboxPage(session, {
+        page: safePage,
+        pageSize: PAGE_SIZE,
+        ...(activeTab === "due-soon" ? { view: "DUE_SOON" as const, dueBefore } : {})
+      });
+    }
+    const details = await Promise.all(
+      selectedPage.items.map((item) => getApprovalDetail(session, item.approvalInstanceId))
+    );
+    if (details.some((detail) => detail === null)) {
+      throw new Error("APPROVAL_AUTHORITY_STALE");
+    }
+    pagedApprovals = details.filter((detail): detail is NonNullable<typeof detail> => detail !== null);
+    approvals = activeTab === "inbox" ? pagedApprovals : [];
+    urgentApprovals = activeTab === "due-soon" ? pagedApprovals : [];
+  } else {
+    approvals = await listPendingApprovals(session);
+    urgentApprovals = approvals.filter(isDueSoon);
+    const visibleApprovals = activeTab === "due-soon" ? urgentApprovals : approvals;
+    approvalCount = approvals.length;
+    urgentApprovalCount = urgentApprovals.length;
+    visibleApprovalCount = visibleApprovals.length;
+    const pageCount = Math.max(1, Math.ceil(visibleApprovalCount / PAGE_SIZE));
+    safePage = Math.min(page, pageCount);
+    pagedApprovals = visibleApprovals.slice(
+      (safePage - 1) * PAGE_SIZE,
+      safePage * PAGE_SIZE
+    );
+  }
   const tabEmptyCopy =
-    activeTab === "returned"
-      ? {
-          title: "No returned approvals",
-          description:
-            "Returned decisions will appear here when a controlled record is sent back for revision."
-        }
-      : activeTab === "audit"
-        ? {
-            title: "No approval audit entries in this inbox",
-            description:
-              "Approval history will be shown from controlled records after audit views are connected to this queue."
-          }
-        : activeTab === "due-soon"
+    activeTab === "due-soon"
           ? {
               title: "No approvals due soon",
               description:
@@ -155,7 +192,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
           <div className="min-w-0">
             <h2 className="text-2xl font-bold tracking-tight text-slate-950">Pending decisions</h2>
             <p className="text-sm text-slate-500">
-              {approvals.length} assigned to {session.user.displayName}; {urgentApprovals.length} due soon.
+              {approvalCount} assigned to {session.user.displayName}; {urgentApprovalCount} due soon.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -170,25 +207,13 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
                 label: "Inbox",
                 href: approvalsHref("inbox"),
                 active: activeTab === "inbox",
-                count: approvals.length
+                count: approvalCount
               },
               {
                 label: "Due soon",
                 href: approvalsHref("due-soon"),
                 active: activeTab === "due-soon",
-                count: urgentApprovals.length
-              },
-              {
-                label: "Returned",
-                href: approvalsHref("returned"),
-                active: activeTab === "returned",
-                count: 0
-              },
-              {
-                label: "Audit",
-                href: approvalsHref("audit"),
-                active: activeTab === "audit",
-                count: 0
+                count: urgentApprovalCount
               }
             ]}
           />
@@ -200,7 +225,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
           <span>Next action</span>
           <span>Action</span>
         </div>
-        {visibleApprovals.length === 0 ? (
+        {visibleApprovalCount === 0 ? (
           <div className="p-5">
             <EmptyState title={tabEmptyCopy.title} description={tabEmptyCopy.description} />
           </div>
@@ -278,11 +303,11 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
             ))}
           </div>
         )}
-        {visibleApprovals.length > 0 ? (
+        {visibleApprovalCount > 0 ? (
           <PaginationBar
             page={safePage}
             pageSize={PAGE_SIZE}
-            totalItems={visibleApprovals.length}
+            totalItems={visibleApprovalCount}
             itemLabel="approvals"
             getPageHref={(nextPage) => approvalsHref(activeTab, nextPage)}
           />

@@ -40,14 +40,31 @@ Real `.env`, `.env.staging`, `.env.production`, secret files, backups, and attac
 | `APP_ENCRYPTION_PREVIOUS_KEY` | During a reviewed key rotation only | Immediately previous 32-byte base64 key retained only until protected values are re-encrypted.                |
 | `APP_ENCRYPTION_PREVIOUS_KEY_VERSION` | During a reviewed key rotation only | Version paired with the previous key; it must differ from the current version.                         |
 | `AUTH_MODE`            |                                     Yes | `local` in production; `demo` is allowed only in isolated development/test.                                  |
+| `AUTH_TRUSTED_PROXY_MODE` |                                  Yes | `caddy_single_hop` in hosted staging/production; local development uses `untrusted` and never trusts client-supplied forwarding headers. |
 | `AUTH_SESSION_IDLE_MINUTES` |                              Yes | Inactivity expiry for database-backed sessions; current default `30`.                                        |
 | `AUTH_SESSION_ABSOLUTE_HOURS` |                            Yes | Maximum database-session lifetime; current default `12`.                                                     |
 | `AUTH_MFA_STEP_UP_MINUTES` |                                Yes | Maximum age of runtime MFA assurance for guarded sensitive actions; current default `15`.                    |
 | `AUTH_MFA_CHALLENGE_MINUTES` |                                Yes | Short lifetime for an incomplete MFA challenge; current default `10`.                                        |
 | `AUTH_MFA_CHALLENGE_LIMIT` |                                  Yes | Failed MFA or recovery-code attempts allowed before challenge lock; current default `5`.                     |
-| `AUTH_LOGIN_WINDOW_MINUTES` |                                Yes | Durable login-throttling window; current default `15`.                                                       |
-| `AUTH_LOGIN_ACCOUNT_LIMIT` |                                 Yes | Failed attempts allowed per tenant-qualified account in the window; current default `5`.                     |
-| `AUTH_LOGIN_SOURCE_LIMIT` |                                  Yes | Failed attempts allowed per trusted proxy source-address digest in the window; current default `20`.         |
+| `AUTH_THROTTLE_HMAC_KEY` |                                  Yes | Distinct secret of at least 32 bytes used only for bounded authentication-throttle keys; never reuse `AUTH_SECRET`. |
+| `AUTH_THROTTLE_KEY_VERSION` |                               Yes | Positive throttle-key version; rotate only after active windows for the current version expire.              |
+| `AUTH_THROTTLE_WINDOW_MINUTES` |                            Yes | UTC-aligned failure reservation window, bounded to `1..60`; current default `15`.                             |
+| `AUTH_THROTTLE_RETENTION_DAYS` |                            Yes | Bounded throttle-window retention, `1..365`; current default `30`.                                            |
+| `AUTH_THROTTLE_IDENTIFIER_SHARDS` |                         Yes | Fixed identifier-shard cardinality, `16..1024`; current default `64`.                                         |
+| `AUTH_THROTTLE_SOURCE_SHARDS` |                             Yes | Fixed trusted-source shard cardinality, `16..1024`; current default `64`.                                     |
+| `AUTH_THROTTLE_PREVIOUS_HMAC_KEY` | Reviewed key rotation only | Immediately previous throttle HMAC key; configure only as a pair with its previous version and remove after the database-recorded overlap expires. |
+| `AUTH_THROTTLE_PREVIOUS_KEY_VERSION` | Reviewed key rotation only | Version paired with the previous throttle key; it must differ from the active version. |
+| `AUTH_ARGON2_MAX_CONCURRENCY` |                                 Yes | Non-queuing Argon2 work capacity, integer `1..4`; production requires Hostinger load calibration. |
+| `APPROVAL_ROUTING_V1_ENABLED` | Controlled approval cutover | Keep `false` until the 18-document-type backfill, zero-gap readiness, normalized inbox/action matrix, smoke comparison, and rollback rehearsal pass. |
+| `AUTH_HEALTH_METRICS_TOKEN` | Hosted authentication monitoring | Distinct secret of at least 32 bytes shared only by the web metrics route and root-controlled health job environment. |
+| `CADDY_METRICS_URL` | Hosted authentication monitoring | Fixed private web-to-Caddy metrics URL `http://caddy:2020/metrics`; public URLs and credentials are prohibited. |
+| `AUTH_RUNTIME_METRICS_URL` | Hosted authentication monitoring | Fixed host-loopback URL `http://127.0.0.1:2021/api/internal/authentication-metrics`. |
+| `AUTH_THROTTLE_HEALTH_GRACE_MINUTES` | Hosted authentication monitoring | Cleanup grace, integer `1..1440`; staging candidate `10`. |
+| `AUTH_THROTTLE_HEALTH_DENIED_THRESHOLD` | Hosted authentication monitoring | Aggregate denied-count alert threshold; must be calibrated and explicitly set for production. |
+| `AUTH_THROTTLE_HEALTH_PRESSURE_PERMILLE` | Hosted authentication monitoring | Global/shard pressure threshold, integer `1..1000`; staging candidate `900`. |
+| `AUTH_THROTTLE_HEALTH_ARGON2_REJECTED_THRESHOLD` | Hosted authentication monitoring | Aggregate non-queuing Argon2 rejection threshold; production value requires load evidence. |
+| `AUTH_THROTTLE_HEALTH_ARGON2_DURATION_MS` | Hosted authentication monitoring | Maximum Argon2 duration alert threshold; production value requires load evidence. |
+| `AUTH_THROTTLE_HEALTH_CADDY_REJECTED_THRESHOLD` | Hosted authentication monitoring | Aggregate Caddy rejection-delta threshold; production value requires NAT/hostile-load evidence. |
 | `AUTH_BOOTSTRAP_TENANT_CODE` | First-admin ceremony only | Tenant login code for the approved initial administrator. Remove after the one-time bootstrap succeeds. |
 | `AUTH_BOOTSTRAP_USER_EMAIL` | First-admin ceremony only | Existing active user with `core.administer` and active company scope; bootstrap refuses any other target. |
 | `AUTH_BOOTSTRAP_AUTHORIZATION_REFERENCE` | First-admin ceremony only | Approved security/change reference recorded in the immutable bootstrap and audit records. |
@@ -97,3 +114,4 @@ approved migration decision.
 - Do not use one shared `.env` for local, staging, and production.
 - Do not share credentials through chat logs, commits, screenshots, or document attachments.
 - Do not put a database host reachable from the public internet in a client bundle.
+- Do not enable `caddy_single_hop` while the web application port is publicly reachable or while another unreviewed proxy can append client-controlled forwarding values. Caddy must remove inbound `Forwarded`, `X-Real-IP`, and `X-Forwarded-For`, then set exactly one `X-Forwarded-For` value from its direct peer.

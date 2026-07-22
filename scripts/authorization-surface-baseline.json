@@ -2944,6 +2944,47 @@
     ]
   },
   {
+    "id": "app/api/internal/authentication-metrics/route.ts#GET",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "HOST_OPERATOR"
+    ],
+    "guardChain": [
+      "loopback-edge-publication",
+      "constant-time-health-token",
+      "bounded-aggregate-only"
+    ],
+    "denialContract": "NOT_FOUND_NO_METRICS_DISCLOSURE",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/authenticationRuntimeMetrics.ts#readAuthenticationRuntimeMetrics"
+    ],
+    "callChains": [
+      [
+        "app/api/internal/authentication-metrics/route.ts#GET",
+        "server/services/authenticationRuntimeMetrics.ts#readAuthenticationRuntimeMetrics"
+      ]
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION"
+    ],
+    "boundaryClassifications": [
+      "HOST_INTERNAL_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "loopback-only edge publication",
+      "constant-time bearer token",
+      "bounded aggregate payload"
+    ],
+    "noMutationControls": [
+      "no metric disclosure, audit write, or authentication-state mutation"
+    ]
+  },
+  {
     "id": "approvals/[id]/page.tsx#addComment",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -13438,6 +13479,279 @@
     ]
   },
   {
+    "id": "server/services/approvalRouting.ts#activateApprovalStepWithEligibility",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "live approval eligibility",
+      "prohibited actor exclusion",
+      "atomic activation"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "no invalid step activation or notification"
+    ]
+  },
+  {
+    "id": "server/services/approvalRouting.ts#assertAnyEligibleApprovalActorForStep",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/approvalRouting.ts#assertApprovalRoutingCutoverReady",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/approvalRouting.ts#assertEligibleApprovalStep",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/approvalRouting.ts#configureApprovalStepRouting",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "company routing scope",
+      "eligible actor proof",
+      "immutable snapshot"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
+    ],
+    "noMutationControls": [
+      "blocked routing transaction rolls back"
+    ]
+  },
+  {
+    "id": "server/services/approvalRouting.ts#findAnyEligibleApprovalActorForStep",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/approvalRouting.ts#listEligibleApprovalStepPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/approvalRoutingBackfill.ts#inspectApprovalRoutingReadiness",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "tenant/company filter",
+      "read-only readiness"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
+    ],
+    "noMutationControls": [
+      "dry run writes no routing or audit rows"
+    ]
+  },
+  {
+    "id": "server/services/approvalRoutingBackfill.ts#runApprovalRoutingBackfill",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "advisory lock",
+      "eligible actor revalidation",
+      "idempotent CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
+    ],
+    "noMutationControls": [
+      "blocked instance rolls back all routing children"
+    ]
+  },
+  {
+    "id": "server/services/approvalRoutingBackfill.ts#scanApprovalRoutingKeysetPages",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/approvals.ts#approveApproval",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
@@ -14142,6 +14456,27 @@
     ]
   },
   {
+    "id": "server/services/approvals.ts#findEligibleApprovalActor",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/approvals.ts#getApprovalDetail",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.financePeriodCloseManage | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage",
@@ -14161,6 +14496,27 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/approvals.ts#listNormalizedApprovalInboxPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
   },
   {
     "id": "server/services/approvals.ts#listPendingApprovals",
@@ -14455,6 +14811,43 @@
     ],
     "noMutationControls": [
       "Notification"
+    ]
+  },
+  {
+    "id": "server/services/argon2WorkGate.ts#runWithArgon2WorkPermit",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-PASSWORD-FINALIZATION-RACE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "bounded semaphore",
+      "fail-closed saturation",
+      "finally release"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-PASSWORD-FINALIZATION-RACE"
+    ],
+    "noMutationControls": [
+      "no session before bounded verification and locked revalidation"
     ]
   },
   {
@@ -15176,6 +15569,80 @@
     ]
   },
   {
+    "id": "server/services/authentication.ts#finalizeMfaAuthenticationInTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-MFA-REVOCATION-RACE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "locked authenticator revalidation",
+      "recovery one-time use",
+      "atomic session rotation"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-MFA-REVOCATION-RACE"
+    ],
+    "noMutationControls": [
+      "no session survives authenticator revocation or account reset"
+    ]
+  },
+  {
+    "id": "server/services/authentication.ts#finalizePasswordAuthenticationInTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-PASSWORD-FINALIZATION-RACE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "locked credential snapshot",
+      "active account revalidation",
+      "atomic throttle success"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-PASSWORD-FINALIZATION-RACE"
+    ],
+    "noMutationControls": [
+      "stale password creates no session"
+    ]
+  },
+  {
     "id": "server/services/authentication.ts#getValidatedSessionPrincipal",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -15883,6 +16350,249 @@
     ]
   },
   {
+    "id": "server/services/authenticationRuntimeMetrics.ts#readAuthenticationRuntimeMetrics",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/authenticationThrottle.ts#assertAuthenticationThrottleKeyRotationReady",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-THROTTLE-OPERATOR-BOUNDARY"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "shared control lock",
+      "active-window count",
+      "previous-key overlap"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-THROTTLE-OPERATOR-BOUNDARY"
+    ],
+    "noMutationControls": [
+      "readiness query does not change control or counters"
+    ]
+  },
+  {
+    "id": "server/services/authenticationThrottle.ts#completeSuccessfulAuthenticationAttempt",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "signed exact reservation",
+      "success audit coupling",
+      "one-time release"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"
+    ],
+    "noMutationControls": [
+      "replay cannot release counters twice"
+    ]
+  },
+  {
+    "id": "server/services/authenticationThrottle.ts#completeSuccessfulAuthenticationAttemptInTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "success audit coupling",
+      "canonical lock order"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"
+    ],
+    "noMutationControls": [
+      "rollback preserves reservation and audit consistency"
+    ]
+  },
+  {
+    "id": "server/services/authenticationThrottle.ts#reserveAuthenticationAttempt",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "atomic bounded dimensions",
+      "authoritative control lock",
+      "signed reservation"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"
+    ],
+    "noMutationControls": [
+      "invalid proof cannot release a reservation"
+    ]
+  },
+  {
+    "id": "server/services/authenticationThrottle.ts#reserveAuthenticationAttemptInTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "atomic bounded dimensions",
+      "fail closed"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"
+    ],
+    "noMutationControls": [
+      "failed transaction retains no partial reservation"
+    ]
+  },
+  {
+    "id": "server/services/authenticationThrottle.ts#transitionAuthenticationThrottleControl",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-AUTH-THROTTLE-OPERATOR-BOUNDARY"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "migrator-only function",
+      "expected generation CAS",
+      "reviewed key identity"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-AUTH-THROTTLE-OPERATOR-BOUNDARY"
+    ],
+    "noMutationControls": [
+      "runtime transition denial preserves control state"
+    ]
+  },
+  {
     "id": "server/services/authInvalidation.ts#completeAuthSessionInvalidation",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
@@ -16107,6 +16817,265 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/authorizationDenials.ts#finalizeExpiredAuthorizationDenialBuckets",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "expired-only selection",
+      "one-way finalization",
+      "immutable summary"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "noMutationControls": [
+      "active buckets are not finalized"
+    ]
+  },
+  {
+    "id": "server/services/authorizationDenials.ts#recordAuthorizationDenial",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "bounded dimensions",
+      "tenant isolation",
+      "exact increment"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "noMutationControls": [
+      "repeated denials do not amplify audit rows"
+    ]
+  },
+  {
+    "id": "server/services/authorizationDenials.ts#recordAuthorizationDenialInTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "bounded dimensions",
+      "exact increment"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "noMutationControls": [
+      "concurrent writes preserve exact count"
+    ]
+  },
+  {
+    "id": "server/services/authorizationDenials.ts#recordDeniedDecisionInTransactionSafely",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "safe failure isolation",
+      "bounded denial bucket",
+      "no attacker details"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "noMutationControls": [
+      "denial evidence cannot mutate business state"
+    ]
+  },
+  {
+    "id": "server/services/authorizationDenials.ts#recordDeniedDecisionSafely",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "safe failure isolation",
+      "bounded denial bucket",
+      "no attacker details"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "noMutationControls": [
+      "denial evidence cannot amplify audit rows"
+    ]
+  },
+  {
+    "id": "server/services/authorizationDenials.ts#recordSessionDeniedDecisionInTransactionSafely",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "session scope normalization",
+      "caller transaction",
+      "bounded denial bucket"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "noMutationControls": [
+      "session denial does not mutate controlled record"
+    ]
+  },
+  {
+    "id": "server/services/authorizationDenials.ts#recordSessionDeniedDecisionSafely",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "session scope normalization",
+      "safe failure isolation",
+      "bounded denial bucket"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"
+    ],
+    "noMutationControls": [
+      "session denial does not amplify audit rows"
+    ]
   },
   {
     "id": "server/services/branchOperations.ts#applyBranchOperationChecklistCorrection",
@@ -17409,7 +18378,7 @@
   {
     "id": "server/services/budgetControl.ts#submitBudgetRevisionForReview",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financeBudgetManage",
+    "permission": "permissions.financeBudgetManage | permissions.financeBudgetApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -18180,7 +19149,7 @@
   {
     "id": "server/services/cashAdvances.ts#submitCashAdvanceForApproval",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financeCashAdvanceSubmit",
+    "permission": "permissions.financeCashAdvanceSubmit | permissions.financeCashAdvanceApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -21376,7 +22345,7 @@
   {
     "id": "server/services/expenseRequests.ts#submitExpenseRequestForApproval",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financeExpenseRequestSubmit",
+    "permission": "permissions.financeExpenseRequestSubmit | permissions.financeExpenseRequestApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -22931,7 +23900,7 @@
   {
     "id": "server/services/finance.ts#submitPaymentRequest",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePaymentRequestCreate",
+    "permission": "permissions.financePaymentRequestCreate | permissions.financePaymentRequestApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -26128,7 +27097,7 @@
   {
     "id": "server/services/pettyCash.ts#submitPettyCashRequest",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.financePettyCashSubmit",
+    "permission": "permissions.financePettyCashSubmit | permissions.financePettyCashApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -26212,6 +27181,27 @@
       "fund",
       "ledger"
     ]
+  },
+  {
+    "id": "server/services/policySettings.ts#getAuthorizationDenialWindowMinutes",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
   },
   {
     "id": "server/services/policySettings.ts#getBudgetSourceHookPolicy",
@@ -26509,6 +27499,27 @@
   },
   {
     "id": "server/services/policySettings.ts#getReportExportPolicy",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/policySettings.ts#getSavedPolicyValue",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
     "scopeDimensions": [
@@ -29939,7 +30950,7 @@
   {
     "id": "server/services/purchaseOrders.ts#requestPurchaseOrderAmendment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.purchaseOrderAmend",
+    "permission": "permissions.purchaseOrderAmend | permissions.purchaseOrderApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -29979,7 +30990,7 @@
   {
     "id": "server/services/purchaseOrders.ts#requestPurchaseOrderBalanceClosure",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.purchaseOrderCloseRemaining",
+    "permission": "permissions.purchaseOrderCloseRemaining | permissions.purchaseOrderApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -30019,7 +31030,7 @@
   {
     "id": "server/services/purchaseOrders.ts#submitPurchaseOrderForApproval",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.purchaseOrderSubmit",
+    "permission": "permissions.purchaseOrderSubmit | permissions.purchaseOrderApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -30310,7 +31321,7 @@
   {
     "id": "server/services/purchaseRequests.ts#submitPurchaseRequest",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.purchaseRequestSubmit",
+    "permission": "permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -30465,7 +31476,7 @@
   {
     "id": "server/services/quotes.ts#submitQuotationRecommendation",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.quoteManage",
+    "permission": "permissions.quoteManage | permissions.quoteApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -31920,7 +32931,7 @@
   {
     "id": "server/services/stockAdjustments.ts#submitStockAdjustment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockAdjustmentSubmit | permissions.stockAdjustmentPost",
+    "permission": "permissions.stockAdjustmentSubmit | permissions.stockAdjustmentPost | permissions.stockAdjustmentApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -33212,7 +34223,7 @@
   {
     "id": "server/services/wastage.ts#submitWastageReport",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.wastageSubmit",
+    "permission": "permissions.wastageSubmit | permissions.wastageApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -34130,7 +35141,7 @@
   {
     "id": "server/services/workforce.ts#submitLeaveRequest",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.workforceManage",
+    "permission": "permissions.workforceManage | permissions.workforceLeaveApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -34174,7 +35185,7 @@
   {
     "id": "server/services/workforce.ts#submitOvertimeRecord",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.workforceManage",
+    "permission": "permissions.workforceManage | permissions.workforceOvertimeApprove",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",

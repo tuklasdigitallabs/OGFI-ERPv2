@@ -155,7 +155,8 @@ describe("cash advance foundation", () => {
     expect(serviceSource).toContain("APPROVE_CASH_ADVANCE");
     expect(serviceSource).toContain("CASH_ADVANCE_APPROVAL_RULE_NOT_CONFIGURED");
     expect(serviceSource).toContain("CASH_ADVANCE_ALREADY_SUBMITTED");
-    expect(serviceSource).toContain("resolveScopedNotificationRecipients");
+    expect(serviceSource).toContain("configureApprovalStepRouting");
+    expect(serviceSource).not.toContain("resolveScopedNotificationRecipients");
     expect(serviceSource).toContain("approveCashAdvanceRequest");
     expect(serviceSource).toContain("returnCashAdvanceForRevision");
     expect(serviceSource).toContain("rejectCashAdvanceRequest");

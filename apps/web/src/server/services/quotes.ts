@@ -4,9 +4,13 @@ import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
 import {
-  recordWorkflowNotifications,
-  resolveScopedNotificationRecipients
+  recordWorkflowNotifications
 } from "./notifications";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
 import { getPurchasingControlPolicy } from "./policySettings";
 
@@ -809,14 +813,13 @@ export async function submitQuotationRecommendation(formData: FormData) {
       throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
     }
 
-    await tx.quotationRecommendation.update({
-      where: { id: recommendation.id },
-      data: {
-        status: "PENDING_APPROVAL",
-        submittedAt: new Date(),
-        version: { increment: 1 }
-      }
-    });
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
 
     const approvalInstance = await tx.approvalInstance.create({
       data: {
@@ -827,13 +830,64 @@ export async function submitQuotationRecommendation(formData: FormData) {
         approvalRuleId: approvalRule.id,
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedRoleId: step.roleId,
             assignedUserId: step.userId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
+      }
+    });
+
+    const prohibitedActors = Array.from(new Map([
+      [recommendation.preparedByUserId, {
+        userId: recommendation.preparedByUserId,
+        reasonCode: "PREPARER"
+      }],
+      [recommendation.quotationRequest.purchaseRequest.requesterUserId, {
+        userId: recommendation.quotationRequest.purchaseRequest.requesterUserId,
+        reasonCode: "REQUESTER"
+      }]
+    ]).values());
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("QuotationRecommendation"),
+        requiredPermissionCode: permissions.quoteApprove,
+        dueAt: recommendation.quotationRequest.purchaseRequest.requiredDate,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "quotation-recommendation-submission"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId:
+              recommendation.quotationRequest.purchaseRequest.requestLocationId
+          }]
+        }],
+        prohibitedActors
+      });
+    }
+    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    });
+
+    await tx.quotationRecommendation.update({
+      where: { id: recommendation.id },
+      data: {
+        status: "PENDING_APPROVAL",
+        submittedAt: new Date(),
+        version: { increment: 1 }
       }
     });
 
@@ -858,13 +912,6 @@ export async function submitQuotationRecommendation(formData: FormData) {
       }
     });
 
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: recommendation.quotationRequest.purchaseRequest.requestLocationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    });
     const selectedSupplierName =
       recommendation.selectedSupplierQuotation.supplier.tradingName ??
       recommendation.selectedSupplierQuotation.supplier.legalName;
@@ -872,7 +919,7 @@ export async function submitQuotationRecommendation(formData: FormData) {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: recommendation.quotationRequest.purchaseRequest.requestLocationId,
-      recipientUserIds,
+      recipientUserIds: [firstEligibleActor.userId],
       notificationType: "APPROVE_QUOTATION_RECOMMENDATION",
       priority: "NORMAL",
       title: `Approve Supplier Recommendation ${recommendation.quotationRequest.publicReference}`,

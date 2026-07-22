@@ -231,11 +231,13 @@ const actionFeedbackMessages: Record<string, string> = {
   VALIDATION_FAILED:
     "Review the required fields and field lengths, then try again.",
   LOGIN_ACCOUNT_NOT_FOUND:
-    "That account is inactive or not configured for this local demo.",
+    "The organization code, email, or password is incorrect.",
   LOGIN_CREDENTIALS_INVALID:
     "The organization code, email, or password is incorrect.",
   LOGIN_TEMPORARILY_THROTTLED:
     "Too many sign-in attempts were detected. Wait 15 minutes, then try again or contact support.",
+  AUTHENTICATION_CAPACITY_TEMPORARILY_UNAVAILABLE:
+    "Authentication is busy right now. Wait a moment, then try again.",
   PASSWORD_POLICY_NOT_MET:
     "Use at least 12 characters with uppercase, lowercase, and a number.",
   PASSWORD_CONFIRMATION_MISMATCH:
@@ -248,6 +250,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "That authenticator code was already used. Wait for the next code and try again.",
   MFA_CHALLENGE_NOT_FOUND:
     "Your MFA challenge expired. Sign in again to continue.",
+  MFA_CHALLENGE_TEMPORARILY_THROTTLED:
+    "Too many verification attempts were detected. Sign in again later or contact support.",
   PRIVILEGED_MFA_STEP_UP_REQUIRED:
     "Refresh MFA assurance under Account security before repeating this sensitive action.",
   CORE_ADMIN_USER_DUPLICATE:
@@ -391,10 +395,20 @@ const actionFeedbackMessages: Record<string, string> = {
     "This quotation request already has an active recommendation.",
   APPROVAL_ASSIGNMENT_DENIED:
     "This approval step is not assigned to your role or user.",
+  APPROVAL_AUTHORITY_STALE:
+    "Your approval authority changed. Refresh the approval and try again.",
   APPROVAL_DOCUMENT_NOT_FOUND:
     "The source document for this approval is no longer available.",
   APPROVAL_NOT_ACTIONABLE:
     "This approval is no longer actionable. Refresh the inbox and review the latest status.",
+  APPROVAL_NEXT_STEP_ROUTING_CHANGED:
+    "The next approval step changed. Refresh the approval and review its current route.",
+  APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE:
+    "The next approval step has no available recipient. Contact an administrator before retrying.",
+  APPROVAL_ROUTING_BACKFILL_REQUIRED:
+    "This approval is not ready for the current routing workflow. Contact an administrator.",
+  APPROVAL_ROUTING_V1_DISABLED:
+    "This approval cannot continue with the retired routing workflow. Contact an administrator.",
   APPROVAL_RULE_NOT_CONFIGURED:
     "No approval rule is configured for this action yet.",
   APPROVAL_RULE_STEP_NOT_CONFIGURED:

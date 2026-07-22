@@ -8,6 +8,26 @@ import {
 } from "./quotes";
 
 describe("quotation recommendation rules", () => {
+  test("initial recommendation approval routing is normalized and fail-closed", () => {
+    const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
+    const start = source.indexOf("export async function submitQuotationRecommendation");
+    const submit = source.slice(start);
+
+    expect(submit).toContain("for (const step of routedSteps)");
+    expect(submit).toContain("configureApprovalStepRouting(tx");
+    expect(submit).toContain("requiredPermissionCode: permissions.quoteApprove");
+    expect(submit).toContain("dueAt: recommendation.quotationRequest.purchaseRequest.requiredDate");
+    expect(submit).toContain('source: "quotation-recommendation-submission"');
+    expect(submit).toContain("recommendation.preparedByUserId");
+    expect(submit).toContain("purchaseRequest.requesterUserId");
+    expect(submit).toContain("assertAnyEligibleApprovalActorForStep(tx");
+    expect(submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+      submit.indexOf("await tx.quotationRecommendation.update")
+    );
+    expect(submit).toContain("recipientUserIds: [firstEligibleActor.userId]");
+    expect(submit).not.toContain("resolveScopedNotificationRecipients");
+  });
+
   test("parses multiple supplier quote lines from the capture form", () => {
     const formData = new FormData();
     formData.append("sourcePrLineId", "11111111-1111-4111-8111-111111111111");

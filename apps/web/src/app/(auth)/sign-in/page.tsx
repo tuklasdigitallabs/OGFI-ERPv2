@@ -13,7 +13,8 @@ import { getConfiguredContext } from "@/server/services/context";
 import {
   assertTrustedServerActionOrigin,
   authenticatePassword,
-  getAuthMode
+  getAuthMode,
+  getTrustedRequestFingerprint
 } from "@/server/services/authentication";
 
 export const dynamic = "force-dynamic";
@@ -37,17 +38,16 @@ async function signIn(formData: FormData) {
         tenantCode: String(formData.get("tenantCode") ?? ""),
         identifier: email,
         password: String(formData.get("password") ?? ""),
-        fingerprint: {
-          sourceAddress:
-            requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-            "unknown",
-          userAgent: requestHeaders.get("user-agent") ?? "unknown"
-        }
+        fingerprint: getTrustedRequestFingerprint(requestHeaders)
       });
     } catch (error) {
       const code =
         error instanceof Error &&
-        ["LOGIN_TEMPORARILY_THROTTLED", "LOGIN_CREDENTIALS_INVALID"].includes(
+        [
+          "AUTHENTICATION_CAPACITY_TEMPORARILY_UNAVAILABLE",
+          "LOGIN_TEMPORARILY_THROTTLED",
+          "LOGIN_CREDENTIALS_INVALID",
+        ].includes(
           error.message
         )
           ? error.message

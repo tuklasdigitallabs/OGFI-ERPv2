@@ -1,0 +1,20 @@
+[Unit]
+Description=Check OGFI ERP authorization-denial finalizer health
+Documentation=file:/opt/ogfi/current/infra/systemd/database/README.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=ogfi-authorization-denial-health-alert@%n.service
+
+[Service]
+Type=oneshot
+User=ogfi-runtime
+Group=ogfi-runtime
+WorkingDirectory=/opt/ogfi/current
+EnvironmentFile=/srv/ogfi/config/production.env
+UMask=0027
+TimeoutStartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ExecStart=/usr/bin/pnpm authorization-denials:health

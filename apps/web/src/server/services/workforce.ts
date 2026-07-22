@@ -1,5 +1,6 @@
 import { prisma } from "@ogfi/database";
 import type { TransactionClient } from "@ogfi/database";
+import { randomUUID } from "node:crypto";
 import {
   permissions,
   requireAnyPermission,
@@ -9,9 +10,13 @@ import {
 import type { SessionContext } from "./context";
 import type { CsvRow } from "./csv";
 import {
-  recordWorkflowNotifications,
-  resolveScopedNotificationRecipients
+  recordWorkflowNotifications
 } from "./notifications";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 
@@ -2152,6 +2157,9 @@ export async function submitLeaveRequest(
     if (!firstStep) {
       throw new Error("WORKFORCE_LEAVE_APPROVAL_RULE_STEP_NOT_CONFIGURED");
     }
+    if (!request.locationId) {
+      throw new Error("WORKFORCE_LEAVE_APPROVAL_SOURCE_LOCATION_REQUIRED");
+    }
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -2165,6 +2173,15 @@ export async function submitLeaveRequest(
       throw new Error("WORKFORCE_LEAVE_ALREADY_SUBMITTED");
     }
 
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) {
+      throw new Error("WORKFORCE_LEAVE_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -2175,14 +2192,47 @@ export async function submitLeaveRequest(
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
       }
+    });
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("EmployeeLeaveRequest"),
+        requiredPermissionCode: permissions.workforceLeaveApprove,
+        dueAt: request.startDate,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "workforce-leave-submission"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: request.locationId
+          }]
+        }],
+        prohibitedActors: [{
+          userId: request.requestedByUserId,
+          reasonCode: "REQUESTER"
+        }]
+      });
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
     const submittedAt = new Date();
     const updated = await tx.employeeLeaveRequest.update({
@@ -2218,18 +2268,11 @@ export async function submitLeaveRequest(
         }
       }
     });
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: request.locationId ?? session.context.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: request.locationId ?? session.context.locationId,
-      recipientUserIds,
+      recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
       notificationType: "APPROVE_WORKFORCE_LEAVE",
       priority: "NORMAL",
       title: "Approve Leave Request",
@@ -2262,7 +2305,7 @@ export async function submitLeaveRequest(
         approvalInstanceId: approvalInstance.id,
         approvalRuleId: approvalRule.id,
         approvalStepOrder: firstStep.stepOrder,
-        notificationRecipientCount: recipientUserIds.length
+        notificationRecipientCount: firstStep.userId ? 1 : 0
       }
     });
     return updated;
@@ -2474,6 +2517,9 @@ export async function submitOvertimeRecord(
     if (!firstStep) {
       throw new Error("WORKFORCE_OVERTIME_APPROVAL_RULE_STEP_NOT_CONFIGURED");
     }
+    if (!record.locationId) {
+      throw new Error("WORKFORCE_OVERTIME_APPROVAL_SOURCE_LOCATION_REQUIRED");
+    }
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -2487,6 +2533,15 @@ export async function submitOvertimeRecord(
       throw new Error("WORKFORCE_OVERTIME_ALREADY_SUBMITTED");
     }
 
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) {
+      throw new Error("WORKFORCE_OVERTIME_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -2497,14 +2552,47 @@ export async function submitOvertimeRecord(
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
       }
+    });
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("EmployeeOvertimeRecord"),
+        requiredPermissionCode: permissions.workforceOvertimeApprove,
+        dueAt: record.workedStartAt,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "workforce-overtime-submission"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: record.locationId
+          }]
+        }],
+        prohibitedActors: [{
+          userId: record.requestedByUserId,
+          reasonCode: "REQUESTER"
+        }]
+      });
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
     const updated = await tx.employeeOvertimeRecord.update({
       where: { id: record.id },
@@ -2538,18 +2626,11 @@ export async function submitOvertimeRecord(
         }
       }
     });
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: record.locationId ?? session.context.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: record.locationId ?? session.context.locationId,
-      recipientUserIds,
+      recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
       notificationType: "APPROVE_WORKFORCE_OVERTIME",
       priority: "NORMAL",
       title: "Approve Overtime Record",
@@ -2582,7 +2663,7 @@ export async function submitOvertimeRecord(
         approvalInstanceId: approvalInstance.id,
         approvalRuleId: approvalRule.id,
         approvalStepOrder: firstStep.stepOrder,
-        notificationRecipientCount: recipientUserIds.length
+        notificationRecipientCount: firstStep.userId ? 1 : 0
       }
     });
     return updated;
@@ -2758,6 +2839,15 @@ export async function submitWorkforceSchedule(
       throw new Error("WORKFORCE_SCHEDULE_ALREADY_SUBMITTED");
     }
 
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) {
+      throw new Error("WORKFORCE_SCHEDULE_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -2768,14 +2858,54 @@ export async function submitWorkforceSchedule(
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
       }
+    });
+    const prohibitedActors = Array.from(new Map([
+      [schedule.createdByUserId, {
+        userId: schedule.createdByUserId,
+        reasonCode: "CREATOR"
+      }],
+      [session.user.id, {
+        userId: session.user.id,
+        reasonCode: "SUBMITTER"
+      }]
+    ]).values());
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("WorkforceSchedule"),
+        requiredPermissionCode: permissions.workforceScheduleManage,
+        dueAt: schedule.scheduleDate,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "workforce-schedule-submission"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: schedule.locationId
+          }]
+        }],
+        prohibitedActors
+      });
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
     const submittedAt = new Date();
     const updated = await tx.workforceSchedule.update({
@@ -2816,18 +2946,11 @@ export async function submitWorkforceSchedule(
         }
       }
     });
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: schedule.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: schedule.locationId,
-      recipientUserIds,
+      recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
       notificationType: "APPROVE_WORKFORCE_SCHEDULE",
       priority: "NORMAL",
       title: `Approve Workforce Schedule ${schedule.publicReference}`,
@@ -2861,7 +2984,7 @@ export async function submitWorkforceSchedule(
         approvalInstanceId: approvalInstance.id,
         approvalRuleId: approvalRule.id,
         approvalStepOrder: firstStep.stepOrder,
-        notificationRecipientCount: recipientUserIds.length
+        notificationRecipientCount: firstStep.userId ? 1 : 0
       }
     });
     return updated;
@@ -3115,6 +3238,17 @@ export async function reviewAttendanceImportBatch(
         throw new Error("WORKFORCE_ATTENDANCE_IMPORT_ALREADY_SUBMITTED");
       }
 
+      const routedSteps = approvalRule.steps.map((step, index) => ({
+        ...step,
+        approvalInstanceStepId: randomUUID(),
+        activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+      }));
+      const firstRoutedStep = routedSteps[0];
+      if (!firstRoutedStep) {
+        throw new Error(
+          "WORKFORCE_ATTENDANCE_IMPORT_APPROVAL_RULE_STEP_NOT_CONFIGURED"
+        );
+      }
       const approvalInstance = await tx.approvalInstance.create({
         data: {
           tenantId: session.context.tenantId,
@@ -3125,14 +3259,54 @@ export async function reviewAttendanceImportBatch(
           status: "PENDING",
           currentStepOrder: firstStep.stepOrder,
           steps: {
-            create: approvalRule.steps.map((step, index) => ({
+            create: routedSteps.map((step) => ({
+              id: step.approvalInstanceStepId,
               stepOrder: step.stepOrder,
               assignedUserId: step.userId,
               assignedRoleId: step.roleId,
-              status: index === 0 ? "PENDING" : "WAITING"
+              status: step.activationStatus
             }))
           }
         }
+      });
+      const prohibitedActors = Array.from(new Map([
+        [batch.createdByUserId, {
+          userId: batch.createdByUserId,
+          reasonCode: "CREATOR"
+        }],
+        [session.user.id, {
+          userId: session.user.id,
+          reasonCode: "REVIEWER"
+        }]
+      ]).values());
+      for (const step of routedSteps) {
+        await configureApprovalStepRouting(tx, {
+          approvalInstanceStepId: step.approvalInstanceStepId,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          routingPolicy: getApprovalRoutingPolicy("AttendanceImportBatch"),
+          requiredPermissionCode: permissions.workforceAttendanceImportManage,
+          dueAt: null,
+          activationAudit: {
+            actorUserId: session.user.id,
+            source: "workforce-attendance-import-review"
+          },
+          scopeGroups: [{
+            groupOrder: 1,
+            targetMatchMode: "ANY",
+            targets: [{
+              scopeType: "LOCATION",
+              companyId: session.context.companyId,
+              locationId: batch.locationId
+            }]
+          }],
+          prohibitedActors
+        });
+      }
+      await assertAnyEligibleApprovalActorForStep(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
       });
       const updated = await tx.attendanceImportBatch.update({
         where: { id: batch.id },
@@ -3188,18 +3362,11 @@ export async function reviewAttendanceImportBatch(
           }
         }
       });
-      const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        locationId: batch.locationId,
-        assignedUserId: firstStep.userId,
-        assignedRoleId: firstStep.roleId
-      });
       await recordWorkflowNotifications(tx, {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         locationId: batch.locationId,
-        recipientUserIds,
+        recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
         notificationType: "APPROVE_ATTENDANCE_IMPORT_REVIEW",
         priority: input.verdict === "REJECT" ? "HIGH" : "NORMAL",
         title: `Approve Attendance Review ${batch.publicReference}`,
@@ -3235,7 +3402,7 @@ export async function reviewAttendanceImportBatch(
           approvalInstanceId: approvalInstance.id,
           approvalRuleId: approvalRule.id,
           approvalStepOrder: firstStep.stepOrder,
-          notificationRecipientCount: recipientUserIds.length
+          notificationRecipientCount: firstStep.userId ? 1 : 0
         }
       });
       return updated;

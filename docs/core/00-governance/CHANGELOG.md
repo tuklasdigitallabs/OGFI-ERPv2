@@ -1,5 +1,14 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-22 — Bounded Denial Audit and Role-Scoped Approval Decision
+
+- Added confirmed `DEC-0050`, selecting a durable PostgreSQL denial bucket with bounded server-derived dimensions, exact atomic counts, one immutable first event, and one immutable final summary only when a completed window contains more than one denial.
+- Confirmed a configurable 15-minute default window with validated 5-to-60-minute bounds, no initial interim checkpoints, and one idempotent finalization path shared by a Hostinger systemd timer and lazy rollover. Recording failure never permits the denied operation, and actual workflow actions remain individually audited.
+- Confirmed the active `ApprovalInstanceStep` as the authoritative role-assigned work item. Dynamic inbox eligibility uses live authority, scope, effective dates, and no-self-approval; role activation creates zero per-user notifications, direct-user assignment creates at most one idempotent notification, and activation requires at least one eligible non-prohibited approver without locking the full population.
+- Implemented the feature-disabled local checkpoint: bounded immutable denial evidence, atomic signed authentication reservations, database-fenced throttle-key rotation, bounded Argon2 work, aggregate-only monitoring, Hostinger systemd/Caddy controls, role-scoped routing/backfill, and a server-paginated Approval Inbox. The decision introduces no AWS service or new queue.
+- Recorded fresh PostgreSQL 17 evidence across all 122 migrations and the denial, authentication-throttle, authentication, approval-backfill, append-only, and route-authorization suites. Database and Security review returned GO for the local checkpoint; QA returned CONDITIONAL GO while normalized routing remains disabled.
+- Kept SPF-006 and Hostinger activation at **NO-GO** pending the executable 18-document-type routing/inbox matrix, remaining audit/race gaps, exact-release hosted credential/restore/load/alert evidence, calibrated thresholds, image provenance, and final release acceptance.
+
 ## 2026-07-22 — DEC-0049 Append-Only History Implementation Checkpoint
 
 - Recorded the local implementation of unconditional PostgreSQL `UPDATE`, `DELETE`, and `TRUNCATE` guards for `AuditEvent`, `ProjectActivityEvent`, and `InventoryMovement`, while preserving normal reads and append-only inserts.

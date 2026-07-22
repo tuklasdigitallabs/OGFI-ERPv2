@@ -14,9 +14,13 @@ import {
 } from "./context"
 import type { CsvRow } from "./csv"
 import {
-  recordWorkflowNotifications,
-  resolveScopedNotificationRecipients
+  recordWorkflowNotifications
 } from "./notifications"
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting"
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry"
 import {
   phase3EvidenceUploadBlockerId,
   resolveEvidenceReadiness,
@@ -4680,6 +4684,18 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
       throw new Error("PAYMENT_REQUEST_ALREADY_SUBMITTED")
     }
 
+    if (!request.locationId) {
+      throw new Error("PAYMENT_REQUEST_APPROVAL_SCOPE_NOT_CONFIGURED")
+    }
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }))
+    const firstRoutedStep = routedSteps[0]
+    if (!firstRoutedStep) {
+      throw new Error("PAYMENT_REQUEST_APPROVAL_RULE_STEP_NOT_CONFIGURED")
+    }
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -4690,14 +4706,47 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
       }
+    })
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("PaymentRequest"),
+        requiredPermissionCode: permissions.financePaymentRequestApprove,
+        dueAt: null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "payment_request.submit"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: request.locationId
+          }]
+        }],
+        prohibitedActors: [{
+          userId: request.requestedByUserId,
+          reasonCode: "REQUESTER"
+        }]
+      })
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     })
     const submittedAt = new Date()
     const updated = await tx.paymentRequest.update({
@@ -4729,18 +4778,11 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
         }
       }
     })
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
+    if (firstStep.userId) await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: request.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    })
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: request.locationId,
-      recipientUserIds,
+      recipientUserIds: [firstStep.userId],
       notificationType: "APPROVE_PAYMENT_REQUEST",
       priority: "HIGH",
       title: `Approve Payment Request ${request.publicReference}`,
@@ -5421,28 +5463,87 @@ export async function createPaymentReleaseDraft(
     const sourceEventKey =
       input.sourceEventKey?.trim() ||
       `payment-release:${request.id}:${randomUUID()}`
+    if (!session.context.locationId) {
+      throw new Error("PAYMENT_RELEASE_APPROVAL_SCOPE_NOT_CONFIGURED")
+    }
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }))
+    const firstRoutedStep = routedSteps[0]
+    if (!firstRoutedStep) {
+      throw new Error("PAYMENT_RELEASE_APPROVAL_RULE_STEP_NOT_CONFIGURED")
+    }
+    const paymentReleaseId = randomUUID()
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         documentType: "PaymentRelease",
-        documentId: randomUUID(),
+        documentId: paymentReleaseId,
         approvalRuleId: approvalRule.id,
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
       }
     })
+    const prohibitedActors = Array.from(new Map([
+      ...(request.approvedByUserId
+        ? [[request.approvedByUserId, {
+            userId: request.approvedByUserId,
+            reasonCode: "PRIOR_APPROVER"
+          }] as const]
+        : []),
+      [request.requestedByUserId, {
+        userId: request.requestedByUserId,
+        reasonCode: "REQUESTER"
+      }] as const,
+      [session.user.id, {
+        userId: session.user.id,
+        reasonCode: "PREPARER"
+      }] as const
+    ]).values())
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("PaymentRelease"),
+        requiredPermissionCode: permissions.financePaymentRelease,
+        dueAt: input.scheduledAt ?? null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "payment_release.submit"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: session.context.locationId
+          }]
+        }],
+        prohibitedActors
+      })
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    })
     const release = await tx.paymentRelease.create({
       data: {
-        id: approvalInstance.documentId,
+        id: paymentReleaseId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         locationId: session.context.locationId,
@@ -5518,18 +5619,11 @@ export async function createPaymentReleaseDraft(
         }
       }
     })
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
+    if (firstStep.userId) await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: session.context.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    })
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: session.context.locationId,
-      recipientUserIds,
+      recipientUserIds: [firstStep.userId],
       notificationType: "APPROVE_PAYMENT_RELEASE",
       priority: "HIGH",
       title: `Approve Payment Release ${release.publicReference}`,

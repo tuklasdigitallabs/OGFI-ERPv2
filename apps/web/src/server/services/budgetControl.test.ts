@@ -271,7 +271,8 @@ describe("budget control foundation", () => {
     expect(budgetServiceSource).toContain('documentType: "BudgetRevision"');
     expect(budgetServiceSource).toContain("approvalInstance.create");
     expect(budgetServiceSource).toContain("APPROVE_BUDGET_REVISION");
-    expect(budgetServiceSource).toContain(
+    expect(budgetServiceSource).toContain("configureApprovalStepRouting");
+    expect(budgetServiceSource).not.toContain(
       "resolveScopedNotificationRecipients",
     );
     expect(budgetServiceSource).toContain(

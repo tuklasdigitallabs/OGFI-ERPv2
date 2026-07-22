@@ -1,0 +1,13 @@
+[Unit]
+Description=Monitor OGFI ERP authorization-denial finalization
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+RandomizedDelaySec=10s
+AccuracySec=1s
+Persistent=true
+Unit=ogfi-authorization-denial-health.service
+
+[Install]
+WantedBy=timers.target

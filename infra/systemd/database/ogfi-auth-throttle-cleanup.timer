@@ -1,0 +1,14 @@
+[Unit]
+Description=Clean expired OGFI ERP authentication-throttle records
+OnFailure=ogfi-auth-throttle-alert@%n.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=30s
+AccuracySec=1s
+Persistent=true
+Unit=ogfi-auth-throttle-cleanup.service
+
+[Install]
+WantedBy=timers.target

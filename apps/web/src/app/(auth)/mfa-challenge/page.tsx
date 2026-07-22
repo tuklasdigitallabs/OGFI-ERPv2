@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { KeyRound } from "lucide-react";
 import { Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
@@ -9,6 +10,7 @@ import {
 import {
   assertTrustedServerActionOrigin,
   completeMfaChallenge,
+  getTrustedRequestFingerprint,
 } from "@/server/services/authentication";
 
 export const dynamic = "force-dynamic";
@@ -18,13 +20,20 @@ async function verifyMfa(formData: FormData) {
   await assertTrustedServerActionOrigin();
   let nextPath: string;
   try {
+    const requestHeaders = await headers();
     nextPath = await completeMfaChallenge(
-      String(formData.get("code") ?? "")
+      String(formData.get("code") ?? ""),
+      getTrustedRequestFingerprint(requestHeaders),
     );
   } catch (error) {
     const code =
       error instanceof Error &&
-      ["MFA_CODE_INVALID", "MFA_CODE_REPLAYED", "MFA_CHALLENGE_NOT_FOUND"].includes(
+      [
+        "MFA_CODE_INVALID",
+        "MFA_CODE_REPLAYED",
+        "MFA_CHALLENGE_NOT_FOUND",
+        "MFA_CHALLENGE_TEMPORARILY_THROTTLED"
+      ].includes(
         error.message
       )
         ? error.message

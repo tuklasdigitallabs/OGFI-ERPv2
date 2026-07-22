@@ -1,0 +1,14 @@
+[Unit]
+Description=Monitor OGFI ERP authentication-throttle cleanup and key compatibility
+OnFailure=ogfi-auth-throttle-alert@%n.service
+
+[Timer]
+OnBootSec=7min
+OnUnitActiveSec=5min
+RandomizedDelaySec=20s
+AccuracySec=1s
+Persistent=true
+Unit=ogfi-auth-throttle-health.service
+
+[Install]
+WantedBy=timers.target

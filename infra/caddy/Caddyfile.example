@@ -1,34 +1,223 @@
-{$OGFI_SITE_ADDRESS::80} {
-  encode gzip zstd
+{
+	admin 127.0.0.1:2019
+	grace_period 30s
+	metrics
+	log default {
+		format filter {
+			wrap json
+			fields {
+				remote_ip delete
+				request>remote_ip delete
+				request>client_ip delete
+				request>headers delete
+			}
+		}
+	}
 
-  header {
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    Referrer-Policy "strict-origin-when-cross-origin"
-    Permissions-Policy "camera=(), microphone=(), geolocation=()"
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
-  }
+	servers {
+		protocols h1 h2
+		max_header_size 64KiB
+		timeouts {
+			read_header {$CADDY_READ_HEADER_TIMEOUT:10s}
+			read_body {$CADDY_READ_BODY_TIMEOUT:5m}
+			write {$CADDY_WRITE_TIMEOUT:5m}
+			idle {$CADDY_IDLE_TIMEOUT:2m}
+		}
+	}
+}
 
-  request_body {
-    max_size {$MAX_REQUEST_BODY_SIZE:27MiB}
-  }
+(app_proxy) {
+	reverse_proxy web:3000 {
+		header_up -Forwarded
+		header_up -X-Real-IP
+		header_up -X-Forwarded-For
+		header_up X-Forwarded-For {remote_host}
+		transport http {
+			dial_timeout {$CADDY_UPSTREAM_DIAL_TIMEOUT:5s}
+			response_header_timeout {$CADDY_UPSTREAM_RESPONSE_HEADER_TIMEOUT:60s}
+			expect_continue_timeout 2s
+			max_response_header 64KiB
+		}
+	}
+}
 
-  handle /health {
-    rewrite * /api/health
-    reverse_proxy web:3000
-  }
+# Read-only metrics bridge on the private Docker network. It exposes only the
+# Prometheus scrape path, never Caddy's write-capable administration API.
+http://:2020 {
+	handle /metrics {
+		reverse_proxy 127.0.0.1:2019 {
+			header_up Host 127.0.0.1:2019
+		}
+	}
+	handle {
+		respond 404
+	}
+}
 
-  handle /readiness {
-    rewrite * /api/readiness
-    reverse_proxy web:3000
-  }
+# Host monitoring reaches this listener only through the loopback-only compose
+# publication. The application route still requires its independent bearer.
+http://:2021 {
+	handle /api/internal/authentication-metrics {
+		import app_proxy
+	}
+	handle {
+		respond 404
+	}
+}
 
-  reverse_proxy web:3000 {
-    header_up X-Forwarded-Proto {scheme}
-    header_up X-Forwarded-For {remote_host}
-    transport http {
-      dial_timeout 10s
-      response_header_timeout 60s
-    }
-  }
+{$OGFI_SITE_ADDRESS::8080} {
+	encode gzip zstd
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	handle /health {
+		rewrite * /api/health
+		import app_proxy
+	}
+
+	handle /readiness {
+		rewrite * /api/readiness
+		import app_proxy
+	}
+
+	@signIn {
+		method POST
+		path /sign-in
+	}
+	handle @signIn {
+		request_body {
+			max_size 64KiB
+		}
+		route {
+			# Static/global always runs before the dynamic source ring. This caps the
+			# number of source rings an attacker can allocate in one window.
+			rate_limit {
+				zone sign_in_global {
+					key global
+					events {$CADDY_SIGN_IN_GLOBAL_EVENTS:120}
+					window {$CADDY_AUTH_RATE_WINDOW:1m}
+				}
+			}
+			rate_limit {
+				zone sign_in_source {
+					key {remote_host}
+					events {$CADDY_SIGN_IN_SOURCE_EVENTS:30}
+					window {$CADDY_AUTH_RATE_WINDOW:1m}
+					ipv4_prefix 32
+					ipv6_prefix 64
+				}
+			}
+			reverse_proxy web:3000 {
+				fail_duration 1s
+				unhealthy_request_count {$CADDY_PASSWORD_COARSE_INFLIGHT:8}
+				header_up -Forwarded
+				header_up -X-Real-IP
+				header_up -X-Forwarded-For
+				header_up X-Forwarded-For {remote_host}
+				transport http {
+					dial_timeout {$CADDY_UPSTREAM_DIAL_TIMEOUT:5s}
+					response_header_timeout {$CADDY_AUTH_RESPONSE_HEADER_TIMEOUT:30s}
+					expect_continue_timeout 2s
+					max_response_header 64KiB
+				}
+			}
+		}
+	}
+
+	@activate {
+		method POST
+		path /activate
+	}
+	handle @activate {
+		request_body {
+			max_size 64KiB
+		}
+		route {
+			rate_limit {
+				zone activate_global {
+					key global
+					events {$CADDY_ACTIVATE_GLOBAL_EVENTS:60}
+					window {$CADDY_AUTH_RATE_WINDOW:1m}
+				}
+			}
+			rate_limit {
+				zone activate_source {
+					key {remote_host}
+					events {$CADDY_ACTIVATE_SOURCE_EVENTS:12}
+					window {$CADDY_AUTH_RATE_WINDOW:1m}
+					ipv4_prefix 32
+					ipv6_prefix 64
+				}
+			}
+			reverse_proxy web:3000 {
+				fail_duration 1s
+				unhealthy_request_count {$CADDY_PASSWORD_COARSE_INFLIGHT:8}
+				header_up -Forwarded
+				header_up -X-Real-IP
+				header_up -X-Forwarded-For
+				header_up X-Forwarded-For {remote_host}
+				transport http {
+					dial_timeout {$CADDY_UPSTREAM_DIAL_TIMEOUT:5s}
+					response_header_timeout {$CADDY_AUTH_RESPONSE_HEADER_TIMEOUT:30s}
+					expect_continue_timeout 2s
+					max_response_header 64KiB
+				}
+			}
+		}
+	}
+
+	@mfaChallenge {
+		method POST
+		path /mfa-challenge
+	}
+	handle @mfaChallenge {
+		request_body {
+			max_size 64KiB
+		}
+		route {
+			rate_limit {
+				zone mfa_challenge_global {
+					key global
+					events {$CADDY_MFA_GLOBAL_EVENTS:240}
+					window {$CADDY_AUTH_RATE_WINDOW:1m}
+				}
+			}
+			rate_limit {
+				zone mfa_challenge_source {
+					key {remote_host}
+					events {$CADDY_MFA_SOURCE_EVENTS:60}
+					window {$CADDY_AUTH_RATE_WINDOW:1m}
+					ipv4_prefix 32
+					ipv6_prefix 64
+				}
+			}
+			reverse_proxy web:3000 {
+				fail_duration 1s
+				unhealthy_request_count {$CADDY_MFA_COARSE_INFLIGHT:16}
+				header_up -Forwarded
+				header_up -X-Real-IP
+				header_up -X-Forwarded-For
+				header_up X-Forwarded-For {remote_host}
+				transport http {
+					dial_timeout {$CADDY_UPSTREAM_DIAL_TIMEOUT:5s}
+					response_header_timeout {$CADDY_AUTH_RESPONSE_HEADER_TIMEOUT:30s}
+					expect_continue_timeout 2s
+					max_response_header 64KiB
+				}
+			}
+		}
+	}
+
+	handle {
+		request_body {
+			max_size {$MAX_REQUEST_BODY_SIZE:27MiB}
+		}
+		import app_proxy
+	}
 }

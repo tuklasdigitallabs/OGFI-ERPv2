@@ -133,6 +133,16 @@ function entry(input) {
       : {}),
     ...(input.callChains ? { callChains: input.callChains } : {}),
     ...(input.permissionSource ? { permissionSource: input.permissionSource } : {}),
+    ...(input.boundaryCaseIds ? { boundaryCaseIds: input.boundaryCaseIds } : {}),
+    ...(input.boundaryClassifications
+      ? { boundaryClassifications: input.boundaryClassifications }
+      : {}),
+    ...(input.authorizationAdapterIds
+      ? { authorizationAdapterIds: input.authorizationAdapterIds }
+      : {}),
+    ...(input.noMutationControls
+      ? { noMutationControls: input.noMutationControls }
+      : {}),
   };
 }
 
@@ -1156,6 +1166,25 @@ export function buildAuthorizationSurfaceManifest() {
       },
     ],
   ]);
+  const controlledInternalRoutes = new Map([
+    [
+      "app/api/internal/authentication-metrics/route.ts",
+      {
+        permission: "SERVICE_ENFORCED",
+        dimensions: ["HOST_OPERATOR"],
+        guardChain: [
+          "loopback-edge-publication",
+          "constant-time-health-token",
+          "bounded-aggregate-only",
+        ],
+        denialContract: "NOT_FOUND_NO_METRICS_DISCLOSURE",
+        method: "GET",
+        testIds: [
+          "BOUNDARY_CASE:AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+        ],
+      },
+    ],
+  ]);
   for (const routeFile of allRouteFiles) {
     if (routeFile.startsWith(`${protectedAppRoot}${path.sep}`)) continue;
     const relativePath = path
@@ -1181,6 +1210,47 @@ export function buildAuthorizationSurfaceManifest() {
           testIds: ["AUTHZ-EVIDENCE-001"],
           delegatedServiceIds: routeDelegations.delegatedServiceIds,
           callChains: routeDelegations.callChains,
+        }),
+      );
+      continue;
+    }
+    const controlledInternalPolicy = controlledInternalRoutes.get(relativePath);
+    if (controlledInternalPolicy) {
+      const delegatedServiceIds = [
+        "server/services/authenticationRuntimeMetrics.ts#readAuthenticationRuntimeMetrics",
+      ];
+      for (const serviceId of delegatedServiceIds) {
+        if (!knownServiceIds.has(serviceId)) {
+          throw new Error(`AUTHORIZATION_ROUTE_DELEGATION_UNKNOWN:${relativePath}:${serviceId}`);
+        }
+      }
+      entries.push(
+        entry({
+          id: `${relativePath}#${controlledInternalPolicy.method}`,
+          surfaceType: "ROUTE_HANDLER",
+          permission: controlledInternalPolicy.permission,
+          dimensions: controlledInternalPolicy.dimensions,
+          guardChain: controlledInternalPolicy.guardChain,
+          denialContract: controlledInternalPolicy.denialContract,
+          riskTier: "HIGH",
+          testIds: controlledInternalPolicy.testIds,
+          boundaryCaseIds: [
+            "AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+          ],
+          boundaryClassifications: ["HOST_INTERNAL_BOUNDARY"],
+          authorizationAdapterIds: [
+            "loopback-only edge publication",
+            "constant-time bearer token",
+            "bounded aggregate payload",
+          ],
+          noMutationControls: [
+            "no metric disclosure, audit write, or authentication-state mutation",
+          ],
+          delegatedServiceIds,
+          callChains: delegatedServiceIds.map((serviceId) => [
+            `${relativePath}#${controlledInternalPolicy.method}`,
+            serviceId,
+          ]),
         }),
       );
       continue;
@@ -1655,6 +1725,10 @@ export function authorizationBoundaryCoverageReport(manifest) {
     .filter((surface) =>
       surface.id === "app/(auth)/sign-out/route.ts#POST"
         ? !surface.executableTestIds.includes("AUTHZ-SIGNOUT-ROUTE-001")
+        : surface.id === "app/api/internal/authentication-metrics/route.ts#GET"
+          ? !surface.executableTestIds.includes(
+              "BOUNDARY_CASE:AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+            )
         : [
               "app/api/evidence/uploads/route.ts#POST",
               "app/api/evidence/uploads/content/route.ts#POST",

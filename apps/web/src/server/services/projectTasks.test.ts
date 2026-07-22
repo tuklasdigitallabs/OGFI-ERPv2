@@ -469,7 +469,8 @@ describe("project task workflow controls", () => {
     expect(source).toContain("project_comment.created");
     expect(source).toContain("project_attachment.added");
     expect(source).toContain("project_attachment.archived");
-    expect(source).toContain("project_attachment.denied");
+    expect(source).toContain("recordSessionDeniedDecisionSafely");
+    expect(source).not.toContain("getAuthorizationDenialWindowMinutes");
     expect(source).toContain("ATTACHMENT_NOT_FOUND_INACTIVE_OR_UNSCOPED");
     expect(source).toContain("attemptedAction: \"RELINK\"");
     expect(source).toContain("projectLinks: {");
@@ -482,6 +483,21 @@ describe("project task workflow controls", () => {
     expect(myWorkSource).toContain("TaskAttachments");
     expect(myWorkSource).toContain("expectedVersion");
     expect(myWorkSource).not.toContain("objectKey");
+  });
+
+  test("project attachment denial recorder excludes target data", () => {
+    const writer = projectTaskService.slice(
+      projectTaskService.indexOf("async function logProjectAttachmentDenied"),
+      projectTaskService.indexOf("export async function addProjectTaskAttachment")
+    );
+    const recorderInput = writer.slice(writer.indexOf("recordSessionDeniedDecisionSafely("));
+
+    expect(writer).not.toContain("auditEvent.create");
+    expect(recorderInput).not.toContain("taskId:");
+    expect(recorderInput).not.toContain("projectId:");
+    expect(recorderInput).not.toContain("attachmentId:");
+    expect(recorderInput).not.toContain("reasonCode:");
+    expect(recorderInput).toContain('resource: "PROJECTS"');
   });
 
   test("mobile task detail route uses authorized task reads and existing transition services", () => {

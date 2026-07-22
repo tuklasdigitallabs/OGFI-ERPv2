@@ -55,6 +55,7 @@ Approval access is more specific than module access. A user must have the right 
 6. Confirm the source record status still matches the approval workflow.
 7. For a multi-step route, confirm the user is assigned to the current step—not an earlier or later step—and that an eligible approver exists for the next step.
 8. If access was recently changed or revoked, ask the user to refresh and sign in again when required. Do not restore unnecessary access solely to make an old approval page work.
+9. During the controlled normalized-routing rollout, confirm the deployment flag remains disabled until the administrator runbook reports an 18-document-type zero-gap backfill and inbox/action verification. Do not enable it to work around a missing approval.
 
 ## Important Controls And Warnings
 
@@ -63,6 +64,7 @@ Approval access is more specific than module access. A user must have the right 
 - Do not bypass approval by directly editing the source record.
 - Return and reject require remarks so the next user has an auditable instruction.
 - An intermediate approval does not finalize the record. The source record remains pending approval, and the next eligible approver is notified.
+- A notification is a convenience signal, not approval authority. For a role-scoped step, current eligibility is determined from the active step plus live role, permission, scope, effective-date, active-resource, and prohibited-actor checks; an eligible item may be available without a personal notification after the controlled rollout is enabled.
 - Final approval, return, or rejection notifies the requester or responsible owner according to the source workflow.
 - Purchase Requests, Purchase Orders, quotation recommendations, Wastage Reports, and Stock Adjustments use the same current-step authority and concurrent-decision safeguards in the implemented approval flow.
 - A Wastage Report cancellation cannot overwrite a concurrent approval decision. If another authorized action wins first, the later action is rejected and the latest record state must be reviewed.

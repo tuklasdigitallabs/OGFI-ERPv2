@@ -142,7 +142,6 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     assert.equal(child.DATABASE_URL, runtimeUrl);
     assert.equal(child.PATH, "/bin");
     for (const key of [
-      "DIRECT_DATABASE_URL",
       "DISPOSABLE_DATABASE_ADMIN_URL",
       "MIGRATOR_DATABASE_URL",
       "POSTGRES_ADMIN_PASSWORD",
@@ -160,9 +159,13 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       "ALTERNATE_DATABASE_URL",
       "DATABASE_PASSWORD",
       "POSTGRES_USER",
+      "OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME",
+      "OGFI_DISPOSABLE_DATABASE_RUN_ID",
+      "OGFI_DISPOSABLE_DATABASE_NONCE_SHA256",
     ]) {
       assert.equal(child[key], undefined, `${key} is absent`);
     }
+    assert.equal(child.DIRECT_DATABASE_URL, "");
   });
 
   it("passes psql credentials only through a scrubbed PG environment", () => {
@@ -208,6 +211,9 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     assert.equal(shouldRunSeedRepeatability("authorization-all"), true);
     assert.equal(shouldRunSeedRepeatability("access-control"), false);
     assert.equal(env.OGFI_RUN_SEED_REPEATABILITY_TEST, "true");
+    assert.equal(env.OGFI_DISPOSABLE_DATABASE_EXPECTED_NAME, identity.databaseName);
+    assert.equal(env.OGFI_DISPOSABLE_DATABASE_RUN_ID, identity.runId);
+    assert.equal(env.OGFI_DISPOSABLE_DATABASE_NONCE_SHA256, identity.nonceSha256);
     assert.equal(env.DATABASE_URL, runtimeUrl);
     assert.equal(env.DISPOSABLE_DATABASE_ADMIN_URL, undefined);
 
@@ -278,6 +284,17 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       /SELECT \* FROM ogfi_disposable_control\.database_identity/,
     );
     assert.match(runner, /verifyRuntimeMarkerBoundary\(runtimeUrl, identity\)/);
+  });
+
+  it("proves approval routing ALWAYS triggers under replication role", () => {
+    const runner = readFileSync(
+      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      "utf8",
+    );
+    assert.match(runner, /suiteName === "approval-routing-backfill"/);
+    assert.match(runner, /SET LOCAL session_replication_role = replica/);
+    assert.match(runner, /APPROVAL_ROUTING_CONTEXT_IMMUTABLE/);
+    assert.match(runner, /Approval ALWAYS trigger was bypassed by replication role/);
   });
 
   it("rejects production, staging, shared, remote, fixed, and overlapping targets", () => {

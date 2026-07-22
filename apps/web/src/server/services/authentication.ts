@@ -6,6 +6,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
+import { isIP } from "node:net";
 import { cookies, headers } from "next/headers";
 import { hash, verify } from "@node-rs/argon2";
 import { prisma, type TransactionClient } from "@ogfi/database";
@@ -13,9 +14,28 @@ import { Secret, TOTP } from "otpauth";
 import nodemailer from "nodemailer";
 import QRCode from "qrcode";
 import { isSensitivePermissionCode } from "./rolePermissionCatalog";
+import {
+  completeSuccessfulAuthenticationAttemptInTransaction,
+  loadAuthenticationThrottleConfig,
+  reserveAuthenticationAttempt,
+  reserveAuthenticationAttemptInTransaction,
+  type AuthenticationThrottleReservation,
+} from "./authenticationThrottle";
+import {
+  assertProductionArgon2WorkGateConfiguration,
+  runWithArgon2WorkPermit,
+} from "./argon2WorkGate";
+import {
+  recordDeniedDecisionInTransactionSafely,
+  recordDeniedDecisionSafely,
+} from "./authorizationDenials";
 
 export const authModes = ["demo", "local"] as const;
 export type AuthMode = (typeof authModes)[number];
+
+// DEC-0050 keeps authorization-denial aggregation independent from the
+// configurable authentication-throttle window.
+export const AUTHENTICATION_DENIAL_AUDIT_WINDOW_MINUTES = 15;
 
 type IntegerSetting = {
   name: string;
@@ -36,24 +56,6 @@ const authIntegerSettings = {
     fallback: 12,
     minimum: 1,
     maximum: 168,
-  },
-  loginWindowMinutes: {
-    name: "AUTH_LOGIN_WINDOW_MINUTES",
-    fallback: 15,
-    minimum: 1,
-    maximum: 60,
-  },
-  loginAccountLimit: {
-    name: "AUTH_LOGIN_ACCOUNT_LIMIT",
-    fallback: 5,
-    minimum: 1,
-    maximum: 100,
-  },
-  loginSourceLimit: {
-    name: "AUTH_LOGIN_SOURCE_LIMIT",
-    fallback: 20,
-    minimum: 1,
-    maximum: 1_000,
   },
   mfaChallengeMinutes: {
     name: "AUTH_MFA_CHALLENGE_MINUTES",
@@ -99,15 +101,6 @@ const sessionIdleMinutes = readBoundedAuthInteger(
 const sessionAbsoluteHours = readBoundedAuthInteger(
   authIntegerSettings.sessionAbsoluteHours,
 );
-const loginWindowMinutes = readBoundedAuthInteger(
-  authIntegerSettings.loginWindowMinutes,
-);
-const loginAccountLimit = readBoundedAuthInteger(
-  authIntegerSettings.loginAccountLimit,
-);
-const loginSourceLimit = readBoundedAuthInteger(
-  authIntegerSettings.loginSourceLimit,
-);
 const mfaChallengeMinutes = readBoundedAuthInteger(
   authIntegerSettings.mfaChallengeMinutes,
 );
@@ -122,6 +115,39 @@ type RequestFingerprint = {
   sourceAddress: string;
   userAgent: string;
 };
+
+type MfaAuthenticatorSnapshot = {
+  id: string;
+  tenantId: string;
+  userId: string;
+  status: string;
+  encryptedSecret: string;
+  secretIv: string;
+  secretAuthTag: string;
+  keyVersion: number;
+  updatedAt: Date;
+};
+
+export function getTrustedRequestFingerprint(requestHeaders: Headers): RequestFingerprint {
+  const trustedProxyMode = process.env.AUTH_TRUSTED_PROXY_MODE;
+  if (trustedProxyMode === "caddy_single_hop") {
+    const forwardedFor = requestHeaders.get("x-forwarded-for")?.trim() ?? "";
+    if (!forwardedFor || forwardedFor.includes(",") || isIP(forwardedFor) === 0) {
+      throw new Error("AUTH_TRUSTED_PROXY_SOURCE_INVALID");
+    }
+    return {
+      sourceAddress: forwardedFor,
+      userAgent: requestHeaders.get("user-agent") ?? "unknown",
+    };
+  }
+  if (isProduction()) {
+    throw new Error("AUTH_TRUSTED_PROXY_MODE_INVALID");
+  }
+  return {
+    sourceAddress: "untrusted-direct",
+    userAgent: requestHeaders.get("user-agent") ?? "unknown",
+  };
+}
 
 function isProduction() {
   return (
@@ -224,6 +250,7 @@ export function assertProductionAuthConfiguration() {
   getAuthMode();
   requireAuthSecret();
   Object.values(authIntegerSettings).forEach(readBoundedAuthInteger);
+  assertProductionArgon2WorkGateConfiguration();
   const current = currentEncryptionKey();
   if (
     !Number.isInteger(current.version) ||
@@ -251,6 +278,10 @@ export function assertProductionAuthConfiguration() {
     decodeEncryptionKey(previousKey, "APP_ENCRYPTION_PREVIOUS_KEY");
   }
   if (isProduction()) {
+    if (process.env.AUTH_TRUSTED_PROXY_MODE !== "caddy_single_hop") {
+      throw new Error("AUTH_TRUSTED_PROXY_MODE_INVALID");
+    }
+    loadAuthenticationThrottleConfig();
     activationDeliveryConfiguration();
   }
 }
@@ -383,10 +414,27 @@ export async function verifyPassword(passwordHash: string, password: string) {
 
 let dummyPasswordHash: Promise<string> | null = null;
 
+async function runAuthenticationArgon2<T>(work: () => Promise<T>) {
+  try {
+    return await runWithArgon2WorkPermit(work);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "AUTH_ARGON2_CAPACITY_EXCEEDED"
+    ) {
+      throw new Error("AUTHENTICATION_CAPACITY_TEMPORARILY_UNAVAILABLE");
+    }
+    throw error;
+  }
+}
+
 function getDummyPasswordHash() {
-  dummyPasswordHash ??= hashPassword(
-    "OGFI timing equalization credential 2026 only",
-  );
+  dummyPasswordHash ??= runAuthenticationArgon2(() =>
+    hashPassword("OGFI timing equalization credential 2026 only"),
+  ).catch((error) => {
+    dummyPasswordHash = null;
+    throw error;
+  });
   return dummyPasswordHash;
 }
 
@@ -440,36 +488,6 @@ function generateRecoveryCodes() {
     const raw = randomBytes(8).toString("hex").toUpperCase();
     return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12)}`;
   });
-}
-
-async function userRequiresMfa(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      roleAssignments: {
-        where: { status: "ACTIVE" },
-        select: {
-          role: {
-            select: {
-              status: true,
-              permissions: {
-                select: { permission: { select: { code: true } } },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-  return Boolean(
-    user?.roleAssignments.some(
-      ({ role }) =>
-        role.status === "ACTIVE" &&
-        role.permissions.some(({ permission }) =>
-          isSensitivePermissionCode(permission.code),
-        ),
-    ),
-  );
 }
 
 async function userRequiresMfaInTransaction(
@@ -568,14 +586,6 @@ async function createSessionRecord(
   return { session, token, absoluteExpiresAt };
 }
 
-async function createSession(input: Parameters<typeof createSessionRecord>[1]) {
-  const result = await prisma.$transaction((tx) =>
-    createSessionRecord(tx, input),
-  );
-  await setSessionCookie(result.token, result.absoluteExpiresAt);
-  return result.session;
-}
-
 function assertSessionTransitionSourceValid(
   session: SessionTransitionSource,
   expectedStatus: string,
@@ -607,6 +617,7 @@ export async function rotateSessionInTransaction(
     status: "ACTIVE" | "PENDING_MFA" | "MFA_ENROLLMENT_REQUIRED";
     assuranceLevel: "PASSWORD" | "MFA";
     mfaAuthenticatedAt?: Date | null;
+    fingerprint?: RequestFingerprint;
   },
 ) {
   const now = new Date();
@@ -638,7 +649,7 @@ export async function rotateSessionInTransaction(
       ? requestedIdleExpiresAt
       : session.absoluteExpiresAt;
   const token = randomBytes(32).toString("base64url");
-  await tx.authSession.create({
+  const replacement = await tx.authSession.create({
     data: {
       tenantId: session.tenantId,
       userId: session.userId,
@@ -650,133 +661,106 @@ export async function rotateSessionInTransaction(
       privilegeEpochAtIssue: session.privilegeEpochAtIssue,
       idleExpiresAt,
       absoluteExpiresAt: session.absoluteExpiresAt,
-      userAgentHash: session.userAgentHash,
-      sourceAddressHash: session.sourceAddressHash,
+      userAgentHash: input.fingerprint
+        ? keyedDigest(input.fingerprint.userAgent)
+        : session.userAgentHash,
+      sourceAddressHash: input.fingerprint
+        ? keyedDigest(input.fingerprint.sourceAddress)
+        : session.sourceAddressHash,
     },
   });
-  return { token, absoluteExpiresAt: session.absoluteExpiresAt };
+  return {
+    sessionId: replacement.id,
+    token,
+    absoluteExpiresAt: session.absoluteExpiresAt,
+  };
 }
 
-async function recordLoginAttempt(input: {
-  tenantCode: string;
-  identifier: string;
-  sourceAddress: string;
-  succeeded: boolean;
-}) {
-  await prisma.authLoginAttempt.create({
-    data: {
-      tenantLoginCodeHash: keyedDigest(normalizeTenantCode(input.tenantCode)),
-      identifierHash: keyedDigest(
-        `${normalizeTenantCode(input.tenantCode)}:${normalizeIdentifier(input.identifier)}`,
-      ),
-      sourceAddressHash: keyedDigest(input.sourceAddress),
-      attemptType: "PASSWORD",
-      succeeded: input.succeeded,
-    },
+async function recordPasswordAuthenticationDenial(
+  tenantId: string | null,
+  reason: "AUTHENTICATION_REQUIRED" | "POLICY_DENIED",
+) {
+  if (!tenantId) return;
+  await recordDeniedDecisionSafely({
+    tenantId,
+    companyId: null,
+    locationId: null,
+    actorUserId: null,
+    subjectType: "UNRESOLVED_IDENTITY",
+    action: "AUTHENTICATE",
+    reason,
+    resource: "AUTHENTICATION",
+    windowMinutes: AUTHENTICATION_DENIAL_AUDIT_WINDOW_MINUTES,
   });
 }
 
-async function assertLoginRateLimit(input: {
-  tenantCode: string;
-  identifier: string;
-  sourceAddress: string;
-}) {
-  const since = addMinutes(new Date(), -loginWindowMinutes);
-  const identifierHash = keyedDigest(
-    `${normalizeTenantCode(input.tenantCode)}:${normalizeIdentifier(input.identifier)}`,
-  );
-  const sourceAddressHash = keyedDigest(input.sourceAddress);
-  const [accountFailures, sourceFailures] = await Promise.all([
-    prisma.authLoginAttempt.count({
-      where: {
-        identifierHash,
-        attemptType: "PASSWORD",
-        succeeded: false,
-        attemptedAt: { gte: since },
-      },
-    }),
-    prisma.authLoginAttempt.count({
-      where: {
-        sourceAddressHash,
-        attemptType: "PASSWORD",
-        succeeded: false,
-        attemptedAt: { gte: since },
-      },
-    }),
-  ]);
-  if (
-    accountFailures >= loginAccountLimit ||
-    sourceFailures >= loginSourceLimit
-  ) {
-    await recordLoginAttempt({
-      tenantCode: input.tenantCode,
-      identifier: input.identifier,
-      sourceAddress: input.sourceAddress,
-      succeeded: false,
-    });
-    throw new Error("LOGIN_TEMPORARILY_THROTTLED");
-  }
-}
-
-export async function authenticatePassword(input: {
-  tenantCode: string;
-  identifier: string;
-  password: string;
-  fingerprint: RequestFingerprint;
-}) {
-  assertProductionAuthConfiguration();
-  if (getAuthMode() !== "local") {
-    throw new Error("LOCAL_AUTH_NOT_ENABLED");
-  }
-  await assertLoginRateLimit({
-    tenantCode: input.tenantCode,
-    identifier: input.identifier,
-    sourceAddress: input.fingerprint.sourceAddress,
-  });
-
-  const tenantCode = normalizeTenantCode(input.tenantCode);
-  const identifier = normalizeIdentifier(input.identifier);
-  const identity = await prisma.authIdentity.findFirst({
+async function lockAndReloadPasswordIdentity(
+  tx: TransactionClient,
+  input: {
+    identityId: string;
+    tenantCode: string;
+    normalizedIdentifier: string;
+    verifiedPasswordHash: string;
+  },
+) {
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT identity.id
+      FROM "AuthIdentity" identity
+      JOIN "Tenant" tenant_account ON tenant_account.id = identity."tenantId"
+      JOIN "User" user_account ON user_account.id = identity."userId"
+      JOIN "PasswordCredential" credential
+        ON credential."authIdentityId" = identity.id
+     WHERE identity.id = ${input.identityId}::uuid
+       AND identity.provider = 'LOCAL'
+       AND identity."normalizedIdentifier" = ${input.normalizedIdentifier}
+       AND identity.status = 'ACTIVE'
+       AND tenant_account."loginCode" = ${input.tenantCode}
+       AND tenant_account.status = 'ACTIVE'
+       AND user_account.status = 'ACTIVE'
+     FOR UPDATE OF identity, tenant_account, user_account, credential`;
+  if (!locked[0]) throw new Error("LOGIN_CREDENTIALS_INVALID");
+  const identity = await tx.authIdentity.findFirst({
     where: {
+      id: input.identityId,
       provider: "LOCAL",
-      normalizedIdentifier: identifier,
+      normalizedIdentifier: input.normalizedIdentifier,
       status: "ACTIVE",
-      tenant: { loginCode: tenantCode, status: "ACTIVE" },
+      tenant: { loginCode: input.tenantCode, status: "ACTIVE" },
       user: { status: "ACTIVE" },
     },
     include: { passwordCredential: true, user: true },
   });
-  const passwordHash =
-    identity?.passwordCredential?.passwordHash ??
-    (await getDummyPasswordHash());
-  const passwordVerified = await verifyPassword(passwordHash, input.password);
-  const valid = Boolean(identity?.passwordCredential && passwordVerified);
-  await recordLoginAttempt({
-    tenantCode,
-    identifier,
-    sourceAddress: input.fingerprint.sourceAddress,
-    succeeded: valid,
-  });
-  if (!valid || !identity?.passwordCredential) {
-    if (identity) {
-      await prisma.auditEvent.create({
-        data: {
-          tenantId: identity.tenantId,
-          actorUserId: null,
-          eventType: "auth.login.failed",
-          entityType: "User",
-          entityId: identity.userId,
-          afterData: { outcome: "DENIED" },
-          metadata: { sourceDecisionId: "DEC-0040" },
-        },
-      });
-    }
+  if (
+    !identity?.passwordCredential ||
+    identity.passwordCredential.passwordHash !== input.verifiedPasswordHash
+  ) {
     throw new Error("LOGIN_CREDENTIALS_INVALID");
   }
+  return identity;
+}
 
-  const mfaRequired = await userRequiresMfa(identity.userId);
+export async function finalizePasswordAuthenticationInTransaction(
+  tx: TransactionClient,
+  input: {
+    identityId: string;
+    tenantCode: string;
+    normalizedIdentifier: string;
+    verifiedPasswordHash: string;
+    fingerprint: RequestFingerprint;
+    reservation: AuthenticationThrottleReservation;
+  },
+) {
+  const identity = await lockAndReloadPasswordIdentity(tx, input);
+  if (
+    input.reservation.attemptType !== "PASSWORD" ||
+    input.reservation.tenantId !== identity.tenantId ||
+    input.reservation.accountUserId !== identity.userId
+  ) {
+    throw new Error("AUTH_THROTTLE_RESERVATION_SCOPE_MISMATCH");
+  }
+  const mfaRequired = await userRequiresMfaInTransaction(tx, identity.userId);
   const activeAuthenticator = mfaRequired
-    ? await prisma.mfaAuthenticator.findFirst({
+    ? await tx.mfaAuthenticator.findFirst({
         where: {
           tenantId: identity.tenantId,
           userId: identity.userId,
@@ -789,7 +773,8 @@ export async function authenticatePassword(input: {
       ? "PENDING_MFA"
       : "MFA_ENROLLMENT_REQUIRED"
     : "ACTIVE";
-  const createdSession = await createSession({
+  const now = new Date();
+  const createdSession = await createSessionRecord(tx, {
     tenantId: identity.tenantId,
     userId: identity.userId,
     authIdentityId: identity.id,
@@ -798,23 +783,116 @@ export async function authenticatePassword(input: {
     privilegeEpoch: identity.user.privilegeEpoch,
     fingerprint: input.fingerprint,
   });
-  await prisma.auditEvent.create({
+  await tx.auditEvent.create({
     data: {
+      id: input.reservation.id,
       tenantId: identity.tenantId,
       actorUserId: identity.userId,
-      eventType: "auth.login.password_succeeded",
+      eventType: "auth.password.succeeded",
       entityType: "AuthSession",
-      entityId: createdSession.id,
+      entityId: createdSession.session.id,
+      occurredAt: now,
       afterData: { status, assuranceLevel: "PASSWORD", mfaRequired },
-      metadata: { sourceDecisionId: "DEC-0040" },
+      metadata: { sourceDecisionId: "DEC-0050" },
     },
   });
+  await completeSuccessfulAuthenticationAttemptInTransaction(
+    input.reservation,
+    { client: tx },
+  );
   if (status === "ACTIVE") {
-    await prisma.user.update({
+    await tx.user.update({
       where: { id: identity.userId },
-      data: { lastLoginAt: new Date() },
+      data: { lastLoginAt: now },
     });
   }
+  return { status, createdSession };
+}
+
+export async function authenticatePassword(input: {
+  tenantCode: string;
+  identifier: string;
+  password: string;
+  fingerprint: RequestFingerprint;
+}) {
+  assertProductionAuthConfiguration();
+  if (getAuthMode() !== "local") {
+    throw new Error("LOCAL_AUTH_NOT_ENABLED");
+  }
+  const tenantCode = normalizeTenantCode(input.tenantCode);
+  const identifier = normalizeIdentifier(input.identifier);
+  const identity = await prisma.authIdentity.findFirst({
+    where: {
+      provider: "LOCAL",
+      normalizedIdentifier: identifier,
+      status: "ACTIVE",
+      tenant: { loginCode: tenantCode, status: "ACTIVE" },
+      user: { status: "ACTIVE" },
+    },
+    include: { passwordCredential: true, user: true },
+  });
+  const throttle = await reserveAuthenticationAttempt({
+    attemptType: "PASSWORD",
+    identifierSignal: `${tenantCode}:${identifier}`,
+    sourceSignal: input.fingerprint.sourceAddress,
+    tenantId: identity?.tenantId ?? null,
+    accountUserId: identity?.userId ?? null,
+  });
+  if (!throttle.allowed) {
+    await recordPasswordAuthenticationDenial(identity?.tenantId ?? null, "POLICY_DENIED");
+    // An account-only threshold must not reveal that the submitted identifier
+    // maps to a real account. Source/global/tenant pressure remains a distinct,
+    // retryable capacity response because it affects known and unknown inputs.
+    throw new Error(
+      throttle.thresholdDimensions.length === 1 &&
+        throttle.thresholdDimensions[0] === "ACCOUNT"
+        ? "LOGIN_CREDENTIALS_INVALID"
+        : "LOGIN_TEMPORARILY_THROTTLED",
+    );
+  }
+  const passwordHash =
+    identity?.passwordCredential?.passwordHash ??
+    (await getDummyPasswordHash());
+  const passwordVerified = await runAuthenticationArgon2(() =>
+    verifyPassword(passwordHash, input.password),
+  );
+  const valid = Boolean(identity?.passwordCredential && passwordVerified);
+  if (!valid || !identity?.passwordCredential) {
+    await recordPasswordAuthenticationDenial(
+      identity?.tenantId ?? null,
+      "AUTHENTICATION_REQUIRED",
+    );
+    throw new Error("LOGIN_CREDENTIALS_INVALID");
+  }
+  const verifiedPasswordHash = identity.passwordCredential.passwordHash;
+  let finalized: Awaited<
+    ReturnType<typeof finalizePasswordAuthenticationInTransaction>
+  >;
+  try {
+    finalized = await prisma.$transaction((tx) =>
+      finalizePasswordAuthenticationInTransaction(tx, {
+        identityId: identity.id,
+        tenantCode,
+        normalizedIdentifier: identifier,
+        verifiedPasswordHash,
+        fingerprint: input.fingerprint,
+        reservation: throttle.reservation,
+      }),
+    );
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "LOGIN_CREDENTIALS_INVALID"
+    ) {
+      throw error;
+    }
+    throw new Error("LOGIN_TEMPORARILY_THROTTLED");
+  }
+  await setSessionCookie(
+    finalized.createdSession.token,
+    finalized.createdSession.absoluteExpiresAt,
+  );
+  const { status } = finalized;
   return status === "PENDING_MFA"
     ? "/mfa-challenge"
     : status === "MFA_ENROLLMENT_REQUIRED"
@@ -905,146 +983,249 @@ function mfaAttemptIdentifierHash(session: {
   return keyedDigest(`${session.tenantId}:${session.userId}`);
 }
 
-async function lockMfaChallenge(
+async function lockMfaChallengeInTransaction(
+  tx: TransactionClient,
   session: SessionTransitionSource,
-  reason: string,
+  now: Date,
 ) {
-  const now = new Date();
-  await prisma.$transaction(async (tx) => {
-    const result = await tx.authSession.updateMany({
-      where: { id: session.id, status: "PENDING_MFA" },
-      data: {
-        status: "REVOKED",
-        challengeLockedAt: now,
-        revokedAt: now,
-        revocationReason: reason,
-      },
-    });
-    if (result.count === 1) {
-      await tx.auditEvent.create({
-        data: {
-          tenantId: session.tenantId,
-          actorUserId: session.userId,
-          eventType: "auth.mfa.challenge_locked",
-          entityType: "AuthSession",
-          entityId: session.id,
-          afterData: { status: "REVOKED" },
-          metadata: { sourceDecisionId: "DEC-0040", reason },
-        },
-      });
-    }
+  const reason = "MFA challenge attempt limit reached.";
+  const result = await tx.authSession.updateMany({
+    where: {
+      id: session.id,
+      status: "PENDING_MFA",
+      challengeLockedAt: null,
+      idleExpiresAt: { gt: now },
+      absoluteExpiresAt: { gt: now },
+    },
+    data: {
+      status: "REVOKED",
+      challengeLockedAt: now,
+      revokedAt: now,
+      revocationReason: reason,
+    },
+  });
+  if (result.count !== 1) throw new Error("AUTH_SESSION_TRANSITION_CONFLICT");
+  await tx.auditEvent.create({
+    data: {
+      tenantId: session.tenantId,
+      actorUserId: session.userId,
+      eventType: "auth.mfa.challenge_locked",
+      entityType: "AuthSession",
+      entityId: session.id,
+      afterData: { status: "REVOKED" },
+      metadata: { sourceDecisionId: "DEC-0040", reason },
+    },
   });
 }
 
-async function assertMfaRateLimit(session: SessionTransitionSource) {
-  const since = addMinutes(new Date(), -loginWindowMinutes);
-  const identifierHash = mfaAttemptIdentifierHash(session);
-  const sourceAddressHash = session.sourceAddressHash ?? keyedDigest("unknown");
-  const [accountFailures, sourceFailures] = await Promise.all([
-    prisma.authLoginAttempt.count({
-      where: {
-        identifierHash,
-        attemptType: "MFA",
-        succeeded: false,
-        attemptedAt: { gte: since },
-      },
-    }),
-    prisma.authLoginAttempt.count({
-      where: {
-        sourceAddressHash,
-        attemptType: "MFA",
-        succeeded: false,
-        attemptedAt: { gte: since },
-      },
-    }),
-  ]);
+async function recordMfaAuthenticationDenial(
+  tx: TransactionClient,
+  session: SessionTransitionSource,
+  reason: "AUTHENTICATION_REQUIRED" | "POLICY_DENIED",
+) {
+  await recordDeniedDecisionInTransactionSafely(
+    {
+      tenantId: session.tenantId,
+      companyId: null,
+      locationId: null,
+      actorUserId: session.userId,
+      subjectType: "ACTOR",
+      action: "AUTHENTICATE",
+      reason,
+      resource: "AUTHENTICATION",
+      windowMinutes: AUTHENTICATION_DENIAL_AUDIT_WINDOW_MINUTES,
+    },
+    { client: tx },
+  );
+}
+
+async function lockAndReloadPendingMfaSession(
+  tx: TransactionClient,
+  sessionId: string,
+  now: Date,
+) {
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT auth_session.id
+      FROM "AuthSession" auth_session
+      JOIN "Tenant" tenant_account
+        ON tenant_account.id = auth_session."tenantId"
+      JOIN "User" user_account
+        ON user_account.id = auth_session."userId"
+       AND user_account."tenantId" = auth_session."tenantId"
+     WHERE auth_session.id = ${sessionId}::uuid
+       AND tenant_account.status = 'ACTIVE'
+       AND user_account.status = 'ACTIVE'
+     FOR UPDATE OF auth_session, tenant_account, user_account`;
+  if (!locked[0]) throw new Error("MFA_CHALLENGE_NOT_FOUND");
+  const session = await tx.authSession.findFirst({
+    where: { id: sessionId },
+    include: { user: true, authIdentity: true },
+  });
+  if (!session) throw new Error("MFA_CHALLENGE_NOT_FOUND");
+  assertSessionTransitionSourceValid(session, "PENDING_MFA", now);
+  return session;
+}
+
+async function lockAndReloadExactMfaAuthenticator(
+  tx: TransactionClient,
+  session: SessionTransitionSource,
+  snapshot: MfaAuthenticatorSnapshot,
+) {
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT authenticator.id
+      FROM "MfaAuthenticator" authenticator
+      JOIN "Tenant" tenant_account
+        ON tenant_account.id = authenticator."tenantId"
+      JOIN "User" user_account
+        ON user_account.id = authenticator."userId"
+       AND user_account."tenantId" = authenticator."tenantId"
+     WHERE authenticator.id = ${snapshot.id}::uuid
+       AND authenticator."tenantId" = ${session.tenantId}::uuid
+       AND authenticator."userId" = ${session.userId}::uuid
+       AND authenticator.status = 'ACTIVE'
+       AND tenant_account.status = 'ACTIVE'
+       AND user_account.status = 'ACTIVE'
+     FOR UPDATE OF authenticator, tenant_account, user_account`;
+  if (!locked[0]) throw new Error("MFA_CODE_INVALID");
+  const current = await tx.mfaAuthenticator.findUnique({
+    where: { id: snapshot.id },
+  });
   if (
-    session.challengeFailureCount >= mfaChallengeLimit ||
-    accountFailures >= mfaChallengeLimit ||
-    sourceFailures >= loginSourceLimit
+    !current ||
+    current.tenantId !== snapshot.tenantId ||
+    current.userId !== snapshot.userId ||
+    current.status !== "ACTIVE" ||
+    current.encryptedSecret !== snapshot.encryptedSecret ||
+    current.secretIv !== snapshot.secretIv ||
+    current.secretAuthTag !== snapshot.secretAuthTag ||
+    current.keyVersion !== snapshot.keyVersion ||
+    current.updatedAt.getTime() !== snapshot.updatedAt.getTime()
   ) {
-    await lockMfaChallenge(session, "MFA challenge attempt limit reached.");
-    throw new Error("MFA_CHALLENGE_TEMPORARILY_THROTTLED");
+    throw new Error("MFA_CODE_INVALID");
   }
+  return current;
 }
 
 export async function recordMfaFailure(session: SessionTransitionSource) {
-  const now = new Date();
-  await prisma.$transaction(async (tx) => {
+  let result: "MFA_CODE_INVALID" | "MFA_CHALLENGE_TEMPORARILY_THROTTLED";
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const lockedSession = await lockAndReloadPendingMfaSession(tx, session.id, now);
+      const throttle = await reserveAuthenticationAttemptInTransaction(
+        {
+          attemptType: "MFA",
+          identifierSignal: mfaAttemptIdentifierHash(lockedSession),
+          sourceSignal: lockedSession.sourceAddressHash ?? keyedDigest("unknown"),
+          tenantId: lockedSession.tenantId,
+          accountUserId: lockedSession.userId,
+        },
+        { client: tx },
+      );
+      if (!throttle.allowed) {
+        await lockMfaChallengeInTransaction(tx, lockedSession, now);
+        await recordMfaAuthenticationDenial(tx, lockedSession, "POLICY_DENIED");
+        return "MFA_CHALLENGE_TEMPORARILY_THROTTLED" as const;
+      }
+      const updated = await tx.authSession.updateMany({
+        where: {
+          id: lockedSession.id,
+          status: "PENDING_MFA",
+          challengeLockedAt: null,
+          challengeFailureCount: lockedSession.challengeFailureCount,
+          idleExpiresAt: { gt: now },
+          absoluteExpiresAt: { gt: now },
+        },
+        data: { challengeFailureCount: { increment: 1 } },
+      });
+      if (updated.count !== 1) throw new Error("AUTH_SESSION_TRANSITION_CONFLICT");
+      await recordMfaAuthenticationDenial(
+        tx,
+        lockedSession,
+        "AUTHENTICATION_REQUIRED",
+      );
+      if (lockedSession.challengeFailureCount + 1 >= mfaChallengeLimit) {
+        await lockMfaChallengeInTransaction(tx, lockedSession, now);
+      }
+      return "MFA_CODE_INVALID" as const;
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      [
+        "AUTH_THROTTLE_UNAVAILABLE",
+        "AUTH_THROTTLE_SUCCESS_RELEASE_UNAVAILABLE",
+      ].includes(error.message)
+    ) {
+      throw new Error("MFA_CHALLENGE_TEMPORARILY_THROTTLED");
+    }
+    throw error;
+  }
+  return result;
+}
+
+async function recordReservedMfaFailure(session: SessionTransitionSource) {
+  return prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const lockedSession = await lockAndReloadPendingMfaSession(tx, session.id, now);
     const updated = await tx.authSession.updateMany({
       where: {
-        id: session.id,
+        id: lockedSession.id,
         status: "PENDING_MFA",
         challengeLockedAt: null,
+        challengeFailureCount: lockedSession.challengeFailureCount,
         idleExpiresAt: { gt: now },
         absoluteExpiresAt: { gt: now },
       },
       data: { challengeFailureCount: { increment: 1 } },
     });
-    if (updated.count !== 1) {
-      throw new Error("AUTH_SESSION_TRANSITION_CONFLICT");
+    if (updated.count !== 1) throw new Error("AUTH_SESSION_TRANSITION_CONFLICT");
+    await recordMfaAuthenticationDenial(
+      tx,
+      lockedSession,
+      "AUTHENTICATION_REQUIRED",
+    );
+    if (lockedSession.challengeFailureCount + 1 >= mfaChallengeLimit) {
+      await lockMfaChallengeInTransaction(tx, lockedSession, now);
     }
-    const current = await tx.authSession.findUniqueOrThrow({
-      where: { id: session.id },
-      select: { challengeFailureCount: true },
-    });
-    await tx.authLoginAttempt.create({
-      data: {
-        tenantLoginCodeHash: keyedDigest(session.tenantId),
-        identifierHash: mfaAttemptIdentifierHash(session),
-        sourceAddressHash:
-          session.sourceAddressHash ?? keyedDigest("unknown"),
-        attemptType: "MFA",
-        sessionId: session.id,
-        succeeded: false,
-      },
-    });
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.tenantId,
-        actorUserId: session.userId,
-        eventType: "auth.mfa.challenge_failed",
-        entityType: "AuthSession",
-        entityId: session.id,
-        afterData: { failureCount: current.challengeFailureCount },
-        metadata: { sourceDecisionId: "DEC-0040" },
-      },
-    });
-    if (current.challengeFailureCount >= mfaChallengeLimit) {
-      await tx.authSession.updateMany({
-        where: { id: session.id, status: "PENDING_MFA" },
-        data: {
-          status: "REVOKED",
-          challengeLockedAt: now,
-          revokedAt: now,
-          revocationReason: "MFA challenge attempt limit reached.",
-        },
-      });
-      await tx.auditEvent.create({
-        data: {
-          tenantId: session.tenantId,
-          actorUserId: session.userId,
-          eventType: "auth.mfa.challenge_locked",
-          entityType: "AuthSession",
-          entityId: session.id,
-          afterData: { status: "REVOKED" },
-          metadata: {
-            sourceDecisionId: "DEC-0040",
-            reason: "MFA challenge attempt limit reached.",
-          },
-        },
-      });
-    }
+    return "MFA_CODE_INVALID" as const;
   });
 }
 
-export async function completeMfaChallenge(codeValue: string) {
+async function recordMfaThrottleDenial(session: SessionTransitionSource) {
+  return prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const lockedSession = await lockAndReloadPendingMfaSession(tx, session.id, now);
+    await lockMfaChallengeInTransaction(tx, lockedSession, now);
+    await recordMfaAuthenticationDenial(tx, lockedSession, "POLICY_DENIED");
+  });
+}
+
+export async function completeMfaChallenge(
+  codeValue: string,
+  fingerprint: RequestFingerprint,
+) {
   const session = await findSessionByToken(["PENDING_MFA"]);
   if (!session) {
     throw new Error("MFA_CHALLENGE_NOT_FOUND");
   }
   assertSessionTransitionSourceValid(session, "PENDING_MFA", new Date());
-  await assertMfaRateLimit(session);
+  const throttle = await reserveAuthenticationAttempt({
+    attemptType: "MFA",
+    identifierSignal: mfaAttemptIdentifierHash(session),
+    sourceSignal: fingerprint.sourceAddress,
+    tenantId: session.tenantId,
+    accountUserId: session.userId,
+  });
+  if (!throttle.allowed) {
+    try {
+      await recordMfaThrottleDenial(session);
+    } catch {
+      // The response remains a stable retryable denial; persistence failures
+      // must not expose database or reservation internals to the caller.
+    }
+    throw new Error("MFA_CHALLENGE_TEMPORARILY_THROTTLED");
+  }
   const authenticator = await prisma.mfaAuthenticator.findFirst({
     where: {
       tenantId: session.tenantId,
@@ -1061,6 +1242,9 @@ export async function completeMfaChallenge(codeValue: string) {
   let usedCounter: bigint | null = null;
   let recoveryCodeId: string | null = null;
 
+  // Code verification is read-only and deliberately outside the database
+  // transaction. Every mutation re-locks and revalidates the session, then
+  // reserves the throttle attempt before replay, recovery, or session writes.
   if (/^\d{6}$/.test(normalized)) {
     const secret = decryptSensitiveValue(authenticator);
     const totp = buildTotp(
@@ -1089,79 +1273,146 @@ export async function completeMfaChallenge(codeValue: string) {
     verified = Boolean(recoveryCodeId);
   }
   if (!verified) {
-    await recordMfaFailure(session);
-    throw new Error("MFA_CODE_INVALID");
+    throw new Error(await recordReservedMfaFailure(session));
   }
 
-  const now = new Date();
-  const rotated = await prisma.$transaction(async (tx) => {
-    if (usedCounter !== null) {
-      const result = await tx.mfaAuthenticator.updateMany({
-        where: {
-          id: authenticator.id,
-          status: "ACTIVE",
-          OR: [
-            { lastUsedCounter: null },
-            { lastUsedCounter: { lt: usedCounter } },
-          ],
-        },
-        data: { lastUsedCounter: usedCounter },
-      });
-      if (result.count !== 1) {
-        throw new Error("MFA_CODE_REPLAYED");
-      }
-    }
-    if (recoveryCodeId) {
-      const result = await tx.mfaRecoveryCode.updateMany({
-        where: { id: recoveryCodeId, consumedAt: null },
-        data: { consumedAt: now },
-      });
-      if (result.count !== 1) {
-        throw new Error("MFA_RECOVERY_CODE_REPLAYED");
-      }
-    }
-    await tx.authLoginAttempt.create({
-      data: {
-        tenantLoginCodeHash: keyedDigest(session.tenantId),
-        identifierHash: mfaAttemptIdentifierHash(session),
-        sourceAddressHash:
-          session.sourceAddressHash ?? keyedDigest("unknown"),
-        attemptType: "MFA",
+  let transactionResult: {
+    rotated: { sessionId: string; token: string; absoluteExpiresAt: Date };
+  };
+  try {
+    transactionResult = await prisma.$transaction((tx) =>
+      finalizeMfaAuthenticationInTransaction(tx, {
         sessionId: session.id,
-        succeeded: true,
-      },
-    });
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.tenantId,
-        actorUserId: session.userId,
-        eventType: recoveryCodeId
-          ? "auth.mfa.recovery_used"
-          : "auth.mfa.challenge_succeeded",
-        entityType: "AuthSession",
-        entityId: session.id,
-        afterData: { assuranceLevel: "MFA" },
-        metadata: { sourceDecisionId: "DEC-0040" },
-      },
-    });
-    const result = await rotateSessionInTransaction(
-      tx,
-      session,
-      "PENDING_MFA",
-      {
-        status: "ACTIVE",
-        assuranceLevel: "MFA",
-        mfaAuthenticatedAt: now,
-      },
+        authenticator,
+        usedCounter,
+        recoveryCodeId,
+        fingerprint,
+        reservation: throttle.reservation,
+      }),
     );
-    await tx.user.update({
-      where: { id: session.userId },
-      data: { lastLoginAt: now },
-    });
-    return result;
-  });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      [
+        "AUTH_THROTTLE_UNAVAILABLE",
+        "AUTH_THROTTLE_SUCCESS_RELEASE_UNAVAILABLE",
+      ].includes(error.message)
+    ) {
+      throw new Error("MFA_CHALLENGE_TEMPORARILY_THROTTLED");
+    }
+    throw error;
+  }
+  const { rotated } = transactionResult;
   await setSessionCookie(rotated.token, rotated.absoluteExpiresAt);
   return "/";
+}
+
+export async function finalizeMfaAuthenticationInTransaction(
+  tx: TransactionClient,
+  input: {
+    sessionId: string;
+    authenticator: MfaAuthenticatorSnapshot;
+    usedCounter: bigint | null;
+    recoveryCodeId: string | null;
+    fingerprint: RequestFingerprint;
+    reservation: AuthenticationThrottleReservation;
+  },
+) {
+  const now = new Date();
+  const lockedSession = await lockAndReloadPendingMfaSession(
+    tx,
+    input.sessionId,
+    now,
+  );
+  const lockedAuthenticator = await lockAndReloadExactMfaAuthenticator(
+    tx,
+    lockedSession,
+    input.authenticator,
+  );
+  if (
+    input.reservation.attemptType !== "MFA" ||
+    input.reservation.tenantId !== lockedSession.tenantId ||
+    input.reservation.accountUserId !== lockedSession.userId
+  ) {
+    throw new Error("AUTH_THROTTLE_RESERVATION_SCOPE_MISMATCH");
+  }
+  if (input.usedCounter !== null) {
+    const result = await tx.mfaAuthenticator.updateMany({
+      where: {
+        id: lockedAuthenticator.id,
+        status: "ACTIVE",
+        updatedAt: lockedAuthenticator.updatedAt,
+        OR: [
+          { lastUsedCounter: null },
+          { lastUsedCounter: { lt: input.usedCounter } },
+        ],
+      },
+      data: { lastUsedCounter: input.usedCounter },
+    });
+    if (result.count !== 1) throw new Error("MFA_CODE_REPLAYED");
+  }
+  if (input.recoveryCodeId) {
+    const recovery = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT recovery.id
+        FROM "MfaRecoveryCode" recovery
+        JOIN "MfaAuthenticator" authenticator
+          ON authenticator.id = recovery."authenticatorId"
+       WHERE recovery.id = ${input.recoveryCodeId}::uuid
+         AND recovery."authenticatorId" = ${lockedAuthenticator.id}::uuid
+         AND recovery."consumedAt" IS NULL
+         AND authenticator.status = 'ACTIVE'
+       FOR UPDATE OF recovery`;
+    if (!recovery[0]) throw new Error("MFA_RECOVERY_CODE_REPLAYED");
+    const result = await tx.mfaRecoveryCode.updateMany({
+      where: {
+        id: input.recoveryCodeId,
+        authenticatorId: lockedAuthenticator.id,
+        consumedAt: null,
+      },
+      data: { consumedAt: now },
+    });
+    if (result.count !== 1) throw new Error("MFA_RECOVERY_CODE_REPLAYED");
+  }
+  const rotated = await rotateSessionInTransaction(
+    tx,
+    lockedSession,
+    "PENDING_MFA",
+    {
+      status: "ACTIVE",
+      assuranceLevel: "MFA",
+      mfaAuthenticatedAt: now,
+      fingerprint: input.fingerprint,
+    },
+  );
+  await tx.auditEvent.create({
+    data: {
+      id: input.reservation.id,
+      tenantId: lockedSession.tenantId,
+      actorUserId: lockedSession.userId,
+      eventType: input.recoveryCodeId
+        ? "auth.mfa.recovery_used"
+        : "auth.mfa.challenge_succeeded",
+      entityType: "AuthSession",
+      entityId: rotated.sessionId,
+      occurredAt: now,
+      afterData: { assuranceLevel: "MFA" },
+      metadata: { sourceDecisionId: "DEC-0050" },
+    },
+  });
+  await completeSuccessfulAuthenticationAttemptInTransaction(
+    input.reservation,
+    { client: tx },
+  );
+  await tx.user.update({
+    where: {
+      id: lockedSession.userId,
+      tenantId: lockedSession.tenantId,
+      status: "ACTIVE",
+      privilegeEpoch: lockedSession.privilegeEpochAtIssue,
+    },
+    data: { lastLoginAt: now },
+  });
+  return { rotated };
 }
 
 export async function beginMfaStepUp() {
@@ -1572,7 +1823,9 @@ export async function activateAccount(input: {
   if (!activation) {
     throw new Error("AUTH_ACTIVATION_INVALID");
   }
-  const passwordHash = await hashPassword(input.password);
+  const passwordHash = await runAuthenticationArgon2(() =>
+    hashPassword(input.password),
+  );
   const normalizedIdentifier = normalizeIdentifier(activation.targetUser.email);
   const saved = await prisma.$transaction(async (tx) => {
     const now = new Date();

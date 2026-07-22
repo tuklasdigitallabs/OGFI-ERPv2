@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@ogfi/database";
 import type { Prisma, TransactionClient } from "@ogfi/database";
 import { z } from "zod";
@@ -5,6 +6,12 @@ import { permissions, requirePermission } from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
 import type { CsvRow } from "./csv";
 import { getFinancePeriodClosePolicy } from "./policySettings";
+import {
+  activateApprovalStepWithEligibility,
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "destructive";
 
@@ -1641,6 +1648,15 @@ export async function requestPeriodCloseSensitiveActionApproval(
     }
 
     const requestedAt = new Date();
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) {
+      throw new Error("PERIOD_CLOSE_APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1651,14 +1667,53 @@ export async function requestPeriodCloseSensitiveActionApproval(
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
       }
+    });
+    const prohibitedActors = Array.from(new Map([
+      [run.initiatedByUserId, {
+        userId: run.initiatedByUserId,
+        reasonCode: "INITIATOR"
+      }],
+      [session.user.id, {
+        userId: session.user.id,
+        reasonCode: "REQUESTER"
+      }]
+    ]).values());
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("FinanceCloseRun"),
+        requiredPermissionCode: permissions.financePeriodCloseManage,
+        dueAt: null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "finance_close.sensitive_action_request"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "COMPANY",
+            companyId: session.context.companyId
+          }]
+        }],
+        prohibitedActors
+      });
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
 
     const updated = await tx.financeCloseRun.update({
@@ -2097,9 +2152,14 @@ export async function approveFinanceCloseRunApproval(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateApprovalStepWithEligibility(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceStepId: nextStep.id,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "finance_close.approval_step_advance"
+        }
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },

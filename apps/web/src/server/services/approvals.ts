@@ -25,6 +25,14 @@ import {
 } from "./purchaseRequests";
 import { dateOnlyInTimeZone, daysBetweenDateOnly } from "./projectDates";
 import { projectBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
+import {
+  activateApprovalStepWithEligibility,
+  assertApprovalRoutingCutoverReady,
+  assertEligibleApprovalStep,
+  findAnyEligibleApprovalActorForStep,
+  listEligibleApprovalStepPage,
+  normalizedApprovalRoutingEnabled
+} from "./approvalRouting";
 
 export type ApprovalQueueItem = {
   approvalInstanceId: string;
@@ -43,6 +51,25 @@ export type ApprovalQueueItem = {
   slaStatus?: PurchaseRequestSlaStatus;
   slaLabel?: string;
 };
+
+export async function listNormalizedApprovalInboxPage(
+  session: SessionContext,
+  input: {
+    page?: number;
+    pageSize?: number;
+    view?: "ASSIGNED" | "DUE_SOON";
+    dueBefore?: Date;
+  } = {}
+) {
+  if (!normalizedApprovalRoutingEnabled()) {
+    throw new Error("APPROVAL_ROUTING_V1_DISABLED");
+  }
+  await assertApprovalRoutingCutoverReady(
+    session.context.tenantId,
+    session.context.companyId
+  );
+  return listEligibleApprovalStepPage(session, input);
+}
 
 export type ApprovalDetail = ApprovalQueueItem & {
   approvalTitle: string;
@@ -115,6 +142,27 @@ const approvalReminderConfig = {
   dueSoonWindowDays: 1,
   overdueReminderFrequencyDays: 1,
   maxOverdueRemindersPerApproval: 5
+};
+
+const approvalPermissionByDocumentType: Record<string, string> = {
+  PurchaseRequest: permissions.purchaseRequestApprove,
+  QuotationRecommendation: permissions.quoteApprove,
+  PurchaseOrder: permissions.purchaseOrderApprove,
+  PurchaseOrderAmendment: permissions.purchaseOrderApprove,
+  PurchaseOrderBalanceClosure: permissions.purchaseOrderApprove,
+  WastageReport: permissions.wastageApprove,
+  StockAdjustment: permissions.stockAdjustmentApprove,
+  BudgetRevision: permissions.financeBudgetApprove,
+  ExpenseRequest: permissions.financeExpenseRequestApprove,
+  CashAdvanceRequest: permissions.financeCashAdvanceApprove,
+  PettyCashRequest: permissions.financePettyCashApprove,
+  PaymentRequest: permissions.financePaymentRequestApprove,
+  PaymentRelease: permissions.financePaymentRelease,
+  FinanceCloseRun: permissions.financePeriodCloseManage,
+  EmployeeLeaveRequest: permissions.workforceLeaveApprove,
+  EmployeeOvertimeRecord: permissions.workforceOvertimeApprove,
+  WorkforceSchedule: permissions.workforceScheduleManage,
+  AttendanceImportBatch: permissions.workforceAttendanceImportManage
 };
 
 const wastagePolicyFlagLabels: Record<string, string> = {
@@ -314,86 +362,50 @@ async function assertLiveApprovalAuthority(
     }
   }
 
-  const effectiveRoleAssignments = await tx.userRoleAssignment.findMany({
-    where: {
-      userId: session.user.id,
-      status: "ACTIVE",
-      startsAt: { lte: now },
-      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-      role: {
-        status: "ACTIVE",
-        OR: [
-          { tenantId: null },
-          { tenantId: session.context.tenantId }
-        ],
-        permissions: {
-          some: { permission: { code: input.requiredPermissionCode } }
-        }
-      }
-    },
-    select: { roleId: true }
-  });
-  const liveRoleIds = effectiveRoleAssignments.map(({ roleId }) => roleId);
-  if (liveRoleIds.length === 0) {
-    throw new Error("APPROVAL_AUTHORITY_STALE");
-  }
-  if (
-    authority.assignedUserId !== session.user.id &&
-    (!authority.assignedRoleId || !liveRoleIds.includes(authority.assignedRoleId))
-  ) {
-    throw new Error("APPROVAL_ASSIGNMENT_DENIED");
+  if (normalizedApprovalRoutingEnabled()) {
+    await assertApprovalRoutingCutoverReady(
+      session.context.tenantId,
+      session.context.companyId,
+      tx
+    );
+    await assertEligibleApprovalStep(session, input.stepId, tx, now);
+    return;
   }
 
-  const location = await tx.location.findFirst({
-    where: {
-      id: input.locationId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE"
-    },
-    select: { id: true, companyId: true, brandId: true }
+  const eligible = await findEligibleApprovalActor(tx, session, {
+    userId: session.user.id,
+    assignedUserId: authority.assignedUserId,
+    assignedRoleId: authority.assignedRoleId,
+    locationId: input.locationId,
+    requiredPermissionCode: input.requiredPermissionCode,
+    prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? [],
+    now
   });
-  if (!location) throw new Error("APPROVAL_SCOPE_DENIED");
-  const scope = await tx.userScopeAssignment.findFirst({
-    where: {
-      userId: session.user.id,
-      status: "ACTIVE",
-      startsAt: { lte: now },
-      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-      accessLevel: { in: ["APPROVE", "MANAGE"] },
-      AND: {
-        OR: [
-          { scopeType: "LOCATION", scopeId: location.id },
-          { scopeType: "COMPANY", scopeId: location.companyId },
-          ...(location.brandId
-            ? [{ scopeType: "BRAND" as const, scopeId: location.brandId }]
-            : [])
-        ]
-      }
-    },
-    select: { id: true }
-  });
-  if (!scope) throw new Error("APPROVAL_SCOPE_DENIED");
+  if (!eligible) throw new Error("APPROVAL_AUTHORITY_STALE");
 }
 
-async function resolveNextApprovalStepRecipients(
+export type ApprovalEligibilityInput = {
+  userId?: string;
+  assignedUserId: string | null;
+  assignedRoleId: string | null;
+  locationId: string;
+  requiredPermissionCode: string;
+  prohibitedApproverUserIds: string[];
+  now?: Date;
+};
+
+export async function findEligibleApprovalActor(
   tx: TransactionClient,
   session: SessionContext,
-  input: {
-    assignedUserId: string | null;
-    assignedRoleId: string | null;
-    locationId: string;
-    requiredPermissionCode: string;
-    prohibitedApproverUserIds: string[];
-  }
+  input: ApprovalEligibilityInput
 ) {
   if (
     input.assignedUserId &&
     input.prohibitedApproverUserIds.includes(input.assignedUserId)
   ) {
-    return [];
+    return null;
   }
-  const now = new Date();
+  const now = input.now ?? new Date();
   const location = await tx.location.findFirst({
     where: {
       id: input.locationId,
@@ -405,7 +417,11 @@ async function resolveNextApprovalStepRecipients(
   });
   if (!location) throw new Error("APPROVAL_SCOPE_DENIED");
   const recipientIdFilter = {
-    ...(input.assignedUserId ? { equals: input.assignedUserId } : {}),
+    ...(input.userId
+      ? { equals: input.userId }
+      : input.assignedUserId
+        ? { equals: input.assignedUserId }
+        : {}),
     ...(input.prohibitedApproverUserIds.length > 0
       ? { notIn: input.prohibitedApproverUserIds }
       : {})
@@ -454,11 +470,10 @@ async function resolveNextApprovalStepRecipients(
         }
       }
     } satisfies Prisma.UserWhereInput;
-  const eligibleRecipients = await tx.user.findMany({
+  return tx.user.findFirst({
     where: recipientWhere,
     select: { id: true }
   });
-  return [...new Set(eligibleRecipients.map(({ id }) => id))];
 }
 
 function sameApprovalRouting(
@@ -516,20 +531,22 @@ async function prepareApprovalDecisionAuthority(
   const preliminaryNextStep = includeNextStep
     ? await findNextApprovalStep(tx, input, false)
     : null;
-  const preliminaryRecipientIds = preliminaryNextStep
-    ? await resolveNextApprovalStepRecipients(tx, session, {
+  const preliminaryEligibleActor = preliminaryNextStep
+    ? await findEligibleApprovalActor(tx, session, {
         assignedUserId: preliminaryNextStep.assignedUserId,
         assignedRoleId: preliminaryNextStep.assignedRoleId,
         locationId: input.locationId,
         requiredPermissionCode: input.requiredPermissionCode,
         prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
       })
-    : [];
-  if (preliminaryNextStep && preliminaryRecipientIds.length === 0) {
+    : null;
+  if (preliminaryNextStep && !preliminaryEligibleActor) {
     throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
   }
 
-  const lockedUserIds = [session.user.id, ...preliminaryRecipientIds]
+  const directRecipientUserId = preliminaryNextStep?.assignedUserId ?? null;
+  const lockedUserIds = [session.user.id, directRecipientUserId]
+    .filter((id): id is string => Boolean(id))
     .filter((id, index, values) => values.indexOf(id) === index)
     .sort();
   for (const userId of lockedUserIds) {
@@ -552,31 +569,34 @@ async function prepareApprovalDecisionAuthority(
     : null;
   await assertLiveApprovalAuthority(tx, session, input, authority, actor);
   if (!includeNextStep) {
-    return { nextStep: null, recipientUserIds: [] as string[] };
+    return { nextStep: null, directRecipientUserId: null };
   }
 
   if (!sameApprovalRouting(preliminaryNextStep ?? undefined, lockedNextStep ?? undefined)) {
     throw new Error("APPROVAL_NEXT_STEP_ROUTING_CHANGED");
   }
   if (!lockedNextStep) {
-    return { nextStep: null, recipientUserIds: [] as string[] };
+    return { nextStep: null, directRecipientUserId: null };
   }
-  const lockedUserIdSet = new Set(lockedUserIds);
-  const revalidatedRecipientIds = (
-    await resolveNextApprovalStepRecipients(tx, session, {
-      assignedUserId: lockedNextStep.assignedUserId,
-      assignedRoleId: lockedNextStep.assignedRoleId,
-      locationId: input.locationId,
-      requiredPermissionCode: input.requiredPermissionCode,
-      prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
-    })
-  ).filter((recipientId) => lockedUserIdSet.has(recipientId));
-  if (revalidatedRecipientIds.length === 0) {
+  const revalidatedEligibleActor = normalizedApprovalRoutingEnabled()
+    ? await findAnyEligibleApprovalActorForStep(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceStepId: lockedNextStep.id
+      })
+    : await findEligibleApprovalActor(tx, session, {
+        assignedUserId: lockedNextStep.assignedUserId,
+        assignedRoleId: lockedNextStep.assignedRoleId,
+        locationId: input.locationId,
+        requiredPermissionCode: input.requiredPermissionCode,
+        prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
+      });
+  if (!revalidatedEligibleActor) {
     throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
   }
   return {
     nextStep: lockedNextStep,
-    recipientUserIds: revalidatedRecipientIds
+    directRecipientUserId: lockedNextStep.assignedUserId
   };
 }
 
@@ -610,13 +630,73 @@ async function recordApprovalOutcomeNotification(
   });
 }
 
+async function activateNextApprovalStep(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { approvalInstanceId: string; approvalInstanceStepId: string; source: string }
+) {
+  if (normalizedApprovalRoutingEnabled()) {
+    await assertApprovalRoutingCutoverReady(
+      session.context.tenantId,
+      session.context.companyId,
+      tx
+    );
+    await activateApprovalStepWithEligibility(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: input.approvalInstanceStepId,
+      activationAudit: {
+        actorUserId: session.user.id,
+        source: input.source,
+        metadata: { approvalInstanceId: input.approvalInstanceId }
+      }
+    });
+    return { count: 1 };
+  }
+  return tx.approvalInstanceStep.updateMany({
+    where: {
+      id: input.approvalInstanceStepId,
+      approvalInstanceId: input.approvalInstanceId,
+      status: "WAITING"
+    },
+    data: { status: "PENDING" }
+  });
+}
+
+async function assertNormalizedApprovalAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  approvalInstanceStepId: string
+) {
+  if (!normalizedApprovalRoutingEnabled()) return;
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT step.id
+      FROM "ApprovalInstanceStep" step
+      JOIN "ApprovalInstance" ai ON ai.id = step."approvalInstanceId"
+     WHERE step.id = ${approvalInstanceStepId}::uuid
+       AND step.status = 'PENDING'::"ApprovalStepStatus"
+       AND step."stepOrder" = ai."currentStepOrder"
+       AND ai.status = 'PENDING'::"ApprovalStatus"
+       AND ai."tenantId" = ${session.context.tenantId}::uuid
+       AND ai."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF ai, step
+  `;
+  if (!locked[0]) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  await assertApprovalRoutingCutoverReady(
+    session.context.tenantId,
+    session.context.companyId,
+    tx
+  );
+  await assertEligibleApprovalStep(session, approvalInstanceStepId, tx);
+}
+
 async function approveCurrentStepAndAdvance(
   tx: TransactionClient,
   session: SessionContext,
   input: ApprovalStepAdvanceInput
 ) {
   // The preparation primitive runs assertLiveApprovalAuthority and
-  // resolveNextApprovalStepRecipients, and raises
+  // findEligibleApprovalActor, and raises
   // APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE before any decision mutation.
   const prepared = await prepareApprovalDecisionAuthority(
     tx,
@@ -624,9 +704,6 @@ async function approveCurrentStepAndAdvance(
     input,
     true
   );
-  if (prepared.nextStep && prepared.recipientUserIds.length === 0) {
-    throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
-  }
   const actedAt = new Date();
   const actedStep = await tx.approvalInstanceStep.updateMany({
     where: {
@@ -649,13 +726,10 @@ async function approveCurrentStepAndAdvance(
   const nextStep = prepared.nextStep;
 
   if (nextStep) {
-    const activatedNextStep = await tx.approvalInstanceStep.updateMany({
-      where: {
-        id: nextStep.id,
-        approvalInstanceId: input.approvalId,
-        status: "WAITING"
-      },
-      data: { status: "PENDING" }
+    const activatedNextStep = await activateNextApprovalStep(tx, session, {
+      approvalInstanceId: input.approvalId,
+      approvalInstanceStepId: nextStep.id,
+      source: "approvals.advance_current_step"
     });
     if (activatedNextStep.count !== 1) {
       throw new Error("APPROVAL_NOT_ACTIONABLE");
@@ -689,33 +763,45 @@ async function approveCurrentStepAndAdvance(
           approvalInstanceId: input.approvalId,
           approvedStepOrder: input.stepOrder,
           nextStepOrder: nextStep.stepOrder,
+          activationMode: nextStep.assignedUserId ? "DIRECT_USER" : "ROLE_SCOPED",
+          assignedUserId: nextStep.assignedUserId,
+          assignedRoleId: nextStep.assignedRoleId,
+          requiredPermissionCode: input.requiredPermissionCode,
+          activationScopeType: "LOCATION_CONTEXT",
+          activationScopeId: input.locationId,
           remarks: input.remarks ?? null,
           ...input.audit.metadata
         }
       }
     });
 
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: input.locationId,
-      recipientUserIds: prepared.recipientUserIds,
-      notificationType: "APPROVAL_STEP_READY",
-      priority: "NORMAL",
-      title: `Approval required: ${input.notification.publicReference}`,
-      body: `${input.notification.entityLabel} ${input.notification.publicReference} at ${input.notification.locationName} is ready for approval step ${nextStep.stepOrder}.`,
-      deepLink: `/approvals/${input.approvalId}`,
-      entityType: input.audit.entityType,
-      entityId: input.audit.entityId,
-      sourceEventKey: auditEvent.id,
-      recipientBasis: nextStep.assignedUserId
-        ? "assigned_user"
-        : "assigned_role",
-      metadata: {
-        approvalInstanceId: input.approvalId,
-        approvalStepOrder: nextStep.stepOrder
-      }
-    });
+    if (prepared.directRecipientUserId) {
+      await recordWorkflowNotifications(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: input.locationId,
+        recipientUserIds: [prepared.directRecipientUserId],
+        notificationType: "APPROVAL_STEP_READY",
+        priority: "NORMAL",
+        title: `Approval required: ${input.notification.publicReference}`,
+        body: `${input.notification.entityLabel} ${input.notification.publicReference} at ${input.notification.locationName} is ready for approval step ${nextStep.stepOrder}.`,
+        deepLink: `/approvals/${input.approvalId}`,
+        entityType: input.audit.entityType,
+        entityId: input.audit.entityId,
+        sourceEventKey: auditEvent.id,
+        recipientBasis: "assigned_user",
+        metadata: {
+          approvalInstanceId: input.approvalId,
+          approvalStepOrder: nextStep.stepOrder,
+          assignmentMode: "DIRECT_USER",
+          assignedUserId: prepared.directRecipientUserId,
+          assignedRoleId: nextStep.assignedRoleId,
+          requiredPermissionCode: input.requiredPermissionCode,
+          scopeType: "LOCATION_CONTEXT",
+          scopeId: input.locationId
+        }
+      });
+    }
 
     return {
       isFinalStep: false as const,
@@ -797,11 +883,28 @@ async function closeCurrentApprovalDecision(
   return { actedAt };
 }
 
-async function getActiveRoleIds(session: SessionContext) {
+async function getActiveRoleIds(
+  session: SessionContext,
+  requiredPermissionCode?: string
+) {
+  const now = new Date();
   const assignments = await prisma.userRoleAssignment.findMany({
     where: {
       userId: session.user.id,
-      status: "ACTIVE"
+      status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      role: {
+        status: "ACTIVE",
+        OR: [{ tenantId: null }, { tenantId: session.context.tenantId }],
+        ...(requiredPermissionCode
+          ? {
+              permissions: {
+                some: { permission: { code: requiredPermissionCode } }
+              }
+            }
+          : {})
+      }
     },
     select: { roleId: true }
   });
@@ -813,16 +916,28 @@ async function isAssignedToCurrentApprovalStep(
   approvalInstanceId: string
 ) {
   const roleIds = await getActiveRoleIds(session);
-  const step = await prisma.approvalInstanceStep.findFirst({
+  const approval = await prisma.approvalInstance.findFirst({
     where: {
-      approvalInstanceId,
+      id: approvalInstanceId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
       status: "PENDING"
     },
     select: {
-      assignedRoleId: true,
-      assignedUserId: true
+      currentStepOrder: true,
+      steps: {
+        where: { status: "PENDING" },
+        select: {
+          stepOrder: true,
+          assignedRoleId: true,
+          assignedUserId: true
+        }
+      }
     }
   });
+  const step = approval?.steps.find(
+    (candidate) => candidate.stepOrder === approval.currentStepOrder
+  );
 
   if (!step) {
     return false;
@@ -843,11 +958,13 @@ async function assertApprovalScope(session: SessionContext, locationId: string) 
 }
 
 async function hasApprovalScope(session: SessionContext, locationId: string) {
+  const now = new Date();
   const location = await prisma.location.findFirst({
     where: {
       id: locationId,
       tenantId: session.context.tenantId,
-      companyId: session.context.companyId
+      companyId: session.context.companyId,
+      status: "ACTIVE"
     },
     select: {
       companyId: true,
@@ -863,25 +980,20 @@ async function hasApprovalScope(session: SessionContext, locationId: string) {
     where: {
       userId: session.user.id,
       status: "ACTIVE",
+      startsAt: { lte: now },
+      AND: [
+        { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+        {
+          OR: [
+            { scopeType: "LOCATION", scopeId: locationId },
+            { scopeType: "COMPANY", scopeId: location.companyId },
+            ...(location.brandId
+              ? [{ scopeType: "BRAND" as const, scopeId: location.brandId }]
+              : [])
+          ]
+        }
+      ],
       accessLevel: { in: ["APPROVE", "MANAGE"] },
-      OR: [
-        {
-          scopeType: "LOCATION",
-          scopeId: locationId
-        },
-        {
-          scopeType: "COMPANY",
-          scopeId: location.companyId
-        },
-        ...(location.brandId
-          ? [
-              {
-                scopeType: "BRAND" as const,
-                scopeId: location.brandId
-              }
-            ]
-          : [])
-      ]
     }
   });
 
@@ -889,10 +1001,13 @@ async function hasApprovalScope(session: SessionContext, locationId: string) {
 }
 
 async function hasCompanyApprovalScope(session: SessionContext) {
+  const now = new Date();
   const assignment = await prisma.userScopeAssignment.findFirst({
     where: {
       userId: session.user.id,
       status: "ACTIVE",
+      startsAt: { lte: now },
+      OR: [{ endsAt: null }, { endsAt: { gt: now } }],
       accessLevel: { in: ["APPROVE", "MANAGE"] },
       scopeType: "COMPANY",
       scopeId: session.context.companyId
@@ -2242,31 +2357,81 @@ export function approvalReminderKind(input: {
 
 export async function listPendingApprovals(session: SessionContext) {
   const permissionCodes = await getGrantedPermissionCodes(session);
-  if (!canUseApprovals(permissionCodes)) {
+  if (
+    !Object.values(approvalPermissionByDocumentType).some((permissionCode) =>
+      permissionCodes.includes(permissionCode)
+    )
+  ) {
     return [];
   }
 
-  const roleIds = await getActiveRoleIds(session);
+  const roleIdsByPermission = new Map<string, string[]>();
+  await Promise.all(
+    [...new Set(Object.values(approvalPermissionByDocumentType))].map(
+      async (permissionCode) => {
+        roleIdsByPermission.set(
+          permissionCode,
+          await getActiveRoleIds(session, permissionCode)
+        );
+      }
+    )
+  );
   const approvals = await prisma.approvalInstance.findMany({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       status: "PENDING",
+      OR: Object.entries(approvalPermissionByDocumentType).map(
+        ([documentType, permissionCode]) => ({
+          documentType,
+          steps: {
+            some: {
+              status: "PENDING" as const,
+              OR: [
+                { assignedUserId: session.user.id },
+                {
+                  assignedRoleId: {
+                    in: roleIdsByPermission.get(permissionCode) ?? []
+                  }
+                }
+              ]
+            }
+          }
+        })
+      )
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
       steps: {
-        some: {
-          status: "PENDING",
-          OR: [
-            { assignedUserId: session.user.id },
-            { assignedRoleId: { in: roleIds } }
-          ]
+        where: { status: "PENDING" },
+        select: {
+          stepOrder: true,
+          assignedUserId: true,
+          assignedRoleId: true
         }
       }
-    },
-    orderBy: { createdAt: "desc" }
+    }
   });
 
   const items = await Promise.all(
     approvals.map(async (approval) => {
+      const requiredPermissionCode =
+        approvalPermissionByDocumentType[approval.documentType];
+      const activeStep = approval.steps.find(
+        (step) => step.stepOrder === approval.currentStepOrder
+      );
+      const assignedToLiveUserOrRole = Boolean(
+        activeStep &&
+          (activeStep.assignedUserId === session.user.id ||
+            (activeStep.assignedRoleId &&
+              requiredPermissionCode &&
+              (roleIdsByPermission.get(requiredPermissionCode) ?? []).includes(
+                activeStep.assignedRoleId
+              )))
+      );
+      if (!requiredPermissionCode || !assignedToLiveUserOrRole) {
+        return null;
+      }
       if (approval.documentType === "QuotationRecommendation") {
         if (!permissionCodes.includes(permissions.quoteApprove)) {
           return null;
@@ -6111,6 +6276,7 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -6131,9 +6297,10 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -6247,6 +6414,7 @@ async function closeEmployeeLeaveRequestWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -6322,6 +6490,7 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -6342,9 +6511,10 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -6449,6 +6619,7 @@ export async function rejectEmployeeOvertimeRecordApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -6522,6 +6693,7 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -6542,9 +6714,10 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -6656,6 +6829,7 @@ async function closeWorkforceScheduleWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -6733,6 +6907,7 @@ export async function approveAttendanceImportBatchApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -6753,9 +6928,10 @@ export async function approveAttendanceImportBatchApproval(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -6865,6 +7041,7 @@ async function closeAttendanceImportBatchWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7117,6 +7294,7 @@ export async function approveBudgetRevision(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7137,9 +7315,10 @@ export async function approveBudgetRevision(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -7253,6 +7432,7 @@ export async function approveExpenseRequest(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7273,9 +7453,10 @@ export async function approveExpenseRequest(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -7378,6 +7559,7 @@ async function closeExpenseRequestWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7471,6 +7653,7 @@ export async function approveCashAdvanceRequest(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7491,9 +7674,10 @@ export async function approveCashAdvanceRequest(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -7600,6 +7784,7 @@ async function closeCashAdvanceRequestWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7689,6 +7874,7 @@ export async function approvePettyCashRequest(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7709,9 +7895,10 @@ export async function approvePettyCashRequest(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -7811,6 +7998,7 @@ async function closePettyCashRequestWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7897,6 +8085,7 @@ export async function approvePaymentRequestApproval(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -7917,9 +8106,10 @@ export async function approvePaymentRequestApproval(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -8012,6 +8202,7 @@ async function closePaymentRequestWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -8097,6 +8288,7 @@ export async function approvePaymentReleaseApproval(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -8117,9 +8309,10 @@ export async function approvePaymentReleaseApproval(formData: FormData) {
     });
 
     if (nextStep) {
-      await tx.approvalInstanceStep.update({
-        where: { id: nextStep.id },
-        data: { status: "PENDING" }
+      await activateNextApprovalStep(tx, session, {
+        approvalInstanceId: approval.id,
+        approvalInstanceStepId: nextStep.id,
+        source: "approvals.specialized_handler"
       });
       await tx.approvalInstance.update({
         where: { id: approval.id },
@@ -8207,6 +8400,7 @@ export async function rejectPaymentReleaseApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {
@@ -8285,6 +8479,7 @@ async function closeBudgetRevisionWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await assertNormalizedApprovalAuthority(tx, session, step.id);
     await tx.approvalInstanceStep.update({
       where: { id: step.id },
       data: {

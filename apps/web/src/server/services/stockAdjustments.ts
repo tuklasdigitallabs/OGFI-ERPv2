@@ -1,4 +1,5 @@
 import { prisma, type TransactionClient } from "@ogfi/database";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { STOCK_ADJUSTMENT_MAX_LINES } from "../../lib/workflowLimits";
 import {
@@ -16,9 +17,13 @@ import {
   postInventoryMovementInTransaction
 } from "./inventory";
 import {
-  recordWorkflowNotifications,
-  resolveScopedNotificationRecipients
+  recordWorkflowNotifications
 } from "./notifications";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import {
   listActiveOperationalReasonCodes,
   requireActiveOperationalReasonCode
@@ -941,6 +946,70 @@ export async function submitStockAdjustment(formData: FormData) {
       throw new Error("STOCK_ADJUSTMENT_APPROVAL_ALREADY_SUBMITTED");
     }
 
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) {
+      throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
+
+    const approval = await tx.approvalInstance.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "StockAdjustment",
+        documentId: adjustment.id,
+        approvalRuleId: approvalRule.id,
+        status: "PENDING",
+        currentStepOrder: firstStep.stepOrder,
+        steps: {
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
+            stepOrder: step.stepOrder,
+            assignedUserId: step.userId,
+            assignedRoleId: step.roleId,
+            status: step.activationStatus
+          }))
+        }
+      }
+    });
+
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("StockAdjustment"),
+        requiredPermissionCode: permissions.stockAdjustmentApprove,
+        dueAt: null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "stock-adjustment-submission"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: adjustment.inventoryLocation.locationId
+          }]
+        }],
+        prohibitedActors: [{
+          userId: adjustment.requestedByUserId,
+          reasonCode: "REQUESTER"
+        }]
+      });
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    });
+
     const submitted = await tx.stockAdjustment.updateMany({
       where: {
         id: adjustment.id,
@@ -954,26 +1023,6 @@ export async function submitStockAdjustment(formData: FormData) {
     if (submitted.count !== 1) {
       throw new Error("STOCK_ADJUSTMENT_NOT_OPEN_FOR_SUBMIT");
     }
-
-    const approval = await tx.approvalInstance.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        documentType: "StockAdjustment",
-        documentId: adjustment.id,
-        approvalRuleId: approvalRule.id,
-        status: "PENDING",
-        currentStepOrder: firstStep.stepOrder,
-        steps: {
-          create: approvalRule.steps.map((step, index) => ({
-            stepOrder: step.stepOrder,
-            assignedUserId: step.userId,
-            assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
-          }))
-        }
-      }
-    });
 
     const auditEvent = await tx.auditEvent.create({
       data: {
@@ -999,18 +1048,11 @@ export async function submitStockAdjustment(formData: FormData) {
       }
     });
 
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: adjustment.inventoryLocation.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: adjustment.inventoryLocation.locationId,
-      recipientUserIds,
+      recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
       notificationType: "APPROVE_STOCK_ADJUSTMENT",
       priority:
         adjustment.adjustmentType === "OPENING_BALANCE" ? "HIGH" : "NORMAL",

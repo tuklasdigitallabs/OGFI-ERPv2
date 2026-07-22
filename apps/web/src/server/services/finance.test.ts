@@ -1074,7 +1074,8 @@ describe("finance foundation dashboard", () => {
     expect(financeServiceSource).toContain("APPROVE_PAYMENT_REQUEST");
     expect(financeServiceSource).toContain("PAYMENT_REQUEST_APPROVAL_RULE_NOT_CONFIGURED");
     expect(financeServiceSource).toContain("PAYMENT_REQUEST_ALREADY_SUBMITTED");
-    expect(financeServiceSource).toContain("resolveScopedNotificationRecipients");
+    expect(financeServiceSource).toContain("configureApprovalStepRouting");
+    expect(financeServiceSource).not.toContain("resolveScopedNotificationRecipients");
     expect(financeServiceSource).toContain("approvePaymentRequest");
     expect(financeServiceSource).toContain("rejectPaymentRequest");
     expect(financeServiceSource).toContain("cancelPaymentRequest");

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { recordSessionDeniedDecisionSafely } from "./authorizationDenials";
 import {
   permissions,
   requireAnyPermission,
@@ -877,27 +878,25 @@ async function logControlledEvidenceAttachmentDenied(input: {
   reasonCode: string;
   attemptedAction: "LINK" | "ARCHIVE" | "LIST" | "DOWNLOAD";
 }) {
-  const fallbackEntityId = "00000000-0000-0000-0000-000000000000";
-  const entityId = z.string().uuid().safeParse(input.sourceRecordId).success
-    ? (input.sourceRecordId ?? fallbackEntityId)
-    : fallbackEntityId;
-
-  await prisma.auditEvent.create({
-    data: {
-      tenantId: input.session.context.tenantId,
-      companyId: input.session.context.companyId,
-      actorUserId: input.session.user.id,
-      eventType: "controlled_evidence_attachment.denied",
-      entityType: "ControlledEvidenceAttachment",
-      entityId,
-      metadata: {
-        attemptedAction: input.attemptedAction,
-        reasonCode: input.reasonCode,
-        sourceType: input.sourceType ?? null,
-        attachmentId: input.attachmentId ?? null,
-        source: "phase3-controlled-evidence",
-      },
-    },
+  const action =
+    input.attemptedAction === "LINK"
+      ? "CREATE"
+      : input.attemptedAction === "ARCHIVE"
+        ? "DELETE"
+        : "READ";
+  const reason = input.reasonCode === "PERMISSION_DENIED"
+    ? "PERMISSION_MISSING"
+    : input.reasonCode === "SCOPE_DENIED" ||
+        input.reasonCode === "CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE" ||
+        input.reasonCode === "CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE" ||
+        input.reasonCode === "CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND" ||
+        input.reasonCode === "ATTACHMENT_NOT_FOUND_INACTIVE_OR_UNSCOPED"
+      ? "RESOURCE_HIDDEN"
+      : "POLICY_DENIED";
+  await recordSessionDeniedDecisionSafely(input.session, {
+    action,
+    reason,
+    resource: "EVIDENCE"
   });
 }
 

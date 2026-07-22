@@ -50,6 +50,7 @@ const projectServiceFiles = [
 
 const mappedOperationalCodes = [
   "AUTH_REQUIRED",
+  "AUTHENTICATION_CAPACITY_TEMPORARILY_UNAVAILABLE",
   "GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED",
   "INVENTORY_BALANCE_NEGATIVE_NOT_ALLOWED",
   "INVENTORY_LOCATION_SCOPE_DENIED",
@@ -57,6 +58,7 @@ const mappedOperationalCodes = [
   "INVENTORY_MOVEMENT_FROZEN_BY_STOCK_COUNT",
   "INVENTORY_SEARCH_QUERY_TOO_LONG",
   "INVALID_STATUS_TRANSITION",
+  "MFA_CHALLENGE_TEMPORARILY_THROTTLED",
   "ITEM_CATEGORY_HAS_ACTIVE_ITEMS",
   "ITEM_NOT_TRACKED_FOR_INVENTORY",
   "BRANCH_CHECKLIST_EXCEPTION_REVIEW_REQUIRED",
@@ -194,6 +196,26 @@ const mappedOperationalCodes = [
 ];
 
 describe("action feedback helpers", () => {
+  it("does not distinguish missing local accounts from invalid credentials", () => {
+    expect(getActionFeedback({ error: "LOGIN_ACCOUNT_NOT_FOUND" })?.message).toBe(
+      getActionFeedback({ error: "LOGIN_CREDENTIALS_INVALID" })?.message
+    );
+  });
+
+  it("maps approval routing races and deployment gates to safe guidance", () => {
+    for (const code of [
+      "APPROVAL_AUTHORITY_STALE",
+      "APPROVAL_NEXT_STEP_ROUTING_CHANGED",
+      "APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE",
+      "APPROVAL_ROUTING_BACKFILL_REQUIRED",
+      "APPROVAL_ROUTING_V1_DISABLED"
+    ]) {
+      const feedback = getActionFeedback({ error: code });
+      expect(feedback?.message, code).not.toContain("The action could not be completed");
+      expect(feedback?.message, code).not.toMatch(/database|tenant|row|flag/i);
+    }
+  });
+
   it("turns known service error codes into user-safe feedback", () => {
     expect(
       getActionFeedback({

@@ -84,6 +84,7 @@ const policySettingKeys = [
   "projects.restricted_visibility_default",
   "projects.blocker_reason_required",
   "security.privileged_mfa.enforcement_mode",
+  "security.authorization_denial.window_minutes",
   "security.evidence_storage.default_policy",
   "security.retention.matrix",
   "security.backup_restore.default_policy",
@@ -446,6 +447,16 @@ export const defaultPolicySettings: readonly PolicySettingDefinition[] = [
     ]
   },
   {
+    key: "security.authorization_denial.window_minutes",
+    category: "security",
+    label: "Authorization denial aggregation window",
+    description:
+      "Minutes used to aggregate repeated authorization denials across bounded server-derived dimensions.",
+    valueType: "NUMBER",
+    defaultValue: 15,
+    unit: "minutes"
+  },
+  {
     key: "security.evidence_storage.default_policy",
     category: "security",
     label: "Controlled evidence storage policy",
@@ -564,6 +575,12 @@ function normalizePolicyValue(
     if (!Number.isFinite(numberValue) || numberValue < 0) {
       throw new Error("POLICY_SETTING_NUMBER_INVALID");
     }
+    if (
+      definition.key === "security.authorization_denial.window_minutes" &&
+      (!Number.isInteger(numberValue) || numberValue < 5 || numberValue > 60)
+    ) {
+      throw new Error("AUTHORIZATION_DENIAL_WINDOW_MINUTES_INVALID");
+    }
     return numberValue;
   }
 
@@ -626,13 +643,19 @@ function findPolicyDefinition(key: string) {
 }
 
 function sourceDecisionForPolicy(key: string) {
-  return key === "security.evidence_storage.default_policy"
-    ? "DEC-0046"
-    : "DEC-0036";
+  if (key === "security.evidence_storage.default_policy") return "DEC-0046";
+  if (key === "security.authorization_denial.window_minutes") return "DEC-0050";
+  return "DEC-0036";
 }
 
-async function getSavedPolicyValue(session: SessionContext, key: PolicySettingKey) {
-  const saved = await prisma.companyPolicySetting.findUnique({
+type PolicyReadClient = Pick<typeof prisma, "companyPolicySetting">;
+
+export async function getSavedPolicyValue(
+  session: SessionContext,
+  key: PolicySettingKey,
+  client: PolicyReadClient = prisma
+) {
+  const saved = await client.companyPolicySetting.findUnique({
     where: {
       companyId_key: {
         companyId: session.context.companyId,
@@ -727,6 +750,24 @@ async function getNumberPolicyValue(
   return typeof rawValue === "number" && Number.isFinite(rawValue)
     ? rawValue
     : fallback;
+}
+
+export function validateAuthorizationDenialWindowMinutes(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 5 || value > 60) {
+    throw new Error("AUTHORIZATION_DENIAL_WINDOW_MINUTES_INVALID");
+  }
+  return value;
+}
+
+export async function getAuthorizationDenialWindowMinutes(
+  session: SessionContext,
+  client: PolicyReadClient = prisma
+) {
+  const key = "security.authorization_denial.window_minutes" satisfies PolicySettingKey;
+  const saved = await getSavedPolicyValue(session, key, client);
+  return validateAuthorizationDenialWindowMinutes(
+    saved?.value ?? findPolicyDefinition(key).defaultValue
+  );
 }
 
 function normalizePaymentReleaseEvidencePolicy(

@@ -1,5 +1,6 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
@@ -35,6 +36,7 @@ const runId =
   process.env.GITHUB_RUN_ID?.concat("-", process.env.GITHUB_RUN_ATTEMPT ?? "1") ??
   `${suiteName}-${process.pid}`;
 const identity = createDisposablePostgresIdentity(runId);
+const disposableThrottleEnv = disposableAuthenticationThrottleEnvironment(identity);
 const setupUrl = targetDatabaseUrl(adminUrl, identity.databaseName);
 const migratorPassword = randomBytes(32).toString("base64url");
 const migratorUrl = targetDatabaseUrl(adminUrl, identity.databaseName, {
@@ -63,19 +65,44 @@ try {
   markerCreated = true;
   installSetupRoles(setupUrl, identity, migratorPassword, runtimePassword);
 
-  runCommand(
-    pnpmExecutable(),
+  runPnpm(
     ["db:migrate:deploy"],
     controlledSetupEnvironment(migratorUrl, identity),
   );
-  runCommand(
-    pnpmExecutable(),
+  runPnpm(
     ["db:seed"],
     controlledSetupEnvironment(migratorUrl, identity),
+  );
+  runPnpm(
+    ["auth-throttle:control-bootstrap"],
+    {
+      ...controlledSetupEnvironment(migratorUrl, identity),
+      ...disposableThrottleEnv,
+      AUTH_THROTTLE_CONTROL_EXPECTED_GENERATION: "0",
+      AUTH_THROTTLE_CONTROL_REQUESTED_STATUS: "ACTIVE",
+    },
+  );
+  runPnpm(
+    ["auth-throttle:control-race-probe"],
+    {
+      ...controlledSetupEnvironment(migratorUrl, identity),
+      ...disposableThrottleEnv,
+      AUTH_THROTTLE_CONTROL_EXPECTED_GENERATION: "1",
+    },
   );
   reconcileRoleContract(migratorUrl, identity);
   verifyRoleContract(migratorUrl, identity, "owner");
   verifyRoleContract(runtimeUrl, identity, "runtime");
+  verifyAuthenticationThrottleRuntimeBoundary(runtimeUrl);
+  runPnpm(
+    ["auth-throttle:runtime-probe"],
+    buildRuntimeEnvironment(
+      { ...process.env, ...disposableThrottleEnv },
+      runtimeUrl,
+      identity,
+      adminUrl,
+    ),
+  );
   runGuardContract(migratorUrl, identity);
   verifyRuntimeDestructiveOperationsDenied(runtimeUrl);
   verifyRuntimeMarkerBoundary(runtimeUrl, identity);
@@ -94,14 +121,25 @@ try {
     runSeedRepeatability(runtimeUrl, identity);
   }
 
-  const childExecutable = command[0] === "pnpm" ? pnpmExecutable() : command[0];
-  const child = spawnSync(childExecutable, command.slice(1), {
+  const childInvocation =
+    command[0] === "pnpm"
+      ? pnpmInvocation(command.slice(1))
+      : { executable: command[0], args: command.slice(1) };
+  const child = spawnSync(childInvocation.executable, childInvocation.args, {
     cwd: workspaceRoot,
-    env: buildRuntimeEnvironment(process.env, runtimeUrl, identity, adminUrl),
+    env: buildRuntimeEnvironment(
+      { ...process.env, ...disposableThrottleEnv },
+      runtimeUrl,
+      identity,
+      adminUrl,
+    ),
     stdio: "inherit",
   });
   if (child.error) throw child.error;
   exitCode = child.status ?? 1;
+  if (exitCode === 0 && suiteName === "approval-routing-backfill") {
+    verifyApprovalRoutingReplicationRoleGuards(setupUrl);
+  }
 } finally {
   if (databaseCreated) {
     if (!markerCreated) {
@@ -117,6 +155,53 @@ try {
   }
 }
 process.exitCode = exitCode;
+
+function verifyApprovalRoutingReplicationRoleGuards(databaseUrl) {
+  runPsql(
+    databaseUrl,
+    `
+      DO $probe$
+      DECLARE
+        target_step_id uuid;
+        original_assignee uuid;
+        rejected boolean := false;
+      BEGIN
+        SELECT id, "assignedUserId"
+          INTO target_step_id, original_assignee
+          FROM public."ApprovalInstanceStep"
+         WHERE "routingSchemaVersion" = 1
+           AND "assignedUserId" IS NOT NULL
+         ORDER BY id
+         LIMIT 1;
+        IF target_step_id IS NULL THEN
+          RAISE EXCEPTION 'Approval replication-role probe fixture is missing';
+        END IF;
+
+        BEGIN
+          SET LOCAL session_replication_role = replica;
+          UPDATE public."ApprovalInstanceStep"
+             SET "assignedUserId" = NULL
+           WHERE id = target_step_id;
+        EXCEPTION
+          WHEN SQLSTATE '55000' THEN
+            IF SQLERRM <> 'APPROVAL_ROUTING_CONTEXT_IMMUTABLE' THEN
+              RAISE;
+            END IF;
+            rejected := true;
+        END;
+
+        IF NOT rejected THEN
+          RAISE EXCEPTION 'Approval ALWAYS trigger was bypassed by replication role';
+        END IF;
+        IF (SELECT "assignedUserId" FROM public."ApprovalInstanceStep" WHERE id = target_step_id)
+           IS DISTINCT FROM original_assignee THEN
+          RAISE EXCEPTION 'Approval replication-role probe changed routing context';
+        END IF;
+      END
+      $probe$;
+    `,
+  );
+}
 
 function installMarker(databaseUrl, marker) {
   runPsql(
@@ -216,8 +301,7 @@ function roleVariables(marker) {
 }
 
 function runGuardContract(migratorDatabaseUrl, marker) {
-  runCommand(
-    pnpmExecutable(),
+  runPnpm(
     [
       "--filter",
       "@ogfi/database",
@@ -237,22 +321,49 @@ function runGuardContract(migratorDatabaseUrl, marker) {
 
 function verifyRuntimeDestructiveOperationsDenied(runtimeDatabaseUrl) {
   for (const table of ["AuditEvent", "ProjectActivityEvent", "InventoryMovement"]) {
+    // These mixed-case identifiers come only from this closed allowlist. The
+    // generic lifecycle identifier helper deliberately accepts lowercase role
+    // and database identifiers only.
+    const tableIdentifier = `"${table}"`;
     expectPsqlFailure(
       runtimeDatabaseUrl,
-      `UPDATE public.${quoteIdentifier(table)} SET id = id WHERE false`,
+      `UPDATE public.${tableIdentifier} SET id = id WHERE false`,
       "42501",
     );
     expectPsqlFailure(
       runtimeDatabaseUrl,
-      `DELETE FROM public.${quoteIdentifier(table)} WHERE false`,
+      `DELETE FROM public.${tableIdentifier} WHERE false`,
       "42501",
     );
     expectPsqlFailure(
       runtimeDatabaseUrl,
-      `TRUNCATE TABLE public.${quoteIdentifier(table)} CASCADE`,
+      `TRUNCATE TABLE public.${tableIdentifier} CASCADE`,
       "42501",
     );
   }
+}
+
+function verifyAuthenticationThrottleRuntimeBoundary(runtimeDatabaseUrl) {
+  const rowCount = runPsql(
+    runtimeDatabaseUrl,
+    "SELECT count(*) FROM public.lock_authentication_throttle_control() WHERE id = 1",
+  ).trim();
+  if (rowCount !== "1") {
+    throw new Error("AUTH_THROTTLE_RUNTIME_SHARED_LOCK_PROBE_FAILED");
+  }
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    'UPDATE public."AuthenticationThrottleControl" SET "generation" = "generation" + 1 WHERE id = 1',
+    "42501",
+  );
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    `SELECT * FROM public.operator_transition_authentication_throttle_control(
+      0::bigint, 'ACTIVE'::public."AuthenticationThrottleControlStatus",
+      1::integer, repeat('0', 64), repeat('0', 64)
+    )`,
+    "42501",
+  );
 }
 
 function verifyRuntimeMarkerBoundary(runtimeDatabaseUrl, expected) {
@@ -272,8 +383,7 @@ function verifyRuntimeMarkerBoundary(runtimeDatabaseUrl, expected) {
 }
 
 function runSeedRepeatability(runtimeDatabaseUrl, marker) {
-  runCommand(
-    pnpmExecutable(),
+  runPnpm(
     [
       "--filter",
       "@ogfi/database",
@@ -425,8 +535,48 @@ function controlledSetupEnvironment(databaseUrl, marker) {
   };
 }
 
-function pnpmExecutable() {
-  return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+function disposableAuthenticationThrottleEnvironment(marker) {
+  const keyMaterial = createHash("sha512")
+    .update(`ogfi-disposable-auth-throttle:${marker.nonce}`, "utf8")
+    .digest("hex");
+  const keyVersion =
+    (Number.parseInt(marker.nonce.slice(0, 8), 16) % 900_000) + 100_000;
+  return {
+    AUTH_THROTTLE_HMAC_KEY: keyMaterial,
+    AUTH_THROTTLE_KEY_VERSION: String(keyVersion),
+    AUTH_THROTTLE_WINDOW_MINUTES: "15",
+    AUTH_THROTTLE_RETENTION_DAYS: "30",
+    AUTH_THROTTLE_IDENTIFIER_SHARDS: "16",
+    AUTH_THROTTLE_SOURCE_SHARDS: "16",
+    AUTH_THROTTLE_PASSWORD_GLOBAL_LIMIT: "1000000",
+    AUTH_THROTTLE_PASSWORD_IDENTIFIER_SHARD_LIMIT: "1000000",
+    AUTH_THROTTLE_PASSWORD_SOURCE_SHARD_LIMIT: "1000000",
+    AUTH_THROTTLE_PASSWORD_TENANT_LIMIT: "1000000",
+    AUTH_THROTTLE_PASSWORD_ACCOUNT_LIMIT: "100",
+    AUTH_THROTTLE_MFA_GLOBAL_LIMIT: "1000000",
+    AUTH_THROTTLE_MFA_IDENTIFIER_SHARD_LIMIT: "1000000",
+    AUTH_THROTTLE_MFA_SOURCE_SHARD_LIMIT: "1000000",
+    AUTH_THROTTLE_MFA_TENANT_LIMIT: "1000000",
+    AUTH_THROTTLE_MFA_ACCOUNT_LIMIT: "100",
+  };
+}
+
+function pnpmInvocation(args) {
+  if (process.platform !== "win32") {
+    return { executable: "pnpm", args };
+  }
+  const cliPath =
+    process.env.npm_execpath ??
+    path.join(path.dirname(process.execPath), "node_modules", "corepack", "dist", "pnpm.js");
+  if (!existsSync(cliPath) || !/^pnpm\.(?:c?js)$/i.test(path.basename(cliPath))) {
+    throw new Error("DISPOSABLE_DATABASE_PNPM_CLI_INVALID");
+  }
+  return { executable: process.execPath, args: [cliPath, ...args] };
+}
+
+function runPnpm(args, env) {
+  const invocation = pnpmInvocation(args);
+  runCommand(invocation.executable, invocation.args, env);
 }
 
 function runPsql(databaseUrl, sql) {

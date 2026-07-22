@@ -128,6 +128,83 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT SELECT, INSERT ON TABLE public.%I TO %I', protected_table, runtime_role);
   END LOOP;
+  IF to_regclass('public."AuthorizationDenialBucket"') IS NOT NULL THEN
+    REVOKE ALL ON TABLE public."AuthorizationDenialBucket" FROM PUBLIC;
+    EXECUTE format('REVOKE UPDATE, DELETE ON TABLE public."AuthorizationDenialBucket" FROM %I', runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = 'public."AuthorizationDenialBucket"'::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public."AuthorizationDenialBucket" FROM PUBLIC', column_name);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public."AuthorizationDenialBucket" FROM %I', column_name, runtime_role);
+    END LOOP;
+    EXECUTE format(
+      'GRANT UPDATE ("denialCount", "lastDeniedAt", "updatedAt", "finalizedAt", "finalAuditEventId") ON TABLE public."AuthorizationDenialBucket" TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regclass('public."AuthenticationThrottleWindow"') IS NOT NULL THEN
+    REVOKE ALL ON TABLE public."AuthenticationThrottleWindow" FROM PUBLIC;
+    EXECUTE format('REVOKE ALL ON TABLE public."AuthenticationThrottleWindow" FROM %I', runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = 'public."AuthenticationThrottleWindow"'::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public."AuthenticationThrottleWindow" FROM PUBLIC', column_name);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public."AuthenticationThrottleWindow" FROM %I', column_name, runtime_role);
+    END LOOP;
+    EXECUTE format(
+      'GRANT SELECT, INSERT, DELETE ON TABLE public."AuthenticationThrottleWindow" TO %I',
+      runtime_role
+    );
+    EXECUTE format(
+      'GRANT UPDATE ("requestCount", "failureReservationCount", "successCount", "deniedCount", "lastRequestAt", "thresholdReachedAt", "updatedAt") ON TABLE public."AuthenticationThrottleWindow" TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regclass('public."AuthenticationThrottleControl"') IS NOT NULL THEN
+    REVOKE ALL ON TABLE public."AuthenticationThrottleControl" FROM PUBLIC;
+    EXECUTE format('REVOKE ALL ON TABLE public."AuthenticationThrottleControl" FROM %I', runtime_role);
+    EXECUTE format('GRANT SELECT ON TABLE public."AuthenticationThrottleControl" TO %I', runtime_role);
+  END IF;
+  IF to_regprocedure('public.lock_authentication_throttle_control()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.lock_authentication_throttle_control() FROM PUBLIC;
+    EXECUTE format(
+      'GRANT EXECUTE ON FUNCTION public.lock_authentication_throttle_control() TO %I',
+      runtime_role
+    );
+  END IF;
+  IF to_regprocedure('public.operator_transition_authentication_throttle_control(bigint,"AuthenticationThrottleControlStatus",integer,text,text)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.operator_transition_authentication_throttle_control(
+      BIGINT, "AuthenticationThrottleControlStatus", INTEGER, TEXT, TEXT
+    ) FROM PUBLIC;
+    EXECUTE format(
+      'REVOKE ALL ON FUNCTION public.operator_transition_authentication_throttle_control(BIGINT, "AuthenticationThrottleControlStatus", INTEGER, TEXT, TEXT) FROM %I',
+      runtime_role
+    );
+    EXECUTE format(
+      'GRANT EXECUTE ON FUNCTION public.operator_transition_authentication_throttle_control(BIGINT, "AuthenticationThrottleControlStatus", INTEGER, TEXT, TEXT) TO %I',
+      migrator_role
+    );
+  END IF;
+  IF to_regclass('public."AuthLoginAttempt"') IS NOT NULL THEN
+    REVOKE ALL ON TABLE public."AuthLoginAttempt" FROM PUBLIC;
+    EXECUTE format('REVOKE ALL ON TABLE public."AuthLoginAttempt" FROM %I', runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = 'public."AuthLoginAttempt"'::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public."AuthLoginAttempt" FROM PUBLIC', column_name);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public."AuthLoginAttempt" FROM %I', column_name, runtime_role);
+    END LOOP;
+    EXECUTE format('GRANT SELECT, DELETE ON TABLE public."AuthLoginAttempt" TO %I', runtime_role);
+  END IF;
   EXECUTE format('REVOKE ALL ON TABLE public._prisma_migrations FROM PUBLIC');
   EXECUTE format('REVOKE ALL ON TABLE public._prisma_migrations FROM %I', runtime_role);
 

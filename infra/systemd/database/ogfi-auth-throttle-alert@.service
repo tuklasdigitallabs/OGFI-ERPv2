@@ -1,0 +1,12 @@
+[Unit]
+Description=Journal OGFI ERP authentication-throttle monitor failure for %i
+
+[Service]
+Type=oneshot
+User=ogfi-runtime
+Group=ogfi-runtime
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ExecStart=/usr/bin/systemd-cat --identifier=ogfi-auth-throttle /usr/bin/echo event=authentication_throttle_monitor_failure status=CRITICAL failed_unit=%i hosted_alert_delivery=PENDING

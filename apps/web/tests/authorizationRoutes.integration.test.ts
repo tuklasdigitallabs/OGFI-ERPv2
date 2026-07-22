@@ -75,6 +75,9 @@ describe("protected route authorization matrix", () => {
       .filter((surface) => ["ROUTE_HANDLER", "EVIDENCE_DOWNLOAD"].includes(surface.surfaceType))
       .map((surface) => surface.id.split("#")[0])
       .filter((routePath) => !routePath.startsWith("app/(auth)/"))
+      // API routes have dedicated evidence or host-internal matrices below;
+      // this glob deliberately covers the authenticated /(app) route tree.
+      .filter((routePath) => !routePath.startsWith("app/api/"))
       .sort();
     const loadedRoutePaths = Object.keys(routeModules)
       .map((modulePath) =>
@@ -140,5 +143,37 @@ describe("protected route authorization matrix", () => {
         select: { status: true, revokedAt: true },
       }),
     ).toEqual(before);
+  });
+
+  it("AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION", async () => {
+    const previousToken = process.env.AUTH_HEALTH_METRICS_TOKEN;
+    process.env.AUTH_HEALTH_METRICS_TOKEN =
+      "authorization-route-health-token-at-least-32-bytes";
+    const beforeAuditCount = await prisma.auditEvent.count({
+      where: { tenantId: ids.tenant },
+    });
+    try {
+      const { GET } = await import(
+        "../src/app/api/internal/authentication-metrics/route"
+      );
+      const response = await GET(
+        new Request(
+          "http://localhost/api/internal/authentication-metrics",
+        ) as never,
+      );
+      expect(response.status).toBe(404);
+      const body = await response.text();
+      expect(body).toContain("AUTH_RUNTIME_METRICS_DENIED");
+      expect(body).not.toContain(process.env.AUTH_HEALTH_METRICS_TOKEN);
+      expect(await prisma.auditEvent.count({ where: { tenantId: ids.tenant } })).toBe(
+        beforeAuditCount,
+      );
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.AUTH_HEALTH_METRICS_TOKEN;
+      } else {
+        process.env.AUTH_HEALTH_METRICS_TOKEN = previousToken;
+      }
+    }
   });
 });

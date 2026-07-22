@@ -295,7 +295,7 @@ describe("workforce foundation controls", () => {
       "approvalInstanceId: approvalInstance.id"
     );
     expect(workforceServiceSource).toContain(
-      "resolveScopedNotificationRecipients"
+      "recipientUserIds: firstStep.userId ? [firstStep.userId] : []"
     );
     expect(workforceServiceSource).toContain("APPROVE_WORKFORCE_LEAVE");
     expect(workforceServiceSource).toContain(
@@ -383,6 +383,41 @@ describe("workforce foundation controls", () => {
     expect(workforceServiceSource).toContain("noAttendanceDeviceAuthority");
     expect(workforceServiceSource).toContain("noPaymentRequest");
     expect(workforceServiceSource).toContain("noFinanceJournal");
+  });
+
+  it("normalizes every workforce approval step and fails before source transition", () => {
+    expect(workforceServiceSource.match(/configureApprovalStepRouting\(tx/g)).toHaveLength(4);
+    expect(workforceServiceSource.match(/assertAnyEligibleApprovalActorForStep\(tx/g)).toHaveLength(4);
+    expect(workforceServiceSource.match(/recipientUserIds: firstStep\.userId \? \[firstStep\.userId\] : \[\]/g)).toHaveLength(4);
+    expect(workforceServiceSource).not.toContain("resolveScopedNotificationRecipients");
+    expect(workforceServiceSource).toContain("dueAt: request.startDate");
+    expect(workforceServiceSource).toContain("dueAt: record.workedStartAt");
+    expect(workforceServiceSource).toContain("dueAt: schedule.scheduleDate");
+    expect(workforceServiceSource).toContain("dueAt: null");
+    expect(workforceServiceSource).toContain('source: "workforce-leave-submission"');
+    expect(workforceServiceSource).toContain('source: "workforce-overtime-submission"');
+    expect(workforceServiceSource).toContain('source: "workforce-schedule-submission"');
+    expect(workforceServiceSource).toContain('source: "workforce-attendance-import-review"');
+
+    const transitions = new Map([
+      ["submitLeaveRequest", "const updated = await tx.employeeLeaveRequest.update"],
+      ["submitOvertimeRecord", "const updated = await tx.employeeOvertimeRecord.update"],
+      ["submitWorkforceSchedule", "const updated = await tx.workforceSchedule.update"],
+      ["reviewAttendanceImportBatch", "const updated = await tx.attendanceImportBatch.update"]
+    ]);
+    for (const [functionName, sourceTransition] of transitions) {
+      const start = workforceServiceSource.indexOf(`export async function ${functionName}`);
+      const end = workforceServiceSource.indexOf("\nexport async function ", start + 1);
+      const action = workforceServiceSource.slice(start, end === -1 ? undefined : end);
+      expect(action).toContain("for (const step of routedSteps)");
+      expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+        action.indexOf(sourceTransition)
+      );
+    }
+    expect(workforceServiceSource).toContain("userId: request.requestedByUserId");
+    expect(workforceServiceSource).toContain("userId: record.requestedByUserId");
+    expect(workforceServiceSource).toContain("schedule.createdByUserId");
+    expect(workforceServiceSource).toContain("batch.createdByUserId");
   });
 
   it("creates draft-only workforce entries from scoped employees", () => {

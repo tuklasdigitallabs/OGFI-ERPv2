@@ -33,25 +33,26 @@ export function assertDisposableAuthorizationDatabaseConfigured(
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 24);
-  if (
-    !["127.0.0.1", "localhost", "::1", "[::1]"].includes(parsed.hostname) ||
-    parsed.hostname !== expectedHost ||
-    (parsed.port || "5432") !== expectedPort ||
-    databaseName !== expectedDatabase ||
-    !databaseIdentity ||
-    databaseIdentity[1] !== runToken ||
-    /(?:^|_)(?:prod(?:uction)?|live|stag(?:e|ing)|shared|pilot|uat)(?:_|$)/i.test(
-      databaseName,
-    ) ||
-    !runtimeIdentity ||
-    runtimeIdentity[1] !== runToken.slice(0, 10) ||
-    !runtimeIdentity[2]?.startsWith(databaseIdentity[2] ?? "") ||
-    decodeURIComponent(parsed.username) !== runtimeRole ||
-    !/^[A-Za-z0-9._-]{6,128}$/.test(runId) ||
-    !/^[a-f0-9]{64}$/.test(nonceSha256) ||
-    forbiddenCredentialPresent(env)
-  ) {
-    throw new Error("AUTHORIZATION_DATABASE_NOT_DISPOSABLE");
+  const forbiddenCredentialKeys = listForbiddenCredentialKeys(env);
+  const invalidReasons = [
+    !["127.0.0.1", "localhost", "::1", "[::1]"].includes(parsed.hostname) && "HOST_NOT_LOOPBACK",
+    parsed.hostname !== expectedHost && "HOST_MISMATCH",
+    (parsed.port || "5432") !== expectedPort && "PORT_MISMATCH",
+    databaseName !== expectedDatabase && "DATABASE_MISMATCH",
+    !databaseIdentity && "DATABASE_IDENTITY_INVALID",
+    databaseIdentity?.[1] !== runToken && "RUN_TOKEN_MISMATCH",
+    /(?:^|_)(?:prod(?:uction)?|live|stag(?:e|ing)|shared|pilot|uat)(?:_|$)/i.test(databaseName) && "FORBIDDEN_DATABASE_TOKEN",
+    !runtimeIdentity && "RUNTIME_IDENTITY_INVALID",
+    runtimeIdentity?.[1] !== runToken.slice(0, 10) && "RUNTIME_TOKEN_MISMATCH",
+    !runtimeIdentity?.[2]?.startsWith(databaseIdentity?.[2] ?? "") && "RUNTIME_ENTROPY_MISMATCH",
+    decodeURIComponent(parsed.username) !== runtimeRole && "RUNTIME_USERNAME_MISMATCH",
+    !/^[A-Za-z0-9._-]{6,128}$/.test(runId) && "RUN_ID_INVALID",
+    !/^[a-f0-9]{64}$/.test(nonceSha256) && "NONCE_DIGEST_INVALID",
+    forbiddenCredentialKeys.length > 0 &&
+      `FORBIDDEN_CREDENTIAL_PRESENT(${forbiddenCredentialKeys.join("+")})`,
+  ].filter((reason): reason is string => Boolean(reason));
+  if (invalidReasons.length > 0) {
+    throw new Error(`AUTHORIZATION_DATABASE_NOT_DISPOSABLE:${invalidReasons.join(",")}`);
   }
   return expectedDatabase;
 }
@@ -98,8 +99,8 @@ export async function assertDisposableAuthorizationDatabaseMarker(
   return expectedDatabase;
 }
 
-function forbiddenCredentialPresent(env: NodeJS.ProcessEnv) {
-  return Object.entries(env).some(
+function listForbiddenCredentialKeys(env: NodeJS.ProcessEnv) {
+  return Object.entries(env).filter(
     ([key, value]) =>
       Boolean(value) &&
       key !== "DATABASE_URL" &&
@@ -120,5 +121,5 @@ function forbiddenCredentialPresent(env: NodeJS.ProcessEnv) {
           /(?:PASSWORD|SECRET|TOKEN|CREDENTIAL|URL|URI|DSN|CONNECTION|FILE)/i.test(key)) ||
         (/(?:ADMIN|MIGRAT|OWNER|SETUP)/i.test(key) &&
           /DATABASE|POSTGRES/i.test(key))),
-  );
+  ).map(([key]) => key).sort();
 }

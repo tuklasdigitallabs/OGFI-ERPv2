@@ -1,5 +1,6 @@
 import { prisma, type TransactionClient } from "@ogfi/database"
 import { z } from "zod"
+import { recordSessionDeniedDecisionSafely } from "./authorizationDenials"
 import {
   canUseProjects,
   getGrantedPermissionCodes,
@@ -997,20 +998,17 @@ async function logProjectLifecycleDenied(input: {
   nextStatus: string
   reasonCode: string
 }) {
-  await prisma.auditEvent.create({
-    data: {
-      tenantId: input.session.context.tenantId,
-      companyId: input.session.context.companyId,
-      actorUserId: input.session.user.id,
-      eventType: "project.lifecycle.denied",
-      entityType: "Project",
-      entityId: input.projectId,
-      metadata: {
-        nextStatus: input.nextStatus,
-        reasonCode: input.reasonCode,
-        source: "project-lifecycle"
-      }
-    }
+  const reason = input.reasonCode === "PROJECT_NOT_FOUND_OR_NOT_AUTHORIZED"
+    ? "RESOURCE_HIDDEN"
+    : input.reasonCode === "PROJECT_LIFECYCLE_PERMISSION_DENIED"
+      ? "PERMISSION_MISSING"
+      : input.reasonCode === "PROJECT_LIFECYCLE_STALE_VERSION"
+        ? "STATUS_DENIED"
+        : "POLICY_DENIED"
+  await recordSessionDeniedDecisionSafely(input.session, {
+    action: "UPDATE",
+    reason,
+    resource: "PROJECTS"
   })
 }
 

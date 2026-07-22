@@ -331,4 +331,21 @@ describe("attachment evidence foundation", () => {
     );
     expect(downloadSlice).toContain("logControlledEvidenceAttachmentDenied");
   });
+
+  it("records controlled-evidence denials with bounded dimensions only", () => {
+    const writer = serviceSource.slice(
+      serviceSource.indexOf("async function logControlledEvidenceAttachmentDenied"),
+      serviceSource.indexOf("export async function authorizeControlledEvidenceSourceAction"),
+    );
+    const recorderInput = writer.slice(writer.indexOf("recordSessionDeniedDecisionSafely("));
+
+    expect(writer).toContain("recordSessionDeniedDecisionSafely");
+    expect(serviceSource).not.toContain("getAuthorizationDenialWindowMinutes");
+    expect(writer).not.toContain("auditEvent.create");
+    expect(recorderInput).not.toContain("sourceRecordId:");
+    expect(recorderInput).not.toContain("attachmentId:");
+    expect(recorderInput).not.toContain("sourceType:");
+    expect(recorderInput).not.toContain("reasonCode:");
+    expect(recorderInput).toContain('resource: "EVIDENCE"');
+  });
 });

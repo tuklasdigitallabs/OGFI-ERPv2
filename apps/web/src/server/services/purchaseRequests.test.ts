@@ -12,6 +12,28 @@ import {
 } from "./purchaseRequests";
 
 describe("purchase request workflow controls", () => {
+  test("initial approval routing is normalized and fails before source transition", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseRequests.ts"), "utf8");
+    const start = source.indexOf("export async function submitPurchaseRequest");
+    const end = source.indexOf("export function assertCanReopenReturnedPurchaseRequest", start);
+    const submit = source.slice(start, end);
+
+    expect(submit).toContain("for (const step of routedSteps)");
+    expect(submit).toContain("configureApprovalStepRouting(tx");
+    expect(submit).toContain("requiredPermissionCode: permissions.purchaseRequestApprove");
+    expect(submit).toContain("dueAt: new Date(`${existing.requiredDate}T00:00:00.000Z`)");
+    expect(submit).toContain('source: "purchase-request-submission"');
+    expect(submit).toContain('scopeType: "LOCATION"');
+    expect(submit).toContain("locationId: existing.requestLocationId");
+    expect(submit).toContain("userId: existing.requesterUserId");
+    expect(submit).toContain("assertAnyEligibleApprovalActorForStep(tx");
+    expect(submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+      submit.indexOf("await tx.purchaseRequest.update")
+    );
+    expect(submit).toContain("recipientUserIds: [firstEligibleActor.userId]");
+    expect(submit).not.toContain("resolveScopedNotificationRecipients");
+  });
+
   test("purchase request creation uses a task sheet with bounded multi-line entry", () => {
     const pageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/purchase-requests/page.tsx"),

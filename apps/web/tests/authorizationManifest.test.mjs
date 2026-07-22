@@ -434,6 +434,10 @@ describe("authorization surface manifest", () => {
     for (const surface of manifest) {
       expect(surface.id).toBeTruthy();
       expect(surface.permission).toBeTruthy();
+      if (surface.id === "app/api/internal/authentication-metrics/route.ts#GET") {
+        expect(surface.scopeDimensions).toEqual(["HOST_OPERATOR"]);
+        continue;
+      }
       expect(surface.scopeDimensions).toContain("TENANT");
       if (!surface.permission.startsWith("authentication.")) {
         expect(surface.scopeDimensions).toContain("COMPANY");

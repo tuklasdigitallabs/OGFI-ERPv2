@@ -1,12 +1,37 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   defaultPolicySettings,
+  getAuthorizationDenialWindowMinutes,
   policySettingCategories
 } from "./policySettings";
 
 describe("DEC-0036 policy setting registry", () => {
+  test("reads the denial window through a supplied transaction-compatible client", async () => {
+    const findUnique = vi.fn().mockResolvedValue({
+      value: 30,
+      isDefault: false,
+      sourceDecisionId: "DEC-0050",
+      status: "ACTIVE"
+    });
+    const session = {
+      context: { companyId: "22222222-2222-4222-8222-222222222222" }
+    } as never;
+
+    await expect(getAuthorizationDenialWindowMinutes(session, {
+      companyPolicySetting: { findUnique }
+    } as never)).resolves.toBe(30);
+    expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        companyId_key: {
+          companyId: "22222222-2222-4222-8222-222222222222",
+          key: "security.authorization_denial.window_minutes"
+        }
+      }
+    }));
+  });
+
   test("keeps every approved pilot default in the configurable registry", () => {
     expect(defaultPolicySettings).toEqual(
       expect.arrayContaining([
@@ -255,6 +280,13 @@ describe("DEC-0036 policy setting registry", () => {
           ])
         }),
         expect.objectContaining({
+          key: "security.authorization_denial.window_minutes",
+          category: "security",
+          valueType: "NUMBER",
+          defaultValue: 15,
+          unit: "minutes"
+        }),
+        expect.objectContaining({
           key: "security.retention.matrix",
           category: "security",
           valueType: "JSON",
@@ -316,7 +348,11 @@ describe("DEC-0036 policy setting registry", () => {
     expect(serviceSource).toContain(
       'key === "security.evidence_storage.default_policy"'
     );
-    expect(serviceSource).toContain('? "DEC-0046"');
+  expect(serviceSource).toContain('return "DEC-0046"');
+  expect(serviceSource).toContain(
+    'key === "security.authorization_denial.window_minutes"',
+  );
+  expect(serviceSource).toContain('return "DEC-0050"');
     expect(pageSource).toContain("resetCompanyPolicySetting");
     expect(pageSource).toContain("resetPolicySettingAction");
     expect(pageSource).toContain("Use Recommended");

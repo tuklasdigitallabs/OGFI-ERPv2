@@ -43,15 +43,25 @@ describe("wastage foundation rules", () => {
     expect(source).not.toContain("nonPostingFoundation: true");
   });
 
-  test("wastage approval submission emits scoped in-app approval notification", () => {
+  test("wastage approval submission uses normalized routing without role fanout", () => {
     const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
 
-    expect(source).toContain("resolveScopedNotificationRecipients");
+    expect(source).toContain("for (const step of routedSteps)");
+    expect(source).toContain("configureApprovalStepRouting(tx");
+    expect(source).toContain("requiredPermissionCode: permissions.wastageApprove");
+    expect(source).toContain("dueAt: null");
+    expect(source).toContain('source: "wastage-report-submission"');
+    expect(source).toContain("userId: report.reportedByUserId");
+    expect(source).toContain("assertAnyEligibleApprovalActorForStep(tx");
+    expect(source.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+      source.indexOf("const submitted = await tx.wastageReport.updateMany")
+    );
     expect(source).toContain("recordWorkflowNotifications");
     expect(source).toContain('notificationType: "APPROVE_WASTAGE_REPORT"');
     expect(source).toContain("locationId: report.inventoryLocation.locationId");
     expect(source).toContain("sourceEventKey: auditEvent.id");
-    expect(source).toContain('recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role"');
+    expect(source).toContain("recipientUserIds: firstStep.userId ? [firstStep.userId] : []");
+    expect(source).not.toContain("resolveScopedNotificationRecipients");
     expect(source).toContain("deepLink: `/approvals/${approval.id}`");
     expect(source).toContain('source: "wastage-approval-submission"');
   });

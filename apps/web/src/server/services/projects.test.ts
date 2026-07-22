@@ -300,7 +300,8 @@ describe("project tracker authorization helpers", () => {
     expect(source).toContain("permissions.projectManageMembers");
     expect(source).toContain("transitionProjectLifecycle");
     expect(source).toContain("project.lifecycle.transitioned");
-    expect(source).toContain("project.lifecycle.denied");
+    expect(source).toContain("recordSessionDeniedDecisionSafely");
+    expect(source).not.toContain("getAuthorizationDenialWindowMinutes");
     expect(source).toContain("PROJECT_LIFECYCLE_STALE_VERSION");
     expect(source).toContain("assertProjectCanCloseCancelOrArchive");
     expect(source).toContain('"COMPLETED", "CANCELLED", "ARCHIVED"');
@@ -335,4 +336,19 @@ describe("project tracker authorization helpers", () => {
     expect(page).toContain("expectedVersion");
     expect(page).toContain("Members");
   });
+
+  test("project lifecycle denial recorder excludes target data", () => {
+    const source = readFileSync(path.resolve(__dirname, "projects.ts"), "utf8")
+    const writer = source.slice(
+      source.indexOf("async function logProjectLifecycleDenied"),
+      source.indexOf("async function assertProjectLifecycleManageAccess")
+    )
+    const recorderInput = writer.slice(writer.indexOf("recordSessionDeniedDecisionSafely("))
+
+    expect(writer).not.toContain("auditEvent.create")
+    expect(recorderInput).not.toContain("projectId:")
+    expect(recorderInput).not.toContain("nextStatus:")
+    expect(recorderInput).not.toContain("reasonCode:")
+    expect(recorderInput).toContain('resource: "PROJECTS"')
+  })
 });

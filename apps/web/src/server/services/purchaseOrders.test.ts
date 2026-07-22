@@ -28,6 +28,45 @@ import { canReadPurchaseOrders } from "./authorization";
 import { assertSupplierStatusAllowedForPurchaseOrder } from "./policySettings";
 
 describe("purchase order lifecycle rules", () => {
+  test("all three PO approval activations use normalized fail-closed routing", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+
+    expect(source.match(/configureApprovalStepRouting\(tx/g)).toHaveLength(3);
+    expect(source.match(/assertAnyEligibleApprovalActorForStep\(tx/g)).toHaveLength(3);
+    expect(source.match(/requiredPermissionCode: permissions\.purchaseOrderApprove/g)).toHaveLength(3);
+    expect(source.match(/dueAt: order\.expectedDeliveryDate/g)).toHaveLength(3);
+    expect(source).toContain('source: "purchase-order-submission"');
+    expect(source).toContain('source: "purchase-order-balance-closure-request"');
+    expect(source).toContain('source: "purchase-order-amendment-request"');
+    expect(source.match(/recipientUserIds: \[firstEligibleActor\.userId\]/g)).toHaveLength(3);
+    expect(source).toContain("order.createdByUserId");
+    expect(source).toContain("order.purchaseRequest.requesterUserId");
+    expect(source).toContain("order.quotationRecommendation.preparedByUserId");
+    expect(source).toContain("const closureId = randomUUID()");
+    expect(source).toContain("const amendmentId = randomUUID()");
+    expect(source).not.toContain("resolveScopedNotificationRecipients");
+
+    for (const functionName of [
+      "submitPurchaseOrderForApproval",
+      "requestPurchaseOrderBalanceClosure",
+      "requestPurchaseOrderAmendment"
+    ]) {
+      const start = source.indexOf(`export async function ${functionName}`);
+      const end = source.indexOf("\nexport async function ", start + 1);
+      const action = source.slice(start, end === -1 ? undefined : end);
+      expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeGreaterThan(-1);
+      expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+        action.indexOf(
+          functionName === "submitPurchaseOrderForApproval"
+            ? "const updated = await tx.purchaseOrder.updateMany"
+            : functionName === "requestPurchaseOrderBalanceClosure"
+              ? "const closure = await tx.purchaseOrderBalanceClosure.create"
+              : "const amendment = await tx.purchaseOrderAmendment.create"
+        )
+      );
+    }
+  });
+
   test("app shell navigation uses the shared PO read helper", () => {
     const source = readFileSync(
       path.resolve(__dirname, "../../components/AppShell.tsx"),

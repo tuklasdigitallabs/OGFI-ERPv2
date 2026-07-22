@@ -5,6 +5,10 @@ import { join } from "node:path";
 import test from "node:test";
 import { controlledMigrationPlan } from "./db-migrate-controlled.mjs";
 
+function envLine(name, value) {
+  return [name, value].join("=");
+}
+
 function fixture(overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "ogfi-db-role-test-"));
   const migrationFile = join(root, "migration-url");
@@ -12,7 +16,11 @@ function fixture(overrides = {}) {
   const applicationEnvironmentFile = join(root, "application.env");
   writeFileSync(migrationFile, "postgresql://ogfi_prod_migrator:migration-secret@127.0.0.1:5432/ogfi_erp_production?schema=public\n");
   writeFileSync(runtimeFile, "postgresql://ogfi_prod_runtime:runtime-secret@127.0.0.1:5432/ogfi_erp_production?schema=public\n");
-  writeFileSync(applicationEnvironmentFile, "APP_ENV=production\nDATABASE_URL=postgresql://ogfi_prod_runtime:runtime-secret@127.0.0.1:5432/ogfi_erp_production?schema=public\n");
+  writeFileSync(applicationEnvironmentFile, [
+    envLine("APP_ENV", "production"),
+    envLine("DATABASE_URL", "postgresql://ogfi_prod_runtime:runtime-secret@127.0.0.1:5432/ogfi_erp_production?schema=public"),
+    "",
+  ].join("\n"));
   chmodSync(migrationFile, 0o600);
   chmodSync(runtimeFile, 0o600);
   chmodSync(applicationEnvironmentFile, 0o640);
@@ -51,7 +59,11 @@ test("rejects privileged database credentials in the application environment", (
   try {
     writeFileSync(
       setup.env.OGFI_APPLICATION_ENV_FILE,
-      "DATABASE_URL=postgresql://ogfi_prod_runtime:runtime-secret@127.0.0.1:5432/ogfi_erp_production?schema=public\nDIRECT_DATABASE_URL=postgresql://ogfi_prod_migrator:migration-secret@127.0.0.1:5432/ogfi_erp_production?schema=public\n",
+      [
+        envLine("DATABASE_URL", "postgresql://ogfi_prod_runtime:runtime-secret@127.0.0.1:5432/ogfi_erp_production?schema=public"),
+        envLine("DIRECT_DATABASE_URL", "postgresql://ogfi_prod_migrator:migration-secret@127.0.0.1:5432/ogfi_erp_production?schema=public"),
+        "",
+      ].join("\n"),
     );
     assert.throws(() => controlledMigrationPlan(setup.env), /forbidden privileged database setting DIRECT_DATABASE_URL/);
   } finally {
@@ -64,7 +76,11 @@ test("rejects generic secondary database URLs in the application environment", (
   try {
     writeFileSync(
       setup.env.OGFI_APPLICATION_ENV_FILE,
-      "DATABASE_URL=postgresql://ogfi_prod_runtime:runtime-secret@127.0.0.1:5432/ogfi_erp_production?schema=public\nSETUP_DATABASE_URL=postgresql://setup:any@127.0.0.1:5432/ogfi_erp_production\n",
+      [
+        envLine("DATABASE_URL", "postgresql://ogfi_prod_runtime:runtime-secret@127.0.0.1:5432/ogfi_erp_production?schema=public"),
+        envLine("SETUP_DATABASE_URL", "postgresql://setup:any@127.0.0.1:5432/ogfi_erp_production"),
+        "",
+      ].join("\n"),
     );
     assert.throws(() => controlledMigrationPlan(setup.env), /forbidden privileged database setting SETUP_DATABASE_URL/);
   } finally {
@@ -106,6 +122,8 @@ test("role SQL uses no temporary objects and includes cluster-admin adoption", (
   for (const source of sources) assert.doesNotMatch(source, /CREATE\s+TEMP/i);
   assert.match(sources[0], /ALTER DATABASE %I OWNER TO %I/);
   assert.match(sources[0], /SET role TO %L/);
+  assert.match(sources[0], /SET search_path TO public, pg_catalog', migrator_role/);
+  assert.match(sources[0], /SET search_path TO pg_catalog, public', runtime_role/);
   assert.match(sources[2], /Owner or runtime role membership closure is not empty/);
 });
 
@@ -116,9 +134,32 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
 
   assert.match(reconcile, /REVOKE ALL ON ROUTINE/);
   assert.match(reconcile, /REVOKE ALL \(%I\) ON TABLE public\.%I/);
+  assert.match(reconcile, /REVOKE UPDATE, DELETE ON TABLE public\."AuthorizationDenialBucket"/);
+  assert.match(reconcile, /GRANT SELECT, INSERT, DELETE ON TABLE public\."AuthenticationThrottleWindow"/);
+  assert.match(reconcile, /GRANT SELECT ON TABLE public\."AuthenticationThrottleControl"/);
+  assert.match(reconcile, /GRANT EXECUTE ON FUNCTION public\.lock_authentication_throttle_control\(\)/);
+  assert.match(reconcile, /GRANT EXECUTE ON FUNCTION public\.operator_transition_authentication_throttle_control/);
+  assert.match(reconcile, /GRANT UPDATE \("requestCount", "failureReservationCount", "successCount", "deniedCount", "lastRequestAt", "thresholdReachedAt", "updatedAt"\)/);
+  assert.match(reconcile, /GRANT SELECT, DELETE ON TABLE public\."AuthLoginAttempt"/);
+  assert.match(reconcile, /AuthenticationThrottleWindow" FROM %I', column_name, runtime_role/);
+  assert.match(reconcile, /AuthLoginAttempt" FROM %I', column_name, runtime_role/);
+  assert.match(reconcile, /GRANT UPDATE \("denialCount", "lastDeniedAt", "updatedAt", "finalizedAt", "finalAuditEventId"\)/);
   assert.match(reconcile, /REVOKE ALL ON FUNCTIONS FROM PUBLIC/);
   assert.match(verify, /SECURITY DEFINER routine/);
   assert.match(verify, /column ACL/);
+  assert.match(verify, /AuthorizationDenialBucket trigger contract is incomplete/);
+  assert.match(verify, /unauthorized AuthorizationDenialBucket column/);
+  assert.match(verify, /AuthenticationThrottleWindow ENABLE ALWAYS trigger contract is incomplete/);
+  assert.match(verify, /unauthorized AuthenticationThrottleWindow column/);
+  assert.match(verify, /AuthenticationThrottleControl ENABLE ALWAYS trigger contract is incomplete/);
+  assert.match(verify, /AuthenticationThrottleControl shared-lock function contract is unsafe or incomplete/);
+  assert.match(verify, /Runtime can execute AuthenticationThrottleControl operator CAS function/);
+  assert.match(verify, /AuthenticationThrottleControl operator CAS function semantics drifted/);
+  assert.match(verify, /Approval routing child trigger semantics drifted/);
+  assert.match(verify, /Approval routing child trigger function semantics drifted/);
+  assert.match(verify, /t\.tgfoid = expected\.function_oid/);
+  assert.match(verify, /md5\(p\.prosrc\) <> expected\.source_md5/);
+  assert.match(verify, /Reviewed control function semantics drifted/);
   assert.match(verify, /Migrator membership must be exactly owner/);
   assert.match(verify, /supported public object is not owned/);
   assert.match(verify, /default privileges contain an unsafe/);

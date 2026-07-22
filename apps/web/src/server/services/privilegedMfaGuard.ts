@@ -6,6 +6,10 @@ import {
   getMfaStepUpMinutes,
   isMfaAssuranceFresh,
 } from "./authentication";
+import {
+  recordSessionDeniedDecisionInTransactionSafely,
+  recordSessionDeniedDecisionSafely,
+} from "./authorizationDenials";
 
 export const privilegedMfaEnforcementModes = [
   "warn_and_audit",
@@ -30,6 +34,23 @@ type PrivilegedMfaGuardOptions = {
   transaction?: TransactionClient;
   deferDenialThrow?: boolean;
 };
+
+async function recordPrivilegedMfaDenial(
+  session: SessionContext,
+  transaction?: TransactionClient,
+) {
+  const denial = {
+    resource: "ADMINISTRATION" as const,
+    action: "ADMINISTER" as const,
+    reason: "MFA_REQUIRED" as const,
+  };
+  if (transaction) {
+    return recordSessionDeniedDecisionInTransactionSafely(session, denial, {
+      client: transaction,
+    });
+  }
+  return recordSessionDeniedDecisionSafely(session, denial);
+}
 
 function isPrivilegedMfaEnforcementMode(
   value: unknown,
@@ -124,23 +145,7 @@ export async function assertPrivilegedMfaForAction(
         deniedError: null,
       };
     }
-    await db.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "privileged_mfa.step_up_denied",
-        entityType: input.entityType ?? "PrivilegedAction",
-        entityId: input.entityId ?? session.user.id,
-        afterData: {
-          action: input.action,
-          assuranceLevel: session.authentication?.assuranceLevel ?? "NONE",
-          mfaAuthenticatedAt: authenticatedAt?.toISOString() ?? null,
-          requiredFreshnessMinutes: configuredFreshness,
-        },
-        metadata: { sourceDecisionId: "DEC-0040" },
-      },
-    });
+    await recordPrivilegedMfaDenial(session, options.transaction);
     if (options.deferDenialThrow) {
       return {
         required: true,
@@ -177,34 +182,8 @@ export async function assertPrivilegedMfaForAction(
     (mode === "enforce_admin_security" &&
       (input.enforcementScope ?? "admin_security") === "admin_security");
 
-  await db.auditEvent.create({
-    data: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      actorUserId: session.user.id,
-      eventType: hardBlock
-        ? "privileged_mfa.required_denied"
-        : "privileged_mfa.required_warning",
-      entityType: input.entityType ?? "PrivilegedAction",
-      entityId: input.entityId ?? session.user.id,
-      afterData: {
-        action: input.action,
-        permissionCode: input.permissionCode ?? null,
-        enforcementScope: input.enforcementScope ?? "admin_security",
-        mode,
-        outcome: hardBlock ? "DENIED" : "WARNED",
-      },
-      metadata: {
-        sourceDecisionId: "DEC-0036",
-        reason:
-          input.reason ??
-          "Verified privileged MFA evidence is required for this sensitive action.",
-        ...input.metadata,
-      },
-    },
-  });
-
   if (hardBlock) {
+    await recordPrivilegedMfaDenial(session, options.transaction);
     if (options.deferDenialThrow) {
       return {
         required: true,
@@ -215,6 +194,31 @@ export async function assertPrivilegedMfaForAction(
     }
     throw new Error("PRIVILEGED_MFA_REQUIRED");
   }
+
+  await db.auditEvent.create({
+    data: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      actorUserId: session.user.id,
+      eventType: "privileged_mfa.required_warning",
+      entityType: input.entityType ?? "PrivilegedAction",
+      entityId: input.entityId ?? session.user.id,
+      afterData: {
+        action: input.action,
+        permissionCode: input.permissionCode ?? null,
+        enforcementScope: input.enforcementScope ?? "admin_security",
+        mode,
+        outcome: "WARNED",
+      },
+      metadata: {
+        sourceDecisionId: "DEC-0036",
+        reason:
+          input.reason ??
+          "Verified privileged MFA evidence is required for this sensitive action.",
+        ...input.metadata,
+      },
+    },
+  });
 
   return {
     required: true,

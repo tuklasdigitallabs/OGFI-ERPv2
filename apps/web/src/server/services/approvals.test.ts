@@ -1,7 +1,32 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { approvalReminderKind } from "./approvals";
+import {
+  approvalReminderKind,
+  findEligibleApprovalActor
+} from "./approvals";
+import type { SessionContext } from "./context";
+
+const eligibilitySession = {
+  user: {
+    id: "00000000-0000-4000-8000-000000000001",
+    email: "approver@example.test",
+    displayName: "Approver",
+    role: "Approver"
+  },
+  context: {
+    tenantId: "00000000-0000-4000-8000-000000000002",
+    companyId: "00000000-0000-4000-8000-000000000003",
+    companyName: "OGFI",
+    brandId: "00000000-0000-4000-8000-000000000004",
+    brandName: "Brand",
+    locationId: "00000000-0000-4000-8000-000000000005",
+    locationName: "Branch",
+    locationType: "BRANCH"
+  },
+  authorizedLocations: [],
+  permissionCodes: []
+} satisfies SessionContext;
 
 describe("approval inbox controls", () => {
   test("approval reminder classification distinguishes overdue from due soon", () => {
@@ -283,6 +308,82 @@ describe("approval inbox controls", () => {
   });
 });
 
+describe("role-scoped approval eligibility", () => {
+  const now = new Date("2026-07-22T00:00:00.000Z");
+  const baseInput = {
+    assignedUserId: null,
+    assignedRoleId: "00000000-0000-4000-8000-000000000006",
+    locationId: eligibilitySession.context.locationId,
+    requiredPermissionCode: "purchase_request.approve",
+    prohibitedApproverUserIds: ["00000000-0000-4000-8000-000000000099"],
+    now
+  };
+
+  test("uses one bounded live role/scope lookup regardless of role population", async () => {
+    let capturedWhere: unknown;
+    let userQueries = 0;
+    const tx = {
+      location: {
+        findFirst: async () => ({
+          id: baseInput.locationId,
+          companyId: eligibilitySession.context.companyId,
+          brandId: eligibilitySession.context.brandId
+        })
+      },
+      user: {
+        findFirst: async ({ where }: { where: unknown }) => {
+          userQueries += 1;
+          capturedWhere = where;
+          return { id: eligibilitySession.user.id };
+        }
+      }
+    };
+
+    await expect(
+      findEligibleApprovalActor(tx as never, eligibilitySession, baseInput)
+    ).resolves.toEqual({ id: eligibilitySession.user.id });
+    expect(userQueries).toBe(1);
+    expect(JSON.stringify(capturedWhere)).toContain(baseInput.assignedRoleId);
+    expect(JSON.stringify(capturedWhere)).toContain("purchase_request.approve");
+    expect(JSON.stringify(capturedWhere)).toContain("APPROVE");
+    expect(JSON.stringify(capturedWhere)).toContain("MANAGE");
+    expect(JSON.stringify(capturedWhere)).toContain(now.toISOString());
+  });
+
+  test("returns no witness for revoked, expired, or wrong-scope populations", async () => {
+    const tx = {
+      location: {
+        findFirst: async () => ({
+          id: baseInput.locationId,
+          companyId: eligibilitySession.context.companyId,
+          brandId: eligibilitySession.context.brandId
+        })
+      },
+      user: { findFirst: async () => null }
+    };
+    await expect(
+      findEligibleApprovalActor(tx as never, eligibilitySession, baseInput)
+    ).resolves.toBeNull();
+  });
+
+  test("rejects a prohibited direct assignee before querying scope or users", async () => {
+    let touchedDatabase = false;
+    const tx = {
+      location: { findFirst: async () => ((touchedDatabase = true), null) },
+      user: { findFirst: async () => ((touchedDatabase = true), null) }
+    };
+    await expect(
+      findEligibleApprovalActor(tx as never, eligibilitySession, {
+        ...baseInput,
+        assignedRoleId: null,
+        assignedUserId: eligibilitySession.user.id,
+        prohibitedApproverUserIds: [eligibilitySession.user.id]
+      })
+    ).resolves.toBeNull();
+    expect(touchedDatabase).toBe(false);
+  });
+});
+
 function extractFunctionSource(serviceSource: string, functionName: string) {
   const exportedStart = serviceSource.indexOf(
     `export async function ${functionName}(`
@@ -308,11 +409,17 @@ describe("multi-step approval advancement", () => {
       serviceSource,
       "approveCurrentStepAndAdvance"
     );
+    const activationSource = extractFunctionSource(
+      serviceSource,
+      "activateNextApprovalStep"
+    );
 
     expect(helperSource).toContain("approvalInstanceStep.updateMany");
     expect(helperSource).toContain('status: "PENDING"');
-    expect(helperSource).toContain('status: "WAITING"');
-    expect(helperSource).toContain('data: { status: "PENDING" }');
+    expect(helperSource).toContain("activateNextApprovalStep");
+    expect(activationSource).toContain('status: "WAITING"');
+    expect(activationSource).toContain('data: { status: "PENDING" }');
+    expect(activationSource).toContain("activateApprovalStepWithEligibility");
     expect(helperSource).toContain("tenantId: session.context.tenantId");
     expect(helperSource).toContain("companyId: session.context.companyId");
     expect(helperSource).toContain("currentStepOrder: input.stepOrder");
@@ -322,11 +429,12 @@ describe("multi-step approval advancement", () => {
     expect(helperSource).toContain("approvedStepOrder: input.stepOrder");
     expect(helperSource).toContain("nextStepOrder: nextStep.stepOrder");
     expect(helperSource).toContain("assertLiveApprovalAuthority");
-    expect(helperSource).toContain("resolveNextApprovalStepRecipients");
+    expect(helperSource).toContain("findEligibleApprovalActor");
+    expect(helperSource).toContain("if (prepared.directRecipientUserId)");
     expect(helperSource).toContain("recordWorkflowNotifications");
     expect(helperSource).toContain('notificationType: "APPROVAL_STEP_READY"');
     expect(helperSource).toContain("sourceEventKey: auditEvent.id");
-    expect(helperSource).toContain(
+    expect(serviceSource).toContain(
       'throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE")'
     );
   });
@@ -348,6 +456,10 @@ describe("multi-step approval advancement", () => {
       serviceSource,
       "assertLiveApprovalAuthority"
     );
+    const eligibilitySource = extractFunctionSource(
+      serviceSource,
+      "findEligibleApprovalActor"
+    );
     expect(actorLockSource).toContain('FROM "AuthSession"');
     expect(actorLockSource).toContain("FOR SHARE");
     expect(approvalLockSource).toContain("FOR UPDATE OF ai, s");
@@ -362,10 +474,10 @@ describe("multi-step approval advancement", () => {
     );
     expect(authoritySource).toContain("const now = new Date()");
     expect(authoritySource).toContain("privilegeEpochAtIssue");
-    expect(authoritySource).toContain("userRoleAssignment.findMany");
+    expect(authoritySource).toContain("findEligibleApprovalActor");
     expect(authoritySource).toContain("requiredPermissionCode");
-    expect(authoritySource).toContain("userScopeAssignment.findFirst");
-    expect(authoritySource).toContain('accessLevel: { in: ["APPROVE", "MANAGE"] }');
+    expect(eligibilitySource).toContain("scopeAssignments");
+    expect(eligibilitySource).toContain('accessLevel: { in: ["APPROVE", "MANAGE"] }');
     expect(authoritySource).not.toContain("$queryRawUnsafe");
   });
 
@@ -509,12 +621,12 @@ describe("multi-step approval advancement", () => {
   test("next-step routing excludes every workflow source actor", () => {
     const resolverSource = extractFunctionSource(
       serviceSource,
-      "resolveNextApprovalStepRecipients"
+      "findEligibleApprovalActor"
     );
     expect(resolverSource).toContain(
       "input.prohibitedApproverUserIds.includes(input.assignedUserId)"
     );
-    expect(resolverSource).toContain("return []");
+    expect(resolverSource).toContain("return null");
     expect(resolverSource).toContain("equals: input.assignedUserId");
     expect(resolverSource).toContain("notIn: input.prohibitedApproverUserIds");
 
@@ -563,6 +675,63 @@ describe("multi-step approval advancement", () => {
         expect(handlerSource).toContain(actor);
       }
     }
+  });
+
+  test("role activation is constant-write and direct assignment emits at most one notification", () => {
+    const prepareSource = extractFunctionSource(
+      serviceSource,
+      "prepareApprovalDecisionAuthority"
+    );
+    const advanceSource = extractFunctionSource(
+      serviceSource,
+      "approveCurrentStepAndAdvance"
+    );
+    const eligibilitySource = extractFunctionSource(
+      serviceSource,
+      "findEligibleApprovalActor"
+    );
+
+    expect(eligibilitySource).toContain("user.findFirst");
+    expect(eligibilitySource).not.toContain("user.findMany");
+    expect(eligibilitySource).toContain('startsAt: { lte: now }');
+    expect(eligibilitySource).toContain('{ endsAt: { gt: now } }');
+    expect(eligibilitySource).toContain('accessLevel: { in: ["APPROVE", "MANAGE"] }');
+    expect(prepareSource).not.toContain("preliminaryRecipientIds");
+    expect(prepareSource).not.toContain("recipientUserIds");
+    expect(advanceSource).toContain("if (prepared.directRecipientUserId)");
+    expect(advanceSource).toContain("recipientUserIds: [prepared.directRecipientUserId]");
+    expect(advanceSource).toContain('activationMode: nextStep.assignedUserId ? "DIRECT_USER" : "ROLE_SCOPED"');
+    expect(advanceSource).toContain("assignedRoleId: nextStep.assignedRoleId");
+  });
+
+  test("dynamic inbox role discovery is effective-dated and permission-specific", () => {
+    const roleSource = extractFunctionSource(serviceSource, "getActiveRoleIds");
+    const listSource = extractFunctionSource(serviceSource, "listPendingApprovals");
+    const scopeSource = extractFunctionSource(serviceSource, "hasApprovalScope");
+
+    expect(roleSource).toContain('startsAt: { lte: now }');
+    expect(roleSource).toContain('{ endsAt: { gt: now } }');
+    expect(roleSource).toContain('status: "ACTIVE"');
+    expect(roleSource).toContain("requiredPermissionCode");
+    expect(listSource).toContain("approvalPermissionByDocumentType");
+    expect(listSource).toContain("roleIdsByPermission");
+    expect(scopeSource).toContain('startsAt: { lte: now }');
+    expect(scopeSource).toContain('{ endsAt: { gt: now } }');
+  });
+
+  test("approval inbox uses normalized server pagination at cutover and exposes no passive tabs", () => {
+    const pageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/approvals/page.tsx"),
+      "utf8"
+    );
+
+    expect(pageSource).toContain("normalizedApprovalRoutingEnabled()");
+    expect(pageSource).toContain("listNormalizedApprovalInboxPage(session");
+    expect(pageSource).toContain('view: "DUE_SOON"');
+    expect(pageSource).toContain("getApprovalDetail(session, item.approvalInstanceId)");
+    expect(pageSource).toContain('throw new Error("APPROVAL_AUTHORITY_STALE")');
+    expect(pageSource).not.toContain('label: "Returned"');
+    expect(pageSource).not.toContain('label: "Audit"');
   });
 
   test("balance closure serializes with receiving and uses quantity CAS", () => {

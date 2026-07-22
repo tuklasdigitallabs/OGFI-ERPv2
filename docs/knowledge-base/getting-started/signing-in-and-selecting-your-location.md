@@ -60,6 +60,7 @@ Open the ERP sign-in page. After sign-in, use the location selector in the page 
 - Sensitive actions require MFA assurance refreshed within the current 15-minute step-up window. If prompted, open `Security`, select `Refresh MFA assurance`, complete the challenge, and retry the action.
 - An organization code identifies the ERP organization; it is not a company, brand, or location selection.
 - Repeated invalid sign-in attempts may temporarily block further attempts. Wait for the message’s stated period or contact support.
+- During unusually heavy sign-in traffic, the ERP may reject an attempt before checking the password. This protects account availability and does not confirm whether the organization code or email exists. Wait briefly and retry once; if the safe message continues, contact support instead of repeatedly submitting.
 - If you cannot see an expected location, ask an administrator to review your role and scope assignment.
 
 ## What Happens Next

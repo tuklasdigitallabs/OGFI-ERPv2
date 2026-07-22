@@ -80,7 +80,10 @@ BEGIN
   EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', owner_role, migrator_role);
   EXECUTE format('ALTER ROLE %I IN DATABASE %I SET role TO %L', migrator_role, database_name, owner_role);
   EXECUTE format('ALTER ROLE %I IN DATABASE %I RESET role', runtime_role, database_name);
-  EXECUTE format('ALTER ROLE %I IN DATABASE %I SET search_path TO pg_catalog, public', migrator_role, database_name);
+  -- Prisma migrations create unqualified objects. The controlled migrator must
+  -- resolve the owner-controlled application schema before pg_catalog; placing
+  -- pg_catalog first makes CREATE TABLE attempt the protected system schema.
+  EXECUTE format('ALTER ROLE %I IN DATABASE %I SET search_path TO public, pg_catalog', migrator_role, database_name);
   EXECUTE format('ALTER ROLE %I IN DATABASE %I SET search_path TO pg_catalog, public', runtime_role, database_name);
 
   IF contract_scope = 'disposable' AND to_regnamespace('ogfi_disposable_control') IS NOT NULL THEN

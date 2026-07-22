@@ -10,6 +10,17 @@ test("verifies owner guards, runtime least privilege, inserts, and escalation ne
   assert.ok(checks.includes("PASS | runtime cannot create public tables"));
   assert.ok(checks.includes("PASS | runtime cannot create temporary tables"));
   assert.ok(checks.includes("PASS | runtime can INSERT InventoryMovement with rollback"));
+  assert.ok(checks.includes("PASS | runtime can insert first denial evidence and bucket then increment allowed columns with rollback"));
+  assert.ok(checks.includes("PASS | runtime lacks table-wide UPDATE on AuthorizationDenialBucket"));
+  assert.ok(checks.includes("PASS | runtime cannot finalize an open denial bucket before its window ends"));
+  assert.ok(checks.includes("PASS | runtime cannot disable denial bucket guard"));
+  assert.ok(checks.includes("PASS | runtime exact throttle reservation and success release are allowed with rollback"));
+  assert.ok(checks.includes("PASS | runtime cannot update throttle identity columns"));
+  assert.ok(checks.includes("PASS | runtime cannot update throttle limits"));
+  assert.ok(checks.includes("PASS | runtime cannot delete an active throttle window"));
+  assert.ok(checks.includes("PASS | runtime can delete an expired throttle window with rollback"));
+  assert.ok(checks.includes("PASS | runtime cannot truncate throttle windows"));
+  assert.ok(checks.includes("PASS | runtime cannot disable throttle guards"));
 });
 
 function fakePsql(connection, args) {
@@ -17,7 +28,19 @@ function fakePsql(connection, args) {
     return { status: 0, stdout: "RESULT | PASS | PostgreSQL effective role contract verified.\n", stderr: "" };
   }
   const sql = args.find((value) => value.startsWith("--command="))?.slice("--command=".length) ?? "";
-  if (/SELECT count|WITH inserted/.test(sql)) return { status: 0, stdout: "", stderr: "" };
+  if (/AuthorizationDenialBucket/.test(sql) && /"finalizedAt"/.test(sql)) {
+    return { status: 1, stdout: "", stderr: "ERROR:  55000: AuthorizationDenialBucket update is not an exact increment or one-way finalization" };
+  }
+  if (/AuthenticationThrottleWindow/.test(sql) && /DELETE FROM/.test(sql) && /repeat\('b'/.test(sql)) {
+    return { status: 1, stdout: "", stderr: "ERROR:  55000: AUTH_THROTTLE_RETENTION_ACTIVE" };
+  }
+  if (/AuthenticationThrottleWindow/.test(sql) && /repeat\('c'/.test(sql)) {
+    return { status: 0, stdout: "", stderr: "" };
+  }
+  if (/AuthenticationThrottleWindow/.test(sql) && /"requestCount"/.test(sql)) {
+    return { status: 0, stdout: "", stderr: "" };
+  }
+  if (/SELECT count|WITH inserted|has_table_privilege/.test(sql)) return { status: 0, stdout: "", stderr: "" };
   if (connection.username === "ogfi_prod_migrator") {
     const table = sql.match(/"(AuditEvent|ProjectActivityEvent|InventoryMovement)"/)?.[1];
     const operation = /^UPDATE/.test(sql) ? "UPDATE" : /^DELETE/.test(sql) ? "DELETE" : "TRUNCATE";

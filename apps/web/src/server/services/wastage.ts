@@ -1,4 +1,5 @@
 import { prisma, type TransactionClient } from "@ogfi/database";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { WASTAGE_MAX_LINES } from "../../lib/workflowLimits";
 import { canUseWastageReports, permissions, requirePermission } from "./authorization";
@@ -9,9 +10,13 @@ import {
 } from "./context";
 import { postInventoryMovementInTransaction } from "./inventory";
 import {
-  recordWorkflowNotifications,
-  resolveScopedNotificationRecipients
+  recordWorkflowNotifications
 } from "./notifications";
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting";
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import {
   listActiveOperationalReasonCodes,
   requireActiveOperationalReasonCode
@@ -1056,6 +1061,70 @@ export async function submitWastageReport(formData: FormData) {
       throw new Error("WASTAGE_APPROVAL_ALREADY_SUBMITTED");
     }
 
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }));
+    const firstRoutedStep = routedSteps[0];
+    if (!firstRoutedStep) {
+      throw new Error("APPROVAL_RULE_STEP_NOT_CONFIGURED");
+    }
+
+    const approval = await tx.approvalInstance.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "WastageReport",
+        documentId: report.id,
+        approvalRuleId: approvalRule.id,
+        status: "PENDING",
+        currentStepOrder: firstStep.stepOrder,
+        steps: {
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
+            stepOrder: step.stepOrder,
+            assignedUserId: step.userId,
+            assignedRoleId: step.roleId,
+            status: step.activationStatus
+          }))
+        }
+      }
+    });
+
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("WastageReport"),
+        requiredPermissionCode: permissions.wastageApprove,
+        dueAt: null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "wastage-report-submission"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: report.inventoryLocation.locationId
+          }]
+        }],
+        prohibitedActors: [{
+          userId: report.reportedByUserId,
+          reasonCode: "REPORTER"
+        }]
+      });
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+    });
+
     const submitted = await tx.wastageReport.updateMany({
       where: {
         id: report.id,
@@ -1073,26 +1142,6 @@ export async function submitWastageReport(formData: FormData) {
     if (submitted.count !== 1) {
       throw new Error("WASTAGE_NOT_OPEN_FOR_SUBMIT");
     }
-
-    const approval = await tx.approvalInstance.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        documentType: "WastageReport",
-        documentId: report.id,
-        approvalRuleId: approvalRule.id,
-        status: "PENDING",
-        currentStepOrder: firstStep.stepOrder,
-        steps: {
-          create: approvalRule.steps.map((step, index) => ({
-            stepOrder: step.stepOrder,
-            assignedUserId: step.userId,
-            assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
-          }))
-        }
-      }
-    });
 
     const auditEvent = await tx.auditEvent.create({
       data: {
@@ -1120,18 +1169,11 @@ export async function submitWastageReport(formData: FormData) {
       }
     });
 
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: report.inventoryLocation.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    });
     await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: report.inventoryLocation.locationId,
-      recipientUserIds,
+      recipientUserIds: firstStep.userId ? [firstStep.userId] : [],
       notificationType: "APPROVE_WASTAGE_REPORT",
       priority: policyEvaluation.evidenceRequired ? "HIGH" : "NORMAL",
       title: `Approve Wastage Report ${report.publicReference}`,

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "cluster": "authentication-controls",
+  "testFiles": [
+    "apps/web/src/server/services/authenticationThrottle.pg.test.ts",
+    "apps/web/tests/approvalRoutingBackfill.integration.test.ts",
+    "apps/web/tests/authenticationDatabase.integration.test.ts",
+    "apps/web/tests/authorizationDenials.integration.test.ts",
+    "apps/web/tests/authorizationRoutes.integration.test.ts"
+  ],
+  "cases": [
+    {
+      "id": "AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION",
+      "file": "apps/web/src/server/services/authenticationThrottle.pg.test.ts",
+      "testName": "rejects proof tampering, replay, and injected rollback without double release",
+      "kind": "POSTGRESQL_CONCURRENCY_INTEGRATION",
+      "coveredControls": ["signed exact reservation", "one-time success consumption", "transaction rollback", "no double release"]
+    },
+    {
+      "id": "AUTHZ-AUTH-THROTTLE-OPERATOR-BOUNDARY",
+      "file": "apps/web/src/server/services/authenticationThrottle.pg.test.ts",
+      "testName": "reports unused-key readiness and denies runtime control transitions",
+      "kind": "POSTGRESQL_AUTHORIZATION_INTEGRATION",
+      "coveredControls": ["bounded key readiness", "runtime cannot execute operator transition", "control state unchanged"]
+    },
+    {
+      "id": "AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC",
+      "file": "apps/web/tests/approvalRoutingBackfill.integration.test.ts",
+      "testName": "dry-runs without writes, applies atomically, rolls blockers back, and reruns idempotently",
+      "kind": "DATABASE_INTEGRATION",
+      "coveredControls": ["current eligible actor", "immutable routing snapshot", "atomic rollback", "idempotent audit"]
+    },
+    {
+      "id": "AUTHZ-AUTH-PASSWORD-FINALIZATION-RACE",
+      "file": "apps/web/tests/authenticationDatabase.integration.test.ts",
+      "testName": "rejects a stale verified password and atomically consumes success exactly once",
+      "kind": "DATABASE_CONCURRENCY_INTEGRATION",
+      "coveredControls": ["credential revalidation under lock", "atomic session creation", "one-time throttle success"]
+    },
+    {
+      "id": "AUTHZ-AUTH-MFA-REVOCATION-RACE",
+      "file": "apps/web/tests/authenticationDatabase.integration.test.ts",
+      "testName": "cannot establish an authoritative MFA session across authenticator revocation and account reset",
+      "kind": "DATABASE_CONCURRENCY_INTEGRATION",
+      "coveredControls": ["authenticator revalidation", "account reset serialization", "no authoritative session"]
+    },
+    {
+      "id": "AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS",
+      "file": "apps/web/tests/authorizationDenials.integration.test.ts",
+      "testName": "preserves an exact count and one first event under concurrency",
+      "kind": "POSTGRESQL_CONCURRENCY_INTEGRATION",
+      "coveredControls": ["bounded cardinality", "exact concurrent count", "single immutable first event"]
+    },
+    {
+      "id": "AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+      "file": "apps/web/tests/authorizationRoutes.integration.test.ts",
+      "testName": "AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": ["constant-time host token denial", "non-enumerating response", "no metrics disclosure", "no audit mutation"]
+    }
+  ],
+  "boundaries": [
+    {"surfaceId":"server/services/approvalRouting.ts#activateApprovalStepWithEligibility","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["live approval eligibility","prohibited actor exclusion","atomic activation"],"caseIds":["AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["no invalid step activation or notification"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvalRouting.ts#configureApprovalStepRouting","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["company routing scope","eligible actor proof","immutable snapshot"],"caseIds":["AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"],"noMutationControls":["blocked routing transaction rolls back"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvalRoutingBackfill.ts#inspectApprovalRoutingReadiness","classification":"PUBLIC_BOUNDARY","adapterIds":["tenant/company filter","read-only readiness"],"caseIds":["AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"],"noMutationControls":["dry run writes no routing or audit rows"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvalRoutingBackfill.ts#runApprovalRoutingBackfill","classification":"PUBLIC_BOUNDARY","adapterIds":["advisory lock","eligible actor revalidation","idempotent CAS"],"caseIds":["AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"],"noMutationControls":["blocked instance rolls back all routing children"],"status":"COVERED"},
+    {"surfaceId":"server/services/argon2WorkGate.ts#runWithArgon2WorkPermit","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["bounded semaphore","fail-closed saturation","finally release"],"caseIds":["AUTHZ-AUTH-PASSWORD-FINALIZATION-RACE"],"noMutationControls":["no session before bounded verification and locked revalidation"],"status":"COVERED"},
+    {"surfaceId":"server/services/authentication.ts#finalizeMfaAuthenticationInTransaction","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["locked authenticator revalidation","recovery one-time use","atomic session rotation"],"caseIds":["AUTHZ-AUTH-MFA-REVOCATION-RACE"],"noMutationControls":["no session survives authenticator revocation or account reset"],"status":"COVERED"},
+    {"surfaceId":"server/services/authentication.ts#finalizePasswordAuthenticationInTransaction","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["locked credential snapshot","active account revalidation","atomic throttle success"],"caseIds":["AUTHZ-AUTH-PASSWORD-FINALIZATION-RACE"],"noMutationControls":["stale password creates no session"],"status":"COVERED"},
+    {"surfaceId":"server/services/authenticationThrottle.ts#assertAuthenticationThrottleKeyRotationReady","classification":"PUBLIC_BOUNDARY","adapterIds":["shared control lock","active-window count","previous-key overlap"],"caseIds":["AUTHZ-AUTH-THROTTLE-OPERATOR-BOUNDARY"],"noMutationControls":["readiness query does not change control or counters"],"status":"COVERED"},
+    {"surfaceId":"server/services/authenticationThrottle.ts#transitionAuthenticationThrottleControl","classification":"PUBLIC_BOUNDARY","adapterIds":["migrator-only function","expected generation CAS","reviewed key identity"],"caseIds":["AUTHZ-AUTH-THROTTLE-OPERATOR-BOUNDARY"],"noMutationControls":["runtime transition denial preserves control state"],"status":"COVERED"},
+    {"surfaceId":"server/services/authenticationThrottle.ts#reserveAuthenticationAttempt","classification":"PUBLIC_BOUNDARY","adapterIds":["atomic bounded dimensions","authoritative control lock","signed reservation"],"caseIds":["AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"],"noMutationControls":["invalid proof cannot release a reservation"],"status":"COVERED"},
+    {"surfaceId":"server/services/authenticationThrottle.ts#reserveAuthenticationAttemptInTransaction","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller transaction","atomic bounded dimensions","fail closed"],"caseIds":["AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"],"noMutationControls":["failed transaction retains no partial reservation"],"status":"COVERED"},
+    {"surfaceId":"server/services/authenticationThrottle.ts#completeSuccessfulAuthenticationAttempt","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["signed exact reservation","success audit coupling","one-time release"],"caseIds":["AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"],"noMutationControls":["replay cannot release counters twice"],"status":"COVERED"},
+    {"surfaceId":"server/services/authenticationThrottle.ts#completeSuccessfulAuthenticationAttemptInTransaction","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller transaction","success audit coupling","canonical lock order"],"caseIds":["AUTHZ-AUTH-THROTTLE-ATOMIC-RESERVATION-CONSUMPTION"],"noMutationControls":["rollback preserves reservation and audit consistency"],"status":"COVERED"},
+    {"surfaceId":"server/services/authorizationDenials.ts#finalizeExpiredAuthorizationDenialBuckets","classification":"PUBLIC_BOUNDARY","adapterIds":["expired-only selection","one-way finalization","immutable summary"],"caseIds":["AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"],"noMutationControls":["active buckets are not finalized"],"status":"COVERED"},
+    {"surfaceId":"server/services/authorizationDenials.ts#recordAuthorizationDenial","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["bounded dimensions","tenant isolation","exact increment"],"caseIds":["AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"],"noMutationControls":["repeated denials do not amplify audit rows"],"status":"COVERED"},
+    {"surfaceId":"server/services/authorizationDenials.ts#recordAuthorizationDenialInTransaction","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["caller transaction","bounded dimensions","exact increment"],"caseIds":["AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"],"noMutationControls":["concurrent writes preserve exact count"],"status":"COVERED"},
+    {"surfaceId":"server/services/authorizationDenials.ts#recordDeniedDecisionInTransactionSafely","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["safe failure isolation","bounded denial bucket","no attacker details"],"caseIds":["AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"],"noMutationControls":["denial evidence cannot mutate business state"],"status":"COVERED"},
+    {"surfaceId":"server/services/authorizationDenials.ts#recordDeniedDecisionSafely","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["safe failure isolation","bounded denial bucket","no attacker details"],"caseIds":["AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"],"noMutationControls":["denial evidence cannot amplify audit rows"],"status":"COVERED"},
+    {"surfaceId":"server/services/authorizationDenials.ts#recordSessionDeniedDecisionInTransactionSafely","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["session scope normalization","caller transaction","bounded denial bucket"],"caseIds":["AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"],"noMutationControls":["session denial does not mutate controlled record"],"status":"COVERED"},
+    {"surfaceId":"server/services/authorizationDenials.ts#recordSessionDeniedDecisionSafely","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["session scope normalization","safe failure isolation","bounded denial bucket"],"caseIds":["AUTHZ-DENIAL-BUCKET-CONCURRENT-EXACTNESS"],"noMutationControls":["session denial does not amplify audit rows"],"status":"COVERED"}
+  ]
+}

@@ -96,10 +96,36 @@ services:
       - private
 
   caddy:
-    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    image: ${CADDY_IMAGE:-ogfi-caddy:local}
+    build:
+      context: .
+      dockerfile: infra/caddy/Dockerfile
+      args:
+        CADDY_BUILDER_IMAGE: ${CADDY_BUILDER_IMAGE:?Set an immutable Caddy builder image name@sha256 reference}
+        CADDY_RUNTIME_IMAGE: ${CADDY_RUNTIME_IMAGE:?Set an immutable Caddy runtime image name@sha256 reference}
     ports:
-      - "${CADDY_HTTP_PORT:-8080}:80"
-      - "${CADDY_HTTPS_PORT:-8443}:443"
+      - "${CADDY_HTTP_PORT:-8080}:8080"
+      - "${CADDY_HTTPS_PORT:-8443}:8443"
+      - "127.0.0.1:2021:2021"
+    environment:
+      OGFI_SITE_ADDRESS: ${OGFI_SITE_ADDRESS:-:8080}
+      MAX_REQUEST_BODY_SIZE: ${MAX_REQUEST_BODY_SIZE:-27MiB}
+      CADDY_READ_HEADER_TIMEOUT: ${CADDY_READ_HEADER_TIMEOUT:-10s}
+      CADDY_READ_BODY_TIMEOUT: ${CADDY_READ_BODY_TIMEOUT:-5m}
+      CADDY_WRITE_TIMEOUT: ${CADDY_WRITE_TIMEOUT:-5m}
+      CADDY_IDLE_TIMEOUT: ${CADDY_IDLE_TIMEOUT:-2m}
+      CADDY_UPSTREAM_DIAL_TIMEOUT: ${CADDY_UPSTREAM_DIAL_TIMEOUT:-5s}
+      CADDY_UPSTREAM_RESPONSE_HEADER_TIMEOUT: ${CADDY_UPSTREAM_RESPONSE_HEADER_TIMEOUT:-60s}
+      CADDY_AUTH_RESPONSE_HEADER_TIMEOUT: ${CADDY_AUTH_RESPONSE_HEADER_TIMEOUT:-30s}
+      CADDY_AUTH_RATE_WINDOW: ${CADDY_AUTH_RATE_WINDOW:-1m}
+      CADDY_SIGN_IN_GLOBAL_EVENTS: ${CADDY_SIGN_IN_GLOBAL_EVENTS:-120}
+      CADDY_SIGN_IN_SOURCE_EVENTS: ${CADDY_SIGN_IN_SOURCE_EVENTS:-30}
+      CADDY_ACTIVATE_GLOBAL_EVENTS: ${CADDY_ACTIVATE_GLOBAL_EVENTS:-60}
+      CADDY_ACTIVATE_SOURCE_EVENTS: ${CADDY_ACTIVATE_SOURCE_EVENTS:-12}
+      CADDY_MFA_GLOBAL_EVENTS: ${CADDY_MFA_GLOBAL_EVENTS:-240}
+      CADDY_MFA_SOURCE_EVENTS: ${CADDY_MFA_SOURCE_EVENTS:-60}
+      CADDY_PASSWORD_COARSE_INFLIGHT: ${CADDY_PASSWORD_COARSE_INFLIGHT:-8}
+      CADDY_MFA_COARSE_INFLIGHT: ${CADDY_MFA_COARSE_INFLIGHT:-16}
     volumes:
       - ./infra/caddy/Caddyfile.example:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -107,8 +133,31 @@ services:
     depends_on:
       - web
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=${CADDY_TMPFS_SIZE:-16m},mode=1777
+    user: ${CADDY_RUNTIME_UID_GID:-1000:1000}
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:2019/config/ && wget -q -O /dev/null http://127.0.0.1:2019/metrics && caddy list-modules | grep -qx 'http.handlers.rate_limit'
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    stop_grace_period: 35s
+    mem_limit: ${CADDY_MEMORY_LIMIT:-256m}
+    cpus: ${CADDY_CPU_LIMIT:-0.50}
+    pids_limit: ${CADDY_PIDS_LIMIT:-128}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-10m}
+        max-file: ${CONTAINER_LOG_MAX_FILES:-5}
     networks:
       - private
 

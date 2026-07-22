@@ -142,7 +142,8 @@ describe("expense request foundation", () => {
     expect(serviceSource).toContain("APPROVE_EXPENSE_REQUEST");
     expect(serviceSource).toContain("EXPENSE_REQUEST_APPROVAL_RULE_NOT_CONFIGURED");
     expect(serviceSource).toContain("EXPENSE_REQUEST_ALREADY_SUBMITTED");
-    expect(serviceSource).toContain("resolveScopedNotificationRecipients");
+    expect(serviceSource).toContain("configureApprovalStepRouting");
+    expect(serviceSource).not.toContain("resolveScopedNotificationRecipients");
     expect(serviceSource).toContain("approveExpenseRequest");
     expect(serviceSource).toContain("returnExpenseRequestForRevision");
     expect(serviceSource).toContain("rejectExpenseRequest");

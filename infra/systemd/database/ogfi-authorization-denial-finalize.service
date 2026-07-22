@@ -1,0 +1,23 @@
+[Unit]
+Description=OGFI ERP bounded authorization-denial finalizer
+Documentation=file:/opt/ogfi/current/infra/systemd/database/README.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=ogfi-authorization-denial-health-alert@%n.service
+
+[Service]
+Type=oneshot
+User=ogfi-runtime
+Group=ogfi-runtime
+WorkingDirectory=/opt/ogfi/current
+EnvironmentFile=/srv/ogfi/config/production.env
+RuntimeDirectory=ogfi-authorization-denial-finalize
+RuntimeDirectoryMode=0750
+UMask=0027
+TimeoutStartSec=55s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/ogfi-authorization-denial-finalize
+ExecStart=/usr/bin/flock --nonblock /run/ogfi-authorization-denial-finalize/host.lock /usr/bin/pnpm authorization-denials:finalize

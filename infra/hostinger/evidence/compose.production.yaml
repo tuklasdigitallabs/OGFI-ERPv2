@@ -146,10 +146,51 @@ services:
         max-file: ${CONTAINER_LOG_MAX_FILES:?Set the reviewed container log retention count}
 
   caddy:
+    image: ${CADDY_IMAGE:?Set the reviewed OGFI Caddy image by immutable digest}
+    build: !reset null
     depends_on: !override
       web:
         condition: service_healthy
+    environment: !override
+      OGFI_SITE_ADDRESS: ${OGFI_SITE_ADDRESS:?Set the environment-specific ERP hostname}
+      MAX_REQUEST_BODY_SIZE: ${MAX_REQUEST_BODY_SIZE:?Set the reviewed general request body ceiling}
+      CADDY_READ_HEADER_TIMEOUT: ${CADDY_READ_HEADER_TIMEOUT:?Set the reviewed header-read timeout}
+      CADDY_READ_BODY_TIMEOUT: ${CADDY_READ_BODY_TIMEOUT:?Set the reviewed body-read timeout}
+      CADDY_WRITE_TIMEOUT: ${CADDY_WRITE_TIMEOUT:?Set the reviewed response-write timeout}
+      CADDY_IDLE_TIMEOUT: ${CADDY_IDLE_TIMEOUT:?Set the reviewed idle timeout}
+      CADDY_UPSTREAM_DIAL_TIMEOUT: ${CADDY_UPSTREAM_DIAL_TIMEOUT:?Set the reviewed upstream dial timeout}
+      CADDY_UPSTREAM_RESPONSE_HEADER_TIMEOUT: ${CADDY_UPSTREAM_RESPONSE_HEADER_TIMEOUT:?Set the reviewed general upstream response timeout}
+      CADDY_AUTH_RESPONSE_HEADER_TIMEOUT: ${CADDY_AUTH_RESPONSE_HEADER_TIMEOUT:?Set the reviewed authentication response timeout}
+      CADDY_AUTH_RATE_WINDOW: ${CADDY_AUTH_RATE_WINDOW:?Set the staged and reviewed authentication rate window}
+      CADDY_SIGN_IN_GLOBAL_EVENTS: ${CADDY_SIGN_IN_GLOBAL_EVENTS:?Set the staged and reviewed sign-in global limit}
+      CADDY_SIGN_IN_SOURCE_EVENTS: ${CADDY_SIGN_IN_SOURCE_EVENTS:?Set the staged and reviewed sign-in source limit}
+      CADDY_ACTIVATE_GLOBAL_EVENTS: ${CADDY_ACTIVATE_GLOBAL_EVENTS:?Set the staged and reviewed activation global limit}
+      CADDY_ACTIVATE_SOURCE_EVENTS: ${CADDY_ACTIVATE_SOURCE_EVENTS:?Set the staged and reviewed activation source limit}
+      CADDY_MFA_GLOBAL_EVENTS: ${CADDY_MFA_GLOBAL_EVENTS:?Set the staged and reviewed MFA global limit}
+      CADDY_MFA_SOURCE_EVENTS: ${CADDY_MFA_SOURCE_EVENTS:?Set the staged and reviewed MFA source limit}
+      CADDY_PASSWORD_COARSE_INFLIGHT: ${CADDY_PASSWORD_COARSE_INFLIGHT:?Set the staged coarse password-route inflight ceiling}
+      CADDY_MFA_COARSE_INFLIGHT: ${CADDY_MFA_COARSE_INFLIGHT:?Set the staged coarse MFA-route inflight ceiling}
     restart: unless-stopped
+    read_only: true
+    tmpfs: !override
+      - /tmp:size=${CADDY_TMPFS_SIZE:?Set the reviewed Caddy tmpfs size},mode=1777
+    user: ${CADDY_RUNTIME_UID_GID:?Set the non-root Caddy UID:GID}
+    security_opt: !override
+      - no-new-privileges:true
+    cap_drop: !override
+      - ALL
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q -O /dev/null http://127.0.0.1:2019/config/ && wget -q -O /dev/null http://127.0.0.1:2019/metrics && caddy list-modules | grep -qx 'http.handlers.rate_limit'
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    stop_grace_period: 35s
+    mem_limit: ${CADDY_MEMORY_LIMIT:?Set the reviewed Caddy memory limit}
+    cpus: ${CADDY_CPU_LIMIT:?Set the reviewed Caddy CPU limit}
+    pids_limit: ${CADDY_PIDS_LIMIT:?Set the reviewed Caddy PID limit}
     logging:
       driver: json-file
       options:

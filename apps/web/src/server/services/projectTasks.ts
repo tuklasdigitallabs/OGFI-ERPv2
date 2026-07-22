@@ -1,5 +1,6 @@
 import { prisma } from "@ogfi/database";
 import { z } from "zod";
+import { recordSessionDeniedDecisionSafely } from "./authorizationDenials";
 import { canViewExpansionFinancialEstimates, permissions } from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
 import { projectTaskDueState } from "./projectDates";
@@ -1482,22 +1483,13 @@ async function logProjectAttachmentDenied(input: {
   reasonCode: string;
   attemptedAction: "CREATE" | "ARCHIVE" | "RELINK";
 }) {
-  await prisma.auditEvent.create({
-    data: {
-      tenantId: input.session.context.tenantId,
-      companyId: input.session.context.companyId,
-      actorUserId: input.session.user.id,
-      eventType: "project_attachment.denied",
-      entityType: "ProjectTask",
-      entityId: input.taskId ?? "00000000-0000-0000-0000-000000000000",
-      metadata: {
-        attemptedAction: input.attemptedAction,
-        reasonCode: input.reasonCode,
-        projectId: input.projectId ?? null,
-        attachmentId: input.attachmentId ?? null,
-        source: "project-task-attachments"
-      }
-    }
+  await recordSessionDeniedDecisionSafely(input.session, {
+    action: input.attemptedAction === "ARCHIVE" ? "DELETE" : "CREATE",
+    reason: input.reasonCode === "PROJECT_ATTACHMENT_NOT_FOUND" ||
+        input.reasonCode === "ATTACHMENT_NOT_FOUND_INACTIVE_OR_UNSCOPED"
+      ? "RESOURCE_HIDDEN"
+      : "POLICY_DENIED",
+    resource: "PROJECTS"
   });
 }
 

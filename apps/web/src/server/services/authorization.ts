@@ -179,12 +179,26 @@ export function canUsePurchaseRequests(permissionCodes: string[]) {
 }
 
 export function canUseApprovals(permissionCodes: string[]) {
-  return (
-    permissionCodes.includes(permissions.purchaseRequestApprove) ||
-    permissionCodes.includes(permissions.quoteApprove) ||
-    permissionCodes.includes(permissions.purchaseOrderApprove) ||
-    permissionCodes.includes(permissions.wastageApprove) ||
-    permissionCodes.includes(permissions.stockAdjustmentApprove)
+  const approvalActionPermissionCodes = [
+    permissions.purchaseRequestApprove,
+    permissions.quoteApprove,
+    permissions.purchaseOrderApprove,
+    permissions.wastageApprove,
+    permissions.stockAdjustmentApprove,
+    permissions.financeBudgetApprove,
+    permissions.financeExpenseRequestApprove,
+    permissions.financeCashAdvanceApprove,
+    permissions.financePettyCashApprove,
+    permissions.financePaymentRequestApprove,
+    permissions.financePaymentRelease,
+    permissions.financePeriodCloseManage,
+    permissions.workforceLeaveApprove,
+    permissions.workforceOvertimeApprove,
+    permissions.workforceScheduleManage,
+    permissions.workforceAttendanceImportManage
+  ];
+  return approvalActionPermissionCodes.some((permissionCode) =>
+    permissionCodes.includes(permissionCode)
   );
 }
 

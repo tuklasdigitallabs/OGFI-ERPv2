@@ -6,6 +6,7 @@ Release notes do not replace source-of-truth specifications, technical deploymen
 
 ## Current release notes
 
+- `docs/release-notes/authentication-and-approval-integrity-checkpoint.md`
 - `docs/release-notes/controlled-evidence-and-retention-controlled-rollout.md`
 - `docs/release-notes/phase-4-expansion-projects-readiness-summary.md`
 - `docs/release-notes/phase-3-controlled-foundation-readiness-summary.md`

@@ -2672,9 +2672,12 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
     await expect(revokeOwnSession(ids.adjacentAuthSessionId)).rejects.toThrow(
       "AUTH_SESSION_NOT_FOUND",
     );
-    await expect(completeMfaChallenge("000000")).rejects.toThrow(
-      "MFA_CHALLENGE_NOT_FOUND",
-    );
+    await expect(
+      completeMfaChallenge("000000", {
+        sourceAddress: "203.0.113.90",
+        userAgent: "authorization-owner-test",
+      }),
+    ).rejects.toThrow("MFA_CHALLENGE_NOT_FOUND");
     await expect(
       completeMfaEnrollment({ authenticatorId: randomUUID(), code: "000000" }),
     ).rejects.toThrow("MFA_ENROLLMENT_NOT_FOUND");

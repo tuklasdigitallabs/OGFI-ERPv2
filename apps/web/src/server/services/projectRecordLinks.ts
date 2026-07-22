@@ -1,5 +1,6 @@
 import { prisma } from "@ogfi/database";
 import { z } from "zod";
+import { recordSessionDeniedDecisionSafely } from "./authorizationDenials";
 import {
   canReadPurchaseOrders,
   canUseApprovals,
@@ -86,24 +87,10 @@ async function logProjectRecordLinkDenied(input: {
   reasonCode: string;
   attemptedAction: "CREATE" | "READ";
 }) {
-  await prisma.auditEvent.create({
-    data: {
-      tenantId: input.session.context.tenantId,
-      companyId: input.session.context.companyId,
-      actorUserId: input.session.user.id,
-      eventType: "project_record_link.denied",
-      entityType: "Project",
-      entityId: input.projectId,
-      metadata: {
-        attemptedAction: input.attemptedAction,
-        reasonCode: input.reasonCode,
-        sourceRecordType: input.sourceRecordType,
-        sourceRecordId: input.sourceRecordId,
-        taskId: input.taskId ?? null,
-        milestoneId: input.milestoneId ?? null,
-        source: "project-record-links-operational-adapters"
-      }
-    }
+  await recordSessionDeniedDecisionSafely(input.session, {
+    action: input.attemptedAction === "READ" ? "READ" : "CREATE",
+    reason: "RESOURCE_HIDDEN",
+    resource: "PROJECTS"
   });
 }
 
@@ -857,27 +844,34 @@ export async function listProjectTaskRecordLinks(session: SessionContext, taskId
     orderBy: { createdAt: "desc" }
   });
 
-  return Promise.all(
-    links.map(async (link): Promise<ProjectRecordLinkSummary> => {
+  const summaries = await Promise.all(
+    links.map(async (link) => {
       const summary = await resolveProjectRecordLinkSourceSummary(
         session,
         link.sourceRecordType as ProjectLinkSourceRecordType,
         link.sourceRecordId
       );
       assertSafeSourceSummary(summary);
-      if (!summary.visible) {
-        await logProjectRecordLinkDenied({
-          session,
-          projectId: link.projectId,
-          taskId: link.taskId,
-          milestoneId: link.milestoneId,
-          sourceRecordType: link.sourceRecordType as ProjectLinkSourceRecordType,
-          sourceRecordId: link.sourceRecordId,
-          reasonCode: summary.redactionReason ?? "SOURCE_PERMISSION_DENIED",
-          attemptedAction: "READ"
-        });
-      }
-      return {
+      return { link, summary };
+    })
+  );
+  const firstDenied = summaries.find(({ summary }) => !summary.visible);
+  if (firstDenied) {
+    await logProjectRecordLinkDenied({
+      session,
+      projectId: firstDenied.link.projectId,
+      taskId: firstDenied.link.taskId,
+      milestoneId: firstDenied.link.milestoneId,
+      sourceRecordType:
+        firstDenied.link.sourceRecordType as ProjectLinkSourceRecordType,
+      sourceRecordId: firstDenied.link.sourceRecordId,
+      reasonCode:
+        firstDenied.summary.redactionReason ?? "SOURCE_PERMISSION_DENIED",
+      attemptedAction: "READ"
+    });
+  }
+  return summaries.map(
+    ({ link, summary }): ProjectRecordLinkSummary => ({
         ...summary,
         id: link.id,
         projectId: link.projectId,
@@ -886,8 +880,7 @@ export async function listProjectTaskRecordLinks(session: SessionContext, taskId
         relationType: link.relationType,
         linkLabel: link.linkLabel,
         createdAt: link.createdAt.toISOString()
-      };
-    })
+      })
   );
 }
 

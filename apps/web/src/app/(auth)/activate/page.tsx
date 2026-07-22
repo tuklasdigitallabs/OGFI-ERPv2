@@ -10,6 +10,7 @@ import {
 import {
   activateAccount,
   assertTrustedServerActionOrigin,
+  getTrustedRequestFingerprint,
 } from "@/server/services/authentication";
 
 export const dynamic = "force-dynamic";
@@ -25,17 +26,13 @@ async function activate(formData: FormData) {
       token,
       password: String(formData.get("password") ?? ""),
       passwordConfirmation: String(formData.get("passwordConfirmation") ?? ""),
-      fingerprint: {
-        sourceAddress:
-          requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-          "unknown",
-        userAgent: requestHeaders.get("user-agent") ?? "unknown"
-      }
+      fingerprint: getTrustedRequestFingerprint(requestHeaders)
     });
   } catch (error) {
     const code =
       error instanceof Error &&
       [
+        "AUTHENTICATION_CAPACITY_TEMPORARILY_UNAVAILABLE",
         "PASSWORD_POLICY_NOT_MET",
         "PASSWORD_CONFIRMATION_MISMATCH",
         "AUTH_ACTIVATION_INVALID"

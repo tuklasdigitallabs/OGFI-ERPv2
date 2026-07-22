@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { prisma } from "@ogfi/database"
 import type { TransactionClient } from "@ogfi/database"
 import {
@@ -9,9 +9,13 @@ import {
 } from "./authorization"
 import type { SessionContext } from "./context"
 import {
-  recordWorkflowNotifications,
-  resolveScopedNotificationRecipients
+  recordWorkflowNotifications
 } from "./notifications"
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting"
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry"
 import {
   resolveEvidenceReadiness,
   type EvidenceCaptureMode,
@@ -1151,6 +1155,18 @@ export async function submitExpenseRequestForApproval(
       throw new Error("EXPENSE_REQUEST_ALREADY_SUBMITTED")
     }
 
+    if (!request.locationId) {
+      throw new Error("EXPENSE_REQUEST_APPROVAL_SCOPE_NOT_CONFIGURED")
+    }
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }))
+    const firstRoutedStep = routedSteps[0]
+    if (!firstRoutedStep) {
+      throw new Error("EXPENSE_REQUEST_APPROVAL_RULE_STEP_NOT_CONFIGURED")
+    }
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1161,14 +1177,47 @@ export async function submitExpenseRequestForApproval(
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
       }
+    })
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("ExpenseRequest"),
+        requiredPermissionCode: permissions.financeExpenseRequestApprove,
+        dueAt: request.requiredByDate ?? null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "expense_request.submit"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: request.locationId
+          }]
+        }],
+        prohibitedActors: [{
+          userId: request.requestedByUserId,
+          reasonCode: "REQUESTER"
+        }]
+      })
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     })
 
     const updated = await tx.expenseRequest.update({
@@ -1197,18 +1246,11 @@ export async function submitExpenseRequestForApproval(
         idempotencyKey: input.idempotencyKey ?? null
       }
     })
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
+    if (firstStep.userId) await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: request.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    })
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: request.locationId,
-      recipientUserIds,
+      recipientUserIds: [firstStep.userId],
       notificationType: "APPROVE_EXPENSE_REQUEST",
       priority: request.urgency === "EMERGENCY" ? "HIGH" : "NORMAL",
       title: `Approve Expense Request ${request.publicReference}`,

@@ -42,15 +42,25 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(source).not.toContain("nonPostingFoundation: true");
   });
 
-  test("stock adjustment approval submission emits scoped in-app approval notification", () => {
+  test("stock adjustment approval submission uses normalized routing without role fanout", () => {
     const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
 
-    expect(source).toContain("resolveScopedNotificationRecipients");
+    expect(source).toContain("for (const step of routedSteps)");
+    expect(source).toContain("configureApprovalStepRouting(tx");
+    expect(source).toContain("requiredPermissionCode: permissions.stockAdjustmentApprove");
+    expect(source).toContain("dueAt: null");
+    expect(source).toContain('source: "stock-adjustment-submission"');
+    expect(source).toContain("userId: adjustment.requestedByUserId");
+    expect(source).toContain("assertAnyEligibleApprovalActorForStep(tx");
+    expect(source.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+      source.indexOf("const submitted = await tx.stockAdjustment.updateMany")
+    );
     expect(source).toContain("recordWorkflowNotifications");
     expect(source).toContain('notificationType: "APPROVE_STOCK_ADJUSTMENT"');
     expect(source).toContain("locationId: adjustment.inventoryLocation.locationId");
     expect(source).toContain("sourceEventKey: auditEvent.id");
-    expect(source).toContain('recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role"');
+    expect(source).toContain("recipientUserIds: firstStep.userId ? [firstStep.userId] : []");
+    expect(source).not.toContain("resolveScopedNotificationRecipients");
     expect(source).toContain("deepLink: `/approvals/${approval.id}`");
     expect(source).toContain('source: "stock-adjustment-approval-submission"');
   });

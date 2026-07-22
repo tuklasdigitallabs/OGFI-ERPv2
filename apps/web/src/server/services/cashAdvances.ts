@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { prisma } from "@ogfi/database"
 import type { TransactionClient } from "@ogfi/database"
 import {
@@ -8,9 +9,13 @@ import {
 } from "./authorization"
 import type { SessionContext } from "./context"
 import {
-  recordWorkflowNotifications,
-  resolveScopedNotificationRecipients
+  recordWorkflowNotifications
 } from "./notifications"
+import {
+  assertAnyEligibleApprovalActorForStep,
+  configureApprovalStepRouting
+} from "./approvalRouting"
+import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry"
 import {
   resolveEvidenceReadiness,
   type EvidenceCaptureMode,
@@ -1088,6 +1093,18 @@ export async function submitCashAdvanceForApproval(
       throw new Error("CASH_ADVANCE_ALREADY_SUBMITTED")
     }
 
+    if (!request.locationId) {
+      throw new Error("CASH_ADVANCE_APPROVAL_SCOPE_NOT_CONFIGURED")
+    }
+    const routedSteps = approvalRule.steps.map((step, index) => ({
+      ...step,
+      approvalInstanceStepId: randomUUID(),
+      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const
+    }))
+    const firstRoutedStep = routedSteps[0]
+    if (!firstRoutedStep) {
+      throw new Error("CASH_ADVANCE_APPROVAL_RULE_STEP_NOT_CONFIGURED")
+    }
     const approvalInstance = await tx.approvalInstance.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1098,14 +1115,56 @@ export async function submitCashAdvanceForApproval(
         status: "PENDING",
         currentStepOrder: firstStep.stepOrder,
         steps: {
-          create: approvalRule.steps.map((step, index) => ({
+          create: routedSteps.map((step) => ({
+            id: step.approvalInstanceStepId,
             stepOrder: step.stepOrder,
             assignedUserId: step.userId,
             assignedRoleId: step.roleId,
-            status: index === 0 ? "PENDING" : "WAITING"
+            status: step.activationStatus
           }))
         }
       }
+    })
+    const prohibitedActors = Array.from(new Map([
+      ...(request.beneficiaryUserId
+        ? [[request.beneficiaryUserId, {
+            userId: request.beneficiaryUserId,
+            reasonCode: "BENEFICIARY"
+          }] as const]
+        : []),
+      [request.requestedByUserId, {
+        userId: request.requestedByUserId,
+        reasonCode: "REQUESTER"
+      }] as const
+    ]).values())
+    for (const step of routedSteps) {
+      await configureApprovalStepRouting(tx, {
+        approvalInstanceStepId: step.approvalInstanceStepId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        routingPolicy: getApprovalRoutingPolicy("CashAdvanceRequest"),
+        requiredPermissionCode: permissions.financeCashAdvanceApprove,
+        dueAt: request.dueDate ?? null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "cash_advance.submit"
+        },
+        scopeGroups: [{
+          groupOrder: 1,
+          targetMatchMode: "ANY",
+          targets: [{
+            scopeType: "LOCATION",
+            companyId: session.context.companyId,
+            locationId: request.locationId
+          }]
+        }],
+        prohibitedActors
+      })
+    }
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     })
 
     const updated = await tx.cashAdvanceRequest.update({
@@ -1134,18 +1193,11 @@ export async function submitCashAdvanceForApproval(
         idempotencyKey: input.idempotencyKey ?? null
       }
     })
-    const recipientUserIds = await resolveScopedNotificationRecipients(tx, {
+    if (firstStep.userId) await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId: request.locationId,
-      assignedUserId: firstStep.userId,
-      assignedRoleId: firstStep.roleId
-    })
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: request.locationId,
-      recipientUserIds,
+      recipientUserIds: [firstStep.userId],
       notificationType: "APPROVE_CASH_ADVANCE",
       priority: request.budgetStatus === "OVER_BUDGET" ? "HIGH" : "NORMAL",
       title: `Approve Cash Advance ${request.publicReference}`,

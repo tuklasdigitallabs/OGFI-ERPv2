@@ -151,7 +151,8 @@ describe("petty cash foundation", () => {
     expect(serviceSource).toContain("APPROVE_PETTY_CASH");
     expect(serviceSource).toContain("PETTY_CASH_APPROVAL_RULE_NOT_CONFIGURED");
     expect(serviceSource).toContain("PETTY_CASH_ALREADY_SUBMITTED");
-    expect(serviceSource).toContain("resolveScopedNotificationRecipients");
+    expect(serviceSource).toContain("configureApprovalStepRouting");
+    expect(serviceSource).not.toContain("resolveScopedNotificationRecipients");
     expect(serviceSource).toContain("approvePettyCashRequest");
     expect(serviceSource).toContain("returnPettyCashRequestForRevision");
     expect(serviceSource).toContain("rejectPettyCashRequest");
