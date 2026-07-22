@@ -383,7 +383,7 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
             <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Action first</p>
             <h2 className="mt-1 text-lg font-bold text-slate-950">Today’s work</h2>
             <p className="mt-1 text-sm text-slate-500">
-              The highest-priority records currently assigned to you or requiring attention in the selected scope.
+              A bounded priority preview of records assigned to you or requiring attention in the selected scope. Opened records recheck source-workspace access.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -391,11 +391,17 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
               <Badge tone="neutral" size="sm">Approval preview unavailable</Badge>
             ) : (
               <Badge tone="warning" size="sm">
-                {dashboard.approvalQueueContract.displayedCount} priority approvals shown
+                {dashboard.approvalQueueContract.displayedCount}
+                {dashboard.approvalQueueContract.totalCount > dashboard.approvalQueueContract.displayedCount
+                  ? ` of ${dashboard.approvalQueueContract.totalCount}`
+                  : ""} priority approvals shown
               </Badge>
             )}
-            <Badge tone="warning" size="sm">
-              {dashboard.exceptionQueueContract.displayedCount} priority exceptions shown
+              <Badge tone="warning" size="sm">
+              {dashboard.exceptionQueueContract.displayedCount}
+              {dashboard.exceptionQueueContract.totalCount > dashboard.exceptionQueueContract.displayedCount
+                ? ` of ${dashboard.exceptionQueueContract.totalCount}`
+                : ""} priority exceptions shown
             </Badge>
           </div>
         </div>
