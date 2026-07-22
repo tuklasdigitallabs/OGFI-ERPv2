@@ -8,7 +8,8 @@
 export const dashboardTaskSources = [
   "TRANSFER",
   "WASTAGE",
-  "STOCK_ADJUSTMENT"
+  "STOCK_ADJUSTMENT",
+  "RECEIVING"
 ] as const;
 
 export type DashboardTaskSource = (typeof dashboardTaskSources)[number];

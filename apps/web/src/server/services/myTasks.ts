@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import {
   canUseStockAdjustments,
   canUseTransfers,
-  canUseWastageReports
+  canUseWastageReports,
+  canUseReceiving
 } from "./authorization";
 import {
   signInternalServerValue,
@@ -16,6 +17,7 @@ import {
   type DashboardTaskSource
 } from "./dashboardTasks";
 import { listStockAdjustmentMyTaskPage } from "./stockAdjustments";
+import { listReceivingMyTaskPage } from "./receiving";
 import { listTransferMyTaskPage } from "./transfers";
 import { listWastageMyTaskPage } from "./wastage";
 
@@ -201,6 +203,28 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
             status: "APPROVED",
             locationLabel: item.inventoryLocationName,
             href: `/adjustments/${item.recordId}`
+          }))
+        };
+      }
+    });
+  }
+  if (canUseReceiving(session.permissionCodes)) {
+    sources.push({
+      type: "RECEIVING",
+      label: "Receiving",
+      read: async (after, take) => {
+        const page = await listReceivingMyTaskPage(session, {
+          take,
+          ...(after ? { after } : {})
+        });
+        return {
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            sourceType: "RECEIVING" as const,
+            sourceLabel: "Receiving",
+            locationLabel: `${item.receivingLocationName} · PO ${item.purchaseOrderReference}`,
+            href: `/receiving/${item.recordId}`
           }))
         };
       }

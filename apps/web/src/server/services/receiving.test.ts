@@ -8,6 +8,7 @@ import {
   assertPurchaseOrderCanBeReceived,
   calculatePurchaseOrderReceivingStatus,
   getReceivingDashboardRead,
+  listReceivingMyTaskPage,
   validateReceivingQuantities
 } from "./receiving";
 
@@ -95,6 +96,60 @@ describe("receiving foundation rules", () => {
       getReceivingDashboardRead({ ...dashboardSession, permissionCodes: [] } as never)
     ).rejects.toThrow("PERMISSION_DENIED");
     expect(mockPrisma.goodsReceipt.count).not.toHaveBeenCalled();
+  });
+
+  test("returns only postable scoped draft receipts through the My Tasks contract", async () => {
+    mockPrisma.goodsReceipt.count.mockResolvedValue(2);
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([
+      {
+        id: "receipt-1",
+        publicReference: "RR-2026-00001",
+        createdAt: new Date("2026-07-20T00:00:00.000Z"),
+        supplier: { tradingName: "Fresh Foods", legalName: "Fresh Foods Inc." },
+        purchaseOrder: { publicReference: "PO-2026-00001" },
+        receivingLocation: { name: "BGC" }
+      },
+      {
+        id: "receipt-2",
+        publicReference: "RR-2026-00002",
+        createdAt: new Date("2026-07-21T00:00:00.000Z"),
+        supplier: { tradingName: null, legalName: "Fresh Foods Inc." },
+        purchaseOrder: { publicReference: "PO-2026-00002" },
+        receivingLocation: { name: "BGC" }
+      }
+    ]);
+
+    await expect(
+      listReceivingMyTaskPage(
+        {
+          ...dashboardSession,
+          permissionCodes: [permissions.receivingPost]
+        } as never,
+        { take: 1 }
+      )
+    ).resolves.toEqual({
+      totalCount: 2,
+      items: [
+        expect.objectContaining({
+          taskId: "receiving-receipt-1",
+          recordId: "receipt-1",
+          actionLabel: "Post receipt"
+        })
+      ],
+      nextCursor: {
+        createdAt: "2026-07-20T00:00:00.000Z",
+        sourceType: "RECEIVING",
+        recordId: "receipt-1"
+      }
+    });
+    expect(mockPrisma.goodsReceipt.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        receivingLocationId: dashboardSession.context.locationId,
+        status: "DRAFT"
+      })
+    });
   });
 
   test("receiving detail PO link uses the shared purchase-order read helper", () => {

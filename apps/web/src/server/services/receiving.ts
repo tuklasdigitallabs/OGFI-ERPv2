@@ -5,6 +5,10 @@ import { assertAuthorizedLocation, requireSessionContext, type SessionContext } 
 import type { CsvRow } from "./csv";
 import { postInventoryMovementInTransaction } from "./inventory";
 import { classifyPurchaseOrderDeliveryAging } from "./purchaseOrders";
+import {
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import {
   getAuthMode,
@@ -73,6 +77,7 @@ async function requireReceivingRead(session: SessionContext) {
 }
 
 const receivingDashboardTaskCandidateLimit = 8;
+const receivingMyTaskPageSize = 25;
 
 export type ReceivingDashboardRead = {
   exceptionCount: number;
@@ -85,6 +90,91 @@ export type ReceivingDashboardRead = {
     receivedAt: string;
   }>;
 };
+
+export type ReceivingMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    recordId: string;
+    publicReference: string;
+    status: "DRAFT";
+    actionLabel: "Post receipt";
+    supplierName: string;
+    purchaseOrderReference: string;
+    receivingLocationName: string;
+    createdAt: string;
+  }>;
+  nextCursor: DashboardTaskCursor | null;
+};
+
+/**
+ * Returns only draft receipts that this user can already post from the
+ * authoritative Receiving Report detail. Discrepancy resolution is not
+ * enrolled: it remains display-only until a controlled resolution action is
+ * available in that workspace.
+ */
+export async function listReceivingMyTaskPage(
+  session: SessionContext,
+  input: { after?: DashboardTaskCursor; take?: number } = {}
+): Promise<ReceivingMyTaskPage> {
+  await requireReceivingRead(session);
+  if (!session.permissionCodes.includes(permissions.receivingPost)) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+
+  const take = Math.min(Math.max(input.take ?? receivingMyTaskPageSize, 1), 50);
+  const afterWhere = dashboardTaskAfterWhere("RECEIVING", input.after);
+  const scope = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    receivingLocationId: session.context.locationId,
+    status: "DRAFT" as const
+  };
+  const [totalCount, rows] = await Promise.all([
+    prisma.goodsReceipt.count({ where: scope }),
+    prisma.goodsReceipt.findMany({
+      where: {
+        ...scope,
+        ...(afterWhere ? { AND: [afterWhere] } : {})
+      },
+      select: {
+        id: true,
+        publicReference: true,
+        createdAt: true,
+        supplier: { select: { tradingName: true, legalName: true } },
+        purchaseOrder: { select: { publicReference: true } },
+        receivingLocation: { select: { name: true } }
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: take + 1
+    })
+  ]);
+  const pageRows = rows.slice(0, take);
+  const lastRow = pageRows.at(-1);
+
+  return {
+    totalCount,
+    items: pageRows.map((receipt) => ({
+      taskId: `receiving-${receipt.id}`,
+      recordId: receipt.id,
+      publicReference: receipt.publicReference,
+      status: "DRAFT",
+      actionLabel: "Post receipt",
+      supplierName: receipt.supplier.tradingName ?? receipt.supplier.legalName,
+      purchaseOrderReference: receipt.purchaseOrder.publicReference,
+      receivingLocationName: receipt.receivingLocation.name,
+      createdAt: receipt.createdAt.toISOString()
+    })),
+    nextCursor:
+      rows.length > take && lastRow
+        ? {
+            createdAt: lastRow.createdAt.toISOString(),
+            sourceType: "RECEIVING",
+            recordId: lastRow.id
+          }
+        : null
+  };
+}
 
 /**
  * Deliberately narrow dashboard read. The receiving workspace remains the
