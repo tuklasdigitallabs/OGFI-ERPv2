@@ -1044,25 +1044,60 @@ async function lockAndReloadPendingMfaSession(
   sessionId: string,
   now: Date,
 ) {
-  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+  return lockAndReloadSessionTransition(
+    tx,
+    sessionId,
+    "PENDING_MFA",
+    now,
+    "MFA_CHALLENGE_NOT_FOUND",
+  );
+}
+
+async function lockAndReloadSessionTransition(
+  tx: TransactionClient,
+  sessionId: string,
+  expectedStatus: string,
+  now: Date,
+  notFoundError: string,
+) {
+  const scope = await tx.authSession.findUnique({
+    where: { id: sessionId },
+    select: { tenantId: true, userId: true },
+  });
+  if (!scope) throw new Error(notFoundError);
+  const lockedTenant = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT tenant_account.id
+      FROM "Tenant" tenant_account
+     WHERE tenant_account.id = ${scope.tenantId}::uuid
+       AND tenant_account.status = 'ACTIVE'
+     FOR UPDATE`;
+  if (!lockedTenant[0]) throw new Error(notFoundError);
+  const lockedUser = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT user_account.id
+      FROM "User" user_account
+     WHERE user_account.id = ${scope.userId}::uuid
+       AND user_account."tenantId" = ${scope.tenantId}::uuid
+       AND user_account.status = 'ACTIVE'
+     FOR UPDATE`;
+  if (!lockedUser[0]) throw new Error(notFoundError);
+  const lockedSession = await tx.$queryRaw<Array<{ id: string }>>`
     SELECT auth_session.id
       FROM "AuthSession" auth_session
-      JOIN "Tenant" tenant_account
-        ON tenant_account.id = auth_session."tenantId"
-      JOIN "User" user_account
-        ON user_account.id = auth_session."userId"
-       AND user_account."tenantId" = auth_session."tenantId"
      WHERE auth_session.id = ${sessionId}::uuid
-       AND tenant_account.status = 'ACTIVE'
-       AND user_account.status = 'ACTIVE'
-     FOR UPDATE OF auth_session, tenant_account, user_account`;
-  if (!locked[0]) throw new Error("MFA_CHALLENGE_NOT_FOUND");
+       AND auth_session."tenantId" = ${scope.tenantId}::uuid
+       AND auth_session."userId" = ${scope.userId}::uuid
+     FOR UPDATE`;
+  if (!lockedSession[0]) throw new Error(notFoundError);
   const session = await tx.authSession.findFirst({
-    where: { id: sessionId },
+    where: {
+      id: sessionId,
+      tenantId: scope.tenantId,
+      userId: scope.userId,
+    },
     include: { user: true, authIdentity: true },
   });
-  if (!session) throw new Error("MFA_CHALLENGE_NOT_FOUND");
-  assertSessionTransitionSourceValid(session, "PENDING_MFA", now);
+  if (!session) throw new Error(notFoundError);
+  assertSessionTransitionSourceValid(session, expectedStatus, now);
   return session;
 }
 
@@ -1070,7 +1105,13 @@ async function lockAndReloadExactMfaAuthenticator(
   tx: TransactionClient,
   session: SessionTransitionSource,
   snapshot: MfaAuthenticatorSnapshot,
+  options: {
+    expectedStatus?: string;
+    notFoundError?: string;
+  } = {},
 ) {
+  const expectedStatus = options.expectedStatus ?? "ACTIVE";
+  const notFoundError = options.notFoundError ?? "MFA_CODE_INVALID";
   const locked = await tx.$queryRaw<Array<{ id: string }>>`
     SELECT authenticator.id
       FROM "MfaAuthenticator" authenticator
@@ -1082,11 +1123,11 @@ async function lockAndReloadExactMfaAuthenticator(
      WHERE authenticator.id = ${snapshot.id}::uuid
        AND authenticator."tenantId" = ${session.tenantId}::uuid
        AND authenticator."userId" = ${session.userId}::uuid
-       AND authenticator.status = 'ACTIVE'
+       AND authenticator.status = ${expectedStatus}
        AND tenant_account.status = 'ACTIVE'
        AND user_account.status = 'ACTIVE'
      FOR UPDATE OF authenticator, tenant_account, user_account`;
-  if (!locked[0]) throw new Error("MFA_CODE_INVALID");
+  if (!locked[0]) throw new Error(notFoundError);
   const current = await tx.mfaAuthenticator.findUnique({
     where: { id: snapshot.id },
   });
@@ -1094,14 +1135,14 @@ async function lockAndReloadExactMfaAuthenticator(
     !current ||
     current.tenantId !== snapshot.tenantId ||
     current.userId !== snapshot.userId ||
-    current.status !== "ACTIVE" ||
+    current.status !== expectedStatus ||
     current.encryptedSecret !== snapshot.encryptedSecret ||
     current.secretIv !== snapshot.secretIv ||
     current.secretAuthTag !== snapshot.secretAuthTag ||
     current.keyVersion !== snapshot.keyVersion ||
     current.updatedAt.getTime() !== snapshot.updatedAt.getTime()
   ) {
-    throw new Error("MFA_CODE_INVALID");
+    throw new Error(notFoundError);
   }
   return current;
 }
@@ -1547,12 +1588,29 @@ export async function completeMfaEnrollment(input: {
   const recoveryCodes = generateRecoveryCodes();
   const now = new Date();
   const rotated = await prisma.$transaction(async (tx) => {
+    const lockedSession = await lockAndReloadSessionTransition(
+      tx,
+      session.id,
+      session.status,
+      now,
+      "MFA_ENROLLMENT_SESSION_REQUIRED",
+    );
+    const lockedAuthenticator = await lockAndReloadExactMfaAuthenticator(
+      tx,
+      lockedSession,
+      authenticator,
+      {
+        expectedStatus: "PENDING",
+        notFoundError: "MFA_ENROLLMENT_CONFLICT",
+      },
+    );
     const activated = await tx.mfaAuthenticator.updateMany({
       where: {
-        id: authenticator.id,
-        tenantId: session.tenantId,
-        userId: session.userId,
+        id: lockedAuthenticator.id,
+        tenantId: lockedSession.tenantId,
+        userId: lockedSession.userId,
         status: "PENDING",
+        updatedAt: lockedAuthenticator.updatedAt,
       },
       data: { status: "ACTIVE", verifiedAt: now, lastUsedCounter: counter },
     });
@@ -1561,24 +1619,24 @@ export async function completeMfaEnrollment(input: {
     }
     await tx.mfaRecoveryCode.createMany({
       data: recoveryCodes.map((code) => ({
-        authenticatorId: authenticator.id,
+        authenticatorId: lockedAuthenticator.id,
         codeHash: keyedDigest(
-          `${session.userId}:${normalizeRecoveryCode(code)}`,
+          `${lockedSession.userId}:${normalizeRecoveryCode(code)}`,
         ),
       })),
     });
     await tx.auditEvent.create({
       data: {
-        tenantId: session.tenantId,
-        actorUserId: session.userId,
+        tenantId: lockedSession.tenantId,
+        actorUserId: lockedSession.userId,
         eventType: "auth.mfa.enrolled",
         entityType: "MfaAuthenticator",
-        entityId: authenticator.id,
+        entityId: lockedAuthenticator.id,
         afterData: { status: "ACTIVE", recoveryCodeCount },
         metadata: { sourceDecisionId: "DEC-0040" },
       },
     });
-    return rotateSessionInTransaction(tx, session, session.status, {
+    return rotateSessionInTransaction(tx, lockedSession, session.status, {
       status: "ACTIVE",
       assuranceLevel: "MFA",
       mfaAuthenticatedAt: now,

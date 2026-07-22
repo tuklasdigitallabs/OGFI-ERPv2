@@ -282,6 +282,11 @@ describe("attachment evidence foundation", () => {
     );
 
     expect(createMetadataLinkSlice).toContain("validateAttachmentMetadata");
+    expect(
+      createMetadataLinkSlice.indexOf("readEvidenceStorageConfig"),
+    ).toBeGreaterThan(
+      createMetadataLinkSlice.indexOf("authorizeControlledEvidenceSourceAction"),
+    );
     expect(createMetadataLinkSlice).toContain("tx.attachment.create");
     expect(createMetadataLinkSlice).toContain(
       "tx.controlledEvidenceAttachment.create",
@@ -309,6 +314,9 @@ describe("attachment evidence foundation", () => {
 
     expect(serviceSource).toContain("privateAttachmentStorageProvider");
     expect(serviceSource).toContain("getControlledEvidenceStoragePolicy");
+    expect(uploadSlice.indexOf("readEvidenceStorageConfig")).toBeGreaterThan(
+      uploadSlice.indexOf("authorizeControlledEvidenceSourceAction"),
+    );
     expect(uploadSlice).toContain("validateAttachmentMetadata");
     expect(uploadSlice).toContain("policyMaxSizeBytes");
     expect(uploadSlice).toContain("arrayBuffer");

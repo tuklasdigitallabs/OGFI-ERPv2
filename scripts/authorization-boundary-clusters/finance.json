@@ -3,7 +3,9 @@
   "cluster": "finance",
   "testFiles": [
     "apps/web/tests/authorizationFinance.integration.test.ts",
-    "apps/web/tests/accessControl.integration.test.ts"
+    "apps/web/tests/accessControl.integration.test.ts",
+    "apps/web/tests/approvalCancellationPg.integration.test.ts",
+    "apps/web/tests/approvalDecisionParity.integration.test.ts"
   ],
   "cases": [
     {
@@ -158,6 +160,69 @@
         "transactional location and project scope revalidation",
         "concurrent revocation serialization",
         "no budget, journal, workflow, or audit mutation"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-CANCELLATION-001",
+      "file": "apps/web/tests/approvalCancellationPg.integration.test.ts",
+      "testName": "FIN-AUTHZ-CANCELLATION-001 an actor from another tenant cannot cancel or terminate the approval",
+      "kind": "postgresql-service-transaction-negative",
+      "coveredControls": [
+        "TENANT_SCOPE",
+        "COMPANY_SCOPE",
+        "CALLER_TRANSACTION_PRECONDITION",
+        "NO_APPROVAL_MUTATION",
+        "NO_SOURCE_MUTATION"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-CANCELLATION-RACE-001",
+      "file": "apps/web/tests/approvalCancellationPg.integration.test.ts",
+      "testName": "FIN-AUTHZ-CANCELLATION-RACE-001 ExpenseRequest final approval versus cancellation has one deterministic winner",
+      "kind": "postgresql-service-concurrency",
+      "coveredControls": [
+        "CANONICAL_LOCK_ORDER",
+        "TERMINAL_STATE_INTEGRITY",
+        "TRANSACTIONAL_SOURCE_EFFECT",
+        "DETERMINISTIC_CONCURRENT_OUTCOME"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
+      "file": "apps/web/tests/approvalDecisionParity.integration.test.ts",
+      "testName": "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001 *",
+      "kind": "postgresql-service-transaction-table",
+      "coveredControls": [
+        "LIVE_APPROVER_ELIGIBILITY",
+        "SEGREGATION_OF_DUTIES",
+        "TRANSACTIONAL_SOURCE_EFFECT",
+        "INTERMEDIATE_STEP_ACTIVATION",
+        "FINAL_APPROVAL_EFFECT"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-CANONICAL-NEXT-STEP-001",
+      "file": "apps/web/tests/approvalDecisionParity.integration.test.ts",
+      "testName": "FIN-AUTHZ-CANONICAL-NEXT-STEP-001 *",
+      "kind": "postgresql-service-transaction-table",
+      "coveredControls": [
+        "LIVE_APPROVER_ELIGIBILITY",
+        "DETERMINISTIC_NEXT_RECIPIENT",
+        "ATOMIC_STEP_ACTIVATION",
+        "NOTIFICATION_SCOPE"
+      ]
+    },
+    {
+      "id": "FIN-AUTHZ-CANONICAL-TERMINAL-001",
+      "file": "apps/web/tests/approvalDecisionParity.integration.test.ts",
+      "testName": "FIN-AUTHZ-CANONICAL-TERMINAL-001 *",
+      "kind": "postgresql-service-transaction-table",
+      "coveredControls": [
+        "LIVE_APPROVER_ELIGIBILITY",
+        "TERMINAL_STATE_INTEGRITY",
+        "FUTURE_STEP_TERMINATION",
+        "IDEMPOTENT_RETRY",
+        "TRANSACTIONAL_SOURCE_EFFECT"
       ]
     }
   ],
@@ -2075,6 +2140,143 @@
       "caseIds": ["FIN-AUTHZ-PERM-001"],
       "noMutationControls": [
         "no petty-cash dashboard disclosure after live permission revocation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvalCancellation.ts#terminatePendingApprovalForCancellation",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "caller transaction",
+        "tenant-company pending-instance lock",
+        "current-step compare-and-set",
+        "terminal source caller"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-CANCELLATION-001",
+        "FIN-AUTHZ-CANCELLATION-RACE-001"
+      ],
+      "noMutationControls": [
+        "wrong-scope caller cannot terminate approval",
+        "concurrent final decision cannot create split terminal state"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvals.ts#executeCanonicalApprovalDecision",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "authenticated session",
+        "normalized live approval preflight",
+        "tenant-company approval scope",
+        "segregation of duties",
+        "transactional source adapter"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
+        "FIN-AUTHZ-CANONICAL-NEXT-STEP-001",
+        "FIN-AUTHZ-CANONICAL-TERMINAL-001"
+      ],
+      "noMutationControls": [
+        "ineligible actor cannot mutate approval or source",
+        "failed source effect rolls back approval and notifications"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvalTerminal.ts#skipFutureApprovalStepsForTerminalDecision",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "caller transaction",
+        "locked canonical approval instance",
+        "terminal-decision step ordering"
+      ],
+      "caseIds": ["FIN-AUTHZ-CANONICAL-TERMINAL-001"],
+      "noMutationControls": [
+        "only future steps on the locked instance become skipped",
+        "retry does not duplicate terminal effects"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#approveExpenseRequestInTransaction",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "canonical approval caller transaction",
+        "tenant-company source scope",
+        "segregation of duties",
+        "expected source state"
+      ],
+      "caseIds": ["FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001"],
+      "noMutationControls": [
+        "intermediate approval does not approve source",
+        "failed source effect rolls back approval"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/expenseRequests.ts#upsertExpenseRequestBudgetCommitments",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "caller transaction",
+        "tenant-company expense scope",
+        "budget commitment idempotency"
+      ],
+      "caseIds": ["FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001"],
+      "noMutationControls": [
+        "commitments remain coupled to final source approval",
+        "rollback leaves no partial commitment"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/notifications.ts#recordApprovalOutcomeNotification",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "canonical decision caller transaction",
+        "tenant-company recipient scope",
+        "idempotent notification key"
+      ],
+      "caseIds": [
+        "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
+        "FIN-AUTHZ-CANONICAL-TERMINAL-001"
+      ],
+      "noMutationControls": [
+        "notification cannot outlive rolled-back decision",
+        "retry does not duplicate outcome notification"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/notifications.ts#recordApprovalStepReadyNotification",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "canonical decision caller transaction",
+        "live eligible next recipient",
+        "tenant-company recipient scope",
+        "idempotent notification key"
+      ],
+      "caseIds": ["FIN-AUTHZ-CANONICAL-NEXT-STEP-001"],
+      "noMutationControls": [
+        "only the next actionable user is notified",
+        "notification cannot outlive rolled-back activation"
+      ],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/pettyCash.ts#approvePettyCashRequestInTransaction",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": [
+        "caller transaction",
+        "tenant-company-location request scope",
+        "segregation of duties",
+        "immutable proposal validation"
+      ],
+      "caseIds": ["FIN-AUTHZ-RECORD-001", "FIN-AUTHZ-SOD-001"],
+      "noMutationControls": [
+        "wrong-scope request cannot be approved",
+        "requester cannot approve own request",
+        "unconfirmed amount change cannot mutate request or ledger"
       ],
       "status": "COVERED"
     },

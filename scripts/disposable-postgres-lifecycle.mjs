@@ -4,6 +4,14 @@ const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const forbiddenDatabaseToken =
   /(?:^|[_-])(prod(?:uction)?|live|stag(?:e|ing)|shared|pilot|uat)(?:[_-]|$)/i;
 const disposableDatabasePattern = /^ogfi_test_([a-z0-9_]{1,24})_([a-f0-9]{16})$/;
+const dockerContainerNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/;
+
+export function assertSafePsqlDockerContainer(value) {
+  if (!dockerContainerNamePattern.test(value ?? "")) {
+    throw new Error("DISPOSABLE_DATABASE_PSQL_DOCKER_CONTAINER_INVALID");
+  }
+  return value;
+}
 
 export function createDisposablePostgresIdentity(runId, nonce = randomBytes(32).toString("hex")) {
   if (!/^[A-Za-z0-9._-]{6,128}$/.test(runId ?? "")) {

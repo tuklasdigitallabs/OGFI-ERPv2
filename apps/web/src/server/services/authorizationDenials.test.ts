@@ -4,6 +4,7 @@ import {
   authorizationDenialActions,
   authorizationDenialReasons,
   authorizationDenialResources,
+  finalizeExpiredAuthorizationDenialBuckets,
   recordAuthorizationDenial,
   recordDeniedDecisionInTransactionSafely,
   recordDeniedDecisionSafely,
@@ -72,6 +73,28 @@ describe("DEC-0050 authorization denial contract", () => {
       { client: { $transaction: transaction } as never }
     )).rejects.toThrow();
     expect(transaction).not.toHaveBeenCalled();
+  });
+
+  test("uses a bounded acquisition and execution budget for standalone denial transactions", async () => {
+    const tx = transactionMock([[], []]);
+    const transaction = vi.fn().mockImplementation(async (callback) => callback(tx));
+
+    await recordAuthorizationDenial(baseInput, {
+      client: { $transaction: transaction } as never,
+      now: new Date("2031-01-01T00:01:00.000Z")
+    });
+    await finalizeExpiredAuthorizationDenialBuckets({
+      client: { $transaction: transaction } as never,
+      now: new Date("2031-01-01T00:16:00.000Z")
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(2);
+    for (const call of transaction.mock.calls) {
+      expect(call).toEqual([
+        expect.any(Function),
+        { maxWait: 10_000, timeout: 10_000 }
+      ]);
+    }
   });
 
   test("surfaces persistence failure without converting a denial into an allow result", async () => {

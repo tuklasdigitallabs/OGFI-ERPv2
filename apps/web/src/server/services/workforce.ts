@@ -17,6 +17,8 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { assertLegacyApprovalDecisionAllowed } from "./approvalDecisionMode";
+import { terminatePendingApprovalForCancellation } from "./approvalCancellation";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 
@@ -2317,6 +2319,7 @@ export async function approveLeaveRequest(
   input: LeaveActionInput
 ) {
   await requireWorkforcePermission(session, permissions.workforceLeaveApprove);
+  assertLegacyApprovalDecisionAllowed();
   return prisma.$transaction(async (tx) => {
     const request = await getScopedLeaveOrThrow(
       tx,
@@ -2360,6 +2363,7 @@ export async function returnLeaveRequestForRevision(
   input: LeaveActionInput
 ) {
   await requireWorkforcePermission(session, permissions.workforceLeaveApprove);
+  assertLegacyApprovalDecisionAllowed();
   const reason = requireWorkforceReason(
     input.reason,
     "WORKFORCE_LEAVE_RETURN_REASON_REQUIRED"
@@ -2403,6 +2407,7 @@ export async function rejectLeaveRequest(
   input: LeaveActionInput
 ) {
   await requireWorkforcePermission(session, permissions.workforceLeaveApprove);
+  assertLegacyApprovalDecisionAllowed();
   const reason = requireWorkforceReason(
     input.reason,
     "WORKFORCE_LEAVE_REJECTION_REASON_REQUIRED"
@@ -2467,13 +2472,40 @@ export async function cancelLeaveRequest(
       ],
       "WORKFORCE_LEAVE_INVALID_CANCEL_STATUS"
     );
-    const updated = await tx.employeeLeaveRequest.update({
-      where: { id: request.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(
+      tx,
+      {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "EmployeeLeaveRequest",
+        documentId: request.id,
+        policy: ["SUBMITTED", "UNDER_REVIEW"].includes(request.status)
+          ? "APPROVAL_REQUIRED"
+          : "APPROVAL_OPTIONAL"
+      }
+    );
+    const cancelled = await tx.employeeLeaveRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: request.status
+      },
       data: {
         status: "CANCELLED",
         decisionAt: new Date(),
         decisionNote: reason,
         updatedByUserId: session.user.id
+      }
+    });
+    if (cancelled.count !== 1) {
+      throw new Error("WORKFORCE_LEAVE_CANCELLATION_CONFLICT");
+    }
+    const updated = await tx.employeeLeaveRequest.findFirstOrThrow({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     });
     await writeWorkforceAudit(tx, {
@@ -2484,7 +2516,11 @@ export async function cancelLeaveRequest(
       beforeStatus: request.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? null
+      evidenceReference: input.evidenceReference ?? null,
+      metadata: {
+        approvalCancellationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId
+      }
     });
     return updated;
   });
@@ -2678,6 +2714,7 @@ export async function approveOvertimeRecord(
     session,
     permissions.workforceOvertimeApprove
   );
+  assertLegacyApprovalDecisionAllowed();
   return prisma.$transaction(async (tx) => {
     const record = await getScopedOvertimeOrThrow(
       tx,
@@ -2722,6 +2759,7 @@ export async function rejectOvertimeRecord(
     session,
     permissions.workforceOvertimeApprove
   );
+  assertLegacyApprovalDecisionAllowed();
   const reason = requireWorkforceReason(
     input.reason,
     "WORKFORCE_OVERTIME_REJECTION_REASON_REQUIRED"
@@ -2778,11 +2816,38 @@ export async function cancelOvertimeRecord(
       ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED"],
       "WORKFORCE_OVERTIME_INVALID_CANCEL_STATUS"
     );
-    const updated = await tx.employeeOvertimeRecord.update({
-      where: { id: record.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(
+      tx,
+      {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "EmployeeOvertimeRecord",
+        documentId: record.id,
+        policy: ["SUBMITTED", "UNDER_REVIEW"].includes(record.status)
+          ? "APPROVAL_REQUIRED"
+          : "APPROVAL_OPTIONAL"
+      }
+    );
+    const cancelled = await tx.employeeOvertimeRecord.updateMany({
+      where: {
+        id: record.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: record.status
+      },
       data: {
         status: "CANCELLED",
         updatedByUserId: session.user.id
+      }
+    });
+    if (cancelled.count !== 1) {
+      throw new Error("WORKFORCE_OVERTIME_CANCELLATION_CONFLICT");
+    }
+    const updated = await tx.employeeOvertimeRecord.findFirstOrThrow({
+      where: {
+        id: record.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     });
     await writeWorkforceAudit(tx, {
@@ -2793,7 +2858,11 @@ export async function cancelOvertimeRecord(
       beforeStatus: record.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? null
+      evidenceReference: input.evidenceReference ?? null,
+      metadata: {
+        approvalCancellationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId
+      }
     });
     return updated;
   });
@@ -2996,6 +3065,7 @@ export async function approveWorkforceSchedule(
   input: ScheduleActionInput
 ) {
   await requirePermission(session, permissions.workforceScheduleManage);
+  assertLegacyApprovalDecisionAllowed();
   return prisma.$transaction(async (tx) => {
     const schedule = await getScopedScheduleOrThrow(
       tx,
@@ -3042,6 +3112,7 @@ export async function rejectWorkforceSchedule(
   input: ScheduleActionInput
 ) {
   await requirePermission(session, permissions.workforceScheduleManage);
+  assertLegacyApprovalDecisionAllowed();
   const reason = requireWorkforceReason(
     input.reason,
     "WORKFORCE_SCHEDULE_REJECTION_REASON_REQUIRED"
@@ -3159,8 +3230,25 @@ export async function cancelWorkforceSchedule(
       ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "PUBLISHED"],
       "WORKFORCE_SCHEDULE_INVALID_CANCEL_STATUS"
     );
-    const updated = await tx.workforceSchedule.update({
-      where: { id: schedule.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(
+      tx,
+      {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "WorkforceSchedule",
+        documentId: schedule.id,
+        policy: ["SUBMITTED", "UNDER_REVIEW"].includes(schedule.status)
+          ? "APPROVAL_REQUIRED"
+          : "APPROVAL_OPTIONAL"
+      }
+    );
+    const cancelled = await tx.workforceSchedule.updateMany({
+      where: {
+        id: schedule.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: schedule.status
+      },
       data: {
         status: "CANCELLED",
         cancelledByUserId: session.user.id,
@@ -3168,6 +3256,16 @@ export async function cancelWorkforceSchedule(
         reason,
         evidenceReference:
           input.evidenceReference?.trim() ?? schedule.evidenceReference
+      }
+    });
+    if (cancelled.count !== 1) {
+      throw new Error("WORKFORCE_SCHEDULE_CANCELLATION_CONFLICT");
+    }
+    const updated = await tx.workforceSchedule.findFirstOrThrow({
+      where: {
+        id: schedule.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     });
     await writeWorkforceAudit(tx, {
@@ -3178,7 +3276,11 @@ export async function cancelWorkforceSchedule(
       beforeStatus: schedule.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? null
+      evidenceReference: input.evidenceReference ?? null,
+      metadata: {
+        approvalCancellationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId
+      }
     });
     return updated;
   });
@@ -3481,8 +3583,26 @@ export async function voidAttendanceImportBatch(
       ],
       "WORKFORCE_ATTENDANCE_IMPORT_INVALID_VOID_STATUS"
     );
-    const updated = await tx.attendanceImportBatch.update({
-      where: { id: batch.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(
+      tx,
+      {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "AttendanceImportBatch",
+        documentId: batch.id,
+        policy:
+          batch.status === "VALIDATING"
+            ? "APPROVAL_REQUIRED"
+            : "APPROVAL_OPTIONAL"
+      }
+    );
+    const voided = await tx.attendanceImportBatch.updateMany({
+      where: {
+        id: batch.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: batch.status
+      },
       data: {
         status: "VOIDED",
         voidedByUserId: session.user.id,
@@ -3490,6 +3610,16 @@ export async function voidAttendanceImportBatch(
         voidReason: reason,
         evidenceReference:
           input.evidenceReference?.trim() ?? batch.evidenceReference
+      }
+    });
+    if (voided.count !== 1) {
+      throw new Error("WORKFORCE_ATTENDANCE_IMPORT_VOID_CONFLICT");
+    }
+    const updated = await tx.attendanceImportBatch.findFirstOrThrow({
+      where: {
+        id: batch.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     });
     await tx.attendanceImportLine.updateMany({
@@ -3504,7 +3634,11 @@ export async function voidAttendanceImportBatch(
       beforeStatus: batch.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? null
+      evidenceReference: input.evidenceReference ?? null,
+      metadata: {
+        approvalCancellationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId
+      }
     });
     return updated;
   });

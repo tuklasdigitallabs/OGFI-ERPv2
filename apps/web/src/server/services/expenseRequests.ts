@@ -9,6 +9,11 @@ import {
 } from "./authorization"
 import type { SessionContext } from "./context"
 import {
+  assertAuthoritativeApprovalEvidence,
+  assertLegacyApprovalDecisionAllowed
+} from "./approvalDecisionMode"
+import { terminatePendingApprovalForCancellation } from "./approvalCancellation"
+import {
   recordWorkflowNotifications
 } from "./notifications"
 import {
@@ -486,7 +491,7 @@ async function writeExpenseAudit(
   })
 }
 
-async function upsertExpenseRequestBudgetCommitments(
+export async function upsertExpenseRequestBudgetCommitments(
   tx: TransactionClient,
   input: {
     session: SessionContext
@@ -640,6 +645,97 @@ async function upsertExpenseRequestBudgetCommitments(
     results.push(commitment)
   }
   return results
+}
+
+export async function approveExpenseRequestInTransaction(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: ExpenseRequestActionInput & {
+    approvalInstanceId?: string
+    supplementalEvidenceReference?: string
+  }
+) {
+  const request = await getScopedExpenseRequestOrThrow(
+    tx,
+    session,
+    input.expenseRequestId
+  )
+  if (request.status === "APPROVED") {
+    return request
+  }
+  assertExpenseTransition({ transition: "approve", status: request.status })
+  if (request.requestedByUserId === session.user.id) {
+    throw new Error("EXPENSE_REQUEST_SELF_APPROVAL_BLOCKED")
+  }
+  const reason = input.reason?.trim() || null
+  const evidenceReference = request.evidenceReference
+  const supplementalEvidenceReference =
+    input.supplementalEvidenceReference?.trim() || null
+  if (request.budgetStatus === "OVER_BUDGET") {
+    assertReason(reason ?? undefined, "EXPENSE_REQUEST_BUDGET_OVERRIDE_REASON_REQUIRED")
+    assertAuthoritativeApprovalEvidence(
+      evidenceReference,
+      "EXPENSE_REQUEST_BUDGET_OVERRIDE_EVIDENCE_REQUIRED"
+    )
+  }
+
+  const sourceUpdate = await tx.expenseRequest.updateMany({
+    where: {
+      id: request.id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "AWAITING_APPROVAL",
+      version: request.version
+    },
+    data: {
+      status: "APPROVED",
+      approvedByUserId: session.user.id,
+      approvedAt: new Date(),
+      evidenceReference,
+      budgetSnapshot: {
+        budgetStatus: request.budgetStatus,
+        overrideReason: reason,
+        approvalInstanceId: input.approvalInstanceId ?? null,
+        warningFirst: true,
+        noPaymentMutation: true,
+        noJournalPosting: true
+      },
+      version: { increment: 1 }
+    }
+  })
+  if (sourceUpdate.count !== 1) {
+    throw new Error("EXPENSE_REQUEST_NOT_AWAITING_APPROVAL")
+  }
+  const updated = await getScopedExpenseRequestOrThrow(
+    tx,
+    session,
+    request.id
+  )
+  const budgetCommitments = await upsertExpenseRequestBudgetCommitments(tx, {
+    session,
+    request,
+    reason,
+    evidenceReference: updated.evidenceReference
+  })
+  await writeExpenseAudit(tx, {
+    session,
+    requestId: request.id,
+    eventType: "expense_request.approved",
+    beforeStatus: request.status,
+    afterStatus: updated.status,
+    reason,
+    evidenceReference: updated.evidenceReference,
+    metadata: {
+      approvalInstanceId: input.approvalInstanceId ?? null,
+      budgetStatus: request.budgetStatus,
+      budgetCommitmentCount: budgetCommitments.length,
+      sourceEventType: "EXPENSE_REQUEST",
+      budgetCommitmentBoundary: "budget_commitment_only_no_source_mutation",
+      idempotencyKey: input.idempotencyKey ?? null,
+      supplementalEvidenceReference
+    }
+  })
+  return updated
 }
 
 export function buildExpenseRequestRows(
@@ -1280,72 +1376,10 @@ export async function approveExpenseRequest(
   input: ExpenseRequestActionInput
 ) {
   await requirePermission(session, permissions.financeExpenseRequestApprove)
-  return prisma.$transaction(async (tx) => {
-    const request = await getScopedExpenseRequestOrThrow(
-      tx,
-      session,
-      input.expenseRequestId
-    )
-    if (request.status === "APPROVED") {
-      return request
-    }
-    assertExpenseTransition({ transition: "approve", status: request.status })
-    if (request.requestedByUserId === session.user.id) {
-      throw new Error("EXPENSE_REQUEST_SELF_APPROVAL_BLOCKED")
-    }
-    if (request.budgetStatus === "OVER_BUDGET") {
-      assertReason(
-        input.reason,
-        "EXPENSE_REQUEST_BUDGET_OVERRIDE_REASON_REQUIRED"
-      )
-      assertEvidence(
-        input.evidenceReference ?? request.evidenceReference,
-        "EXPENSE_REQUEST_BUDGET_OVERRIDE_EVIDENCE_REQUIRED"
-      )
-    }
-
-    const updated = await tx.expenseRequest.update({
-      where: { id: request.id },
-      data: {
-        status: "APPROVED",
-        approvedByUserId: session.user.id,
-        approvedAt: new Date(),
-        evidenceReference:
-          input.evidenceReference?.trim() ?? request.evidenceReference,
-        budgetSnapshot: {
-          budgetStatus: request.budgetStatus,
-          overrideReason: input.reason?.trim() ?? null,
-          warningFirst: true,
-          noPaymentMutation: true,
-          noJournalPosting: true
-        },
-        version: { increment: 1 }
-      }
-    })
-    const budgetCommitments = await upsertExpenseRequestBudgetCommitments(tx, {
-      session,
-      request,
-      reason: input.reason ?? null,
-      evidenceReference: updated.evidenceReference
-    })
-    await writeExpenseAudit(tx, {
-      session,
-      requestId: request.id,
-      eventType: "expense_request.approved",
-      beforeStatus: request.status,
-      afterStatus: updated.status,
-      reason: input.reason?.trim() ?? null,
-      evidenceReference: updated.evidenceReference,
-      metadata: {
-        budgetStatus: request.budgetStatus,
-        budgetCommitmentCount: budgetCommitments.length,
-        sourceEventType: "EXPENSE_REQUEST",
-        budgetCommitmentBoundary: "budget_commitment_only_no_source_mutation",
-        idempotencyKey: input.idempotencyKey ?? null
-      }
-    })
-    return updated
-  })
+  assertLegacyApprovalDecisionAllowed()
+  return prisma.$transaction((tx) =>
+    approveExpenseRequestInTransaction(tx, session, input)
+  )
 }
 
 export async function returnExpenseRequestForRevision(
@@ -1353,6 +1387,7 @@ export async function returnExpenseRequestForRevision(
   input: ExpenseRequestActionInput
 ) {
   await requirePermission(session, permissions.financeExpenseRequestApprove)
+  assertLegacyApprovalDecisionAllowed()
   const reason = input.reason?.trim()
   if (!reason) {
     throw new Error("EXPENSE_REQUEST_RETURN_REASON_REQUIRED")
@@ -1392,6 +1427,7 @@ export async function rejectExpenseRequest(
   input: ExpenseRequestActionInput
 ) {
   await requirePermission(session, permissions.financeExpenseRequestApprove)
+  assertLegacyApprovalDecisionAllowed()
   const reason = input.reason?.trim()
   if (!reason) {
     throw new Error("EXPENSE_REQUEST_REJECTION_REASON_REQUIRED")
@@ -1459,14 +1495,31 @@ export async function cancelExpenseRequest(
     ) {
       throw new Error("EXPENSE_REQUEST_CANCEL_PERMISSION_DENIED")
     }
-    const updated = await tx.expenseRequest.update({
-      where: { id: request.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "ExpenseRequest",
+      documentId: request.id,
+      policy: ["SUBMITTED", "AWAITING_APPROVAL"].includes(request.status)
+        ? "APPROVAL_REQUIRED"
+        : "APPROVAL_OPTIONAL"
+    })
+    const sourceUpdate = await tx.expenseRequest.updateMany({
+      where: { id: request.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: request.status, version: request.version },
       data: {
         status: "CANCELLED",
         cancelledByUserId: session.user.id,
         cancelledAt: new Date(),
         cancellationReason: reason,
         version: { increment: 1 }
+      }
+    })
+    if (sourceUpdate.count !== 1) throw new Error("EXPENSE_REQUEST_CANCELLATION_CONFLICT")
+    const updated = await tx.expenseRequest.findFirstOrThrow({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     })
     await writeExpenseAudit(tx, {
@@ -1476,7 +1529,8 @@ export async function cancelExpenseRequest(
       beforeStatus: request.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? request.evidenceReference
+      evidenceReference: input.evidenceReference ?? request.evidenceReference,
+      metadata: { approvalTerminationMode: approvalTermination.mode, approvalInstanceId: approvalTermination.approvalInstanceId }
     })
     return updated
   })

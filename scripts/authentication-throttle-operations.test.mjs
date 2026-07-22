@@ -99,6 +99,9 @@ test("bootstraps control state only through the controlled migrator path", () =>
   assert.match(raceProbe, /AUTH_THROTTLE_PREVIOUS_VERSION_REUSE_NOT_REJECTED/);
   assert.match(raceProbe, /AUTH_THROTTLE_PREVIOUS_FINGERPRINT_REUSE_NOT_REJECTED/);
   assert.match(raceProbe, /AUTH_THROTTLE_PAUSE_RESERVATION_RACE_FAILED/);
+  assert.match(raceProbe, /pauseReservationIterations = 25/);
+  assert.match(raceProbe, /AUTH_THROTTLE_PAUSE_TRANSIENT_EXHAUSTED/);
+  assert.match(raceProbe, /AUTH_THROTTLE_PAUSE_GENERATION_CONFLICT/);
   assert.doesNotMatch(raceProbe, /console\.(?:log|error)\([^)]*(?:hmacKey|previousHmacKey)/);
   assert.match(disposableRunner, /auth-throttle:control-race-probe/);
 });

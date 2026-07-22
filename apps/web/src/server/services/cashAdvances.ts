@@ -8,6 +8,8 @@ import {
   requirePermission
 } from "./authorization"
 import type { SessionContext } from "./context"
+import { assertLegacyApprovalDecisionAllowed } from "./approvalDecisionMode"
+import { terminatePendingApprovalForCancellation } from "./approvalCancellation"
 import {
   recordWorkflowNotifications
 } from "./notifications"
@@ -1228,6 +1230,7 @@ export async function approveCashAdvanceRequest(
   input: CashAdvanceActionInput
 ) {
   await requirePermission(session, permissions.financeCashAdvanceApprove)
+  assertLegacyApprovalDecisionAllowed()
   return prisma.$transaction(async (tx) => {
     const request = await getScopedCashAdvanceOrThrow(
       tx,
@@ -1426,6 +1429,7 @@ export async function returnCashAdvanceForRevision(
   input: CashAdvanceActionInput
 ) {
   await requirePermission(session, permissions.financeCashAdvanceApprove)
+  assertLegacyApprovalDecisionAllowed()
   const reason = input.reason?.trim()
   assertReason(reason, "CASH_ADVANCE_RETURN_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
@@ -1467,6 +1471,7 @@ export async function rejectCashAdvanceRequest(
   input: CashAdvanceActionInput
 ) {
   await requirePermission(session, permissions.financeCashAdvanceApprove)
+  assertLegacyApprovalDecisionAllowed()
   const reason = input.reason?.trim()
   assertReason(reason, "CASH_ADVANCE_REJECTION_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
@@ -1541,14 +1546,29 @@ export async function cancelCashAdvanceRequest(
     if (decimalToNumber(request.issuedAmountPhp) > 0) {
       throw new Error("CASH_ADVANCE_CANCEL_REQUIRES_REVERSAL")
     }
-    const updated = await tx.cashAdvanceRequest.update({
-      where: { id: request.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "CashAdvanceRequest",
+      documentId: request.id,
+      policy: ["SUBMITTED", "AWAITING_APPROVAL"].includes(request.status) ? "APPROVAL_REQUIRED" : "APPROVAL_OPTIONAL"
+    })
+    const sourceUpdate = await tx.cashAdvanceRequest.updateMany({
+      where: { id: request.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: request.status, version: request.version },
       data: {
         status: "CANCELLED",
         cancelledByUserId: session.user.id,
         cancelledAt: new Date(),
         cancellationReason: reason,
         version: { increment: 1 }
+      }
+    })
+    if (sourceUpdate.count !== 1) throw new Error("CASH_ADVANCE_CANCELLATION_CONFLICT")
+    const updated = await tx.cashAdvanceRequest.findFirstOrThrow({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     })
     await writeCashAdvanceAudit(tx, {
@@ -1561,7 +1581,9 @@ export async function cancelCashAdvanceRequest(
       reason,
       evidenceReference: input.evidenceReference ?? request.evidenceReference,
       metadata: {
-        issuedAmountPhp: decimalToNumber(request.issuedAmountPhp)
+        issuedAmountPhp: decimalToNumber(request.issuedAmountPhp),
+        approvalTerminationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId
       }
     })
     return updated

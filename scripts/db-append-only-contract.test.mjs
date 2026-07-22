@@ -10,6 +10,8 @@ test("verifies owner guards, runtime least privilege, inserts, and escalation ne
   assert.ok(checks.includes("PASS | runtime cannot create public tables"));
   assert.ok(checks.includes("PASS | runtime cannot create temporary tables"));
   assert.ok(checks.includes("PASS | runtime can INSERT InventoryMovement with rollback"));
+  assert.ok(checks.includes("PASS | owner rejects UPDATE on PettyCashApprovalStepIntent"));
+  assert.ok(checks.includes("PASS | runtime lacks TRUNCATE on PettyCashApprovalStepIntent"));
   assert.ok(checks.includes("PASS | runtime can insert first denial evidence and bucket then increment allowed columns with rollback"));
   assert.ok(checks.includes("PASS | runtime lacks table-wide UPDATE on AuthorizationDenialBucket"));
   assert.ok(checks.includes("PASS | runtime cannot finalize an open denial bucket before its window ends"));
@@ -42,9 +44,12 @@ function fakePsql(connection, args) {
   }
   if (/SELECT count|WITH inserted|has_table_privilege/.test(sql)) return { status: 0, stdout: "", stderr: "" };
   if (connection.username === "ogfi_prod_migrator") {
-    const table = sql.match(/"(AuditEvent|ProjectActivityEvent|InventoryMovement)"/)?.[1];
+    const table = sql.match(/"(AuditEvent|ProjectActivityEvent|InventoryMovement|PettyCashApprovalStepIntent)"/)?.[1];
     const operation = /^UPDATE/.test(sql) ? "UPDATE" : /^DELETE/.test(sql) ? "DELETE" : "TRUNCATE";
-    return { status: 1, stdout: "", stderr: `ERROR:  55000: ${table} is append-only; ${operation} is prohibited` };
+    const message = table === "PettyCashApprovalStepIntent"
+      ? "PETTY_CASH_APPROVAL_INTENT_APPEND_ONLY"
+      : `${table} is append-only; ${operation} is prohibited`;
+    return { status: 1, stdout: "", stderr: `ERROR:  55000: ${message}` };
   }
   const stderr = /ALTER TABLE|ALTER FUNCTION/.test(sql)
     ? "ERROR: must be owner of protected object"

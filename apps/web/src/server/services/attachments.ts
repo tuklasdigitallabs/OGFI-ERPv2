@@ -1394,15 +1394,15 @@ export async function createControlledEvidenceAttachmentMetadataLink(
   input: CreateControlledEvidenceAttachmentMetadataLinkInput,
 ) {
   const session = await requireSessionContext();
-  if (readEvidenceStorageConfig().production) {
-    throw new Error("CONTROLLED_EVIDENCE_LEGACY_METADATA_DISABLED");
-  }
   await authorizeControlledEvidenceSourceAction({
     session,
     sourceType: input.sourceType,
     sourceRecordId: input.sourceRecordId,
     attemptedAction: "LINK",
   });
+  if (readEvidenceStorageConfig().production) {
+    throw new Error("CONTROLLED_EVIDENCE_LEGACY_METADATA_DISABLED");
+  }
   const companyId = assertCompanySession(session);
   const metadata = validateAttachmentMetadata(input.attachment);
   if (!metadata.normalized) {
@@ -1525,15 +1525,15 @@ export async function createControlledEvidenceAttachmentUploadLink(
   input: CreateControlledEvidenceAttachmentUploadLinkInput,
 ) {
   const session = await requireSessionContext();
-  if (readEvidenceStorageConfig().production) {
-    throw new Error("CONTROLLED_EVIDENCE_LEGACY_UPLOAD_DISABLED");
-  }
   await authorizeControlledEvidenceSourceAction({
     session,
     sourceType: input.sourceType,
     sourceRecordId: input.sourceRecordId,
     attemptedAction: "LINK",
   });
+  if (readEvidenceStorageConfig().production) {
+    throw new Error("CONTROLLED_EVIDENCE_LEGACY_UPLOAD_DISABLED");
+  }
   const companyId = assertCompanySession(session);
   const evidenceStoragePolicy =
     await getControlledEvidenceStoragePolicy(session);

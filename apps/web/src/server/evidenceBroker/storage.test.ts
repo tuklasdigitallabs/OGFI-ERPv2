@@ -25,9 +25,10 @@ afterEach(async () => {
 });
 
 async function fixture(overrides: Partial<EvidenceBrokerConfig> = {}) {
-  const storageRoot = await mkdtemp(path.join(os.tmpdir(), "ogfi-broker-store-"));
+  const storageRoot = overrides.storageRoot
+    ?? await mkdtemp(path.join(os.tmpdir(), "ogfi-broker-store-"));
   await chmod(storageRoot, 0o700);
-  roots.push(storageRoot);
+  if (!roots.includes(storageRoot)) roots.push(storageRoot);
   const config: EvidenceBrokerConfig = {
     storageRoot,
     sharedSecret: "s".repeat(40),
@@ -45,7 +46,7 @@ async function fixture(overrides: Partial<EvidenceBrokerConfig> = {}) {
     maximumSignatureAgeSeconds: 172_800,
     ...overrides,
   };
-  return { storageRoot, store: new EncryptedEvidenceStore(config) };
+  return { storageRoot, config, store: new EncryptedEvidenceStore(config) };
 }
 
 function upload(body: Buffer) {
@@ -173,13 +174,12 @@ describe("encrypted evidence store", () => {
     const storageRoot = await mkdtemp(path.join(os.tmpdir(), "ogfi-broker-store-"));
     await chmod(storageRoot, 0o700);
     roots.push(storageRoot);
-    const filesystem = await statfs(storageRoot);
-    const availableBytes = filesystem.bavail * filesystem.bsize;
-    const body = Buffer.alloc(256 * 1024, 9);
+    const body = Buffer.alloc(4 * 1024 * 1024, 9);
     const projectedBytes = body.byteLength + 16_384 + 32;
-    const { store } = await fixture({
+    const { config, store } = await fixture({
       storageRoot,
-      minimumFreeBytes: availableBytes - projectedBytes - 100_000,
+      maximumObjectBytes: 8 * 1024 * 1024,
+      minimumFreeBytes: 0,
     });
     let allowFirstBody!: () => void;
     const firstBodyGate = new Promise<void>((resolve) => {
@@ -197,16 +197,32 @@ describe("encrypted evidence store", () => {
         yield body;
       })(),
     });
-    await firstReservationReached;
+    await Promise.race([
+      firstReservationReached,
+      first.then(() => {
+        throw new Error("FIRST_EVIDENCE_WRITE_COMPLETED_BEFORE_BODY_GATE");
+      }),
+    ]);
+    const filesystem = await statfs(storageRoot);
+    const availableBytes = filesystem.bavail * filesystem.bsize;
+    config.minimumFreeBytes = Math.max(
+      0,
+      availableBytes - Math.floor(projectedBytes * 1.5),
+    );
     const second = store.createExactVersion({
       ...upload(body),
       key: "quarantine/650e8400-e29b-41d4-a716-446655440000",
       versionId: "8d1bbf33-e5d2-4eb2-a8c1-952297c3f104",
     });
-    await expect(second).rejects.toThrow(
-      "EVIDENCE_BROKER_STORAGE_WATERMARK_REACHED",
-    );
-    allowFirstBody();
-    await expect(first).resolves.toMatchObject({ idempotent: false });
+    let firstResult: Awaited<typeof first> | undefined;
+    try {
+      await expect(second).rejects.toThrow(
+        "EVIDENCE_BROKER_STORAGE_WATERMARK_REACHED",
+      );
+    } finally {
+      allowFirstBody();
+      firstResult = await first;
+    }
+    expect(firstResult).toMatchObject({ idempotent: false });
   });
 });

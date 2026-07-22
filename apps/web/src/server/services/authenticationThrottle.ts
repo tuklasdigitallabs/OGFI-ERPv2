@@ -155,10 +155,27 @@ function isRetryableAuthenticationThrottleError(error: unknown): boolean {
   };
   return (
     value.code === "P2034" ||
+    value.code === "P2028" ||
     value.meta?.code === "40001" ||
     value.meta?.code === "40P01" ||
     isRetryableAuthenticationThrottleError(value.cause)
   );
+}
+
+function errorIncludesAuthenticationThrottleCode(
+  error: unknown,
+  code: string
+): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { message?: unknown; cause?: unknown };
+  return (
+    (typeof value.message === "string" && value.message.includes(code)) ||
+    errorIncludesAuthenticationThrottleCode(value.cause, code)
+  );
+}
+
+async function waitForAuthenticationThrottleRetry(attempt: number) {
+  await new Promise((resolve) => setTimeout(resolve, attempt * 10));
 }
 
 function integerSetting(
@@ -779,31 +796,50 @@ export async function transitionAuthenticationThrottleControl(
   if (input.expectedGeneration < 0n) {
     throw new Error("AUTH_THROTTLE_CONTROL_GENERATION_INVALID");
   }
-  const rows = await (options.client ?? prisma).$transaction((tx) =>
-    tx.$queryRaw<Array<{
-      generation: bigint;
-      status: "ACTIVE" | "PAUSED";
-      activeKeyVersion: number;
-      activeKeyFingerprint: string;
-      policyDigest: string;
-      previousRetireAt: Date | null;
-    }>>`
-      SELECT result.generation,
-             result.status::text AS status,
-             result.active_key_version AS "activeKeyVersion",
-             result.active_key_fingerprint AS "activeKeyFingerprint",
-             result.policy_digest AS "policyDigest",
-             result.previous_retire_at AS "previousRetireAt"
-        FROM public.operator_transition_authentication_throttle_control(
-          ${input.expectedGeneration},
-          ${input.requestedStatus}::"AuthenticationThrottleControlStatus",
-          ${input.config.keyVersion}::integer,
-          ${authenticationThrottleKeyFingerprint(input.config.hmacKey)},
-          ${authenticationThrottlePolicyDigest(input.config)}
-        ) result`
-  );
-  if (!rows[0]) throw new Error("AUTH_THROTTLE_CONTROL_TRANSITION_FAILED");
-  return rows[0];
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const rows = await (options.client ?? prisma).$transaction((tx) =>
+        tx.$queryRaw<Array<{
+          generation: bigint;
+          status: "ACTIVE" | "PAUSED";
+          activeKeyVersion: number;
+          activeKeyFingerprint: string;
+          policyDigest: string;
+          previousRetireAt: Date | null;
+        }>>`
+          SELECT result.generation,
+                 result.status::text AS status,
+                 result.active_key_version AS "activeKeyVersion",
+                 result.active_key_fingerprint AS "activeKeyFingerprint",
+                 result.policy_digest AS "policyDigest",
+                 result.previous_retire_at AS "previousRetireAt"
+            FROM public.operator_transition_authentication_throttle_control(
+              ${input.expectedGeneration},
+              ${input.requestedStatus}::"AuthenticationThrottleControlStatus",
+              ${input.config.keyVersion}::integer,
+              ${authenticationThrottleKeyFingerprint(input.config.hmacKey)},
+              ${authenticationThrottlePolicyDigest(input.config)}
+            ) result`
+      );
+      if (!rows[0]) throw new Error("AUTH_THROTTLE_CONTROL_TRANSITION_FAILED");
+      return rows[0];
+    } catch (error) {
+      const generationConflict = errorIncludesAuthenticationThrottleCode(
+        error,
+        "AUTH_THROTTLE_CONTROL_GENERATION_CONFLICT"
+      );
+      if (
+        attempt < 3 &&
+        !generationConflict &&
+        isRetryableAuthenticationThrottleError(error)
+      ) {
+        await waitForAuthenticationThrottleRetry(attempt);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("AUTH_THROTTLE_UNREACHABLE");
 }
 
 export async function reserveAuthenticationAttemptInTransaction(

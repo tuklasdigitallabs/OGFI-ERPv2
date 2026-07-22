@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
-import { scanApprovalRoutingKeysetPages } from "./approvalRoutingBackfill";
+import {
+  scanApprovalRoutingKeysetPages,
+  validateApprovalRoutingActivationAuditState,
+  validateApprovalRoutingStructure,
+} from "./approvalRoutingBackfill";
 
 const source = readFileSync(
   path.resolve(__dirname, "approvalRoutingBackfill.ts"),
@@ -24,17 +28,124 @@ const auditUniquenessMigration = readFileSync(
 );
 
 describe("approval routing active-work backfill contract", () => {
+  type TestStep = {
+    stepOrder: number;
+    assignedUserId: string;
+    assignedRoleId: null;
+    delegatedFromUserId: null;
+    status: string;
+    actedAt: Date | null;
+    activatedAt: Date | null;
+    dueAt: Date | null;
+  };
+  const waitingStep = (stepOrder: number): TestStep => ({
+    stepOrder,
+    assignedUserId: `user-${stepOrder}`,
+    assignedRoleId: null,
+    delegatedFromUserId: null,
+    status: "WAITING",
+    actedAt: null,
+    activatedAt: null,
+    dueAt: null,
+  });
+
+  test("accepts the exact Budget Revision pre-review waiting shape", () => {
+    expect(validateApprovalRoutingStructure({
+      documentType: "BudgetRevision",
+      sourceStatus: "SUBMITTED",
+      currentStepOrder: 1,
+      steps: [waitingStep(1), waitingStep(2)],
+    })).toMatchObject({
+      mode: "BUDGET_REVISION_PRE_REVIEW",
+      current: { stepOrder: 1, status: "WAITING" },
+    });
+  });
+
+  test.each([
+    {
+      name: "premature pending step",
+      steps: [{ ...waitingStep(1), status: "PENDING", activatedAt: new Date() }],
+      currentStepOrder: 1,
+    },
+    {
+      name: "premature activation timestamp",
+      steps: [{ ...waitingStep(1), activatedAt: new Date() }],
+      currentStepOrder: 1,
+    },
+    {
+      name: "premature SLA due date",
+      steps: [{ ...waitingStep(1), dueAt: new Date() }],
+      currentStepOrder: 1,
+    },
+    {
+      name: "non-initial current step",
+      steps: [waitingStep(1), waitingStep(2)],
+      currentStepOrder: 2,
+    },
+  ])("fails closed for malformed pre-review state: $name", ({ steps, currentStepOrder }) => {
+    expect(() => validateApprovalRoutingStructure({
+      documentType: "BudgetRevision",
+      sourceStatus: "SUBMITTED",
+      currentStepOrder,
+      steps,
+    })).toThrow();
+  });
+
+  test("requires an activated current pending step once Budget Revision is under review", () => {
+    const pending = {
+      ...waitingStep(1),
+      status: "PENDING",
+      activatedAt: new Date("2026-07-22T00:00:00.000Z"),
+      dueAt: new Date("2026-08-01T00:00:00.000Z"),
+    };
+    expect(validateApprovalRoutingStructure({
+      documentType: "BudgetRevision",
+      sourceStatus: "UNDER_REVIEW",
+      currentStepOrder: 1,
+      steps: [pending, waitingStep(2)],
+    })).toMatchObject({ mode: "ACTIONABLE", current: { status: "PENDING" } });
+    expect(() => validateApprovalRoutingStructure({
+      documentType: "BudgetRevision",
+      sourceStatus: "UNDER_REVIEW",
+      currentStepOrder: 1,
+      steps: [waitingStep(1), waitingStep(2)],
+    })).toThrow("MULTIPLE_PENDING_STEPS");
+  });
+
+  test("rejects activation audit evidence before Budget Revision review starts", () => {
+    expect(() => validateApprovalRoutingActivationAuditState({
+      mode: "BUDGET_REVISION_PRE_REVIEW",
+      activationAuditPresent: true,
+    })).toThrow("ROUTING_DESCRIPTOR_DRIFT");
+    expect(() => validateApprovalRoutingActivationAuditState({
+      mode: "BUDGET_REVISION_PRE_REVIEW",
+      activationAuditPresent: false,
+    })).not.toThrow();
+  });
+
+  test("does not relax the actionable structure for another approval family", () => {
+    expect(() => validateApprovalRoutingStructure({
+      documentType: "ExpenseRequest",
+      sourceStatus: "SUBMITTED",
+      currentStepOrder: 1,
+      steps: [waitingStep(1)],
+    })).toThrow("MULTIPLE_PENDING_STEPS");
+  });
+
   test("defaults to dry-run and requires an explicit apply flag", () => {
     expect(job).toContain('const apply = process.argv.includes("--apply")');
     expect(source).toContain("const apply = options.apply === true");
     expect(source).toContain('mode: apply ? "APPLY" : "DRY_RUN"');
   });
 
-  test("coordinates bounded serializable per-instance transactions", () => {
+  test("coordinates one bounded serializable transaction with per-instance savepoints", () => {
     expect(source).toContain("pg_try_advisory_xact_lock");
     expect(source).toContain("APPROVAL_ROUTING_BACKFILL_MAX_BATCH_SIZE = 100");
     expect(source).toContain("APPROVAL_ROUTING_BACKFILL_MAX_SECONDS = 50");
     expect(source).toContain('isolationLevel: "Serializable"');
+    expect(source).toContain("SAVEPOINT approval_routing_backfill_instance");
+    expect(source).toContain("ROLLBACK TO SAVEPOINT approval_routing_backfill_instance");
+    expect(source).toContain("RELEASE SAVEPOINT approval_routing_backfill_instance");
     expect(source).toContain('id: { gt: afterId }');
     expect(source).toContain("FOR UPDATE");
     expect(source).toContain("routingSchemaVersion: 0");
@@ -43,12 +154,12 @@ describe("approval routing active-work backfill contract", () => {
 
   test("rolls an instance back on any child, CAS, or audit failure", () => {
     expect(source).toContain(
-      "const inspected = await inspectOrApplyInstance(tx, row.id, true)",
+      "const inspected = await inspectOrApplyInstance(coordinator, row.id, true)",
     );
     expect(source).toContain("throw new BackfillDryRunRollback()");
     expect(source.indexOf("approvalInstanceStepScopeGroup.create"))
       .toBeLessThan(source.indexOf("await tx.auditEvent.create"));
-    expect(source).toContain("prisma.$transaction(");
+    expect(source).toContain("ROLLBACK TO SAVEPOINT approval_routing_backfill_instance");
   });
 
   test("blocks every confirmed unsafe legacy shape without guessing", () => {
@@ -65,6 +176,7 @@ describe("approval routing active-work backfill contract", () => {
       "SOURCE_SCOPE_MISMATCH",
       "SOURCE_STATUS_INVALID",
       "SOURCE_LOCATION_REQUIRED",
+      "SOURCE_APPROVAL_INTENT_REQUIRED",
     ]) expect(source).toContain(`"${code}"`);
     expect(source).toContain('instance.documentType === "PROJECT_REQUIREMENT"');
   });
@@ -72,7 +184,9 @@ describe("approval routing active-work backfill contract", () => {
   test("preserves terminal rows and verifies v1 reruns for drift", () => {
     expect(source).toContain('status: "PENDING"');
     expect(source).toContain('return { state: "TERMINAL" as const }');
-    expect(source).toContain("verifyStepDescriptor(tx, step, expected)");
+    expect(source).toContain(
+      "verifyStepDescriptor(tx, { instance, step, expected, mode })",
+    );
     expect(source).toContain('block("BACKFILL_AUDIT_DRIFT")');
   });
 
@@ -85,6 +199,10 @@ describe("approval routing active-work backfill contract", () => {
     expect(source).toContain("mappingHash: APPROVAL_ROUTING_MAPPING_HASH");
     expect(source).toContain("sourceDigest: expected.sourceDigest");
     expect(source).toContain("activatedAtProvenance");
+    expect(source).toContain('mode === "BUDGET_REVISION_PRE_REVIEW"');
+    expect(source).toContain('lifecycleMode: mode');
+    expect(source).toContain('mode === "ACTIONABLE"');
+    expect(source).toContain("dueAt: expectedStepDueAt");
     expect(auditUniquenessMigration).toContain(
       'CREATE UNIQUE INDEX "AuditEvent_approval_routing_backfill_key"',
     );
@@ -100,6 +218,15 @@ describe("approval routing active-work backfill contract", () => {
     expect(source).toContain('if (!isSupportedApprovalDocumentType(instance.documentType))');
     expect(source).toContain("CURRENT_ELIGIBLE_ACTOR_MISSING");
     expect(source).toContain("ROLE_NOTIFICATION_PRESENT");
+    expect(routing).toContain('AS "isBudgetRevisionPreReview"');
+    expect(routing).toContain("revision.status = 'SUBMITTED'");
+    expect(routing).toContain("step.status <> 'WAITING'");
+    expect(routing).toContain("step.\"dueAt\" IS NOT NULL");
+    expect(routing).toContain("audit.\"eventType\" = 'approval.step_activated'");
+    expect(routing).toContain("revision.status = 'UNDER_REVIEW'");
+    expect(routing).toContain(
+      'step."dueAt" IS DISTINCT FROM revision."effectiveFrom"',
+    );
   });
 
   test("keyset scanning crosses batch boundaries and reruns idempotently", async () => {

@@ -96,6 +96,10 @@ describe("approval inbox controls", () => {
 
   test("approval inbox supports non-posting expense request decisions", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
+    const expenseSource = readFileSync(
+      path.resolve(__dirname, "expenseRequests.ts"),
+      "utf8"
+    );
     const detailPageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
       "utf8"
@@ -105,10 +109,10 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("findActionableExpenseRequestApproval");
     expect(serviceSource).toContain("approveExpenseRequest");
     expect(serviceSource).toContain("closeExpenseRequestWithDecision");
-    expect(serviceSource).toContain("expense_request.approved");
+    expect(expenseSource).toContain("expense_request.approved");
     expect(serviceSource).toContain("expense_request.returned");
     expect(serviceSource).toContain("expense_request.rejected");
-    expect(serviceSource).toContain("EXPENSE_REQUEST_BUDGET_OVERRIDE_REASON_REQUIRED");
+    expect(expenseSource).toContain("EXPENSE_REQUEST_BUDGET_OVERRIDE_REASON_REQUIRED");
     expect(serviceSource).toContain("noPaymentCreation");
     expect(serviceSource).toContain("noJournalPosting");
     expect(serviceSource).toContain("noApSettlement");
@@ -141,6 +145,10 @@ describe("approval inbox controls", () => {
 
   test("approval inbox supports non-posting petty cash request decisions", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
+    const pettyCashSource = readFileSync(
+      path.resolve(__dirname, "pettyCash.ts"),
+      "utf8"
+    );
     const detailPageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
       "utf8"
@@ -150,10 +158,10 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("findActionablePettyCashRequestApproval");
     expect(serviceSource).toContain("approvePettyCashRequest");
     expect(serviceSource).toContain("closePettyCashRequestWithDecision");
-    expect(serviceSource).toContain("petty_cash.request_approved");
+    expect(pettyCashSource).toContain("petty_cash.request_approved");
     expect(serviceSource).toContain("petty_cash.request_returned");
     expect(serviceSource).toContain("petty_cash.request_rejected");
-    expect(serviceSource).toContain("PETTY_CASH_REQUEST_EVIDENCE_REQUIRED");
+    expect(pettyCashSource).toContain("PETTY_CASH_REQUEST_EVIDENCE_REQUIRED");
     expect(serviceSource).toContain("noPaymentCreation");
     expect(serviceSource).toContain("noPaymentRelease");
     expect(serviceSource).toContain("noJournalPosting");
@@ -403,6 +411,10 @@ describe("multi-step approval advancement", () => {
     path.resolve(__dirname, "approvals.ts"),
     "utf8"
   );
+  const notificationsSource = readFileSync(
+    path.resolve(__dirname, "notifications.ts"),
+    "utf8"
+  );
 
   test("compare-and-advance is transactional, scoped, and retry-safe", () => {
     const helperSource = extractFunctionSource(
@@ -604,12 +616,16 @@ describe("multi-step approval advancement", () => {
       serviceSource,
       "closeCurrentApprovalDecision"
     );
-    expect(outcomeSource).toContain("recordWorkflowNotifications");
+    const sharedOutcomeSource = extractFunctionSource(
+      notificationsSource,
+      "recordApprovalOutcomeNotification"
+    );
+    expect(outcomeSource).toContain("recordSharedApprovalOutcomeNotification");
     expect(outcomeSource).toContain("input.notification.recipientUserIds");
     expect(outcomeSource).toContain("input.notification.publicReference");
     expect(outcomeSource).toContain("input.notification.locationName");
-    expect(outcomeSource).toContain(
-      "`approval:${input.approvalId}:outcome:${outcome}`"
+    expect(sharedOutcomeSource).toContain(
+      "`approval:${input.approvalInstanceId}:outcome:${input.outcome}`"
     );
     expect(approveSource).toContain(
       'recordApprovalOutcomeNotification(tx, session, input, "APPROVED")'

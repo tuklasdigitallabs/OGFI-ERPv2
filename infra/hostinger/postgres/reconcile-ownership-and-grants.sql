@@ -113,7 +113,12 @@ BEGIN
     EXECUTE format('REVOKE ALL ON ROUTINE %I.%I(%s) FROM %I', obj.nspname, obj.proname, obj.args, runtime_role);
   END LOOP;
 
-  FOREACH protected_table IN ARRAY ARRAY['AuditEvent', 'ProjectActivityEvent', 'InventoryMovement']
+  FOREACH protected_table IN ARRAY ARRAY[
+    'AuditEvent',
+    'ProjectActivityEvent',
+    'InventoryMovement',
+    'PettyCashApprovalStepIntent'
+  ]
   LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', protected_table, runtime_role);

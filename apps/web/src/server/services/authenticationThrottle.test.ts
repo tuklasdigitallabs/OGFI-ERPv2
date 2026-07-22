@@ -8,6 +8,7 @@ import {
   loadAuthenticationThrottleConfig,
   reserveAuthenticationAttempt,
   signAuthenticationThrottleReservation,
+  transitionAuthenticationThrottleControl,
   verifyAuthenticationThrottleReservationProof,
   validateAuthenticationThrottleConfig,
   type AuthenticationThrottleConfig
@@ -146,6 +147,67 @@ describe("bounded authentication throttle", () => {
       reservation: null,
       thresholdDimensions: []
     });
+  });
+
+  test.each([
+    ["write conflict", { code: "P2034" }],
+    ["closed transaction", { code: "P2028" }],
+    ["deadlock", { meta: { code: "40P01" } }]
+  ])("control transition retries a known transient %s", async (_label, transient) => {
+    let attempts = 0;
+    const result = await transitionAuthenticationThrottleControl(
+      {
+        expectedGeneration: 7n,
+        requestedStatus: "PAUSED",
+        config
+      },
+      {
+        client: {
+          $transaction: async (operation: (tx: unknown) => Promise<unknown>) => {
+            attempts += 1;
+            if (attempts === 1) throw transient;
+            return operation({
+              $queryRaw: async () => [{
+                generation: 8n,
+                status: "PAUSED",
+                activeKeyVersion: config.keyVersion,
+                activeKeyFingerprint: "1".repeat(64),
+                policyDigest: "2".repeat(64),
+                previousRetireAt: null
+              }]
+            });
+          }
+        } as never
+      }
+    );
+    expect(attempts).toBe(2);
+    expect(result.status).toBe("PAUSED");
+    expect(result.generation).toBe(8n);
+  });
+
+  test("control transition never retries a generation conflict", async () => {
+    let attempts = 0;
+    await expect(
+      transitionAuthenticationThrottleControl(
+        {
+          expectedGeneration: 7n,
+          requestedStatus: "PAUSED",
+          config
+        },
+        {
+          client: {
+            $transaction: async () => {
+              attempts += 1;
+              throw Object.assign(
+                new Error("AUTH_THROTTLE_CONTROL_GENERATION_CONFLICT"),
+                { meta: { code: "40001" } }
+              );
+            }
+          } as never
+        }
+      )
+    ).rejects.toThrow("AUTH_THROTTLE_CONTROL_GENERATION_CONFLICT");
+    expect(attempts).toBe(1);
   });
 
   test("migration enforces exact transitions, shape, retention, and active trigger", () => {

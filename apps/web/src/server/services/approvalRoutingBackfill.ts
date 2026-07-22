@@ -31,6 +31,7 @@ export const approvalRoutingBackfillBlockerCodes = [
   "SOURCE_STATUS_INVALID",
   "SOURCE_LOCATION_REQUIRED",
   "SOURCE_ACTOR_REQUIRED",
+  "SOURCE_APPROVAL_INTENT_REQUIRED",
   "ROUTING_DESCRIPTOR_DRIFT",
   "BACKFILL_AUDIT_MISSING",
   "BACKFILL_AUDIT_DRIFT",
@@ -127,6 +128,30 @@ class BackfillDryRunRollback extends Error {
 
 function block(code: ApprovalRoutingBackfillBlockerCode): never {
   throw new BackfillBlocker(code);
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function sourceSnapshotDigest(
+  instance: Pick<LockedInstance, "documentType" | "documentId">,
+  source: SourceSnapshot,
+) {
+  return approvalRoutingDigest({
+    documentType: instance.documentType,
+    documentId: instance.documentId,
+    tenantId: source.tenantId,
+    companyId: source.companyId,
+    status: source.status,
+    dueAt: source.dueAt,
+    transitionAt: source.transitionAt,
+    scopeTargetMatchMode: source.scopeTargetMatchMode,
+    scopeTargets: source.scopeTargets,
+    prohibitedActors: source.prohibitedActors,
+  });
 }
 
 function uniqueActors(
@@ -264,6 +289,13 @@ async function loadSourceSnapshot(
     case "PettyCashRequest": {
       const row = await tx.pettyCashRequest.findUnique({ where: { id: instance.documentId }, include: { fund: true } });
       if (!row) block("SOURCE_NOT_FOUND");
+      if (
+        row.approvalInstanceId !== instance.id ||
+        row.currentProposedAmountPhp === null ||
+        row.approvalProposalVersion < 1
+      ) {
+        block("SOURCE_APPROVAL_INTENT_REQUIRED");
+      }
       return sourceSnapshot({ tenantId: row.tenantId, companyId: row.companyId, status: row.status, dueAt: row.dueBy, transitionAt: row.submittedAt, scopeTargets: locationScope(row.companyId, row.fund.locationId), prohibitedActors: uniqueActors([[row.requestedByUserId, "REQUESTER"]]) });
     }
     case "PaymentRequest": {
@@ -300,12 +332,63 @@ async function loadSourceSnapshot(
   }
 }
 
-function validateStructure(instance: LockedInstance, steps: LockedStep[]) {
+export type ApprovalRoutingStructureMode =
+  | "ACTIONABLE"
+  | "BUDGET_REVISION_PRE_REVIEW";
+
+type ApprovalRoutingStructureStep = Pick<
+  LockedStep,
+  | "stepOrder"
+  | "assignedUserId"
+  | "assignedRoleId"
+  | "delegatedFromUserId"
+  | "status"
+  | "actedAt"
+  | "activatedAt"
+  | "dueAt"
+> & { routingSchemaVersion?: number };
+
+export function validateApprovalRoutingStructure<
+  TStep extends ApprovalRoutingStructureStep,
+>(input: {
+  documentType: string;
+  sourceStatus: string;
+  currentStepOrder: number | null;
+  steps: TStep[];
+}) {
+  const instance = input;
+  const steps = input.steps;
   if (instance.currentStepOrder === null) block("CURRENT_STEP_ORDER_MISSING");
   if (steps.length === 0) block("ZERO_STEPS");
   if (steps.some((step) => Boolean(step.assignedUserId) === Boolean(step.assignedRoleId))) block("ASSIGNMENT_XOR_INVALID");
   if (steps.some((step) => step.delegatedFromUserId !== null)) block("DELEGATED_STEP_UNSUPPORTED");
+  const mode: ApprovalRoutingStructureMode =
+    instance.documentType === "BudgetRevision" &&
+    instance.sourceStatus === "SUBMITTED"
+      ? "BUDGET_REVISION_PRE_REVIEW"
+      : "ACTIONABLE";
   const pending = steps.filter((step) => step.status === "PENDING");
+  if (mode === "BUDGET_REVISION_PRE_REVIEW") {
+    if (pending.length !== 0) block("MULTIPLE_PENDING_STEPS");
+    const current = steps.find(
+      (step) => step.stepOrder === instance.currentStepOrder,
+    );
+    if (!current) block("CURRENT_PENDING_STEP_MISMATCH");
+    const firstStepOrder = Math.min(...steps.map((step) => step.stepOrder));
+    if (
+      instance.currentStepOrder !== firstStepOrder ||
+      steps.some(
+        (step) =>
+          step.status !== "WAITING" ||
+          step.actedAt !== null ||
+          step.activatedAt !== null ||
+          step.dueAt !== null,
+      )
+    ) {
+      block("ORPHAN_STEP_STRUCTURE");
+    }
+    return { current, mode };
+  }
   if (pending.length !== 1) block("MULTIPLE_PENDING_STEPS");
   if (pending[0]?.stepOrder !== instance.currentStepOrder) block("CURRENT_PENDING_STEP_MISMATCH");
   const legal = steps.every((step) =>
@@ -316,7 +399,30 @@ function validateStructure(instance: LockedInstance, steps: LockedStep[]) {
         : step.status === "WAITING",
   );
   if (!legal) block("ORPHAN_STEP_STRUCTURE");
-  return pending[0]!;
+  if (
+    steps.some(
+      (step) =>
+        (step.routingSchemaVersion ?? APPROVAL_ROUTING_SCHEMA_VERSION) ===
+          APPROVAL_ROUTING_SCHEMA_VERSION &&
+        ((step.status === "PENDING" && step.activatedAt === null) ||
+          (step.status === "WAITING" && step.activatedAt !== null)),
+    )
+  ) {
+    block("ROUTING_DESCRIPTOR_DRIFT");
+  }
+  return { current: pending[0]!, mode };
+}
+
+export function validateApprovalRoutingActivationAuditState(input: {
+  mode: ApprovalRoutingStructureMode;
+  activationAuditPresent: boolean;
+}) {
+  if (
+    input.mode === "BUDGET_REVISION_PRE_REVIEW" &&
+    input.activationAuditPresent
+  ) {
+    block("ROUTING_DESCRIPTOR_DRIFT");
+  }
 }
 
 async function expectedDescriptor(
@@ -331,7 +437,7 @@ async function expectedDescriptor(
   if (!policy.allowedSourceStatuses.includes(source.status)) block("SOURCE_STATUS_INVALID");
   const permission = await tx.permission.findFirst({ where: { code: policy.requiredPermissionCode, OR: [{ tenantId: null }, { tenantId: instance.tenantId }] }, select: { id: true } });
   if (!permission) block("SOURCE_NOT_FOUND");
-  const sourceDigest = approvalRoutingDigest({ documentType: instance.documentType, documentId: instance.documentId, ...source });
+  const sourceDigest = sourceSnapshotDigest(instance, source);
   return { ...source, requiredPermissionId: permission.id, requiredPermissionCode: policy.requiredPermissionCode, sourceDigest };
 }
 
@@ -339,8 +445,30 @@ function sameDate(left: Date | null, right: Date | null) {
   return left?.getTime() === right?.getTime();
 }
 
-async function verifyStepDescriptor(tx: TransactionClient, step: LockedStep, expected: ExpectedDescriptor) {
-  if (step.routingSchemaVersion !== APPROVAL_ROUTING_SCHEMA_VERSION || step.requiredPermissionId !== expected.requiredPermissionId || step.scopeGroupMatchMode !== "ALL" || !sameDate(step.dueAt, expected.dueAt) || (step.status === "WAITING" && step.activatedAt !== null) || (step.status === "PENDING" && step.activatedAt === null)) block("ROUTING_DESCRIPTOR_DRIFT");
+function expectedStepDueAt(input: {
+  instance: LockedInstance;
+  step: LockedStep;
+  expected: ExpectedDescriptor;
+  mode: ApprovalRoutingStructureMode;
+}) {
+  if (input.mode === "BUDGET_REVISION_PRE_REVIEW") return null;
+  if (input.instance.documentType !== "BudgetRevision") {
+    return input.expected.dueAt;
+  }
+  return input.step.stepOrder <= input.instance.currentStepOrder!
+    ? input.expected.dueAt
+    : null;
+}
+
+async function verifyStepDescriptor(tx: TransactionClient, input: {
+  instance: LockedInstance;
+  step: LockedStep;
+  expected: ExpectedDescriptor;
+  mode: ApprovalRoutingStructureMode;
+}) {
+  const { step, expected } = input;
+  const dueAt = expectedStepDueAt(input);
+  if (step.routingSchemaVersion !== APPROVAL_ROUTING_SCHEMA_VERSION || step.requiredPermissionId !== expected.requiredPermissionId || step.scopeGroupMatchMode !== "ALL" || !sameDate(step.dueAt, dueAt) || (step.status === "WAITING" && step.activatedAt !== null) || (step.status === "PENDING" && step.activatedAt === null)) block("ROUTING_DESCRIPTOR_DRIFT");
   const groups = await tx.approvalInstanceStepScopeGroup.findMany({ where: { approvalInstanceStepId: step.id }, include: { targets: true }, orderBy: { groupOrder: "asc" } });
   const actualTargets = groups[0]?.targets.map((target) => ({ scopeType: target.scopeType, companyId: target.companyId, brandId: target.brandId, locationId: target.locationId })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))) ?? [];
   const expectedTargets = expected.scopeTargets.map((target) => ({ scopeType: target.scopeType, companyId: target.companyId, brandId: target.brandId ?? null, locationId: target.locationId ?? null })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
@@ -361,13 +489,47 @@ async function inspectOrApplyInstance(tx: TransactionClient, instanceId: string,
   const instance = instances[0];
   if (!instance || instance.status !== "PENDING") return { state: "TERMINAL" as const };
   const steps = await tx.$queryRaw<LockedStep[]>`SELECT id, "stepOrder", "assignedUserId", "assignedRoleId", "delegatedFromUserId", status::text, "actedAt", "activatedAt", "dueAt", "requiredPermissionId", "routingSchemaVersion", "scopeGroupMatchMode"::text FROM "ApprovalInstanceStep" WHERE "approvalInstanceId" = ${instance.id}::uuid ORDER BY "stepOrder" FOR UPDATE`;
-  const current = validateStructure(instance, steps);
   const expected = await expectedDescriptor(tx, instance);
-  const existingActivation = await tx.auditEvent.findFirst({ where: { tenantId: instance.tenantId, entityType: "ApprovalInstanceStep", entityId: current.id, eventType: "approval.step_activated" }, orderBy: { occurredAt: "asc" }, select: { occurredAt: true } });
-  const derived = existingActivation ? { activatedAt: existingActivation.occurredAt, provenance: "EXISTING_ACTIVATION_AUDIT", confidence: "HIGH" as const } : activationProvenance(instance, steps, current, expected);
+  const { current, mode } = validateApprovalRoutingStructure({
+    documentType: instance.documentType,
+    sourceStatus: expected.status,
+    currentStepOrder: instance.currentStepOrder,
+    steps,
+  });
+  const activationAudits = await tx.auditEvent.findMany({
+    where: {
+      tenantId: instance.tenantId,
+      entityType: "ApprovalInstanceStep",
+      entityId:
+        mode === "BUDGET_REVISION_PRE_REVIEW"
+          ? { in: steps.map((step) => step.id) }
+          : current.id,
+      eventType: "approval.step_activated",
+    },
+    orderBy: { occurredAt: "asc" },
+    take: 2,
+    select: {
+      occurredAt: true,
+      beforeData: true,
+      afterData: true,
+      metadata: true,
+    },
+  });
+  const existingActivation = activationAudits[0] ?? null;
+  validateApprovalRoutingActivationAuditState({
+    mode,
+    activationAuditPresent: Boolean(existingActivation),
+  });
+  const derived = mode === "ACTIONABLE"
+    ? existingActivation
+      ? { activatedAt: existingActivation.occurredAt, provenance: "EXISTING_ACTIVATION_AUDIT", confidence: "HIGH" as const }
+      : activationProvenance(instance, steps, current, expected)
+    : null;
   const allCurrent = steps.every((step) => step.routingSchemaVersion === APPROVAL_ROUTING_SCHEMA_VERSION);
   if (allCurrent) {
-    for (const step of steps) await verifyStepDescriptor(tx, step, expected);
+    for (const step of steps) {
+      await verifyStepDescriptor(tx, { instance, step, expected, mode });
+    }
   } else if (steps.some((step) => step.routingSchemaVersion !== 0)) {
     block("ROUTING_DESCRIPTOR_DRIFT");
   } else if (apply) {
@@ -390,24 +552,67 @@ async function inspectOrApplyInstance(tx: TransactionClient, instanceId: string,
     for (const step of steps) {
       await tx.approvalInstanceStepScopeGroup.create({ data: { approvalInstanceStepId: step.id, groupOrder: 1, targetMatchMode: expected.scopeTargetMatchMode, targets: { create: expected.scopeTargets.map((target) => ({ scopeType: target.scopeType, companyId: target.companyId, brandId: target.brandId ?? null, locationId: target.locationId ?? null })) } } });
       if (expected.prohibitedActors.length) await tx.approvalInstanceStepProhibitedActor.createMany({ data: expected.prohibitedActors.map((actor) => ({ approvalInstanceStepId: step.id, ...actor })) });
-      const updated = await tx.approvalInstanceStep.updateMany({ where: { id: step.id, routingSchemaVersion: 0, status: step.status as never }, data: { requiredPermissionId: expected.requiredPermissionId, routingSchemaVersion: APPROVAL_ROUTING_SCHEMA_VERSION, scopeGroupMatchMode: "ALL", activatedAt: step.status === "PENDING" ? derived.activatedAt : null, dueAt: expected.dueAt } });
+      const updated = await tx.approvalInstanceStep.updateMany({ where: { id: step.id, routingSchemaVersion: 0, status: step.status as never }, data: { requiredPermissionId: expected.requiredPermissionId, routingSchemaVersion: APPROVAL_ROUTING_SCHEMA_VERSION, scopeGroupMatchMode: "ALL", activatedAt: step.status === "PENDING" ? derived!.activatedAt : null, dueAt: expectedStepDueAt({ instance, step, expected, mode }) } });
       if (updated.count !== 1) throw new Error("APPROVAL_ROUTING_BACKFILL_CAS_FAILED");
     }
-    const eligible = await findAnyEligibleApprovalActorForStep(tx, {
-      tenantId: instance.tenantId,
-      companyId: instance.companyId,
-      approvalInstanceStepId: current.id,
-    });
-    if (!eligible) block("CURRENT_ELIGIBLE_ACTOR_MISSING");
-    await tx.auditEvent.create({ data: { tenantId: instance.tenantId, companyId: instance.companyId, actorUserId: null, eventType: "approval.step_routing_backfilled", entityType: "ApprovalInstance", entityId: instance.id, occurredAt: new Date(), afterData: { routingSchemaVersion: APPROVAL_ROUTING_SCHEMA_VERSION }, metadata: { source: "approval-routing-backfill-job", mappingVersion: APPROVAL_ROUTING_MAPPING_VERSION, mappingHash: APPROVAL_ROUTING_MAPPING_HASH, sourceDigest: expected.sourceDigest, currentStepId: current.id, derivedActivatedAt: derived.activatedAt.toISOString(), activatedAtProvenance: derived.provenance, activatedAtConfidence: derived.confidence } } });
+    if (mode === "ACTIONABLE") {
+      const eligible = await findAnyEligibleApprovalActorForStep(tx, {
+        tenantId: instance.tenantId,
+        companyId: instance.companyId,
+        approvalInstanceStepId: current.id,
+      });
+      if (!eligible) block("CURRENT_ELIGIBLE_ACTOR_MISSING");
+    }
+    await tx.auditEvent.create({ data: { tenantId: instance.tenantId, companyId: instance.companyId, actorUserId: null, eventType: "approval.step_routing_backfilled", entityType: "ApprovalInstance", entityId: instance.id, occurredAt: new Date(), afterData: { routingSchemaVersion: APPROVAL_ROUTING_SCHEMA_VERSION }, metadata: { source: "approval-routing-backfill-job", mappingVersion: APPROVAL_ROUTING_MAPPING_VERSION, mappingHash: APPROVAL_ROUTING_MAPPING_HASH, sourceDigest: expected.sourceDigest, currentStepId: current.id, lifecycleMode: mode, ...(derived ? { derivedActivatedAt: derived.activatedAt.toISOString(), activatedAtProvenance: derived.provenance, activatedAtConfidence: derived.confidence } : {}) } } });
   }
   if (allCurrent) {
     const backfillAudit = await tx.auditEvent.findMany({ where: { tenantId: instance.tenantId, entityType: "ApprovalInstance", entityId: instance.id, eventType: "approval.step_routing_backfilled" }, select: { metadata: true } });
     if (backfillAudit.length > 1) block("BACKFILL_AUDIT_DRIFT");
     if (backfillAudit.length === 1) {
       const metadata = backfillAudit[0]?.metadata as Record<string, unknown> | null;
-      if (metadata?.mappingVersion !== APPROVAL_ROUTING_MAPPING_VERSION || metadata?.mappingHash !== APPROVAL_ROUTING_MAPPING_HASH || metadata?.sourceDigest !== expected.sourceDigest) block("BACKFILL_AUDIT_DRIFT");
-    } else if (!existingActivation) block("BACKFILL_AUDIT_MISSING");
+      const activationMetadata = jsonRecord(existingActivation?.metadata);
+      const activationBefore = jsonRecord(existingActivation?.beforeData);
+      const activationAfter = jsonRecord(existingActivation?.afterData);
+      const predecessorDigest = sourceSnapshotDigest(instance, {
+        tenantId: expected.tenantId,
+        companyId: expected.companyId,
+        status: "SUBMITTED",
+        dueAt: expected.dueAt,
+        transitionAt: expected.transitionAt,
+        scopeTargetMatchMode: expected.scopeTargetMatchMode,
+        scopeTargets: expected.scopeTargets,
+        prohibitedActors: expected.prohibitedActors,
+      });
+      const authorizedBudgetReviewPromotion =
+        instance.documentType === "BudgetRevision" &&
+        expected.status === "UNDER_REVIEW" &&
+        metadata?.lifecycleMode === "BUDGET_REVISION_PRE_REVIEW" &&
+        metadata?.currentStepId === current.id &&
+        metadata?.sourceDigest === predecessorDigest &&
+        mode === "ACTIONABLE" &&
+        activationAudits.length === 1 &&
+        existingActivation !== null &&
+        current.activatedAt?.getTime() === existingActivation.occurredAt.getTime() &&
+        activationBefore?.status === "WAITING" &&
+        activationBefore?.activatedAt === null &&
+        activationAfter?.status === "PENDING" &&
+        activationAfter?.activatedAt === existingActivation.occurredAt.toISOString() &&
+        activationMetadata?.source === "budget_revision.commitment_fit_review" &&
+        activationMetadata?.approvalInstanceId === instance.id &&
+        activationMetadata?.approvalInstanceStepId === current.id &&
+        activationMetadata?.budgetRevisionId === instance.documentId &&
+        activationMetadata?.stepOrder === current.stepOrder &&
+        activationMetadata?.fromStatus === "WAITING" &&
+        activationMetadata?.routingSchemaVersion === APPROVAL_ROUTING_SCHEMA_VERSION;
+      if (
+        metadata?.mappingVersion !== APPROVAL_ROUTING_MAPPING_VERSION ||
+        metadata?.mappingHash !== APPROVAL_ROUTING_MAPPING_HASH ||
+        (metadata?.sourceDigest !== expected.sourceDigest &&
+          !authorizedBudgetReviewPromotion)
+      ) {
+        block("BACKFILL_AUDIT_DRIFT");
+      }
+    } else if (mode === "ACTIONABLE" && !existingActivation) block("BACKFILL_AUDIT_MISSING");
   }
   return { state: allCurrent ? "CURRENT" as const : apply ? "APPLIED" as const : "ELIGIBLE" as const, instance, current };
 }
@@ -471,25 +676,35 @@ export async function runApprovalRoutingBackfill(options: BackfillOptions = {}):
       }),
       visit: async (row) => {
         try {
-          let outcome;
+          let outcome: Awaited<ReturnType<typeof inspectOrApplyInstance>> | {
+            state: "ELIGIBLE";
+          };
+          await coordinator.$executeRawUnsafe(
+            "SAVEPOINT approval_routing_backfill_instance",
+          );
           try {
-            outcome = await prisma.$transaction(
-              async (tx) => {
-                // Dry-run executes the exact write-path validation, including
-                // live actor eligibility, then aborts before commit. This keeps
-                // its blocker report equivalent to apply without persisting
-                // routing children or synthetic audit evidence.
-                const inspected = await inspectOrApplyInstance(tx, row.id, true);
-                if (!apply && inspected.state === "APPLIED") {
-                  throw new BackfillDryRunRollback();
-                }
-                return inspected;
-              },
-              { isolationLevel: "Serializable" },
+            // Execute each instance under a savepoint on the coordinator's
+            // serializable transaction. This preserves the transaction-scoped
+            // advisory lock and per-instance rollback without requiring a
+            // second pool connection, which may not exist for constrained
+            // production/runtime roles.
+            const inspected = await inspectOrApplyInstance(coordinator, row.id, true);
+            if (!apply && inspected.state === "APPLIED") {
+              throw new BackfillDryRunRollback();
+            }
+            outcome = inspected;
+            await coordinator.$executeRawUnsafe(
+              "RELEASE SAVEPOINT approval_routing_backfill_instance",
             );
           } catch (error) {
+            await coordinator.$executeRawUnsafe(
+              "ROLLBACK TO SAVEPOINT approval_routing_backfill_instance",
+            );
+            await coordinator.$executeRawUnsafe(
+              "RELEASE SAVEPOINT approval_routing_backfill_instance",
+            );
             if (!(error instanceof BackfillDryRunRollback)) throw error;
-            outcome = { state: "ELIGIBLE" as const };
+            outcome = { state: "ELIGIBLE" };
           }
           if (outcome.state === "CURRENT") result.alreadyCurrent += 1;
           else if (outcome.state === "APPLIED") { result.eligible += 1; result.applied += 1; }
@@ -504,7 +719,10 @@ export async function runApprovalRoutingBackfill(options: BackfillOptions = {}):
     result.scanned = scan.scanned;
     result.hasMore = scan.hasMore;
     return result;
-  }, { timeout: (maxSeconds + 5) * 1000 });
+  }, {
+    isolationLevel: "Serializable",
+    timeout: (maxSeconds + 5) * 1000,
+  });
 }
 
 export async function inspectApprovalRoutingReadiness(input: { tenantId: string; companyId: string; batchSize?: number }) {

@@ -3065,31 +3065,29 @@
       "AUTHZ-ACTION-001"
     ],
     "delegatedServiceIds": [
-      "server/services/approvals.ts#approveApproval",
-      "server/services/approvals.ts#rejectApproval",
-      "server/services/approvals.ts#returnApproval"
+      "server/services/approvals.ts#executeCanonicalApprovalDecision"
     ],
     "callChains": [
-      "reviewApproval -> server/services/approvals.ts#approveApproval",
-      "reviewApproval -> server/services/approvals.ts#rejectApproval",
-      "reviewApproval -> server/services/approvals.ts#returnApproval"
+      "reviewApproval -> server/services/approvals.ts#executeCanonicalApprovalDecision"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
     ],
     "authorizationAdapterIds": [
-      "approval-document-dispatch",
-      "approval-scope",
-      "self-approval"
+      "authenticated session",
+      "normalized live approval preflight",
+      "tenant-company approval scope",
+      "segregation of duties",
+      "transactional source adapter"
     ],
     "boundaryCaseIds": [
-      "AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION",
-      "AUTHZ-PI-GENERIC-APPROVAL-SELF-ACTION-BLOCKED-NO-MUTATION"
+      "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
+      "FIN-AUTHZ-CANONICAL-NEXT-STEP-001",
+      "FIN-AUTHZ-CANONICAL-TERMINAL-001"
     ],
     "noMutationControls": [
-      "ApprovalInstance",
-      "source document",
-      "AuditEvent"
+      "ineligible actor cannot mutate approval or source",
+      "failed source effect rolls back approval and notifications"
     ]
   },
   {
@@ -3917,21 +3915,27 @@
       "AUTHZ-ACTION-001"
     ],
     "delegatedServiceIds": [
+      "server/services/context.ts#requireSessionContext",
       "server/services/finance.ts#approvePaymentRequest",
       "server/services/finance.ts#cancelPaymentRequest",
       "server/services/finance.ts#rejectPaymentRequest",
-      "server/services/finance.ts#submitPaymentRequest"
+      "server/services/finance.ts#submitPaymentRequest",
+      "server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "callChains": [
+      "runPaymentRequestAction -> server/services/context.ts#requireSessionContext",
       "runPaymentRequestAction -> server/services/finance.ts#approvePaymentRequest",
       "runPaymentRequestAction -> server/services/finance.ts#cancelPaymentRequest",
       "runPaymentRequestAction -> server/services/finance.ts#rejectPaymentRequest",
-      "runPaymentRequestAction -> server/services/finance.ts#submitPaymentRequest"
+      "runPaymentRequestAction -> server/services/finance.ts#submitPaymentRequest",
+      "runPaymentRequestAction -> server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
     ],
     "authorizationAdapterIds": [
+      "getSessionContext",
+      "required authenticated principal",
       "requireSessionContext",
       "requirePermission",
       "company-location-filtered-request-query",
@@ -3939,12 +3943,14 @@
       "company-filtered-request-query"
     ],
     "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
       "FIN-AUTHZ-COOKIE-PERM-001",
       "FIN-AUTHZ-RECORD-001",
       "FIN-AUTHZ-SOD-001",
       "FIN-AUTHZ-PARTIAL-DOWNGRADE-001"
     ],
     "noMutationControls": [
+      "missing or stale authority is denied before protected mutation",
       "payment-request",
       "payment-release",
       "journal",
@@ -7095,7 +7101,8 @@
       "server/services/budgetControl.ts#rejectBudgetRevision",
       "server/services/budgetControl.ts#startBudgetRevisionReview",
       "server/services/budgetControl.ts#submitBudgetRevisionForReview",
-      "server/services/context.ts#getSessionContext"
+      "server/services/context.ts#getSessionContext",
+      "server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "callChains": [
       "runBudgetRevisionLifecycleAction -> server/services/budgetControl.ts#approveBudgetRevision",
@@ -7103,7 +7110,8 @@
       "runBudgetRevisionLifecycleAction -> server/services/budgetControl.ts#rejectBudgetRevision",
       "runBudgetRevisionLifecycleAction -> server/services/budgetControl.ts#startBudgetRevisionReview",
       "runBudgetRevisionLifecycleAction -> server/services/budgetControl.ts#submitBudgetRevisionForReview",
-      "runBudgetRevisionLifecycleAction -> server/services/context.ts#getSessionContext"
+      "runBudgetRevisionLifecycleAction -> server/services/context.ts#getSessionContext",
+      "runBudgetRevisionLifecycleAction -> server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
@@ -7223,7 +7231,8 @@
       "server/services/cashAdvances.ts#returnCashAdvanceForRevision",
       "server/services/cashAdvances.ts#submitCashAdvanceForApproval",
       "server/services/cashAdvances.ts#voidCashAdvanceOfflineIssue",
-      "server/services/context.ts#getSessionContext"
+      "server/services/context.ts#getSessionContext",
+      "server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "callChains": [
       "runCashAdvanceAction -> server/services/cashAdvances.ts#approveCashAdvanceRequest",
@@ -7234,7 +7243,8 @@
       "runCashAdvanceAction -> server/services/cashAdvances.ts#returnCashAdvanceForRevision",
       "runCashAdvanceAction -> server/services/cashAdvances.ts#submitCashAdvanceForApproval",
       "runCashAdvanceAction -> server/services/cashAdvances.ts#voidCashAdvanceOfflineIssue",
-      "runCashAdvanceAction -> server/services/context.ts#getSessionContext"
+      "runCashAdvanceAction -> server/services/context.ts#getSessionContext",
+      "runCashAdvanceAction -> server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
@@ -7585,7 +7595,8 @@
       "server/services/expenseRequests.ts#markExpenseRequestPaymentHandoffReady",
       "server/services/expenseRequests.ts#rejectExpenseRequest",
       "server/services/expenseRequests.ts#returnExpenseRequestForRevision",
-      "server/services/expenseRequests.ts#submitExpenseRequestForApproval"
+      "server/services/expenseRequests.ts#submitExpenseRequestForApproval",
+      "server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "callChains": [
       "runExpenseRequestAction -> server/services/context.ts#getSessionContext",
@@ -7596,7 +7607,8 @@
       "runExpenseRequestAction -> server/services/expenseRequests.ts#markExpenseRequestPaymentHandoffReady",
       "runExpenseRequestAction -> server/services/expenseRequests.ts#rejectExpenseRequest",
       "runExpenseRequestAction -> server/services/expenseRequests.ts#returnExpenseRequestForRevision",
-      "runExpenseRequestAction -> server/services/expenseRequests.ts#submitExpenseRequestForApproval"
+      "runExpenseRequestAction -> server/services/expenseRequests.ts#submitExpenseRequestForApproval",
+      "runExpenseRequestAction -> server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
@@ -8586,7 +8598,8 @@
       "server/services/pettyCash.ts#rejectPettyCashRequest",
       "server/services/pettyCash.ts#returnPettyCashRequestForRevision",
       "server/services/pettyCash.ts#submitPettyCashRequest",
-      "server/services/pettyCash.ts#voidPettyCashFulfillment"
+      "server/services/pettyCash.ts#voidPettyCashFulfillment",
+      "server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "callChains": [
       "runPettyCashRequestAction -> server/services/context.ts#getSessionContext",
@@ -8598,7 +8611,8 @@
       "runPettyCashRequestAction -> server/services/pettyCash.ts#rejectPettyCashRequest",
       "runPettyCashRequestAction -> server/services/pettyCash.ts#returnPettyCashRequestForRevision",
       "runPettyCashRequestAction -> server/services/pettyCash.ts#submitPettyCashRequest",
-      "runPettyCashRequestAction -> server/services/pettyCash.ts#voidPettyCashFulfillment"
+      "runPettyCashRequestAction -> server/services/pettyCash.ts#voidPettyCashFulfillment",
+      "runPettyCashRequestAction -> server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
@@ -13479,6 +13493,47 @@
     ]
   },
   {
+    "id": "server/services/approvalCancellation.ts#terminatePendingApprovalForCancellation",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:FIN-AUTHZ-CANCELLATION-001",
+      "BOUNDARY_CASE:FIN-AUTHZ-CANCELLATION-RACE-001"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "tenant-company pending-instance lock",
+      "current-step compare-and-set",
+      "terminal source caller"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-CANCELLATION-001",
+      "FIN-AUTHZ-CANCELLATION-RACE-001"
+    ],
+    "noMutationControls": [
+      "wrong-scope caller cannot terminate approval",
+      "concurrent final decision cannot create split terminal state"
+    ]
+  },
+  {
     "id": "server/services/approvalRouting.ts#activateApprovalStepWithEligibility",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -14514,6 +14569,50 @@
     ]
   },
   {
+    "id": "server/services/approvals.ts#executeCanonicalApprovalDecision",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.quoteApprove | permissions.purchaseOrderApprove | permissions.wastageApprove | permissions.stockAdjustmentApprove | permissions.financeBudgetApprove | permissions.financeExpenseRequestApprove | permissions.financeCashAdvanceApprove | permissions.financePettyCashApprove | permissions.financePaymentRequestApprove | permissions.financePaymentRelease | permissions.workforceLeaveApprove | permissions.workforceOvertimeApprove | permissions.workforceScheduleManage | permissions.workforceAttendanceImportManage | permissions.purchaseRequestApprove",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-NEXT-STEP-001",
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-TERMINAL-001"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authenticated session",
+      "normalized live approval preflight",
+      "tenant-company approval scope",
+      "segregation of duties",
+      "transactional source adapter"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
+      "FIN-AUTHZ-CANONICAL-NEXT-STEP-001",
+      "FIN-AUTHZ-CANONICAL-TERMINAL-001"
+    ],
+    "noMutationControls": [
+      "ineligible actor cannot mutate approval or source",
+      "failed source effect rolls back approval and notifications"
+    ]
+  },
+  {
     "id": "server/services/approvals.ts#findEligibleApprovalActor",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -14869,6 +14968,44 @@
     ],
     "noMutationControls": [
       "Notification"
+    ]
+  },
+  {
+    "id": "server/services/approvalTerminal.ts#skipFutureApprovalStepsForTerminalDecision",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-TERMINAL-001"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "locked canonical approval instance",
+      "terminal-decision step ordering"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-CANONICAL-TERMINAL-001"
+    ],
+    "noMutationControls": [
+      "only future steps on the locked instance become skipped",
+      "retry does not duplicate terminal effects"
     ]
   },
   {
@@ -22067,6 +22204,45 @@
     ]
   },
   {
+    "id": "server/services/expenseRequests.ts#approveExpenseRequestInTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "canonical approval caller transaction",
+      "tenant-company source scope",
+      "segregation of duties",
+      "expected source state"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001"
+    ],
+    "noMutationControls": [
+      "intermediate approval does not approve source",
+      "failed source effect rolls back approval"
+    ]
+  },
+  {
     "id": "server/services/expenseRequests.ts#cancelExpenseRequest",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.financeExpenseRequestCreate | permissions.financeExpenseRequestApprove",
@@ -22441,6 +22617,44 @@
     "noMutationControls": [
       "expense-request",
       "audit"
+    ]
+  },
+  {
+    "id": "server/services/expenseRequests.ts#upsertExpenseRequestBudgetCommitments",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "tenant-company expense scope",
+      "budget commitment idempotency"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001"
+    ],
+    "noMutationControls": [
+      "commitments remain coupled to final source approval",
+      "rollback leaves no partial commitment"
     ]
   },
   {
@@ -26104,6 +26318,85 @@
     ]
   },
   {
+    "id": "server/services/notifications.ts#recordApprovalOutcomeNotification",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-TERMINAL-001"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "canonical decision caller transaction",
+      "tenant-company recipient scope",
+      "idempotent notification key"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-CANONICAL-SPECIALIZED-APPROVE-001",
+      "FIN-AUTHZ-CANONICAL-TERMINAL-001"
+    ],
+    "noMutationControls": [
+      "notification cannot outlive rolled-back decision",
+      "retry does not duplicate outcome notification"
+    ]
+  },
+  {
+    "id": "server/services/notifications.ts#recordApprovalStepReadyNotification",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:FIN-AUTHZ-CANONICAL-NEXT-STEP-001"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "canonical decision caller transaction",
+      "live eligible next recipient",
+      "tenant-company recipient scope",
+      "idempotent notification key"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-CANONICAL-NEXT-STEP-001"
+    ],
+    "noMutationControls": [
+      "only the next actionable user is notified",
+      "notification cannot outlive rolled-back activation"
+    ]
+  },
+  {
     "id": "server/services/notifications.ts#recordWorkflowNotifications",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -26510,6 +26803,48 @@
       "request",
       "ledger",
       "audit"
+    ]
+  },
+  {
+    "id": "server/services/pettyCash.ts#approvePettyCashRequestInTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:FIN-AUTHZ-RECORD-001",
+      "BOUNDARY_CASE:FIN-AUTHZ-SOD-001"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "caller transaction",
+      "tenant-company-location request scope",
+      "segregation of duties",
+      "immutable proposal validation"
+    ],
+    "boundaryCaseIds": [
+      "FIN-AUTHZ-RECORD-001",
+      "FIN-AUTHZ-SOD-001"
+    ],
+    "noMutationControls": [
+      "wrong-scope request cannot be approved",
+      "requester cannot approve own request",
+      "unconfirmed amount change cannot mutate request or ledger"
     ]
   },
   {
@@ -27195,6 +27530,27 @@
       "ledger",
       "audit"
     ]
+  },
+  {
+    "id": "server/services/pettyCash.ts#validatePettyCashApprovalInTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
   },
   {
     "id": "server/services/pettyCash.ts#voidPettyCashFulfillment",
@@ -32748,6 +33104,27 @@
     ]
   },
   {
+    "id": "server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/stockAdjustments.ts#cancelStockAdjustment",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockAdjustmentCancel",
@@ -37205,6 +37582,7 @@
     ],
     "delegatedServiceIds": [
       "server/services/context.ts#getSessionContext",
+      "server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision",
       "server/services/workforce.ts#approveLeaveRequest",
       "server/services/workforce.ts#approveOvertimeRecord",
       "server/services/workforce.ts#cancelLeaveRequest",
@@ -37217,6 +37595,7 @@
     ],
     "callChains": [
       "runWorkforceRequestAction -> server/services/context.ts#getSessionContext",
+      "runWorkforceRequestAction -> server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision",
       "runWorkforceRequestAction -> server/services/workforce.ts#approveLeaveRequest",
       "runWorkforceRequestAction -> server/services/workforce.ts#approveOvertimeRecord",
       "runWorkforceRequestAction -> server/services/workforce.ts#cancelLeaveRequest",
@@ -37284,6 +37663,7 @@
     ],
     "delegatedServiceIds": [
       "server/services/context.ts#getSessionContext",
+      "server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision",
       "server/services/workforce.ts#approveWorkforceSchedule",
       "server/services/workforce.ts#cancelWorkforceSchedule",
       "server/services/workforce.ts#publishWorkforceSchedule",
@@ -37292,6 +37672,7 @@
     ],
     "callChains": [
       "runWorkforceScheduleAction -> server/services/context.ts#getSessionContext",
+      "runWorkforceScheduleAction -> server/services/sourceApprovalDecisionBridge.ts#routeSourceWorkspaceApprovalDecision",
       "runWorkforceScheduleAction -> server/services/workforce.ts#approveWorkforceSchedule",
       "runWorkforceScheduleAction -> server/services/workforce.ts#cancelWorkforceSchedule",
       "runWorkforceScheduleAction -> server/services/workforce.ts#publishWorkforceSchedule",

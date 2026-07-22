@@ -59,44 +59,52 @@ try {
   if (idempotent.generation !== restored.generation) {
     throw new Error("AUTH_THROTTLE_CONTROL_IDEMPOTENCE_FAILED");
   }
-  const pauseRace = await Promise.allSettled([
-    transitionAuthenticationThrottleControl({
-      expectedGeneration: restored.generation,
-      requestedStatus: "PAUSED",
-      config
-    }),
-    reserveAuthenticationAttempt({
+  const pauseReservationIterations = 25;
+  let current = restored;
+  for (let iteration = 0; iteration < pauseReservationIterations; iteration += 1) {
+    const pauseRace = await Promise.allSettled([
+      transitionAuthenticationThrottleControl({
+        expectedGeneration: current.generation,
+        requestedStatus: "PAUSED",
+        config
+      }),
+      reserveAuthenticationAttempt({
+        attemptType: "PASSWORD",
+        identifierSignal: `control-race-probe-${iteration}@test.invalid`,
+        sourceSignal: `control-race-probe-${iteration}`
+      }, { config })
+    ]);
+    const paused = pauseRace[0];
+    if (paused.status !== "fulfilled") {
+      throw new Error(pauseTransitionFailureCode(paused.reason));
+    }
+    if (paused.value.status !== "PAUSED") {
+      throw new Error("AUTH_THROTTLE_PAUSE_STATUS_INVALID");
+    }
+    const reservation = pauseRace[1];
+    if (!reservation || reservation.status !== "fulfilled") {
+      throw new Error("AUTH_THROTTLE_RESERVATION_PROMISE_REJECTED");
+    }
+    const whilePaused = await reserveAuthenticationAttempt({
       attemptType: "PASSWORD",
-      identifierSignal: "control-race-probe@test.invalid",
-      sourceSignal: "control-race-probe"
-    }, { config })
-  ]);
-  const paused = pauseRace[0];
-  if (paused.status !== "fulfilled" || paused.value.status !== "PAUSED") {
-    throw new Error("AUTH_THROTTLE_PAUSE_RESERVATION_RACE_FAILED");
+      identifierSignal: `control-race-paused-${iteration}@test.invalid`,
+      sourceSignal: `control-race-paused-${iteration}`
+    }, { config });
+    if (whilePaused.allowed || whilePaused.reason !== "THROTTLE_UNAVAILABLE") {
+      throw new Error("AUTH_THROTTLE_PAUSE_ADMISSION_FAILED");
+    }
+    current = await transitionAuthenticationThrottleControl({
+      expectedGeneration: paused.value.generation,
+      requestedStatus: "ACTIVE",
+      config
+    });
   }
-  if (pauseRace[1]?.status !== "fulfilled") {
-    throw new Error("AUTH_THROTTLE_PAUSE_RESERVATION_RACE_FAILED");
-  }
-  const whilePaused = await reserveAuthenticationAttempt({
-    attemptType: "PASSWORD",
-    identifierSignal: "control-race-paused@test.invalid",
-    sourceSignal: "control-race-paused"
-  }, { config });
-  if (whilePaused.allowed || whilePaused.reason !== "THROTTLE_UNAVAILABLE") {
-    throw new Error("AUTH_THROTTLE_PAUSE_ADMISSION_FAILED");
-  }
-  const resumed = await transitionAuthenticationThrottleControl({
-    expectedGeneration: paused.value.generation,
-    requestedStatus: "ACTIVE",
-    config
-  });
   const postResume = await reserveAuthenticationAttempt({
     attemptType: "PASSWORD",
     identifierSignal: "control-race-post-resume@test.invalid",
     sourceSignal: "control-race-post-resume"
   }, { config });
-  if (resumed.status !== "ACTIVE" || !postResume.allowed) {
+  if (current.status !== "ACTIVE" || !postResume.allowed) {
     throw new Error("AUTH_THROTTLE_PAUSE_RESUME_FAILED");
   }
   console.log(JSON.stringify({
@@ -108,6 +116,7 @@ try {
     idempotent: true,
     rejectedUnsafeRotations: true,
     pauseReservationSerialized: true,
+    pauseReservationIterations,
     resumed: true
   }));
 } catch (error) {
@@ -244,6 +253,47 @@ function errorIncludesCode(error: unknown, code: string): boolean {
       : null;
   }
   return false;
+}
+
+function pauseTransitionFailureCode(error: unknown) {
+  if (errorIncludesCode(error, "AUTH_THROTTLE_CONTROL_GENERATION_CONFLICT")) {
+    return "AUTH_THROTTLE_PAUSE_GENERATION_CONFLICT";
+  }
+  if (isTransientDatabaseError(error)) {
+    return "AUTH_THROTTLE_PAUSE_TRANSIENT_EXHAUSTED";
+  }
+  const databaseCode = safeDatabaseErrorCode(error);
+  if (databaseCode) {
+    return `AUTH_THROTTLE_PAUSE_DATABASE_${databaseCode}`;
+  }
+  return "AUTH_THROTTLE_PAUSE_RESERVATION_RACE_FAILED";
+}
+
+function safeDatabaseErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const value = error as {
+    code?: unknown;
+    meta?: { code?: unknown };
+    cause?: unknown;
+  };
+  for (const candidate of [value.code, value.meta?.code]) {
+    if (typeof candidate === "string" && /^(?:P[0-9]{4}|[0-9A-Z]{5})$/.test(candidate)) {
+      return candidate;
+    }
+  }
+  return safeDatabaseErrorCode(value.cause);
+}
+
+function isTransientDatabaseError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as {
+    code?: unknown;
+    meta?: { code?: unknown };
+    cause?: unknown;
+  };
+  return value.code === "P2034" || value.code === "P2028" ||
+    value.meta?.code === "40001" ||
+    value.meta?.code === "40P01" || isTransientDatabaseError(value.cause);
 }
 
 function alternateConfig(

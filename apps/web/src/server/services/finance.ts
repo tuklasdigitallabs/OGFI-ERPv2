@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
-import { prisma } from "@ogfi/database"
-import type { Prisma, TransactionClient } from "@ogfi/database"
+import { prisma, Prisma } from "@ogfi/database"
+import type { TransactionClient } from "@ogfi/database"
 import {
   canUseFinance,
   permissions,
@@ -13,6 +13,8 @@ import {
   type SessionContext
 } from "./context"
 import type { CsvRow } from "./csv"
+import { assertLegacyApprovalDecisionAllowed } from "./approvalDecisionMode"
+import { terminatePendingApprovalForCancellation } from "./approvalCancellation"
 import {
   recordWorkflowNotifications
 } from "./notifications"
@@ -1080,7 +1082,7 @@ async function writePaymentReleaseAudit(
   })
 }
 
-function assertPaymentRequestEligibleInvoice(invoice: {
+export function assertPaymentRequestEligibleInvoice(invoice: {
   status: string
   matchStatus: string
   duplicateRisk: string
@@ -1099,7 +1101,7 @@ function assertPaymentRequestEligibleInvoice(invoice: {
     "APPROVED_EXCEPTION"
   ]
   if (
-    !eligibleStatus.includes(invoice.status) &&
+    !eligibleStatus.includes(invoice.status) ||
     !eligibleMatch.includes(invoice.matchStatus)
   ) {
     throw new Error("PAYMENT_REQUEST_INVOICE_NOT_ELIGIBLE")
@@ -1113,6 +1115,36 @@ function assertPaymentRequestEligibleInvoice(invoice: {
   if (!invoice.evidenceReference) {
     throw new Error("PAYMENT_REQUEST_EVIDENCE_REQUIRED")
   }
+}
+
+const paymentRequestCapacityReleasingStatuses = [
+  "REJECTED",
+  "CANCELLED",
+  "VOIDED"
+] as const
+
+async function lockApInvoices(
+  tx: TransactionClient,
+  session: SessionContext,
+  invoiceIds: string[]
+) {
+  const uniqueInvoiceIds = [...new Set(invoiceIds)].sort()
+  if (uniqueInvoiceIds.length !== invoiceIds.length) {
+    throw new Error("PAYMENT_REQUEST_DUPLICATE_INVOICE_LINE")
+  }
+  const lockedInvoices = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT invoice.id
+    FROM "ApInvoice" AS invoice
+    WHERE invoice."tenantId" = ${session.context.tenantId}::uuid
+      AND invoice."companyId" = ${session.context.companyId}::uuid
+      AND invoice.id = ANY(${uniqueInvoiceIds}::uuid[])
+    ORDER BY invoice.id
+    FOR UPDATE
+  `
+  if (lockedInvoices.length !== uniqueInvoiceIds.length) {
+    throw new Error("PAYMENT_REQUEST_INVOICE_NOT_FOUND")
+  }
+  return uniqueInvoiceIds
 }
 
 async function assertJournalAccountsArePostable(
@@ -4397,6 +4429,8 @@ export async function createPaymentRequestDraft(
       throw new Error("PAYMENT_REQUEST_DUPLICATE_INVOICE_LINE")
     }
 
+    await lockApInvoices(tx, session, invoiceIds)
+
     const invoices = await tx.apInvoice.findMany({
       where: {
         id: { in: invoiceIds },
@@ -4435,7 +4469,7 @@ export async function createPaymentRequestDraft(
           apInvoiceId: invoice.id,
           paymentRequest: {
             status: {
-              notIn: ["REJECTED", "CANCELLED", "VOIDED"]
+              notIn: [...paymentRequestCapacityReleasingStatuses]
             }
           }
         },
@@ -4812,6 +4846,7 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
 export async function approvePaymentRequest(input: PaymentRequestActionInput) {
   const session = await requireSessionContext()
   await requirePermission(session, permissions.financePaymentRequestApprove)
+  assertLegacyApprovalDecisionAllowed()
 
   return prisma.$transaction(async (tx) => {
     const request = await tx.paymentRequest.findFirst({
@@ -4876,6 +4911,7 @@ export async function rejectPaymentRequest(
 ) {
   const session = await requireSessionContext()
   await requirePermission(session, permissions.financePaymentRequestApprove)
+  assertLegacyApprovalDecisionAllowed()
   if (!input.reason.trim()) {
     throw new Error("PAYMENT_REQUEST_REJECT_REASON_REQUIRED")
   }
@@ -4975,14 +5011,38 @@ export async function cancelPaymentRequest(
     ) {
       throw new Error("PAYMENT_REQUEST_CANCEL_PERMISSION_DENIED")
     }
+    const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PaymentRequest",
+      documentId: request.id,
+      policy: ["SUBMITTED", "AWAITING_APPROVAL"].includes(request.status)
+        ? "APPROVAL_REQUIRED"
+        : "APPROVAL_OPTIONAL"
+    })
     const cancelledAt = new Date()
-    const updated = await tx.paymentRequest.update({
-      where: { id: request.id },
+    const sourceUpdate = await tx.paymentRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: request.status
+      },
       data: {
         status: "CANCELLED",
         cancelledAt,
         cancelledByUserId: session.user.id,
         cancellationReason: input.reason.trim()
+      }
+    })
+    if (sourceUpdate.count !== 1) {
+      throw new Error("PAYMENT_REQUEST_CANCELLATION_CONFLICT")
+    }
+    const updated = await tx.paymentRequest.findFirstOrThrow({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     })
 
@@ -4998,6 +5058,8 @@ export async function cancelPaymentRequest(
         afterData: { status: "CANCELLED", cancelledAt },
         metadata: {
           reason: input.reason.trim(),
+          approvalTerminationMode: approvalTermination.mode,
+          approvalInstanceId: approvalTermination.approvalInstanceId,
           noSourceMutation: true,
           noPaymentRelease: true
         }
@@ -5950,14 +6012,29 @@ export async function cancelPaymentRelease(input: PaymentReleaseActionInput) {
     if (decimalToNumber(release.releasedAmount) > 0) {
       throw new Error("PAYMENT_RELEASE_CANCEL_REQUIRES_REVERSAL")
     }
-    const updated = await tx.paymentRelease.update({
-      where: { id: release.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PaymentRelease",
+      documentId: release.id,
+      policy: "APPROVAL_OPTIONAL"
+    })
+    const sourceUpdate = await tx.paymentRelease.updateMany({
+      where: { id: release.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: release.status },
       data: {
         status: "CANCELLED",
         cancelledAt: new Date(),
         cancelledByUserId: session.user.id,
         cancellationReason: reason,
         evidenceReference
+      }
+    })
+    if (sourceUpdate.count !== 1) throw new Error("PAYMENT_RELEASE_CANCELLATION_CONFLICT")
+    const updated = await tx.paymentRelease.findFirstOrThrow({
+      where: {
+        id: release.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     })
     await writePaymentReleaseAudit(tx, {
@@ -5969,7 +6046,9 @@ export async function cancelPaymentRelease(input: PaymentReleaseActionInput) {
       reason,
       evidenceReference,
       metadata: {
-        idempotencyKey: input.idempotencyKey ?? null
+        idempotencyKey: input.idempotencyKey ?? null,
+        approvalTerminationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId
       }
     })
     return updated

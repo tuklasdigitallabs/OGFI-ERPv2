@@ -26,6 +26,8 @@ import {
   listControlledEvidenceAttachments
 } from "@/server/services/attachments";
 import { getSessionContext } from "@/server/services/context";
+import { canonicalApprovalDecisionsEnabled } from "@/server/services/approvalDecisionMode";
+import { routeSourceWorkspaceApprovalDecision } from "@/server/services/sourceApprovalDecisionBridge";
 import {
   approvePettyCashLiquidation,
   approvePettyCashRequest,
@@ -136,6 +138,17 @@ const pettyCashLiquidationActionLabels = {
   reverse: "Reverse",
   close: "Close"
 } as const;
+
+function visiblePettyCashRequestActions(
+  actions: Array<keyof typeof pettyCashRequestActionLabels>,
+  canonicalApprovalDecisions: boolean
+) {
+  return canonicalApprovalDecisions
+    ? actions.filter(
+        (action) => !["approve", "return", "reject"].includes(action)
+      )
+    : actions;
+}
 
 function optionalNumber(formData: FormData, key: string) {
   const raw = String(formData.get(key) ?? "").trim();
@@ -386,7 +399,6 @@ async function runPettyCashRequestAction(formData: FormData) {
   const referenceNo = String(formData.get("referenceNo") ?? "").trim() || undefined;
   const paymentReferenceLabel =
     String(formData.get("paymentReferenceLabel") ?? "").trim() || undefined;
-  const approvedAmountPhp = optionalNumber(formData, "approvedAmountPhp");
   const amountPhp = optionalNumber(formData, "amountPhp") ?? 0;
   const baseInput = {
     pettyCashRequestId,
@@ -400,16 +412,37 @@ async function runPettyCashRequestAction(formData: FormData) {
       await submitPettyCashRequest(session, baseInput);
       break;
     case "approve":
-      await approvePettyCashRequest(session, {
-        ...baseInput,
-        ...(approvedAmountPhp ? { approvedAmountPhp } : {})
-      });
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "PettyCashRequest",
+        documentId: pettyCashRequestId,
+        action: "approve",
+        remarks: reason,
+        evidenceReference
+      }))) {
+        await approvePettyCashRequest(session, baseInput);
+      }
       break;
     case "return":
-      await returnPettyCashRequestForRevision(session, baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "PettyCashRequest",
+        documentId: pettyCashRequestId,
+        action: "return",
+        remarks: reason ?? "",
+        evidenceReference
+      }))) {
+        await returnPettyCashRequestForRevision(session, baseInput);
+      }
       break;
     case "reject":
-      await rejectPettyCashRequest(session, baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "PettyCashRequest",
+        documentId: pettyCashRequestId,
+        action: "reject",
+        remarks: reason ?? "",
+        evidenceReference
+      }))) {
+        await rejectPettyCashRequest(session, baseInput);
+      }
       break;
     case "cancel":
       await cancelPettyCashRequest(session, baseInput);
@@ -540,6 +573,7 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
   }
 
   const dashboard = await getPettyCashDashboard(session);
+  const canonicalApprovalDecisions = canonicalApprovalDecisionsEnabled();
   const fundEvidencePairs = await Promise.all(
     dashboard.funds.map(async (fund) => [
       fund.id,
@@ -1555,7 +1589,12 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
               </p>
             </div>
           ) : (
-            pagedRequestRows.rows.map((request) => (
+            pagedRequestRows.rows.map((request) => {
+              const sourceActions = visiblePettyCashRequestActions(
+                request.allowedActions,
+                canonicalApprovalDecisions
+              );
+              return (
               <div
                 key={request.id}
                 className="grid gap-4 px-5 py-4 xl:grid-cols-[1fr_28rem] xl:items-start"
@@ -1595,8 +1634,19 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                   />
                 </div>
 
-                <div className="flex items-start justify-end">
-                  {request.allowedActions.length === 0 ? (
+                <div className="grid justify-items-end gap-2">
+                  {canonicalApprovalDecisions &&
+                  request.status === "AWAITING_APPROVAL" ? (
+                    <div className="max-w-md rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-right text-xs text-blue-900">
+                      Assigned step actors decide this request in the{" "}
+                      <Link className="font-bold underline" href="/approvals">
+                        Approval Inbox
+                      </Link>
+                      . Source-page finance permission does not establish step
+                      eligibility.
+                    </div>
+                  ) : null}
+                  {sourceActions.length === 0 ? (
                     <Badge tone="neutral">No available action</Badge>
                   ) : (
                     <EntryModal
@@ -1660,19 +1710,6 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                           </label>
                           <label className="block">
                             <span className="text-xs font-semibold uppercase text-slate-500">
-                              Approved amount
-                            </span>
-                            <input
-                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                              min="0"
-                              name="approvedAmountPhp"
-                              placeholder="Defaults to requested amount"
-                              step="0.01"
-                              type="number"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="text-xs font-semibold uppercase text-slate-500">
                               Cash movement amount
                             </span>
                             <input
@@ -1696,7 +1733,7 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                           </label>
                         </div>
                         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-                          {request.allowedActions.map((action) => (
+                          {sourceActions.map((action) => (
                             <button
                               key={action}
                               className={
@@ -1717,7 +1754,8 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
                   )}
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
         <FinancePagination
@@ -1956,9 +1994,13 @@ export default async function PettyCashPage({ searchParams }: PettyCashPageProps
             <Badge tone={dashboard.permissions.canCreate ? "success" : "neutral"}>
               Create {dashboard.permissions.canCreate ? "enabled" : "disabled"}
             </Badge>
-            <Badge tone={dashboard.permissions.canApprove ? "success" : "neutral"}>
-              Approve {dashboard.permissions.canApprove ? "enabled" : "disabled"}
-            </Badge>
+            {canonicalApprovalDecisions ? (
+              <Badge tone="info">Decisions: Approval Inbox</Badge>
+            ) : (
+              <Badge tone={dashboard.permissions.canApprove ? "success" : "neutral"}>
+                Approve {dashboard.permissions.canApprove ? "enabled" : "disabled"}
+              </Badge>
+            )}
             <Badge
               tone={
                 dashboard.permissions.canReviewLiquidation ? "success" : "neutral"

@@ -10,7 +10,6 @@ import type {
   resolveProjectRequirementException as resolveProjectRequirementExceptionType,
   resolveProjectRequirementExceptionForSession as resolveProjectRequirementExceptionForSessionType,
   submitProjectRequirementForSession as submitProjectRequirementForSessionType,
-  uploadProjectRequirementEvidence as uploadProjectRequirementEvidenceType,
 } from "../src/server/services/projectRequirements";
 import {
   assertDisposableAuthorizationDatabaseConfigured,
@@ -75,13 +74,13 @@ describe("projects and operations database-backed authorization boundaries", () 
   let getConfiguredContext: typeof getConfiguredContextType;
   let submitProjectRequirementForSession: typeof submitProjectRequirementForSessionType;
   let decideProjectRequirementForSession: typeof decideProjectRequirementForSessionType;
-  let uploadProjectRequirementEvidence: typeof uploadProjectRequirementEvidenceType;
   let reassignProjectRequirementReviewerForSession: typeof reassignProjectRequirementReviewerForSessionType;
   let reassignProjectRequirementReviewer: typeof reassignProjectRequirementReviewerType;
   let resolveProjectRequirementException: typeof resolveProjectRequirementExceptionType;
   let resolveProjectRequirementExceptionForSession: typeof resolveProjectRequirementExceptionForSessionType;
   let projectManagePermissionId: string;
   let branchOperations: typeof import("../src/server/services/branchOperations");
+  let attachments: typeof import("../src/server/services/attachments");
   let expansionProjects: typeof import("../src/server/services/expansionProjects");
   let foodSafety: typeof import("../src/server/services/foodSafety");
   let incidents: typeof import("../src/server/services/incidents");
@@ -248,12 +247,12 @@ describe("projects and operations database-backed authorization boundaries", () 
     ({
       submitProjectRequirementForSession,
       decideProjectRequirementForSession,
-      uploadProjectRequirementEvidence,
       reassignProjectRequirementReviewerForSession,
       reassignProjectRequirementReviewer,
       resolveProjectRequirementException,
       resolveProjectRequirementExceptionForSession,
     } = await import("../src/server/services/projectRequirements"));
+    attachments = await import("../src/server/services/attachments");
     branchOperations = await import("../src/server/services/branchOperations");
     expansionProjects =
       await import("../src/server/services/expansionProjects");
@@ -605,6 +604,7 @@ describe("projects and operations database-backed authorization boundaries", () 
       data: {
         id: ids.attachmentId,
         tenantId: ids.tenantId,
+        companyId: ids.companyId,
         storageProvider: "PRIVATE_LOCAL",
         objectKey: `authorization/projects/${suffix}/evidence.pdf`,
         originalFilename: "evidence.pdf",
@@ -815,18 +815,18 @@ describe("projects and operations database-backed authorization boundaries", () 
         projectRecordLinks.archiveProjectRecordLink(archiveLinkForm),
       ).rejects.toThrow("PROJECT_NOT_FOUND");
 
-      const uploadRequirementForm = new FormData();
-      uploadRequirementForm.set("requirementId", ids.restrictedRequirementId);
-      uploadRequirementForm.set("caption", "Authorization denial verification");
-      uploadRequirementForm.set(
-        "file",
-        new File(["authorization evidence"], "evidence.pdf", {
-          type: "application/pdf",
-        }),
-      );
       await expect(
-        uploadProjectRequirementEvidence(uploadRequirementForm),
-      ).rejects.toThrow("PROJECT_REQUIREMENT_NOT_FOUND");
+        attachments.createControlledEvidenceAttachmentUploadLink({
+          sourceType: "PROJECT_REQUIREMENT",
+          sourceRecordId: ids.restrictedRequirementId,
+          purpose: "EVIDENCE",
+          caption: "Authorization denial verification",
+          requiredForAction: "PROJECT_REQUIREMENT_SUBMIT",
+          file: new File(["authorization evidence"], "evidence.pdf", {
+            type: "application/pdf",
+          }),
+        }),
+      ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
       await expect(
         reassignProjectRequirementReviewerForSession(staleSession, {
           requirementId: ids.restrictedRequirementId,
@@ -1000,7 +1000,8 @@ describe("projects and operations database-backed authorization boundaries", () 
       await expect(
         projectTasks.archiveProjectTaskAttachment(archiveAttachmentForm),
       ).rejects.toThrow("PROJECT_NOT_FOUND");
-      expect(await snapshotProtectedState()).toEqual(before);
+      const after = await snapshotProtectedState();
+      expect({ ...after, auditEvents: before.auditEvents }).toEqual(before);
     } finally {
       await prisma.projectMember.update({
         where: { id: ids.projectMemberId },
@@ -1063,6 +1064,21 @@ describe("projects and operations database-backed authorization boundaries", () 
     form.set("nextStatus", "ACTIVE");
     form.set("expectedVersion", "1");
     form.set("reason", "Authorization denial verification");
+    const denialWhere = {
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      locationId: ids.locationId,
+      actorUserId: ids.actorUserId,
+      subjectType: "ACTOR" as const,
+      action: "UPDATE" as const,
+      reason: "PERMISSION_MISSING" as const,
+      resource: "PROJECTS" as const,
+    };
+    const denialCountBefore =
+      (await prisma.authorizationDenialBucket.aggregate({
+        where: denialWhere,
+        _sum: { denialCount: true },
+      }))._sum.denialCount ?? 0n;
     const before = await snapshotProtectedState();
 
     await expect(projects.transitionProjectLifecycle(form)).rejects.toThrow(
@@ -1071,15 +1087,41 @@ describe("projects and operations database-backed authorization boundaries", () 
 
     const after = await snapshotProtectedState();
     expect({ ...after, auditEvents: before.auditEvents }).toEqual(before);
-    expect(after.auditEvents).toHaveLength(before.auditEvents.length + 1);
-    expect(after.auditEvents.at(-1)).toMatchObject({
-      eventType: "project.lifecycle.denied",
-      entityId: ids.restrictedProjectId,
-      metadata: expect.objectContaining({
-        nextStatus: "ACTIVE",
-        reasonCode: "PROJECT_LIFECYCLE_PERMISSION_DENIED",
-      }),
+    expect(after.auditEvents).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ eventType: "project.lifecycle.denied" }),
+      ]),
+    );
+    const denialBuckets = await prisma.authorizationDenialBucket.findMany({
+      where: denialWhere,
+      select: {
+        id: true,
+        denialCount: true,
+        firstAuditEventId: true,
+        firstAuditEvent: {
+          select: {
+            id: true,
+            eventType: true,
+            entityType: true,
+            entityId: true,
+            metadata: true,
+          },
+        },
+      },
     });
+    expect(
+      denialBuckets.reduce((sum, bucket) => sum + bucket.denialCount, 0n),
+    ).toBe(denialCountBefore + 1n);
+    const latestBucket = denialBuckets.at(-1);
+    expect(latestBucket?.firstAuditEvent).toMatchObject({
+      eventType: "authorization.denial.first",
+      entityType: "AuthorizationDenialBucket",
+      entityId: latestBucket?.id,
+      metadata: expect.objectContaining({ sourceDecisionId: "DEC-0050" }),
+    });
+    expect(latestBucket?.firstAuditEventId).toBe(
+      latestBucket?.firstAuditEvent.id,
+    );
   });
 
   it("AUTHZ-PROJECT-OPS-EXPORT-LIVE-PERMISSION-REVOCATION-AUDIT-NO-DATA-LEAK", async () => {
@@ -1097,6 +1139,24 @@ describe("projects and operations database-backed authorization boundaries", () 
       },
     });
     const before = await snapshotProtectedState();
+    const denialWhere = {
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      locationId: ids.locationId,
+      actorUserId: ids.actorUserId,
+      subjectType: "ACTOR" as const,
+      action: "EXPORT" as const,
+      reason: "PERMISSION_MISSING" as const,
+      resource: "PROJECTS" as const,
+    };
+    const denialBucketsBefore = await prisma.authorizationDenialBucket.findMany({
+      where: denialWhere,
+      select: { id: true, denialCount: true },
+    });
+    const denialCountBefore = denialBucketsBefore.reduce(
+      (sum, bucket) => sum + bucket.denialCount,
+      0n,
+    );
     const deniedExports: Array<readonly [string, () => Promise<unknown>]> = [
       [
         "project-health",
@@ -1126,25 +1186,46 @@ describe("projects and operations database-backed authorization boundaries", () 
       const after = await snapshotProtectedState();
       expect({ ...after, auditEvents: before.auditEvents }).toEqual(before);
       const newAuditEvents = after.auditEvents.slice(before.auditEvents.length);
-      expect(newAuditEvents).toHaveLength(deniedExports.length);
-      expect(
-        newAuditEvents.map((event) => ({
-          eventType: event.eventType,
-          entityId: event.entityId,
-          reportId: (event.metadata as { reportId?: unknown } | null)?.reportId,
-          reasonCode: (event.metadata as { reasonCode?: unknown } | null)
-            ?.reasonCode,
-        })),
-      ).toEqual(
-        expect.arrayContaining(
-          deniedExports.map(([reportId]) => ({
-            eventType: "project_report.export_denied",
-            entityId: ids.companyId,
-            reportId,
-            reasonCode: "PERMISSION_DENIED",
-          })),
-        ),
+      expect(newAuditEvents).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ eventType: "project_report.export_denied" }),
+        ]),
       );
+      const denialBuckets = await prisma.authorizationDenialBucket.findMany({
+        where: denialWhere,
+        select: {
+          id: true,
+          denialCount: true,
+          firstAuditEventId: true,
+          firstAuditEvent: {
+            select: {
+              id: true,
+              eventType: true,
+              entityType: true,
+              entityId: true,
+              metadata: true,
+            },
+          },
+        },
+      });
+      expect(
+        denialBuckets.reduce((sum, bucket) => sum + bucket.denialCount, 0n),
+      ).toBe(denialCountBefore + BigInt(deniedExports.length));
+      const newBuckets = denialBuckets.filter(
+        (bucket) => !denialBucketsBefore.some(({ id }) => id === bucket.id),
+      );
+      for (const bucket of newBuckets) {
+        expect(bucket.firstAuditEvent).toMatchObject({
+          eventType: "authorization.denial.first",
+          entityType: "AuthorizationDenialBucket",
+          entityId: bucket.id,
+          metadata: expect.objectContaining({ sourceDecisionId: "DEC-0050" }),
+        });
+        expect(bucket.firstAuditEventId).toBe(bucket.firstAuditEvent.id);
+        expect(JSON.stringify(bucket.firstAuditEvent.metadata)).not.toContain(
+          "reportId",
+        );
+      }
     } finally {
       await prisma.rolePermission.createMany({
         data: projectPermissionRows.map(({ id }) => ({

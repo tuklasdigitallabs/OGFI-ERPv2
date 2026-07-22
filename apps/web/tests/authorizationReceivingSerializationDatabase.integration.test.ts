@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@ogfi/database";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { SessionContext } from "../src/server/services/context";
 import {
@@ -38,19 +38,57 @@ vi.mock("../src/server/services/privilegedMfaGuard", () => ({
 const databaseEnabled =
   process.env.AUTHORIZATION_DATABASE_INTEGRATION === "yes";
 
+async function waitForDatabaseLockWait(
+  controlClient: PrismaClient,
+  isSettled: () => boolean,
+  label: string,
+) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const waiting = await controlClient.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS count
+        FROM pg_stat_activity
+       WHERE datname = current_database()
+         AND pid <> pg_backend_pid()
+         AND usename = current_user
+         AND state = 'active'
+         AND wait_event_type = 'Lock'
+    `;
+    if ((waiting[0]?.count ?? 0) > 0) return;
+    if (isSettled()) {
+      throw new Error(`${label}_SETTLED_BEFORE_DATABASE_LOCK_WAIT`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`${label}_DATABASE_LOCK_WAIT_NOT_OBSERVED`);
+}
+
 describe.skipIf(!databaseEnabled)(
   "receiving serialization against disposable PostgreSQL",
   () => {
     let prisma: PrismaClient;
+    let racePrisma: PrismaClient;
     let expectedDatabase: string;
 
     beforeAll(async () => {
       expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(
         process.env
       );
-      ({ prisma } = await import("@ogfi/database"));
+      const database = await import("@ogfi/database");
+      ({ prisma } = database);
       await prisma.$connect();
       await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
+      const raceDatabaseUrl = new URL(process.env.DATABASE_URL as string);
+      raceDatabaseUrl.searchParams.set("connection_limit", "2");
+      raceDatabaseUrl.searchParams.set("pool_timeout", "10");
+      racePrisma = new database.PrismaClient({
+        datasourceUrl: raceDatabaseUrl.toString(),
+      });
+      await racePrisma.$connect();
+      await assertDisposableAuthorizationDatabaseMarker(
+        racePrisma,
+        process.env,
+      );
       const identity = await prisma.$queryRaw<
         Array<{ currentDatabase: string }>
       >`SELECT current_database() AS "currentDatabase"`;
@@ -60,6 +98,7 @@ describe.skipIf(!databaseEnabled)(
     });
 
     afterAll(async () => {
+      await racePrisma?.$disconnect();
       await prisma?.$disconnect();
     });
 
@@ -487,7 +526,7 @@ describe.skipIf(!databaseEnabled)(
         confirmCreateLock = resolve;
       });
       try {
-        const heldCreateLock = prisma.$transaction(async (tx) => {
+        const heldCreateLock = racePrisma.$transaction(async (tx) => {
           await tx.$queryRaw<Array<{ id: string }>>`
             SELECT po.id
               FROM "PurchaseOrder" po
@@ -509,9 +548,12 @@ describe.skipIf(!databaseEnabled)(
             return { value: null, error };
           }
         );
-        await new Promise((resolve) => setTimeout(resolve, 75));
-        expect(createSettled).toBe(false);
-        await prisma.authSession.update({
+        await waitForDatabaseLockWait(
+          racePrisma,
+          () => createSettled,
+          "RECEIVING_CREATE_AUTHORITY_RACE",
+        );
+        await racePrisma.authSession.update({
           where: { id: authSession.id },
           data: {
             status: "REVOKED",
@@ -580,7 +622,7 @@ describe.skipIf(!databaseEnabled)(
       });
 
       try {
-        const closureCommit = prisma.$transaction(async (tx) => {
+        const closureCommit = racePrisma.$transaction(async (tx) => {
           await tx.$queryRaw<Array<{ id: string }>>`
             SELECT po.id
               FROM "PurchaseOrder" po
@@ -609,8 +651,11 @@ describe.skipIf(!databaseEnabled)(
             return { value: null, error };
           }
         );
-        await new Promise((resolve) => setTimeout(resolve, 75));
-        expect(postingSettled).toBe(false);
+        await waitForDatabaseLockWait(
+          racePrisma,
+          () => postingSettled,
+          "RECEIVING_POST_CLOSURE_RACE",
+        );
 
         releaseClosure();
         await closureCommit;
@@ -667,7 +712,7 @@ describe.skipIf(!databaseEnabled)(
         confirmPermissionLock = resolve;
       });
       try {
-        const heldPermissionLock = prisma.$transaction(async (tx) => {
+        const heldPermissionLock = racePrisma.$transaction(async (tx) => {
           await tx.$queryRaw<Array<{ id: string }>>`
             SELECT po.id
               FROM "PurchaseOrder" po
@@ -689,9 +734,12 @@ describe.skipIf(!databaseEnabled)(
             return { value: null, error };
           }
         );
-        await new Promise((resolve) => setTimeout(resolve, 75));
-        expect(postingSettled).toBe(false);
-        await prisma.$transaction(async (tx) => {
+        await waitForDatabaseLockWait(
+          racePrisma,
+          () => postingSettled,
+          "RECEIVING_POST_PERMISSION_RACE",
+        );
+        await racePrisma.$transaction(async (tx) => {
           await tx.userRoleAssignment.update({
             where: { id: postingRoleAssignment.id },
             data: { status: "INACTIVE", endsAt: new Date() }
@@ -776,7 +824,7 @@ describe.skipIf(!databaseEnabled)(
         confirmMfaLock = resolve;
       });
       try {
-        const heldMfaLock = prisma.$transaction(async (tx) => {
+        const heldMfaLock = racePrisma.$transaction(async (tx) => {
           await tx.$queryRaw<Array<{ id: string }>>`
             SELECT po.id
               FROM "PurchaseOrder" po
@@ -798,9 +846,12 @@ describe.skipIf(!databaseEnabled)(
             return { value: null, error };
           }
         );
-        await new Promise((resolve) => setTimeout(resolve, 75));
-        expect(postingSettled).toBe(false);
-        await prisma.privilegedMfaEnrollment.update({
+        await waitForDatabaseLockWait(
+          racePrisma,
+          () => postingSettled,
+          "RECEIVING_POST_MFA_RACE",
+        );
+        await racePrisma.privilegedMfaEnrollment.update({
           where: { id: postingMfa.id },
           data: {
             status: "REVOKED",
@@ -940,7 +991,7 @@ describe.skipIf(!databaseEnabled)(
         confirmApprovedClosure = resolve;
       });
       try {
-        const closureApproval = prisma.$transaction(async (tx) => {
+        const closureApproval = racePrisma.$transaction(async (tx) => {
           await tx.$queryRaw<Array<{ id: string }>>`
             SELECT po.id
               FROM "PurchaseOrder" po
@@ -985,8 +1036,11 @@ describe.skipIf(!databaseEnabled)(
             return { value: null, error };
           }
         );
-        await new Promise((resolve) => setTimeout(resolve, 75));
-        expect(reversalSettled).toBe(false);
+        await waitForDatabaseLockWait(
+          racePrisma,
+          () => reversalSettled,
+          "RECEIVING_REVERSAL_CLOSURE_RACE",
+        );
         releaseApprovedClosure();
         await closureApproval;
         const outcome = await reversalOutcome;

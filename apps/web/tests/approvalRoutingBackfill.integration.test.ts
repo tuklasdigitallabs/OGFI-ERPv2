@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { prisma } from "@ogfi/database";
+import { PrismaClient, prisma } from "@ogfi/database";
 import { beforeAll, describe, expect, test } from "vitest";
 import { runApprovalRoutingBackfill } from "../src/server/services/approvalRoutingBackfill";
 import { supportedApprovalDocumentTypes } from "../src/server/services/approvalRoutingRegistry";
 import { getApprovalDetail } from "../src/server/services/approvals";
+import { startBudgetRevisionReview } from "../src/server/services/budgetControl";
 import type { SessionContext } from "../src/server/services/context";
 
 const runPg = process.env.RUN_APPROVAL_ROUTING_PG_TESTS === "true";
@@ -326,7 +327,10 @@ describe.skipIf(!runPg).sequential(
       const lockRelease = new Promise<void>((resolve) => {
         releaseLock = resolve;
       });
-      const holder = prisma.$transaction(
+      const holderClient = new PrismaClient({
+        datasourceUrl: process.env.DATABASE_URL,
+      });
+      const holder = holderClient.$transaction(
         async (tx) => {
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('ogfi:approval-routing-backfill'))`;
           signalLockAcquired();
@@ -346,6 +350,7 @@ describe.skipIf(!runPg).sequential(
       } finally {
         releaseLock();
         await holder;
+        await holderClient.$disconnect();
       }
     });
 
@@ -494,8 +499,47 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     await prisma.approvalInstance.create({ data: {
       id: approvalInstanceId, tenantId: ids.tenant, companyId: ids.company,
       documentType, documentId, approvalRuleId: ids.rule, status: "PENDING", currentStepOrder: 1,
-      steps: { create: { stepOrder: 1, assignedUserId: ids.approver, status: "PENDING", routingSchemaVersion: 0 } },
+      steps: {
+        create: {
+          stepOrder: 1,
+          assignedUserId: ids.approver,
+          status: documentType === "BudgetRevision" ? "WAITING" : "PENDING",
+          routingSchemaVersion: 0,
+        },
+      },
     } });
+    switch (documentType) {
+      case "ExpenseRequest":
+        await prisma.expenseRequest.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      case "CashAdvanceRequest":
+        await prisma.cashAdvanceRequest.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      case "PettyCashRequest":
+        await prisma.pettyCashRequest.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      case "PaymentRequest":
+        await prisma.paymentRequest.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      case "PaymentRelease":
+        await prisma.paymentRelease.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      case "EmployeeLeaveRequest":
+        await prisma.employeeLeaveRequest.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      case "EmployeeOvertimeRecord":
+        await prisma.employeeOvertimeRecord.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      case "WorkforceSchedule":
+        await prisma.workforceSchedule.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      case "AttendanceImportBatch":
+        await prisma.attendanceImportBatch.update({ where: { id: documentId }, data: { approvalInstanceId } });
+        break;
+      default:
+        break;
+    }
+    return approvalInstanceId;
   }
 
   beforeAll(async () => {
@@ -513,8 +557,12 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
       { id: ids.priorApprover, tenantId: ids.tenant, email: `prior-${suffix}@test.invalid`, displayName: "Breadth Prior Approver" },
     ] });
     await prisma.role.create({ data: { id: ids.role, tenantId: ids.tenant, code: `AB_ROLE_${suffix}`, name: "Breadth Approver" } });
-    const permissionRows = await prisma.permission.findMany({ where: { code: { in: [...new Set(Object.values(expectedPolicies))] } }, select: { id: true, code: true } });
-    expect(permissionRows.map((row) => row.code).sort()).toEqual([...new Set(Object.values(expectedPolicies))].sort());
+    const requiredPermissionCodes = [
+      ...new Set(Object.values(expectedPolicies)),
+      "finance.budget.commitment.review",
+    ];
+    const permissionRows = await prisma.permission.findMany({ where: { code: { in: requiredPermissionCodes } }, select: { id: true, code: true } });
+    expect(permissionRows.map((row) => row.code).sort()).toEqual(requiredPermissionCodes.sort());
     await prisma.rolePermission.createMany({ data: permissionRows.map((row) => ({ roleId: ids.role, permissionId: row.id })) });
     await prisma.userRoleAssignment.create({ data: { userId: ids.approver, roleId: ids.role } });
     await prisma.userScopeAssignment.createMany({ data: [
@@ -556,7 +604,7 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     await addApproval("FinanceCloseRun",closeId,{dueAt:null,targetMatchMode:"ANY",targets:[{scopeType:"COMPANY",companyId:ids.company,locationId:null}],prohibited:[{userId:ids.preparer,reasonCode:"INITIATOR"},{userId:ids.requester,reasonCode:"REQUESTER"}].sort((a,b)=>a.userId.localeCompare(b.userId))});
     await prisma.budget.create({data:{id:ids.budget,tenantId:ids.tenant,companyId:ids.company,publicReference:`AB-B-${suffix}`,fiscalYearId:ids.fiscalYear,name:"Breadth Budget",locationId:ids.location,createdByUserId:ids.preparer,lines:{create:{tenantId:ids.tenant,companyId:ids.company,lineNumber:1,code:"L1",name:"Line",locationId:ids.secondLocation,periodStart:new Date("2026-01-01Z"),periodEnd:new Date("2026-12-31Z")}}}});
     const revisionId=id(); await prisma.budgetRevision.create({data:{id:revisionId,budgetId:ids.budget,tenantId:ids.tenant,companyId:ids.company,revisionNumber:1,status:"SUBMITTED",reason:"Breadth",requestedByUserId:ids.requester,requestedAt:transition,effectiveFrom:due,originalSnapshot:{},proposedSnapshot:{}}});
-    await addApproval("BudgetRevision",revisionId,{dueAt:due,targetMatchMode:"ALL",targets:[ids.location,ids.secondLocation].sort().map(locationId=>({scopeType:"LOCATION",companyId:ids.company,locationId})),prohibited:[{userId:ids.requester,reasonCode:"REQUESTER"}]});
+    await addApproval("BudgetRevision",revisionId,{dueAt:null,targetMatchMode:"ALL",targets:[ids.location,ids.secondLocation].sort().map(locationId=>({scopeType:"LOCATION",companyId:ids.company,locationId})),prohibited:[{userId:ids.requester,reasonCode:"REQUESTER"}]});
 
     const expenseId=id(), cashId=id();
     await prisma.expenseRequest.create({data:{id:expenseId,tenantId:ids.tenant,companyId:ids.company,publicReference:`AB-E-${suffix}`,status:"AWAITING_APPROVAL",requestDate:transition,requiredByDate:due,title:"Breadth",requestReason:"Breadth",categoryCode:"TEST",locationId:ids.location,requestedByUserId:ids.requester,submittedAt:transition}});
@@ -565,7 +613,15 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     await addApproval("CashAdvanceRequest",cashId,{dueAt:due,targetMatchMode:"ANY",targets:locTarget,prohibited:[{userId:ids.preparer,reasonCode:"BENEFICIARY"},{userId:ids.requester,reasonCode:"REQUESTER"}].sort((a,b)=>a.userId.localeCompare(b.userId))});
     await prisma.pettyCashFund.create({data:{id:ids.fund,tenantId:ids.tenant,companyId:ids.company,publicReference:`AB-F-${suffix}`,code:`ABF-${suffix}`,name:"Breadth Fund",locationId:ids.location,custodianUserId:ids.preparer,createdByUserId:ids.preparer}});
     const pettyId=id(); await prisma.pettyCashRequest.create({data:{id:pettyId,tenantId:ids.tenant,companyId:ids.company,pettyCashFundId:ids.fund,publicReference:`AB-PC-${suffix}`,requestType:"DISBURSEMENT",status:"AWAITING_APPROVAL",requestedAmountPhp:1,purpose:"Breadth",justification:"Breadth",dueBy:due,requestedByUserId:ids.requester,submittedAt:transition}});
-    await addApproval("PettyCashRequest",pettyId,{dueAt:due,targetMatchMode:"ANY",targets:locTarget,prohibited:[{userId:ids.requester,reasonCode:"REQUESTER"}]});
+    const pettyApprovalId = await addApproval("PettyCashRequest",pettyId,{dueAt:due,targetMatchMode:"ANY",targets:locTarget,prohibited:[{userId:ids.requester,reasonCode:"REQUESTER"}]});
+    await prisma.pettyCashRequest.update({
+      where: { id: pettyId },
+      data: {
+        approvalInstanceId: pettyApprovalId,
+        currentProposedAmountPhp: 1,
+        approvalProposalVersion: 1,
+      },
+    });
     const paymentId=id(), releaseId=id();
     await prisma.paymentRequest.create({data:{id:paymentId,tenantId:ids.tenant,companyId:ids.company,locationId:ids.location,supplierId:ids.supplier,publicReference:`AB-PAY-${suffix}`,totalRequestedAmount:1,status:"AWAITING_APPROVAL",requestedByUserId:ids.requester,approvedByUserId:ids.priorApprover,submittedAt:transition,requestReason:"Breadth"}});
     await prisma.paymentRelease.create({data:{id:releaseId,tenantId:ids.tenant,companyId:ids.company,locationId:ids.location,supplierId:ids.supplier,paymentRequestId:paymentId,bankAccountId:ids.bankAccount,publicReference:`AB-REL-${suffix}`,status:"DRAFT",totalRequestedAmount:1,releaseAmount:1,sourceEventKey:`ab-rel-${suffix}`,reason:"Breadth",scheduledAt:due,createdByUserId:ids.preparer}});
@@ -626,8 +682,25 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
         locationName: "Breadth Location",
         locationType: "BRANCH",
       },
-      authorizedLocations: [],
-      permissionCodes: [...new Set(Object.values(expectedPolicies))],
+      authorizedLocations: [ids.location, ids.secondLocation].map(
+        (locationId, index) => ({
+          tenantId: ids.tenant,
+          companyId: ids.company,
+          companyName: "Approval Breadth Company",
+          brandId: "",
+          brandName: "",
+          locationId,
+          locationName:
+            index === 0 ? "Breadth Location" : "Breadth Second Location",
+          locationType: "BRANCH" as const,
+          scopeAssignmentId: locationId,
+          accessLevel: "APPROVE" as const,
+        }),
+      ),
+      permissionCodes: [
+        ...new Set(Object.values(expectedPolicies)),
+        "finance.budget.commitment.review",
+      ],
     };
     const detailExpected: Record<
       (typeof supportedApprovalDocumentTypes)[number],
@@ -641,7 +714,7 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
       WastageReport: { publicReference: `AB-W-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "PENDING_APPROVAL" },
       StockAdjustment: { publicReference: `AB-SA-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "PENDING_APPROVAL" },
       FinanceCloseRun: { publicReference: `AB-CLOSE-${suffix}`, locationName: "Company period close", requesterName: "Breadth Preparer", status: "LOCK_PERIOD_PENDING" },
-      BudgetRevision: { publicReference: `AB-B-${suffix} R1`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "SUBMITTED" },
+      BudgetRevision: { publicReference: `AB-B-${suffix} R1`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "UNDER_REVIEW" },
       ExpenseRequest: { publicReference: `AB-E-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "AWAITING_APPROVAL" },
       CashAdvanceRequest: { publicReference: `AB-CA-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "AWAITING_APPROVAL" },
       PettyCashRequest: { publicReference: `AB-PC-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "AWAITING_APPROVAL" },
@@ -654,6 +727,57 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     };
 
     expect(Object.keys(detailExpected).sort()).toEqual([...supportedApprovalDocumentTypes].sort());
+    const budgetFixture = fixtures.find(
+      (fixture) => fixture.documentType === "BudgetRevision",
+    );
+    if (!budgetFixture) throw new Error("BUDGET_BREADTH_FIXTURE_MISSING");
+    const budgetApproval = await prisma.approvalInstance.findUniqueOrThrow({
+      where: { id: budgetFixture.approvalInstanceId },
+      select: { documentId: true },
+    });
+    const priorRoutingFlag = process.env.APPROVAL_ROUTING_V1_ENABLED;
+    process.env.APPROVAL_ROUTING_V1_ENABLED = "true";
+    try {
+      await startBudgetRevisionReview(session, {
+        budgetRevisionId: budgetApproval.documentId,
+      });
+    } finally {
+      if (priorRoutingFlag === undefined) {
+        delete process.env.APPROVAL_ROUTING_V1_ENABLED;
+      } else {
+        process.env.APPROVAL_ROUTING_V1_ENABLED = priorRoutingFlag;
+      }
+    }
+    const activatedBudgetStep =
+      await prisma.approvalInstanceStep.findFirstOrThrow({
+        where: { approvalInstanceId: budgetFixture.approvalInstanceId },
+        select: { id: true, status: true, activatedAt: true, dueAt: true },
+      });
+    expect(activatedBudgetStep).toMatchObject({
+      status: "PENDING",
+      dueAt: due,
+    });
+    expect(activatedBudgetStep.activatedAt).not.toBeNull();
+    expect(
+      await prisma.auditEvent.count({
+        where: {
+          entityType: "ApprovalInstanceStep",
+          entityId: activatedBudgetStep.id,
+          eventType: "approval.step_activated",
+        },
+      }),
+    ).toBe(1);
+    await expect(
+      prisma.$executeRaw`
+        UPDATE "ApprovalInstanceStep"
+           SET "dueAt" = ${new Date("2026-08-16T00:00:00.000Z")}
+         WHERE id = ${activatedBudgetStep.id}::uuid
+      `,
+    ).rejects.toMatchObject({
+      code: "P2010",
+      meta: { code: "55000" },
+    });
+
     for (const fixture of fixtures) {
       const detail = await getApprovalDetail(session, fixture.approvalInstanceId);
       expect(detail, `${fixture.documentType} detail`).not.toBeNull();
@@ -683,7 +807,15 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
         approvalRuleId: ids.rule,
         status: "PENDING",
         currentStepOrder: 1,
-        steps: { create: { id: stepId, stepOrder: 1, assignedUserId: ids.approver, status: "PENDING", routingSchemaVersion: 0 } },
+        steps: {
+          create: {
+            id: stepId,
+            stepOrder: 1,
+            assignedUserId: ids.approver,
+            status: documentType === "BudgetRevision" ? "WAITING" : "PENDING",
+            routingSchemaVersion: 0,
+          },
+        },
       } });
       return { approvalInstanceId, stepId };
     };

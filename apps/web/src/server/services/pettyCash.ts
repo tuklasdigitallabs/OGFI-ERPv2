@@ -9,6 +9,11 @@ import {
 } from "./authorization"
 import type { SessionContext } from "./context"
 import {
+  assertAuthoritativeApprovalEvidence,
+  assertLegacyApprovalDecisionAllowed
+} from "./approvalDecisionMode"
+import { terminatePendingApprovalForCancellation } from "./approvalCancellation"
+import {
   recordWorkflowNotifications
 } from "./notifications"
 import {
@@ -735,6 +740,127 @@ async function writePettyCashAudit(
   })
 }
 
+export function validatePettyCashApprovedAmount(input: {
+  approvedAmountPhp: number | undefined
+  requestedAmountPhp: number
+  currentProposedAmountPhp?: number | undefined
+}) {
+  const currentAmountPhp =
+    input.currentProposedAmountPhp ?? input.requestedAmountPhp
+  if (
+    input.approvedAmountPhp !== undefined &&
+    input.approvedAmountPhp !== currentAmountPhp
+  ) {
+    throw new Error("PETTY_CASH_AMOUNT_CHANGE_POLICY_UNCONFIRMED")
+  }
+  const approvedAmountPhp = input.approvedAmountPhp ?? currentAmountPhp
+  assertPositiveAmount(
+    approvedAmountPhp,
+    "PETTY_CASH_REQUEST_APPROVED_AMOUNT_REQUIRED"
+  )
+  if (approvedAmountPhp > input.requestedAmountPhp) {
+    throw new Error("PETTY_CASH_REQUEST_APPROVAL_EXCEEDS_REQUEST")
+  }
+  return approvedAmountPhp
+}
+
+export async function validatePettyCashApprovalInTransaction(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: Pick<PettyCashRequestActionInput, "pettyCashRequestId" | "approvedAmountPhp">
+) {
+  const request = await getScopedRequestOrThrow(
+    tx,
+    session,
+    input.pettyCashRequestId
+  )
+  assertRequestTransition({ transition: "approve", status: request.status })
+  if (request.requestedByUserId === session.user.id) {
+    throw new Error("PETTY_CASH_REQUEST_SELF_APPROVAL_BLOCKED")
+  }
+  return {
+    request,
+    approvedAmountPhp: validatePettyCashApprovedAmount({
+      approvedAmountPhp: input.approvedAmountPhp,
+      requestedAmountPhp: decimalToNumber(request.requestedAmountPhp),
+      currentProposedAmountPhp:
+        request.currentProposedAmountPhp === null
+          ? undefined
+          : decimalToNumber(request.currentProposedAmountPhp)
+    })
+  }
+}
+
+export async function approvePettyCashRequestInTransaction(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: PettyCashRequestActionInput & {
+    approvalInstanceId?: string
+    supplementalEvidenceReference?: string
+  }
+) {
+  const request = await getScopedRequestOrThrow(
+    tx,
+    session,
+    input.pettyCashRequestId
+  )
+  if (request.status === "APPROVED") {
+    return request
+  }
+  const { approvedAmountPhp } = await validatePettyCashApprovalInTransaction(
+    tx,
+    session,
+    input
+  )
+  const evidenceReference = request.evidenceReference
+  const supplementalEvidenceReference =
+    input.supplementalEvidenceReference?.trim() || null
+  assertAuthoritativeApprovalEvidence(
+    evidenceReference,
+    "PETTY_CASH_REQUEST_EVIDENCE_REQUIRED"
+  )
+  const sourceUpdate = await tx.pettyCashRequest.updateMany({
+    where: {
+      id: request.id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "AWAITING_APPROVAL",
+      ...(input.approvalInstanceId
+        ? { approvalInstanceId: input.approvalInstanceId }
+        : {})
+    },
+    data: {
+      status: "APPROVED",
+      approvedByUserId: session.user.id,
+      approvedAt: new Date(),
+      approvedAmountPhp,
+      currentProposedAmountPhp: null,
+      evidenceReference
+    }
+  })
+  if (sourceUpdate.count !== 1) {
+    throw new Error("PETTY_CASH_REQUEST_NOT_AWAITING_APPROVAL")
+  }
+  const updated = await getScopedRequestOrThrow(tx, session, request.id)
+  await writePettyCashAudit(tx, {
+    session,
+    entityType: "PettyCashRequest",
+    entityId: request.id,
+    eventType: "petty_cash.request_approved",
+    beforeStatus: request.status,
+    afterStatus: updated.status,
+    reason: input.reason?.trim() ?? null,
+    evidenceReference: updated.evidenceReference,
+    metadata: {
+      approvalInstanceId: input.approvalInstanceId ?? null,
+      approvedAmountPhp,
+      idempotencyKey: input.idempotencyKey ?? null,
+      supplementalEvidenceReference
+    }
+  })
+  return updated
+}
+
 export function buildPettyCashFundRows(
   funds: Array<{
     id: string
@@ -1373,6 +1499,8 @@ export async function submitPettyCashRequest(
       data: {
         status: "AWAITING_APPROVAL",
         approvalInstanceId: approvalInstance.id,
+        currentProposedAmountPhp: request.requestedAmountPhp,
+        approvalProposalVersion: 1,
         submittedByUserId: session.user.id,
         submittedAt: new Date(),
         evidenceReference: evidenceReference ?? request.evidenceReference
@@ -1427,55 +1555,10 @@ export async function approvePettyCashRequest(
   input: PettyCashRequestActionInput
 ) {
   await requirePermission(session, permissions.financePettyCashApprove)
-  return prisma.$transaction(async (tx) => {
-    const request = await getScopedRequestOrThrow(
-      tx,
-      session,
-      input.pettyCashRequestId
-    )
-    if (request.status === "APPROVED") {
-      return request
-    }
-    assertRequestTransition({ transition: "approve", status: request.status })
-    if (request.requestedByUserId === session.user.id) {
-      throw new Error("PETTY_CASH_REQUEST_SELF_APPROVAL_BLOCKED")
-    }
-    const approvedAmountPhp =
-      input.approvedAmountPhp ?? decimalToNumber(request.requestedAmountPhp)
-    assertPositiveAmount(
-      approvedAmountPhp,
-      "PETTY_CASH_REQUEST_APPROVED_AMOUNT_REQUIRED"
-    )
-    if (approvedAmountPhp > decimalToNumber(request.requestedAmountPhp)) {
-      throw new Error("PETTY_CASH_REQUEST_APPROVAL_EXCEEDS_REQUEST")
-    }
-    const updated = await tx.pettyCashRequest.update({
-      where: { id: request.id },
-      data: {
-        status: "APPROVED",
-        approvedByUserId: session.user.id,
-        approvedAt: new Date(),
-        approvedAmountPhp,
-        evidenceReference:
-          input.evidenceReference?.trim() ?? request.evidenceReference
-      }
-    })
-    await writePettyCashAudit(tx, {
-      session,
-      entityType: "PettyCashRequest",
-      entityId: request.id,
-      eventType: "petty_cash.request_approved",
-      beforeStatus: request.status,
-      afterStatus: updated.status,
-      reason: input.reason?.trim() ?? null,
-      evidenceReference: updated.evidenceReference,
-      metadata: {
-        approvedAmountPhp,
-        idempotencyKey: input.idempotencyKey ?? null
-      }
-    })
-    return updated
-  })
+  assertLegacyApprovalDecisionAllowed()
+  return prisma.$transaction((tx) =>
+    approvePettyCashRequestInTransaction(tx, session, input)
+  )
 }
 
 export async function returnPettyCashRequestForRevision(
@@ -1483,6 +1566,7 @@ export async function returnPettyCashRequestForRevision(
   input: PettyCashRequestActionInput
 ) {
   await requirePermission(session, permissions.financePettyCashApprove)
+  assertLegacyApprovalDecisionAllowed()
   const reason = input.reason?.trim()
   assertReason(reason, "PETTY_CASH_REQUEST_RETURN_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
@@ -1496,6 +1580,7 @@ export async function returnPettyCashRequestForRevision(
       where: { id: request.id },
       data: {
         status: "RETURNED_FOR_REVISION",
+        currentProposedAmountPhp: null,
         returnedByUserId: session.user.id,
         returnedAt: new Date(),
         returnReason: reason
@@ -1520,6 +1605,7 @@ export async function rejectPettyCashRequest(
   input: PettyCashRequestActionInput
 ) {
   await requirePermission(session, permissions.financePettyCashApprove)
+  assertLegacyApprovalDecisionAllowed()
   const reason = input.reason?.trim()
   assertReason(reason, "PETTY_CASH_REQUEST_REJECTION_REASON_REQUIRED")
   return prisma.$transaction(async (tx) => {
@@ -1533,6 +1619,7 @@ export async function rejectPettyCashRequest(
       where: { id: request.id },
       data: {
         status: "REJECTED",
+        currentProposedAmountPhp: null,
         rejectedByUserId: session.user.id,
         rejectedAt: new Date(),
         rejectionReason: reason
@@ -1583,13 +1670,29 @@ export async function cancelPettyCashRequest(
     if (request.ledgerEntries.length > 0) {
       throw new Error("PETTY_CASH_REQUEST_CANCEL_REQUIRES_REVERSAL")
     }
-    const updated = await tx.pettyCashRequest.update({
-      where: { id: request.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PettyCashRequest",
+      documentId: request.id,
+      policy: ["SUBMITTED", "AWAITING_APPROVAL"].includes(request.status) ? "APPROVAL_REQUIRED" : "APPROVAL_OPTIONAL"
+    })
+    const sourceUpdate = await tx.pettyCashRequest.updateMany({
+      where: { id: request.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: request.status },
       data: {
         status: "CANCELLED",
+        currentProposedAmountPhp: null,
         cancelledByUserId: session.user.id,
         cancelledAt: new Date(),
         cancellationReason: reason
+      }
+    })
+    if (sourceUpdate.count !== 1) throw new Error("PETTY_CASH_REQUEST_CANCELLATION_CONFLICT")
+    const updated = await tx.pettyCashRequest.findFirstOrThrow({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     })
     await writePettyCashAudit(tx, {
@@ -1600,7 +1703,8 @@ export async function cancelPettyCashRequest(
       beforeStatus: request.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? request.evidenceReference
+      evidenceReference: input.evidenceReference ?? request.evidenceReference,
+      metadata: { approvalTerminationMode: approvalTermination.mode, approvalInstanceId: approvalTermination.approvalInstanceId }
     })
     return updated
   })

@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
   assertMarkerRow,
+  assertSafePsqlDockerContainer,
   assertSafeAdminUrl,
   assertSafeDisposableTarget,
   buildPsqlEnvironment,
@@ -18,6 +19,17 @@ import {
   shouldRunSeedRepeatability,
   targetDatabaseUrl,
 } from "./disposable-postgres-lifecycle.mjs";
+
+const adversarialCases = [
+  ["security_definer", "Runtime or PUBLIC can execute a non-extension public routine", "reconcile"],
+  ["column_acl", "PUBLIC or runtime retains a column ACL on AuditEvent", "reconcile"],
+  ["owner_membership", "Owner or runtime role membership closure is not empty", "bootstrap"],
+  ["migrator_membership", "Migrator membership must be exactly owner", "bootstrap"],
+  ["runtime_membership", "Owner or runtime role membership closure is not empty", "bootstrap"],
+  ["wrong_ownership", "A supported public object is not owned by the reviewed owner", "bootstrap"],
+  ["default_privilege", "Owner default privileges contain an unsafe", "reconcile"],
+  ["unexpected_schema", "Unexpected application schema exists", "admin-cleanup"],
+];
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(scriptDir, "..");
@@ -139,6 +151,7 @@ try {
   exitCode = child.status ?? 1;
   if (exitCode === 0 && suiteName === "approval-routing-backfill") {
     verifyApprovalRoutingReplicationRoleGuards(setupUrl);
+    verifyApprovalIntegrityOwnerGuards(setupUrl);
   }
 } finally {
   if (databaseCreated) {
@@ -200,6 +213,74 @@ function verifyApprovalRoutingReplicationRoleGuards(databaseUrl) {
       END
       $probe$;
     `,
+  );
+}
+
+function verifyApprovalIntegrityOwnerGuards(databaseUrl) {
+  expectPsqlFailure(
+    databaseUrl,
+    `
+      BEGIN;
+      DROP INDEX public."ApprovalInstance_one_pending_document_key";
+      INSERT INTO public."ApprovalInstance" (
+        id, "tenantId", "companyId", "documentType", "documentId",
+        "approvalRuleId", status, "currentStepOrder", "createdAt"
+      )
+      SELECT gen_random_uuid(), "tenantId", "companyId", "documentType",
+             "documentId", "approvalRuleId", status, "currentStepOrder", now()
+        FROM public."ApprovalInstance"
+       WHERE status = 'PENDING'
+       ORDER BY id
+       LIMIT 1;
+      DO $preflight$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+            FROM public."ApprovalInstance"
+           WHERE status = 'PENDING'
+           GROUP BY "tenantId", "companyId", "documentType", "documentId"
+          HAVING count(*) > 1
+        ) THEN
+          RAISE EXCEPTION USING
+            ERRCODE = '23505',
+            MESSAGE = 'APPROVAL_INSTANCE_PENDING_DUPLICATE';
+        END IF;
+      END;
+      $preflight$;
+      COMMIT;
+    `,
+    "23505",
+  );
+  runPsql(
+    databaseUrl,
+    `
+      DO $probe$
+      BEGIN
+        IF to_regclass('public."ApprovalInstance_one_pending_document_key"') IS NULL THEN
+          RAISE EXCEPTION 'Approval pending tuple index was not restored after preflight rollback';
+        END IF;
+        IF EXISTS (
+          SELECT 1
+            FROM public."ApprovalInstance"
+           WHERE status = 'PENDING'
+           GROUP BY "tenantId", "companyId", "documentType", "documentId"
+          HAVING count(*) > 1
+        ) THEN
+          RAISE EXCEPTION 'Approval duplicate preflight rollback left duplicate tuples';
+        END IF;
+      END
+      $probe$;
+    `,
+  );
+  expectPsqlFailure(
+    databaseUrl,
+    `
+      BEGIN;
+      SET LOCAL session_replication_role = replica;
+      TRUNCATE TABLE public."PettyCashApprovalStepIntent";
+      COMMIT;
+    `,
+    "55000",
   );
 }
 
@@ -320,7 +401,12 @@ function runGuardContract(migratorDatabaseUrl, marker) {
 }
 
 function verifyRuntimeDestructiveOperationsDenied(runtimeDatabaseUrl) {
-  for (const table of ["AuditEvent", "ProjectActivityEvent", "InventoryMovement"]) {
+  for (const table of [
+    "AuditEvent",
+    "ProjectActivityEvent",
+    "InventoryMovement",
+    "PettyCashApprovalStepIntent",
+  ]) {
     // These mixed-case identifiers come only from this closed allowlist. The
     // generic lifecycle identifier helper deliberately accepts lowercase role
     // and database identifiers only.
@@ -400,17 +486,6 @@ function runSeedRepeatability(runtimeDatabaseUrl, marker) {
     ),
   );
 }
-
-const adversarialCases = [
-  ["security_definer", "Runtime or PUBLIC can execute a non-extension public routine", "reconcile"],
-  ["column_acl", "PUBLIC or runtime retains a column ACL on AuditEvent", "reconcile"],
-  ["owner_membership", "Owner or runtime role membership closure is not empty", "bootstrap"],
-  ["migrator_membership", "Migrator membership must be exactly owner", "bootstrap"],
-  ["runtime_membership", "Owner or runtime role membership closure is not empty", "bootstrap"],
-  ["wrong_ownership", "A supported public object is not owned by the reviewed owner", "bootstrap"],
-  ["default_privilege", "Owner default privileges contain an unsafe", "reconcile"],
-  ["unexpected_schema", "Unexpected application schema exists", "admin-cleanup"],
-];
 
 function runAdversarialRoleContract(
   adminTargetUrl,
@@ -580,15 +655,9 @@ function runPnpm(args, env) {
 }
 
 function runPsql(databaseUrl, sql) {
-  const psql = process.env.PSQL_BIN ?? "psql";
-  const result = spawnSync(
-    psql,
+  const result = executePsql(
+    databaseUrl,
     ["-X", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql],
-    {
-      cwd: workspaceRoot,
-      encoding: "utf8",
-      env: buildPsqlEnvironment(process.env, databaseUrl),
-    },
   );
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -607,24 +676,21 @@ function runPsqlFile(databaseUrl, file, variables) {
 }
 
 function executePsqlFile(databaseUrl, file, variables) {
-  const psql = process.env.PSQL_BIN ?? "psql";
   const args = ["-X", "-v", "ON_ERROR_STOP=1"];
   for (const [key, value] of Object.entries(variables)) {
     args.push("-v", `${key}=${value}`);
   }
+  if (process.env.PSQL_DOCKER_CONTAINER) {
+    args.push("-f", "-");
+    return executePsql(databaseUrl, args, readFileSync(file, "utf8"));
+  }
   args.push("-f", file);
-  const result = spawnSync(psql, args, {
-    cwd: workspaceRoot,
-    encoding: "utf8",
-    env: buildPsqlEnvironment(process.env, databaseUrl),
-  });
-  return result;
+  return executePsql(databaseUrl, args);
 }
 
 function expectPsqlFailure(databaseUrl, sql, expectedSqlState) {
-  const psql = process.env.PSQL_BIN ?? "psql";
-  const result = spawnSync(
-    psql,
+  const result = executePsql(
+    databaseUrl,
     [
       "-X",
       "-v",
@@ -634,11 +700,6 @@ function expectPsqlFailure(databaseUrl, sql, expectedSqlState) {
       "-c",
       sql,
     ],
-    {
-      cwd: workspaceRoot,
-      encoding: "utf8",
-      env: buildPsqlEnvironment(process.env, databaseUrl),
-    },
   );
   if (result.error) throw result.error;
   if (result.status === 0 || !result.stderr?.includes(expectedSqlState)) {
@@ -646,6 +707,48 @@ function expectPsqlFailure(databaseUrl, sql, expectedSqlState) {
       `Expected PostgreSQL ${expectedSqlState} for restricted runtime operation: ${sql}`,
     );
   }
+}
+
+function executePsql(databaseUrl, args, input) {
+  const env = buildPsqlEnvironment(process.env, databaseUrl);
+  const container = process.env.PSQL_DOCKER_CONTAINER;
+  if (!container) {
+    return spawnSync(process.env.PSQL_BIN ?? "psql", args, {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      env,
+      input,
+    });
+  }
+  if (process.env.PSQL_BIN) {
+    throw new Error("DISPOSABLE_DATABASE_PSQL_TRANSPORT_CONFLICT");
+  }
+  assertSafePsqlDockerContainer(container);
+  if (!loopbackPsqlHost(env.PGHOST) || env.PGPORT !== "5432") {
+    throw new Error("DISPOSABLE_DATABASE_PSQL_DOCKER_TARGET_UNSAFE");
+  }
+  const forwardedEnvironment = [
+    "PGHOST",
+    "PGPORT",
+    "PGDATABASE",
+    "PGSSLMODE",
+    "PGUSER",
+    "PGPASSWORD",
+  ].flatMap((name) => (env[name] === undefined ? [] : ["-e", name]));
+  return spawnSync(
+    "docker",
+    ["exec", "-i", ...forwardedEnvironment, container, "psql", ...args],
+    {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      env,
+      input,
+    },
+  );
+}
+
+function loopbackPsqlHost(host) {
+  return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(host);
 }
 
 function runCommand(executable, args, env) {

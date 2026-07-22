@@ -15,6 +15,12 @@ import {
   type NormalizedApprovalDecisionPreflight
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { skipFutureApprovalStepsForTerminalDecision } from "./approvalTerminal";
+import { terminatePendingApprovalForCancellation } from "./approvalCancellation";
+import {
+  recordApprovalOutcomeNotification,
+  recordApprovalStepReadyNotification
+} from "./notifications";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "destructive";
 
@@ -2309,6 +2315,22 @@ export async function approveFinanceCloseRunApproval(formData: FormData) {
         currentStepOrder: step.stepOrder,
         nextStepOrder: nextStep.stepOrder
       });
+      if (normalizedPreflight?.directRecipientUserId) {
+        await recordApprovalStepReadyNotification(tx, {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          locationId: null,
+          approvalInstanceId: approval.id,
+          approvalInstanceStepId: nextStep.id,
+          stepOrder: nextStep.stepOrder,
+          recipientUserId: normalizedPreflight.directRecipientUserId,
+          publicReference: run.publicReference,
+          locationName: session.context.companyName,
+          entityLabel: "Finance close run",
+          entityType: "FinanceCloseRun",
+          entityId: run.id
+        });
+      }
       await writeCloseAudit(tx, {
         session,
         entityType: "FinanceCloseRun",
@@ -2336,6 +2358,23 @@ export async function approveFinanceCloseRunApproval(formData: FormData) {
       currentStepOrder: step.stepOrder,
       status: "APPROVED",
       nextStepOrder: null
+    });
+
+    await recordApprovalOutcomeNotification(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      locationId: null,
+      approvalInstanceId: approval.id,
+      recipientUserIds: [
+        run.initiatedByUserId,
+        pendingAction.requestedByUserId
+      ].filter((userId): userId is string => Boolean(userId)),
+      publicReference: run.publicReference,
+      locationName: session.context.companyName,
+      entityLabel: "Finance close run",
+      entityType: "FinanceCloseRun",
+      entityId: run.id,
+      outcome: "APPROVED"
     });
 
     if (pendingAction.approvalAction === "LOCK_PERIOD") {
@@ -2410,18 +2449,33 @@ export async function rejectFinanceCloseRunApproval(formData: FormData) {
       status: "REJECTED",
       ...(values.remarks ? { remarks: values.remarks } : {})
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionFinanceCloseApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
       currentStepOrder: step.stepOrder,
       status: "REJECTED",
       nextStepOrder: null
+    });
+    await recordApprovalOutcomeNotification(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      locationId: null,
+      approvalInstanceId: approval.id,
+      recipientUserIds: [
+        run.initiatedByUserId,
+        pendingAction.requestedByUserId
+      ].filter((userId): userId is string => Boolean(userId)),
+      publicReference: run.publicReference,
+      locationName: session.context.companyName,
+      entityLabel: "Finance close run",
+      entityType: "FinanceCloseRun",
+      entityId: run.id,
+      outcome: "REJECTED"
     });
     const sourceUpdate = await tx.financeCloseRun.updateMany({
       where: {
@@ -2473,14 +2527,29 @@ export async function cancelPeriodCloseRun(
   return prisma.$transaction(async (tx) => {
     const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
     assertRunMutable(run.status);
-    const updated = await tx.financeCloseRun.update({
-      where: { id: run.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "FinanceCloseRun",
+      documentId: run.id,
+      policy: "APPROVAL_OPTIONAL"
+    });
+    const sourceUpdate = await tx.financeCloseRun.updateMany({
+      where: { id: run.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: run.status, version: run.version },
       data: {
         status: "CANCELLED",
         cancelledAt: new Date(),
         reason,
         evidenceReference,
         version: { increment: 1 }
+      }
+    });
+    if (sourceUpdate.count !== 1) throw new Error("PERIOD_CLOSE_CANCELLATION_CONFLICT");
+    const updated = await tx.financeCloseRun.findFirstOrThrow({
+      where: {
+        id: run.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     });
     await tx.financeCloseAttempt.create({
@@ -2505,7 +2574,11 @@ export async function cancelPeriodCloseRun(
       beforeStatus: run.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference
+      evidenceReference,
+      metadata: {
+        approvalTerminationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId
+      }
     });
     return updated;
   });

@@ -27,7 +27,7 @@ Track the future user-facing training, help, FAQs, and release materials needed 
 ### Cash and bank
 
 - Recording branch deposit evidence
-- Petty-cash fund process
+- Petty-cash fund, request, offline custody-movement, and liquidation foundation — role-based article published at `finance/using-petty-cash-funds-requests-and-liquidations.md`. Production guidance remains gated by the missing fund-activation and returned-record correction UI paths, normalized-routing/typed-intent runtime completion, controlled finance evidence qualification, and payment/bank/journal production activation.
 - Cash advance and liquidation — foundation article published at `finance/using-cash-advances-and-liquidations.md`; production payment handoff remains deferred by `III-009` / `P3-BLOCK-001`.
 - Bank reconciliation — foundation readiness article published at `finance/reviewing-bank-and-cash-readiness.md`; production close exception signoff remains deferred by `P3-BLOCK-006`.
 - Handling cash shortages, overages, and missing deposits

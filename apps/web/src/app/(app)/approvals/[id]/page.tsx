@@ -13,11 +13,10 @@ import {
 } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
-  approveApproval,
-  getApprovalDetail,
-  rejectApproval,
-  returnApproval
+  executeCanonicalApprovalDecision,
+  getApprovalDetail
 } from "@/server/services/approvals";
+import { isSupportedApprovalDocumentType } from "@/server/services/approvalRoutingRegistry";
 import { addPurchaseRequestComment } from "@/server/services/purchaseRequests";
 
 export const dynamic = "force-dynamic";
@@ -39,22 +38,57 @@ async function reviewApproval(formData: FormData) {
   "use server";
 
   const approvalInstanceId = String(formData.get("approvalInstanceId"));
+  const approvalKind = String(formData.get("approvalKind") ?? "");
   const decision = String(formData.get("decision") ?? "");
   try {
-    if (decision === "approve") {
-      await approveApproval(formData);
-    } else if (decision === "return") {
-      await returnApproval(formData);
-    } else if (decision === "reject") {
-      await rejectApproval(formData);
-    } else {
+    if (!supportsCanonicalSourceCommand(approvalKind, decision)) {
       throw new Error("APPROVAL_DECISION_REQUIRED");
     }
+    const remarks = String(formData.get("remarks") ?? "").trim();
+    const evidenceReference = String(
+      formData.get("evidenceReference") ?? ""
+    ).trim();
+    await executeCanonicalApprovalDecision({
+      approvalInstanceId,
+      family: approvalKind,
+      decision: decision.toUpperCase(),
+      ...(remarks ? { remarks } : {}),
+      ...(approvalKind === "PaymentRequest" || !evidenceReference
+        ? {}
+        : { evidenceReference }),
+    });
   } catch (error) {
     redirect(actionErrorRedirectPath(`/approvals/${approvalInstanceId}`, error));
   }
   revalidateApprovalTargets();
   redirect("/approvals");
+}
+
+const evidenceDecisionApprovalKinds = [
+  "BudgetRevision",
+  "ExpenseRequest",
+  "CashAdvanceRequest",
+  "PettyCashRequest",
+  "PaymentRequest",
+  "EmployeeLeaveRequest",
+  "EmployeeOvertimeRecord",
+  "WorkforceSchedule"
+] as const;
+
+function supportsDecisionEvidence(approvalKind: string) {
+  return evidenceDecisionApprovalKinds.some(
+    (kind) => kind === approvalKind && kind !== "PaymentRequest"
+  );
+}
+
+function supportsCanonicalSourceCommand(
+  approvalKind: string,
+  decision: string
+) {
+  return (
+    isSupportedApprovalDocumentType(approvalKind) &&
+    ["approve", "return", "reject"].includes(decision)
+  );
 }
 
 async function addComment(formData: FormData) {
@@ -248,7 +282,11 @@ export default async function ApprovalDetailPage({
             ) : null}
             <div>
               <dt className="text-sm font-medium text-slate-500">Next action</dt>
-              <dd className="text-slate-950">Approve, return, or reject</dd>
+              <dd className="text-slate-950">
+                {canReturnApprovalKind(approval.approvalKind)
+                  ? "Approve, return, or reject"
+                  : "Approve or reject"}
+              </dd>
             </div>
           </dl>
 
@@ -310,6 +348,7 @@ export default async function ApprovalDetailPage({
             </div>
             <div className="mt-4 grid gap-3">
               <input name="approvalInstanceId" type="hidden" value={approval.approvalInstanceId} />
+              <input name="approvalKind" type="hidden" value={approval.approvalKind} />
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Decision remarks
                 <textarea
@@ -318,6 +357,27 @@ export default async function ApprovalDetailPage({
                   placeholder="Optional for approval; required for return or rejection"
                 />
               </label>
+              {supportsDecisionEvidence(approval.approvalKind) ? (
+                <label className="grid gap-1 text-sm font-medium text-slate-700">
+                  Supplemental decision evidence reference
+                  <input
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2"
+                    name="evidenceReference"
+                    placeholder="Approval memo, review note, or supporting reference"
+                  />
+                  <span className="text-xs font-normal text-slate-500">
+                    Adds decision-support context. It does not replace or verify
+                    evidence already attached to the source record.
+                  </span>
+                </label>
+              ) : null}
+              {approval.approvalKind === "PaymentRequest" ? (
+                <div className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-blue-900">
+                  Legacy approval remains available while normalized routing is
+                  disabled. Normalized approval stays blocked until Finance confirms
+                  the invoice eligibility and capacity policy.
+                </div>
+              ) : null}
               <div
                 className={
                   canReturnApprovalKind(approval.approvalKind)

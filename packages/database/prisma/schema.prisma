@@ -1066,6 +1066,7 @@ model Tenant {
   cashAdvanceLiquidationLines             CashAdvanceLiquidationLine[]
   pettyCashFunds                          PettyCashFund[]
   pettyCashRequests                       PettyCashRequest[]
+  pettyCashApprovalStepIntents            PettyCashApprovalStepIntent[]
   pettyCashLedgerEntries                  PettyCashLedgerEntry[]
   pettyCashLiquidations                   PettyCashLiquidation[]
   pettyCashLiquidationLines               PettyCashLiquidationLine[]
@@ -1226,6 +1227,7 @@ model Company {
   cashAdvanceLiquidationLines             CashAdvanceLiquidationLine[]
   pettyCashFunds                          PettyCashFund[]
   pettyCashRequests                       PettyCashRequest[]
+  pettyCashApprovalStepIntents            PettyCashApprovalStepIntent[]
   pettyCashLedgerEntries                  PettyCashLedgerEntry[]
   pettyCashLiquidations                   PettyCashLiquidation[]
   pettyCashLiquidationLines               PettyCashLiquidationLine[]
@@ -1634,6 +1636,7 @@ model User {
   rejectedPettyCashRequests           PettyCashRequest[]                    @relation("PettyCashRequestRejecter")
   cancelledPettyCashRequests          PettyCashRequest[]                    @relation("PettyCashRequestCanceller")
   closedPettyCashRequests             PettyCashRequest[]                    @relation("PettyCashRequestCloser")
+  pettyCashApprovalStepIntents        PettyCashApprovalStepIntent[]         @relation("PettyCashApprovalStepIntentActor")
   postedPettyCashLedgerEntries        PettyCashLedgerEntry[]                @relation("PettyCashLedgerEntryPoster")
   voidedPettyCashLedgerEntries        PettyCashLedgerEntry[]                @relation("PettyCashLedgerEntryVoider")
   submittedPettyCashLiquidations      PettyCashLiquidation[]                @relation("PettyCashLiquidationSubmitter")
@@ -5457,60 +5460,63 @@ model PettyCashFund {
 }
 
 model PettyCashRequest {
-  id                   String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId             String                           @db.Uuid
-  companyId            String                           @db.Uuid
-  pettyCashFundId      String                           @db.Uuid
-  publicReference      String
-  requestType          PettyCashRequestType
-  status               PettyCashRequestStatus           @default(DRAFT)
-  currencyCode         String                           @default("PHP")
-  requestedAmountPhp   Decimal                          @db.Decimal(18, 6)
-  approvedAmountPhp    Decimal                          @default(0) @db.Decimal(18, 6)
-  purpose              String
-  justification        String
-  dueBy                DateTime?
-  requestedByUserId    String                           @db.Uuid
-  submittedByUserId    String?                          @db.Uuid
-  approvedByUserId     String?                          @db.Uuid
-  returnedByUserId     String?                          @db.Uuid
-  rejectedByUserId     String?                          @db.Uuid
-  cancelledByUserId    String?                          @db.Uuid
-  closedByUserId       String?                          @db.Uuid
-  submittedAt          DateTime?
-  approvedAt           DateTime?
-  returnedAt           DateTime?
-  rejectedAt           DateTime?
-  cancelledAt          DateTime?
-  closedAt             DateTime?
-  returnReason         String?
-  rejectionReason      String?
-  cancellationReason   String?
-  closureNotes         String?
-  evidenceReference    String?
-  sourceDocumentType   String?
-  sourceDocumentId     String?
-  sourceEventKey       String?
-  approvalInstanceId   String?                          @unique @db.Uuid
-  idempotencyKey       String?
-  metadata             Json?
-  createdAt            DateTime                         @default(now())
-  updatedAt            DateTime                         @updatedAt
-  tenant               Tenant                           @relation(fields: [tenantId], references: [id])
-  company              Company                          @relation(fields: [companyId], references: [id])
-  fund                 PettyCashFund                    @relation(fields: [pettyCashFundId], references: [id])
-  requestedBy          User                             @relation("PettyCashRequestRequester", fields: [requestedByUserId], references: [id])
-  submittedBy          User?                            @relation("PettyCashRequestSubmitter", fields: [submittedByUserId], references: [id])
-  approvedBy           User?                            @relation("PettyCashRequestApprover", fields: [approvedByUserId], references: [id])
-  returnedBy           User?                            @relation("PettyCashRequestReturner", fields: [returnedByUserId], references: [id])
-  rejectedBy           User?                            @relation("PettyCashRequestRejecter", fields: [rejectedByUserId], references: [id])
-  cancelledBy          User?                            @relation("PettyCashRequestCanceller", fields: [cancelledByUserId], references: [id])
-  closedBy             User?                            @relation("PettyCashRequestCloser", fields: [closedByUserId], references: [id])
-  approvalInstance     ApprovalInstance?                @relation(fields: [approvalInstanceId], references: [id])
-  ledgerEntries        PettyCashLedgerEntry[]
-  disbursementRequests NonSupplierDisbursementRequest[]
-  location             Location?                        @relation(fields: [locationId], references: [id])
-  locationId           String?                          @db.Uuid
+  id                       String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                 String                           @db.Uuid
+  companyId                String                           @db.Uuid
+  pettyCashFundId          String                           @db.Uuid
+  publicReference          String
+  requestType              PettyCashRequestType
+  status                   PettyCashRequestStatus           @default(DRAFT)
+  currencyCode             String                           @default("PHP")
+  requestedAmountPhp       Decimal                          @db.Decimal(18, 6)
+  approvedAmountPhp        Decimal                          @default(0) @db.Decimal(18, 6)
+  currentProposedAmountPhp Decimal?                         @db.Decimal(18, 6)
+  approvalProposalVersion  Int                              @default(0)
+  purpose                  String
+  justification            String
+  dueBy                    DateTime?
+  requestedByUserId        String                           @db.Uuid
+  submittedByUserId        String?                          @db.Uuid
+  approvedByUserId         String?                          @db.Uuid
+  returnedByUserId         String?                          @db.Uuid
+  rejectedByUserId         String?                          @db.Uuid
+  cancelledByUserId        String?                          @db.Uuid
+  closedByUserId           String?                          @db.Uuid
+  submittedAt              DateTime?
+  approvedAt               DateTime?
+  returnedAt               DateTime?
+  rejectedAt               DateTime?
+  cancelledAt              DateTime?
+  closedAt                 DateTime?
+  returnReason             String?
+  rejectionReason          String?
+  cancellationReason       String?
+  closureNotes             String?
+  evidenceReference        String?
+  sourceDocumentType       String?
+  sourceDocumentId         String?
+  sourceEventKey           String?
+  approvalInstanceId       String?                          @unique @db.Uuid
+  idempotencyKey           String?
+  metadata                 Json?
+  createdAt                DateTime                         @default(now())
+  updatedAt                DateTime                         @updatedAt
+  tenant                   Tenant                           @relation(fields: [tenantId], references: [id])
+  company                  Company                          @relation(fields: [companyId], references: [id])
+  fund                     PettyCashFund                    @relation(fields: [pettyCashFundId], references: [id])
+  requestedBy              User                             @relation("PettyCashRequestRequester", fields: [requestedByUserId], references: [id])
+  submittedBy              User?                            @relation("PettyCashRequestSubmitter", fields: [submittedByUserId], references: [id])
+  approvedBy               User?                            @relation("PettyCashRequestApprover", fields: [approvedByUserId], references: [id])
+  returnedBy               User?                            @relation("PettyCashRequestReturner", fields: [returnedByUserId], references: [id])
+  rejectedBy               User?                            @relation("PettyCashRequestRejecter", fields: [rejectedByUserId], references: [id])
+  cancelledBy              User?                            @relation("PettyCashRequestCanceller", fields: [cancelledByUserId], references: [id])
+  closedBy                 User?                            @relation("PettyCashRequestCloser", fields: [closedByUserId], references: [id])
+  approvalInstance         ApprovalInstance?                @relation(fields: [approvalInstanceId], references: [id])
+  approvalStepIntents      PettyCashApprovalStepIntent[]
+  ledgerEntries            PettyCashLedgerEntry[]
+  disbursementRequests     NonSupplierDisbursementRequest[]
+  location                 Location?                        @relation(fields: [locationId], references: [id])
+  locationId               String?                          @db.Uuid
 
   @@unique([companyId, publicReference])
   @@unique([tenantId, companyId, idempotencyKey])
@@ -5519,6 +5525,38 @@ model PettyCashRequest {
   @@index([tenantId, companyId, requestType, status], map: "PettyCashRequest_type_status_idx")
   @@index([requestedByUserId, status], map: "PettyCashRequest_requestedBy_status_idx")
   @@index([tenantId, companyId, locationId, status], map: "PettyCashRequest_location_scope_idx")
+}
+
+model PettyCashApprovalStepIntent {
+  id                         String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String               @db.Uuid
+  companyId                  String               @db.Uuid
+  pettyCashRequestId         String               @db.Uuid
+  approvalInstanceId         String               @db.Uuid
+  approvalStepId             String               @unique @db.Uuid
+  stepOrder                  Int
+  requestedAmountSnapshotPhp Decimal              @db.Decimal(18, 6)
+  beforeAmountPhp            Decimal              @db.Decimal(18, 6)
+  effectiveAmountPhp         Decimal              @db.Decimal(18, 6)
+  actorUserId                String               @db.Uuid
+  reason                     String?
+  requestVersionBefore       Int
+  requestVersionAfter        Int
+  decisionPayloadHash        String               @db.VarChar(64)
+  idempotencyKey             String
+  createdAt                  DateTime             @default(now())
+  tenant                     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                    Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  pettyCashRequest           PettyCashRequest     @relation(fields: [pettyCashRequestId], references: [id], onDelete: Restrict)
+  approvalInstance           ApprovalInstance     @relation(fields: [approvalInstanceId], references: [id], onDelete: Restrict)
+  approvalStep               ApprovalInstanceStep @relation(fields: [approvalStepId], references: [id], onDelete: Restrict)
+  actor                      User                 @relation("PettyCashApprovalStepIntentActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([approvalInstanceId, stepOrder], map: "PettyCashApprovalStepIntent_instance_step_order_key")
+  @@unique([tenantId, companyId, idempotencyKey], map: "PettyCashApprovalStepIntent_idempotency_key")
+  @@index([tenantId, companyId, pettyCashRequestId, createdAt], map: "PettyCashApprovalStepIntent_request_created_idx")
+  @@index([tenantId, companyId, approvalInstanceId, stepOrder], map: "PettyCashApprovalStepIntent_instance_order_idx")
+  @@index([actorUserId, createdAt], map: "PettyCashApprovalStepIntent_actor_created_idx")
 }
 
 model PettyCashLedgerEntry {
@@ -6927,53 +6965,55 @@ model ApprovalRuleStep {
 }
 
 model ApprovalInstance {
-  id                     String                  @id @default(uuid()) @db.Uuid
-  tenantId               String                  @db.Uuid
-  companyId              String                  @db.Uuid
-  documentType           String
-  documentId             String                  @db.Uuid
-  approvalRuleId         String                  @db.Uuid
-  status                 ApprovalStatus          @default(PENDING)
-  currentStepOrder       Int?
-  createdAt              DateTime                @default(now())
-  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
-  company                Company                 @relation(fields: [companyId], references: [id])
-  approvalRule           ApprovalRule            @relation(fields: [approvalRuleId], references: [id])
-  steps                  ApprovalInstanceStep[]
-  paymentRequest         PaymentRequest?
-  expenseRequest         ExpenseRequest?
-  employeeLeaveRequest   EmployeeLeaveRequest?
-  employeeOvertimeRecord EmployeeOvertimeRecord?
-  workforceSchedule      WorkforceSchedule?
-  attendanceImportBatch  AttendanceImportBatch?
-  cashAdvanceRequest     CashAdvanceRequest?
-  pettyCashRequest       PettyCashRequest?
-  paymentRelease         PaymentRelease?
+  id                           String                        @id @default(uuid()) @db.Uuid
+  tenantId                     String                        @db.Uuid
+  companyId                    String                        @db.Uuid
+  documentType                 String
+  documentId                   String                        @db.Uuid
+  approvalRuleId               String                        @db.Uuid
+  status                       ApprovalStatus                @default(PENDING)
+  currentStepOrder             Int?
+  createdAt                    DateTime                      @default(now())
+  tenant                       Tenant                        @relation(fields: [tenantId], references: [id])
+  company                      Company                       @relation(fields: [companyId], references: [id])
+  approvalRule                 ApprovalRule                  @relation(fields: [approvalRuleId], references: [id])
+  steps                        ApprovalInstanceStep[]
+  paymentRequest               PaymentRequest?
+  expenseRequest               ExpenseRequest?
+  employeeLeaveRequest         EmployeeLeaveRequest?
+  employeeOvertimeRecord       EmployeeOvertimeRecord?
+  workforceSchedule            WorkforceSchedule?
+  attendanceImportBatch        AttendanceImportBatch?
+  cashAdvanceRequest           CashAdvanceRequest?
+  pettyCashRequest             PettyCashRequest?
+  pettyCashApprovalStepIntents PettyCashApprovalStepIntent[]
+  paymentRelease               PaymentRelease?
 
   @@index([tenantId, documentType, documentId])
   @@index([tenantId, companyId, status], map: "ApprovalInstance_tenantId_companyId_status_idx")
 }
 
 model ApprovalInstanceStep {
-  id                   String                                @id @default(uuid()) @db.Uuid
-  approvalInstanceId   String                                @db.Uuid
-  stepOrder            Int
-  assignedUserId       String?                               @db.Uuid
-  assignedRoleId       String?                               @db.Uuid
-  status               ApprovalStepStatus                    @default(WAITING)
-  actedAt              DateTime?
-  activatedAt          DateTime?
-  dueAt                DateTime?
-  actedByUserId        String?                               @db.Uuid
-  remarks              String?
-  delegatedFromUserId  String?                               @db.Uuid
-  requiredPermissionId String?                               @db.Uuid
-  routingSchemaVersion Int                                   @default(0)
-  scopeGroupMatchMode  ApprovalScopeGroupMatchMode?
-  approvalInstance     ApprovalInstance                      @relation(fields: [approvalInstanceId], references: [id])
-  requiredPermission   Permission?                           @relation("ApprovalStepRequiredPermission", fields: [requiredPermissionId], references: [id], onDelete: Restrict)
-  scopeGroups          ApprovalInstanceStepScopeGroup[]
-  prohibitedActors     ApprovalInstanceStepProhibitedActor[]
+  id                          String                                @id @default(uuid()) @db.Uuid
+  approvalInstanceId          String                                @db.Uuid
+  stepOrder                   Int
+  assignedUserId              String?                               @db.Uuid
+  assignedRoleId              String?                               @db.Uuid
+  status                      ApprovalStepStatus                    @default(WAITING)
+  actedAt                     DateTime?
+  activatedAt                 DateTime?
+  dueAt                       DateTime?
+  actedByUserId               String?                               @db.Uuid
+  remarks                     String?
+  delegatedFromUserId         String?                               @db.Uuid
+  requiredPermissionId        String?                               @db.Uuid
+  routingSchemaVersion        Int                                   @default(0)
+  scopeGroupMatchMode         ApprovalScopeGroupMatchMode?
+  approvalInstance            ApprovalInstance                      @relation(fields: [approvalInstanceId], references: [id])
+  requiredPermission          Permission?                           @relation("ApprovalStepRequiredPermission", fields: [requiredPermissionId], references: [id], onDelete: Restrict)
+  scopeGroups                 ApprovalInstanceStepScopeGroup[]
+  prohibitedActors            ApprovalInstanceStepProhibitedActor[]
+  pettyCashApprovalStepIntent PettyCashApprovalStepIntent?
 
   @@unique([approvalInstanceId, stepOrder])
   @@index([actedByUserId], map: "ApprovalInstanceStep_actedByUserId_idx")

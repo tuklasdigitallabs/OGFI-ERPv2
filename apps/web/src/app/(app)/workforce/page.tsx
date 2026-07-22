@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -24,7 +25,9 @@ import {
   listWorkforceControlledEvidenceAttachmentsBatch
 } from "@/server/services/attachments";
 import { getSessionContext } from "@/server/services/context";
+import { canonicalApprovalDecisionsEnabled } from "@/server/services/approvalDecisionMode";
 import { canExportWorkforce } from "@/server/services/exportAuthorization";
+import { routeSourceWorkspaceApprovalDecision } from "@/server/services/sourceApprovalDecisionBridge";
 import {
   approveLeaveRequest,
   approveOvertimeRecord,
@@ -205,6 +208,57 @@ async function runWorkforceRequestAction(formData: FormData) {
     ...(evidenceReference ? { evidenceReference } : {})
   };
 
+  if (
+    requestKind === "leave" &&
+    (action === "approve" || action === "return" || action === "reject")
+  ) {
+    const routed =
+      action === "approve"
+        ? await routeSourceWorkspaceApprovalDecision(session, {
+            documentType: "EmployeeLeaveRequest",
+            documentId: recordId,
+            action,
+            remarks: reason,
+            evidenceReference
+          })
+        : await routeSourceWorkspaceApprovalDecision(session, {
+            documentType: "EmployeeLeaveRequest",
+            documentId: recordId,
+            action,
+            remarks: reason ?? "",
+            evidenceReference
+          });
+    if (routed) {
+      revalidatePath("/workforce");
+      return;
+    }
+  }
+  if (
+    requestKind === "overtime" &&
+    (action === "approve" || action === "reject")
+  ) {
+    const routed =
+      action === "approve"
+        ? await routeSourceWorkspaceApprovalDecision(session, {
+            documentType: "EmployeeOvertimeRecord",
+            documentId: recordId,
+            action,
+            remarks: reason,
+            evidenceReference
+          })
+        : await routeSourceWorkspaceApprovalDecision(session, {
+            documentType: "EmployeeOvertimeRecord",
+            documentId: recordId,
+            action,
+            remarks: reason ?? "",
+            evidenceReference
+          });
+    if (routed) {
+      revalidatePath("/workforce");
+      return;
+    }
+  }
+
   if (requestKind === "leave") {
     const input = { ...baseInput, leaveRequestId: recordId };
     switch (action) {
@@ -269,6 +323,29 @@ async function runWorkforceScheduleAction(formData: FormData) {
     ...(reason ? { reason } : {}),
     ...(evidenceReference ? { evidenceReference } : {})
   };
+
+  if (action === "approve" || action === "reject") {
+    const routed =
+      action === "approve"
+        ? await routeSourceWorkspaceApprovalDecision(session, {
+            documentType: "WorkforceSchedule",
+            documentId: scheduleId,
+            action,
+            remarks: reason,
+            evidenceReference
+          })
+        : await routeSourceWorkspaceApprovalDecision(session, {
+            documentType: "WorkforceSchedule",
+            documentId: scheduleId,
+            action,
+            remarks: reason ?? "",
+            evidenceReference
+          });
+    if (routed) {
+      revalidatePath("/workforce");
+      return;
+    }
+  }
 
   switch (action) {
     case "submit":
@@ -650,6 +727,7 @@ export default async function WorkforcePage() {
   }
 
   const dashboard = await getWorkforceDashboard(session);
+  const canonicalApprovalDecisions = canonicalApprovalDecisionsEnabled();
   const canManageWorkforce =
     session.permissionCodes.includes(permissions.coreAdminister) ||
     session.permissionCodes.includes(permissions.workforceManage);
@@ -2162,13 +2240,19 @@ export default async function WorkforcePage() {
                         : canManageWorkforce
                     )
                   : workforceOvertimeActions(record.status);
-                const scopedActions = isLeave
+                const permissionScopedActions = isLeave
                   ? actions
                   : actions.filter((action) =>
                       ["approve", "reject"].includes(action)
                         ? canApproveOvertime
                         : canManageWorkforce
                     );
+                const scopedActions = canonicalApprovalDecisions
+                  ? permissionScopedActions.filter(
+                      (action) =>
+                        !["approve", "return", "reject"].includes(action)
+                    )
+                  : permissionScopedActions;
                 return (
                   <div
                     key={`${isLeave ? "leave" : "ot"}-${record.id}`}
@@ -2266,6 +2350,17 @@ export default async function WorkforcePage() {
                             placeholder="Approval, schedule, or supporting note"
                           />
                         </label>
+                        {canonicalApprovalDecisions &&
+                        ["SUBMITTED", "UNDER_REVIEW"].includes(record.status) ? (
+                          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                            Assigned step actors decide this request in the{" "}
+                            <Link className="font-bold underline" href="/approvals">
+                              Approval Inbox
+                            </Link>
+                            . Workforce permissions on this page do not establish
+                            current-step eligibility.
+                          </div>
+                        ) : null}
                         <div className="flex flex-wrap gap-2">
                           {scopedActions.length === 0 ? (
                             <Badge tone="neutral">No available action</Badge>
@@ -2313,7 +2408,12 @@ export default async function WorkforcePage() {
           {canManageSchedules ? (
             <div className="grid gap-3 border-b border-slate-100 p-4">
               {dashboard.schedules.slice(0, 5).map((schedule) => {
-                const actions = workforceScheduleActions(schedule.status);
+                const statusActions = workforceScheduleActions(schedule.status);
+                const actions = canonicalApprovalDecisions
+                  ? statusActions.filter(
+                      (action) => !["approve", "reject"].includes(action)
+                    )
+                  : statusActions;
                 return (
                   <div
                     key={`schedule-action-${schedule.id}`}
@@ -2388,6 +2488,17 @@ export default async function WorkforcePage() {
                           placeholder="Roster review, manager approval, or publish proof"
                         />
                       </label>
+                      {canonicalApprovalDecisions &&
+                      ["SUBMITTED", "UNDER_REVIEW"].includes(schedule.status) ? (
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                          Assigned step actors decide this schedule in the{" "}
+                          <Link className="font-bold underline" href="/approvals">
+                            Approval Inbox
+                          </Link>
+                          . Schedule-management permission does not establish
+                          current-step eligibility.
+                        </div>
+                      ) : null}
                       <div className="flex flex-wrap gap-2">
                         {actions.length === 0 ? (
                           <Badge tone="neutral">No available action</Badge>

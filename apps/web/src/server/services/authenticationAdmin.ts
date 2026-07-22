@@ -432,6 +432,14 @@ export async function approveAuthRecovery(
     if (reviewed.count !== 1) {
       throw new Error("AUTH_RECOVERY_REVIEW_CONFLICT");
     }
+    await touchUserPrivilegeEpoch(tx, request.targetUserId, {
+      companyId: request.companyId,
+      requestedByUserId: session.user.id,
+      reason:
+        "Approved controlled account recovery; revoke all prior sessions.",
+      sourceEventType: "auth.recovery.approved",
+      sourceRecordId: request.id,
+    });
     if (request.resetMfa) {
       await tx.mfaAuthenticator.updateMany({
         where: {
@@ -442,14 +450,6 @@ export async function approveAuthRecovery(
         data: { status: "REVOKED", revokedAt: new Date() },
       });
     }
-    await touchUserPrivilegeEpoch(tx, request.targetUserId, {
-      companyId: request.companyId,
-      requestedByUserId: session.user.id,
-      reason:
-        "Approved controlled account recovery; revoke all prior sessions.",
-      sourceEventType: "auth.recovery.approved",
-      sourceRecordId: request.id,
-    });
     await tx.auditEvent.create({
       data: {
         tenantId: request.tenantId,

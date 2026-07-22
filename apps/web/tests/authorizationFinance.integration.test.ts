@@ -825,6 +825,7 @@ describe("finance authorization boundaries against PostgreSQL", () => {
       data: {
         id: ids.evidenceAttachmentId,
         tenantId: ids.tenantId,
+        companyId: ids.companyId,
         storageProvider: "local-private",
         objectKey: `controlled-evidence/${ids.tenantId}/${ids.evidenceAttachmentId}/finance-denial.txt`,
         originalFilename: "finance-denial.txt",
@@ -847,6 +848,15 @@ describe("finance authorization boundaries against PostgreSQL", () => {
         createdByUserId: ids.userId,
       },
     });
+    expect(
+      await prisma.authorizationDenialBucket.count({
+        where: {
+          tenantId: ids.tenantId,
+          actorUserId: ids.userId,
+          resource: "EVIDENCE",
+        },
+      }),
+    ).toBe(0);
     const before = await mutationSnapshot();
     const input = {
       sourceType: "EXPENSE_REQUEST" as const,
@@ -879,12 +889,36 @@ describe("finance authorization boundaries against PostgreSQL", () => {
       attachments.downloadControlledEvidenceAttachment({
         controlledEvidenceAttachmentId: randomUUID(),
       }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
 
     const after = await mutationSnapshot();
-    expect(after.auditEvents).toBe(
-      before.auditEvents + evidenceCalls.length + 2,
-    );
+    const denialBuckets = await prisma.authorizationDenialBucket.findMany({
+      where: {
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        locationId: ids.locationId,
+        actorUserId: ids.userId,
+        resource: "EVIDENCE",
+      },
+      select: {
+        denialCount: true,
+        firstAuditEvent: { select: { eventType: true } },
+      },
+    });
+    expect(denialBuckets).toHaveLength(4);
+    expect(
+      denialBuckets.reduce(
+        (total, bucket) => total + bucket.denialCount,
+        0n,
+      ),
+    ).toBe(BigInt(evidenceCalls.length + 2));
+    expect(
+      denialBuckets.every(
+        ({ firstAuditEvent }) =>
+          firstAuditEvent.eventType === "authorization.denial.first",
+      ),
+    ).toBe(true);
+    expect(after.auditEvents).toBe(before.auditEvents + denialBuckets.length);
     expect({ ...after, auditEvents: before.auditEvents }).toEqual(before);
     expect(
       await prisma.controlledEvidenceAttachment.findUniqueOrThrow({

@@ -42,6 +42,8 @@ import {
   submitBudgetForReview
 } from "@/server/services/budgetControl";
 import { getSessionContext } from "@/server/services/context";
+import { canonicalApprovalDecisionsEnabled } from "@/server/services/approvalDecisionMode";
+import { routeSourceWorkspaceApprovalDecision } from "@/server/services/sourceApprovalDecisionBridge";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +127,15 @@ const budgetRevisionActionLabels = {
   reject: "Reject",
   cancel: "Cancel"
 } as const;
+
+function visibleBudgetRevisionActions(
+  actions: Array<keyof typeof budgetRevisionActionLabels>,
+  canonicalApprovalDecisions: boolean
+) {
+  return canonicalApprovalDecisions
+    ? actions.filter((action) => action !== "approve" && action !== "reject")
+    : actions;
+}
 
 function budgetStatusTone(status: string) {
   if (["APPROVED", "ACTIVE"].includes(status)) {
@@ -317,10 +328,26 @@ async function runBudgetRevisionLifecycleAction(formData: FormData) {
       await startBudgetRevisionReview(session, input);
       break;
     case "approve":
-      await approveBudgetRevision(session, input);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "BudgetRevision",
+        documentId: budgetRevisionId,
+        action: "approve",
+        remarks: reason,
+        evidenceReference
+      }))) {
+        await approveBudgetRevision(session, input);
+      }
       break;
     case "reject":
-      await rejectBudgetRevision(session, input);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "BudgetRevision",
+        documentId: budgetRevisionId,
+        action: "reject",
+        remarks: reason ?? "",
+        evidenceReference
+      }))) {
+        await rejectBudgetRevision(session, input);
+      }
       break;
     case "cancel":
       await cancelBudgetRevision(session, input);
@@ -348,6 +375,7 @@ export default async function BudgetControlPage({
   }
 
   const dashboard = await getBudgetControlDashboard(session);
+  const canonicalApprovalDecisions = canonicalApprovalDecisionsEnabled();
   const canCreateDraftBudget =
     dashboard.permissions.canManageBudget &&
     dashboard.budgetDraftOptions.fiscalYears.length > 0 &&
@@ -1258,7 +1286,12 @@ export default async function BudgetControlPage({
               </p>
             </div>
           ) : (
-            pagedRevisionRows.rows.map((revision) => (
+            pagedRevisionRows.rows.map((revision) => {
+              const sourceActions = visibleBudgetRevisionActions(
+                revision.allowedActions,
+                canonicalApprovalDecisions
+              );
+              return (
               <div
                 key={revision.id}
                 className="grid gap-4 px-5 py-4 xl:grid-cols-[1fr_24rem] xl:items-start"
@@ -1325,8 +1358,34 @@ export default async function BudgetControlPage({
                   </div>
                 </div>
 
-                <div className="flex items-start justify-end">
-                  {revision.allowedActions.length === 0 ? (
+                <div className="grid justify-items-end gap-2">
+                  {canonicalApprovalDecisions && revision.status === "SUBMITTED" ? (
+                    <div className="max-w-md rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-right text-xs text-amber-900">
+                      Start Review remains a separate commitment-control step.
+                      Approve and Reject are unavailable until the revision reaches
+                      Under Review.
+                      <div className="mt-2 flex justify-end gap-2">
+                        <button className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1 font-semibold text-slate-400" disabled type="button">
+                          Approve Request
+                        </button>
+                        <button className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1 font-semibold text-slate-400" disabled type="button">
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {canonicalApprovalDecisions &&
+                  revision.status === "UNDER_REVIEW" ? (
+                    <div className="max-w-md rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-right text-xs text-blue-900">
+                      Canonical Approve and Reject decisions are available only to
+                      the assigned step actor in the{" "}
+                      <Link className="font-bold underline" href="/approvals">
+                        Approval Inbox
+                      </Link>
+                      .
+                    </div>
+                  ) : null}
+                  {sourceActions.length === 0 ? (
                     <Badge tone="neutral">No available action</Badge>
                   ) : (
                     <EntryModal
@@ -1377,7 +1436,7 @@ export default async function BudgetControlPage({
                           </label>
                         </div>
                         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-                          {revision.allowedActions.map((action) => (
+                          {sourceActions.map((action) => (
                             <button
                               key={action}
                               className={
@@ -1398,7 +1457,8 @@ export default async function BudgetControlPage({
                   )}
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
         <FinancePagination
@@ -1551,9 +1611,13 @@ export default async function BudgetControlPage({
               <Badge tone={dashboard.permissions.canManageBudget ? "success" : "neutral"}>
                 Manage {dashboard.permissions.canManageBudget ? "enabled" : "disabled"}
               </Badge>
-              <Badge tone={dashboard.permissions.canApproveBudget ? "success" : "neutral"}>
-                Approve {dashboard.permissions.canApproveBudget ? "enabled" : "disabled"}
-              </Badge>
+              {canonicalApprovalDecisions ? (
+                <Badge tone="info">Decisions: Approval Inbox</Badge>
+              ) : (
+                <Badge tone={dashboard.permissions.canApproveBudget ? "success" : "neutral"}>
+                  Approve {dashboard.permissions.canApproveBudget ? "enabled" : "disabled"}
+                </Badge>
+              )}
               <Badge
                 tone={
                   dashboard.permissions.canReviewCommitments ? "success" : "neutral"

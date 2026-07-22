@@ -125,7 +125,7 @@ BEGIN
         'cb7c5e9532debc0c8bd28552fe79e936', 'plpgsql', false,
         ARRAY['search_path=pg_catalog']::text[]),
       ('public.validate_approval_step_routing_context()'::regprocedure,
-        '8236d6ab3bf2408fc2ecd1417932e327', 'plpgsql', false,
+        '636702f89398cf438daa7c13f276c664', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.reject_immutable_approval_routing_child_mutation()'::regprocedure,
         'ea12e58f5dcf9c5025dccf29340ad3fb', 'plpgsql', false,
@@ -147,7 +147,13 @@ BEGIN
         ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.operator_transition_authentication_throttle_control(bigint,"AuthenticationThrottleControlStatus",integer,text,text)'::regprocedure,
         '62201f7bcbba7a8e20beff3d988b8f40', 'plpgsql', false,
-        ARRAY['search_path=pg_catalog, public']::text[])
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_petty_cash_approval_step_intent_lineage()'::regprocedure,
+        'd1a2b0f257704b4799882d78192844fa', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.reject_petty_cash_approval_step_intent_mutation()'::regprocedure,
+        'c886b8b336d3daf45967144020532a5b', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[])
     ) AS expected(function_oid, source_md5, language_name, security_definer, settings)
     JOIN pg_proc p ON p.oid = expected.function_oid
     JOIN pg_language l ON l.oid = p.prolang
@@ -172,7 +178,12 @@ BEGIN
     RAISE EXCEPTION 'A supported public type is not owned by the reviewed owner';
   END IF;
 
-  FOREACH protected_table IN ARRAY ARRAY['AuditEvent', 'ProjectActivityEvent', 'InventoryMovement']
+  FOREACH protected_table IN ARRAY ARRAY[
+    'AuditEvent',
+    'ProjectActivityEvent',
+    'InventoryMovement',
+    'PettyCashApprovalStepIntent'
+  ]
   LOOP
     PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relname = protected_table AND c.relowner = owner_oid;
@@ -224,6 +235,31 @@ BEGIN
         AND (t.tgtype & 16) = 16 AND (t.tgtype & 32) = 32;
     IF NOT FOUND THEN RAISE EXCEPTION '% append-only trigger contract is incomplete', protected_table; END IF;
   END LOOP;
+
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_trigger t
+     WHERE t.tgrelid = 'public."PettyCashApprovalStepIntent"'::regclass
+       AND NOT t.tgisinternal
+       AND (
+         (
+           t.tgname = 'PettyCashApprovalStepIntent_lineage_trg'
+           AND t.tgenabled = 'A'
+           AND t.tgtype = 7
+           AND t.tgfoid = 'public.validate_petty_cash_approval_step_intent_lineage()'::regprocedure
+         )
+         OR (
+           t.tgname = 'PettyCashApprovalStepIntent_append_only_guard_trg'
+           AND t.tgenabled = 'A'
+           AND t.tgtype = 58
+           AND t.tgfoid = 'public.reject_petty_cash_approval_step_intent_mutation()'::regprocedure
+         )
+       )
+     GROUP BY t.tgrelid
+    HAVING count(*) = 2
+  ) THEN
+    RAISE EXCEPTION 'PettyCashApprovalStepIntent trigger contract is incomplete';
+  END IF;
 
   IF to_regclass('public."AuthorizationDenialBucket"') IS NULL THEN
     RAISE EXCEPTION 'AuthorizationDenialBucket is missing';

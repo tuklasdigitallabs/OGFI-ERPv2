@@ -385,6 +385,116 @@ describe("workforce foundation controls", () => {
     expect(workforceServiceSource).toContain("noFinanceJournal");
   });
 
+  it("routes source-workspace decisions through the canonical approval bridge", () => {
+    expect(workforcePageSource).toContain(
+      'from "@/server/services/sourceApprovalDecisionBridge"'
+    );
+    expect(
+      workforcePageSource.match(/routeSourceWorkspaceApprovalDecision\(session/g)
+    ).toHaveLength(6);
+    expect(workforcePageSource).toContain(
+      'documentType: "WorkforceSchedule"'
+    );
+    expect(workforcePageSource).toContain('"EmployeeLeaveRequest"');
+    expect(workforcePageSource).toContain('"EmployeeOvertimeRecord"');
+  });
+
+  it("fails closed for every direct legacy workforce approval decision", () => {
+    expect(workforceServiceSource).toContain(
+      'from "./approvalDecisionMode"'
+    );
+    const directDecisionFunctions = [
+      "approveLeaveRequest",
+      "returnLeaveRequestForRevision",
+      "rejectLeaveRequest",
+      "approveOvertimeRecord",
+      "rejectOvertimeRecord",
+      "approveWorkforceSchedule",
+      "rejectWorkforceSchedule"
+    ];
+    for (const functionName of directDecisionFunctions) {
+      const start = workforceServiceSource.indexOf(
+        `export async function ${functionName}`
+      );
+      const end = workforceServiceSource.indexOf(
+        "\nexport async function ",
+        start + 1
+      );
+      const action = workforceServiceSource.slice(
+        start,
+        end === -1 ? undefined : end
+      );
+      expect(action).toContain("assertLegacyApprovalDecisionAllowed();");
+    }
+  });
+
+  it("atomically terminates pending approvals before workforce cancellation", () => {
+    const cancellationCases = [
+      {
+        functionName: "cancelLeaveRequest",
+        model: "employeeLeaveRequest",
+        documentType: "EmployeeLeaveRequest",
+        requiredPolicy: '["SUBMITTED", "UNDER_REVIEW"].includes(request.status)',
+        conflict: "WORKFORCE_LEAVE_CANCELLATION_CONFLICT"
+      },
+      {
+        functionName: "cancelOvertimeRecord",
+        model: "employeeOvertimeRecord",
+        documentType: "EmployeeOvertimeRecord",
+        requiredPolicy: '["SUBMITTED", "UNDER_REVIEW"].includes(record.status)',
+        conflict: "WORKFORCE_OVERTIME_CANCELLATION_CONFLICT"
+      },
+      {
+        functionName: "cancelWorkforceSchedule",
+        model: "workforceSchedule",
+        documentType: "WorkforceSchedule",
+        requiredPolicy: '["SUBMITTED", "UNDER_REVIEW"].includes(schedule.status)',
+        conflict: "WORKFORCE_SCHEDULE_CANCELLATION_CONFLICT"
+      },
+      {
+        functionName: "voidAttendanceImportBatch",
+        model: "attendanceImportBatch",
+        documentType: "AttendanceImportBatch",
+        requiredPolicy: 'batch.status === "VALIDATING"',
+        conflict: "WORKFORCE_ATTENDANCE_IMPORT_VOID_CONFLICT"
+      }
+    ];
+
+    for (const testCase of cancellationCases) {
+      const start = workforceServiceSource.indexOf(
+        `export async function ${testCase.functionName}`
+      );
+      const end = workforceServiceSource.indexOf(
+        "\nexport async function ",
+        start + 1
+      );
+      const action = workforceServiceSource.slice(
+        start,
+        end === -1 ? undefined : end
+      );
+      const termination = action.indexOf(
+        "terminatePendingApprovalForCancellation("
+      );
+      const sourceMutation = action.indexOf(`tx.${testCase.model}.updateMany(`);
+
+      expect(termination).toBeGreaterThan(-1);
+      expect(termination).toBeLessThan(sourceMutation);
+      expect(action).toContain(`documentType: "${testCase.documentType}"`);
+      expect(action).toContain(testCase.requiredPolicy);
+      expect(action).toContain('"APPROVAL_REQUIRED"');
+      expect(action).toContain('"APPROVAL_OPTIONAL"');
+      expect(action).toContain("tenantId: session.context.tenantId");
+      expect(action).toContain("companyId: session.context.companyId");
+      expect(action).toContain(`throw new Error("${testCase.conflict}")`);
+      expect(action).toContain(
+        "approvalCancellationMode: approvalTermination.mode"
+      );
+      expect(action).toContain(
+        "approvalInstanceId: approvalTermination.approvalInstanceId"
+      );
+    }
+  });
+
   it("normalizes every workforce approval step and fails before source transition", () => {
     expect(workforceServiceSource.match(/configureApprovalStepRouting\(tx/g)).toHaveLength(4);
     expect(workforceServiceSource.match(/assertAnyEligibleApprovalActorForStep\(tx/g)).toHaveLength(4);

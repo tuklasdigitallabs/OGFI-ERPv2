@@ -92,6 +92,7 @@ export type NormalizedApprovalDecisionPreflight = {
 
 type ApprovalStepActivationInput = ApprovalStepEligibilityIdentity & {
   activatedAt?: Date;
+  dueAt?: Date | null;
   activationAudit: ApprovalStepActivationAuditInput;
 };
 
@@ -431,7 +432,11 @@ export async function activateApprovalStepWithEligibility(
         status: "PENDING"
       }
     },
-    data: { status: "PENDING", activatedAt }
+    data: {
+      status: "PENDING",
+      activatedAt,
+      ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {})
+    }
   });
   if (activated.count !== 1) throw new Error("APPROVAL_STEP_ACTIVATION_RACE");
   await assertAnyEligibleApprovalActorForStep(tx, { ...input, now: activatedAt });
@@ -936,29 +941,31 @@ export async function assertApprovalRoutingRuntimeReady(
   client: ApprovalRoutingReadClient
 ) {
   const gaps = await client.$queryRaw<Array<{ count: bigint }>>`
+    WITH active_instance AS (
+      SELECT ai.*,
+             (
+               ai."documentType" = 'BudgetRevision'
+               AND EXISTS (
+                 SELECT 1
+                   FROM "BudgetRevision" revision
+                  WHERE revision.id = ai."documentId"
+                    AND revision."tenantId" = ai."tenantId"
+                    AND revision."companyId" = ai."companyId"
+                    AND revision.status = 'SUBMITTED'::"BudgetRevisionStatus"
+               )
+             ) AS "isBudgetRevisionPreReview"
+        FROM "ApprovalInstance" ai
+       WHERE ai."tenantId" = ${tenantId}::uuid
+         AND ai."companyId" = ${companyId}::uuid
+         AND ai.status = 'PENDING'::"ApprovalStatus"
+    )
     SELECT count(*)::bigint AS count
-      FROM "ApprovalInstance" ai
-     WHERE ai."tenantId" = ${tenantId}::uuid
-       AND ai."companyId" = ${companyId}::uuid
-       AND ai.status = 'PENDING'::"ApprovalStatus"
-       AND (
+      FROM active_instance ai
+     WHERE (
          ai."currentStepOrder" IS NULL
          OR NOT EXISTS (
            SELECT 1 FROM "ApprovalInstanceStep" step
             WHERE step."approvalInstanceId" = ai.id
-         )
-         OR (
-           SELECT count(*)
-             FROM "ApprovalInstanceStep" step
-            WHERE step."approvalInstanceId" = ai.id
-              AND step.status = 'PENDING'::"ApprovalStepStatus"
-         ) <> 1
-         OR NOT EXISTS (
-           SELECT 1
-             FROM "ApprovalInstanceStep" step
-            WHERE step."approvalInstanceId" = ai.id
-              AND step."stepOrder" = ai."currentStepOrder"
-              AND step.status = 'PENDING'::"ApprovalStepStatus"
          )
          OR EXISTS (
            SELECT 1
@@ -986,30 +993,109 @@ export async function assertApprovalRoutingRuntimeReady(
                         WHERE target."scopeGroupId" = scope_group.id
                      )
                 )
-                OR (
-                  step."stepOrder" < ai."currentStepOrder"
-                  AND step.status NOT IN (
-                    'APPROVED'::"ApprovalStepStatus",
-                    'SKIPPED'::"ApprovalStepStatus"
-                  )
-                )
-                OR (
-                  step."stepOrder" = ai."currentStepOrder"
-                  AND step.status <> 'PENDING'::"ApprovalStepStatus"
-                )
-                OR (
-                  step."stepOrder" > ai."currentStepOrder"
-                  AND step.status <> 'WAITING'::"ApprovalStepStatus"
-                )
-                OR (
-                  step.status = 'PENDING'::"ApprovalStepStatus"
-                  AND step."activatedAt" IS NULL
-                )
-                OR (
-                  step.status = 'WAITING'::"ApprovalStepStatus"
-                  AND step."activatedAt" IS NOT NULL
-                )
               )
+         )
+         OR (
+           ai."isBudgetRevisionPreReview"
+           AND (
+             EXISTS (
+               SELECT 1
+                 FROM "ApprovalInstanceStep" step
+                WHERE step."approvalInstanceId" = ai.id
+                  AND (
+                    step.status <> 'WAITING'::"ApprovalStepStatus"
+                    OR step."actedAt" IS NOT NULL
+                    OR step."activatedAt" IS NOT NULL
+                    OR step."dueAt" IS NOT NULL
+                  )
+             )
+             OR NOT EXISTS (
+               SELECT 1
+                 FROM "ApprovalInstanceStep" step
+                WHERE step."approvalInstanceId" = ai.id
+                  AND step."stepOrder" = ai."currentStepOrder"
+             )
+             OR ai."currentStepOrder" <> (
+               SELECT min(step."stepOrder")
+                 FROM "ApprovalInstanceStep" step
+                WHERE step."approvalInstanceId" = ai.id
+             )
+             OR EXISTS (
+               SELECT 1
+                 FROM "AuditEvent" audit
+                WHERE audit."tenantId" = ai."tenantId"
+                  AND audit."entityType" = 'ApprovalInstanceStep'
+                  AND audit."eventType" = 'approval.step_activated'
+                  AND audit."entityId" IN (
+                    SELECT step.id
+                      FROM "ApprovalInstanceStep" step
+                     WHERE step."approvalInstanceId" = ai.id
+                  )
+             )
+           )
+         )
+         OR (
+           NOT ai."isBudgetRevisionPreReview"
+           AND (
+             (
+               SELECT count(*)
+                 FROM "ApprovalInstanceStep" step
+                WHERE step."approvalInstanceId" = ai.id
+                  AND step.status = 'PENDING'::"ApprovalStepStatus"
+             ) <> 1
+             OR NOT EXISTS (
+               SELECT 1
+                 FROM "ApprovalInstanceStep" step
+                WHERE step."approvalInstanceId" = ai.id
+                  AND step."stepOrder" = ai."currentStepOrder"
+                  AND step.status = 'PENDING'::"ApprovalStepStatus"
+             )
+             OR EXISTS (
+               SELECT 1
+                 FROM "ApprovalInstanceStep" step
+                WHERE step."approvalInstanceId" = ai.id
+                  AND (
+                    (
+                      step."stepOrder" < ai."currentStepOrder"
+                      AND step.status NOT IN (
+                        'APPROVED'::"ApprovalStepStatus",
+                        'SKIPPED'::"ApprovalStepStatus"
+                      )
+                    )
+                    OR (
+                      step."stepOrder" = ai."currentStepOrder"
+                      AND step.status <> 'PENDING'::"ApprovalStepStatus"
+                    )
+                    OR (
+                      step."stepOrder" > ai."currentStepOrder"
+                      AND step.status <> 'WAITING'::"ApprovalStepStatus"
+                    )
+                    OR (
+                      step.status = 'PENDING'::"ApprovalStepStatus"
+                      AND step."activatedAt" IS NULL
+                    )
+                    OR (
+                      step.status = 'WAITING'::"ApprovalStepStatus"
+                      AND step."activatedAt" IS NOT NULL
+                    )
+                  )
+             )
+             OR (
+               ai."documentType" = 'BudgetRevision'
+               AND EXISTS (
+                 SELECT 1
+                   FROM "BudgetRevision" revision
+                   JOIN "ApprovalInstanceStep" step
+                     ON step."approvalInstanceId" = ai.id
+                    AND step."stepOrder" = ai."currentStepOrder"
+                  WHERE revision.id = ai."documentId"
+                    AND revision."tenantId" = ai."tenantId"
+                    AND revision."companyId" = ai."companyId"
+                    AND revision.status = 'UNDER_REVIEW'::"BudgetRevisionStatus"
+                    AND step."dueAt" IS DISTINCT FROM revision."effectiveFrom"
+               )
+             )
+           )
          )
        )
   `;

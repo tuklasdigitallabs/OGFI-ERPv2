@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   assertMarkerRow,
+  assertSafePsqlDockerContainer,
   assertAdversarialRoleBinding,
   assertSafeAdminUrl,
   assertSafeDisposableTarget,
@@ -17,6 +18,18 @@ import {
 } from "./disposable-postgres-lifecycle.mjs";
 
 describe("disposable PostgreSQL lifecycle safety", () => {
+  it("accepts only inert Docker container names for the optional local psql transport", () => {
+    assert.equal(
+      assertSafePsqlDockerContainer("ogfierp-v2-postgres-1"),
+      "ogfierp-v2-postgres-1",
+    );
+    for (const value of ["", "../postgres", "postgres;rm", "postgres container", "-postgres"]) {
+      assert.throws(
+        () => assertSafePsqlDockerContainer(value),
+        /DISPOSABLE_DATABASE_PSQL_DOCKER_CONTAINER_INVALID/,
+      );
+    }
+  });
   it("binds a generated database and runtime role to run ID and nonce", () => {
     const nonce = "a".repeat(64);
     const identity = createDisposablePostgresIdentity("run-12345", nonce);
@@ -240,6 +253,11 @@ describe("disposable PostgreSQL lifecycle safety", () => {
       "utf8",
     );
     assert.match(runner, /shouldRunAdversarialRoleContract\(suiteName\)/);
+    assert.ok(
+      runner.indexOf("const adversarialCases = [") <
+        runner.indexOf("if (shouldRunAdversarialRoleContract(suiteName))"),
+      "adversarial cases must initialize before the top-level lifecycle invokes them",
+    );
     assert.match(runner, /ADVERSARIAL_ROLE_CONTRACT_PASS/);
     assert.match(runner, /adversarial_role: marker\.adversarialRole/);
     assert.match(runner, /applyAdversarialFixture\(adminTargetUrl, marker, "cleanup", driftCase\)/);
@@ -295,6 +313,31 @@ describe("disposable PostgreSQL lifecycle safety", () => {
     assert.match(runner, /SET LOCAL session_replication_role = replica/);
     assert.match(runner, /APPROVAL_ROUTING_CONTEXT_IMMUTABLE/);
     assert.match(runner, /Approval ALWAYS trigger was bypassed by replication role/);
+  });
+
+  it("serializes procurement and inventory database files while preserving their internal races", () => {
+    const packageJson = JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL("../apps/web/package.json", import.meta.url)),
+        "utf8",
+      ),
+    );
+    assert.match(
+      packageJson.scripts["test:authorization-procurement-inventory:execute"],
+      /vitest run --no-file-parallelism/,
+    );
+  });
+
+  it("rehearses approval-integrity owner guards only inside the marked disposable database", () => {
+    const runner = readFileSync(
+      fileURLToPath(new URL("./run-disposable-postgres-tests.mjs", import.meta.url)),
+      "utf8",
+    );
+    assert.match(runner, /verifyApprovalIntegrityOwnerGuards\(setupUrl\)/);
+    assert.match(runner, /APPROVAL_INSTANCE_PENDING_DUPLICATE/);
+    assert.match(runner, /Approval pending tuple index was not restored after preflight rollback/);
+    assert.match(runner, /TRUNCATE TABLE public\."PettyCashApprovalStepIntent"/);
+    assert.match(runner, /SET LOCAL session_replication_role = replica/);
   });
 
   it("rejects production, staging, shared, remote, fixed, and overlapping targets", () => {

@@ -40,6 +40,13 @@ describe("approval routing mapping registry", () => {
     expect(getApprovalRoutingPolicy("FinanceCloseRun").allowedSourceStatuses).toEqual(["CLOSED"]);
   });
 
+  test("accepts the intentional budget pre-review and actionable states", () => {
+    expect(getApprovalRoutingPolicy("BudgetRevision").allowedSourceStatuses).toEqual([
+      "SUBMITTED",
+      "UNDER_REVIEW",
+    ]);
+  });
+
   test("publishes a stable SHA-256 mapping hash", () => {
     expect(APPROVAL_ROUTING_MAPPING_HASH).toMatch(/^[a-f0-9]{64}$/);
   });

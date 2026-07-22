@@ -121,9 +121,16 @@ function input(overrides: Partial<Parameters<typeof recordAuthorizationDenial>[0
 describe("DEC-0050 denial buckets on PostgreSQL", () => {
   test("preserves an exact count and one first event under concurrency", async () => {
     const now = runTime(0, 1);
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       Array.from({ length: 24 }, () => recordAuthorizationDenial(input(), { now }))
     );
+    const rejected = settled.filter((result) => result.status === "rejected");
+    expect(rejected).toHaveLength(0);
+    const results = settled
+      .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof recordAuthorizationDenial>>> =>
+        result.status === "fulfilled"
+      )
+      .map((result) => result.value);
     expect(results.filter((result) => result.created)).toHaveLength(1);
     const bucketId = results[0]!.bucketId;
     const buckets = await prisma.$queryRaw<Array<{ denialCount: bigint; firstAuditEventId: string }>>`

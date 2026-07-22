@@ -160,6 +160,9 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
   assert.match(verify, /t\.tgfoid = expected\.function_oid/);
   assert.match(verify, /md5\(p\.prosrc\) <> expected\.source_md5/);
   assert.match(verify, /Reviewed control function semantics drifted/);
+  assert.match(verify, /PettyCashApprovalStepIntent trigger contract is incomplete/);
+  assert.match(verify, /validate_petty_cash_approval_step_intent_lineage\(\)'::regprocedure/);
+  assert.match(verify, /reject_petty_cash_approval_step_intent_mutation\(\)'::regprocedure/);
   assert.match(verify, /Migrator membership must be exactly owner/);
   assert.match(verify, /supported public object is not owned/);
   assert.match(verify, /default privileges contain an unsafe/);

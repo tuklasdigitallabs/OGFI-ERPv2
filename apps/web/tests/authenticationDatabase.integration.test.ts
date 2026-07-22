@@ -638,7 +638,7 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
       accountUserId: userA,
     });
     if (!reserved.allowed) throw new Error("expected allowed MFA reservation");
-    await Promise.allSettled([
+    const outcomes = await Promise.allSettled([
       prisma.$transaction((tx) =>
         finalizeMfaAuthenticationInTransaction(tx, {
           sessionId: pending.id,
@@ -653,10 +653,6 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
         }),
       ),
       prisma.$transaction(async (tx) => {
-        await tx.mfaAuthenticator.update({
-          where: { id: authenticator.id },
-          data: { status: "REVOKED", revokedAt: new Date() },
-        });
         await tx.user.update({
           where: { id: userA },
           data: { privilegeEpoch: { increment: 1 } },
@@ -668,8 +664,13 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
           },
           data: { status: "REVOKED", revokedAt: new Date() },
         });
+        await tx.mfaAuthenticator.update({
+          where: { id: authenticator.id },
+          data: { status: "REVOKED", revokedAt: new Date() },
+        });
       }),
     ]);
+    expect(outcomes[1]?.status).toBe("fulfilled");
     const [resetUser, activeSessions] = await Promise.all([
       prisma.user.findUniqueOrThrow({ where: { id: userA } }),
       prisma.authSession.findMany({ where: { userId: userA, status: "ACTIVE" } }),
@@ -679,6 +680,11 @@ describeAuthenticationDatabase("database-backed authentication integrity", () =>
         ({ privilegeEpochAtIssue }) => privilegeEpochAtIssue === resetUser.privilegeEpoch,
       ),
     ).toBe(false);
+    expect(
+      (await prisma.mfaAuthenticator.findUniqueOrThrow({
+        where: { id: authenticator.id },
+      })).status,
+    ).toBe("REVOKED");
   });
 
   it("resumes interrupted MFA encryption rotation and rejects a wrong previous key", async () => {

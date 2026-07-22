@@ -47,6 +47,8 @@ import {
   voidCashAdvanceOfflineIssue
 } from "@/server/services/cashAdvances";
 import { getSessionContext } from "@/server/services/context";
+import { canonicalApprovalDecisionsEnabled } from "@/server/services/approvalDecisionMode";
+import { routeSourceWorkspaceApprovalDecision } from "@/server/services/sourceApprovalDecisionBridge";
 
 export const dynamic = "force-dynamic";
 
@@ -165,6 +167,7 @@ function allowedCashAdvanceActions(input: {
   status: string;
   issuedAmountPhp: number;
   liquidatedAmountPhp: number;
+  canonicalApprovalDecisions: boolean;
   permissions: {
     canSubmit: boolean;
     canApprove: boolean;
@@ -178,7 +181,11 @@ function allowedCashAdvanceActions(input: {
   ) {
     actions.push("submit");
   }
-  if (input.permissions.canApprove && input.status === "AWAITING_APPROVAL") {
+  if (
+    !input.canonicalApprovalDecisions &&
+    input.permissions.canApprove &&
+    input.status === "AWAITING_APPROVAL"
+  ) {
     actions.push("approve", "return", "reject");
   }
   if (
@@ -451,13 +458,37 @@ async function runCashAdvanceAction(formData: FormData) {
       await submitCashAdvanceForApproval(session, baseInput);
       break;
     case "approve":
-      await approveCashAdvanceRequest(session, baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "CashAdvanceRequest",
+        documentId: cashAdvanceRequestId,
+        action: "approve",
+        remarks: reason,
+        evidenceReference
+      }))) {
+        await approveCashAdvanceRequest(session, baseInput);
+      }
       break;
     case "return":
-      await returnCashAdvanceForRevision(session, baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "CashAdvanceRequest",
+        documentId: cashAdvanceRequestId,
+        action: "return",
+        remarks: reason ?? "",
+        evidenceReference
+      }))) {
+        await returnCashAdvanceForRevision(session, baseInput);
+      }
       break;
     case "reject":
-      await rejectCashAdvanceRequest(session, baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "CashAdvanceRequest",
+        documentId: cashAdvanceRequestId,
+        action: "reject",
+        remarks: reason ?? "",
+        evidenceReference
+      }))) {
+        await rejectCashAdvanceRequest(session, baseInput);
+      }
       break;
     case "cancel":
       await cancelCashAdvanceRequest(session, baseInput);
@@ -523,6 +554,7 @@ export default async function CashAdvancesPage({
   }
 
   const dashboard = await getCashAdvanceDashboard(session);
+  const canonicalApprovalDecisions = canonicalApprovalDecisionsEnabled();
   const cashAdvanceEvidencePairs = await Promise.all(
     dashboard.advances.map(async (advance) => [
       advance.id,
@@ -586,6 +618,7 @@ export default async function CashAdvancesPage({
             status: advance.status,
             issuedAmountPhp: advance.issuedAmountPhp,
             liquidatedAmountPhp: advance.liquidatedAmountPhp,
+            canonicalApprovalDecisions,
             permissions: dashboard.permissions
           }).length > 0
       ).length
@@ -1583,6 +1616,7 @@ export default async function CashAdvancesPage({
                 status: advance.status,
                 issuedAmountPhp: advance.issuedAmountPhp,
                 liquidatedAmountPhp: advance.liquidatedAmountPhp,
+                canonicalApprovalDecisions,
                 permissions: dashboard.permissions
               });
               return (
@@ -1628,8 +1662,19 @@ export default async function CashAdvancesPage({
                     />
                   </div>
 
-                  <div className="flex items-start justify-end">
-                    {actions.length === 0 ? (
+                    <div className="grid justify-items-end gap-2">
+                      {canonicalApprovalDecisions &&
+                      advance.status === "AWAITING_APPROVAL" ? (
+                        <div className="max-w-md rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-right text-xs text-blue-900">
+                          Assigned step actors decide this advance in the{" "}
+                          <Link className="font-bold underline" href="/approvals">
+                            Approval Inbox
+                          </Link>
+                          . Source-page finance permission does not establish step
+                          eligibility.
+                        </div>
+                      ) : null}
+                      {actions.length === 0 ? (
                       <Badge tone="neutral">No available action</Badge>
                     ) : (
                       <EntryModal
@@ -1962,9 +2007,13 @@ export default async function CashAdvancesPage({
             <Badge tone={dashboard.permissions.canCreate ? "success" : "neutral"}>
               Create {dashboard.permissions.canCreate ? "enabled" : "disabled"}
             </Badge>
-            <Badge tone={dashboard.permissions.canApprove ? "success" : "neutral"}>
-              Approve {dashboard.permissions.canApprove ? "enabled" : "disabled"}
-            </Badge>
+            {canonicalApprovalDecisions ? (
+              <Badge tone="info">Decisions: Approval Inbox</Badge>
+            ) : (
+              <Badge tone={dashboard.permissions.canApprove ? "success" : "neutral"}>
+                Approve {dashboard.permissions.canApprove ? "enabled" : "disabled"}
+              </Badge>
+            )}
             <Badge
               tone={
                 dashboard.permissions.canReviewLiquidation ? "success" : "neutral"

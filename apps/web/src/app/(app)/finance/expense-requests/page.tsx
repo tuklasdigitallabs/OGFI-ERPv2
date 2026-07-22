@@ -27,6 +27,8 @@ import {
   permissions
 } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
+import { canonicalApprovalDecisionsEnabled } from "@/server/services/approvalDecisionMode";
+import { routeSourceWorkspaceApprovalDecision } from "@/server/services/sourceApprovalDecisionBridge";
 import {
   approveExpenseRequest,
   cancelExpenseRequest,
@@ -131,6 +133,7 @@ const expenseActionLabels = {
 
 function allowedExpenseActions(input: {
   status: string;
+  canonicalApprovalDecisions: boolean;
   permissions: {
     canSubmit: boolean;
     canApprove: boolean;
@@ -144,7 +147,11 @@ function allowedExpenseActions(input: {
   ) {
     actions.push("submit");
   }
-  if (input.permissions.canApprove && input.status === "AWAITING_APPROVAL") {
+  if (
+    !input.canonicalApprovalDecisions &&
+    input.permissions.canApprove &&
+    input.status === "AWAITING_APPROVAL"
+  ) {
     actions.push("approve", "return", "reject");
   }
   if (
@@ -296,13 +303,37 @@ async function runExpenseRequestAction(formData: FormData) {
       await submitExpenseRequestForApproval(session, baseInput);
       break;
     case "approve":
-      await approveExpenseRequest(session, baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "ExpenseRequest",
+        documentId: expenseRequestId,
+        action: "approve",
+        remarks: reason,
+        evidenceReference
+      }))) {
+        await approveExpenseRequest(session, baseInput);
+      }
       break;
     case "return":
-      await returnExpenseRequestForRevision(session, baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "ExpenseRequest",
+        documentId: expenseRequestId,
+        action: "return",
+        remarks: reason ?? "",
+        evidenceReference
+      }))) {
+        await returnExpenseRequestForRevision(session, baseInput);
+      }
       break;
     case "reject":
-      await rejectExpenseRequest(session, baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, {
+        documentType: "ExpenseRequest",
+        documentId: expenseRequestId,
+        action: "reject",
+        remarks: reason ?? "",
+        evidenceReference
+      }))) {
+        await rejectExpenseRequest(session, baseInput);
+      }
       break;
     case "cancel":
       await cancelExpenseRequest(session, baseInput);
@@ -356,6 +387,7 @@ export default async function ExpenseRequestsPage({
   }
 
   const dashboard = await getExpenseRequestDashboard(session);
+  const canonicalApprovalDecisions = canonicalApprovalDecisionsEnabled();
   const evidenceAttachmentPairs = await Promise.all(
     dashboard.requests.map(async (request) => [
       request.id,
@@ -386,6 +418,7 @@ export default async function ExpenseRequestsPage({
         (request) =>
           allowedExpenseActions({
             status: request.status,
+            canonicalApprovalDecisions,
             permissions: dashboard.permissions
           }).length > 0
       ).length
@@ -1140,6 +1173,7 @@ export default async function ExpenseRequestsPage({
             pagedActionRequests.rows.map((request) => {
               const actions = allowedExpenseActions({
                 status: request.status,
+                canonicalApprovalDecisions,
                 permissions: dashboard.permissions
               });
               return (
@@ -1179,7 +1213,18 @@ export default async function ExpenseRequestsPage({
                     </p>
                   </div>
 
-                  <div className="flex items-start justify-end">
+                  <div className="grid justify-items-end gap-2">
+                    {canonicalApprovalDecisions &&
+                    request.status === "AWAITING_APPROVAL" ? (
+                      <div className="max-w-md rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-right text-xs text-blue-900">
+                        Assigned step actors decide this request in the{" "}
+                        <Link className="font-bold underline" href="/approvals">
+                          Approval Inbox
+                        </Link>
+                        . Source-page finance permission does not establish step
+                        eligibility.
+                      </div>
+                    ) : null}
                     {actions.length === 0 ? (
                       <Badge tone="neutral">No available action</Badge>
                     ) : (
@@ -1292,9 +1337,13 @@ export default async function ExpenseRequestsPage({
             <Badge tone={dashboard.permissions.canCreate ? "success" : "neutral"}>
               Create {dashboard.permissions.canCreate ? "enabled" : "disabled"}
             </Badge>
-            <Badge tone={dashboard.permissions.canApprove ? "success" : "neutral"}>
-              Approve {dashboard.permissions.canApprove ? "enabled" : "disabled"}
-            </Badge>
+            {canonicalApprovalDecisions ? (
+              <Badge tone="info">Decisions: Approval Inbox</Badge>
+            ) : (
+              <Badge tone={dashboard.permissions.canApprove ? "success" : "neutral"}>
+                Approve {dashboard.permissions.canApprove ? "enabled" : "disabled"}
+              </Badge>
+            )}
           </div>
         </div>
 

@@ -29,6 +29,29 @@ type WorkflowNotificationInput = {
   metadata?: JsonValue;
 };
 
+type ApprovalNotificationSourceInput = {
+  tenantId: string;
+  companyId: string;
+  locationId: string | null;
+  approvalInstanceId: string;
+  publicReference: string;
+  locationName: string;
+  entityLabel: string;
+  entityType: string;
+  entityId: string;
+};
+
+type ApprovalOutcomeNotificationInput = ApprovalNotificationSourceInput & {
+  recipientUserIds: string[];
+  outcome: "APPROVED" | "RETURNED" | "REJECTED";
+};
+
+type ApprovalStepReadyNotificationInput = ApprovalNotificationSourceInput & {
+  approvalInstanceStepId: string;
+  stepOrder: number;
+  recipientUserId: string;
+};
+
 type ScopedRecipientInput = {
   tenantId: string;
   companyId: string;
@@ -137,6 +160,62 @@ export async function recordWorkflowNotifications(
       })
     )
   );
+}
+
+export async function recordApprovalOutcomeNotification(
+  client: NotificationClient,
+  input: ApprovalOutcomeNotificationInput
+) {
+  const outcomeLabel = input.outcome.toLowerCase();
+  return recordWorkflowNotifications(client, {
+    tenantId: input.tenantId,
+    companyId: input.companyId,
+    locationId: input.locationId,
+    recipientUserIds: input.recipientUserIds,
+    notificationType: `APPROVAL_OUTCOME_${input.outcome}`,
+    priority: input.outcome === "REJECTED" ? "HIGH" : "NORMAL",
+    title: `${input.publicReference} ${outcomeLabel}`,
+    body: `${input.entityLabel} ${input.publicReference} at ${input.locationName} was ${outcomeLabel}.`,
+    deepLink: `/approvals/${input.approvalInstanceId}`,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    sourceEventKey: `approval:${input.approvalInstanceId}:outcome:${input.outcome}`,
+    recipientBasis: "requester_or_owner",
+    metadata: {
+      approvalInstanceId: input.approvalInstanceId,
+      publicReference: input.publicReference,
+      locationName: input.locationName,
+      outcome: input.outcome
+    }
+  });
+}
+
+export async function recordApprovalStepReadyNotification(
+  client: NotificationClient,
+  input: ApprovalStepReadyNotificationInput
+) {
+  return recordWorkflowNotifications(client, {
+    tenantId: input.tenantId,
+    companyId: input.companyId,
+    locationId: input.locationId,
+    recipientUserIds: [input.recipientUserId],
+    notificationType: "APPROVAL_STEP_READY",
+    priority: "NORMAL",
+    title: `Approval required: ${input.publicReference}`,
+    body: `${input.entityLabel} ${input.publicReference} at ${input.locationName} is ready for approval step ${input.stepOrder}.`,
+    deepLink: `/approvals/${input.approvalInstanceId}`,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    sourceEventKey: `approval:${input.approvalInstanceId}:step:${input.stepOrder}:ready`,
+    recipientBasis: "assigned_user",
+    metadata: {
+      approvalInstanceId: input.approvalInstanceId,
+      approvalInstanceStepId: input.approvalInstanceStepId,
+      approvalStepOrder: input.stepOrder,
+      assignmentMode: "DIRECT_USER",
+      assignedUserId: input.recipientUserId
+    }
+  });
 }
 
 export async function listNotifications(

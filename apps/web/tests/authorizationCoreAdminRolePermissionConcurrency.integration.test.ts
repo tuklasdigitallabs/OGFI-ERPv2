@@ -35,6 +35,7 @@ describe.skipIf(!databaseEnabled)(
     const ids = {
       tenant: randomUUID(),
       company: randomUUID(),
+      location: randomUUID(),
       actor: randomUUID(),
       assignee: randomUUID(),
       actorRole: randomUUID(),
@@ -81,6 +82,16 @@ describe.skipIf(!databaseEnabled)(
           code: `CAR-${suffix}`,
           legalName: `Core Admin Race Company ${suffix}`,
           currencyCode: "PHP",
+        },
+      });
+      await prisma.location.create({
+        data: {
+          id: ids.location,
+          tenantId: ids.tenant,
+          companyId: ids.company,
+          code: `CAR-HO-${suffix}`,
+          name: `Core Admin Race Head Office ${suffix}`,
+          locationType: "HEAD_OFFICE",
         },
       });
       await prisma.user.createMany({
@@ -257,11 +268,11 @@ describe.skipIf(!databaseEnabled)(
           tenantId: ids.tenant,
           companyId: ids.company,
           companyName: "Core Admin Race Company",
-          brandId: randomUUID(),
-          brandName: "Core Admin Race Brand",
-          locationId: randomUUID(),
-          locationName: "Core Admin Race Location",
-          locationType: "BRANCH",
+          brandId: "",
+          brandName: "Company-wide",
+          locationId: ids.location,
+          locationName: `Core Admin Race Head Office ${suffix}`,
+          locationType: "HEAD_OFFICE",
         },
         authorizedLocations: [],
         permissionCodes: [
@@ -319,14 +330,6 @@ describe.skipIf(!databaseEnabled)(
           },
         },
       });
-      const denialAuditsBefore = await prisma.auditEvent.count({
-        where: {
-          tenantId: ids.tenant,
-          entityId: ids.targetRole,
-          eventType: "privileged_mfa.required_denied",
-        },
-      });
-
       let releaseRole!: () => void;
       let signalRoleLocked!: () => void;
       const roleRelease = new Promise<void>((resolve) => {
@@ -460,20 +463,25 @@ describe.skipIf(!databaseEnabled)(
           },
         }),
       ).toBe(mutationAuditsBefore);
-      const denialAudits = await prisma.auditEvent.findMany({
+      const denialBuckets = await prisma.authorizationDenialBucket.findMany({
         where: {
           tenantId: ids.tenant,
-          entityId: ids.targetRole,
-          eventType: "privileged_mfa.required_denied",
+          companyId: ids.company,
+          locationId: ids.location,
+          actorUserId: ids.actor,
+          resource: "ADMINISTRATION",
+          action: "ADMINISTER",
+          reason: "MFA_REQUIRED",
         },
-        select: { afterData: true },
+        select: {
+          denialCount: true,
+          firstAuditEvent: { select: { eventType: true } },
+        },
       });
-      expect(denialAudits).toHaveLength(denialAuditsBefore + 1);
-      expect(denialAudits.at(-1)?.afterData).toMatchObject({
-        action: "role_permissions.update_sensitive",
-        outcome: "DENIED",
-        mode: "enforce_admin_security",
-      });
+      expect(denialBuckets).toEqual([{
+        denialCount: 1n,
+        firstAuditEvent: { eventType: "authorization.denial.first" },
+      }]);
     });
 
     it("rejects stale actor authority after the role-lock wait with no partial mutation", async () => {

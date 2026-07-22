@@ -23,7 +23,9 @@ import {
   listControlledEvidenceAttachments
 } from "@/server/services/attachments";
 import { permissions } from "@/server/services/authorization";
-import type { SessionContext } from "@/server/services/context";
+import { requireSessionContext, type SessionContext } from "@/server/services/context";
+import { canonicalApprovalDecisionsEnabled } from "@/server/services/approvalDecisionMode";
+import { routeSourceWorkspaceApprovalDecision } from "@/server/services/sourceApprovalDecisionBridge";
 import { canExportFinance } from "@/server/services/exportAuthorization";
 import {
   approveManualJournal,
@@ -201,13 +203,18 @@ function allowedApInvoiceActions(
 function allowedPaymentRequestActions(
   status: string,
   canCreatePaymentRequest: boolean,
-  canApprovePaymentRequest: boolean
+  canApprovePaymentRequest: boolean,
+  canonicalApprovalDecisions: boolean
 ) {
   const actions: Array<keyof typeof paymentRequestActionLabels> = [];
   if (["DRAFT", "RETURNED_FOR_REVISION"].includes(status) && canCreatePaymentRequest) {
     actions.push("submit");
   }
-  if (status === "AWAITING_APPROVAL" && canApprovePaymentRequest) {
+  if (
+    !canonicalApprovalDecisions &&
+    status === "AWAITING_APPROVAL" &&
+    canApprovePaymentRequest
+  ) {
     actions.push("approve", "reject");
   }
   if (
@@ -682,6 +689,8 @@ async function runPaymentRequestDraftAction(formData: FormData) {
 async function runPaymentRequestAction(formData: FormData) {
   "use server";
 
+  const session = await requireSessionContext();
+
   const paymentRequestId = requiredField(
     formData,
     "paymentRequestId",
@@ -704,10 +713,14 @@ async function runPaymentRequestAction(formData: FormData) {
       await submitPaymentRequest(baseInput);
       break;
     case "approve":
-      await approvePaymentRequest(baseInput);
+      if (!(await routeSourceWorkspaceApprovalDecision(session, { documentType: "PaymentRequest", documentId: paymentRequestId, action: "approve", remarks }))) {
+        await approvePaymentRequest(baseInput);
+      }
       break;
     case "reject":
-      await rejectPaymentRequest({ ...baseInput, reason });
+      if (!(await routeSourceWorkspaceApprovalDecision(session, { documentType: "PaymentRequest", documentId: paymentRequestId, action: "reject", remarks: reason ?? "" }))) {
+        await rejectPaymentRequest({ ...baseInput, reason });
+      }
       break;
     case "cancel":
       await cancelPaymentRequest({ ...baseInput, reason });
@@ -952,6 +965,7 @@ export async function FinanceSubworkspace({
   activePage?: string | number | undefined;
 }) {
   const Icon = kindIcon[kind];
+  const canonicalApprovalDecisions = canonicalApprovalDecisionsEnabled();
   const sourceRows =
     kind === "payables"
       ? dashboard.sourceChain
@@ -2704,7 +2718,8 @@ export async function FinanceSubworkspace({
                 const paymentRequestActions = allowedPaymentRequestActions(
                   row.status,
                   dashboard.permissions.canCreatePaymentRequest,
-                  dashboard.permissions.canApprovePaymentRequest
+                  dashboard.permissions.canApprovePaymentRequest,
+                  canonicalApprovalDecisions
                 );
                 return (
                   <div
@@ -2757,6 +2772,18 @@ export async function FinanceSubworkspace({
                       triggerLabel="Add Evidence"
                     />
                     <div className="flex flex-wrap justify-end gap-2">
+                      {canonicalApprovalDecisions &&
+                      row.status === "AWAITING_APPROVAL" ? (
+                        <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-right text-xs text-blue-900">
+                          Assigned step actors decide this payment request in the{" "}
+                          <Link className="font-bold underline" href="/approvals">
+                            Approval Inbox
+                          </Link>
+                          . Invoice eligibility is revalidated from server-owned AP
+                          invoice state; no invoice eligibility is accepted from this
+                          form.
+                        </div>
+                      ) : null}
                       {paymentRequestActions.length > 0 ? (
                         <EntryModal
                           title={`Manage ${row.publicReference}`}

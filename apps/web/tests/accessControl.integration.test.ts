@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import type { getConfiguredContext as getConfiguredContextType } from "../src/server/services/context";
 import type {
@@ -426,26 +426,57 @@ describe("database-backed access control", () => {
     });
     attachmentRoot = await mkdtemp(path.join(tmpdir(), "ogfi-authz-evidence-"));
     process.env.OGFI_PRIVATE_ATTACHMENT_ROOT = attachmentRoot;
-    const objectKey = path.posix.join(
-      "controlled-evidence",
-      ids.tenantId,
-      ids.attachmentId,
-      "evidence.txt",
-    );
+    process.env.APP_ENV = "test";
+    process.env.EVIDENCE_STORAGE_PROVIDER = "local-private";
+    process.env.EVIDENCE_LOCAL_STORAGE_ROOT = attachmentRoot;
+    process.env.EVIDENCE_LOCAL_SCAN_MODE = "explicit-test-clean";
+    const objectKey = `quarantine/${ids.attachmentId}`;
+    const objectVersionId = randomUUID();
     const evidenceBuffer = Buffer.from("authorized evidence");
-    const evidencePath = path.join(attachmentRoot, ...objectKey.split("/"));
-    await mkdir(path.dirname(evidencePath), { recursive: true });
-    await writeFile(evidencePath, evidenceBuffer);
+    const evidenceChecksum = createHash("sha256")
+      .update(evidenceBuffer)
+      .digest("base64");
+    const { readEvidenceStorageConfig } = await import(
+      "../src/server/services/evidenceStorageConfig"
+    );
+    const { createEvidenceStorageAdapters } = await import(
+      "../src/server/storage"
+    );
+    await createEvidenceStorageAdapters(
+      readEvidenceStorageConfig(),
+    ).objectStorage.writeExactVersion({
+      key: objectKey,
+      versionId: objectVersionId,
+      body: (async function* () {
+        yield evidenceBuffer;
+      })(),
+      contentType: "text/plain",
+      expectedSize: evidenceBuffer.byteLength,
+      expectedChecksumSha256Base64: evidenceChecksum,
+    });
     await prisma.attachment.create({
       data: {
         id: ids.attachmentId,
         tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        storageEnvironment: "LOCAL_DEVELOPMENT",
         storageProvider: "local-private",
         objectKey,
+        objectVersionId,
         originalFilename: "evidence.txt",
         mimeType: "text/plain",
+        detectedMimeType: "text/plain",
         sizeBytes: evidenceBuffer.byteLength,
-        checksum: `sha256:${createHash("sha256").update(evidenceBuffer).digest("hex")}`,
+        checksum: evidenceChecksum,
+        detectedChecksum: evidenceChecksum,
+        uploadState: "VERIFIED",
+        scanState: "CLEAN",
+        availabilityState: "AVAILABLE",
+        physicalState: "DURABLE",
+        scanVerifiedObjectVersionId: objectVersionId,
+        uploadVerifiedAt: new Date(),
+        scanCompletedAt: new Date(),
+        availableAt: new Date(),
         uploadedByUserId: ids.userId,
       },
     });
@@ -463,12 +494,25 @@ describe("database-backed access control", () => {
     });
   });
 
+  afterEach(async () => {
+    await prisma.userScopeAssignment.deleteMany({
+      where: {
+        userId: ids.userId,
+        scopeType: "LOCATION",
+        scopeId: ids.adjacentLocationId,
+      },
+    });
+  });
+
   afterAll(async () => {
     if (prisma) await prisma.$disconnect();
     if (attachmentRoot) {
       await rm(attachmentRoot, { recursive: true, force: true });
     }
     delete process.env.OGFI_PRIVATE_ATTACHMENT_ROOT;
+    delete process.env.EVIDENCE_STORAGE_PROVIDER;
+    delete process.env.EVIDENCE_LOCAL_STORAGE_ROOT;
+    delete process.env.EVIDENCE_LOCAL_SCAN_MODE;
   });
 
   it("recomputes active role permissions on the next authorization check", async () => {
@@ -665,7 +709,7 @@ describe("database-backed access control", () => {
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: ids.controlledEvidenceLinkId,
       }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_SOURCE_NOT_AVAILABLE");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
 
     await prisma.userScopeAssignment.create({
       data: {
@@ -689,31 +733,47 @@ describe("database-backed access control", () => {
         ids.projectLinkedExpenseId,
       ),
     ).resolves.toBeUndefined();
-    await expect(
-      downloadControlledEvidenceAttachmentForSession(session, {
+    const download = await downloadControlledEvidenceAttachmentForSession(
+      session,
+      {
         controlledEvidenceAttachmentId: ids.controlledEvidenceLinkId,
-      }),
-    ).resolves.toMatchObject({
+      },
+    );
+    expect(download).toMatchObject({
       originalFilename: "evidence.txt",
       mimeType: "text/plain",
       sizeBytes: 19,
     });
+    const downloadedChunks: Buffer[] = [];
+    for await (const chunk of download.body) {
+      downloadedChunks.push(Buffer.from(chunk));
+    }
+    expect(Buffer.concat(downloadedChunks).toString("utf8")).toBe(
+      "authorized evidence",
+    );
 
+    const mismatchedChecksum = Buffer.alloc(32, 1).toString("base64");
     await prisma.attachment.update({
       where: { id: ids.attachmentId },
-      data: { checksum: "sha256:invalid" },
+      data: {
+        checksum: mismatchedChecksum,
+        detectedChecksum: mismatchedChecksum,
+      },
     });
     await expect(
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: ids.controlledEvidenceLinkId,
       }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_CHECKSUM_MISMATCH");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
     await prisma.attachment.update({
       where: { id: ids.attachmentId },
       data: {
-        checksum: `sha256:${createHash("sha256")
+        checksum: createHash("sha256")
           .update(Buffer.from("authorized evidence"))
-          .digest("hex")}`,
+          .digest("base64"),
+        detectedChecksum: createHash("sha256")
+          .update(Buffer.from("authorized evidence"))
+          .digest("base64"),
         sizeBytes: 20,
       },
     });
@@ -721,7 +781,7 @@ describe("database-backed access control", () => {
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: ids.controlledEvidenceLinkId,
       }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_SIZE_MISMATCH");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
     await prisma.attachment.update({
       where: { id: ids.attachmentId },
       data: { sizeBytes: 19 },
@@ -734,7 +794,7 @@ describe("database-backed access control", () => {
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: ids.controlledEvidenceLinkId,
       }),
-    ).rejects.toThrow("PERMISSION_DENIED");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
     await prisma.rolePermission.create({
       data: { roleId: ids.roleId, permissionId: workforcePermissionId },
     });
@@ -751,7 +811,7 @@ describe("database-backed access control", () => {
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: ids.controlledEvidenceLinkId,
       }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
     await prisma.controlledEvidenceAttachment.update({
       where: { id: ids.controlledEvidenceLinkId },
       data: {
@@ -765,23 +825,31 @@ describe("database-backed access control", () => {
       downloadControlledEvidenceAttachmentForSession(session, {
         controlledEvidenceAttachmentId: randomUUID(),
       }),
-    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_LINK_NOT_FOUND");
+    ).rejects.toThrow("CONTROLLED_EVIDENCE_ATTACHMENT_NOT_AVAILABLE");
 
-    const downloadAudits = await prisma.auditEvent.findMany({
+    const denialBuckets = await prisma.authorizationDenialBucket.findMany({
       where: {
         tenantId: ids.tenantId,
         actorUserId: ids.userId,
-        eventType: {
-          in: [
-            "controlled_evidence_attachment.downloaded",
-            "controlled_evidence_attachment.denied",
-          ],
-        },
+        resource: "EVIDENCE",
       },
-      select: { eventType: true },
+      select: { denialCount: true },
     });
-    expect(downloadAudits.filter((event) => event.eventType.endsWith(".denied"))).toHaveLength(6);
-    expect(downloadAudits.filter((event) => event.eventType.endsWith(".downloaded"))).toHaveLength(1);
+    expect(
+      denialBuckets.reduce(
+        (total, bucket) => total + bucket.denialCount,
+        0n,
+      ),
+    ).toBe(6n);
+    await expect(
+      prisma.auditEvent.count({
+        where: {
+          tenantId: ids.tenantId,
+          actorUserId: ids.userId,
+          eventType: "controlled_evidence_attachment.downloaded",
+        },
+      }),
+    ).resolves.toBe(1);
     await prisma.userScopeAssignment.deleteMany({
       where: {
         userId: ids.userId,

@@ -7,12 +7,16 @@ import {
   requirePermission,
 } from "./authorization";
 import type { SessionContext } from "./context";
+import { assertLegacyApprovalDecisionAllowed } from "./approvalDecisionMode";
+import { terminatePendingApprovalForCancellation } from "./approvalCancellation";
 import {
   recordWorkflowNotifications,
 } from "./notifications";
 import {
+  activateApprovalStepWithEligibility,
   assertAnyEligibleApprovalActorForStep,
   configureApprovalStepRouting,
+  normalizedApprovalRoutingEnabled,
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { getBudgetSourceHookPolicy } from "./policySettings";
@@ -2167,10 +2171,14 @@ export async function submitBudgetRevisionForReview(
     if (existingApproval) {
       throw new Error("BUDGET_REVISION_ALREADY_SUBMITTED");
     }
+    const useNormalizedRouting = normalizedApprovalRoutingEnabled();
     const routedSteps = approvalRule.steps.map((step, index) => ({
       ...step,
       approvalInstanceStepId: randomUUID(),
-      activationStatus: index === 0 ? "PENDING" as const : "WAITING" as const,
+      activationStatus:
+        index === 0 && !useNormalizedRouting
+          ? "PENDING" as const
+          : "WAITING" as const,
     }));
     const firstRoutedStep = routedSteps[0];
     if (!firstRoutedStep) {
@@ -2211,7 +2219,7 @@ export async function submitBudgetRevisionForReview(
         companyId: session.context.companyId,
         routingPolicy: getApprovalRoutingPolicy("BudgetRevision"),
         requiredPermissionCode: permissions.financeBudgetApprove,
-        dueAt: revision.effectiveFrom ?? null,
+        dueAt: useNormalizedRouting ? null : revision.effectiveFrom ?? null,
         activationAudit: {
           actorUserId: session.user.id,
           source: "budget_revision.submit",
@@ -2233,11 +2241,13 @@ export async function submitBudgetRevisionForReview(
         prohibitedActors,
       });
     }
-    await assertAnyEligibleApprovalActorForStep(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
-    });
+    if (!useNormalizedRouting) {
+      await assertAnyEligibleApprovalActorForStep(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+      });
+    }
     const updated = await tx.budgetRevision.update({
       where: { id: revision.id },
       data: { status: "SUBMITTED" },
@@ -2258,10 +2268,11 @@ export async function submitBudgetRevisionForReview(
         idempotencyKey: input.idempotencyKey ?? null,
         budgetMutationDeferred: true,
         lineMutationDeferred: true,
+        commitmentFitReviewPending: useNormalizedRouting,
       },
     });
     const locationId = budgetApprovalLocationId(revision.budget);
-    if (firstStep.userId) await recordWorkflowNotifications(tx, {
+    if (!useNormalizedRouting && firstStep.userId) await recordWorkflowNotifications(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       locationId,
@@ -2298,22 +2309,101 @@ export async function startBudgetRevisionReview(
   }
   await requirePermission(session, permissions.financeBudgetCommitmentReview);
   return prisma.$transaction(async (tx) => {
+    const lockedRevision = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT revision.id
+      FROM "BudgetRevision" AS revision
+      WHERE revision.id = ${input.budgetRevisionId}::uuid
+        AND revision."tenantId" = ${session.context.tenantId}::uuid
+        AND revision."companyId" = ${session.context.companyId}::uuid
+      FOR UPDATE
+    `;
+    if (lockedRevision.length !== 1) {
+      throw new Error("BUDGET_REVISION_NOT_FOUND");
+    }
     const revision = await getScopedBudgetRevisionOrThrow(
       tx,
       session,
       input.budgetRevisionId,
     );
+    const useNormalizedRouting = normalizedApprovalRoutingEnabled();
+    const approvals = await tx.approvalInstance.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "BudgetRevision",
+        documentId: revision.id,
+        status: "PENDING",
+      },
+      include: {
+        steps: {
+          orderBy: { stepOrder: "asc" },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 2,
+    });
+    if (approvals.length !== 1) {
+      throw new Error(
+        approvals.length === 0
+          ? "BUDGET_REVISION_APPROVAL_NOT_FOUND"
+          : "BUDGET_REVISION_APPROVAL_AMBIGUOUS",
+      );
+    }
+    const approval = approvals[0]!;
+    const firstStep = approval.steps.find(
+      (step) => step.stepOrder === approval.currentStepOrder,
+    );
+    if (!firstStep) {
+      throw new Error("BUDGET_REVISION_APPROVAL_STEP_NOT_FOUND");
+    }
     if (revision.status === "UNDER_REVIEW") {
+      if (useNormalizedRouting && firstStep.status !== "PENDING") {
+        throw new Error("BUDGET_REVISION_REVIEW_ACTIVATION_INCOMPLETE");
+      }
       return revision;
     }
     assertBudgetRevisionTransition({
       transition: "start_review",
       status: revision.status,
     });
-    const updated = await tx.budgetRevision.update({
-      where: { id: revision.id },
+    if (useNormalizedRouting) {
+      if (firstStep.status !== "WAITING") {
+        throw new Error("BUDGET_REVISION_APPROVAL_STEP_NOT_WAITING");
+      }
+      await activateApprovalStepWithEligibility(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceStepId: firstStep.id,
+        dueAt: revision.effectiveFrom ?? null,
+        activationAudit: {
+          actorUserId: session.user.id,
+          source: "budget_revision.commitment_fit_review",
+          metadata: {
+            approvalInstanceId: approval.id,
+            budgetRevisionId: revision.id,
+          },
+        },
+      });
+    } else if (firstStep.status !== "PENDING") {
+      throw new Error("BUDGET_REVISION_APPROVAL_STEP_NOT_ACTIONABLE");
+    }
+    const sourceUpdate = await tx.budgetRevision.updateMany({
+      where: {
+        id: revision.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "SUBMITTED",
+      },
       data: { status: "UNDER_REVIEW" },
     });
+    if (sourceUpdate.count !== 1) {
+      throw new Error("BUDGET_REVISION_REVIEW_CONFLICT");
+    }
+    const updated = await getScopedBudgetRevisionOrThrow(
+      tx,
+      session,
+      revision.id,
+    );
     await writeBudgetAudit(tx, {
       session,
       budgetId: revision.budgetId,
@@ -2326,10 +2416,36 @@ export async function startBudgetRevisionReview(
         revisionId: revision.id,
         revisionNumber: revision.revisionNumber,
         reviewedForCommitmentFit: true,
+        approvalInstanceId: approval.id,
+        activatedApprovalStepId: firstStep.id,
         budgetMutationDeferred: true,
         lineMutationDeferred: true,
       },
     });
+    if (useNormalizedRouting && firstStep.assignedUserId) {
+      await recordWorkflowNotifications(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: budgetApprovalLocationId(revision.budget),
+        recipientUserIds: [firstStep.assignedUserId],
+        notificationType: "APPROVE_BUDGET_REVISION",
+        priority: "NORMAL",
+        title: `Approve Budget Revision ${revision.budget.publicReference} R${revision.revisionNumber}`,
+        body: `${session.user.displayName} completed commitment-fit review for ${revision.budget.name}.`,
+        deepLink: `/approvals/${approval.id}`,
+        entityType: "BudgetRevision",
+        entityId: revision.id,
+        sourceEventKey: `budget-revision:${revision.id}:review-started`,
+        recipientBasis: "assigned_user",
+        metadata: {
+          approvalInstanceId: approval.id,
+          approvalStepOrder: firstStep.stepOrder,
+          commitmentFitReviewCompleted: true,
+          budgetMutationDeferred: true,
+          lineMutationDeferred: true,
+        },
+      });
+    }
     return updated;
   });
 }
@@ -2342,6 +2458,7 @@ export async function approveBudgetRevision(
     throw new Error("PERMISSION_DENIED");
   }
   await requirePermission(session, permissions.financeBudgetApprove);
+  assertLegacyApprovalDecisionAllowed();
   return prisma.$transaction(async (tx) => {
     const revision = await getScopedBudgetRevisionOrThrow(
       tx,
@@ -2406,6 +2523,7 @@ export async function rejectBudgetRevision(
     throw new Error("PERMISSION_DENIED");
   }
   await requirePermission(session, permissions.financeBudgetApprove);
+  assertLegacyApprovalDecisionAllowed();
   assertReason(input.reason, "BUDGET_REVISION_REJECTION_REASON_REQUIRED");
   return prisma.$transaction(async (tx) => {
     const revision = await getScopedBudgetRevisionOrThrow(
@@ -2457,6 +2575,17 @@ export async function cancelBudgetRevision(
   await requirePermission(session, permissions.financeBudgetManage);
   assertReason(input.reason, "BUDGET_REVISION_CANCELLATION_REASON_REQUIRED");
   return prisma.$transaction(async (tx) => {
+    const lockedRevision = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT revision.id
+      FROM "BudgetRevision" AS revision
+      WHERE revision.id = ${input.budgetRevisionId}::uuid
+        AND revision."tenantId" = ${session.context.tenantId}::uuid
+        AND revision."companyId" = ${session.context.companyId}::uuid
+      FOR UPDATE
+    `;
+    if (lockedRevision.length !== 1) {
+      throw new Error("BUDGET_REVISION_NOT_FOUND");
+    }
     const revision = await getScopedBudgetRevisionOrThrow(
       tx,
       session,
@@ -2469,9 +2598,33 @@ export async function cancelBudgetRevision(
       transition: "cancel",
       status: revision.status,
     });
-    const updated = await tx.budgetRevision.update({
-      where: { id: revision.id },
+    const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "BudgetRevision",
+      documentId: revision.id,
+      policy: ["SUBMITTED", "UNDER_REVIEW"].includes(revision.status)
+        ? "APPROVAL_REQUIRED"
+        : "APPROVAL_OPTIONAL",
+    });
+    const sourceUpdate = await tx.budgetRevision.updateMany({
+      where: {
+        id: revision.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: revision.status,
+      },
       data: { status: "CANCELLED" },
+    });
+    if (sourceUpdate.count !== 1) {
+      throw new Error("BUDGET_REVISION_CANCELLATION_CONFLICT");
+    }
+    const updated = await tx.budgetRevision.findFirstOrThrow({
+      where: {
+        id: revision.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+      },
     });
     await writeBudgetAudit(tx, {
       session,
@@ -2486,6 +2639,8 @@ export async function cancelBudgetRevision(
         revisionNumber: revision.revisionNumber,
         budgetMutationDeferred: true,
         lineMutationDeferred: true,
+        approvalTerminationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId,
       },
     });
     return updated;

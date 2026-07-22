@@ -51,7 +51,6 @@ describe("procurement and inventory authorization boundaries", () => {
     adjacentPurchaseRequestId: randomUUID(),
     approvedPurchaseRequestId: randomUUID(),
     approveDispatchApprovalId: randomUUID(),
-    rejectDispatchApprovalId: randomUUID(),
     multiStepApprovalId: randomUUID(),
     recipientRevocationApprovalId: randomUUID(),
     requesterOnlyNextStepApprovalId: randomUUID(),
@@ -579,16 +578,6 @@ describe("procurement and inventory authorization boundaries", () => {
           currentStepOrder: 1,
         },
         {
-          id: ids.rejectDispatchApprovalId,
-          tenantId: ids.tenantId,
-          companyId: ids.companyId,
-          documentType: "PurchaseRequest",
-          documentId: ids.scopedPurchaseRequestId,
-          approvalRuleId: ids.approvalRuleId,
-          status: "PENDING",
-          currentStepOrder: 1,
-        },
-        {
           id: ids.multiStepApprovalId,
           tenantId: ids.tenantId,
           companyId: ids.companyId,
@@ -674,12 +663,6 @@ describe("procurement and inventory authorization boundaries", () => {
       data: [
         {
           approvalInstanceId: ids.approveDispatchApprovalId,
-          stepOrder: 1,
-          assignedUserId: ids.userId,
-          status: "PENDING",
-        },
-        {
-          approvalInstanceId: ids.rejectDispatchApprovalId,
           stepOrder: 1,
           assignedUserId: ids.userId,
           status: "PENDING",
@@ -1078,7 +1061,7 @@ describe("procurement and inventory authorization boundaries", () => {
     await expect(
       approvals.rejectApproval(
         form({
-          approvalInstanceId: ids.rejectDispatchApprovalId,
+          approvalInstanceId: ids.approveDispatchApprovalId,
           remarks: "Authorization rejection test",
         }),
       ),
@@ -1288,12 +1271,19 @@ describe("procurement and inventory authorization boundaries", () => {
     const beforeLinks = await prisma.controlledEvidenceAttachment.count({
       where: { tenantId: ids.tenantId },
     });
-    const beforeDenials = await prisma.auditEvent.count({
-      where: {
-        tenantId: ids.tenantId,
-        eventType: "controlled_evidence_attachment.denied",
-      },
-    });
+    const denialWhere = {
+      tenantId: ids.tenantId,
+      companyId: ids.companyId,
+      locationId: ids.locationId,
+      actorUserId: ids.userId,
+      subjectType: "ACTOR" as const,
+      action: "CREATE" as const,
+      reason: "PERMISSION_MISSING" as const,
+      resource: "EVIDENCE" as const,
+    };
+    expect(
+      await prisma.authorizationDenialBucket.count({ where: denialWhere }),
+    ).toBe(0);
     await expect(
       attachments.linkControlledEvidenceAttachment({
         sourceType: "EXPENSE_REQUEST",
@@ -1308,14 +1298,31 @@ describe("procurement and inventory authorization boundaries", () => {
         where: { tenantId: ids.tenantId },
       }),
     ).toBe(beforeLinks);
-    expect(
-      await prisma.auditEvent.count({
-        where: {
-          tenantId: ids.tenantId,
-          eventType: "controlled_evidence_attachment.denied",
+    const denialBuckets = await prisma.authorizationDenialBucket.findMany({
+      where: denialWhere,
+      select: {
+        id: true,
+        denialCount: true,
+        firstAuditEventId: true,
+        firstAuditEvent: {
+          select: { id: true, eventType: true, entityType: true, entityId: true },
         },
-      }),
-    ).toBe(beforeDenials + 1);
+      },
+    });
+    expect(denialBuckets).toHaveLength(1);
+    expect(denialBuckets[0]).toMatchObject({
+      denialCount: 1n,
+      firstAuditEvent: {
+        eventType: "authorization.denial.first",
+        entityType: "AuthorizationDenialBucket",
+      },
+    });
+    expect(denialBuckets[0]?.firstAuditEventId).toBe(
+      denialBuckets[0]?.firstAuditEvent.id,
+    );
+    expect(denialBuckets[0]?.firstAuditEvent.entityId).toBe(
+      denialBuckets[0]?.id,
+    );
   });
 
   it("AUTHZ-PI-PURCHASE-REQUEST-COMMENT-WRONG-LOCATION-NO-MUTATION", async () => {
@@ -1345,7 +1352,7 @@ describe("procurement and inventory authorization boundaries", () => {
       await expect(
         approvals.rejectApproval(
           form({
-            approvalInstanceId: ids.rejectDispatchApprovalId,
+            approvalInstanceId: ids.approveDispatchApprovalId,
             remarks: "Authorization self rejection",
           }),
         ),
@@ -1451,7 +1458,7 @@ describe("procurement and inventory authorization boundaries", () => {
     }
   });
 
-  it("AUTHZ-PI-MIXED-NEXT-ROLE-EXCLUDES-REQUESTER-AND-NOTIFIES-NON-REQUESTER", async () => {
+  it("AUTHZ-PI-MIXED-NEXT-ROLE-EXCLUDES-REQUESTER-WITHOUT-NOTIFICATION-FANOUT", async () => {
     const approvals = await import("../src/server/services/approvals");
     const revoke = await grantPermission("purchasing.purchase_request.approve");
     try {
@@ -1483,9 +1490,7 @@ describe("procurement and inventory authorization boundaries", () => {
         status: "PENDING_APPROVAL",
         currentApprovalStep: 2,
       });
-      expect(notifications.map(({ recipientUserId }) => recipientUserId)).toEqual([
-        ids.nextApproverId,
-      ]);
+      expect(notifications).toHaveLength(0);
     } finally {
       await revoke();
     }

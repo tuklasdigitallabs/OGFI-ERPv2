@@ -1109,6 +1109,42 @@ describe("controlled evidence database authorization matrix", () => {
         eventType: "controlled_evidence_attachment.denied",
       },
     });
+    const denialWhere = {
+      tenantId: ids.tenant,
+      companyId: ids.company,
+      locationId: ids.location,
+      actorUserId: ids.user,
+      subjectType: "ACTOR" as const,
+      resource: "EVIDENCE" as const,
+    };
+    const denialCounts = async () => {
+      const buckets = await prisma.authorizationDenialBucket.findMany({
+        where: denialWhere,
+        select: {
+          id: true,
+          action: true,
+          reason: true,
+          denialCount: true,
+          firstAuditEventId: true,
+          firstAuditEvent: {
+            select: {
+              id: true,
+              eventType: true,
+              entityType: true,
+              entityId: true,
+              metadata: true,
+            },
+          },
+        },
+      });
+      const counts = new Map<string, bigint>();
+      for (const bucket of buckets) {
+        const key = `${bucket.action}:${bucket.reason}`;
+        counts.set(key, (counts.get(key) ?? 0n) + bucket.denialCount);
+      }
+      return { buckets, counts };
+    };
+    const boundedDenialsBefore = await denialCounts();
 
     await prisma.rolePermission.deleteMany({
       where: { roleId: ids.role, permissionId: periodClosePermission.id },
@@ -1205,7 +1241,29 @@ describe("controlled evidence database authorization matrix", () => {
           eventType: "controlled_evidence_attachment.denied",
         },
       }),
-    ).toBe(denialsBefore + 7);
+    ).toBe(denialsBefore);
+    const boundedDenialsAfter = await denialCounts();
+    const denialDelta = (key: string) =>
+      (boundedDenialsAfter.counts.get(key) ?? 0n) -
+      (boundedDenialsBefore.counts.get(key) ?? 0n);
+    expect(denialDelta("READ:PERMISSION_MISSING")).toBe(2n);
+    expect(denialDelta("CREATE:PERMISSION_MISSING")).toBe(3n);
+    expect(denialDelta("DELETE:PERMISSION_MISSING")).toBe(1n);
+    expect(denialDelta("DELETE:RESOURCE_HIDDEN")).toBe(1n);
+    for (const bucket of boundedDenialsAfter.buckets) {
+      expect(bucket.firstAuditEvent).toMatchObject({
+        eventType: "authorization.denial.first",
+        entityType: "AuthorizationDenialBucket",
+        entityId: bucket.id,
+        metadata: expect.objectContaining({
+          action: bucket.action,
+          reason: bucket.reason,
+          resource: "EVIDENCE",
+          sourceDecisionId: "DEC-0050",
+        }),
+      });
+      expect(bucket.firstAuditEventId).toBe(bucket.firstAuditEvent.id);
+    }
     expect(await prisma.financeCloseRun.findUniqueOrThrow({ where: { id: sourceRecordId } })).toEqual(sourceBefore);
     await prisma.rolePermission.create({
       data: { roleId: ids.role, permissionId: periodClosePermission.id },

@@ -68,6 +68,24 @@ describe("normalized approval routing controls", () => {
     expect(migration).toContain("AND \"eventType\" = 'approval.step_activated'");
   });
 
+  test("assigns a deferred deadline only inside the guarded activation transition", () => {
+    const source = readFileSync(
+      path.resolve(__dirname, "approvalRouting.ts"),
+      "utf8"
+    );
+    const migration = readFileSync(
+      path.resolve(
+        __dirname,
+        "../../../../../packages/database/prisma/migrations/20260722230000_budget_revision_atomic_step_activation/migration.sql"
+      ),
+      "utf8"
+    );
+    expect(source).toContain("...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {})");
+    expect(migration).toContain("is_activation_transition BOOLEAN := false");
+    expect(migration).toContain("AND NOT (is_activation_transition AND OLD.\"dueAt\" IS NULL)");
+    expect(migration).toContain("AND NOT is_activation_transition");
+  });
+
   test("runtime gate is instance-rooted and rejects every incomplete pending workflow", () => {
     const source = readFileSync(
       path.resolve(__dirname, "approvalRouting.ts"),
@@ -76,7 +94,8 @@ describe("normalized approval routing controls", () => {
     expect(source).toContain("APPROVAL_ROUTING_BACKFILL_REQUIRED");
     expect(source).toContain('FROM "ApprovalInstance" ai');
     expect(source).toContain('ai."currentStepOrder" IS NULL');
-    expect(source).toContain('SELECT count(*)\n             FROM "ApprovalInstanceStep" step');
+    expect(source).toContain('SELECT count(*)');
+    expect(source).toContain('FROM "ApprovalInstanceStep" step');
     expect(source).toContain("AND step.status = 'PENDING'::\"ApprovalStepStatus\"");
     expect(source).toContain('step."stepOrder" = ai."currentStepOrder"');
     expect(source).toContain('num_nonnulls(step."assignedUserId", step."assignedRoleId") <> 1');
@@ -84,11 +103,14 @@ describe("normalized approval routing controls", () => {
     expect(source).toContain('step."routingSchemaVersion" <> ${APPROVAL_ROUTING_SCHEMA_VERSION}');
     expect(source).toContain('step."requiredPermissionId" IS NULL');
     expect(source).toContain("step.status NOT IN (");
-    expect(source).toContain("AND step.status <> 'WAITING'::\"ApprovalStepStatus\"");
+    expect(source).toContain("step.status <> 'WAITING'::\"ApprovalStepStatus\"");
     expect(source).toContain('step."activatedAt" IS NULL');
     expect(source).toContain('step."activatedAt" IS NOT NULL');
     expect(source).toContain('FROM "ApprovalInstanceStepScopeGroup" scope_group');
     expect(source).toContain('FROM "ApprovalInstanceStepScopeTarget" target');
+    expect(source).toContain('AS "isBudgetRevisionPreReview"');
+    expect(source).toContain("revision.status = 'SUBMITTED'::\"BudgetRevisionStatus\"");
+    expect(source).toContain("revision.status = 'UNDER_REVIEW'::\"BudgetRevisionStatus\"");
   });
 
   test("runtime gate uses only the supplied client and never invokes operator inspection", async () => {

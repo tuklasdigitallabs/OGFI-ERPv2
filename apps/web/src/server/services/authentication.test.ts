@@ -410,6 +410,46 @@ describe("authentication integration contracts", () => {
     expect(source).not.toContain("authLoginAttempt.count");
   });
 
+  it("uses the user epoch as the lock-order boundary for MFA finalization and reset", () => {
+    const source = readFileSync(path.resolve(__dirname, "authentication.ts"), "utf8");
+    const lockStart = source.indexOf("async function lockAndReloadSessionTransition");
+    const lockEnd = source.indexOf(
+      "async function lockAndReloadExactMfaAuthenticator",
+      lockStart,
+    );
+    const lockFlow = source.slice(lockStart, lockEnd);
+    expect(lockFlow.indexOf('FROM "Tenant"')).toBeLessThan(
+      lockFlow.indexOf('FROM "User"'),
+    );
+    expect(lockFlow.indexOf('FROM "User"')).toBeLessThan(
+      lockFlow.indexOf('FROM "AuthSession"'),
+    );
+
+    const enrollmentStart = source.indexOf("export async function completeMfaEnrollment");
+    const enrollmentEnd = source.indexOf(
+      "export async function issueAccountActivationInTransaction",
+      enrollmentStart,
+    );
+    const enrollmentFlow = source.slice(enrollmentStart, enrollmentEnd);
+    expect(enrollmentFlow.indexOf("lockAndReloadSessionTransition(")).toBeLessThan(
+      enrollmentFlow.indexOf("lockAndReloadExactMfaAuthenticator("),
+    );
+
+    const adminSource = readFileSync(
+      path.resolve(__dirname, "authenticationAdmin.ts"),
+      "utf8",
+    );
+    const recoveryStart = adminSource.indexOf("export async function approveAuthRecovery");
+    const recoveryEnd = adminSource.indexOf(
+      "export async function rejectAuthRecovery",
+      recoveryStart,
+    );
+    const recoveryFlow = adminSource.slice(recoveryStart, recoveryEnd);
+    expect(recoveryFlow.indexOf("touchUserPrivilegeEpoch(")).toBeLessThan(
+      recoveryFlow.indexOf("tx.mfaAuthenticator.updateMany("),
+    );
+  });
+
   it("defines additive credential, MFA, session, and activation records", () => {
     const schema = readFileSync(
       path.resolve(

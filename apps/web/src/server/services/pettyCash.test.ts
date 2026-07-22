@@ -182,8 +182,8 @@ describe("petty cash foundation", () => {
   it("creates source-linked petty-cash disbursement handoffs without settlement side effects", () => {
     expect(schemaSource).toContain("pettyCashRequestId   String?");
     expect(schemaSource).toContain("pettyCashRequest     PettyCashRequest?");
-    expect(schemaSource).toContain(
-      "disbursementRequests NonSupplierDisbursementRequest[]"
+    expect(schemaSource).toMatch(
+      /disbursementRequests\s+NonSupplierDisbursementRequest\[\]/,
     );
     expect(serviceSource).toContain("createPettyCashDisbursementHandoff");
     expect(serviceSource).toContain("permissions.financeDisbursementCreate");

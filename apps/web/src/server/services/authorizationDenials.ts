@@ -51,6 +51,11 @@ export type SessionAuthorizationDenialInput = Omit<
 >;
 type TransactionHost = Pick<typeof prisma, "$transaction">;
 
+const denialTransactionOptions = {
+  maxWait: 10_000,
+  timeout: 10_000
+} as const;
+
 type BucketRow = {
   id: string;
   tenantId: string;
@@ -237,11 +242,12 @@ export async function recordAuthorizationDenial(
   options: { now?: Date; client?: TransactionHost } = {}
 ): Promise<AuthorizationDenialRecordResult> {
   denialInputSchema.parse(rawInput);
-  return (options.client ?? prisma).$transaction((tx) =>
-    recordAuthorizationDenialInTransaction(rawInput, {
+  return (options.client ?? prisma).$transaction(
+    (tx) => recordAuthorizationDenialInTransaction(rawInput, {
       client: tx,
       ...(options.now ? { now: options.now } : {})
-    })
+    }),
+    denialTransactionOptions
   );
 }
 
@@ -400,7 +406,8 @@ export async function finalizeExpiredAuthorizationDenialBuckets(
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) {
     throw new Error("AUTHORIZATION_DENIAL_FINALIZER_BATCH_INVALID");
   }
-  return (options.client ?? prisma).$transaction((tx) =>
-    finalizeRows(tx, options.now ?? new Date(), batchSize)
+  return (options.client ?? prisma).$transaction(
+    (tx) => finalizeRows(tx, options.now ?? new Date(), batchSize),
+    denialTransactionOptions
   );
 }

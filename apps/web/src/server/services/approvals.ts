@@ -7,7 +7,11 @@ import {
   requirePermission
 } from "./authorization";
 import { requireSessionContext, type SessionContext } from "./context";
-import { recordWorkflowNotifications } from "./notifications";
+import {
+  recordApprovalOutcomeNotification as recordSharedApprovalOutcomeNotification,
+  recordApprovalStepReadyNotification,
+  recordWorkflowNotifications
+} from "./notifications";
 import {
   approveFinanceCloseRunApproval,
   rejectFinanceCloseRunApproval
@@ -33,6 +37,21 @@ import {
   prepareNormalizedApprovalDecisionPreflight,
   type NormalizedApprovalDecisionPreflight
 } from "./approvalRouting";
+import { skipFutureApprovalStepsForTerminalDecision } from "./approvalTerminal";
+import { approveExpenseRequestInTransaction } from "./expenseRequests";
+import {
+  approvePettyCashRequestInTransaction,
+  validatePettyCashApprovalInTransaction
+} from "./pettyCash";
+import {
+  approvalDecisionCommandToFormData,
+  parseCanonicalApprovalDecisionCommand,
+  type CanonicalApprovalDecisionCommand
+} from "./approvalDecisionCommands";
+import {
+  assertAuthoritativeApprovalEvidence,
+  assertPaymentRequestApprovalPolicyConfirmed
+} from "./approvalDecisionMode";
 
 export type ApprovalQueueItem = {
   approvalInstanceId: string;
@@ -213,12 +232,48 @@ function decimalInputToNumber(value: unknown) {
 
 const decisionSchema = z.object({
   approvalInstanceId: z.string().uuid(),
-  remarks: z.string().max(1000).optional()
+  remarks: z.string().max(1000).optional(),
+  evidenceReference: z.string().max(1000).optional()
+});
+
+const pettyCashDecisionSchema = decisionSchema.extend({
+  approvedAmountPhp: z.coerce.number().finite().optional()
 });
 
 const remarksRequiredSchema = decisionSchema.extend({
   remarks: z.string().min(3).max(1000)
 });
+
+export async function executeCanonicalApprovalDecision(input: unknown) {
+  const command = parseCanonicalApprovalDecisionCommand(input);
+  const session = await requireSessionContext();
+  const approval = await prisma.approvalInstance.findFirst({
+    where: {
+      id: command.approvalInstanceId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "PENDING"
+    },
+    select: { documentType: true }
+  });
+  if (!approval) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  if (approval.documentType !== command.family) {
+    throw new Error("APPROVAL_COMMAND_FAMILY_MISMATCH");
+  }
+  if (command.family === "PaymentRequest" && command.decision === "APPROVE") {
+    assertPaymentRequestApprovalPolicyConfirmed();
+  }
+  const formData = approvalDecisionCommandToFormData(command);
+  if (command.decision === "APPROVE") {
+    return approveApproval(formData);
+  }
+  if (command.decision === "RETURN") {
+    return returnApproval(formData);
+  }
+  return rejectApproval(formData);
+}
+
+export type { CanonicalApprovalDecisionCommand };
 
 export function assertNotSelfApproval(requesterUserId: string, actorUserId: string) {
   if (requesterUserId === actorUserId) {
@@ -600,40 +655,37 @@ async function recordApprovalOutcomeNotification(
   input: ApprovalStepAdvanceInput,
   outcome: "APPROVED" | "RETURNED" | "REJECTED"
 ) {
-  const outcomeLabel = outcome.toLowerCase();
-  await recordWorkflowNotifications(tx, {
+  await recordSharedApprovalOutcomeNotification(tx, {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     locationId: input.locationId,
+    approvalInstanceId: input.approvalId,
     recipientUserIds: input.notification.recipientUserIds,
-    notificationType: `APPROVAL_OUTCOME_${outcome}`,
-    priority: outcome === "REJECTED" ? "HIGH" : "NORMAL",
-    title: `${input.notification.publicReference} ${outcomeLabel}`,
-    body: `${input.notification.entityLabel} ${input.notification.publicReference} at ${input.notification.locationName} was ${outcomeLabel}.`,
-    deepLink: `/approvals/${input.approvalId}`,
+    publicReference: input.notification.publicReference,
+    locationName: input.notification.locationName,
+    entityLabel: input.notification.entityLabel,
     entityType: input.audit.entityType,
     entityId: input.audit.entityId,
-    sourceEventKey: `approval:${input.approvalId}:outcome:${outcome}`,
-    recipientBasis: "requester_or_owner",
-    metadata: {
-      approvalInstanceId: input.approvalId,
-      publicReference: input.notification.publicReference,
-      locationName: input.notification.locationName,
-      outcome
-    }
+    outcome
   });
 }
 
 async function activateNextApprovalStep(
   tx: TransactionClient,
   session: SessionContext,
-  input: { approvalInstanceId: string; approvalInstanceStepId: string; source: string }
+  input: {
+    approvalInstanceId: string;
+    approvalInstanceStepId: string;
+    source: string;
+    dueAt?: Date | null;
+  }
 ) {
   if (normalizedApprovalRoutingEnabled()) {
     await activateApprovalStepWithEligibility(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       approvalInstanceStepId: input.approvalInstanceStepId,
+      ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
       activationAudit: {
         actorUserId: session.user.id,
         source: input.source,
@@ -719,15 +771,172 @@ async function decideSpecializedCurrentApprovalStep(
   if (updated.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
 }
 
+type SpecializedApprovalNotificationDescriptor = {
+  locationId: string | null;
+  recipientUserIds: string[];
+  publicReference: string;
+  locationName: string;
+  entityLabel: string;
+  entityType: string;
+  entityId: string;
+};
+
+function uniqueRecipientUserIds(...userIds: Array<string | null | undefined>) {
+  return [...new Set(userIds.filter((userId): userId is string => Boolean(userId)))];
+}
+
+async function loadSpecializedApprovalNotificationDescriptor(
+  tx: TransactionClient,
+  session: SessionContext,
+  approvalInstanceId: string
+): Promise<SpecializedApprovalNotificationDescriptor> {
+  const approval = await tx.approvalInstance.findFirst({
+    where: {
+      id: approvalInstanceId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId
+    },
+    select: { documentType: true, documentId: true }
+  });
+  if (!approval) throw new Error("APPROVAL_NOT_ACTIONABLE");
+
+  if (approval.documentType === "BudgetRevision") {
+    const revision = await tx.budgetRevision.findFirst({
+      where: {
+        id: approval.documentId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
+      },
+      include: {
+        budget: {
+          include: {
+            location: true,
+            lines: { include: { location: true }, orderBy: { lineNumber: "asc" } }
+          }
+        }
+      }
+    });
+    if (!revision) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return {
+      locationId:
+        revision.budget.locationId ??
+        revision.budget.lines.find((line) => line.locationId)?.locationId ??
+        null,
+      recipientUserIds: uniqueRecipientUserIds(
+        revision.requestedByUserId,
+        revision.budget.ownerUserId
+      ),
+      publicReference: `${revision.budget.publicReference} R${revision.revisionNumber}`,
+      locationName: budgetLocationLabel(revision.budget),
+      entityLabel: "Budget revision",
+      entityType: "BudgetRevision",
+      entityId: revision.id
+    };
+  }
+
+  if (approval.documentType === "ExpenseRequest") {
+    const request = await tx.expenseRequest.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { location: true }
+    });
+    if (!request) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: request.locationId, recipientUserIds: [request.requestedByUserId], publicReference: request.publicReference, locationName: request.location.name, entityLabel: "Expense request", entityType: "ExpenseRequest", entityId: request.id };
+  }
+
+  if (approval.documentType === "CashAdvanceRequest") {
+    const request = await tx.cashAdvanceRequest.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { location: true }
+    });
+    if (!request) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: request.locationId, recipientUserIds: [request.requestedByUserId], publicReference: request.publicReference, locationName: request.location.name, entityLabel: "Cash advance request", entityType: "CashAdvanceRequest", entityId: request.id };
+  }
+
+  if (approval.documentType === "PettyCashRequest") {
+    const request = await tx.pettyCashRequest.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { fund: { include: { location: true } } }
+    });
+    if (!request) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: request.fund.locationId, recipientUserIds: [request.requestedByUserId], publicReference: request.publicReference, locationName: request.fund.location.name, entityLabel: "Petty cash request", entityType: "PettyCashRequest", entityId: request.id };
+  }
+
+  if (approval.documentType === "PaymentRequest") {
+    const request = await tx.paymentRequest.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { location: true }
+    });
+    if (!request) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: request.locationId, recipientUserIds: [request.requestedByUserId], publicReference: request.publicReference, locationName: request.location.name, entityLabel: "Payment request", entityType: "PaymentRequest", entityId: request.id };
+  }
+
+  if (approval.documentType === "PaymentRelease") {
+    const release = await tx.paymentRelease.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { location: true, paymentRequest: true }
+    });
+    if (!release) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: release.locationId, recipientUserIds: uniqueRecipientUserIds(release.createdByUserId, release.paymentRequest.requestedByUserId), publicReference: release.publicReference, locationName: release.location.name, entityLabel: "Payment release", entityType: "PaymentRelease", entityId: release.id };
+  }
+
+  if (approval.documentType === "EmployeeLeaveRequest") {
+    const request = await tx.employeeLeaveRequest.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { location: true, employee: { select: { homeLocationId: true } } }
+    });
+    if (!request) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: request.locationId ?? request.employee.homeLocationId, recipientUserIds: [request.requestedByUserId], publicReference: `LEAVE-${request.sourceEventKey.slice(-8).toUpperCase()}`, locationName: request.location?.name ?? "Employee home location", entityLabel: "Employee leave request", entityType: "EmployeeLeaveRequest", entityId: request.id };
+  }
+
+  if (approval.documentType === "EmployeeOvertimeRecord") {
+    const record = await tx.employeeOvertimeRecord.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { location: true, employee: { select: { homeLocationId: true } } }
+    });
+    if (!record) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: record.locationId ?? record.employee.homeLocationId, recipientUserIds: [record.requestedByUserId], publicReference: `OT-${record.sourceEventKey.slice(-8).toUpperCase()}`, locationName: record.location?.name ?? "Employee home location", entityLabel: "Employee overtime record", entityType: "EmployeeOvertimeRecord", entityId: record.id };
+  }
+
+  if (approval.documentType === "WorkforceSchedule") {
+    const schedule = await tx.workforceSchedule.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { location: true }
+    });
+    if (!schedule) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: schedule.locationId, recipientUserIds: uniqueRecipientUserIds(schedule.submittedByUserId, schedule.createdByUserId), publicReference: schedule.publicReference, locationName: schedule.location.name, entityLabel: "Workforce schedule", entityType: "WorkforceSchedule", entityId: schedule.id };
+  }
+
+  if (approval.documentType === "AttendanceImportBatch") {
+    const batch = await tx.attendanceImportBatch.findFirst({
+      where: { id: approval.documentId, tenantId: session.context.tenantId, companyId: session.context.companyId },
+      include: { location: true }
+    });
+    if (!batch) throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+    return { locationId: batch.locationId, recipientUserIds: uniqueRecipientUserIds(batch.reviewedByUserId, batch.createdByUserId), publicReference: batch.publicReference, locationName: batch.location.name, entityLabel: "Attendance import", entityType: "AttendanceImportBatch", entityId: batch.id };
+  }
+
+  throw new Error("APPROVAL_DOCUMENT_TYPE_UNSUPPORTED");
+}
+
+type SpecializedApprovalInstanceTransition = {
+  approvalInstanceId: string;
+  currentStepOrder: number;
+} & (
+  | {
+      status?: undefined;
+      nextStepOrder: number;
+      directRecipientUserId: string | null;
+    }
+  | {
+      status: "APPROVED" | "RETURNED" | "REJECTED";
+      nextStepOrder: null;
+    }
+);
+
 async function transitionSpecializedApprovalInstance(
   tx: TransactionClient,
   session: SessionContext,
-  input: {
-    approvalInstanceId: string;
-    currentStepOrder: number;
-    status?: "APPROVED" | "RETURNED" | "REJECTED";
-    nextStepOrder: number | null;
-  }
+  input: SpecializedApprovalInstanceTransition
 ) {
   const updated = await tx.approvalInstance.updateMany({
     where: {
@@ -743,6 +952,40 @@ async function transitionSpecializedApprovalInstance(
     }
   });
   if (updated.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  const descriptor = await loadSpecializedApprovalNotificationDescriptor(
+    tx,
+    session,
+    input.approvalInstanceId
+  );
+  if (input.status) {
+    await recordSharedApprovalOutcomeNotification(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: input.approvalInstanceId,
+      ...descriptor,
+      outcome: input.status
+    });
+  } else if (input.directRecipientUserId) {
+    const nextStep = await tx.approvalInstanceStep.findUnique({
+      where: {
+        approvalInstanceId_stepOrder: {
+          approvalInstanceId: input.approvalInstanceId,
+          stepOrder: input.nextStepOrder
+        }
+      },
+      select: { id: true }
+    });
+    if (!nextStep) throw new Error("APPROVAL_NEXT_STEP_NOT_FOUND");
+    await recordApprovalStepReadyNotification(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: input.approvalInstanceId,
+      approvalInstanceStepId: nextStep.id,
+      stepOrder: input.nextStepOrder,
+      recipientUserId: input.directRecipientUserId,
+      ...descriptor
+    });
+  }
 }
 
 async function approveCurrentStepAndAdvance(
@@ -913,12 +1156,11 @@ async function closeCurrentApprovalDecision(
   });
   if (actedStep.count !== 1) throw new Error("APPROVAL_NOT_ACTIONABLE");
 
-  await tx.approvalInstanceStep.updateMany({
-    where: {
-      approvalInstanceId: input.approvalId,
-      status: "WAITING"
-    },
-    data: { status: "SKIPPED" }
+  await skipFutureApprovalStepsForTerminalDecision(tx, {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    approvalInstanceId: input.approvalId,
+    currentStepOrder: input.stepOrder
   });
   const closed = await tx.approvalInstance.updateMany({
     where: {
@@ -1597,7 +1839,7 @@ async function findActionableBudgetRevisionApproval(
       id: approval.documentId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      status: "SUBMITTED"
+      status: "UNDER_REVIEW"
     },
     include: {
       budget: {
@@ -2832,7 +3074,7 @@ export async function listPendingApprovals(session: SessionContext) {
             id: approval.documentId,
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
-            status: "SUBMITTED"
+            status: "UNDER_REVIEW"
           },
           include: {
             requestedBy: true,
@@ -3017,7 +3259,7 @@ export async function listPendingApprovals(session: SessionContext) {
           requiredDate: request.dueBy ?? request.createdAt,
           status: request.status,
           currentStepOrder: approval.currentStepOrder,
-          lineDescription: `Petty cash: ${request.requestType.toLowerCase()} / PHP ${Number(request.requestedAmountPhp).toFixed(2)} / ${request.fund.name}`,
+          lineDescription: `Petty cash: ${request.requestType.toLowerCase()} / Requested PHP ${Number(request.requestedAmountPhp).toFixed(2)} / Current approval PHP ${Number(request.currentProposedAmountPhp ?? request.requestedAmountPhp).toFixed(2)} / ${request.fund.name}`,
           evidenceStatus: request.evidenceReference ? "Recorded" : "Missing"
         });
       }
@@ -3584,6 +3826,11 @@ export async function getApprovalDetail(
   });
 
   if (!approval) {
+    return null;
+  }
+
+  const requiredPermission = approvalPermissionByDocumentType[approval.documentType];
+  if (!requiredPermission || !permissionCodes.includes(requiredPermission)) {
     return null;
   }
 
@@ -4189,7 +4436,7 @@ export async function getApprovalDetail(
         id: approval.documentId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "SUBMITTED"
+        status: "UNDER_REVIEW"
       },
       include: {
         requestedBy: true,
@@ -4296,7 +4543,8 @@ export async function getApprovalDetail(
         id: approval.documentId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
+        status: "AWAITING_APPROVAL",
+        approvalInstanceId: approval.id
       },
       include: {
         requestedBy: true,
@@ -5992,7 +6240,12 @@ export async function approveApproval(formData: FormData) {
     return;
   }
 
-  await approvePurchaseRequest(formData);
+  if (approval.documentType === "PurchaseRequest") {
+    await approvePurchaseRequest(formData);
+    return;
+  }
+
+  throw new Error("APPROVAL_DOCUMENT_TYPE_UNSUPPORTED");
 }
 
 export async function returnApproval(formData: FormData) {
@@ -6151,7 +6404,12 @@ export async function returnApproval(formData: FormData) {
     return;
   }
 
-  await returnPurchaseRequest(formData);
+  if (approval.documentType === "PurchaseRequest") {
+    await returnPurchaseRequest(formData);
+    return;
+  }
+
+  throw new Error("APPROVAL_DOCUMENT_TYPE_UNSUPPORTED");
 }
 
 export async function rejectApproval(formData: FormData) {
@@ -6318,7 +6576,12 @@ export async function rejectApproval(formData: FormData) {
     return;
   }
 
-  await rejectPurchaseRequest(formData);
+  if (approval.documentType === "PurchaseRequest") {
+    await rejectPurchaseRequest(formData);
+    return;
+  }
+
+  throw new Error("APPROVAL_DOCUMENT_TYPE_UNSUPPORTED");
 }
 
 export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
@@ -6341,6 +6604,11 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
         includeNextStep: true
       }
     );
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
+    });
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -6353,12 +6621,6 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
       }
     });
 
-    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
-      approvalInstanceId: approval.id,
-      currentStepOrder: step.stepOrder,
-      normalizedPreflight
-    });
-
     if (nextStep) {
       await activateNextApprovalStep(tx, session, {
         approvalInstanceId: approval.id,
@@ -6368,7 +6630,8 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       const advancedRequest = await tx.employeeLeaveRequest.updateMany({
         where: {
@@ -6402,6 +6665,7 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
             approvedStepOrder: step.stepOrder,
             nextStepOrder: nextStep.stepOrder,
             remarks: values.remarks ?? null,
+            evidenceReference: values.evidenceReference ?? null,
             noPayrollComputation: true,
             noWageComputation: true,
             noPayrollExport: true,
@@ -6452,6 +6716,7 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks ?? null,
+          evidenceReference: values.evidenceReference ?? null,
           noSelfApproval: true,
           noPayrollComputation: true,
           noWageComputation: true,
@@ -6497,12 +6762,11 @@ async function closeEmployeeLeaveRequestWithDecision(
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -6540,6 +6804,7 @@ async function closeEmployeeLeaveRequestWithDecision(
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
+          evidenceReference: values.evidenceReference ?? null,
           noPayrollComputation: true,
           noWageComputation: true,
           noPayrollExport: true,
@@ -6599,7 +6864,8 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       const advancedRecord = await tx.employeeOvertimeRecord.updateMany({
         where: {
@@ -6631,6 +6897,7 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
             approvedStepOrder: step.stepOrder,
             nextStepOrder: nextStep.stepOrder,
             remarks: values.remarks ?? null,
+            evidenceReference: values.evidenceReference ?? null,
             noPayrollComputation: true,
             noWageComputation: true,
             noPayrollExport: true,
@@ -6679,6 +6946,7 @@ export async function approveEmployeeOvertimeRecordApproval(formData: FormData) 
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks ?? null,
+          evidenceReference: values.evidenceReference ?? null,
           noSelfApproval: true,
           noPayrollComputation: true,
           noWageComputation: true,
@@ -6719,12 +6987,11 @@ export async function rejectEmployeeOvertimeRecordApproval(formData: FormData) {
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -6760,6 +7027,7 @@ export async function rejectEmployeeOvertimeRecordApproval(formData: FormData) {
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
+          evidenceReference: values.evidenceReference ?? null,
           noPayrollComputation: true,
           noWageComputation: true,
           noPayrollExport: true,
@@ -6819,7 +7087,8 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       const advancedSchedule = await tx.workforceSchedule.updateMany({
         where: {
@@ -6830,7 +7099,9 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
         },
         data: {
           status: "UNDER_REVIEW",
-          reason: values.remarks?.trim() ?? schedule.reason
+          reason: values.remarks?.trim() ?? schedule.reason,
+          evidenceReference:
+            values.evidenceReference?.trim() || schedule.evidenceReference
         }
       });
       if (advancedSchedule.count !== 1) {
@@ -6851,6 +7122,8 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
             approvedStepOrder: step.stepOrder,
             nextStepOrder: nextStep.stepOrder,
             remarks: values.remarks ?? null,
+            evidenceReference:
+              values.evidenceReference?.trim() || schedule.evidenceReference,
             noSchedulePublication: true,
             noPayrollComputation: true,
             noWageComputation: true,
@@ -6881,7 +7154,9 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
         status: "APPROVED",
         approvedByUserId: session.user.id,
         approvedAt: new Date(),
-        reason: values.remarks?.trim() ?? schedule.reason
+        reason: values.remarks?.trim() ?? schedule.reason,
+        evidenceReference:
+          values.evidenceReference?.trim() || schedule.evidenceReference
       }
     });
     if (updatedSchedule.count !== 1) {
@@ -6900,6 +7175,8 @@ export async function approveWorkforceScheduleApproval(formData: FormData) {
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks ?? null,
+          evidenceReference:
+            values.evidenceReference?.trim() || schedule.evidenceReference,
           noSelfApproval: true,
           noSchedulePublication: true,
           noPayrollComputation: true,
@@ -6946,12 +7223,11 @@ async function closeWorkforceScheduleWithDecision(
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -6968,7 +7244,9 @@ async function closeWorkforceScheduleWithDecision(
       },
       data: {
         status: scheduleStatus,
-        reason: values.remarks
+        reason: values.remarks,
+        evidenceReference:
+          values.evidenceReference?.trim() || schedule.evidenceReference
       }
     });
     if (updatedSchedule.count !== 1) {
@@ -6987,6 +7265,8 @@ async function closeWorkforceScheduleWithDecision(
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
+          evidenceReference:
+            values.evidenceReference?.trim() || schedule.evidenceReference,
           noSchedulePublication: true,
           noPayrollComputation: true,
           noWageComputation: true,
@@ -7050,7 +7330,8 @@ export async function approveAttendanceImportBatchApproval(formData: FormData) {
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       await tx.auditEvent.create({
         data: {
@@ -7172,12 +7453,11 @@ async function closeAttendanceImportBatchWithDecision(
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -7414,6 +7694,18 @@ export async function approveBudgetRevision(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    const liveRevision = await tx.budgetRevision.findFirst({
+      where: {
+        id: revision.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "UNDER_REVIEW"
+      },
+      select: { id: true }
+    });
+    if (!liveRevision) {
+      throw new Error("BUDGET_REVISION_NOT_UNDER_REVIEW");
+    }
     const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
       tx,
       session,
@@ -7446,12 +7738,14 @@ export async function approveBudgetRevision(formData: FormData) {
       await activateNextApprovalStep(tx, session, {
         approvalInstanceId: approval.id,
         approvalInstanceStepId: nextStep.id,
-        source: "approvals.specialized_handler"
+        source: "approvals.specialized_handler",
+        dueAt: revision.effectiveFrom ?? null
       });
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       await tx.auditEvent.create({
         data: {
@@ -7470,6 +7764,7 @@ export async function approveBudgetRevision(formData: FormData) {
             approvedStepOrder: step.stepOrder,
             nextStepOrder: nextStep.stepOrder,
             remarks: values.remarks ?? null,
+            evidenceReference: values.evidenceReference ?? null,
             budgetMutationDeferred: true,
             lineMutationDeferred: true,
             noSourceMutation: true,
@@ -7489,6 +7784,7 @@ export async function approveBudgetRevision(formData: FormData) {
       approvedByUserId: session.user.id,
       approvedAt: new Date().toISOString(),
       approvalInstanceId: approval.id,
+      evidenceReference: values.evidenceReference?.trim() || null,
       budgetMutationDeferred: true,
       lineMutationDeferred: true,
       noSourceMutation: true,
@@ -7506,7 +7802,7 @@ export async function approveBudgetRevision(formData: FormData) {
         id: revision.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "SUBMITTED"
+        status: "UNDER_REVIEW"
       },
       data: {
         status: "APPROVED",
@@ -7516,7 +7812,7 @@ export async function approveBudgetRevision(formData: FormData) {
       }
     });
     if (updatedRevision.count !== 1) {
-      throw new Error("BUDGET_REVISION_NOT_SUBMITTED");
+      throw new Error("BUDGET_REVISION_NOT_UNDER_REVIEW");
     }
     await tx.auditEvent.create({
       data: {
@@ -7526,13 +7822,14 @@ export async function approveBudgetRevision(formData: FormData) {
         eventType: "budget.revision_approved",
         entityType: "Budget",
         entityId: revision.budgetId,
-        beforeData: { status: "SUBMITTED" },
+        beforeData: { status: "UNDER_REVIEW" },
         afterData: { status: "APPROVED" },
         metadata: {
           approvalInstanceId: approval.id,
           revisionId: revision.id,
           revisionNumber: revision.revisionNumber,
           remarks: values.remarks ?? null,
+          evidenceReference: values.evidenceReference ?? null,
           noSelfApproval: true,
           approvedRequestOnly: true,
           budgetMutationDeferred: true,
@@ -7554,10 +7851,6 @@ export async function approveExpenseRequest(formData: FormData) {
     session,
     values.approvalInstanceId
   );
-
-  if (request.budgetStatus === "OVER_BUDGET" && !values.remarks?.trim()) {
-    throw new Error("EXPENSE_REQUEST_BUDGET_OVERRIDE_REASON_REQUIRED");
-  }
 
   await prisma.$transaction(async (tx) => {
     const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
@@ -7597,7 +7890,8 @@ export async function approveExpenseRequest(formData: FormData) {
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       await tx.auditEvent.create({
         data: {
@@ -7630,52 +7924,13 @@ export async function approveExpenseRequest(formData: FormData) {
       status: "APPROVED",
       nextStepOrder: null
     });
-    const updatedRequest = await tx.expenseRequest.updateMany({
-      where: {
-        id: request.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
-      },
-      data: {
-        status: "APPROVED",
-        approvedByUserId: session.user.id,
-        approvedAt: new Date(),
-        budgetSnapshot: {
-          budgetStatus: request.budgetStatus,
-          overrideReason: values.remarks?.trim() ?? null,
-          approvalInstanceId: approval.id,
-          warningFirst: true,
-          noPaymentMutation: true,
-          noJournalPosting: true
-        },
-        version: { increment: 1 }
-      }
-    });
-    if (updatedRequest.count !== 1) {
-      throw new Error("EXPENSE_REQUEST_NOT_AWAITING_APPROVAL");
-    }
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "expense_request.approved",
-        entityType: "ExpenseRequest",
-        entityId: request.id,
-        beforeData: { status: "AWAITING_APPROVAL" },
-        afterData: { status: "APPROVED" },
-        metadata: {
-          approvalInstanceId: approval.id,
-          remarks: values.remarks ?? null,
-          budgetStatus: request.budgetStatus,
-          noSelfApproval: true,
-          noPaymentCreation: true,
-          noPaymentRelease: true,
-          noJournalPosting: true,
-          noApSettlement: true
-        }
-      }
+    await approveExpenseRequestInTransaction(tx, session, {
+      expenseRequestId: request.id,
+      ...(values.remarks !== undefined ? { reason: values.remarks } : {}),
+      ...(values.evidenceReference !== undefined
+        ? { supplementalEvidenceReference: values.evidenceReference }
+        : {}),
+      approvalInstanceId: approval.id
     });
   });
 }
@@ -7712,12 +7967,11 @@ async function closeExpenseRequestWithDecision(
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -7739,6 +7993,7 @@ async function closeExpenseRequestWithDecision(
               returnedByUserId: session.user.id,
               returnedAt: new Date(),
               returnReason: values.remarks,
+              evidenceReference: request.evidenceReference,
               version: { increment: 1 }
             }
           : {
@@ -7746,6 +8001,7 @@ async function closeExpenseRequestWithDecision(
               rejectedByUserId: session.user.id,
               rejectedAt: new Date(),
               rejectionReason: values.remarks,
+              evidenceReference: request.evidenceReference,
               version: { increment: 1 }
             }
     });
@@ -7765,6 +8021,9 @@ async function closeExpenseRequestWithDecision(
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
+          evidenceReference: request.evidenceReference,
+          supplementalEvidenceReference:
+            values.evidenceReference?.trim() || null,
           noPaymentCreation: true,
           noPaymentRelease: true,
           noJournalPosting: true,
@@ -7789,9 +8048,10 @@ export async function approveCashAdvanceRequest(formData: FormData) {
     if (!values.remarks?.trim()) {
       throw new Error("CASH_ADVANCE_BUDGET_OVERRIDE_REASON_REQUIRED");
     }
-    if (!request.evidenceReference) {
-      throw new Error("CASH_ADVANCE_BUDGET_OVERRIDE_EVIDENCE_REQUIRED");
-    }
+    assertAuthoritativeApprovalEvidence(
+      request.evidenceReference,
+      "CASH_ADVANCE_BUDGET_OVERRIDE_EVIDENCE_REQUIRED"
+    );
   }
 
   await prisma.$transaction(async (tx) => {
@@ -7832,7 +8092,8 @@ export async function approveCashAdvanceRequest(formData: FormData) {
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       await tx.auditEvent.create({
         data: {
@@ -7849,6 +8110,7 @@ export async function approveCashAdvanceRequest(formData: FormData) {
             approvedStepOrder: step.stepOrder,
             nextStepOrder: nextStep.stepOrder,
             remarks: values.remarks ?? null,
+            supplementalEvidenceReference: values.evidenceReference ?? null,
             noPaymentCreation: true,
             noPaymentRelease: true,
             noJournalPosting: true,
@@ -7877,6 +8139,7 @@ export async function approveCashAdvanceRequest(formData: FormData) {
         status: "APPROVED",
         approvedByUserId: session.user.id,
         approvedAt: new Date(),
+        evidenceReference: request.evidenceReference,
         budgetSnapshot: {
           budgetStatus: request.budgetStatus,
           overrideReason: values.remarks?.trim() ?? null,
@@ -7905,6 +8168,9 @@ export async function approveCashAdvanceRequest(formData: FormData) {
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks ?? null,
+          evidenceReference: request.evidenceReference,
+          supplementalEvidenceReference:
+            values.evidenceReference?.trim() || null,
           budgetStatus: request.budgetStatus,
           noSelfApproval: true,
           noPaymentCreation: true,
@@ -7951,12 +8217,11 @@ async function closeCashAdvanceRequestWithDecision(
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -7978,6 +8243,7 @@ async function closeCashAdvanceRequestWithDecision(
               returnedByUserId: session.user.id,
               returnedAt: new Date(),
               returnReason: values.remarks,
+              evidenceReference: request.evidenceReference,
               version: { increment: 1 }
             }
           : {
@@ -7985,6 +8251,7 @@ async function closeCashAdvanceRequestWithDecision(
               rejectedByUserId: session.user.id,
               rejectedAt: new Date(),
               rejectionReason: values.remarks,
+              evidenceReference: request.evidenceReference,
               version: { increment: 1 }
             }
     });
@@ -8004,6 +8271,9 @@ async function closeCashAdvanceRequestWithDecision(
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
+          evidenceReference: request.evidenceReference,
+          supplementalEvidenceReference:
+            values.evidenceReference?.trim() || null,
           noPaymentCreation: true,
           noPaymentRelease: true,
           noJournalPosting: true,
@@ -8018,16 +8288,18 @@ async function closeCashAdvanceRequestWithDecision(
 export async function approvePettyCashRequest(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.financePettyCashApprove);
-  const values = decisionSchema.parse(Object.fromEntries(formData));
+  const values = pettyCashDecisionSchema.parse(Object.fromEntries(formData));
+  if (
+    normalizedApprovalRoutingEnabled() &&
+    values.approvedAmountPhp !== undefined
+  ) {
+    throw new Error("PETTY_CASH_AMOUNT_CHANGE_POLICY_UNCONFIRMED");
+  }
   const { approval, step, request } =
     await findActionablePettyCashRequestApproval(
       session,
       values.approvalInstanceId
     );
-
-  if (!request.evidenceReference) {
-    throw new Error("PETTY_CASH_REQUEST_EVIDENCE_REQUIRED");
-  }
 
   await prisma.$transaction(async (tx) => {
     const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
@@ -8040,6 +8312,17 @@ export async function approvePettyCashRequest(formData: FormData) {
         includeNextStep: true
       }
     );
+    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder,
+      normalizedPreflight
+    });
+    await validatePettyCashApprovalInTransaction(tx, session, {
+      pettyCashRequestId: request.id,
+      ...(values.approvedAmountPhp !== undefined
+        ? { approvedAmountPhp: values.approvedAmountPhp }
+        : {})
+    });
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -8052,12 +8335,6 @@ export async function approvePettyCashRequest(formData: FormData) {
       }
     });
 
-    const nextStep = await resolveSpecializedNextApprovalStep(tx, {
-      approvalInstanceId: approval.id,
-      currentStepOrder: step.stepOrder,
-      normalizedPreflight
-    });
-
     if (nextStep) {
       await activateNextApprovalStep(tx, session, {
         approvalInstanceId: approval.id,
@@ -8067,7 +8344,8 @@ export async function approvePettyCashRequest(formData: FormData) {
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       await tx.auditEvent.create({
         data: {
@@ -8084,6 +8362,7 @@ export async function approvePettyCashRequest(formData: FormData) {
             approvedStepOrder: step.stepOrder,
             nextStepOrder: nextStep.stepOrder,
             remarks: values.remarks ?? null,
+            supplementalEvidenceReference: values.evidenceReference ?? null,
             noPaymentCreation: true,
             noPaymentRelease: true,
             noJournalPosting: true,
@@ -8101,47 +8380,16 @@ export async function approvePettyCashRequest(formData: FormData) {
       status: "APPROVED",
       nextStepOrder: null
     });
-    const updatedRequest = await tx.pettyCashRequest.updateMany({
-      where: {
-        id: request.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
-      },
-      data: {
-        status: "APPROVED",
-        approvedByUserId: session.user.id,
-        approvedAt: new Date(),
-        approvedAmountPhp: request.requestedAmountPhp
-      }
-    });
-    if (updatedRequest.count !== 1) {
-      throw new Error("PETTY_CASH_REQUEST_NOT_AWAITING_APPROVAL");
-    }
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "petty_cash.request_approved",
-        entityType: "PettyCashRequest",
-        entityId: request.id,
-        beforeData: { status: "AWAITING_APPROVAL" },
-        afterData: {
-          status: "APPROVED",
-          approvedAmountPhp: Number(request.requestedAmountPhp)
-        },
-        metadata: {
-          approvalInstanceId: approval.id,
-          remarks: values.remarks ?? null,
-          noSelfApproval: true,
-          noPaymentCreation: true,
-          noPaymentRelease: true,
-          noJournalPosting: true,
-          noBankMutation: true,
-          noPeriodCloseMutation: true
-        }
-      }
+    await approvePettyCashRequestInTransaction(tx, session, {
+      pettyCashRequestId: request.id,
+      ...(values.approvedAmountPhp !== undefined
+        ? { approvedAmountPhp: values.approvedAmountPhp }
+        : {}),
+      ...(values.remarks !== undefined ? { reason: values.remarks } : {}),
+      ...(values.evidenceReference !== undefined
+        ? { supplementalEvidenceReference: values.evidenceReference }
+        : {}),
+      approvalInstanceId: approval.id
     });
   });
 }
@@ -8179,12 +8427,11 @@ async function closePettyCashRequestWithDecision(
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -8197,21 +8444,26 @@ async function closePettyCashRequestWithDecision(
         id: request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
+        status: "AWAITING_APPROVAL",
+        approvalInstanceId: approval.id
       },
       data:
         requestStatus === "RETURNED_FOR_REVISION"
           ? {
               status: requestStatus,
+              currentProposedAmountPhp: null,
               returnedByUserId: session.user.id,
               returnedAt: new Date(),
-              returnReason: values.remarks
+              returnReason: values.remarks,
+              evidenceReference: request.evidenceReference
             }
           : {
               status: requestStatus,
+              currentProposedAmountPhp: null,
               rejectedByUserId: session.user.id,
               rejectedAt: new Date(),
-              rejectionReason: values.remarks
+              rejectionReason: values.remarks,
+              evidenceReference: request.evidenceReference
             }
     });
     if (updatedRequest.count !== 1) {
@@ -8230,6 +8482,9 @@ async function closePettyCashRequestWithDecision(
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
+          evidenceReference: request.evidenceReference,
+          supplementalEvidenceReference:
+            values.evidenceReference?.trim() || null,
           noPaymentCreation: true,
           noPaymentRelease: true,
           noJournalPosting: true,
@@ -8244,6 +8499,7 @@ async function closePettyCashRequestWithDecision(
 export async function approvePaymentRequestApproval(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.financePaymentRequestApprove);
+  assertPaymentRequestApprovalPolicyConfirmed();
   const values = decisionSchema.parse(Object.fromEntries(formData));
   const { approval, step, request } = await findActionablePaymentRequestApproval(
     session,
@@ -8292,7 +8548,8 @@ export async function approvePaymentRequestApproval(formData: FormData) {
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       await tx.auditEvent.create({
         data: {
@@ -8397,12 +8654,11 @@ async function closePaymentRequestWithDecision(
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -8509,7 +8765,8 @@ export async function approvePaymentReleaseApproval(formData: FormData) {
       await transitionSpecializedApprovalInstance(tx, session, {
         approvalInstanceId: approval.id,
         currentStepOrder: step.stepOrder,
-        nextStepOrder: nextStep.stepOrder
+        nextStepOrder: nextStep.stepOrder,
+        directRecipientUserId: nextStep.assignedUserId
       });
       await tx.auditEvent.create({
         data: {
@@ -8609,12 +8866,11 @@ export async function rejectPaymentReleaseApproval(formData: FormData) {
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -8677,6 +8933,18 @@ async function closeBudgetRevisionWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    const liveRevision = await tx.budgetRevision.findFirst({
+      where: {
+        id: revision.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "UNDER_REVIEW"
+      },
+      select: { id: true }
+    });
+    if (!liveRevision) {
+      throw new Error("BUDGET_REVISION_NOT_UNDER_REVIEW");
+    }
     await prepareSpecializedApprovalDecisionAuthority(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -8694,12 +8962,11 @@ async function closeBudgetRevisionWithDecision(
         remarks: values.remarks
       }
     });
-    await tx.approvalInstanceStep.updateMany({
-      where: {
-        approvalInstanceId: approval.id,
-        status: "WAITING"
-      },
-      data: { status: "SKIPPED" }
+    await skipFutureApprovalStepsForTerminalDecision(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: approval.id,
+      currentStepOrder: step.stepOrder
     });
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
@@ -8712,7 +8979,7 @@ async function closeBudgetRevisionWithDecision(
         id: revision.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "SUBMITTED"
+        status: "UNDER_REVIEW"
       },
       data: {
         status,
@@ -8721,7 +8988,7 @@ async function closeBudgetRevisionWithDecision(
       }
     });
     if (updatedRevision.count !== 1) {
-      throw new Error("BUDGET_REVISION_NOT_SUBMITTED");
+      throw new Error("BUDGET_REVISION_NOT_UNDER_REVIEW");
     }
     await tx.auditEvent.create({
       data: {
@@ -8731,13 +8998,14 @@ async function closeBudgetRevisionWithDecision(
         eventType,
         entityType: "Budget",
         entityId: revision.budgetId,
-        beforeData: { status: "SUBMITTED" },
+        beforeData: { status: "UNDER_REVIEW" },
         afterData: { status },
         metadata: {
           approvalInstanceId: approval.id,
           revisionId: revision.id,
           revisionNumber: revision.revisionNumber,
           remarks: values.remarks,
+          evidenceReference: values.evidenceReference ?? null,
           budgetMutationDeferred: true,
           lineMutationDeferred: true,
           noSourceMutation: true,

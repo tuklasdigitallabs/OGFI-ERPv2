@@ -9,7 +9,28 @@ import {
 } from "./database-role-contract-lib.mjs";
 import { requirePostgresTool } from "./postgres-client-tools.mjs";
 
-const protectedTables = ["AuditEvent", "ProjectActivityEvent", "InventoryMovement"];
+const protectedTables = [
+  {
+    name: "AuditEvent",
+    timestampColumn: "occurredAt",
+    ownerError: (operation) => `AuditEvent is append-only; ${operation} is prohibited`,
+  },
+  {
+    name: "ProjectActivityEvent",
+    timestampColumn: "occurredAt",
+    ownerError: (operation) => `ProjectActivityEvent is append-only; ${operation} is prohibited`,
+  },
+  {
+    name: "InventoryMovement",
+    timestampColumn: "occurredAt",
+    ownerError: (operation) => `InventoryMovement is append-only; ${operation} is prohibited`,
+  },
+  {
+    name: "PettyCashApprovalStepIntent",
+    timestampColumn: "createdAt",
+    ownerError: () => "PETTY_CASH_APPROVAL_INTENT_APPEND_ONLY",
+  },
+];
 const guardFunction = "public.reject_protected_history_mutation()";
 const denialBucketGuardFunction = "public.enforce_authorization_denial_bucket_update()";
 const throttleGuardFunction = "public.enforce_authentication_throttle_window_transition()";
@@ -72,13 +93,13 @@ export function runAppendOnlyContract(
   runStaticVerifier(executePsql, psql, contract, "owner", contract.migration, checks);
   runStaticVerifier(executePsql, psql, contract, "runtime", contract.runtime, checks);
 
-  for (const table of protectedTables) {
+  for (const { name: table, timestampColumn, ownerError } of protectedTables) {
     expectAllowed(executePsql, psql, contract.runtime, `SELECT count(*) FROM "${table}"`, `runtime can SELECT ${table}`, checks);
-    expectRejected(executePsql, psql, contract.migration, `UPDATE "${table}" SET "occurredAt" = "occurredAt" WHERE false`, [`${table} is append-only; UPDATE is prohibited`, "55000"], `owner rejects UPDATE on ${table}`, checks);
-    expectRejected(executePsql, psql, contract.migration, `DELETE FROM "${table}" WHERE false`, [`${table} is append-only; DELETE is prohibited`, "55000"], `owner rejects DELETE on ${table}`, checks);
-    expectRejected(executePsql, psql, contract.migration, `BEGIN; SET LOCAL lock_timeout='2s'; TRUNCATE TABLE "${table}" CASCADE; ROLLBACK`, [`${table} is append-only; TRUNCATE is prohibited`, "55000"], `owner rejects TRUNCATE on ${table}`, checks);
+    expectRejected(executePsql, psql, contract.migration, `UPDATE "${table}" SET "${timestampColumn}" = "${timestampColumn}" WHERE false`, [ownerError("UPDATE"), "55000"], `owner rejects UPDATE on ${table}`, checks);
+    expectRejected(executePsql, psql, contract.migration, `DELETE FROM "${table}" WHERE false`, [ownerError("DELETE"), "55000"], `owner rejects DELETE on ${table}`, checks);
+    expectRejected(executePsql, psql, contract.migration, `BEGIN; SET LOCAL lock_timeout='2s'; TRUNCATE TABLE "${table}" CASCADE; ROLLBACK`, [ownerError("TRUNCATE"), "55000"], `owner rejects TRUNCATE on ${table}`, checks);
 
-    expectRejected(executePsql, psql, contract.runtime, `UPDATE "${table}" SET "occurredAt" = "occurredAt" WHERE false`, "permission denied", `runtime lacks UPDATE on ${table}`, checks);
+    expectRejected(executePsql, psql, contract.runtime, `UPDATE "${table}" SET "${timestampColumn}" = "${timestampColumn}" WHERE false`, "permission denied", `runtime lacks UPDATE on ${table}`, checks);
     expectRejected(executePsql, psql, contract.runtime, `DELETE FROM "${table}" WHERE false`, "permission denied", `runtime lacks DELETE on ${table}`, checks);
     expectRejected(executePsql, psql, contract.runtime, `BEGIN; SET LOCAL lock_timeout='2s'; TRUNCATE TABLE "${table}" CASCADE; ROLLBACK`, "permission denied", `runtime lacks TRUNCATE on ${table}`, checks);
   }
