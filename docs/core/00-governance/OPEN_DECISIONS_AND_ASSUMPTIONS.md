@@ -82,6 +82,8 @@ The baseline policy is confirmed by `DEC-0036`. The exact configured values belo
 
 12. **Stock-count recount recovery (`DEC-0061`, open):** Decide whether an approved-but-unposted generated `COUNT_VARIANCE` adjustment can be explicitly voided for a recount, including the required authority, reason/evidence, approval-instance termination, audit, and notification behavior; otherwise it remains a hard recount blocker. Decide whether a recount may retain its original cutoff only while the inventory-location movement freeze has remained continuously active. The safe default is: if movement occurred or no freeze was active, cancel/close the unposted count and begin a new count session with a new cutoff; a posted adjustment always requires the established full-document reversal before a new corrective count session. These rules must be confirmed before production enforcement or Count Variance activation.
 
+13. **Food Cost dashboard definitions (`DEC-0062`, open):** Before a bounded Overview projection can replace the analytical read, confirm and correct: (a) the default business-date rule so posted sales, import batches, and ledger evidence never mix dates; (b) incomplete inventory-movement valuation behavior so missing cost remains pending/unavailable rather than becoming a trusted zero; and (c) the definition and label of `AWAITING_ACTUALS` so it reflects the approved reporting meaning. The safe fallback is no Overview Food Cost summary; the analytical workspace remains the authoritative read and must retain its source/trust notices until source-level parity is demonstrated.
+
 ## 6. Change request format
 
 Every policy change request should include:
