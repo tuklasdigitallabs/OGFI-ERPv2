@@ -173,6 +173,9 @@ function QueueList({
               <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
                 {item.label}
               </p>
+              <Badge tone={item.priority === "CRITICAL" ? "danger" : "warning"} size="sm">
+                {item.priority}
+              </Badge>
               <Badge tone={item.tone} size="sm">
                 {item.status.replaceAll("_", " ")}
               </Badge>
@@ -182,6 +185,12 @@ function QueueList({
             <p className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
               Next action: {item.nextAction ?? actionLabel}
             </p>
+            <div className="mt-2 grid gap-1 text-xs font-semibold text-slate-500 sm:grid-cols-2">
+              <p>Location: {item.locationName}</p>
+              <p>Owner: {item.ownerLabel}</p>
+              <p>Timing: {item.ageLabel}</p>
+              <p>Severity: {item.severityLabel}</p>
+            </div>
             {item.nextActor ? (
               <p className="mt-2 text-xs font-semibold text-slate-500">
                 Assigned to: {item.nextActor}
@@ -363,6 +372,55 @@ function AnalyticsDonutPanel({
 function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof getOperationalDashboard>> }) {
   return (
     <>
+      <section className="ogfi-data-surface mb-5">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Action first</p>
+            <h2 className="mt-1 text-lg font-bold text-slate-950">Today’s work</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              The highest-priority records currently assigned to you or requiring attention in the selected scope.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="warning" size="sm">
+              {dashboard.approvalQueueContract.displayedCount} priority approvals shown
+            </Badge>
+            <Badge tone="warning" size="sm">
+              {dashboard.exceptionQueueContract.displayedCount} priority exceptions shown
+            </Badge>
+          </div>
+        </div>
+        <div className="grid gap-4 p-4 xl:grid-cols-2">
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="font-bold text-slate-950">Assigned approvals</h3>
+                <p className="text-sm text-slate-500">Only decisions you can act on are included.</p>
+              </div>
+              <ButtonLink href="/approvals" tone="secondary" className="min-h-10 text-blue-700 hover:bg-blue-50">
+                Open approvals
+              </ButtonLink>
+            </div>
+            <QueueList
+              actionLabel="Review assigned approval"
+              emptyDetail="Assigned approval decisions will appear here after controlled records are submitted."
+              items={dashboard.approvalQueueContract.items}
+            />
+          </section>
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 p-4">
+              <h3 className="font-bold text-slate-950">Operational exceptions</h3>
+              <p className="text-sm text-slate-500">Overdue, variance, discrepancy, and handoff risk in the selected scope.</p>
+            </div>
+            <QueueList
+              actionLabel="Open source record"
+              emptyDetail="Open exceptions are pulled from purchasing, receiving, transfers, counts, and inventory controls."
+              items={dashboard.exceptionQueueContract.items}
+            />
+          </section>
+        </div>
+      </section>
+
       <div className="mb-5 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="ogfi-data-surface">
           <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -443,41 +501,6 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
         </section>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-950">Approval Queue</h2>
-              <p className="text-sm text-slate-500">
-                Assigned approvals filtered by role, scope, and self-approval controls
-              </p>
-            </div>
-            <Badge tone="info" size="sm">{dashboard.approvalQueue.length} shown</Badge>
-          </div>
-          <QueueList
-            actionLabel="Review assigned approval"
-            emptyDetail="Assigned approval decisions will appear here after controlled records are submitted."
-            items={dashboard.approvalQueue}
-          />
-        </section>
-
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-950">Needs Attention</h2>
-              <p className="text-sm text-slate-500">
-                Source records with overdue, variance, discrepancy, or handoff risk
-              </p>
-            </div>
-            <Badge tone="warning" size="sm">{dashboard.exceptionQueue.length} shown</Badge>
-          </div>
-          <QueueList
-            actionLabel="Open source record"
-            emptyDetail="Open exceptions are pulled from purchasing, receiving, transfers, counts, and inventory controls."
-            items={dashboard.exceptionQueue}
-          />
-        </section>
-      </div>
     </>
   );
 }
@@ -730,7 +753,10 @@ function DashboardReports({ dashboard }: { dashboard: Awaited<ReturnType<typeof 
 }
 
 function DashboardNotifications({ dashboard }: { dashboard: Awaited<ReturnType<typeof getOperationalDashboard>> }) {
-  const notificationItems = [...dashboard.approvalQueue, ...dashboard.exceptionQueue];
+  const notificationItems = [
+    ...dashboard.approvalQueueContract.items,
+    ...dashboard.exceptionQueueContract.items
+  ];
 
   return (
     <div className="grid gap-5">
@@ -837,7 +863,7 @@ export default async function DashboardPage({
             ))}
           </div>
         </div>
-        <div className="grid gap-5 p-5 lg:grid-cols-[1fr_2fr]">
+        <div className="p-5">
           <div className="ogfi-scope-card rounded-[1rem] border border-slate-200 bg-slate-50 p-5">
             <div className="flex items-start gap-3">
               <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
@@ -860,11 +886,6 @@ export default async function DashboardPage({
               <Badge tone="info" size="sm">Live source records</Badge>
               <Badge size="sm">Updated {new Date(dashboard.generatedAt).toLocaleString()}</Badge>
             </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {dashboard.metrics.slice(0, 4).map((metric) => (
-              <MetricCard key={metric.id} metric={metric} />
-            ))}
           </div>
         </div>
       </section>

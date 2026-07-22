@@ -22,7 +22,7 @@
 - Persistent sidebar and compact top header per `UI_IMPLEMENTATION_STANDARD.md`.
 - Context switcher shows company / brand / location or allowed consolidated scope.
 - Page title, freshness label, optional date range, and export/refresh actions.
-- KPI cards followed by action queues and relevant drill-down widgets.
+- Start with compact scope and freshness context, then an action-first `Today’s work` queue; show compact role-required KPI cards second, with analytics, reports, and other drill-down widgets secondary. The queue and every drill-down remain within the user’s authorized scope.
 - Do not use sales, covers, food cost, labor cost, or recipe-derived metrics in Phase I unless a validated source integration exists.
 
 ## 3. Required KPI cards by role

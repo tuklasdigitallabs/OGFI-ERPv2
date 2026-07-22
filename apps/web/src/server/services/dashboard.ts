@@ -71,7 +71,7 @@ export type DashboardCard = {
   tone: BadgeTone;
 };
 
-export type DashboardQueueItem = {
+export type DashboardQueueItemLegacy = {
   id: string;
   label: string;
   reference: string;
@@ -81,6 +81,34 @@ export type DashboardQueueItem = {
   tone: BadgeTone;
   nextAction?: string;
   nextActor?: string;
+};
+
+export type DashboardQueueItem = DashboardQueueItemLegacy & {
+  priority: "CRITICAL" | "HIGH" | "NORMAL";
+  severityLabel: string;
+  locationName: string;
+  ageLabel: string;
+  ownerLabel: string;
+};
+
+export type DashboardQueueContract = {
+  items: DashboardQueueItem[];
+  totalCount: number;
+  displayedCount: number;
+  displayLimit: number;
+};
+
+type DashboardQueueItemDraft = Omit<
+  DashboardQueueItem,
+  "priority" | "severityLabel" | "locationName" | "ageLabel" | "ownerLabel"
+> & {
+  priority?: DashboardQueueItem["priority"];
+  severityLabel?: string;
+  locationName?: string;
+  ownerLabel?: string;
+  dueAt?: string | null;
+  sourceAgeAt?: string | null;
+  isOverdue?: boolean;
 };
 
 export type DashboardMetric = {
@@ -110,8 +138,10 @@ export type OperationalDashboard = {
     isOverridden: boolean;
     sourceDecisionId: string;
   };
-  approvalQueue: DashboardQueueItem[];
-  exceptionQueue: DashboardQueueItem[];
+  approvalQueue: DashboardQueueItemLegacy[];
+  exceptionQueue: DashboardQueueItemLegacy[];
+  approvalQueueContract: DashboardQueueContract;
+  exceptionQueueContract: DashboardQueueContract;
 };
 
 export type OperationalDashboardSource = {
@@ -177,6 +207,138 @@ const stockAdjustmentExceptionStatuses = new Set([
 ]);
 const branchChecklistReviewStatuses = new Set(["SUBMITTED", "MANAGER_REVIEW"]);
 const foodSafetyReviewStatuses = new Set(["SUBMITTED", "EXCEPTION_REVIEW"]);
+const approvalQueueDisplayLimit = 5;
+const exceptionQueueDisplayLimit = 8;
+
+function dateOnly(value: string) {
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function dueState(dueAt: string | null | undefined, isOverdue: boolean | undefined) {
+  if (isOverdue) {
+    return 0;
+  }
+  if (!dueAt) {
+    return 2;
+  }
+  const dueDate = dateOnly(dueAt);
+  if (!dueDate) {
+    return 2;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  return dueDate === today ? 1 : 2;
+}
+
+function isDateOverdue(value: string | null | undefined) {
+  const dueDate = value ? dateOnly(value) : null;
+  return dueDate !== null && dueDate < new Date().toISOString().slice(0, 10);
+}
+
+function queueAgeLabel(draft: DashboardQueueItemDraft) {
+  const sourceAgeDate = draft.sourceAgeAt ? dateOnly(draft.sourceAgeAt) : null;
+  const dueDate = draft.dueAt ? dateOnly(draft.dueAt) : null;
+  const dueLabel = draft.isOverdue
+    ? dueDate
+      ? `Overdue since ${dueDate}`
+      : "Overdue"
+    : dueState(draft.dueAt, false) === 1
+      ? "Due today"
+      : dueDate
+        ? `Due ${dueDate}`
+        : "No due date";
+
+  return sourceAgeDate ? `Open since ${sourceAgeDate} · ${dueLabel}` : dueLabel;
+}
+
+function priorityRank(priority: DashboardQueueItem["priority"]) {
+  return priority === "CRITICAL" ? 0 : priority === "HIGH" ? 1 : 2;
+}
+
+function sourceAgeRank(sourceAgeAt: string | null | undefined) {
+  if (!sourceAgeAt) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const timestamp = new Date(sourceAgeAt).getTime();
+  return Number.isNaN(timestamp) ? Number.MAX_SAFE_INTEGER : timestamp;
+}
+
+function buildDashboardQueueContract(
+  session: SessionContext,
+  drafts: DashboardQueueItemDraft[],
+  displayLimit: number
+): DashboardQueueContract {
+  const orderedDrafts = [...drafts].sort((left, right) => {
+      const leftPriority = left.priority ?? (left.tone === "warning" ? "HIGH" : "NORMAL");
+      const rightPriority = right.priority ?? (right.tone === "warning" ? "HIGH" : "NORMAL");
+      const priorityDifference = priorityRank(leftPriority) - priorityRank(rightPriority);
+      if (priorityDifference !== 0) {
+        return priorityDifference;
+      }
+
+      const dueDifference =
+        dueState(left.dueAt, left.isOverdue) - dueState(right.dueAt, right.isOverdue);
+      if (dueDifference !== 0) {
+        return dueDifference;
+      }
+
+      const ageDifference =
+        sourceAgeRank(left.sourceAgeAt) - sourceAgeRank(right.sourceAgeAt);
+      if (ageDifference !== 0) {
+        return ageDifference;
+      }
+      return left.reference.localeCompare(right.reference) || left.id.localeCompare(right.id);
+    });
+  const items = orderedDrafts.map<DashboardQueueItem>((draft) => ({
+    id: draft.id,
+    label: draft.label,
+    reference: draft.reference,
+    detail: draft.detail,
+    status: draft.status,
+    href: draft.href,
+    tone: draft.tone,
+    ...(draft.nextAction ? { nextAction: draft.nextAction } : {}),
+    ...(draft.nextActor ? { nextActor: draft.nextActor } : {}),
+    priority: draft.priority ?? (draft.tone === "warning" ? "HIGH" : "NORMAL"),
+    severityLabel: draft.severityLabel ?? "No severity reported",
+    locationName: draft.locationName ?? session.context.locationName,
+    ageLabel: queueAgeLabel(draft),
+    ownerLabel: draft.ownerLabel ?? draft.nextActor ?? "Not assigned"
+  }));
+
+  return {
+    items: items.slice(0, displayLimit),
+    totalCount: items.length,
+    displayedCount: Math.min(items.length, displayLimit),
+    displayLimit
+  };
+}
+
+function toLegacyDashboardQueueItems(items: DashboardQueueItemLegacy[]) {
+  return items.map(
+    ({
+      id,
+      label,
+      reference,
+      detail,
+      status,
+      href,
+      tone,
+      nextAction,
+      nextActor
+    }) => ({
+      id,
+      label,
+      reference,
+      detail,
+      status,
+      href,
+      tone,
+      ...(nextAction ? { nextAction } : {}),
+      ...(nextActor ? { nextActor } : {})
+    })
+  );
+}
 
 function cardTone(value: number): BadgeTone {
   return value > 0 ? "warning" : "success";
@@ -229,7 +391,7 @@ export function buildOperationalDashboardModel(
   const metrics: DashboardMetric[] = [];
   const stockHealth: DashboardMetric[] = [];
   const sourceHealth: DashboardMetric[] = [];
-  const exceptionQueue: DashboardQueueItem[] = [];
+  const exceptionQueue: DashboardQueueItemDraft[] = [];
   const primaryCurrency =
     source.purchaseOrders?.find((order) => order.currencyCode)?.currencyCode ?? "PHP";
 
@@ -314,7 +476,10 @@ export function buildOperationalDashboardModel(
           detail: `${order.supplierName} / ${order.daysOverdue} day${order.daysOverdue === 1 ? "" : "s"} overdue`,
           status: order.status,
           href: `/purchase-orders/${order.id}`,
-          tone: "warning"
+          tone: "warning",
+          priority: "HIGH",
+          locationName: session.context.locationName,
+          isOverdue: true
         });
       }
     }
@@ -345,7 +510,9 @@ export function buildOperationalDashboardModel(
           detail: `${receipt.supplierName} / ${receipt.purchaseOrderReference}`,
           status: receipt.status,
           href: `/receiving/${receipt.id}`,
-          tone: "warning"
+          tone: "warning",
+          priority: "HIGH",
+          locationName: session.context.locationName
         });
       }
     }
@@ -371,7 +538,9 @@ export function buildOperationalDashboardModel(
           detail: `${transfer.sourceLocationName} to ${transfer.destinationLocationName}`,
           status: transfer.status,
           href: `/transfers/${transfer.id}`,
-          tone: "warning"
+          tone: "warning",
+          priority: transfer.status === "DISPUTED" ? "HIGH" : "NORMAL",
+          locationName: transfer.destinationLocationName
         });
       }
     }
@@ -399,7 +568,9 @@ export function buildOperationalDashboardModel(
           detail: `${count.inventoryLocationName} / ${count.varianceCount} line${count.varianceCount === 1 ? "" : "s"}`,
           status: count.status,
           href: `/counts/${count.id}`,
-          tone: "warning"
+          tone: "warning",
+          priority: "HIGH",
+          locationName: count.inventoryLocationName
         });
       }
     }
@@ -436,7 +607,9 @@ export function buildOperationalDashboardModel(
           detail: `${report.inventoryLocationName} / ${report.lineCount} line${report.lineCount === 1 ? "" : "s"}`,
           status: report.status,
           href: `/wastage/${report.id}`,
-          tone: "warning"
+          tone: "warning",
+          priority: "HIGH",
+          locationName: report.inventoryLocationName
         });
       }
     }
@@ -465,7 +638,9 @@ export function buildOperationalDashboardModel(
           detail: `${adjustment.inventoryLocationName} / ${adjustment.adjustmentType.toLowerCase()} / ${adjustment.lineCount} line${adjustment.lineCount === 1 ? "" : "s"}`,
           status: adjustment.status,
           href: `/adjustments/${adjustment.id}`,
-          tone: "warning"
+          tone: "warning",
+          priority: "HIGH",
+          locationName: adjustment.inventoryLocationName
         });
       }
     }
@@ -491,7 +666,9 @@ export function buildOperationalDashboardModel(
         detail: `${row.inventoryLocationName} / variance ${row.varianceQuantity} ${row.baseUomCode}`,
         status: row.status,
         href: "/inventory",
-        tone: "warning"
+        tone: "warning",
+        priority: "HIGH",
+        locationName: row.inventoryLocationName
       });
     }
   }
@@ -651,7 +828,9 @@ export function buildOperationalDashboardModel(
         status: "AWAITING_ACTUALS",
         href: "/recipes/analysis",
         tone: "warning",
-        nextAction: "Review actual ledger evidence"
+        nextAction: "Review actual ledger evidence",
+        priority: "HIGH",
+        locationName: source.foodCostAnalysis.locationName
       });
     }
 
@@ -668,7 +847,9 @@ export function buildOperationalDashboardModel(
         status: row.status,
         href: "/recipes/analysis",
         tone: "warning",
-        nextAction: "Review recipe cost and sales evidence"
+        nextAction: "Review recipe cost and sales evidence",
+        priority: "HIGH",
+        locationName: source.foodCostAnalysis.locationName
       });
     }
   }
@@ -739,7 +920,10 @@ export function buildOperationalDashboardModel(
         status: checklist.status,
         href: `/branch-operations/${checklist.id}`,
         tone: "warning",
-        nextAction: "Review checklist"
+        nextAction: "Review checklist",
+        priority: "HIGH",
+        locationName: checklist.locationName,
+        sourceAgeAt: checklist.businessDate
       });
     }
 
@@ -758,7 +942,19 @@ export function buildOperationalDashboardModel(
         )
           ? "warning"
           : "info",
-        nextAction: "Investigate checklist exception"
+        nextAction: "Investigate checklist exception",
+        priority: checklist.lines.some(
+          (line) => line.result === "EXCEPTION" && line.severity === "CRITICAL"
+        )
+          ? "CRITICAL"
+          : "NORMAL",
+        severityLabel: checklist.lines.some(
+          (line) => line.result === "EXCEPTION" && line.severity === "CRITICAL"
+        )
+          ? "CRITICAL"
+          : "No severity reported",
+        locationName: checklist.locationName,
+        sourceAgeAt: checklist.businessDate
       });
     }
   }
@@ -826,7 +1022,10 @@ export function buildOperationalDashboardModel(
         status: log.status,
         href: `/food-safety/${log.id}`,
         tone: "warning",
-        nextAction: "Review food-safety log"
+        nextAction: "Review food-safety log",
+        priority: "HIGH",
+        locationName: log.locationName,
+        sourceAgeAt: log.businessDate
       });
     }
 
@@ -846,7 +1045,20 @@ export function buildOperationalDashboardModel(
         )
           ? "warning"
           : "info",
-        nextAction: "Acknowledge food-safety deviation"
+        nextAction: "Acknowledge food-safety deviation",
+        priority: log.readings.some(
+          (reading) => reading.result === "EXCEPTION" && reading.severity === "CRITICAL"
+        )
+          ? "CRITICAL"
+          : "NORMAL",
+        severityLabel: log.readings.some(
+          (reading) =>
+            reading.result === "EXCEPTION" && reading.severity === "CRITICAL"
+        )
+          ? "CRITICAL"
+          : "No severity reported",
+        locationName: log.locationName,
+        sourceAgeAt: log.businessDate
       });
     }
   }
@@ -909,7 +1121,19 @@ export function buildOperationalDashboardModel(
           incident.status === "PENDING_REVIEW"
             ? "Review closure evidence"
             : "Assign or resolve incident",
-        nextActor: incident.ownerName ?? "Unassigned"
+        nextActor: incident.ownerName ?? "Unassigned",
+        priority:
+          incident.severity === "CRITICAL"
+            ? "CRITICAL"
+            : incident.severity === "HIGH"
+              ? "HIGH"
+              : "NORMAL",
+        severityLabel: incident.severity,
+        locationName: incident.locationName,
+        ownerLabel: incident.ownerName ?? "Not assigned",
+        dueAt: incident.dueAt,
+        sourceAgeAt: incident.incidentDate,
+        isOverdue: isDateOverdue(incident.dueAt)
       });
     }
   }
@@ -975,7 +1199,19 @@ export function buildOperationalDashboardModel(
           ticket.status === "PENDING_VENDOR"
             ? "Follow up vendor"
             : "Update or complete ticket",
-        nextActor: ticket.ownerName ?? "Unassigned"
+        nextActor: ticket.ownerName ?? "Unassigned",
+        priority:
+          ticket.priority === "CRITICAL"
+            ? "CRITICAL"
+            : ticket.priority === "HIGH"
+              ? "HIGH"
+              : "NORMAL",
+        severityLabel: ticket.priority,
+        locationName: ticket.locationName,
+        ownerLabel: ticket.ownerName ?? "Not assigned",
+        dueAt: ticket.targetDueAt,
+        sourceAgeAt: ticket.requestedAt,
+        isOverdue: isDateOverdue(ticket.targetDueAt)
       });
     }
   }
@@ -1028,8 +1264,8 @@ export function buildOperationalDashboardModel(
     }
   );
 
-  const approvalQueue =
-    source.approvals?.slice(0, 5).map((approval) => ({
+  const approvalQueueDrafts =
+    source.approvals?.map((approval) => ({
       id: approval.approvalInstanceId,
       label: approval.documentType,
       reference: approval.publicReference,
@@ -1038,8 +1274,23 @@ export function buildOperationalDashboardModel(
       href: `/approvals/${approval.approvalInstanceId}`,
       tone: "warning" as const,
       nextAction: "Review assigned approval",
-      nextActor: session.user.displayName
+      nextActor: session.user.displayName,
+      priority: "HIGH" as const,
+      locationName: approval.locationName,
+      ownerLabel: session.user.displayName,
+      dueAt: approval.requiredDate,
+      isOverdue: isDateOverdue(approval.requiredDate)
     })) ?? [];
+  const approvalQueueContract = buildDashboardQueueContract(
+    session,
+    approvalQueueDrafts,
+    approvalQueueDisplayLimit
+  );
+  const exceptionQueueContract = buildDashboardQueueContract(
+    session,
+    exceptionQueue,
+    exceptionQueueDisplayLimit
+  );
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1059,8 +1310,14 @@ export function buildOperationalDashboardModel(
       isOverridden: source.dashboardTrustGate?.isOverridden ?? false,
       sourceDecisionId: source.dashboardTrustGate?.sourceDecisionId ?? "DEC-0036"
     },
-    approvalQueue,
-    exceptionQueue: exceptionQueue.slice(0, 8)
+    approvalQueue: toLegacyDashboardQueueItems(
+      approvalQueueDrafts.slice(0, approvalQueueDisplayLimit)
+    ),
+    exceptionQueue: toLegacyDashboardQueueItems(
+      exceptionQueue.slice(0, exceptionQueueDisplayLimit)
+    ),
+    approvalQueueContract,
+    exceptionQueueContract
   };
 }
 

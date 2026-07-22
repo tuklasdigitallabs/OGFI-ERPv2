@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { Bell, LogOut, Search, ShieldCheck } from "lucide-react";
+import { Bell, LogOut, ShieldCheck } from "lucide-react";
 import { Badge, Kicker } from "@ogfi/ui";
 import {
   ShellNavigation,
@@ -171,10 +171,6 @@ export function AppShell({
                 Security
               </a>
             ) : null}
-            <div className="hidden h-10 min-w-56 items-center gap-2 rounded-[var(--radius-control)] border border-slate-200 bg-white/95 px-3 text-sm text-[var(--color-text-muted)] shadow-sm xl:flex">
-              <Search aria-hidden="true" className="h-4 w-4 text-slate-400" />
-              <span>Search records</span>
-            </div>
             <form action={switchLocationContext} className="flex gap-2">
               <select
                 aria-label="Location context"
@@ -198,9 +194,13 @@ export function AppShell({
                 Switch
               </button>
             </form>
-            <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-slate-200 bg-white/95 text-slate-500 shadow-sm">
+            <a
+              aria-label="Open notifications"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-slate-200 bg-white/95 text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              href="/notifications"
+            >
               <Bell aria-hidden="true" className="h-4 w-4" />
-            </div>
+            </a>
             <form action="/sign-out" method="post">
               <button
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-slate-200 bg-white/95 px-3 text-xs font-bold text-slate-700 shadow-sm transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700"

@@ -1,6 +1,6 @@
 # OGFI ERP — Current Pending Implementation Plan
 
-**As of:** July 22, 2026
+**As of:** July 23, 2026
 **Status:** Active implementation register  
 **Scope:** Production-readiness implementation remaining outside formal user UAT execution and final owner signoff
 
@@ -164,7 +164,7 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 
 | Order | Workspace | Key completion focus | Status |
 |---:|---|---|---|
-| 1 | Overview and application shell | Default landing, navigation, scope context, role-aware summaries, responsive behavior, and safe drilldowns | Pending production-readiness review |
+| 1 | Overview and application shell | Default landing, navigation, scope context, role-aware summaries, responsive behavior, and safe drilldowns | In progress; `DEC-0053` action-first queue preview, explicit queue metadata, shell-control integrity, and dashboard loading/error checkpoint implemented; bounded source aggregates, complete filtered drilldowns, mobile shell, browser evidence, and hosted gates remain pending |
 | 2 | Administration | Companies, brands, locations, users, roles, scopes, policies, approval rules, security controls, and audit access | Pending production-readiness review |
 | 3 | Master data | Suppliers, items, categories, units, locations, eligibility/deactivation, duplicate controls, and scoped access | Pending production-readiness review |
 | 4 | Approval engine and inbox | Configurable routes, thresholds, pending steps, no self-approval, return/reject, escalation visibility, and audit | Pending production-readiness review |
@@ -179,6 +179,14 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 | 13 | Stock Adjustments | Reason/evidence, approval, separate posting, full reversal, concurrency, and audit | Pending production-readiness review |
 | 14 | Reports, exports, notifications, and audit | Scope-safe filters, source links, trust notices, export metadata/audit, in-app notification behavior, and pagination | Pending production-readiness review |
 | 15 | Projects & Implementation Tracker | Visibility, membership, tasks, blockers, evidence, requirements, milestones, risks, linked-record redaction, activity, and mobile completion | Pending production-readiness review |
+
+### Workspace 1 implementation checkpoint — July 23, 2026
+
+- Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
+- The server-derived approval and exception queue contracts now expose a bounded preview with deterministic priority ordering, location, owner, timing, and severity labels. Existing server-side permission and selected-scope behavior remain the data boundary; the UI does not supply scope, source type, record ID, or route values. Complete source totals and cross-source pagination remain pending.
+- The application shell no longer displays a decorative search affordance. Its notification control now opens the existing Notification Center. The dashboard adds layout-preserving loading and safe retry error states.
+- Focused dashboard tests (10), web lint, web typecheck, and the production build pass. This is not Workspace 1 completion: current source adapters still reuse broad list reads and are not yet independently degradable, several metric/exception drilldowns still need typed filtered destination contracts, the complete cross-source action queue and mobile shell rework remain pending, and desktop/tablet/mobile browser evidence has not yet been captured.
+- Knowledge-base and glossary guidance now describes `Today’s work` as a read-only, scoped priority view. It does not claim that an item is complete, approved, posted, or otherwise changed merely because it appears on the overview.
 
 ## 5. Workspace Completion Gate
 

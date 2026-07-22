@@ -3,7 +3,7 @@
 **Audience / required role:** All operational users, managers, approvers, and project users  
 **Applies to:** Operations Dashboard, My Work, Approval Inbox, and Notifications  
 **Related phase/module:** Phase I and Phase 1.5 / Operational Visibility  
-**Last verified against:** implemented read-only Operations Dashboard, Approval Inbox, project My Work, and scoped in-app notifications
+**Last verified against:** implemented action-first Operations Dashboard checkpoint, Approval Inbox, project My Work, and scoped in-app notifications
 
 ## Purpose
 
@@ -23,17 +23,20 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 ## Steps
 
 1. Confirm your active location in the header.
-2. Open `Operations Dashboard` for source-record visibility.
-3. Select `View Source` on a dashboard card to open the underlying record list.
-4. Open `Approval Inbox` to review assigned approval decisions.
-5. Open `My Work` for project tasks assigned to you.
-6. Open `Notifications` to review unread or actionable alerts.
-7. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
-8. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
-9. Mark notifications read or archive them after handling the related source record.
+2. Open `Operations Dashboard` and review `Today’s work` first. It lists the highest-priority assigned approvals and operational exceptions visible in your selected scope.
+3. Read the location, owner, timing, severity, status, and next-action labels before opening a source record.
+4. Select `Open` or `Open approvals` to continue in the relevant controlled workspace.
+5. Open `Approval Inbox` to review assigned approval decisions.
+6. Open `My Work` for project tasks assigned to you.
+7. Open `Notifications` to review unread or actionable alerts.
+8. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
+9. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
+10. Mark notifications read or archive them after handling the related source record.
 
 ## Expected Result
 
+- The dashboard shows selected scope and freshness, followed by `Today’s work` and then KPI/supporting cards.
+- Today’s work shows a bounded highest-priority view and states how many approvals and exceptions are currently shown. Open the source workspace for the authoritative record and complete list.
 - Dashboard cards show source-record counts and exceptions for your selected scope.
 - Approval Inbox shows records assigned to you or your active approval role.
 - My Work shows project tasks according to project visibility and assignment.
@@ -43,6 +46,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 ## Important Controls And Warnings
 
 - Dashboard cards are read-only and do not approve, post, receive, dispatch, or reverse records.
+- `Today’s work` is a prioritized read-only view. Opening an item does not bypass the source record’s permission, status, or segregation-of-duties checks.
 - Notifications are reminders or alerts; the source record remains the controlling record.
 - `Scan Approvals` and `Scan Reminders` are manual in-app reminder tools. They do not approve, reject, post, receive, close, reverse, or escalate authority.
 - Project tasks may link to ERP records, but completing a task does not approve a PR/PO, receive stock, post inventory, or change finance records.

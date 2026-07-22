@@ -1,5 +1,12 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Action-First Overview Checkpoint
+
+- Added confirmed `DEC-0053`, selecting a bounded, scope-authorized dashboard read contract with closed server-generated drilldowns, per-source degradation requirements, and target-service reauthorization. The earlier Phase I KPI-first wording was aligned with the core action-first dashboard standard.
+- Implemented the first Overview checkpoint: `Today’s work` now precedes KPI content after scope/freshness context, approval and exception previews expose deterministic priority metadata, the shell notification control opens the Notification Center, the decorative search affordance was removed, and dashboard loading/retry-error states are present.
+- Kept Workspace 1 and production promotion open: source adapters still require bounded dashboard-specific queries and failure isolation, drilldown filter contracts, complete action-queue navigation, mobile-shell rework, visual browser evidence, and the shared hosted release gates.
+- Updated dashboard user guidance and glossary for the scoped, read-only `Today’s work` view. No controlled source action, scope grant, approval authority, or AWS integration was introduced.
+
 ## 2026-07-22 — Approval Integrity Locking and Typed Financial Intent
 
 - Added confirmed `DEC-0052`, requiring a PostgreSQL partial unique index for one pending approval instance per tenant/company/source tuple and manual audited reconciliation when migration preflight finds duplicates.

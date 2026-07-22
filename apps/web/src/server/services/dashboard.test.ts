@@ -90,6 +90,48 @@ describe("operational dashboard model", () => {
     ]);
   });
 
+  it("exposes a bounded, deterministically ordered approval queue contract", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      approvals: [
+        "AP-006",
+        "AP-005",
+        "AP-004",
+        "AP-003",
+        "AP-002",
+        "AP-001"
+      ].map((publicReference, index) => ({
+        approvalInstanceId: `approval-${index + 1}`,
+        documentType: "PurchaseRequest",
+        documentId: `pr-${index + 1}`,
+        publicReference,
+        requesterName: "Requester",
+        locationName: "Selected Branch",
+        requiredDate: index === 0 ? "2020-01-01" : "2099-01-01",
+        status: "PENDING_APPROVAL",
+        currentStepOrder: 1,
+        lineDescription: "Rice"
+      }))
+    });
+
+    expect(dashboard.approvalQueue).toHaveLength(5);
+    expect(dashboard.approvalQueueContract).toMatchObject({
+      totalCount: 6,
+      displayedCount: 5,
+      displayLimit: 5
+    });
+    expect(
+      dashboard.approvalQueueContract.items.map((item) => item.reference)
+    ).toEqual(["AP-006", "AP-001", "AP-002", "AP-003", "AP-004"]);
+    expect(dashboard.approvalQueueContract.items[0]).toMatchObject({
+      priority: "HIGH",
+      severityLabel: "No severity reported",
+      locationName: "Selected Branch",
+      ageLabel: "Overdue since 2020-01-01",
+      ownerLabel: "Branch User",
+      href: "/approvals/approval-1"
+    });
+  });
+
   it("surfaces source-linked exceptions without creating dashboard state", () => {
     const dashboard = buildOperationalDashboardModel(session, {
       purchaseOrders: [
