@@ -83,6 +83,25 @@ export type BranchOperationsDashboard = {
   checklists: BranchOperationChecklistSummary[];
 };
 
+export type BranchOperationsDashboardCandidate = {
+  id: string;
+  checklistName: string;
+  businessDate: string;
+  shiftType: string;
+  status: string;
+  exceptionCount: number;
+  hasCriticalException: boolean;
+};
+
+export type BranchOperationsDashboardRead = {
+  openExceptions: number;
+  statusCounts: BranchChecklistStatusCounts;
+  severityCounts: BranchChecklistSeverityCounts;
+  averageCompletionPercent: number;
+  reviewCandidates: BranchOperationsDashboardCandidate[];
+  exceptionCandidates: BranchOperationsDashboardCandidate[];
+};
+
 export type BranchOperationsExportFilters = {
   q?: string;
   shift?: string;
@@ -488,6 +507,105 @@ export async function getBranchOperationsDashboard(
     severityCounts,
     averageCompletionPercent,
     checklists: summaries
+  };
+}
+
+export async function getBranchOperationsDashboardRead(
+  session: SessionContext
+): Promise<BranchOperationsDashboardRead> {
+  assertBranchOperationsAccess(session);
+
+  const where: Prisma.BranchOperationalChecklistWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId
+  };
+  const [summary, statusRows, criticalExceptions, reviewRows, exceptionRows] =
+    await Promise.all([
+      prisma.branchOperationalChecklist.aggregate({
+        where,
+        _sum: { exceptionCount: true },
+        _avg: { completionPercent: true }
+      }),
+      prisma.branchOperationalChecklist.groupBy({
+        by: ["status"],
+        where,
+        _count: { _all: true }
+      }),
+      prisma.branchOperationalChecklistLine.count({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+          locationId: session.context.locationId,
+          result: "EXCEPTION",
+          severity: "CRITICAL"
+        }
+      }),
+      prisma.branchOperationalChecklist.findMany({
+        where: { ...where, status: { in: [...reviewableChecklistStatuses] } },
+        orderBy: [{ businessDate: "desc" }, { shiftType: "asc" }],
+        take: 3,
+        select: {
+          id: true,
+          checklistName: true,
+          businessDate: true,
+          shiftType: true,
+          status: true,
+          exceptionCount: true,
+          lines: {
+            where: { result: "EXCEPTION", severity: "CRITICAL" },
+            select: { id: true },
+            take: 1
+          }
+        }
+      }),
+      prisma.branchOperationalChecklist.findMany({
+        where: { ...where, exceptionCount: { gt: 0 } },
+        orderBy: [{ businessDate: "desc" }, { shiftType: "asc" }],
+        take: 3,
+        select: {
+          id: true,
+          checklistName: true,
+          businessDate: true,
+          shiftType: true,
+          status: true,
+          exceptionCount: true,
+          lines: {
+            where: { result: "EXCEPTION", severity: "CRITICAL" },
+            select: { id: true },
+            take: 1
+          }
+        }
+      })
+    ]);
+  const statusCounts = emptyStatusCounts();
+  for (const row of statusRows) {
+    if (row.status in statusCounts) {
+      statusCounts[row.status as keyof BranchChecklistStatusCounts] = row._count._all;
+    }
+  }
+  const toCandidate = (row: (typeof reviewRows)[number]): BranchOperationsDashboardCandidate => ({
+    id: row.id,
+    checklistName: row.checklistName,
+    businessDate: row.businessDate.toISOString().slice(0, 10),
+    shiftType: row.shiftType,
+    status: row.status,
+    exceptionCount: row.exceptionCount,
+    hasCriticalException: row.lines.length > 0
+  });
+
+  return {
+    openExceptions: summary._sum.exceptionCount ?? 0,
+    statusCounts,
+    severityCounts: {
+      ...emptySeverityCounts(),
+      CRITICAL: criticalExceptions
+    },
+    averageCompletionPercent: Number(summary._avg.completionPercent ?? 0),
+    reviewCandidates: reviewRows.map(toCandidate),
+    exceptionCandidates: exceptionRows.map(toCandidate)
   };
 }
 

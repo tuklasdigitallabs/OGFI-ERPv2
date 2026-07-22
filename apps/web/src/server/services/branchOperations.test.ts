@@ -673,6 +673,12 @@ describe("Phase 2 branch operations foundation", () => {
 
   it("keeps branch operations controlled and source-record based", () => {
     expect(serviceSource).toContain("getBranchOperationsDashboard");
+    expect(serviceSource).toContain("getBranchOperationsDashboardRead");
+    expect(serviceSource).toContain("reviewCandidates");
+    expect(serviceSource).toContain("exceptionCandidates");
+    expect(serviceSource).toContain("take: 3");
+    expect(serviceSource).toContain("_sum: { exceptionCount: true }");
+    expect(serviceSource).toContain("_avg: { completionPercent: true }");
     expect(serviceSource).toContain("BranchChecklistStatusCounts");
     expect(serviceSource).toContain("BranchChecklistSeverityCounts");
     expect(serviceSource).toContain("statusCounts");

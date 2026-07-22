@@ -16,8 +16,9 @@ import {
 import { type ApprovalQueueItem } from "./approvals";
 import type { SessionContext } from "./context";
 import {
-  getBranchOperationsDashboard,
-  type BranchOperationsDashboard
+  getBranchOperationsDashboardRead,
+  type BranchOperationsDashboard,
+  type BranchOperationsDashboardRead
 } from "./branchOperations";
 import {
   getFoodCostAnalysisDashboard,
@@ -204,6 +205,7 @@ export type OperationalDashboardSource = {
   foodSafety?: FoodSafetyDashboard;
   incidents?: IncidentDashboard;
   maintenance?: MaintenanceDashboard;
+  branchOperationsDashboard?: BranchOperationsDashboardRead;
   dashboardTrustGate?: Awaited<ReturnType<typeof getDashboardTrustGatePolicy>>;
 };
 
@@ -960,21 +962,24 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.branchOperations) {
+  if (source.branchOperations || source.branchOperationsDashboard) {
+    const branchOperations = source.branchOperationsDashboard ?? source.branchOperations!;
     const reviewReadyChecklistCount =
-      source.branchOperations.statusCounts.SUBMITTED +
-      source.branchOperations.statusCounts.MANAGER_REVIEW;
-    const reviewReadyChecklists = source.branchOperations.checklists.filter(
+      branchOperations.statusCounts.SUBMITTED +
+      branchOperations.statusCounts.MANAGER_REVIEW;
+    const reviewReadyChecklists = source.branchOperationsDashboard
+      ? source.branchOperationsDashboard.reviewCandidates
+      : source.branchOperations!.checklists.filter(
       (checklistSummary) =>
         branchChecklistReviewStatuses.has(checklistSummary.status)
     );
     cards.push({
       id: "branch-checklist-exceptions",
       label: "Checklist Exceptions",
-      value: source.branchOperations.openExceptions,
+      value: branchOperations.openExceptions,
       href: "/branch-operations",
-      description: `${source.branchOperations.averageCompletionPercent.toFixed(0)}% average completion`,
-      tone: cardTone(source.branchOperations.openExceptions)
+      description: `${branchOperations.averageCompletionPercent.toFixed(0)}% average completion`,
+      tone: cardTone(branchOperations.openExceptions)
     });
     cards.push({
       id: "branch-checklist-reviews",
@@ -988,29 +993,29 @@ export function buildOperationalDashboardModel(
       {
         id: "branch-critical-exception-count",
         label: "Critical checklist exceptions",
-        displayValue: number(source.branchOperations.severityCounts.CRITICAL),
+        displayValue: number(branchOperations.severityCounts.CRITICAL),
         detail: "Critical branch checklist line exceptions in current scope",
         href: "/branch-operations",
         tone:
-          source.branchOperations.severityCounts.CRITICAL > 0
+          branchOperations.severityCounts.CRITICAL > 0
             ? "warning"
             : "success"
       },
       {
         id: "branch-manager-review-count",
         label: "Manager review checklists",
-        displayValue: number(source.branchOperations.statusCounts.MANAGER_REVIEW),
+        displayValue: number(branchOperations.statusCounts.MANAGER_REVIEW),
         detail: "Branch checklists waiting for manager review",
         href: "/branch-operations",
         tone:
-          source.branchOperations.statusCounts.MANAGER_REVIEW > 0
+          branchOperations.statusCounts.MANAGER_REVIEW > 0
             ? "warning"
             : "success"
       },
       {
         id: "branch-reviewed-count",
         label: "Reviewed checklists",
-        displayValue: number(source.branchOperations.statusCounts.REVIEWED),
+        displayValue: number(branchOperations.statusCounts.REVIEWED),
         detail: "Reviewed branch checklists in current scope",
         href: "/branch-operations",
         tone: "success"
@@ -1028,14 +1033,22 @@ export function buildOperationalDashboardModel(
         tone: "warning",
         nextAction: "Review checklist",
         priority: "HIGH",
-        locationName: checklist.locationName,
+        locationName: session.context.locationName,
         sourceAgeAt: checklist.businessDate
       });
     }
 
-    for (const checklist of source.branchOperations.checklists
-      .filter((checklistSummary) => checklistSummary.exceptionCount > 0)
-      .slice(0, 3)) {
+    const exceptionChecklists = source.branchOperationsDashboard
+      ? source.branchOperationsDashboard.exceptionCandidates
+      : source.branchOperations!.checklists
+          .filter((checklistSummary) => checklistSummary.exceptionCount > 0)
+          .slice(0, 3);
+    for (const checklist of exceptionChecklists) {
+      const hasCriticalException = "hasCriticalException" in checklist
+        ? checklist.hasCriticalException
+        : checklist.lines.some(
+            (line) => line.result === "EXCEPTION" && line.severity === "CRITICAL"
+          );
       exceptionQueue.push({
         id: `branch-ops-${checklist.id}`,
         label: "Checklist exception",
@@ -1043,23 +1056,11 @@ export function buildOperationalDashboardModel(
         detail: `${checklist.businessDate} / ${checklist.exceptionCount} exception${checklist.exceptionCount === 1 ? "" : "s"}`,
         status: checklist.status,
         href: `/branch-operations/${checklist.id}`,
-        tone: checklist.lines.some(
-          (line) => line.result === "EXCEPTION" && line.severity === "CRITICAL"
-        )
-          ? "warning"
-          : "info",
+        tone: hasCriticalException ? "warning" : "info",
         nextAction: "Investigate checklist exception",
-        priority: checklist.lines.some(
-          (line) => line.result === "EXCEPTION" && line.severity === "CRITICAL"
-        )
-          ? "CRITICAL"
-          : "NORMAL",
-        severityLabel: checklist.lines.some(
-          (line) => line.result === "EXCEPTION" && line.severity === "CRITICAL"
-        )
-          ? "CRITICAL"
-          : "No severity reported",
-        locationName: checklist.locationName,
+        priority: hasCriticalException ? "CRITICAL" : "NORMAL",
+        severityLabel: hasCriticalException ? "CRITICAL" : "No severity reported",
+        locationName: session.context.locationName,
         sourceAgeAt: checklist.businessDate
       });
     }
@@ -1552,8 +1553,8 @@ export async function getOperationalDashboard(
     {
       unavailableSource: { id: "branch-operations", label: "Branch operations", href: "/operations" },
       read: canUseBranchOperations(session.permissionCodes)
-      ? getBranchOperationsDashboard(session).then((branchOperations) => {
-          source.branchOperations = branchOperations;
+      ? getBranchOperationsDashboardRead(session).then((branchOperationsDashboard) => {
+          source.branchOperationsDashboard = branchOperationsDashboard;
         })
       : Promise.resolve()
     },
