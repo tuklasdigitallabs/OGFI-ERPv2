@@ -1,12 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import { permissions } from "./authorization";
 import { getPurchaseRequestDashboardRead } from "./purchaseRequests";
+import { getPurchaseOrderDashboardRead } from "./purchaseOrders";
 import { getStockAdjustmentDashboardRead } from "./stockAdjustments";
 import { getWastageDashboardRead } from "./wastage";
 
 const mockPrisma = vi.hoisted(() => ({
   purchaseRequest: {
     count: vi.fn(),
+    findMany: vi.fn(),
+  },
+  purchaseOrder: {
+    count: vi.fn(),
+    aggregate: vi.fn(),
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+  },
+  purchaseOrderLine: {
     findMany: vi.fn(),
   },
   wastageReport: {
@@ -41,12 +51,56 @@ const session = {
   authorizedLocations: [],
   permissionCodes: [
     permissions.purchaseRequestCreate,
+    permissions.purchaseOrderView,
     permissions.wastageView,
     permissions.stockAdjustmentView,
   ],
 };
 
 describe("bounded operational dashboard reads", () => {
+  it("uses scoped PO aggregates, narrow fulfillment values, and a bounded overdue preview", async () => {
+    mockPrisma.purchaseOrder.count.mockResolvedValue(4);
+    mockPrisma.purchaseOrder.aggregate.mockResolvedValue({
+      _sum: { totalAmount: 1200 },
+    });
+    mockPrisma.purchaseOrderLine.findMany.mockResolvedValue([
+      { orderedQty: 10, receivedQty: 4, cancelledQty: 1, unitPrice: 100 },
+    ]);
+    mockPrisma.purchaseOrder.findMany.mockResolvedValue([
+      {
+        id: "po-1",
+        publicReference: "PO-2026-00001",
+        status: "ISSUED",
+        expectedDeliveryDate: new Date("2026-07-20T00:00:00.000Z"),
+        supplier: { legalName: "Demo Supplier", tradingName: null },
+      },
+    ]);
+    mockPrisma.purchaseOrder.findFirst.mockResolvedValue({ currencyCode: "PHP" });
+
+    await expect(getPurchaseOrderDashboardRead(session as never)).resolves.toEqual(
+      expect.objectContaining({
+        openCount: 4,
+        committedValue: 1200,
+        openValue: 500,
+        receivedValue: 400,
+        overdueCandidates: [expect.objectContaining({ id: "po-1" })],
+      }),
+    );
+    expect(mockPrisma.purchaseOrder.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: session.context.locationId,
+      }),
+    });
+    expect(mockPrisma.purchaseOrder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 8,
+        select: expect.not.objectContaining({ lines: expect.anything() }),
+      }),
+    );
+  });
+
   it("uses an exact scoped count and bounded header-only purchase-request candidates", async () => {
     mockPrisma.purchaseRequest.count.mockResolvedValue(7);
     mockPrisma.purchaseRequest.findMany.mockResolvedValue([

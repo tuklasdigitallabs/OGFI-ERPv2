@@ -31,7 +31,11 @@ import {
   listInventoryBalances
 } from "./inventory";
 import { getMaintenanceDashboard, type MaintenanceDashboard } from "./maintenance";
-import { listPurchaseOrders } from "./purchaseOrders";
+import {
+  getPurchaseOrderDashboardRead,
+  listPurchaseOrders,
+  type PurchaseOrderDashboardRead
+} from "./purchaseOrders";
 import {
   getPurchaseRequestDashboardRead,
   type PurchaseRequest,
@@ -173,6 +177,7 @@ export type OperationalDashboardSource = {
   purchaseRequests?: PurchaseRequest[];
   purchaseRequestDashboard?: PurchaseRequestDashboardRead;
   purchaseOrders?: PurchaseOrderSummary[];
+  purchaseOrderDashboard?: PurchaseOrderDashboardRead;
   goodsReceipts?: GoodsReceiptSummary[];
   receivingDashboard?: ReceivingDashboardRead;
   transfers?: InventoryTransferSummary[];
@@ -423,7 +428,9 @@ export function buildOperationalDashboardModel(
   const sourceHealth: DashboardMetric[] = [];
   const exceptionQueue: DashboardQueueItemDraft[] = [];
   const primaryCurrency =
-    source.purchaseOrders?.find((order) => order.currencyCode)?.currencyCode ?? "PHP";
+    source.purchaseOrderDashboard?.primaryCurrency ??
+    source.purchaseOrders?.find((order) => order.currencyCode)?.currencyCode ??
+    "PHP";
 
   if (source.approvals) {
     cards.push({
@@ -450,17 +457,26 @@ export function buildOperationalDashboardModel(
     });
   }
 
-  if (source.purchaseOrders) {
-    const value = countByStatus(source.purchaseOrders, purchaseOrderOpenStatuses);
-    const committedValue = source.purchaseOrders.reduce(
+  if (source.purchaseOrders || source.purchaseOrderDashboard) {
+    const purchaseOrders = source.purchaseOrders ?? [];
+    const value = source.purchaseOrderDashboard
+      ? source.purchaseOrderDashboard.openCount
+      : countByStatus(purchaseOrders, purchaseOrderOpenStatuses);
+    const committedValue = source.purchaseOrderDashboard
+      ? source.purchaseOrderDashboard.committedValue
+      : purchaseOrders.reduce(
       (total, order) => total + order.totalAmount,
       0
     );
-    const openValue = source.purchaseOrders.reduce(
+    const openValue = source.purchaseOrderDashboard
+      ? source.purchaseOrderDashboard.openValue
+      : purchaseOrders.reduce(
       (total, order) => total + order.openValue,
       0
     );
-    const receivedValue = source.purchaseOrders.reduce(
+    const receivedValue = source.purchaseOrderDashboard
+      ? source.purchaseOrderDashboard.receivedValue
+      : purchaseOrders.reduce(
       (total, order) => total + order.receivedValue,
       0
     );
@@ -499,21 +515,24 @@ export function buildOperationalDashboardModel(
       }
     );
 
-    for (const order of source.purchaseOrders) {
-      if (order.deliveryAgingStatus === "OVERDUE") {
-        exceptionQueue.push({
-          id: `po-${order.id}`,
-          label: "Overdue PO",
-          reference: order.publicReference,
-          detail: `${order.supplierName} / ${order.daysOverdue} day${order.daysOverdue === 1 ? "" : "s"} overdue`,
-          status: order.status,
-          href: `/purchase-orders/${order.id}`,
-          tone: "warning",
-          priority: "HIGH",
-          locationName: session.context.locationName,
-          isOverdue: true
-        });
-      }
+    const overdueOrders = source.purchaseOrderDashboard
+      ? source.purchaseOrderDashboard.overdueCandidates
+      : purchaseOrders.filter(
+          (order) => order.deliveryAgingStatus === "OVERDUE",
+        );
+    for (const order of overdueOrders) {
+      exceptionQueue.push({
+        id: `po-${order.id}`,
+        label: "Overdue PO",
+        reference: order.publicReference,
+        detail: `${order.supplierName} / ${order.daysOverdue} day${order.daysOverdue === 1 ? "" : "s"} overdue`,
+        status: order.status,
+        href: `/purchase-orders/${order.id}`,
+        tone: "warning",
+        priority: "HIGH",
+        locationName: session.context.locationName,
+        isOverdue: true
+      });
     }
   }
 
@@ -1406,8 +1425,8 @@ export async function getOperationalDashboard(
         })
       : Promise.resolve(),
     canReadPurchaseOrders(session.permissionCodes)
-      ? listPurchaseOrders(session).then((purchaseOrders) => {
-          source.purchaseOrders = purchaseOrders;
+      ? getPurchaseOrderDashboardRead(session).then((purchaseOrderDashboard) => {
+          source.purchaseOrderDashboard = purchaseOrderDashboard;
         })
       : Promise.resolve(),
     canUseReceiving(session.permissionCodes)

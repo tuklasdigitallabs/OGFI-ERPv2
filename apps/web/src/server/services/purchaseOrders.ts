@@ -40,6 +40,15 @@ const purchaseOrderIssueMethods = [
   "Manual handoff",
 ] as const;
 
+const purchaseOrderOpenStatuses = [
+  "DRAFT",
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "ISSUED",
+  "AMENDMENT_PENDING",
+  "PARTIALLY_RECEIVED",
+] as const;
+
 const issuePurchaseOrderSchema = z.object({
   id: z.string().uuid(),
   communicationMethod: z.string().trim().min(2).max(80),
@@ -648,6 +657,101 @@ async function requirePurchaseOrderRead(session: SessionContext) {
   if (!canReadPurchaseOrders(session.permissionCodes)) {
     await requirePermission(session, permissions.purchaseOrderView);
   }
+}
+
+export type PurchaseOrderDashboardRead = {
+  openCount: number;
+  committedValue: number;
+  openValue: number;
+  receivedValue: number;
+  primaryCurrency: string | null;
+  overdueCandidates: Array<{
+    id: string;
+    publicReference: string;
+    status: string;
+    supplierName: string;
+    expectedDeliveryDate: string;
+    daysOverdue: number;
+  }>;
+};
+
+/**
+ * Dashboard-only PO read. Keep source authorization and selected location scope
+ * here; dashboard callers must not receive the workspace list DTO.
+ */
+export async function getPurchaseOrderDashboardRead(
+  session: SessionContext,
+): Promise<PurchaseOrderDashboardRead> {
+  await requirePurchaseOrderRead(session);
+
+  const scope = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    deliveryLocationId: session.context.locationId,
+  };
+  const today = new Date().toISOString().slice(0, 10);
+  const todayStart = new Date(`${today}T00:00:00.000Z`);
+  const [openCount, commitment, fulfillmentLines, overdueOrders, currencyOrder] =
+    await Promise.all([
+      prisma.purchaseOrder.count({
+        where: { ...scope, status: { in: [...purchaseOrderOpenStatuses] } },
+      }),
+      prisma.purchaseOrder.aggregate({
+        where: scope,
+        _sum: { totalAmount: true },
+      }),
+      prisma.purchaseOrderLine.findMany({
+        where: { purchaseOrder: scope },
+        select: {
+          orderedQty: true,
+          receivedQty: true,
+          cancelledQty: true,
+          unitPrice: true,
+        },
+      }),
+      prisma.purchaseOrder.findMany({
+        where: {
+          ...scope,
+          status: { in: ["ISSUED", "PARTIALLY_RECEIVED"] },
+          expectedDeliveryDate: { lt: todayStart },
+        },
+        select: {
+          id: true,
+          publicReference: true,
+          status: true,
+          expectedDeliveryDate: true,
+          supplier: { select: { legalName: true, tradingName: true } },
+        },
+        orderBy: [{ expectedDeliveryDate: "asc" }, { id: "asc" }],
+        take: 8,
+      }),
+      prisma.purchaseOrder.findFirst({
+        where: scope,
+        select: { currencyCode: true },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+  const fulfillment = summarizePurchaseOrderFulfillment(fulfillmentLines);
+
+  return {
+    openCount,
+    committedValue: Number(commitment._sum.totalAmount ?? 0),
+    openValue: fulfillment.openValue,
+    receivedValue: fulfillment.receivedValue,
+    primaryCurrency: currencyOrder?.currencyCode ?? null,
+    overdueCandidates: overdueOrders.map((order) => ({
+      id: order.id,
+      publicReference: order.publicReference,
+      status: order.status,
+      supplierName: order.supplier.tradingName ?? order.supplier.legalName,
+      expectedDeliveryDate: order.expectedDeliveryDate.toISOString(),
+      daysOverdue: classifyPurchaseOrderDeliveryAging({
+        status: order.status,
+        expectedDeliveryDate: order.expectedDeliveryDate.toISOString().slice(0, 10),
+        today,
+      }).daysOverdue,
+    })),
+  };
 }
 
 export async function listPurchaseOrders(
