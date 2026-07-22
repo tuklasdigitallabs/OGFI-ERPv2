@@ -8,10 +8,66 @@ import {
   assertStockAdjustmentCanSubmit,
   assertStockAdjustmentQuantity,
   assertOpeningBalanceIsPostable,
-  calculateAdjustmentDelta
+  calculateAdjustmentDelta,
+  resolveStockAdjustmentDashboardProfile,
+  stockAdjustmentDashboardProfileHref,
+  stockAdjustmentDashboardProfileWhere
 } from "./stockAdjustments";
 
+const dashboardSession = {
+  context: {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    companyId: "00000000-0000-4000-8000-000000000002",
+    locationId: "00000000-0000-4000-8000-000000000004"
+  }
+};
+
 describe("stock adjustment controlled workflow rules", () => {
+  test("resolves only the closed adjustment exception profile and its canonical scoped predicate", () => {
+    expect(
+      resolveStockAdjustmentDashboardProfile("stock-adjustment-exceptions-v1")
+    ).toBe("stock-adjustment-exceptions-v1");
+    expect(resolveStockAdjustmentDashboardProfile("all")).toBeNull();
+    expect(resolveStockAdjustmentDashboardProfile(undefined)).toBeNull();
+    expect(
+      stockAdjustmentDashboardProfileHref("stock-adjustment-exceptions-v1", 2)
+    ).toBe("/adjustments?dashboard=stock-adjustment-exceptions-v1&page=2");
+    expect(
+      stockAdjustmentDashboardProfileWhere(
+        dashboardSession as never,
+        "stock-adjustment-exceptions-v1"
+      )
+    ).toEqual({
+      tenantId: dashboardSession.context.tenantId,
+      companyId: dashboardSession.context.companyId,
+      inventoryLocation: { locationId: dashboardSession.context.locationId },
+      status: {
+        in: ["PENDING_APPROVAL", "APPROVED", "POSTING", "RETURNED"]
+      }
+    });
+  });
+
+  test("dashboard, paged profile, and export use the canonical exception predicate", () => {
+    const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
+    const page = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/adjustments/page.tsx"),
+      "utf8"
+    );
+    const route = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/adjustments/export/route.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("stockAdjustmentDashboardProfileWhere(");
+    expect(source).toContain('"stock-adjustment-exceptions-v1"');
+    expect(source).toContain("listStockAdjustmentDashboardProfilePage");
+    expect(source).toContain("take: stockAdjustmentProfilePageSize");
+    expect(page).toContain("!profile && canCreateAdjustments");
+    expect(page).toContain("read-only profile does not grant adjustment or inventory actions");
+    expect(route).toContain("listStockAdjustments(session, profile ?? undefined)");
+    expect(route).toContain("Unsupported stock adjustment dashboard profile.");
+  });
+
   test("stock adjustment pages explain approval, posting, and reversal controls", () => {
     const listPage = readFileSync(
       path.resolve(__dirname, "../../app/(app)/adjustments/page.tsx"),

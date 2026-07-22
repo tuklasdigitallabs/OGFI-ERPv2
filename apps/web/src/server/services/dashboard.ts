@@ -51,6 +51,7 @@ import {
 import {
   getStockAdjustmentDashboardRead,
   listStockAdjustments,
+  stockAdjustmentDashboardProfileHref,
   type StockAdjustmentDashboardRead
 } from "./stockAdjustments";
 import {
@@ -715,7 +716,7 @@ export function buildOperationalDashboardModel(
       id: "adjustment-exceptions",
       label: "Adjustment Exceptions",
       value,
-      href: "/adjustments",
+      href: stockAdjustmentDashboardProfileHref("stock-adjustment-exceptions-v1"),
       description: "Approval and posting follow-up",
       tone: cardTone(value)
     });

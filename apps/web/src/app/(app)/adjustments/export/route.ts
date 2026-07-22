@@ -10,11 +10,14 @@ import {
   logOperationalExportFailure
 } from "@/server/services/exportAudit";
 import { canExportStockAdjustments } from "@/server/services/exportAuthorization";
-import { listStockAdjustments } from "@/server/services/stockAdjustments";
+import {
+  listStockAdjustments,
+  resolveStockAdjustmentDashboardProfile
+} from "@/server/services/stockAdjustments";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSessionContext();
   if (!session) {
     return exportAuthRequiredResponse();
@@ -29,13 +32,21 @@ export async function GET() {
     return exportPermissionDeniedResponse();
   }
 
+  const profileParam = new URL(request.url).searchParams.get("dashboard") ?? undefined;
+  const profile = resolveStockAdjustmentDashboardProfile(profileParam);
+  if (profileParam && !profile) {
+    return new Response("Unsupported stock adjustment dashboard profile.", {
+      status: 400
+    });
+  }
+
   try {
     await logOperationalExportAudit({
       session,
       reportId: "stock-adjustment-report",
       eventType: "report.export_started"
     });
-    const adjustments = await listStockAdjustments(session);
+    const adjustments = await listStockAdjustments(session, profile ?? undefined);
     const rows = [
       [
         "Reference",
@@ -82,12 +93,16 @@ export async function GET() {
       rowCount: adjustments.length
     });
 
-    return csvExportResponse(rows, "stock-adjustments.csv", {
-      metadata: await buildReportCsvMetadata({
-        session,
-        reportId: "stock-adjustment-report"
-      })
-    });
+    return csvExportResponse(
+      rows,
+      profile ? "stock-adjustment-exceptions.csv" : "stock-adjustments.csv",
+      {
+        metadata: await buildReportCsvMetadata({
+          session,
+          reportId: "stock-adjustment-report"
+        })
+      }
+    );
   } catch (error) {
     await logOperationalExportFailure({
       session,

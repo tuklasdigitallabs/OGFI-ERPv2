@@ -1,4 +1,4 @@
-import { prisma, type TransactionClient } from "@ogfi/database";
+import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { STOCK_ADJUSTMENT_MAX_LINES } from "../../lib/workflowLimits";
@@ -203,13 +203,54 @@ function scopedStockAdjustmentWhere(session: SessionContext, id?: string) {
   };
 }
 
-const stockAdjustmentDashboardTaskCandidateLimit = 8;
-const stockAdjustmentDashboardExceptionStatuses = [
+export const stockAdjustmentDashboardProfiles = [
+  "stock-adjustment-exceptions-v1"
+] as const;
+export type StockAdjustmentDashboardProfile =
+  (typeof stockAdjustmentDashboardProfiles)[number];
+
+const stockAdjustmentExceptionStatuses = [
   "PENDING_APPROVAL",
   "APPROVED",
   "POSTING",
-  "RETURNED",
-];
+  "RETURNED"
+] as const;
+
+const stockAdjustmentProfilePageSize = 25;
+
+export function resolveStockAdjustmentDashboardProfile(
+  value: string | undefined
+): StockAdjustmentDashboardProfile | null {
+  return value === "stock-adjustment-exceptions-v1" ? value : null;
+}
+
+export function stockAdjustmentDashboardProfileHref(
+  profile: StockAdjustmentDashboardProfile,
+  page = 1
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+  return `/adjustments?${params.toString()}`;
+}
+
+/** Closed, server-owned dashboard population for adjustment follow-up. */
+export function stockAdjustmentDashboardProfileWhere(
+  session: SessionContext,
+  profile: StockAdjustmentDashboardProfile
+) {
+  if (profile === "stock-adjustment-exceptions-v1") {
+    return {
+      ...scopedStockAdjustmentWhere(session),
+      status: { in: [...stockAdjustmentExceptionStatuses] }
+    } satisfies Prisma.StockAdjustmentWhereInput;
+  }
+
+  throw new Error("STOCK_ADJUSTMENT_DASHBOARD_PROFILE_UNSUPPORTED");
+}
+
+const stockAdjustmentDashboardTaskCandidateLimit = 8;
 
 export type StockAdjustmentDashboardTaskCandidate = {
   id: string;
@@ -235,10 +276,10 @@ export async function getStockAdjustmentDashboardRead(
 ): Promise<StockAdjustmentDashboardRead> {
   await requireStockAdjustmentRead(session);
 
-  const where = {
-    ...scopedStockAdjustmentWhere(session),
-    status: { in: stockAdjustmentDashboardExceptionStatuses },
-  };
+  const where = stockAdjustmentDashboardProfileWhere(
+    session,
+    "stock-adjustment-exceptions-v1"
+  );
   const [exceptionCount, taskCandidates] = await Promise.all([
     prisma.stockAdjustment.count({ where }),
     prisma.stockAdjustment.findMany({
@@ -575,11 +616,16 @@ export async function listStockAdjustmentFormOptions(session: SessionContext) {
   };
 }
 
-export async function listStockAdjustments(session: SessionContext) {
+export async function listStockAdjustments(
+  session: SessionContext,
+  profile?: StockAdjustmentDashboardProfile
+) {
   await requireStockAdjustmentRead(session);
 
   const adjustments = await prisma.stockAdjustment.findMany({
-    where: scopedStockAdjustmentWhere(session),
+    where: profile
+      ? stockAdjustmentDashboardProfileWhere(session, profile)
+      : scopedStockAdjustmentWhere(session),
     include: {
       inventoryLocation: true,
       requestedBy: true,
@@ -615,6 +661,75 @@ export async function listStockAdjustments(session: SessionContext) {
       0
     )
   }));
+}
+
+export type StockAdjustmentExceptionProfilePage = {
+  adjustments: Awaited<ReturnType<typeof listStockAdjustments>>;
+  totalItems: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function listStockAdjustmentDashboardProfilePage(
+  session: SessionContext,
+  profile: StockAdjustmentDashboardProfile,
+  requestedPage: number
+): Promise<StockAdjustmentExceptionProfilePage> {
+  await requireStockAdjustmentRead(session);
+
+  const page = Number.isFinite(requestedPage) && requestedPage > 0
+    ? Math.floor(requestedPage)
+    : 1;
+  const where = stockAdjustmentDashboardProfileWhere(session, profile);
+  const totalItems = await prisma.stockAdjustment.count({ where });
+  const safePage = Math.min(
+    page,
+    Math.max(1, Math.ceil(totalItems / stockAdjustmentProfilePageSize))
+  );
+  const adjustments = await prisma.stockAdjustment.findMany({
+    where,
+    include: {
+      inventoryLocation: true,
+      requestedBy: true,
+      cancelledBy: true,
+      postedBy: true,
+      reversedBy: true,
+      lines: true
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (safePage - 1) * stockAdjustmentProfilePageSize,
+    take: stockAdjustmentProfilePageSize
+  });
+
+  return {
+    adjustments: adjustments.map((adjustment) => ({
+      id: adjustment.id,
+      publicReference: adjustment.publicReference,
+      status: adjustment.status,
+      adjustmentType: adjustment.adjustmentType,
+      reasonCode: adjustment.reasonCode,
+      reasonDescription: adjustment.reasonDescription,
+      inventoryLocationName: adjustment.inventoryLocation.name,
+      requestedByName: adjustment.requestedBy.displayName,
+      cancelledByName: adjustment.cancelledBy?.displayName ?? null,
+      postedByName: adjustment.postedBy?.displayName ?? null,
+      reversedByName: adjustment.reversedBy?.displayName ?? null,
+      createdAt: adjustment.createdAt.toISOString(),
+      submittedAt: adjustment.submittedAt?.toISOString() ?? null,
+      postedAt: adjustment.postedAt?.toISOString() ?? null,
+      reversedAt: adjustment.reversedAt?.toISOString() ?? null,
+      cancelledAt: adjustment.cancelledAt?.toISOString() ?? null,
+      totalEstimatedValueImpact: Number(adjustment.totalEstimatedValueImpact),
+      lineCount: adjustment.lines.length,
+      totalQuantityDelta: adjustment.lines.reduce(
+        (total, line) => total + Number(line.quantityDeltaBaseUom),
+        0
+      )
+    })),
+    totalItems,
+    page: safePage,
+    pageSize: stockAdjustmentProfilePageSize
+  };
 }
 
 export async function getStockAdjustment(session: SessionContext, id: string) {

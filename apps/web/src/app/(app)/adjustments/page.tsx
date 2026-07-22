@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink } from "@ogfi/ui";
+import { Badge, ButtonLink, EmptyState, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { TaskSheet } from "@/components/TaskSheet";
@@ -18,8 +18,11 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportStockAdjustments } from "@/server/services/exportAuthorization";
 import {
   createStockAdjustment,
+  listStockAdjustmentDashboardProfilePage,
   listStockAdjustmentFormOptions,
-  listStockAdjustments
+  listStockAdjustments,
+  resolveStockAdjustmentDashboardProfile,
+  stockAdjustmentDashboardProfileHref
 } from "@/server/services/stockAdjustments";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +30,19 @@ export const dynamic = "force-dynamic";
 type AdjustmentsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+function getStringParam(
+  searchParams: Record<string, string | string[] | undefined>,
+  key: string
+) {
+  const value = searchParams[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getPage(searchParams: Record<string, string | string[] | undefined>) {
+  const page = Number.parseInt(getStringParam(searchParams, "page") ?? "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
 
 async function createStockAdjustmentAction(formData: FormData) {
   "use server";
@@ -84,15 +100,26 @@ export default async function AdjustmentsPage({
     );
   }
 
-  const [adjustments, formOptions] = await Promise.all([
-    listStockAdjustments(session),
-    canCreateAdjustments
-      ? listStockAdjustmentFormOptions(session)
-      : Promise.resolve(null)
-  ]);
+  const params = searchParams ? await searchParams : {};
+  const profileParam = getStringParam(params, "dashboard");
+  const profile = resolveStockAdjustmentDashboardProfile(profileParam);
+  if (profileParam && !profile) {
+    redirect("/adjustments");
+  }
+  const profilePage = profile
+    ? await listStockAdjustmentDashboardProfilePage(session, profile, getPage(params))
+    : null;
+  const [workspaceAdjustments, formOptions] = profile
+    ? [null, null]
+    : await Promise.all([
+        listStockAdjustments(session),
+        canCreateAdjustments
+          ? listStockAdjustmentFormOptions(session)
+          : Promise.resolve(null)
+      ]);
+  const adjustments = profilePage?.adjustments ?? workspaceAdjustments ?? [];
   const firstInventoryLocation = formOptions?.inventoryLocations[0];
   const firstItem = formOptions?.items[0];
-  const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
 
   return (
@@ -118,7 +145,7 @@ export default async function AdjustmentsPage({
         </p>
       </div>
       <div className="space-y-4">
-        {canCreateAdjustments ? (
+        {!profile && canCreateAdjustments ? (
           <div className="flex justify-end">
             <TaskSheet title="Create Adjustment" description="Document the controlled correction, evidence, and affected lines." trigger={<span>Create Adjustment</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
               {!firstInventoryLocation || !firstItem ? (
@@ -145,18 +172,20 @@ export default async function AdjustmentsPage({
         <section className="ogfi-data-surface">
           <div className="ogfi-section-header">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">Adjustment Requests</h2>
+              <h2 className="text-lg font-bold text-slate-950">
+                {profile ? "Adjustment Exceptions" : "Adjustment Requests"}
+              </h2>
               <p className="text-sm text-slate-500">
-                Approval is non-posting; stock changes only after the separate Post Adjustment action.
-                Post Adjustment writes ADJUSTMENT_IN, ADJUSTMENT_OUT, or OPENING_BALANCE_IN ledger movements.
-                Opening balances are for controlled cutover baselines only.
+                {profile
+                  ? `${profilePage?.totalItems ?? 0} pending, approved, posting, or returned adjustment exceptions at the selected inventory location`
+                  : "Approval is non-posting; stock changes only after the separate Post Adjustment action. Post Adjustment writes ADJUSTMENT_IN, ADJUSTMENT_OUT, or OPENING_BALANCE_IN ledger movements. Opening balances are for controlled cutover baselines only."}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Badge tone="info">{session.context.locationName}</Badge>
+              {profile ? <ButtonLink href="/adjustments">View all adjustments</ButtonLink> : <Badge tone="info">{session.context.locationName}</Badge>}
               {canExportAdjustments ? (
                 <ButtonLink
-                  href="/adjustments/export"
+                  href={profile ? `/adjustments/export?dashboard=${profile}` : "/adjustments/export"}
                   className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
@@ -164,15 +193,22 @@ export default async function AdjustmentsPage({
               ) : null}
             </div>
           </div>
+          {profile ? (
+            <div className="border-b border-slate-100 bg-blue-50 p-4 text-sm text-slate-700">
+              Showing the dashboard exception population only: pending approval, approved,
+              posting, and returned adjustments for the selected inventory location. This
+              read-only profile does not grant adjustment or inventory actions; any action
+              opened from a record is re-authorized by its controlled server workflow.
+            </div>
+          ) : null}
           {adjustments.length === 0 ? (
-            <div className="ogfi-empty-state">
-              <p className="font-semibold text-slate-900">
-                No stock adjustment requests yet
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                Record a proposed increase or decrease when inventory needs a documented
-                correction or opening baseline that is not wastage, receiving shortage, or transfer loss.
-              </p>
+            <div className="p-5">
+              <EmptyState
+                title={profile ? "No adjustment exceptions" : "No stock adjustment requests yet"}
+                description={profile
+                  ? "No pending, approved, posting, or returned adjustment requests are in the selected inventory-location scope."
+                  : "Record a proposed increase or decrease when inventory needs a documented correction or opening baseline that is not wastage, receiving shortage, or transfer loss."}
+              />
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -224,6 +260,15 @@ export default async function AdjustmentsPage({
               ))}
             </div>
           )}
+          {profile && adjustments.length > 0 ? (
+            <PaginationBar
+              page={profilePage?.page ?? 1}
+              pageSize={profilePage?.pageSize ?? 25}
+              totalItems={profilePage?.totalItems ?? adjustments.length}
+              itemLabel="adjustments"
+              getPageHref={(nextPage) => stockAdjustmentDashboardProfileHref(profile, nextPage)}
+            />
+          ) : null}
         </section>
 
       </div>

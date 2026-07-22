@@ -33553,6 +33553,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/stockAdjustments.ts#listStockAdjustmentDashboardProfilePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.stockAdjustmentView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/stockAdjustments.ts#listStockAdjustmentFormOptions",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockAdjustmentCreate",
