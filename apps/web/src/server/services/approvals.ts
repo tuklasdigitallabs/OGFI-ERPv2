@@ -27,7 +27,7 @@ import { dateOnlyInTimeZone, daysBetweenDateOnly } from "./projectDates";
 import { projectBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
 import {
   activateApprovalStepWithEligibility,
-  assertApprovalRoutingCutoverReady,
+  assertApprovalRoutingRuntimeReady,
   assertEligibleApprovalStep,
   findAnyEligibleApprovalActorForStep,
   listEligibleApprovalStepPage,
@@ -64,9 +64,10 @@ export async function listNormalizedApprovalInboxPage(
   if (!normalizedApprovalRoutingEnabled()) {
     throw new Error("APPROVAL_ROUTING_V1_DISABLED");
   }
-  await assertApprovalRoutingCutoverReady(
+  await assertApprovalRoutingRuntimeReady(
     session.context.tenantId,
-    session.context.companyId
+    session.context.companyId,
+    prisma
   );
   return listEligibleApprovalStepPage(session, input);
 }
@@ -363,7 +364,7 @@ async function assertLiveApprovalAuthority(
   }
 
   if (normalizedApprovalRoutingEnabled()) {
-    await assertApprovalRoutingCutoverReady(
+    await assertApprovalRoutingRuntimeReady(
       session.context.tenantId,
       session.context.companyId,
       tx
@@ -532,20 +533,28 @@ async function prepareApprovalDecisionAuthority(
     ? await findNextApprovalStep(tx, input, false)
     : null;
   const preliminaryEligibleActor = preliminaryNextStep
-    ? await findEligibleApprovalActor(tx, session, {
-        assignedUserId: preliminaryNextStep.assignedUserId,
-        assignedRoleId: preliminaryNextStep.assignedRoleId,
-        locationId: input.locationId,
-        requiredPermissionCode: input.requiredPermissionCode,
-        prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
-      })
+    ? normalizedApprovalRoutingEnabled()
+      ? await findAnyEligibleApprovalActorForStep(tx, {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          approvalInstanceStepId: preliminaryNextStep.id
+        })
+      : await findEligibleApprovalActor(tx, session, {
+          assignedUserId: preliminaryNextStep.assignedUserId,
+          assignedRoleId: preliminaryNextStep.assignedRoleId,
+          locationId: input.locationId,
+          requiredPermissionCode: input.requiredPermissionCode,
+          prohibitedApproverUserIds: input.prohibitedApproverUserIds ?? []
+        })
     : null;
   if (preliminaryNextStep && !preliminaryEligibleActor) {
     throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE");
   }
+  const preliminaryEligibleActorUserId = normalizedApprovalRoutingEnabled()
+    ? (preliminaryEligibleActor as { userId: string } | null)?.userId
+    : (preliminaryEligibleActor as { id: string } | null)?.id;
 
-  const directRecipientUserId = preliminaryNextStep?.assignedUserId ?? null;
-  const lockedUserIds = [session.user.id, directRecipientUserId]
+  const lockedUserIds = [session.user.id, preliminaryEligibleActorUserId]
     .filter((id): id is string => Boolean(id))
     .filter((id, index, values) => values.indexOf(id) === index)
     .sort();
@@ -579,11 +588,14 @@ async function prepareApprovalDecisionAuthority(
     return { nextStep: null, directRecipientUserId: null };
   }
   const revalidatedEligibleActor = normalizedApprovalRoutingEnabled()
-    ? await findAnyEligibleApprovalActorForStep(tx, {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        approvalInstanceStepId: lockedNextStep.id
-      })
+      ? await findAnyEligibleApprovalActorForStep(tx, {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          approvalInstanceStepId: lockedNextStep.id,
+          ...(preliminaryEligibleActorUserId
+            ? { actorUserId: preliminaryEligibleActorUserId }
+            : {})
+        })
     : await findEligibleApprovalActor(tx, session, {
         assignedUserId: lockedNextStep.assignedUserId,
         assignedRoleId: lockedNextStep.assignedRoleId,
@@ -636,11 +648,6 @@ async function activateNextApprovalStep(
   input: { approvalInstanceId: string; approvalInstanceStepId: string; source: string }
 ) {
   if (normalizedApprovalRoutingEnabled()) {
-    await assertApprovalRoutingCutoverReady(
-      session.context.tenantId,
-      session.context.companyId,
-      tx
-    );
     await activateApprovalStepWithEligibility(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -682,7 +689,7 @@ async function assertNormalizedApprovalAuthority(
      FOR UPDATE OF ai, step
   `;
   if (!locked[0]) throw new Error("APPROVAL_NOT_ACTIONABLE");
-  await assertApprovalRoutingCutoverReady(
+  await assertApprovalRoutingRuntimeReady(
     session.context.tenantId,
     session.context.companyId,
     tx

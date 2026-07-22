@@ -420,6 +420,7 @@ describe("multi-step approval advancement", () => {
     expect(activationSource).toContain('status: "WAITING"');
     expect(activationSource).toContain('data: { status: "PENDING" }');
     expect(activationSource).toContain("activateApprovalStepWithEligibility");
+    expect(activationSource).not.toContain("assertApprovalRoutingRuntimeReady");
     expect(helperSource).toContain("tenantId: session.context.tenantId");
     expect(helperSource).toContain("companyId: session.context.companyId");
     expect(helperSource).toContain("currentStepOrder: input.stepOrder");

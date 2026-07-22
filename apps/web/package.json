@@ -43,7 +43,7 @@
     "test:authorization-denials:execute": "vitest run tests/authorizationDenials.integration.test.ts",
     "test:approval-routing": "vitest run src/server/services/approvalRoutingRegistry.test.ts src/server/services/approvalRoutingBackfill.test.ts src/server/services/approvalRouting.test.ts",
     "test:approval-routing:database": "node ../../scripts/run-disposable-postgres-tests.mjs approval-routing-backfill -- pnpm --dir apps/web test:approval-routing:database:execute",
-    "test:approval-routing:database:execute": "cross-env RUN_APPROVAL_ROUTING_PG_TESTS=true vitest run --no-file-parallelism tests/approvalRoutingBackfill.integration.test.ts tests/approvalRoutingInbox.integration.test.ts",
+    "test:approval-routing:database:execute": "cross-env RUN_APPROVAL_ROUTING_PG_TESTS=true vitest run --no-file-parallelism tests/approvalRoutingBackfill.integration.test.ts tests/approvalRoutingInbox.integration.test.ts tests/approvalRoutingActions.integration.test.ts",
     "test:auth-db": "node ../../scripts/run-disposable-postgres-tests.mjs authentication-database -- pnpm --dir apps/web test:auth-db:execute",
     "test:auth-db:execute": "vitest run tests/authenticationDatabase.integration.test.ts",
     "test:auth-throttle": "node ../../scripts/run-disposable-postgres-tests.mjs authentication-throttle -- pnpm --dir apps/web test:auth-throttle:execute",

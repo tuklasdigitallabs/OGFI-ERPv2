@@ -67,6 +67,7 @@ export type ApprovalStepEligibilityIdentity = {
   tenantId: string;
   companyId: string;
   approvalInstanceStepId: string;
+  actorUserId?: string;
   now?: Date;
 };
 
@@ -274,6 +275,7 @@ export async function findAnyEligibleApprovalActorForStep(
      WHERE step.id = ${input.approvalInstanceStepId}::uuid
        AND ai."tenantId" = ${input.tenantId}::uuid
        AND ai."companyId" = ${input.companyId}::uuid
+       AND (${input.actorUserId ?? null}::uuid IS NULL OR actor.id = ${input.actorUserId ?? null}::uuid)
        AND ai.status = 'PENDING'::"ApprovalStatus"
        AND step.status IN ('WAITING'::"ApprovalStepStatus", 'PENDING'::"ApprovalStepStatus")
        AND step."routingSchemaVersion" = ${APPROVAL_ROUTING_SCHEMA_VERSION}
@@ -643,35 +645,85 @@ export async function assertEligibleApprovalStep(
   return page.items[0];
 }
 
-export async function assertApprovalRoutingCutoverReady(
+export async function assertApprovalRoutingRuntimeReady(
   tenantId: string,
   companyId: string,
-  client: ApprovalRoutingReadClient = prisma
+  client: ApprovalRoutingReadClient
 ) {
   const gaps = await client.$queryRaw<Array<{ count: bigint }>>`
     SELECT count(*)::bigint AS count
-      FROM "ApprovalInstanceStep" step
-      JOIN "ApprovalInstance" ai ON ai.id = step."approvalInstanceId"
+      FROM "ApprovalInstance" ai
      WHERE ai."tenantId" = ${tenantId}::uuid
        AND ai."companyId" = ${companyId}::uuid
        AND ai.status = 'PENDING'::"ApprovalStatus"
-       AND step.status IN ('PENDING'::"ApprovalStepStatus", 'WAITING'::"ApprovalStepStatus")
        AND (
-         step."routingSchemaVersion" <> ${APPROVAL_ROUTING_SCHEMA_VERSION}
-         OR step."requiredPermissionId" IS NULL
-         OR step."scopeGroupMatchMode" <> 'ALL'::"ApprovalScopeGroupMatchMode"
-         OR num_nonnulls(step."assignedUserId", step."assignedRoleId") <> 1
-         OR (step.status = 'PENDING'::"ApprovalStepStatus" AND step."activatedAt" IS NULL)
+         ai."currentStepOrder" IS NULL
          OR NOT EXISTS (
-           SELECT 1 FROM "ApprovalInstanceStepScopeGroup" scope_group
-            WHERE scope_group."approvalInstanceStepId" = step.id
+           SELECT 1 FROM "ApprovalInstanceStep" step
+            WHERE step."approvalInstanceId" = ai.id
+         )
+         OR (
+           SELECT count(*)
+             FROM "ApprovalInstanceStep" step
+            WHERE step."approvalInstanceId" = ai.id
+              AND step.status = 'PENDING'::"ApprovalStepStatus"
+         ) <> 1
+         OR NOT EXISTS (
+           SELECT 1
+             FROM "ApprovalInstanceStep" step
+            WHERE step."approvalInstanceId" = ai.id
+              AND step."stepOrder" = ai."currentStepOrder"
+              AND step.status = 'PENDING'::"ApprovalStepStatus"
          )
          OR EXISTS (
-           SELECT 1 FROM "ApprovalInstanceStepScopeGroup" scope_group
-            WHERE scope_group."approvalInstanceStepId" = step.id
-              AND NOT EXISTS (
-                SELECT 1 FROM "ApprovalInstanceStepScopeTarget" target
-                 WHERE target."scopeGroupId" = scope_group.id
+           SELECT 1
+             FROM "ApprovalInstanceStep" step
+            WHERE step."approvalInstanceId" = ai.id
+              AND (
+                step."stepOrder" < 1
+                OR num_nonnulls(step."assignedUserId", step."assignedRoleId") <> 1
+                OR step."delegatedFromUserId" IS NOT NULL
+                OR step."routingSchemaVersion" <> ${APPROVAL_ROUTING_SCHEMA_VERSION}
+                OR step."requiredPermissionId" IS NULL
+                OR step."scopeGroupMatchMode" IS DISTINCT FROM 'ALL'::"ApprovalScopeGroupMatchMode"
+                OR NOT EXISTS (
+                  SELECT 1
+                    FROM "ApprovalInstanceStepScopeGroup" scope_group
+                   WHERE scope_group."approvalInstanceStepId" = step.id
+                )
+                OR EXISTS (
+                  SELECT 1
+                    FROM "ApprovalInstanceStepScopeGroup" scope_group
+                   WHERE scope_group."approvalInstanceStepId" = step.id
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM "ApprovalInstanceStepScopeTarget" target
+                        WHERE target."scopeGroupId" = scope_group.id
+                     )
+                )
+                OR (
+                  step."stepOrder" < ai."currentStepOrder"
+                  AND step.status NOT IN (
+                    'APPROVED'::"ApprovalStepStatus",
+                    'SKIPPED'::"ApprovalStepStatus"
+                  )
+                )
+                OR (
+                  step."stepOrder" = ai."currentStepOrder"
+                  AND step.status <> 'PENDING'::"ApprovalStepStatus"
+                )
+                OR (
+                  step."stepOrder" > ai."currentStepOrder"
+                  AND step.status <> 'WAITING'::"ApprovalStepStatus"
+                )
+                OR (
+                  step.status = 'PENDING'::"ApprovalStepStatus"
+                  AND step."activatedAt" IS NULL
+                )
+                OR (
+                  step.status = 'WAITING'::"ApprovalStepStatus"
+                  AND step."activatedAt" IS NOT NULL
+                )
               )
          )
        )
@@ -679,6 +731,18 @@ export async function assertApprovalRoutingCutoverReady(
   if (Number(gaps[0]?.count ?? 0n) !== 0) {
     throw new Error("APPROVAL_ROUTING_BACKFILL_REQUIRED");
   }
+}
+
+/**
+ * Exhaustive operator-only cutover certification. Runtime request paths must
+ * use assertApprovalRoutingRuntimeReady with their own Prisma client so they
+ * never open the backfill coordinator from inside a workflow transaction.
+ */
+export async function assertApprovalRoutingCutoverReady(
+  tenantId: string,
+  companyId: string
+) {
+  await assertApprovalRoutingRuntimeReady(tenantId, companyId, prisma);
   const { inspectApprovalRoutingReadiness } = await import(
     "./approvalRoutingBackfill"
   );

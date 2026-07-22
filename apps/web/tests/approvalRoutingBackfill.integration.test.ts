@@ -622,4 +622,161 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
       });
     }
   });
+
+  test("blocks malformed and inactive sources atomically while allowing company fallback", async () => {
+    const blockerStepIds: string[] = [];
+    const blockerInstanceIds: string[] = [];
+    const sourceReaders: Array<() => Promise<unknown>> = [];
+    const createLegacyApproval = async (documentType: string, documentId: string) => {
+      const approvalInstanceId = id();
+      const stepId = id();
+      blockerInstanceIds.push(approvalInstanceId);
+      blockerStepIds.push(stepId);
+      await prisma.approvalInstance.create({ data: {
+        id: approvalInstanceId,
+        tenantId: ids.tenant,
+        companyId: ids.company,
+        documentType,
+        documentId,
+        approvalRuleId: ids.rule,
+        status: "PENDING",
+        currentStepOrder: 1,
+        steps: { create: { id: stepId, stepOrder: 1, assignedUserId: ids.approver, status: "PENDING", routingSchemaVersion: 0 } },
+      } });
+      return { approvalInstanceId, stepId };
+    };
+
+    const companyBudgetId = id();
+    const companyRevisionId = id();
+    await prisma.budget.create({ data: {
+      id: companyBudgetId, tenantId: ids.tenant, companyId: ids.company,
+      publicReference: `AB-COMPANY-B-${suffix}`, fiscalYearId: ids.fiscalYear,
+      name: "Company fallback budget", createdByUserId: ids.preparer,
+    } });
+    await prisma.budgetRevision.create({ data: {
+      id: companyRevisionId, budgetId: companyBudgetId, tenantId: ids.tenant,
+      companyId: ids.company, revisionNumber: 1, status: "SUBMITTED",
+      reason: "Company fallback", requestedByUserId: ids.requester,
+      effectiveFrom: due, originalSnapshot: {}, proposedSnapshot: {},
+    } });
+    const companyFallback = await createLegacyApproval("BudgetRevision", companyRevisionId);
+    blockerInstanceIds.pop();
+    blockerStepIds.pop();
+    sourceReaders.push(() => prisma.budgetRevision.findUniqueOrThrow({ where: { id: companyRevisionId } }));
+
+    for (const [label, configSnapshot] of [
+      ["MISSING", {}],
+      ["MALFORMED", { pendingSensitiveApproval: { approvalAction: "LOCK_PERIOD", requestedByUserId: 42 } }],
+    ] as const) {
+      const closeId = id();
+      const closePeriodId = id();
+      const closePeriodNumber = label === "MISSING" ? 8 : 9;
+      await prisma.accountingPeriod.create({ data: {
+        id: closePeriodId, tenantId: ids.tenant, companyId: ids.company,
+        fiscalYearId: ids.fiscalYear, periodNumber: closePeriodNumber,
+        code: `AB-P-${closePeriodNumber}-${suffix}`,
+        name: `Breadth Period ${closePeriodNumber}`,
+        startDate: new Date(`2026-0${closePeriodNumber}-01T00:00:00.000Z`),
+        endDate: new Date(`2026-0${closePeriodNumber}-28T23:59:59.000Z`),
+      } });
+      await prisma.financeCloseRun.create({ data: {
+        id: closeId, tenantId: ids.tenant, companyId: ids.company,
+        accountingPeriodId: closePeriodId, publicReference: `AB-CLOSE-${label}-${suffix}`,
+        status: "CLOSED", initiatedByUserId: ids.preparer, configSnapshot,
+      } });
+      await createLegacyApproval("FinanceCloseRun", closeId);
+      sourceReaders.push(() => prisma.financeCloseRun.findUniqueOrThrow({ where: { id: closeId } }));
+    }
+
+    const attendanceId = id();
+    await prisma.attendanceImportBatch.create({ data: {
+      id: attendanceId, tenantId: ids.tenant, companyId: ids.company,
+      locationId: ids.location, publicReference: `AB-AT-NO-REVIEW-${suffix}`,
+      businessDate: transition, sourceType: "TEST", sourceReference: `AB-NO-REVIEW-${suffix}`,
+      status: "VALIDATING", idempotencyKey: `ab-no-review-${suffix}`,
+      createdByUserId: ids.preparer,
+    } });
+    await createLegacyApproval("AttendanceImportBatch", attendanceId);
+    sourceReaders.push(() => prisma.attendanceImportBatch.findUniqueOrThrow({ where: { id: attendanceId } }));
+
+    const noLocationLeaveId = id();
+    await prisma.employeeLeaveRequest.create({ data: {
+      id: noLocationLeaveId, tenantId: ids.tenant, companyId: ids.company,
+      employeeId: ids.employee, locationId: null, leaveType: "VACATION", status: "SUBMITTED",
+      requestedByUserId: ids.requester, reason: "Missing location",
+      startDate: due, endDate: due, requestedMinutes: 480,
+      sourceEventKey: `ab-no-location-${suffix}`,
+      createdByUserId: ids.requester,
+    } });
+    await createLegacyApproval("EmployeeLeaveRequest", noLocationLeaveId);
+    sourceReaders.push(() => prisma.employeeLeaveRequest.findUniqueOrThrow({ where: { id: noLocationLeaveId } }));
+
+    const invalidStatusPrId = id();
+    await prisma.purchaseRequest.create({ data: {
+      id: invalidStatusPrId, publicReference: `AB-INVALID-PR-${suffix}`,
+      tenantId: ids.tenant, companyId: ids.company, requestLocationId: ids.location,
+      requesterUserId: ids.requester, requiredDate: due, urgency: "NORMAL",
+      justification: "Invalid status evidence", status: "DRAFT",
+    } });
+    await createLegacyApproval("PurchaseRequest", invalidStatusPrId);
+    sourceReaders.push(() => prisma.purchaseRequest.findUniqueOrThrow({ where: { id: invalidStatusPrId } }));
+
+    const adjacentCompanyId = id();
+    const adjacentLocationId = id();
+    const mismatchedPrId = id();
+    await prisma.company.create({ data: { id: adjacentCompanyId, tenantId: ids.tenant, code: `AB-ADJ-${suffix}`, legalName: "Adjacent breadth company", currencyCode: "PHP" } });
+    await prisma.location.create({ data: { id: adjacentLocationId, tenantId: ids.tenant, companyId: adjacentCompanyId, locationType: "BRANCH", code: `AB-ADJ-L-${suffix}`, name: "Adjacent breadth location" } });
+    await prisma.purchaseRequest.create({ data: {
+      id: mismatchedPrId, publicReference: `AB-MISMATCH-PR-${suffix}`,
+      tenantId: ids.tenant, companyId: adjacentCompanyId, requestLocationId: adjacentLocationId,
+      requesterUserId: ids.requester, requiredDate: due, urgency: "NORMAL",
+      justification: "Scope mismatch evidence", status: "PENDING_APPROVAL",
+    } });
+    await createLegacyApproval("PurchaseRequest", mismatchedPrId);
+    sourceReaders.push(() => prisma.purchaseRequest.findUniqueOrThrow({ where: { id: mismatchedPrId } }));
+
+    const inactiveLocationId = id();
+    const inactivePrId = id();
+    await prisma.location.create({ data: { id: inactiveLocationId, tenantId: ids.tenant, companyId: ids.company, locationType: "BRANCH", code: `AB-INACTIVE-${suffix}`, name: "Inactive breadth location", status: "INACTIVE" } });
+    await prisma.userScopeAssignment.create({ data: { userId: ids.approver, scopeType: "LOCATION", scopeId: inactiveLocationId, accessLevel: "APPROVE" } });
+    await prisma.purchaseRequest.create({ data: {
+      id: inactivePrId, publicReference: `AB-INACTIVE-PR-${suffix}`,
+      tenantId: ids.tenant, companyId: ids.company, requestLocationId: inactiveLocationId,
+      requesterUserId: ids.requester, requiredDate: due, urgency: "NORMAL",
+      justification: "Inactive target evidence", status: "PENDING_APPROVAL",
+    } });
+    await createLegacyApproval("PurchaseRequest", inactivePrId);
+    sourceReaders.push(() => prisma.purchaseRequest.findUniqueOrThrow({ where: { id: inactivePrId } }));
+
+    const beforeSources = await Promise.all(sourceReaders.map((read) => read()));
+    const result = await runApprovalRoutingBackfill({ tenantId: ids.tenant, companyId: ids.company, apply: true, batchSize: 100 });
+    expect(result).toMatchObject({
+      mode: "APPLY",
+      scanned: 26,
+      eligible: 1,
+      applied: 1,
+      alreadyCurrent: 18,
+      blockerCounts: {
+        SOURCE_ACTOR_REQUIRED: 3,
+        SOURCE_LOCATION_REQUIRED: 1,
+        SOURCE_STATUS_INVALID: 1,
+        SOURCE_SCOPE_MISMATCH: 1,
+        CURRENT_ELIGIBLE_ACTOR_MISSING: 1,
+      },
+      hasMore: false,
+    });
+    expect(result.blockers).toHaveLength(7);
+    expect(await Promise.all(sourceReaders.map((read) => read()))).toEqual(beforeSources);
+    expect(await prisma.approvalInstanceStep.findUniqueOrThrow({ where: { id: companyFallback.stepId }, select: { routingSchemaVersion: true } })).toEqual({ routingSchemaVersion: 1 });
+    const fallbackGroup = await prisma.approvalInstanceStepScopeGroup.findFirstOrThrow({ where: { approvalInstanceStepId: companyFallback.stepId }, include: { targets: true } });
+    expect(fallbackGroup.targetMatchMode).toBe("ANY");
+    expect(fallbackGroup.targets.map((target) => ({ scopeType: target.scopeType, companyId: target.companyId, locationId: target.locationId }))).toEqual([{ scopeType: "COMPANY", companyId: ids.company, locationId: null }]);
+    expect(await prisma.auditEvent.count({ where: { tenantId: ids.tenant, entityId: companyFallback.approvalInstanceId, eventType: "approval.step_routing_backfilled" } })).toBe(1);
+    for (const stepId of blockerStepIds) {
+      expect(await prisma.approvalInstanceStep.findUniqueOrThrow({ where: { id: stepId }, select: { routingSchemaVersion: true } })).toEqual({ routingSchemaVersion: 0 });
+      expect(await prisma.approvalInstanceStepScopeGroup.count({ where: { approvalInstanceStepId: stepId } })).toBe(0);
+      expect(await prisma.approvalInstanceStepProhibitedActor.count({ where: { approvalInstanceStepId: stepId } })).toBe(0);
+    }
+    expect(await prisma.auditEvent.count({ where: { tenantId: ids.tenant, entityId: { in: blockerInstanceIds }, eventType: "approval.step_routing_backfilled" } })).toBe(0);
+  });
 });

@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import {
   APPROVAL_ROUTING_MAX_OFFSET,
   APPROVAL_ROUTING_MAX_PAGE_SIZE,
+  assertApprovalRoutingRuntimeReady,
   normalizeApprovalRoutingPage
 } from "./approvalRouting";
 
@@ -67,15 +68,70 @@ describe("normalized approval routing controls", () => {
     expect(migration).toContain("AND \"eventType\" = 'approval.step_activated'");
   });
 
-  test("cutover gate rejects every incomplete pending or waiting routing context", () => {
+  test("runtime gate is instance-rooted and rejects every incomplete pending workflow", () => {
     const source = readFileSync(
       path.resolve(__dirname, "approvalRouting.ts"),
       "utf8"
     );
     expect(source).toContain("APPROVAL_ROUTING_BACKFILL_REQUIRED");
+    expect(source).toContain('FROM "ApprovalInstance" ai');
+    expect(source).toContain('ai."currentStepOrder" IS NULL');
+    expect(source).toContain('SELECT count(*)\n             FROM "ApprovalInstanceStep" step');
+    expect(source).toContain("AND step.status = 'PENDING'::\"ApprovalStepStatus\"");
+    expect(source).toContain('step."stepOrder" = ai."currentStepOrder"');
     expect(source).toContain('num_nonnulls(step."assignedUserId", step."assignedRoleId") <> 1');
-    expect(source).toContain('step.status = \'PENDING\'::"ApprovalStepStatus" AND step."activatedAt" IS NULL');
-    expect(source).toContain("AND NOT EXISTS (\n                SELECT 1 FROM \"ApprovalInstanceStepScopeTarget\"");
+    expect(source).toContain('step."delegatedFromUserId" IS NOT NULL');
+    expect(source).toContain('step."routingSchemaVersion" <> ${APPROVAL_ROUTING_SCHEMA_VERSION}');
+    expect(source).toContain('step."requiredPermissionId" IS NULL');
+    expect(source).toContain("step.status NOT IN (");
+    expect(source).toContain("AND step.status <> 'WAITING'::\"ApprovalStepStatus\"");
+    expect(source).toContain('step."activatedAt" IS NULL');
+    expect(source).toContain('step."activatedAt" IS NOT NULL');
+    expect(source).toContain('FROM "ApprovalInstanceStepScopeGroup" scope_group');
+    expect(source).toContain('FROM "ApprovalInstanceStepScopeTarget" target');
+  });
+
+  test("runtime gate uses only the supplied client and never invokes operator inspection", async () => {
+    let queryCount = 0;
+    const readyClient = {
+      $queryRaw: async () => {
+        queryCount += 1;
+        return [{ count: 0n }];
+      }
+    };
+    await expect(
+      assertApprovalRoutingRuntimeReady(
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        readyClient as never
+      )
+    ).resolves.toBeUndefined();
+    expect(queryCount).toBe(1);
+
+    await expect(
+      assertApprovalRoutingRuntimeReady(
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+        { $queryRaw: async () => [{ count: 1n }] } as never
+      )
+    ).rejects.toThrow("APPROVAL_ROUTING_BACKFILL_REQUIRED");
+
+    const routingSource = readFileSync(
+      path.resolve(__dirname, "approvalRouting.ts"),
+      "utf8"
+    );
+    const runtimeStart = routingSource.indexOf(
+      "export async function assertApprovalRoutingRuntimeReady("
+    );
+    const operatorStart = routingSource.indexOf(
+      "export async function assertApprovalRoutingCutoverReady("
+    );
+    const runtimeSource = routingSource.slice(runtimeStart, operatorStart);
+    expect(runtimeStart).toBeGreaterThanOrEqual(0);
+    expect(operatorStart).toBeGreaterThan(runtimeStart);
+    expect(runtimeSource).not.toContain("approvalRoutingBackfill");
+    expect(runtimeSource).not.toContain("inspectApprovalRoutingReadiness");
+    expect(runtimeSource).not.toContain("prisma.$transaction");
   });
 
   test("centralizes all next-step activation and normalized action-time checks", () => {
@@ -84,6 +140,9 @@ describe("normalized approval routing controls", () => {
     expect(source.match(/await activateNextApprovalStep\(tx, session/g)).toHaveLength(11);
     expect(source.match(/assertNormalizedApprovalAuthority\(tx, session, step\.id\)/g)).toHaveLength(20);
     expect(source).toContain("FOR UPDATE OF ai, step");
+    expect(source).toContain("assertApprovalRoutingRuntimeReady");
+    expect(source).not.toContain("assertApprovalRoutingCutoverReady");
+    expect(source).not.toContain("inspectApprovalRoutingReadiness");
   });
 
   test("forces every approval routing child integrity trigger to run always", () => {
