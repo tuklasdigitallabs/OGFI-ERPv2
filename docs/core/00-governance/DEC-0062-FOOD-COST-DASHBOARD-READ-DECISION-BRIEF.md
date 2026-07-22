@@ -81,3 +81,7 @@ The independent reporting review recommends a dedicated bounded projection only 
 3. `AWAITING_ACTUALS` currently represents a missing target in some rows rather than actual-ledger availability. Reconcile the status name and definition with the reporting specification before using it as a dashboard health count.
 
 Until all three controls are confirmed and covered by source-level parity tests, the existing analytical source remains authoritative and Overview must not claim a bounded Food Cost result is equivalent.
+
+## Challenge review
+
+The independent architecture/data-integrity challenge agrees that deferral is the safe option while authoritative inputs remain incomplete. It rejects any Overview calculation, recipe/BOM logic, ledger mutation, or implied financial certainty. A future bounded projection must remain read-only, server-scoped, source-lineage-aware, explicit about unavailable/pending evidence, and covered by no-write and scope-isolation tests.
