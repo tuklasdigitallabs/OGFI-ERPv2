@@ -16,6 +16,8 @@ import {
   isMfaAssuranceFresh,
   isSessionSecurityStateValid,
   isTrustedMutationOrigin,
+  signInternalServerValue,
+  verifyInternalServerValue,
   verifyPassword,
 } from "./authentication";
 
@@ -46,6 +48,15 @@ function stubCompleteProductionAuthEnvironment() {
 }
 
 describe("production authentication primitives", () => {
+  it("signs internal values with a domain-separated tamper check", () => {
+    vi.stubEnv("AUTH_SECRET", "a".repeat(32));
+    const signature = signInternalServerValue("my-tasks", "cursor-payload");
+
+    expect(verifyInternalServerValue("my-tasks", "cursor-payload", signature)).toBe(true);
+    expect(verifyInternalServerValue("other-domain", "cursor-payload", signature)).toBe(false);
+    expect(verifyInternalServerValue("my-tasks", "changed", signature)).toBe(false);
+  });
+
   it("hashes passwords with Argon2id and rejects a wrong password", async () => {
     const encoded = await hashPassword("Correct-Horse-42");
     expect(encoded).toMatch(/^\$argon2id\$/);

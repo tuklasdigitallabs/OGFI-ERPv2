@@ -329,6 +329,32 @@ function keyedDigest(value: string) {
   return createHmac("sha256", requireAuthSecret()).update(value).digest("hex");
 }
 
+/**
+ * Signs a server-only value with an explicit domain separator. Callers must
+ * still bind the value to the current live session/scope before accepting it.
+ * This intentionally reuses the production-required authentication secret
+ * instead of introducing an unvalidated second cursor secret.
+ */
+export function signInternalServerValue(domain: string, value: string) {
+  return createHmac("sha256", requireAuthSecret())
+    .update(`ogfi-internal:${domain}:`, "utf8")
+    .update(value, "utf8")
+    .digest("base64url");
+}
+
+export function verifyInternalServerValue(
+  domain: string,
+  value: string,
+  signature: string
+) {
+  const expected = Buffer.from(signInternalServerValue(domain, value));
+  const provided = Buffer.from(signature);
+  return (
+    expected.length === provided.length &&
+    timingSafeEqual(expected, provided)
+  );
+}
+
 function normalizeIdentifier(value: string) {
   return value.trim().toLowerCase();
 }

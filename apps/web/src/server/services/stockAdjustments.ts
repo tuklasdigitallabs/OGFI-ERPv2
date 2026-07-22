@@ -276,6 +276,7 @@ export type StockAdjustmentMyTaskPage = {
   totalCount: number;
   items: Array<{
     taskId: string;
+    recordId: string;
     publicReference: string;
     adjustmentType: string;
     actionLabel: "Post stock adjustment";
@@ -344,6 +345,7 @@ export async function listStockAdjustmentMyTaskPage(
     totalCount,
     items: pageRows.map((adjustment) => ({
       taskId: `stock-adjustment-${adjustment.id}`,
+      recordId: adjustment.id,
       publicReference: adjustment.publicReference,
       adjustmentType: adjustment.adjustmentType,
       actionLabel: "Post stock adjustment",

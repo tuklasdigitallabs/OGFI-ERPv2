@@ -466,6 +466,7 @@ export type WastageMyTaskPage = {
   totalCount: number;
   items: Array<{
     taskId: string;
+    recordId: string;
     publicReference: string;
     status: "SUBMITTED" | "APPROVED";
     actionLabel: "Review wastage report" | "Post wastage";
@@ -539,6 +540,7 @@ export async function listWastageMyTaskPage(
     totalCount,
     items: pageRows.map((report) => ({
       taskId: `wastage-${report.id}`,
+      recordId: report.id,
       publicReference: report.publicReference,
       status: report.status as "SUBMITTED" | "APPROVED",
       actionLabel:

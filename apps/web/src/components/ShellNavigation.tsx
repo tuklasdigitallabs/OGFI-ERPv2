@@ -38,6 +38,7 @@ import type { SessionContext } from "@/server/services/context";
 
 export type ShellActiveNav =
   | "dashboard"
+  | "my-tasks"
   | "purchase-requests"
   | "approvals"
   | "quotes"
@@ -188,6 +189,13 @@ export function getNavigationSections(
           activeKey: "dashboard",
           badge: "Preview",
           icon: LayoutDashboard,
+        },
+        {
+          label: "My Tasks",
+          href: "/my-tasks",
+          activeKey: "my-tasks",
+          badge: "Queue",
+          icon: ClipboardCheck,
         },
       ],
     },
@@ -1004,7 +1012,7 @@ function mobileNavItemClass(
 }
 
 function getDefaultSection(activeNav: ShellActiveNav) {
-  if (activeNav === "dashboard") {
+  if (activeNav === "dashboard" || activeNav === "my-tasks") {
     return "overview";
   }
   if (activeNav === "admin") {

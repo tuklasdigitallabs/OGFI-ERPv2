@@ -376,6 +376,7 @@ export type TransferMyTaskPage = {
   totalCount: number;
   items: Array<{
     taskId: string;
+    recordId: string;
     publicReference: string;
     status: string;
     actionLabel: "Dispatch transfer" | "Receive transfer";
@@ -464,6 +465,7 @@ export async function listTransferMyTaskPage(
     totalCount,
     items: pageRows.map((transfer) => ({
       taskId: `transfer-${transfer.id}`,
+      recordId: transfer.id,
       publicReference: transfer.publicReference,
       status: transfer.status,
       actionLabel:
