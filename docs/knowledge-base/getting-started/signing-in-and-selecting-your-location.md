@@ -33,7 +33,7 @@ Open the ERP sign-in page. After sign-in, use the location selector in the page 
 5. If authenticator setup is required, follow the on-screen setup under `Account security` before continuing.
 6. Check the company, brand, location type, and selected location in the page header.
 7. If you have more than one authorized location, choose the correct location from the selector and select `Switch`.
-8. Open the module you need from the navigation.
+8. Open the module you need from the navigation. On a phone, use the compact bottom bar for `Overview`, your primary available operational action, and `Alerts`; select `More` to open the full role-filtered workspace list.
 
 ## First-Time Privileged MFA Enrollment
 
@@ -47,6 +47,7 @@ Open the ERP sign-in page. After sign-in, use the location selector in the page 
 
 - The header shows the selected operating location.
 - The navigation shows only modules available to your permissions.
+- On a phone, `More` does not grant additional access. It only lists workspaces that your current role can already open.
 - Lists, dashboards, inventory pages, transfers, receiving, wastage, adjustments, and approvals use the selected context where applicable.
 - Privileged users enter the ERP only after completing runtime MFA.
 

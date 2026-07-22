@@ -971,17 +971,36 @@ export function getMobileOperationalNavItems({
   ];
 }
 
-function mobileNavItemClass(tone: MobileOperationalNavItem["tone"]) {
+function mobileNavItemClass(
+  tone: MobileOperationalNavItem["tone"],
+  active = false,
+) {
   if (tone === "primary") {
-    return "block rounded-[var(--radius-control)] bg-[var(--color-action-primary)] px-4 py-2.5 text-center text-xs font-semibold text-white shadow-sm hover:bg-[var(--color-action-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-11";
+    return `block rounded-[var(--radius-control)] px-3 py-2.5 text-center text-xs font-semibold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-11 ${
+      active
+        ? "bg-blue-800 text-white ring-2 ring-blue-200"
+        : "bg-[var(--color-action-primary)] text-white hover:bg-[var(--color-action-primary-hover)]"
+    }`;
   }
   if (tone === "admin") {
-    return "block rounded-[var(--radius-control)] bg-slate-900 px-4 py-2.5 text-center text-xs font-semibold text-white shadow-sm hover:bg-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-11";
+    return `block rounded-[var(--radius-control)] px-3 py-2.5 text-center text-xs font-semibold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-11 ${
+      active
+        ? "bg-slate-950 text-white ring-2 ring-slate-300"
+        : "bg-slate-900 text-white hover:bg-slate-950"
+    }`;
   }
   if (tone === "dark") {
-    return "block rounded-[var(--radius-control)] bg-slate-800 px-4 py-2.5 text-center text-xs font-semibold text-white shadow-sm hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-11";
+    return `block rounded-[var(--radius-control)] px-3 py-2.5 text-center text-xs font-semibold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-11 ${
+      active
+        ? "bg-slate-950 text-white ring-2 ring-slate-300"
+        : "bg-slate-800 text-white hover:bg-slate-700"
+    }`;
   }
-  return "block rounded-[var(--radius-control)] border border-slate-200 bg-white px-4 py-2.5 text-center text-xs font-semibold text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-11";
+  return `block rounded-[var(--radius-control)] border px-3 py-2.5 text-center text-xs font-semibold shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 min-h-11 ${
+    active
+      ? "border-blue-200 bg-blue-50 text-blue-800 ring-1 ring-blue-100"
+      : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+  }`;
 }
 
 function getDefaultSection(activeNav: ShellActiveNav) {
@@ -1194,6 +1213,7 @@ export function ShellNavigation({
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>(
     getDefaultSection(activeNav),
   );
@@ -1264,6 +1284,24 @@ export function ShellNavigation({
     canViewInventoryLedger,
     canViewEvidenceRetention,
   });
+  const mobileNavigationItems = sections.flatMap((section) =>
+    section.items.filter(
+      (item): item is NavSection["items"][number] & { href: string } =>
+        Boolean(item.href) && !item.disabled,
+    ),
+  );
+  const mobilePrimaryItem =
+    mobileOperationalItems.find((item) => item.tone === "dark") ??
+    mobileOperationalItems[0] ??
+    null;
+  const activeMobileHref = mobileNavigationItems.find(
+    (item) => item.activeKey === activeNav,
+  )?.href;
+  const isMobileMoreActive =
+    activeNav !== "dashboard" &&
+    activeNav !== "notifications" &&
+    Boolean(activeMobileHref) &&
+    activeMobileHref !== mobilePrimaryItem?.href;
 
   function selectSection(sectionId: string) {
     if (collapsed) {
@@ -1405,36 +1443,87 @@ export function ShellNavigation({
         {children}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-[var(--color-border-default)] bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-14px_32px_-24px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:hidden">
-        {canAdminister || canViewEvidenceRetention ? (
-          <div className="mb-2 flex gap-2 overflow-x-auto px-1 py-1">
-            {getMobilePreviewRailItems(sections).map((item) => (
-              <a
-                key={item.label}
-                className="whitespace-nowrap rounded-[var(--radius-control)] border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500"
-                href={item.href}
+      {mobileNavigationOpen ? (
+        <div className="fixed inset-x-0 bottom-[4.75rem] z-30 border-t border-slate-200 bg-white p-4 shadow-[0_-18px_48px_-26px_rgba(15,23,42,0.48)] lg:hidden">
+          <div className="mx-auto flex max-h-[min(60vh,32rem)] max-w-lg flex-col">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-slate-950">All workspaces</p>
+                <p className="text-xs text-slate-500">Only workspaces available to your current role are shown.</p>
+              </div>
+              <button
+                aria-label="Close workspace navigation"
+                className="min-h-10 rounded-[var(--radius-control)] border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                onClick={() => setMobileNavigationOpen(false)}
+                type="button"
               >
-                {item.label}
-              </a>
-            ))}
+                Close
+              </button>
+            </div>
+            <div className="grid gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+              {mobileNavigationItems.map((item) => (
+                <a
+                  key={item.href}
+                  aria-current={item.activeKey === activeNav ? "page" : undefined}
+                  className={`flex min-h-11 items-center rounded-[var(--radius-control)] border px-3 py-2 text-sm font-semibold transition-colors ${
+                    item.activeKey === activeNav
+                      ? "border-blue-200 bg-blue-50 text-blue-800"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                  }`}
+                  href={item.href}
+                  onClick={() => setMobileNavigationOpen(false)}
+                >
+                  {item.label}
+                </a>
+              ))}
+            </div>
           </div>
-        ) : null}
-        <div
-          className={
-            canAdminister || canViewEvidenceRetention
-              ? "grid grid-cols-3 gap-2 px-1 sm:grid-cols-6"
-              : "grid grid-cols-2 gap-2 px-1"
-          }
-        >
-          {mobileOperationalItems.map((item) => (
+        </div>
+      ) : null}
+      <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-[var(--color-border-default)] bg-white/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-14px_32px_-24px_rgba(15,23,42,0.45)] backdrop-blur-xl lg:hidden">
+        <div className="grid grid-cols-4 gap-2 px-1">
+          <a
+            aria-current={activeNav === "dashboard" ? "page" : undefined}
+            className={mobileNavItemClass("primary", activeNav === "dashboard")}
+            href="/dashboard"
+          >
+            Overview
+          </a>
+          {mobilePrimaryItem ? (
             <a
-              key={item.href}
-              className={mobileNavItemClass(item.tone)}
-              href={item.href}
+              aria-current={activeMobileHref === mobilePrimaryItem.href ? "page" : undefined}
+              className={mobileNavItemClass(
+                mobilePrimaryItem.tone,
+                activeMobileHref === mobilePrimaryItem.href,
+              )}
+              href={mobilePrimaryItem.href}
             >
-              {item.label}
+              {mobilePrimaryItem.label}
             </a>
-          ))}
+          ) : (
+            <a
+              className={mobileNavItemClass("slate")}
+              href="/notifications"
+            >
+              Alerts
+            </a>
+          )}
+          <a
+            aria-current={activeNav === "notifications" ? "page" : undefined}
+            className={mobileNavItemClass("slate", activeNav === "notifications")}
+            href="/notifications"
+          >
+            Alerts
+          </a>
+          <button
+            aria-expanded={mobileNavigationOpen}
+            aria-label="Open all workspaces"
+            className={mobileNavItemClass("slate", isMobileMoreActive)}
+            onClick={() => setMobileNavigationOpen((open) => !open)}
+            type="button"
+          >
+            More
+          </button>
         </div>
       </div>
     </div>
