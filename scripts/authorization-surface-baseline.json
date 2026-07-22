@@ -12396,14 +12396,16 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
-      "server/services/purchaseRequests.ts#listPurchaseRequests"
+      "server/services/purchaseRequests.ts#listPurchaseRequests",
+      "server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfile"
     ],
     "callChains": [
       "GET -> server/services/context.ts#getSessionContext",
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
-      "GET -> server/services/purchaseRequests.ts#listPurchaseRequests"
+      "GET -> server/services/purchaseRequests.ts#listPurchaseRequests",
+      "GET -> server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfile"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY",
@@ -12416,13 +12418,17 @@
       "guarded-export-caller",
       "assertReportExportScopeFilters",
       "authorized operational export route",
-      "server/services/exportAudit.ts#logOperationalExportAudit"
+      "server/services/exportAudit.ts#logOperationalExportAudit",
+      "live-read-permission",
+      "tenant-company-request-location-scope",
+      "closed-dashboard-profile"
     ],
     "boundaryCaseIds": [
       "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
       "FIN-AUTHZ-EXPORT-AUDIT-001",
       "FIN-AUTHZ-PERM-001",
-      "FIN-AUTHZ-RECORD-001"
+      "FIN-AUTHZ-RECORD-001",
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
     ],
     "noMutationControls": [
       "invalid or stale session cannot authorize protected mutation",
@@ -12430,7 +12436,9 @@
       "money",
       "inventory",
       "failure audit only after an authenticated authorized export attempt",
-      "no money or workflow mutation"
+      "no money or workflow mutation",
+      "PurchaseRequest",
+      "AuditEvent"
     ]
   },
   {
@@ -31897,6 +31905,83 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfile",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-read-permission",
+      "tenant-company-request-location-scope",
+      "closed-dashboard-profile"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "PurchaseRequest",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfilePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-read-permission",
+      "tenant-company-request-location-scope",
+      "closed-dashboard-profile",
+      "server-pagination"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "PurchaseRequest",
+      "AuditEvent"
+    ]
   },
   {
     "id": "server/services/purchaseRequests.ts#reopenReturnedPurchaseRequest",

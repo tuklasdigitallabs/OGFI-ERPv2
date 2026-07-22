@@ -39,6 +39,7 @@ import {
 } from "./purchaseOrders";
 import {
   getPurchaseRequestDashboardRead,
+  purchaseRequestDashboardProfileHref,
   type PurchaseRequest,
   type PurchaseRequestDashboardRead
 } from "./purchaseRequests";
@@ -457,8 +458,8 @@ export function buildOperationalDashboardModel(
       id: "open-purchase-requests",
       label: "Open PRs",
       value,
-      href: "/purchase-requests",
-      description: "Draft, returned, and pending approval",
+      href: purchaseRequestDashboardProfileHref("purchase-request-open-v1"),
+      description: "Draft, pending approval, approved, and returned",
       tone: cardTone(value)
     });
   }

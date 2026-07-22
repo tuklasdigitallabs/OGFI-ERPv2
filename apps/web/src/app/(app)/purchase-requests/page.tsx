@@ -19,6 +19,8 @@ import {
   createDraftPurchaseRequest,
   listPurchaseRequestDraftOptions,
   listPurchaseRequests,
+  listPurchaseRequestsDashboardProfilePage,
+  resolvePurchaseRequestDashboardProfile,
   type PurchaseRequestSlaStatus,
   type PurchaseRequestStatus,
 } from "@/server/services/purchaseRequests";
@@ -75,7 +77,7 @@ function slaBadgeTone(status: PurchaseRequestSlaStatus) {
 export default async function PurchaseRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; search?: string; status?: string }>;
+  searchParams: Promise<{ error?: string; search?: string; status?: string; dashboard?: string; page?: string }>;
 }) {
   const session = await getSessionContext();
   if (!session) {
@@ -87,25 +89,33 @@ export default async function PurchaseRequestsPage({
 
   const filters = await searchParams;
   const actionFeedback = getActionFeedback(filters);
+  const dashboardProfile = resolvePurchaseRequestDashboardProfile(filters.dashboard);
+  const requestedPage = Math.max(1, Number(filters.page) || 1);
   const selectedStatus = normalizeStatus(filters.status);
   const search = filters.search?.trim() ?? "";
   const exportParams = new URLSearchParams();
-  if (search) {
+  if (dashboardProfile) {
+    exportParams.set("dashboard", dashboardProfile);
+  } else if (search) {
     exportParams.set("search", search);
   }
-  if (selectedStatus !== "ALL") {
+  if (!dashboardProfile && selectedStatus !== "ALL") {
     exportParams.set("status", selectedStatus);
   }
   const exportHref = `/purchase-requests/export${exportParams.size ? `?${exportParams.toString()}` : ""}`;
   const canExportPurchaseRequestCsv = canExportPurchaseRequests(session);
-  const [requests, draftOptions, purchasingPolicy] = await Promise.all([
-    listPurchaseRequests(session, {
+  const [dashboardProfilePage, workspaceRequests, draftOptions, purchasingPolicy] = await Promise.all([
+    dashboardProfile
+      ? listPurchaseRequestsDashboardProfilePage(session, dashboardProfile, requestedPage)
+      : Promise.resolve(null),
+    dashboardProfile ? Promise.resolve([]) : listPurchaseRequests(session, {
       status: selectedStatus,
       search,
     }),
     listPurchaseRequestDraftOptions(session),
     getPurchasingControlPolicy(session),
   ]);
+  const requests = dashboardProfilePage?.items ?? workspaceRequests;
   const canCreateDraft = session.permissionCodes.includes(
     permissions.purchaseRequestCreate,
   );
@@ -195,6 +205,15 @@ export default async function PurchaseRequestsPage({
 
         <section className="min-w-0 space-y-4">
           <div className="ogfi-data-surface">
+            {dashboardProfile ? (
+              <div className="mx-4 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700">
+                <p><strong>Dashboard filter: Open purchase requests.</strong> This list, its pages, and its export include Draft, Pending Approval, Approved, and Returned requests in the selected location.</p>
+                <div className="flex flex-wrap gap-2">
+                  {canExportPurchaseRequestCsv ? <ButtonLink href={exportHref} tone="secondary">Export CSV</ButtonLink> : null}
+                  <ButtonLink href="/purchase-requests" tone="secondary">Clear dashboard filter</ButtonLink>
+                </div>
+              </div>
+            ) : (
             <form className="ogfi-filter-bar grid gap-3 lg:grid-cols-[1fr_12rem_auto_auto] lg:items-end">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Search
@@ -231,6 +250,7 @@ export default async function PurchaseRequestsPage({
                 </ButtonLink>
               ) : null}
             </form>
+            )}
             <div className="ogfi-table-head hidden grid-cols-[1.2fr_1fr_1fr_1fr_auto] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold text-slate-500 md:grid">
               <span>Request</span>
               <span>Item</span>
@@ -315,6 +335,16 @@ export default async function PurchaseRequestsPage({
                 ))}
               </div>
             )}
+            {dashboardProfilePage ? (
+              <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                <p>Showing {(dashboardProfilePage.page - 1) * dashboardProfilePage.pageSize + (requests.length ? 1 : 0)}-{(dashboardProfilePage.page - 1) * dashboardProfilePage.pageSize + requests.length} of {dashboardProfilePage.totalCount} open purchase requests</p>
+                <div className="flex items-center gap-2">
+                  {dashboardProfilePage.page > 1 ? <ButtonLink href={`/purchase-requests?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page - 1}`} tone="secondary">Previous</ButtonLink> : <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Previous</span>}
+                  <span className="font-semibold text-slate-700">Page {dashboardProfilePage.page} of {dashboardProfilePage.totalPages}</span>
+                  {dashboardProfilePage.page < dashboardProfilePage.totalPages ? <ButtonLink href={`/purchase-requests?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page + 1}`} tone="secondary">Next</ButtonLink> : <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Next</span>}
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
 

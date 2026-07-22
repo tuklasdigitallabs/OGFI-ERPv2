@@ -12,7 +12,9 @@ import {
 } from "@/server/services/exportAudit";
 import { canExportPurchaseRequests } from "@/server/services/exportAuthorization";
 import {
+  listPurchaseRequestsDashboardProfile,
   listPurchaseRequests,
+  resolvePurchaseRequestDashboardProfile,
   type PurchaseRequestStatus
 } from "@/server/services/purchaseRequests";
 
@@ -50,16 +52,24 @@ export async function GET(request: NextRequest) {
   }
 
   const searchParams = request.nextUrl.searchParams;
+  const dashboardProfile = resolvePurchaseRequestDashboardProfile(
+    searchParams.get("dashboard") ?? undefined,
+  );
   try {
     await logOperationalExportAudit({
       session,
       reportId: "purchase-request-register",
       eventType: "report.export_started"
     });
-    const records = await listPurchaseRequests(session, {
-      status: normalizeStatus(searchParams.get("status")),
-      search: searchParams.get("search") ?? ""
-    });
+    const records = dashboardProfile
+      ? await listPurchaseRequestsDashboardProfile(session, dashboardProfile)
+      : await listPurchaseRequests(session, {
+          status: normalizeStatus(searchParams.get("status")),
+          search: searchParams.get("search") ?? ""
+        });
+    if (!records) {
+      return new Response("Unknown dashboard profile", { status: 400 });
+    }
 
     const rows = [
       [

@@ -47,7 +47,7 @@ describe("operational dashboard model", () => {
     expect(dashboard.cards[0]).toMatchObject({
       label: "Open PRs",
       value: 2,
-      href: "/purchase-requests",
+      href: "/purchase-requests?dashboard=purchase-request-open-v1",
       tone: "warning"
     });
   });

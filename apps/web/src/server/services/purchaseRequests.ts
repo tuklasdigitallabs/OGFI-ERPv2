@@ -1,4 +1,4 @@
-import { prisma, type TransactionClient } from "@ogfi/database";
+import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
@@ -709,6 +709,29 @@ const purchaseRequestDashboardOpenStatuses = [
   "RETURNED",
 ] as const;
 
+export const purchaseRequestDashboardProfiles = [
+  "purchase-request-open-v1",
+] as const;
+
+export type PurchaseRequestDashboardProfile =
+  (typeof purchaseRequestDashboardProfiles)[number];
+
+export function resolvePurchaseRequestDashboardProfile(
+  value: string | undefined,
+): PurchaseRequestDashboardProfile | null {
+  return purchaseRequestDashboardProfiles.includes(
+    value as PurchaseRequestDashboardProfile,
+  )
+    ? (value as PurchaseRequestDashboardProfile)
+    : null;
+}
+
+export function purchaseRequestDashboardProfileHref(
+  profile: PurchaseRequestDashboardProfile,
+) {
+  return `/purchase-requests?dashboard=${profile}`;
+}
+
 export type PurchaseRequestDashboardStatus =
   (typeof purchaseRequestDashboardOpenStatuses)[number];
 
@@ -726,6 +749,61 @@ export type PurchaseRequestDashboardRead = {
   taskCandidates: PurchaseRequestDashboardTaskCandidate[];
 };
 
+function purchaseRequestScope(session: SessionContext) {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    requestLocationId: session.context.locationId,
+  };
+}
+
+function purchaseRequestDashboardProfileStatusWhere(
+  profile: PurchaseRequestDashboardProfile,
+) {
+  switch (profile) {
+    case "purchase-request-open-v1":
+      return { status: { in: [...purchaseRequestDashboardOpenStatuses] } };
+  }
+}
+
+function purchaseRequestListWhere(
+  session: SessionContext,
+  filters: PurchaseRequestListFilters,
+  dashboardProfile?: PurchaseRequestDashboardProfile,
+): Prisma.PurchaseRequestWhereInput {
+  const where: Prisma.PurchaseRequestWhereInput = purchaseRequestScope(session);
+  if (dashboardProfile) {
+    Object.assign(where, purchaseRequestDashboardProfileStatusWhere(dashboardProfile));
+    return where;
+  }
+
+  const search = filters.search?.trim();
+  const status =
+    filters.status && filters.status !== "ALL" ? filters.status : undefined;
+  if (status) {
+    where.status = status;
+  }
+  if (search) {
+    where.OR = [
+      { publicReference: { contains: search, mode: "insensitive" } },
+      { justification: { contains: search, mode: "insensitive" } },
+      {
+        lines: {
+          some: {
+            OR: [
+              { description: { contains: search, mode: "insensitive" } },
+              { purpose: { contains: search, mode: "insensitive" } },
+              { item: { itemName: { contains: search, mode: "insensitive" } } },
+              { item: { itemCode: { contains: search, mode: "insensitive" } } },
+            ],
+          },
+        },
+      },
+    ];
+  }
+  return where;
+}
+
 /**
  * Dashboard-only purchase-request read. This intentionally avoids the list
  * workspace's line, quote, comment, and audit expansion.
@@ -737,12 +815,7 @@ export async function getPurchaseRequestDashboardRead(
     throw new Error("PERMISSION_DENIED");
   }
 
-  const where = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    requestLocationId: session.context.locationId,
-    status: { in: [...purchaseRequestDashboardOpenStatuses] },
-  };
+  const where = purchaseRequestListWhere(session, {}, "purchase-request-open-v1");
   const [openCount, taskCandidates] = await Promise.all([
     prisma.purchaseRequest.count({ where }),
     prisma.purchaseRequest.findMany({
@@ -782,54 +855,20 @@ export async function getPurchaseRequestDashboardRead(
   };
 }
 
-export async function listPurchaseRequests(
+async function listPurchaseRequestsWithOptions(
   session: SessionContext,
   filters: PurchaseRequestListFilters = {},
+  options: {
+    dashboardProfile?: PurchaseRequestDashboardProfile;
+    pagination?: { page: number; pageSize: number };
+  } = {},
 ) {
   if (!canUsePurchaseRequests(session.permissionCodes)) {
     throw new Error("PERMISSION_DENIED");
   }
 
-  const search = filters.search?.trim();
-  const status =
-    filters.status && filters.status !== "ALL" ? filters.status : undefined;
   const records = await prisma.purchaseRequest.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      requestLocationId: session.context.locationId,
-      ...(status ? { status } : {}),
-      ...(search
-        ? {
-            OR: [
-              { publicReference: { contains: search, mode: "insensitive" } },
-              { justification: { contains: search, mode: "insensitive" } },
-              {
-                lines: {
-                  some: {
-                    OR: [
-                      {
-                        description: { contains: search, mode: "insensitive" },
-                      },
-                      { purpose: { contains: search, mode: "insensitive" } },
-                      {
-                        item: {
-                          itemName: { contains: search, mode: "insensitive" },
-                        },
-                      },
-                      {
-                        item: {
-                          itemCode: { contains: search, mode: "insensitive" },
-                        },
-                      },
-                    ],
-                  },
-                },
-              },
-            ],
-          }
-        : {}),
-    },
+    where: purchaseRequestListWhere(session, filters, options.dashboardProfile),
     include: {
       lines: {
         orderBy: { lineNumber: "asc" },
@@ -866,7 +905,15 @@ export async function listPurchaseRequests(
         },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: options.dashboardProfile
+      ? [{ requiredDate: "asc" }, { createdAt: "asc" }, { id: "asc" }]
+      : [{ createdAt: "desc" }, { id: "desc" }],
+    ...(options.pagination
+      ? {
+          skip: (options.pagination.page - 1) * options.pagination.pageSize,
+          take: options.pagination.pageSize,
+        }
+      : {}),
   });
 
   const auditEvents = await findAuditEvents(
@@ -880,6 +927,54 @@ export async function listPurchaseRequests(
       auditEvents.filter((event) => event.entityId === record.id),
     ),
   );
+}
+
+export async function listPurchaseRequests(
+  session: SessionContext,
+  filters: PurchaseRequestListFilters = {},
+) {
+  return listPurchaseRequestsWithOptions(session, filters);
+}
+
+export type PurchaseRequestDashboardProfilePage = {
+  profile: PurchaseRequestDashboardProfile;
+  items: PurchaseRequest[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export async function listPurchaseRequestsDashboardProfilePage(
+  session: SessionContext,
+  profileValue: string | undefined,
+  requestedPage: number,
+): Promise<PurchaseRequestDashboardProfilePage | null> {
+  const profile = resolvePurchaseRequestDashboardProfile(profileValue);
+  if (!profile) return null;
+  if (!canUsePurchaseRequests(session.permissionCodes)) {
+    throw new Error("PERMISSION_DENIED");
+  }
+  const pageSize = 25;
+  const totalCount = await prisma.purchaseRequest.count({
+    where: purchaseRequestListWhere(session, {}, profile),
+  });
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, requestedPage), totalPages);
+  const items = await listPurchaseRequestsWithOptions(session, {}, {
+    dashboardProfile: profile,
+    pagination: { page, pageSize },
+  });
+  return { profile, items, totalCount, page, pageSize, totalPages };
+}
+
+export async function listPurchaseRequestsDashboardProfile(
+  session: SessionContext,
+  profileValue: string | undefined,
+) {
+  const profile = resolvePurchaseRequestDashboardProfile(profileValue);
+  if (!profile) return null;
+  return listPurchaseRequestsWithOptions(session, {}, { dashboardProfile: profile });
 }
 
 export async function getPurchaseRequest(session: SessionContext, id: string) {

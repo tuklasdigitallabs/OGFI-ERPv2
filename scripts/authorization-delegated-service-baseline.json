@@ -112,6 +112,8 @@
   "server/services/projectRequirements.ts#submitProjectRequirement",
   "server/services/projectRequirements.ts#submitProjectRequirementForSession",
   "server/services/purchaseRequests.ts#addPurchaseRequestComment",
+  "server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfile",
+  "server/services/purchaseRequests.ts#listPurchaseRequestsDashboardProfilePage",
   "server/services/recipes.ts#transitionMenuPriceDecision",
   "server/services/recipes.ts#transitionRecipeVersion",
   "server/services/restaurantOpsNotifications.ts#runRestaurantOpsExceptionReminderScan"

@@ -8,10 +8,34 @@ import {
   getPurchaseRequestSlaLabel,
   getPurchaseRequestSlaStatus,
   isEmergencyPurchaseUrgency,
+  purchaseRequestDashboardProfileHref,
+  purchaseRequestDashboardProfiles,
+  resolvePurchaseRequestDashboardProfile,
   resolvePurchaseRequestApprovalRule
 } from "./purchaseRequests";
 
 describe("purchase request workflow controls", () => {
+  test("keeps the dashboard open-PR contract closed and includes approved requests", () => {
+    expect(resolvePurchaseRequestDashboardProfile("purchase-request-open-v1")).toBe(
+      "purchase-request-open-v1",
+    );
+    expect(resolvePurchaseRequestDashboardProfile("open")).toBeNull();
+    expect(
+      resolvePurchaseRequestDashboardProfile("purchase-request-open-v1&status=CANCELLED"),
+    ).toBeNull();
+    expect(purchaseRequestDashboardProfileHref("purchase-request-open-v1")).toBe(
+      "/purchase-requests?dashboard=purchase-request-open-v1",
+    );
+    expect(purchaseRequestDashboardProfiles).toEqual(["purchase-request-open-v1"]);
+    const serviceSource = readFileSync(
+      path.resolve(__dirname, "purchaseRequests.ts"),
+      "utf8",
+    );
+    expect(serviceSource).toContain(
+      '[{ requiredDate: "asc" }, { createdAt: "asc" }, { id: "asc" }]',
+    );
+  });
+
   test("initial approval routing is normalized and fails before source transition", () => {
     const source = readFileSync(path.resolve(__dirname, "purchaseRequests.ts"), "utf8");
     const start = source.indexOf("export async function submitPurchaseRequest");
