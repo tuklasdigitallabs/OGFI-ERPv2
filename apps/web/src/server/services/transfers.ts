@@ -310,6 +310,49 @@ function scopedTransferWhere(session: SessionContext, id?: string) {
   };
 }
 
+export const transferDashboardProfiles = ["transfer-follow-up-v1"] as const;
+export type TransferDashboardProfile = (typeof transferDashboardProfiles)[number];
+
+const transferFollowUpStatuses = [
+  "REQUESTED",
+  "DISPATCHED",
+  "PARTIALLY_RECEIVED",
+  "DISPUTED"
+] as const;
+
+const transferProfilePageSize = 25;
+
+export function resolveTransferDashboardProfile(
+  value: string | undefined
+): TransferDashboardProfile | null {
+  return value === "transfer-follow-up-v1" ? value : null;
+}
+
+export function transferDashboardProfileHref(
+  profile: TransferDashboardProfile,
+  page = 1
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+  return `/transfers?${params.toString()}`;
+}
+
+export function transferDashboardProfileWhere(
+  session: SessionContext,
+  profile: TransferDashboardProfile
+) {
+  if (profile === "transfer-follow-up-v1") {
+    return {
+      ...scopedTransferWhere(session),
+      status: { in: [...transferFollowUpStatuses] }
+    } satisfies Prisma.InventoryTransferWhereInput;
+  }
+
+  throw new Error("TRANSFER_DASHBOARD_PROFILE_UNSUPPORTED");
+}
+
 const transferDashboardTaskCandidateLimit = 8;
 
 export type TransferDashboardRead = {
@@ -333,14 +376,11 @@ export async function getTransferDashboardRead(
 ): Promise<TransferDashboardRead> {
   await requireTransferRead(session);
 
-  const followUpStatuses = [
-    "REQUESTED",
-    "DISPATCHED",
-    "PARTIALLY_RECEIVED",
-    "DISPUTED"
-  ];
   const taskStatuses = ["DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"];
-  const scope = scopedTransferWhere(session);
+  const profileWhere = transferDashboardProfileWhere(
+    session,
+    "transfer-follow-up-v1"
+  );
   const candidateSelect = {
     id: true,
     publicReference: true,
@@ -355,17 +395,17 @@ export async function getTransferDashboardRead(
   ];
   const [followUpCount, disputedCandidates, normalCandidates] = await Promise.all([
     prisma.inventoryTransfer.count({
-      where: { ...scope, status: { in: followUpStatuses } }
+      where: profileWhere
     }),
     prisma.inventoryTransfer.findMany({
-      where: { ...scope, status: "DISPUTED" },
+      where: { ...profileWhere, status: "DISPUTED" },
       select: candidateSelect,
       orderBy: candidateOrderBy,
       take: transferDashboardTaskCandidateLimit
     }),
     prisma.inventoryTransfer.findMany({
       where: {
-        ...scope,
+        ...profileWhere,
         status: { in: taskStatuses.filter((status) => status !== "DISPUTED") }
       },
       select: candidateSelect,
@@ -490,11 +530,82 @@ export async function listInventoryTransfers(session: SessionContext) {
   }));
 }
 
-export async function buildInventoryTransferExportRows(session: SessionContext) {
+export type TransferFollowUpProfilePage = {
+  transfers: Awaited<ReturnType<typeof listInventoryTransfers>>;
+  totalItems: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function listInventoryTransfersDashboardProfilePage(
+  session: SessionContext,
+  profile: TransferDashboardProfile,
+  requestedPage: number
+): Promise<TransferFollowUpProfilePage> {
+  await requireTransferRead(session);
+
+  const page = Number.isFinite(requestedPage) && requestedPage > 0
+    ? Math.floor(requestedPage)
+    : 1;
+  const where = transferDashboardProfileWhere(session, profile);
+  const totalItems = await prisma.inventoryTransfer.count({ where });
+  const safePage = Math.min(
+    page,
+    Math.max(1, Math.ceil(totalItems / transferProfilePageSize))
+  );
+  const transfers = await prisma.inventoryTransfer.findMany({
+    where,
+    include: {
+      sourceLocation: true,
+      destinationLocation: true,
+      requestedBy: true,
+      lines: true
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (safePage - 1) * transferProfilePageSize,
+    take: transferProfilePageSize
+  });
+
+  return {
+    transfers: transfers.map((transfer) => ({
+      id: transfer.id,
+      publicReference: transfer.publicReference,
+      status: transfer.status,
+      transferType: transfer.transferType,
+      purpose: transfer.purpose,
+      sourceLocationId: transfer.sourceLocationId,
+      destinationLocationId: transfer.destinationLocationId,
+      sourceLocationName: transfer.sourceLocation.name,
+      destinationLocationName: transfer.destinationLocation.name,
+      requestedByName: transfer.requestedBy.displayName,
+      requiredByDate: transfer.requiredByDate?.toISOString().slice(0, 10) ?? null,
+      createdAt: transfer.createdAt.toISOString(),
+      submittedAt: transfer.submittedAt?.toISOString() ?? null,
+      dispatchedAt: transfer.dispatchedAt?.toISOString() ?? null,
+      receivedAt: transfer.receivedAt?.toISOString() ?? null,
+      cancelledAt: transfer.cancelledAt?.toISOString() ?? null,
+      lineCount: transfer.lines.length,
+      requestedQty: transfer.lines.reduce(
+        (total, line) => total + Number(line.requestedQty),
+        0
+      )
+    })),
+    totalItems,
+    page: safePage,
+    pageSize: transferProfilePageSize
+  };
+}
+
+export async function buildInventoryTransferExportRows(
+  session: SessionContext,
+  profile?: TransferDashboardProfile
+) {
   await requireTransferRead(session);
 
   const transfers = await prisma.inventoryTransfer.findMany({
-    where: scopedTransferWhere(session),
+    where: profile
+      ? transferDashboardProfileWhere(session, profile)
+      : scopedTransferWhere(session),
     include: {
       sourceLocation: true,
       destinationLocation: true,

@@ -52,6 +52,21 @@ describe("operational dashboard model", () => {
     });
   });
 
+  it("links Transfer Follow-up to its closed server-owned profile", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      transfers: [
+        { id: "transfer-1", publicReference: "TR-001", status: "REQUESTED" },
+      ] as never,
+    });
+
+    expect(dashboard.cards).toContainEqual(
+      expect.objectContaining({
+        id: "transfer-follow-up",
+        href: "/transfers?dashboard=transfer-follow-up-v1",
+      }),
+    );
+  });
+
   it("uses the filtered approval queue instead of raw approval counts", () => {
     const dashboard = buildOperationalDashboardModel(session, {
       approvals: [

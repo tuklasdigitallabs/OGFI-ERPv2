@@ -10,11 +10,14 @@ import {
   logOperationalExportFailure
 } from "@/server/services/exportAudit";
 import { canExportInventoryTransfers } from "@/server/services/exportAuthorization";
-import { buildInventoryTransferExportRows } from "@/server/services/transfers";
+import {
+  buildInventoryTransferExportRows,
+  resolveTransferDashboardProfile
+} from "@/server/services/transfers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSessionContext();
   if (!session) {
     return exportAuthRequiredResponse();
@@ -29,13 +32,19 @@ export async function GET() {
     return exportPermissionDeniedResponse();
   }
 
+  const profileParam = new URL(request.url).searchParams.get("dashboard") ?? undefined;
+  const profile = resolveTransferDashboardProfile(profileParam);
+  if (profileParam && !profile) {
+    return new Response("Unsupported transfer dashboard profile.", { status: 400 });
+  }
+
   try {
     await logOperationalExportAudit({
       session,
       reportId: "transfer-status",
       eventType: "report.export_started"
     });
-    const rows = await buildInventoryTransferExportRows(session);
+    const rows = await buildInventoryTransferExportRows(session, profile ?? undefined);
     await logOperationalExportAudit({
       session,
       reportId: "transfer-status",
@@ -43,7 +52,7 @@ export async function GET() {
       rowCount: Math.max(0, rows.length - 1)
     });
 
-    return csvExportResponse(rows, "inventory-transfers.csv", {
+    return csvExportResponse(rows, profile ? "transfer-follow-up.csv" : "inventory-transfers.csv", {
       metadata: await buildReportCsvMetadata({
         session,
         reportId: "transfer-status"

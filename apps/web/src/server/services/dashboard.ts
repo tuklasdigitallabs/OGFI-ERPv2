@@ -61,6 +61,7 @@ import {
 import {
   getTransferDashboardRead,
   listInventoryTransfers,
+  transferDashboardProfileHref,
   type TransferDashboardRead
 } from "./transfers";
 import {
@@ -593,7 +594,7 @@ export function buildOperationalDashboardModel(
       id: "transfer-follow-up",
       label: "Transfer Follow-up",
       value,
-      href: "/transfers",
+      href: transferDashboardProfileHref("transfer-follow-up-v1"),
       description: "Requested, dispatched, partial, or disputed",
       tone: cardTone(value)
     });

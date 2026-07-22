@@ -13,7 +13,11 @@ import {
   assertTransferReceiptCanReverse,
   assertTransferCanSubmit,
   assertTransferLocationsDistinct,
-  getTransferDashboardRead
+  getTransferDashboardRead,
+  listInventoryTransfersDashboardProfilePage,
+  resolveTransferDashboardProfile,
+  transferDashboardProfileHref,
+  transferDashboardProfileWhere
 } from "./transfers";
 
 const mockPrisma = vi.hoisted(() => ({
@@ -54,6 +58,66 @@ describe("inventory transfer foundation rules", () => {
     const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
 
     expect(source).toContain("canUseTransfers(session.permissionCodes)");
+  });
+
+  test("resolves only the closed transfer follow-up profile and canonical scoped predicate", () => {
+    expect(resolveTransferDashboardProfile("transfer-follow-up-v1")).toBe(
+      "transfer-follow-up-v1"
+    );
+    expect(resolveTransferDashboardProfile("all")).toBeNull();
+    expect(resolveTransferDashboardProfile(undefined)).toBeNull();
+    expect(transferDashboardProfileHref("transfer-follow-up-v1", 2)).toBe(
+      "/transfers?dashboard=transfer-follow-up-v1&page=2"
+    );
+    expect(
+      transferDashboardProfileWhere(
+        dashboardSession as never,
+        "transfer-follow-up-v1"
+      )
+    ).toEqual({
+      tenantId: dashboardSession.context.tenantId,
+      companyId: dashboardSession.context.companyId,
+      OR: [
+        { sourceLocationId: dashboardSession.context.locationId },
+        { destinationLocationId: dashboardSession.context.locationId }
+      ],
+      status: {
+        in: ["REQUESTED", "DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"]
+      }
+    });
+  });
+
+  test("profile page uses the shared predicate with deterministic server pagination", async () => {
+    mockPrisma.inventoryTransfer.count.mockResolvedValue(26);
+    mockPrisma.inventoryTransfer.findMany.mockResolvedValue([]);
+
+    await expect(
+      listInventoryTransfersDashboardProfilePage(
+        dashboardSession as never,
+        "transfer-follow-up-v1",
+        99
+      )
+    ).resolves.toMatchObject({ totalItems: 26, page: 2, pageSize: 25, transfers: [] });
+    expect(mockPrisma.inventoryTransfer.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        status: {
+          in: ["REQUESTED", "DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"]
+        },
+        OR: [
+          { sourceLocationId: dashboardSession.context.locationId },
+          { destinationLocationId: dashboardSession.context.locationId }
+        ]
+      })
+    });
+    expect(mockPrisma.inventoryTransfer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: 25,
+        take: 25
+      })
+    );
   });
 
   test("dashboard read preserves transfer scope and gives disputed tasks priority before its bound", async () => {
@@ -408,8 +472,22 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain("settlementMetadataValue");
     expect(service).toContain('eventType: "inventory_transfer.discrepancy_settled"');
     expect(service).toContain("Evidence Reference");
-    expect(route).toContain("buildInventoryTransferExportRows(session)");
+    expect(route).toContain("resolveTransferDashboardProfile");
+    expect(route).toContain("buildInventoryTransferExportRows(session, profile ?? undefined)");
+    expect(route).toContain("Unsupported transfer dashboard profile.");
     expect(route).not.toContain("postInventoryMovementInTransaction");
     expect(route).not.toContain("inventoryTransfer.update");
+  });
+
+  test("follow-up page ignores ordinary transfer tab controls and does not expose mutations", () => {
+    const page = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/transfers/page.tsx"),
+      "utf8"
+    );
+
+    expect(page).toContain("profile\n      ? transfers");
+    expect(page).toContain("listInventoryTransfersDashboardProfilePage(session, profile, getPage(params))");
+    expect(page).toContain("This view does not grant transfer or inventory actions.");
+    expect(page).toContain("!profile && canCreateTransfers");
   });
 });

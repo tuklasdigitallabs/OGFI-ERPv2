@@ -19,8 +19,11 @@ import { canExportInventoryTransfers } from "@/server/services/exportAuthorizati
 import {
   createInventoryTransfer,
   listInventoryTransfers,
+  listInventoryTransfersDashboardProfilePage,
   listTransferFormOptions,
-  submitInventoryTransfer
+  resolveTransferDashboardProfile,
+  submitInventoryTransfer,
+  transferDashboardProfileHref
 } from "@/server/services/transfers";
 
 export const dynamic = "force-dynamic";
@@ -129,13 +132,25 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
     );
   }
 
-  const [transfers, formOptions] = await Promise.all([
-    listInventoryTransfers(session),
-    canCreateTransfers ? listTransferFormOptions(session) : Promise.resolve(null)
-  ]);
+  const params = searchParams ? await searchParams : {};
+  const profileParam = getStringParam(params, "dashboard");
+  const profile = resolveTransferDashboardProfile(profileParam);
+  if (profileParam && !profile) {
+    redirect("/transfers");
+  }
+
+  const profilePage = profile
+    ? await listInventoryTransfersDashboardProfilePage(session, profile, getPage(params))
+    : null;
+  const [workspaceTransfers, formOptions] = profile
+    ? [null, null]
+    : await Promise.all([
+        listInventoryTransfers(session),
+        canCreateTransfers ? listTransferFormOptions(session) : Promise.resolve(null)
+      ]);
+  const transfers = profilePage?.transfers ?? workspaceTransfers ?? [];
   const firstSource = formOptions?.sourceInventoryLocations[0];
   const firstItem = formOptions?.items[0];
-  const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
   const activeTab = getTransferTab(params);
   const page = getPage(params);
@@ -148,7 +163,9 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
   );
   const completedTransfers = transfers.filter((transfer) => transfer.status === "RECEIVED");
   const visibleTransfers =
-    activeTab === "draft"
+    profile
+      ? transfers
+      : activeTab === "draft"
       ? draftTransfers
       : activeTab === "dispatch"
         ? dispatchTransfers
@@ -157,14 +174,21 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
           : activeTab === "completed"
             ? completedTransfers
             : transfers;
-  const pageCount = Math.max(1, Math.ceil(visibleTransfers.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const pagedTransfers = visibleTransfers.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE
-  );
+  const pageCount = profilePage
+    ? Math.max(1, Math.ceil(profilePage.totalItems / profilePage.pageSize))
+    : Math.max(1, Math.ceil(visibleTransfers.length / PAGE_SIZE));
+  const safePage = profilePage ? profilePage.page : Math.min(page, pageCount);
+  const pagedTransfers = profilePage
+    ? visibleTransfers
+    : visibleTransfers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const emptyCopy =
-    activeTab === "draft"
+    profile
+      ? {
+          title: "No transfers need follow-up",
+          description:
+            "No requested, dispatched, partially received, or disputed transfers involve the selected location."
+        }
+      : activeTab === "draft"
       ? {
           title: "No draft transfer requests",
           description: "Draft transfer requests waiting for submission will appear here."
@@ -213,7 +237,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
         </p>
       </div>
       <div className="space-y-4">
-        {canCreateTransfers ? (
+        {!profile && canCreateTransfers ? (
           <div className="flex justify-end">
             <TaskSheet title="Request Stock" description="Choose the source and build the requested transfer lines." trigger={<span>Request Stock</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
               {!formOptions?.destinationInventoryLocation ? (
@@ -242,16 +266,24 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
           <div className="ogfi-section-header">
             <div>
               <h2 className="text-lg font-bold text-slate-950">
-                Stock Requests & Transfers
+                {profile ? "Transfer Follow-up" : "Stock Requests & Transfers"}
               </h2>
               <p className="text-sm text-slate-500">
-                {transfers.length} total, {dispatchTransfers.length} awaiting dispatch,{" "}
-                {receiveTransfers.length} awaiting receipt
+                {profile
+                  ? `${profilePage?.totalItems ?? 0} transfers requiring follow-up at the selected location`
+                  : `${transfers.length} total, ${dispatchTransfers.length} awaiting dispatch, ${receiveTransfers.length} awaiting receipt`}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Badge tone="info">Dispatch ready</Badge>
-              {canExportTransfers ? (
+              {profile ? <ButtonLink href="/transfers">View all transfers</ButtonLink> : <Badge tone="info">Dispatch ready</Badge>}
+              {canExportTransfers && profile ? (
+                <ButtonLink
+                  href={`/transfers/export?dashboard=${profile}`}
+                  className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
+                >
+                  Export CSV
+                </ButtonLink>
+              ) : canExportTransfers ? (
                 <ButtonLink
                   href="/transfers/export"
                   className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
@@ -261,42 +293,25 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
               ) : null}
             </div>
           </div>
-          <div className="border-b border-slate-100 p-4">
-            <WorkspaceTabs
-              items={[
-                {
-                  label: "All",
-                  href: transfersHref("all"),
-                  active: activeTab === "all",
-                  count: transfers.length
-                },
-                {
-                  label: "Draft",
-                  href: transfersHref("draft"),
-                  active: activeTab === "draft",
-                  count: draftTransfers.length
-                },
-                {
-                  label: "Dispatch",
-                  href: transfersHref("dispatch"),
-                  active: activeTab === "dispatch",
-                  count: dispatchTransfers.length
-                },
-                {
-                  label: "Receive",
-                  href: transfersHref("receive"),
-                  active: activeTab === "receive",
-                  count: receiveTransfers.length
-                },
-                {
-                  label: "Completed",
-                  href: transfersHref("completed"),
-                  active: activeTab === "completed",
-                  count: completedTransfers.length
-                }
-              ]}
-            />
-          </div>
+          {profile ? (
+            <div className="border-b border-slate-100 bg-blue-50 p-4 text-sm text-slate-700">
+              Showing the dashboard follow-up population only: requested, dispatched,
+              partially received, and disputed transfers where the selected location is
+              the source or destination. This view does not grant transfer or inventory actions.
+            </div>
+          ) : (
+            <div className="border-b border-slate-100 p-4">
+              <WorkspaceTabs
+                items={[
+                  { label: "All", href: transfersHref("all"), active: activeTab === "all", count: transfers.length },
+                  { label: "Draft", href: transfersHref("draft"), active: activeTab === "draft", count: draftTransfers.length },
+                  { label: "Dispatch", href: transfersHref("dispatch"), active: activeTab === "dispatch", count: dispatchTransfers.length },
+                  { label: "Receive", href: transfersHref("receive"), active: activeTab === "receive", count: receiveTransfers.length },
+                  { label: "Completed", href: transfersHref("completed"), active: activeTab === "completed", count: completedTransfers.length }
+                ]}
+              />
+            </div>
+          )}
           {visibleTransfers.length === 0 ? (
             <div className="p-5">
               <EmptyState title={emptyCopy.title} description={emptyCopy.description} />
@@ -357,10 +372,14 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
           {visibleTransfers.length > 0 ? (
             <PaginationBar
               page={safePage}
-              pageSize={PAGE_SIZE}
-              totalItems={visibleTransfers.length}
+              pageSize={profilePage?.pageSize ?? PAGE_SIZE}
+              totalItems={profilePage?.totalItems ?? visibleTransfers.length}
               itemLabel="transfers"
-              getPageHref={(nextPage) => transfersHref(activeTab, nextPage)}
+              getPageHref={(nextPage) =>
+                profile
+                  ? transferDashboardProfileHref(profile, nextPage)
+                  : transfersHref(activeTab, nextPage)
+              }
             />
           ) : null}
         </section>
