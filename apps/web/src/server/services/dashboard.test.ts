@@ -852,6 +852,16 @@ describe("operational dashboard model", () => {
     expect(dashboardServiceSource).not.toContain("getIncidentDashboard(session)");
   });
 
+  it("uses the bounded Maintenance read instead of the full ticket workspace read", () => {
+    const dashboardServiceSource = readFileSync(
+      path.resolve(__dirname, "dashboard.ts"),
+      "utf8",
+    );
+
+    expect(dashboardServiceSource).toContain("getMaintenanceDashboardRead(session)");
+    expect(dashboardServiceSource).not.toContain("getMaintenanceDashboard(session)");
+  });
+
   it("reports each unavailable dashboard source without exposing an internal failure", () => {
     const dashboard = buildOperationalDashboardModel(session, {
       unavailableSources: [

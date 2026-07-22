@@ -38,7 +38,11 @@ import {
   getInventoryBalanceReconciliation,
   listInventoryBalances
 } from "./inventory";
-import { getMaintenanceDashboard, type MaintenanceDashboard } from "./maintenance";
+import {
+  getMaintenanceDashboardRead,
+  type MaintenanceDashboard,
+  type MaintenanceDashboardRead
+} from "./maintenance";
 import {
   getPurchaseOrderDashboardRead,
   listPurchaseOrders,
@@ -215,6 +219,7 @@ export type OperationalDashboardSource = {
   incidents?: IncidentDashboard;
   incidentDashboard?: IncidentDashboardRead;
   maintenance?: MaintenanceDashboard;
+  maintenanceDashboard?: MaintenanceDashboardRead;
   branchOperationsDashboard?: BranchOperationsDashboardRead;
   dashboardTrustGate?: Awaited<ReturnType<typeof getDashboardTrustGatePolicy>>;
 };
@@ -1255,55 +1260,59 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.maintenance) {
+  if (source.maintenance || source.maintenanceDashboard) {
+    const maintenance = source.maintenanceDashboard ?? source.maintenance!;
     const openMaintenanceCount =
-      source.maintenance.statusCounts.OPEN +
-      source.maintenance.statusCounts.IN_PROGRESS +
-      source.maintenance.statusCounts.PENDING_VENDOR;
+      maintenance.statusCounts.OPEN +
+      maintenance.statusCounts.IN_PROGRESS +
+      maintenance.statusCounts.PENDING_VENDOR;
     cards.push({
       id: "maintenance-follow-up",
       label: "Maintenance Follow-up",
       value: openMaintenanceCount,
       href: "/maintenance",
-      description: `${source.maintenance.overdueTickets} overdue / ${source.maintenance.downtimeMinutes} downtime minutes`,
+      description: `${maintenance.overdueTickets} overdue / ${maintenance.downtimeMinutes} downtime minutes`,
       tone: cardTone(openMaintenanceCount)
     });
     metrics.push(
       {
         id: "maintenance-critical-count",
         label: "Critical maintenance",
-        displayValue: number(source.maintenance.priorityCounts.CRITICAL),
+        displayValue: number(maintenance.priorityCounts.CRITICAL),
         detail: "Critical maintenance tickets in current scope",
         href: "/maintenance",
         tone:
-          source.maintenance.priorityCounts.CRITICAL > 0 ? "warning" : "success"
+          maintenance.priorityCounts.CRITICAL > 0 ? "warning" : "success"
       },
       {
         id: "maintenance-vendor-count",
         label: "Pending vendor",
-        displayValue: number(source.maintenance.statusCounts.PENDING_VENDOR),
+        displayValue: number(maintenance.statusCounts.PENDING_VENDOR),
         detail: "Tickets waiting for vendor action",
         href: "/maintenance",
         tone:
-          source.maintenance.statusCounts.PENDING_VENDOR > 0
+          maintenance.statusCounts.PENDING_VENDOR > 0
             ? "warning"
             : "success"
       },
       {
         id: "maintenance-overdue-count",
         label: "Maintenance overdue",
-        displayValue: number(source.maintenance.overdueTickets),
+        displayValue: number(maintenance.overdueTickets),
         detail: "Tickets past target due date",
         href: "/maintenance",
-        tone: source.maintenance.overdueTickets > 0 ? "warning" : "success"
+        tone: maintenance.overdueTickets > 0 ? "warning" : "success"
       }
     );
 
-    for (const ticket of source.maintenance.tickets
-      .filter((ticketSummary) =>
-        ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"].includes(ticketSummary.status)
-      )
-      .slice(0, 3)) {
+    const maintenanceCandidates = source.maintenanceDashboard
+      ? source.maintenanceDashboard.followUpCandidates
+      : source.maintenance!.tickets
+          .filter((ticketSummary) =>
+            ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"].includes(ticketSummary.status)
+          )
+          .slice(0, 3);
+    for (const ticket of maintenanceCandidates) {
       exceptionQueue.push({
         id: `maintenance-${ticket.id}`,
         label: "Maintenance follow-up",
@@ -1324,7 +1333,7 @@ export function buildOperationalDashboardModel(
               ? "HIGH"
               : "NORMAL",
         severityLabel: ticket.priority,
-        locationName: ticket.locationName,
+        locationName: session.context.locationName,
         ownerLabel: ticket.ownerName ?? "Not assigned",
         dueAt: ticket.targetDueAt,
         sourceAgeAt: ticket.requestedAt,
@@ -1587,8 +1596,8 @@ export async function getOperationalDashboard(
     {
       unavailableSource: { id: "maintenance", label: "Maintenance", href: "/maintenance" },
       read: canUseMaintenance(session.permissionCodes)
-      ? getMaintenanceDashboard(session).then((maintenance) => {
-          source.maintenance = maintenance;
+      ? getMaintenanceDashboardRead(session).then((maintenanceDashboard) => {
+          source.maintenanceDashboard = maintenanceDashboard;
         })
       : Promise.resolve()
     },

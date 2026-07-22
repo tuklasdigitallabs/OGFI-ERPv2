@@ -795,6 +795,10 @@ describe("Phase 2 maintenance foundation", () => {
 
   it("keeps maintenance controlled and separate from purchasing, inventory, and incidents", () => {
     expect(serviceSource).toContain("getMaintenanceDashboard");
+    expect(serviceSource).toContain("getMaintenanceDashboardRead");
+    expect(serviceSource).toContain("followUpCandidates");
+    expect(serviceSource).toContain("take: 3");
+    expect(serviceSource).toContain("_sum: { downtimeMinutes: true }");
     expect(serviceSource).toContain("getMaintenanceTicketSummary");
     expect(serviceSource).toContain("getMaintenanceTicketDetail");
     expect(serviceSource).toContain("buildMaintenanceExportRows");

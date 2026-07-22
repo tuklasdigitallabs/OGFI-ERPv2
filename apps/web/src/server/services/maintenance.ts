@@ -147,6 +147,25 @@ export type MaintenanceDashboard = {
   tickets: MaintenanceTicketSummary[];
 };
 
+export type MaintenanceDashboardCandidate = {
+  id: string;
+  ticketNumber: string;
+  requestedAt: string;
+  priority: string;
+  status: string;
+  assetName: string;
+  ownerName: string | null;
+  targetDueAt: string | null;
+};
+
+export type MaintenanceDashboardRead = {
+  overdueTickets: number;
+  downtimeMinutes: number;
+  statusCounts: MaintenanceStatusCounts;
+  priorityCounts: MaintenancePriorityCounts;
+  followUpCandidates: MaintenanceDashboardCandidate[];
+};
+
 export type MaintenanceExportFilters = {
   q?: string;
   status?: string;
@@ -433,6 +452,106 @@ export async function getMaintenanceDashboard(
     statusCounts,
     priorityCounts,
     tickets: summaries
+  };
+}
+
+export async function getMaintenanceDashboardRead(
+  session: SessionContext
+): Promise<MaintenanceDashboardRead> {
+  assertMaintenanceAccess(session);
+  const where: Prisma.MaintenanceTicketWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId
+  };
+  const todayDate = dateOnlyInTimeZone(new Date());
+  const [summary, statusRows, priorityRows, overdueTickets, candidates] = await Promise.all([
+    prisma.maintenanceTicket.aggregate({ where, _sum: { downtimeMinutes: true } }),
+    prisma.maintenanceTicket.groupBy({
+      by: ["status"],
+      where,
+      _count: { _all: true }
+    }),
+    prisma.maintenanceTicket.groupBy({
+      by: ["priority"],
+      where,
+      _count: { _all: true }
+    }),
+    prisma.maintenanceTicket.count({
+      where: {
+        ...where,
+        targetDueAt: { lt: new Date(`${todayDate}T00:00:00.000Z`) },
+        completedAt: null
+      }
+    }),
+    prisma.maintenanceTicket.findMany({
+      where: { ...where, status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] } },
+      orderBy: [{ priority: "desc" }, { requestedAt: "desc" }],
+      take: 3,
+      select: {
+        id: true,
+        ticketNumber: true,
+        requestedAt: true,
+        priority: true,
+        status: true,
+        assetName: true,
+        ownerUserId: true,
+        targetDueAt: true
+      }
+    })
+  ]);
+  const statusCounts: MaintenanceStatusCounts = {
+    OPEN: 0,
+    IN_PROGRESS: 0,
+    PENDING_VENDOR: 0,
+    COMPLETED: 0,
+    CANCELLED: 0
+  };
+  for (const row of statusRows) {
+    if (row.status in statusCounts) {
+      statusCounts[row.status as keyof MaintenanceStatusCounts] = row._count._all;
+    }
+  }
+  const priorityCounts: MaintenancePriorityCounts = {
+    CRITICAL: 0,
+    HIGH: 0,
+    MEDIUM: 0,
+    LOW: 0
+  };
+  for (const row of priorityRows) {
+    if (row.priority in priorityCounts) {
+      priorityCounts[row.priority as keyof MaintenancePriorityCounts] = row._count._all;
+    }
+  }
+  const ownerIds = candidates.flatMap((candidate) =>
+    candidate.ownerUserId ? [candidate.ownerUserId] : []
+  );
+  const owners = ownerIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: ownerIds }, tenantId: session.context.tenantId },
+        select: { id: true, displayName: true, email: true }
+      })
+    : [];
+  const ownerNameById = userDisplayNameById(owners);
+
+  return {
+    overdueTickets,
+    downtimeMinutes: summary._sum.downtimeMinutes ?? 0,
+    statusCounts,
+    priorityCounts,
+    followUpCandidates: candidates.map((candidate) => ({
+      id: candidate.id,
+      ticketNumber: candidate.ticketNumber,
+      requestedAt: candidate.requestedAt.toISOString().slice(0, 10),
+      priority: candidate.priority,
+      status: candidate.status,
+      assetName: candidate.assetName,
+      ownerName: candidate.ownerUserId
+        ? ownerNameById.get(candidate.ownerUserId) ?? "Unknown user"
+        : null,
+      targetDueAt: dateOrNull(candidate.targetDueAt)
+    }))
   };
 }
 
