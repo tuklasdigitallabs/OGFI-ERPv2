@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { permissions } from "./authorization";
 import {
   assertTransferReceiptQuantities,
   calculateTransferReceiptStatus,
@@ -11,14 +12,110 @@ import {
   assertTransferCanSettleDiscrepancy,
   assertTransferReceiptCanReverse,
   assertTransferCanSubmit,
-  assertTransferLocationsDistinct
+  assertTransferLocationsDistinct,
+  getTransferDashboardRead
 } from "./transfers";
 
+const mockPrisma = vi.hoisted(() => ({
+  inventoryTransfer: { count: vi.fn(), findMany: vi.fn() },
+  userRoleAssignment: { findMany: vi.fn() }
+}));
+
+vi.mock("@ogfi/database", () => ({ prisma: mockPrisma }));
+
+const dashboardSession = {
+  user: {
+    id: "00000000-0000-4000-8000-000000000005",
+    email: "storekeeper@example.test",
+    displayName: "Store Keeper",
+    role: "Store Keeper"
+  },
+  context: {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    companyId: "00000000-0000-4000-8000-000000000002",
+    companyName: "OGFI Foods",
+    brandId: "00000000-0000-4000-8000-000000000003",
+    brandName: "OGFI",
+    locationId: "00000000-0000-4000-8000-000000000004",
+    locationName: "BGC",
+    locationType: "BRANCH" as const
+  },
+  authorizedLocations: [],
+  permissionCodes: [permissions.transferView]
+};
+
 describe("inventory transfer foundation rules", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValue([]);
+  });
+
   test("read gate allows every transfer action permission", () => {
     const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
 
     expect(source).toContain("canUseTransfers(session.permissionCodes)");
+  });
+
+  test("dashboard read preserves transfer scope and gives disputed tasks priority before its bound", async () => {
+    mockPrisma.inventoryTransfer.count.mockResolvedValue(4);
+    mockPrisma.inventoryTransfer.findMany
+      .mockResolvedValueOnce([
+        {
+          id: "transfer-disputed",
+          publicReference: "TR-2026-00002",
+          status: "DISPUTED",
+          createdAt: new Date("2026-07-22T00:00:00.000Z"),
+          sourceLocation: { name: "Main Warehouse" },
+          destinationLocation: { name: "BGC" }
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "transfer-normal",
+          publicReference: "TR-2026-00001",
+          status: "DISPATCHED",
+          createdAt: new Date("2026-07-20T00:00:00.000Z"),
+          sourceLocation: { name: "Main Warehouse" },
+          destinationLocation: { name: "BGC" }
+        }
+      ]);
+
+    await expect(getTransferDashboardRead(dashboardSession as never)).resolves.toMatchObject({
+      followUpCount: 4,
+      taskCandidates: [
+        { id: "transfer-disputed", status: "DISPUTED" },
+        { id: "transfer-normal", status: "DISPATCHED" }
+      ]
+    });
+    expect(mockPrisma.inventoryTransfer.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        OR: [
+          { sourceLocationId: dashboardSession.context.locationId },
+          { destinationLocationId: dashboardSession.context.locationId }
+        ]
+      })
+    });
+    expect(mockPrisma.inventoryTransfer.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({ status: "DISPUTED" }),
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: 8
+      })
+    );
+    expect(mockPrisma.inventoryTransfer.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ take: 8 })
+    );
+  });
+
+  test("dashboard read rejects callers without transfer access before querying", async () => {
+    await expect(
+      getTransferDashboardRead({ ...dashboardSession, permissionCodes: [] } as never)
+    ).rejects.toThrow("PERMISSION_DENIED");
+    expect(mockPrisma.inventoryTransfer.count).not.toHaveBeenCalled();
   });
 
   test("requires distinct source and destination locations", () => {

@@ -72,6 +72,76 @@ async function requireReceivingRead(session: SessionContext) {
   }
 }
 
+const receivingDashboardTaskCandidateLimit = 8;
+
+export type ReceivingDashboardRead = {
+  exceptionCount: number;
+  taskCandidates: Array<{
+    id: string;
+    publicReference: string;
+    status: string;
+    supplierName: string;
+    purchaseOrderReference: string;
+    receivedAt: string;
+  }>;
+};
+
+/**
+ * Deliberately narrow dashboard read. The receiving workspace remains the
+ * authoritative place for receipt detail and line-level discrepancy review.
+ */
+export async function getReceivingDashboardRead(
+  session: SessionContext
+): Promise<ReceivingDashboardRead> {
+  await requireReceivingRead(session);
+
+  const scope = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    receivingLocationId: session.context.locationId
+  };
+  const exceptionWhere = {
+    ...scope,
+    OR: [
+      { status: { in: ["DRAFT", "POSTING", "POSTED_WITH_DISCREPANCY"] } },
+      { discrepancyFlag: true, status: { not: "REVERSED" } }
+    ]
+  };
+
+  const [exceptionCount, candidates] = await Promise.all([
+    prisma.goodsReceipt.count({ where: exceptionWhere }),
+    prisma.goodsReceipt.findMany({
+      where: {
+        ...scope,
+        discrepancyFlag: true,
+        status: { not: "REVERSED" }
+      },
+      select: {
+        id: true,
+        publicReference: true,
+        status: true,
+        receivedAt: true,
+        supplier: { select: { tradingName: true, legalName: true } },
+        purchaseOrder: { select: { publicReference: true } }
+      },
+      orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
+      take: receivingDashboardTaskCandidateLimit
+    })
+  ]);
+
+  return {
+    exceptionCount,
+    taskCandidates: candidates.map((receipt) => ({
+      id: receipt.id,
+      publicReference: receipt.publicReference,
+      status: receipt.status,
+      supplierName: receipt.supplier.tradingName ?? receipt.supplier.legalName,
+      purchaseOrderReference: receipt.purchaseOrder.publicReference,
+      receivedAt: receipt.receivedAt.toISOString()
+    }))
+  };
+}
+
 export function validateReceivingQuantities(values: {
   deliveredQty: number;
   acceptedQty: number;

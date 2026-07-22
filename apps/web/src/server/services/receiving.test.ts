@@ -1,20 +1,100 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { permissions } from "./authorization";
 import {
   assertGoodsReceiptCanBePosted,
   assertGoodsReceiptCanBeReversed,
   assertPurchaseOrderCanBeReceived,
   calculatePurchaseOrderReceivingStatus,
+  getReceivingDashboardRead,
   validateReceivingQuantities
 } from "./receiving";
 
+const mockPrisma = vi.hoisted(() => ({
+  goodsReceipt: { count: vi.fn(), findMany: vi.fn() },
+  userRoleAssignment: { findMany: vi.fn() }
+}));
+
+vi.mock("@ogfi/database", () => ({ prisma: mockPrisma }));
+
+const dashboardSession = {
+  user: {
+    id: "00000000-0000-4000-8000-000000000005",
+    email: "receiver@example.test",
+    displayName: "Receiver",
+    role: "Receiver"
+  },
+  context: {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    companyId: "00000000-0000-4000-8000-000000000002",
+    companyName: "OGFI Foods",
+    brandId: "00000000-0000-4000-8000-000000000003",
+    brandName: "OGFI",
+    locationId: "00000000-0000-4000-8000-000000000004",
+    locationName: "BGC",
+    locationType: "BRANCH" as const
+  },
+  authorizedLocations: [],
+  permissionCodes: [permissions.receivingView]
+};
+
 describe("receiving foundation rules", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValue([]);
+  });
+
   test("service read gate allows every receiving action permission", () => {
     const source = readFileSync(path.resolve(__dirname, "receiving.ts"), "utf8");
 
     expect(source).toContain("canUseReceiving(session.permissionCodes)");
     expect(source).toContain("receivingReverse");
+  });
+
+  test("dashboard read authorizes and queries only scoped, bounded receipt candidates", async () => {
+    mockPrisma.goodsReceipt.count.mockResolvedValue(2);
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([
+      {
+        id: "receipt-1",
+        publicReference: "RR-2026-00001",
+        status: "POSTED_WITH_DISCREPANCY",
+        receivedAt: new Date("2026-07-20T00:00:00.000Z"),
+        supplier: { tradingName: "Fresh Foods", legalName: "Fresh Foods Inc." },
+        purchaseOrder: { publicReference: "PO-2026-00001" }
+      }
+    ]);
+
+    await expect(getReceivingDashboardRead(dashboardSession as never)).resolves.toEqual({
+      exceptionCount: 2,
+      taskCandidates: [
+        expect.objectContaining({
+          supplierName: "Fresh Foods",
+          purchaseOrderReference: "PO-2026-00001"
+        })
+      ]
+    });
+    expect(mockPrisma.goodsReceipt.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        receivingLocationId: dashboardSession.context.locationId
+      })
+    });
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 8,
+        orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
+        select: expect.not.objectContaining({ lines: expect.anything() })
+      })
+    );
+  });
+
+  test("dashboard read rejects callers without receiving access before querying", async () => {
+    await expect(
+      getReceivingDashboardRead({ ...dashboardSession, permissionCodes: [] } as never)
+    ).rejects.toThrow("PERMISSION_DENIED");
+    expect(mockPrisma.goodsReceipt.count).not.toHaveBeenCalled();
   });
 
   test("receiving detail PO link uses the shared purchase-order read helper", () => {

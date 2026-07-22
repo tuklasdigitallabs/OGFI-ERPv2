@@ -31730,6 +31730,27 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
+    "id": "server/services/purchaseRequests.ts#getPurchaseRequestDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/purchaseRequests.ts#listPurchaseRequestDraftOptions",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.purchaseRequestCreate",
@@ -32078,6 +32099,27 @@
   },
   {
     "id": "server/services/receiving.ts#getGoodsReceipt",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.receivingView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/receiving.ts#getReceivingDashboardRead",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.receivingView",
     "scopeDimensions": [
@@ -33299,6 +33341,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/stockAdjustments.ts#getStockAdjustmentDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.stockAdjustmentView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/stockAdjustments.ts#listStockAdjustmentFormOptions",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockAdjustmentCreate",
@@ -33599,6 +33662,27 @@
     "id": "server/services/stockCounts.ts#getStockCount",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockCountReview | permissions.stockCountView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/stockCounts.ts#getStockCountDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.stockCountView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -34273,6 +34357,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/transfers.ts#getTransferDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.transferView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/transfers.ts#listInventoryTransfers",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.transferView",
@@ -34551,6 +34656,27 @@
       "WastageReport",
       "AuditEvent"
     ]
+  },
+  {
+    "id": "server/services/wastage.ts#getWastageDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.wastageView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
     "id": "server/services/wastage.ts#getWastageReport",

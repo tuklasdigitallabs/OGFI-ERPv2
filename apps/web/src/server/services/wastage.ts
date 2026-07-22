@@ -389,6 +389,83 @@ function scopedWastageWhere(session: SessionContext, id?: string) {
   };
 }
 
+const wastageDashboardTaskCandidateLimit = 8;
+const wastageDashboardExceptionStatuses = [
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "POSTING",
+  "RETURNED",
+];
+
+export type WastageDashboardTaskCandidate = {
+  id: string;
+  publicReference: string;
+  status: string;
+  wastageType: string;
+  inventoryLocationName: string;
+  evidenceRequired: boolean;
+  evidenceSatisfied: boolean;
+  lineCount: number;
+  createdAt: string;
+};
+
+export type WastageDashboardRead = {
+  exceptionCount: number;
+  taskCandidates: WastageDashboardTaskCandidate[];
+};
+
+/**
+ * Dashboard-only wastage read. It keeps the service's location scope while
+ * returning only the bounded exception fields needed by the action queue.
+ */
+export async function getWastageDashboardRead(
+  session: SessionContext,
+): Promise<WastageDashboardRead> {
+  await requireWastageRead(session);
+
+  const where = {
+    ...scopedWastageWhere(session),
+    OR: [
+      { status: { in: wastageDashboardExceptionStatuses } },
+      { evidenceRequired: true, evidenceSatisfied: false },
+    ],
+  };
+  const [exceptionCount, taskCandidates] = await Promise.all([
+    prisma.wastageReport.count({ where }),
+    prisma.wastageReport.findMany({
+      where,
+      select: {
+        id: true,
+        publicReference: true,
+        status: true,
+        wastageType: true,
+        evidenceRequired: true,
+        evidenceSatisfied: true,
+        createdAt: true,
+        inventoryLocation: { select: { name: true } },
+        _count: { select: { lines: true } },
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: wastageDashboardTaskCandidateLimit,
+    }),
+  ]);
+
+  return {
+    exceptionCount,
+    taskCandidates: taskCandidates.map((report) => ({
+      id: report.id,
+      publicReference: report.publicReference,
+      status: report.status,
+      wastageType: report.wastageType,
+      inventoryLocationName: report.inventoryLocation.name,
+      evidenceRequired: report.evidenceRequired,
+      evidenceSatisfied: report.evidenceSatisfied,
+      lineCount: report._count.lines,
+      createdAt: report.createdAt.toISOString(),
+    })),
+  };
+}
+
 type LockedPendingWastageApproval = {
   id: string;
   currentStepOrder: number;

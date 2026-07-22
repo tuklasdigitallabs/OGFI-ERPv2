@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { permissions } from "./authorization";
 import {
   assertStockCountCanCancel,
   assertStockCountCanEnter,
@@ -11,10 +12,44 @@ import {
   assertStockCountReviewerSegregation,
   calculateCountVariance,
   filterCountVarianceLines,
+  getStockCountDashboardRead,
   recommendedStockCountCadenceDays
 } from "./stockCounts";
 
+const mockPrisma = vi.hoisted(() => ({
+  stockCountSession: { count: vi.fn(), findMany: vi.fn() },
+  userRoleAssignment: { findMany: vi.fn() }
+}));
+
+vi.mock("@ogfi/database", () => ({ prisma: mockPrisma }));
+
+const dashboardSession = {
+  user: {
+    id: "00000000-0000-4000-8000-000000000005",
+    email: "counter@example.test",
+    displayName: "Counter",
+    role: "Counter"
+  },
+  context: {
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    companyId: "00000000-0000-4000-8000-000000000002",
+    companyName: "OGFI Foods",
+    brandId: "00000000-0000-4000-8000-000000000003",
+    brandName: "OGFI",
+    locationId: "00000000-0000-4000-8000-000000000004",
+    locationName: "BGC",
+    locationType: "BRANCH" as const
+  },
+  authorizedLocations: [],
+  permissionCodes: [permissions.stockCountView]
+};
+
 describe("stock count foundation rules", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValue([]);
+  });
+
   test("list page gate allows every stock-count action permission", () => {
     const source = readFileSync(
       path.resolve(__dirname, "../../app/(app)/counts/page.tsx"),
@@ -28,6 +63,47 @@ describe("stock count foundation rules", () => {
     const source = readFileSync(path.resolve(__dirname, "stockCounts.ts"), "utf8");
 
     expect(source).toContain("canUseStockCounts(session.permissionCodes)");
+  });
+
+  test("dashboard read scopes count variance and returns bounded header-only candidates", async () => {
+    mockPrisma.stockCountSession.count.mockResolvedValue(3);
+    mockPrisma.stockCountSession.findMany.mockResolvedValue([
+      {
+        id: "count-1",
+        publicReference: "SC-2026-00001",
+        status: "SUBMITTED",
+        createdAt: new Date("2026-07-20T00:00:00.000Z"),
+        inventoryLocation: { name: "BGC Store" },
+        _count: { lines: 2 }
+      }
+    ]);
+
+    await expect(getStockCountDashboardRead(dashboardSession as never)).resolves.toMatchObject({
+      varianceCount: 3,
+      taskCandidates: [{ inventoryLocationName: "BGC Store", varianceLineCount: 2 }]
+    });
+    expect(mockPrisma.stockCountSession.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        inventoryLocation: { locationId: dashboardSession.context.locationId },
+        lines: { some: { varianceQuantityBaseUom: { not: 0 } } }
+      })
+    });
+    expect(mockPrisma.stockCountSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 8,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: expect.not.objectContaining({ lines: expect.anything() })
+      })
+    );
+  });
+
+  test("dashboard read rejects callers without stock-count access before querying", async () => {
+    await expect(
+      getStockCountDashboardRead({ ...dashboardSession, permissionCodes: [] } as never)
+    ).rejects.toThrow("PERMISSION_DENIED");
+    expect(mockPrisma.stockCountSession.count).not.toHaveBeenCalled();
   });
 
   test("stock count cadence reads configurable DEC-0036 policy", () => {

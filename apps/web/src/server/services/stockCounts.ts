@@ -174,6 +174,73 @@ function scopedStockCountWhere(session: SessionContext, id?: string) {
   };
 }
 
+const stockCountDashboardTaskCandidateLimit = 8;
+const stockCountDashboardActionStatuses = [
+  "SUBMITTED",
+  "REVIEWED",
+  "RECOUNT_REQUESTED"
+];
+
+export type StockCountDashboardRead = {
+  varianceCount: number;
+  taskCandidates: Array<{
+    id: string;
+    publicReference: string;
+    status: string;
+    inventoryLocationName: string;
+    varianceLineCount: number;
+    createdAt: string;
+  }>;
+};
+
+/**
+ * Keeps dashboard work bounded to count sessions with a reviewable variance;
+ * blind-count values and line detail never leave the counts workspace here.
+ */
+export async function getStockCountDashboardRead(
+  session: SessionContext
+): Promise<StockCountDashboardRead> {
+  await requireStockCountRead(session);
+
+  const varianceWhere = {
+    ...scopedStockCountWhere(session),
+    status: { in: stockCountDashboardActionStatuses },
+    lines: { some: { varianceQuantityBaseUom: { not: 0 } } }
+  };
+  const [varianceCount, candidates] = await Promise.all([
+    prisma.stockCountSession.count({ where: varianceWhere }),
+    prisma.stockCountSession.findMany({
+      where: varianceWhere,
+      select: {
+        id: true,
+        publicReference: true,
+        status: true,
+        createdAt: true,
+        inventoryLocation: { select: { name: true } },
+        _count: {
+          select: {
+            lines: { where: { varianceQuantityBaseUom: { not: 0 } } }
+          }
+        }
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: stockCountDashboardTaskCandidateLimit
+    })
+  ]);
+
+  return {
+    varianceCount,
+    taskCandidates: candidates.map((count) => ({
+      id: count.id,
+      publicReference: count.publicReference,
+      status: count.status,
+      inventoryLocationName: count.inventoryLocation.name,
+      varianceLineCount: count._count.lines,
+      createdAt: count.createdAt.toISOString()
+    }))
+  };
+}
+
 export async function listStockCountFormOptions(session: SessionContext) {
   await requirePermission(session, permissions.stockCountCreate);
   const cadencePolicy = await getStockCountCadencePolicy(session);

@@ -32,12 +32,36 @@ import {
 } from "./inventory";
 import { getMaintenanceDashboard, type MaintenanceDashboard } from "./maintenance";
 import { listPurchaseOrders } from "./purchaseOrders";
-import { listPurchaseRequests, type PurchaseRequest } from "./purchaseRequests";
-import { listGoodsReceipts } from "./receiving";
-import { listStockAdjustments } from "./stockAdjustments";
-import { listStockCounts } from "./stockCounts";
-import { listInventoryTransfers } from "./transfers";
-import { listWastageReports } from "./wastage";
+import {
+  getPurchaseRequestDashboardRead,
+  type PurchaseRequest,
+  type PurchaseRequestDashboardRead
+} from "./purchaseRequests";
+import {
+  getReceivingDashboardRead,
+  listGoodsReceipts,
+  type ReceivingDashboardRead
+} from "./receiving";
+import {
+  getStockAdjustmentDashboardRead,
+  listStockAdjustments,
+  type StockAdjustmentDashboardRead
+} from "./stockAdjustments";
+import {
+  getStockCountDashboardRead,
+  listStockCounts,
+  type StockCountDashboardRead
+} from "./stockCounts";
+import {
+  getTransferDashboardRead,
+  listInventoryTransfers,
+  type TransferDashboardRead
+} from "./transfers";
+import {
+  getWastageDashboardRead,
+  listWastageReports,
+  type WastageDashboardRead
+} from "./wastage";
 import {
   getDashboardTrustGatePolicy,
   type DashboardTrustGateMode
@@ -107,7 +131,7 @@ type DashboardQueueItemDraft = Omit<
   locationName?: string;
   ownerLabel?: string;
   dueAt?: string | null;
-  sourceAgeAt?: string | null;
+  sourceAgeAt?: string | null | undefined;
   isOverdue?: boolean;
 };
 
@@ -147,12 +171,18 @@ export type OperationalDashboard = {
 export type OperationalDashboardSource = {
   approvals?: ApprovalQueueItem[];
   purchaseRequests?: PurchaseRequest[];
+  purchaseRequestDashboard?: PurchaseRequestDashboardRead;
   purchaseOrders?: PurchaseOrderSummary[];
   goodsReceipts?: GoodsReceiptSummary[];
+  receivingDashboard?: ReceivingDashboardRead;
   transfers?: InventoryTransferSummary[];
+  transferDashboard?: TransferDashboardRead;
   stockCounts?: StockCountSummary[];
+  stockCountDashboard?: StockCountDashboardRead;
   wastageReports?: WastageReportSummary[];
+  wastageDashboard?: WastageDashboardRead;
   stockAdjustments?: StockAdjustmentSummary[];
+  stockAdjustmentDashboard?: StockAdjustmentDashboardRead;
   inventoryBalances?: InventoryBalanceSummary[];
   reconciliation?: InventoryReconciliationSummary | null;
   foodCostAnalysis?: FoodCostAnalysisDashboard;
@@ -406,8 +436,10 @@ export function buildOperationalDashboardModel(
     });
   }
 
-  if (source.purchaseRequests) {
-    const value = countByStatus(source.purchaseRequests, purchaseRequestOpenStatuses);
+  if (source.purchaseRequests || source.purchaseRequestDashboard) {
+    const value = source.purchaseRequestDashboard
+      ? source.purchaseRequestDashboard.openCount
+      : countByStatus(source.purchaseRequests, purchaseRequestOpenStatuses);
     cards.push({
       id: "open-purchase-requests",
       label: "Open PRs",
@@ -485,13 +517,15 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.goodsReceipts) {
-    const value = countRecords(
-      source.goodsReceipts,
-      (receipt) =>
-        receivingExceptionStatuses.has(receipt.status) ||
-        (receipt.discrepancyFlag && receipt.status !== "REVERSED")
-    );
+  if (source.goodsReceipts || source.receivingDashboard) {
+    const value = source.receivingDashboard
+      ? source.receivingDashboard.exceptionCount
+      : countRecords(
+          source.goodsReceipts,
+          (receipt) =>
+            receivingExceptionStatuses.has(receipt.status) ||
+            (receipt.discrepancyFlag && receipt.status !== "REVERSED")
+        );
     cards.push({
       id: "receiving-variance",
       label: "Receiving Variance",
@@ -501,7 +535,13 @@ export function buildOperationalDashboardModel(
       tone: cardTone(value)
     });
 
-    for (const receipt of source.goodsReceipts) {
+    const receiptCandidates = source.receivingDashboard
+      ? source.receivingDashboard.taskCandidates.map((receipt) => ({
+          ...receipt,
+          discrepancyFlag: true
+        }))
+      : source.goodsReceipts ?? [];
+    for (const receipt of receiptCandidates) {
       if (receipt.discrepancyFlag && receipt.status !== "REVERSED") {
         exceptionQueue.push({
           id: `grn-${receipt.id}`,
@@ -512,14 +552,17 @@ export function buildOperationalDashboardModel(
           href: `/receiving/${receipt.id}`,
           tone: "warning",
           priority: "HIGH",
-          locationName: session.context.locationName
+          locationName: session.context.locationName,
+          sourceAgeAt: "receivedAt" in receipt ? receipt.receivedAt : undefined
         });
       }
     }
   }
 
-  if (source.transfers) {
-    const value = countByStatus(source.transfers, transferExceptionStatuses);
+  if (source.transfers || source.transferDashboard) {
+    const value = source.transferDashboard
+      ? source.transferDashboard.followUpCount
+      : countByStatus(source.transfers, transferExceptionStatuses);
     cards.push({
       id: "transfer-follow-up",
       label: "Transfer Follow-up",
@@ -529,7 +572,10 @@ export function buildOperationalDashboardModel(
       tone: cardTone(value)
     });
 
-    for (const transfer of source.transfers) {
+    const transferCandidates = source.transferDashboard
+      ? source.transferDashboard.taskCandidates
+      : source.transfers ?? [];
+    for (const transfer of transferCandidates) {
       if (["DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"].includes(transfer.status)) {
         exceptionQueue.push({
           id: `transfer-${transfer.id}`,
@@ -540,16 +586,19 @@ export function buildOperationalDashboardModel(
           href: `/transfers/${transfer.id}`,
           tone: "warning",
           priority: transfer.status === "DISPUTED" ? "HIGH" : "NORMAL",
-          locationName: transfer.destinationLocationName
+          locationName: transfer.destinationLocationName,
+          sourceAgeAt: "createdAt" in transfer ? transfer.createdAt : undefined
         });
       }
     }
   }
 
-  if (source.stockCounts) {
-    const value = source.stockCounts.filter(
-      (count) => countActionStatuses.has(count.status) && count.varianceCount > 0
-    ).length;
+  if (source.stockCounts || source.stockCountDashboard) {
+    const value = source.stockCountDashboard
+      ? source.stockCountDashboard.varianceCount
+      : source.stockCounts?.filter(
+          (count) => countActionStatuses.has(count.status) && count.varianceCount > 0
+        ).length ?? 0;
     cards.push({
       id: "count-variance",
       label: "Count Variance",
@@ -559,7 +608,13 @@ export function buildOperationalDashboardModel(
       tone: cardTone(value)
     });
 
-    for (const count of source.stockCounts) {
+    const stockCountCandidates = source.stockCountDashboard
+      ? source.stockCountDashboard.taskCandidates.map((count) => ({
+          ...count,
+          varianceCount: count.varianceLineCount
+        }))
+      : source.stockCounts ?? [];
+    for (const count of stockCountCandidates) {
       if (countActionStatuses.has(count.status) && count.varianceCount > 0) {
         exceptionQueue.push({
           id: `count-${count.id}`,
@@ -570,19 +625,22 @@ export function buildOperationalDashboardModel(
           href: `/counts/${count.id}`,
           tone: "warning",
           priority: "HIGH",
-          locationName: count.inventoryLocationName
+          locationName: count.inventoryLocationName,
+          sourceAgeAt: "createdAt" in count ? count.createdAt : undefined
         });
       }
     }
   }
 
-  if (source.wastageReports) {
-    const value = countRecords(
-      source.wastageReports,
-      (report) =>
-        wastageExceptionStatuses.has(report.status) ||
-        (report.evidenceRequired && !report.evidenceSatisfied)
-    );
+  if (source.wastageReports || source.wastageDashboard) {
+    const value = source.wastageDashboard
+      ? source.wastageDashboard.exceptionCount
+      : countRecords(
+          source.wastageReports,
+          (report) =>
+            wastageExceptionStatuses.has(report.status) ||
+            (report.evidenceRequired && !report.evidenceSatisfied)
+        );
     cards.push({
       id: "wastage-exceptions",
       label: "Wastage Exceptions",
@@ -592,7 +650,10 @@ export function buildOperationalDashboardModel(
       tone: cardTone(value)
     });
 
-    for (const report of source.wastageReports) {
+    const wastageCandidates = source.wastageDashboard
+      ? source.wastageDashboard.taskCandidates
+      : source.wastageReports ?? [];
+    for (const report of wastageCandidates) {
       if (
         wastageExceptionStatuses.has(report.status) ||
         (report.evidenceRequired && !report.evidenceSatisfied)
@@ -609,17 +670,20 @@ export function buildOperationalDashboardModel(
           href: `/wastage/${report.id}`,
           tone: "warning",
           priority: "HIGH",
-          locationName: report.inventoryLocationName
+          locationName: report.inventoryLocationName,
+          sourceAgeAt: "createdAt" in report ? report.createdAt : undefined
         });
       }
     }
   }
 
-  if (source.stockAdjustments) {
-    const value = countByStatus(
-      source.stockAdjustments,
-      stockAdjustmentExceptionStatuses
-    );
+  if (source.stockAdjustments || source.stockAdjustmentDashboard) {
+    const value = source.stockAdjustmentDashboard
+      ? source.stockAdjustmentDashboard.exceptionCount
+      : countByStatus(
+          source.stockAdjustments,
+          stockAdjustmentExceptionStatuses
+        );
     cards.push({
       id: "adjustment-exceptions",
       label: "Adjustment Exceptions",
@@ -629,7 +693,10 @@ export function buildOperationalDashboardModel(
       tone: cardTone(value)
     });
 
-    for (const adjustment of source.stockAdjustments) {
+    const adjustmentCandidates = source.stockAdjustmentDashboard
+      ? source.stockAdjustmentDashboard.taskCandidates
+      : source.stockAdjustments ?? [];
+    for (const adjustment of adjustmentCandidates) {
       if (stockAdjustmentExceptionStatuses.has(adjustment.status)) {
         exceptionQueue.push({
           id: `adjustment-${adjustment.id}`,
@@ -640,7 +707,8 @@ export function buildOperationalDashboardModel(
           href: `/adjustments/${adjustment.id}`,
           tone: "warning",
           priority: "HIGH",
-          locationName: adjustment.inventoryLocationName
+          locationName: adjustment.inventoryLocationName,
+          sourceAgeAt: "createdAt" in adjustment ? adjustment.createdAt : undefined
         });
       }
     }
@@ -1333,8 +1401,8 @@ export async function getOperationalDashboard(
         })
       : Promise.resolve(),
     canUsePurchaseRequests(session.permissionCodes)
-      ? listPurchaseRequests(session).then((purchaseRequests) => {
-          source.purchaseRequests = purchaseRequests;
+      ? getPurchaseRequestDashboardRead(session).then((purchaseRequestDashboard) => {
+          source.purchaseRequestDashboard = purchaseRequestDashboard;
         })
       : Promise.resolve(),
     canReadPurchaseOrders(session.permissionCodes)
@@ -1343,28 +1411,28 @@ export async function getOperationalDashboard(
         })
       : Promise.resolve(),
     canUseReceiving(session.permissionCodes)
-      ? listGoodsReceipts(session).then((goodsReceipts) => {
-          source.goodsReceipts = goodsReceipts;
+      ? getReceivingDashboardRead(session).then((receivingDashboard) => {
+          source.receivingDashboard = receivingDashboard;
         })
       : Promise.resolve(),
     canUseTransfers(session.permissionCodes)
-      ? listInventoryTransfers(session).then((transfers) => {
-          source.transfers = transfers;
+      ? getTransferDashboardRead(session).then((transferDashboard) => {
+          source.transferDashboard = transferDashboard;
         })
       : Promise.resolve(),
     canUseStockCounts(session.permissionCodes)
-      ? listStockCounts(session).then((stockCounts) => {
-          source.stockCounts = stockCounts;
+      ? getStockCountDashboardRead(session).then((stockCountDashboard) => {
+          source.stockCountDashboard = stockCountDashboard;
         })
       : Promise.resolve(),
     canUseWastageReports(session.permissionCodes)
-      ? listWastageReports(session).then((wastageReports) => {
-          source.wastageReports = wastageReports;
+      ? getWastageDashboardRead(session).then((wastageDashboard) => {
+          source.wastageDashboard = wastageDashboard;
         })
       : Promise.resolve(),
     canUseStockAdjustments(session.permissionCodes)
-      ? listStockAdjustments(session).then((stockAdjustments) => {
-          source.stockAdjustments = stockAdjustments;
+      ? getStockAdjustmentDashboardRead(session).then((stockAdjustmentDashboard) => {
+          source.stockAdjustmentDashboard = stockAdjustmentDashboard;
         })
       : Promise.resolve(),
     session.permissionCodes.includes(permissions.inventoryBalanceView)

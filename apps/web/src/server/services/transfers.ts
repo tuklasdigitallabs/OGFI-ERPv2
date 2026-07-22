@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type Prisma } from "@ogfi/database";
 import { z } from "zod";
 import { TRANSFER_MAX_LINES } from "../../lib/workflowLimits";
 import { canUseTransfers, permissions, requirePermission } from "./authorization";
@@ -307,6 +307,87 @@ function scopedTransferWhere(session: SessionContext, id?: string) {
       { sourceLocationId: session.context.locationId },
       { destinationLocationId: session.context.locationId }
     ]
+  };
+}
+
+const transferDashboardTaskCandidateLimit = 8;
+
+export type TransferDashboardRead = {
+  followUpCount: number;
+  taskCandidates: Array<{
+    id: string;
+    publicReference: string;
+    status: string;
+    sourceLocationName: string;
+    destinationLocationName: string;
+    createdAt: string;
+  }>;
+};
+
+/**
+ * Returns only the dashboard's transfer follow-up aggregate and a bounded
+ * source-record candidate set. Transfer detail remains in its workspace.
+ */
+export async function getTransferDashboardRead(
+  session: SessionContext
+): Promise<TransferDashboardRead> {
+  await requireTransferRead(session);
+
+  const followUpStatuses = [
+    "REQUESTED",
+    "DISPATCHED",
+    "PARTIALLY_RECEIVED",
+    "DISPUTED"
+  ];
+  const taskStatuses = ["DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"];
+  const scope = scopedTransferWhere(session);
+  const candidateSelect = {
+    id: true,
+    publicReference: true,
+    status: true,
+    createdAt: true,
+    sourceLocation: { select: { name: true } },
+    destinationLocation: { select: { name: true } }
+  } satisfies Prisma.InventoryTransferSelect;
+  const candidateOrderBy: Prisma.InventoryTransferOrderByWithRelationInput[] = [
+    { createdAt: "asc" },
+    { id: "asc" }
+  ];
+  const [followUpCount, disputedCandidates, normalCandidates] = await Promise.all([
+    prisma.inventoryTransfer.count({
+      where: { ...scope, status: { in: followUpStatuses } }
+    }),
+    prisma.inventoryTransfer.findMany({
+      where: { ...scope, status: "DISPUTED" },
+      select: candidateSelect,
+      orderBy: candidateOrderBy,
+      take: transferDashboardTaskCandidateLimit
+    }),
+    prisma.inventoryTransfer.findMany({
+      where: {
+        ...scope,
+        status: { in: taskStatuses.filter((status) => status !== "DISPUTED") }
+      },
+      select: candidateSelect,
+      orderBy: candidateOrderBy,
+      take: transferDashboardTaskCandidateLimit
+    })
+  ]);
+  const candidates = [...disputedCandidates, ...normalCandidates].slice(
+    0,
+    transferDashboardTaskCandidateLimit
+  );
+
+  return {
+    followUpCount,
+    taskCandidates: candidates.map((transfer) => ({
+      id: transfer.id,
+      publicReference: transfer.publicReference,
+      status: transfer.status,
+      sourceLocationName: transfer.sourceLocation.name,
+      destinationLocationName: transfer.destinationLocation.name,
+      createdAt: transfer.createdAt.toISOString()
+    }))
   };
 }
 

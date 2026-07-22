@@ -700,6 +700,88 @@ export type PurchaseRequestListFilters = {
   search?: string;
 };
 
+const purchaseRequestDashboardTaskCandidateLimit = 8;
+
+const purchaseRequestDashboardOpenStatuses = [
+  "DRAFT",
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "RETURNED",
+] as const;
+
+export type PurchaseRequestDashboardStatus =
+  (typeof purchaseRequestDashboardOpenStatuses)[number];
+
+export type PurchaseRequestDashboardTaskCandidate = {
+  id: string;
+  publicReference: string;
+  status: PurchaseRequestDashboardStatus;
+  urgency: string;
+  requiredDate: string;
+  createdAt: string;
+};
+
+export type PurchaseRequestDashboardRead = {
+  openCount: number;
+  taskCandidates: PurchaseRequestDashboardTaskCandidate[];
+};
+
+/**
+ * Dashboard-only purchase-request read. This intentionally avoids the list
+ * workspace's line, quote, comment, and audit expansion.
+ */
+export async function getPurchaseRequestDashboardRead(
+  session: SessionContext,
+): Promise<PurchaseRequestDashboardRead> {
+  if (!canUsePurchaseRequests(session.permissionCodes)) {
+    throw new Error("PERMISSION_DENIED");
+  }
+
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    requestLocationId: session.context.locationId,
+    status: { in: [...purchaseRequestDashboardOpenStatuses] },
+  };
+  const [openCount, taskCandidates] = await Promise.all([
+    prisma.purchaseRequest.count({ where }),
+    prisma.purchaseRequest.findMany({
+      where,
+      select: {
+        id: true,
+        publicReference: true,
+        status: true,
+        urgency: true,
+        requiredDate: true,
+        createdAt: true,
+      },
+      orderBy: [{ requiredDate: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+      take: purchaseRequestDashboardTaskCandidateLimit,
+    }),
+  ]);
+
+  return {
+    openCount,
+    taskCandidates: taskCandidates.flatMap((request) => {
+      const status = purchaseRequestDashboardOpenStatuses.find(
+        (candidateStatus) => candidateStatus === request.status,
+      );
+      return status
+        ? [
+            {
+              id: request.id,
+              publicReference: request.publicReference,
+              status,
+              urgency: request.urgency,
+              requiredDate: request.requiredDate.toISOString(),
+              createdAt: request.createdAt.toISOString(),
+            },
+          ]
+        : [];
+    }),
+  };
+}
+
 export async function listPurchaseRequests(
   session: SessionContext,
   filters: PurchaseRequestListFilters = {},

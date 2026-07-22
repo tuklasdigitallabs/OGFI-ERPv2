@@ -203,6 +203,74 @@ function scopedStockAdjustmentWhere(session: SessionContext, id?: string) {
   };
 }
 
+const stockAdjustmentDashboardTaskCandidateLimit = 8;
+const stockAdjustmentDashboardExceptionStatuses = [
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "POSTING",
+  "RETURNED",
+];
+
+export type StockAdjustmentDashboardTaskCandidate = {
+  id: string;
+  publicReference: string;
+  status: string;
+  adjustmentType: string;
+  inventoryLocationName: string;
+  lineCount: number;
+  createdAt: string;
+};
+
+export type StockAdjustmentDashboardRead = {
+  exceptionCount: number;
+  taskCandidates: StockAdjustmentDashboardTaskCandidate[];
+};
+
+/**
+ * Dashboard-only stock-adjustment read. It deliberately excludes adjustment
+ * lines and workflow detail while preserving the normal scoped read gate.
+ */
+export async function getStockAdjustmentDashboardRead(
+  session: SessionContext,
+): Promise<StockAdjustmentDashboardRead> {
+  await requireStockAdjustmentRead(session);
+
+  const where = {
+    ...scopedStockAdjustmentWhere(session),
+    status: { in: stockAdjustmentDashboardExceptionStatuses },
+  };
+  const [exceptionCount, taskCandidates] = await Promise.all([
+    prisma.stockAdjustment.count({ where }),
+    prisma.stockAdjustment.findMany({
+      where,
+      select: {
+        id: true,
+        publicReference: true,
+        status: true,
+        adjustmentType: true,
+        createdAt: true,
+        inventoryLocation: { select: { name: true } },
+        _count: { select: { lines: true } },
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: stockAdjustmentDashboardTaskCandidateLimit,
+    }),
+  ]);
+
+  return {
+    exceptionCount,
+    taskCandidates: taskCandidates.map((adjustment) => ({
+      id: adjustment.id,
+      publicReference: adjustment.publicReference,
+      status: adjustment.status,
+      adjustmentType: adjustment.adjustmentType,
+      inventoryLocationName: adjustment.inventoryLocation.name,
+      lineCount: adjustment._count.lines,
+      createdAt: adjustment.createdAt.toISOString(),
+    })),
+  };
+}
+
 type LockedStockAdjustmentCancellationUser = {
   id: string;
   status: string;
