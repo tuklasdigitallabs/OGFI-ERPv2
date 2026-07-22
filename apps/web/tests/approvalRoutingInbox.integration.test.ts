@@ -6,6 +6,8 @@ import {
   listEligibleApprovalStepPage,
 } from "../src/server/services/approvalRouting";
 import { approvalRoutingPolicies } from "../src/server/services/approvalRoutingRegistry";
+import { listNormalizedApprovalInboxPage } from "../src/server/services/approvals";
+import { inspectApprovalRoutingReadiness } from "../src/server/services/approvalRoutingBackfill";
 import type { SessionContext } from "../src/server/services/context";
 
 const runPg = process.env.RUN_APPROVAL_ROUTING_PG_TESTS === "true";
@@ -48,6 +50,16 @@ type Fixture = {
   expiredAssignmentStepId: string;
   revokedScopeStepId: string;
   paginationStepIds: string[];
+  cutoverCompanyId: string;
+  cutoverBrandId: string;
+  cutoverLocationId: string;
+  cutoverActor: Actor;
+  cutoverStepId: string;
+  blockerTenantId: string;
+  blockerCompanyId: string;
+  blockerBrandId: string;
+  blockerLocationId: string;
+  blockerActor: Actor;
 };
 
 let fixture: Fixture;
@@ -73,6 +85,49 @@ function sessionFor(actor: Actor): SessionContext {
     authorizedLocations: [],
     permissionCodes: ["purchasing.purchase_request.approve"],
   };
+}
+
+function sessionForCutover(input: {
+  actor: Actor;
+  tenantId: string;
+  companyId: string;
+  brandId: string;
+  locationId: string;
+}): SessionContext {
+  return {
+    user: {
+      id: input.actor.userId,
+      email: `${input.actor.userId}@test.invalid`,
+      displayName: "Approval routing cutover actor",
+      role: "Approver",
+    },
+    context: {
+      tenantId: input.tenantId,
+      companyId: input.companyId,
+      companyName: "Approval Routing Cutover Company",
+      brandId: input.brandId,
+      brandName: "Approval Routing Cutover Brand",
+      locationId: input.locationId,
+      locationName: "Approval Routing Cutover Location",
+      locationType: "BRANCH",
+    },
+    authorizedLocations: [],
+    permissionCodes: ["purchasing.purchase_request.approve"],
+  };
+}
+
+async function withApprovalRoutingFlag<T>(
+  enabled: boolean,
+  operation: () => Promise<T>,
+) {
+  const prior = process.env.APPROVAL_ROUTING_V1_ENABLED;
+  process.env.APPROVAL_ROUTING_V1_ENABLED = enabled ? "true" : "false";
+  try {
+    return await operation();
+  } finally {
+    if (prior === undefined) delete process.env.APPROVAL_ROUTING_V1_ENABLED;
+    else process.env.APPROVAL_ROUTING_V1_ENABLED = prior;
+  }
 }
 
 async function createActor(input: {
@@ -347,6 +402,16 @@ describe.skipIf(!runPg).sequential(
         expiredAssignmentStepId: "",
         revokedScopeStepId: "",
         paginationStepIds: [],
+        cutoverCompanyId: "",
+        cutoverBrandId: "",
+        cutoverLocationId: "",
+        cutoverActor: direct,
+        cutoverStepId: "",
+        blockerTenantId: "",
+        blockerCompanyId: "",
+        blockerBrandId: "",
+        blockerLocationId: "",
+        blockerActor: direct,
       };
 
       const singleLocationGroup = [
@@ -430,6 +495,206 @@ describe.skipIf(!runPg).sequential(
           scopeGroups: singleLocationGroup,
         }),
       ]);
+
+      const cutoverCompanyId = randomUUID();
+      const cutoverBrandId = randomUUID();
+      const cutoverLocationId = randomUUID();
+      await prisma.company.create({
+        data: {
+          id: cutoverCompanyId,
+          tenantId,
+          code: "APPROVAL-CUTOVER-PG",
+          legalName: "Approval Routing Cutover Company",
+          currencyCode: "PHP",
+        },
+      });
+      await prisma.brand.create({
+        data: {
+          id: cutoverBrandId,
+          tenantId,
+          companyId: cutoverCompanyId,
+          code: "APPROVAL-CUTOVER-PG",
+          name: "Approval Routing Cutover Brand",
+        },
+      });
+      await prisma.location.create({
+        data: {
+          id: cutoverLocationId,
+          tenantId,
+          companyId: cutoverCompanyId,
+          brandId: cutoverBrandId,
+          locationType: "BRANCH",
+          code: "APPROVAL-CUTOVER-PG",
+          name: "Approval Routing Cutover Location",
+        },
+      });
+      const cutoverActor = await createActor({
+        tenantId,
+        permissionId: permission.id,
+        label: "CUTOVER",
+        scopeIds: [cutoverLocationId],
+      });
+      const cutoverRule = await prisma.approvalRule.create({
+        data: {
+          tenantId,
+          companyId: cutoverCompanyId,
+          transactionType: "PURCHASE_REQUEST_CUTOVER",
+          priority: 1,
+        },
+        select: { id: true },
+      });
+      const cutoverInstanceId = randomUUID();
+      const cutoverStepId = randomUUID();
+      const cutoverPurchaseRequestId = randomUUID();
+      const cutoverDueAt = new Date("2026-07-29T04:00:00.000Z");
+      await prisma.purchaseRequest.create({
+        data: {
+          id: cutoverPurchaseRequestId,
+          publicReference: `PR-CUTOVER-${cutoverPurchaseRequestId.slice(0, 8)}`,
+          tenantId,
+          companyId: cutoverCompanyId,
+          requestLocationId: cutoverLocationId,
+          requesterUserId: direct.userId,
+          requiredDate: cutoverDueAt,
+          urgency: "NORMAL",
+          justification: "Approval Inbox cutover PostgreSQL evidence",
+          status: "PENDING_APPROVAL",
+          currentApprovalStep: 1,
+        },
+      });
+      await prisma.approvalInstance.create({
+        data: {
+          id: cutoverInstanceId,
+          tenantId,
+          companyId: cutoverCompanyId,
+          documentType: "PurchaseRequest",
+          documentId: cutoverPurchaseRequestId,
+          approvalRuleId: cutoverRule.id,
+          status: "PENDING",
+          currentStepOrder: 1,
+          steps: {
+            create: {
+              id: cutoverStepId,
+              stepOrder: 1,
+              status: "PENDING",
+              assignedUserId: cutoverActor.userId,
+            },
+          },
+        },
+      });
+      await prisma.$transaction((tx) =>
+        configureApprovalStepRouting(tx, {
+          approvalInstanceStepId: cutoverStepId,
+          tenantId,
+          companyId: cutoverCompanyId,
+          routingPolicy: approvalRoutingPolicies.PurchaseRequest,
+          requiredPermissionCode: "purchasing.purchase_request.approve",
+          activatedAt: NOW,
+          dueAt: cutoverDueAt,
+          activationAudit: {
+            actorUserId: null,
+            source: "approval-inbox-cutover-postgresql",
+          },
+          scopeGroups: [{
+            groupOrder: 1,
+            targetMatchMode: "ANY",
+            targets: [{
+              scopeType: "LOCATION",
+              companyId: cutoverCompanyId,
+              locationId: cutoverLocationId,
+            }],
+          }],
+          prohibitedActors: [{ userId: direct.userId, reasonCode: "REQUESTER" }],
+        }),
+      );
+
+      const blockerTenantId = randomUUID();
+      const blockerCompanyId = randomUUID();
+      const blockerBrandId = randomUUID();
+      const blockerLocationId = randomUUID();
+      await prisma.tenant.create({
+        data: {
+          id: blockerTenantId,
+          name: "Approval Routing Blocker Tenant",
+          loginCode: `approval-blocker-${blockerTenantId.slice(0, 8)}`,
+        },
+      });
+      await prisma.company.create({
+        data: {
+          id: blockerCompanyId,
+          tenantId: blockerTenantId,
+          code: "APPROVAL-BLOCKER-PG",
+          legalName: "Approval Routing Blocker Company",
+          currencyCode: "PHP",
+        },
+      });
+      await prisma.brand.create({
+        data: {
+          id: blockerBrandId,
+          tenantId: blockerTenantId,
+          companyId: blockerCompanyId,
+          code: "APPROVAL-BLOCKER-PG",
+          name: "Approval Routing Blocker Brand",
+        },
+      });
+      await prisma.location.create({
+        data: {
+          id: blockerLocationId,
+          tenantId: blockerTenantId,
+          companyId: blockerCompanyId,
+          brandId: blockerBrandId,
+          locationType: "BRANCH",
+          code: "APPROVAL-BLOCKER-PG",
+          name: "Approval Routing Blocker Location",
+        },
+      });
+      const blockerActor = await createActor({
+        tenantId: blockerTenantId,
+        permissionId: permission.id,
+        label: "BLOCKER",
+        scopeIds: [blockerLocationId],
+      });
+      const blockerRule = await prisma.approvalRule.create({
+        data: {
+          tenantId: blockerTenantId,
+          companyId: blockerCompanyId,
+          transactionType: "PURCHASE_REQUEST_BLOCKER",
+          priority: 1,
+        },
+        select: { id: true },
+      });
+      await prisma.approvalInstance.create({
+        data: {
+          tenantId: blockerTenantId,
+          companyId: blockerCompanyId,
+          documentType: "PurchaseRequest",
+          documentId: randomUUID(),
+          approvalRuleId: blockerRule.id,
+          status: "PENDING",
+          currentStepOrder: 1,
+          steps: {
+            create: {
+              stepOrder: 1,
+              status: "PENDING",
+              assignedUserId: blockerActor.userId,
+              routingSchemaVersion: 0,
+            },
+          },
+        },
+      });
+
+      Object.assign(fixture, {
+        cutoverCompanyId,
+        cutoverBrandId,
+        cutoverLocationId,
+        cutoverActor,
+        cutoverStepId,
+        blockerTenantId,
+        blockerCompanyId,
+        blockerBrandId,
+        blockerLocationId,
+        blockerActor,
+      });
     });
 
     test("shows direct and role assignments without depending on notifications", async () => {
@@ -545,6 +810,64 @@ describe.skipIf(!runPg).sequential(
       expect(dueSoon.totalItems).toBe(1);
       expect(dueSoon.items.map((item) => item.approvalInstanceStepId)).toEqual([
         fixture.paginationStepIds[0],
+      ]);
+    });
+
+    test("page service fails closed while normalized routing is disabled", async () => {
+      const session = sessionForCutover({
+        actor: fixture.cutoverActor,
+        tenantId: fixture.tenantId,
+        companyId: fixture.cutoverCompanyId,
+        brandId: fixture.cutoverBrandId,
+        locationId: fixture.cutoverLocationId,
+      });
+      await expect(
+        withApprovalRoutingFlag(false, () =>
+          listNormalizedApprovalInboxPage(session, { page: 1, pageSize: 10 }),
+        ),
+      ).rejects.toThrow("APPROVAL_ROUTING_V1_DISABLED");
+    });
+
+    test("page service rejects incomplete routing only in the requested tenant and company", async () => {
+      const blockerSession = sessionForCutover({
+        actor: fixture.blockerActor,
+        tenantId: fixture.blockerTenantId,
+        companyId: fixture.blockerCompanyId,
+        brandId: fixture.blockerBrandId,
+        locationId: fixture.blockerLocationId,
+      });
+      await expect(
+        withApprovalRoutingFlag(true, () =>
+          listNormalizedApprovalInboxPage(blockerSession, {
+            page: 1,
+            pageSize: 10,
+          }),
+        ),
+      ).rejects.toThrow("APPROVAL_ROUTING_BACKFILL_REQUIRED");
+    });
+
+    test("current company page matches lower-level eligibility despite another tenant blocker", async () => {
+      const session = sessionForCutover({
+        actor: fixture.cutoverActor,
+        tenantId: fixture.tenantId,
+        companyId: fixture.cutoverCompanyId,
+        brandId: fixture.cutoverBrandId,
+        locationId: fixture.cutoverLocationId,
+      });
+      const input = { page: 1, pageSize: 10 };
+      const lowerLevel = await listEligibleApprovalStepPage(session, input);
+      const readiness = await inspectApprovalRoutingReadiness({
+        tenantId: fixture.tenantId,
+        companyId: fixture.cutoverCompanyId,
+      });
+      expect(readiness).toMatchObject({ ready: true, blockers: [] });
+      const pageService = await withApprovalRoutingFlag(true, () =>
+        listNormalizedApprovalInboxPage(session, input),
+      );
+      expect(pageService).toEqual(lowerLevel);
+      expect(pageService.totalItems).toBe(1);
+      expect(pageService.items.map((item) => item.approvalInstanceStepId)).toEqual([
+        fixture.cutoverStepId,
       ]);
     });
   },

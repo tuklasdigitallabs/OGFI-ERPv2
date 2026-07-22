@@ -3,6 +3,8 @@ import { prisma } from "@ogfi/database";
 import { beforeAll, describe, expect, test } from "vitest";
 import { runApprovalRoutingBackfill } from "../src/server/services/approvalRoutingBackfill";
 import { supportedApprovalDocumentTypes } from "../src/server/services/approvalRoutingRegistry";
+import { getApprovalDetail } from "../src/server/services/approvals";
+import type { SessionContext } from "../src/server/services/context";
 
 const runPg = process.env.RUN_APPROVAL_ROUTING_PG_TESTS === "true";
 
@@ -399,6 +401,7 @@ describe.skipIf(!runPg).sequential(
 );
 
 type BreadthExpected = {
+  approvalInstanceId: string;
   documentType: (typeof supportedApprovalDocumentTypes)[number];
   permissionCode: string;
   dueAt: Date | null;
@@ -442,10 +445,10 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     AttendanceImportBatch: "workforce.attendance_import.manage",
   };
 
-  async function addApproval(documentType: BreadthExpected["documentType"], documentId: string, expected: Omit<BreadthExpected, "documentType" | "permissionCode">) {
+  async function addApproval(documentType: BreadthExpected["documentType"], documentId: string, expected: Omit<BreadthExpected, "approvalInstanceId" | "documentType" | "permissionCode">) {
     const approvalInstanceId = id();
     instanceIds.push(approvalInstanceId);
-    fixtures.push({ documentType, permissionCode: expectedPolicies[documentType], ...expected });
+    fixtures.push({ approvalInstanceId, documentType, permissionCode: expectedPolicies[documentType], ...expected });
     await prisma.approvalInstance.create({ data: {
       id: approvalInstanceId, tenantId: ids.tenant, companyId: ids.company,
       documentType, documentId, approvalRuleId: ids.rule, status: "PENDING", currentStepOrder: 1,
@@ -507,7 +510,7 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     await addApproval("StockAdjustment", adjustmentId, { dueAt:null,targetMatchMode:"ANY",targets:locTarget,prohibited:[{userId:ids.requester,reasonCode:"REQUESTER"}] });
 
     const closeId=id();
-    await prisma.financeCloseRun.create({ data:{ id:closeId,tenantId:ids.tenant,companyId:ids.company,accountingPeriodId:ids.period,publicReference:`AB-CLOSE-${suffix}`,status:"CLOSED",initiatedByUserId:ids.preparer,configSnapshot:{pendingSensitiveApproval:{requestedByUserId:ids.requester}} } });
+    await prisma.financeCloseRun.create({ data:{ id:closeId,tenantId:ids.tenant,companyId:ids.company,accountingPeriodId:ids.period,publicReference:`AB-CLOSE-${suffix}`,status:"CLOSED",initiatedByUserId:ids.preparer,configSnapshot:{pendingSensitiveApproval:{approvalAction:"LOCK_PERIOD",requestedByUserId:ids.requester,reason:"Breadth period lock"}} } });
     await addApproval("FinanceCloseRun",closeId,{dueAt:null,targetMatchMode:"ANY",targets:[{scopeType:"COMPANY",companyId:ids.company,locationId:null}],prohibited:[{userId:ids.preparer,reasonCode:"INITIATOR"},{userId:ids.requester,reasonCode:"REQUESTER"}].sort((a,b)=>a.userId.localeCompare(b.userId))});
     await prisma.budget.create({data:{id:ids.budget,tenantId:ids.tenant,companyId:ids.company,publicReference:`AB-B-${suffix}`,fiscalYearId:ids.fiscalYear,name:"Breadth Budget",locationId:ids.location,createdByUserId:ids.preparer,lines:{create:{tenantId:ids.tenant,companyId:ids.company,lineNumber:1,code:"L1",name:"Line",locationId:ids.secondLocation,periodStart:new Date("2026-01-01Z"),periodEnd:new Date("2026-12-31Z")}}}});
     const revisionId=id(); await prisma.budgetRevision.create({data:{id:revisionId,budgetId:ids.budget,tenantId:ids.tenant,companyId:ids.company,revisionNumber:1,status:"SUBMITTED",reason:"Breadth",requestedByUserId:ids.requester,requestedAt:transition,effectiveFrom:due,originalSnapshot:{},proposedSnapshot:{}}});
@@ -561,5 +564,62 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     const rerun=await runApprovalRoutingBackfill({tenantId:ids.tenant,companyId:ids.company,apply:true,batchSize:100});
     expect(rerun).toMatchObject({mode:"APPLY",scanned:18,eligible:0,applied:0,alreadyCurrent:18,blockers:[],hasMore:false});
     expect(await prisma.auditEvent.count({where:{tenantId:ids.tenant,eventType:"approval.step_routing_backfilled",entityId:{in:instanceIds}}})).toBe(18);
+  });
+
+  test("hydrates an authorized detail for every supported document type", async () => {
+    const session: SessionContext = {
+      user: {
+        id: ids.approver,
+        email: `approver-${suffix}@test.invalid`,
+        displayName: "Breadth Approver",
+        role: "Breadth Approver",
+      },
+      context: {
+        tenantId: ids.tenant,
+        companyId: ids.company,
+        companyName: "Approval Breadth Company",
+        brandId: "",
+        brandName: "",
+        locationId: ids.location,
+        locationName: "Breadth Location",
+        locationType: "BRANCH",
+      },
+      authorizedLocations: [],
+      permissionCodes: [...new Set(Object.values(expectedPolicies))],
+    };
+    const detailExpected: Record<
+      (typeof supportedApprovalDocumentTypes)[number],
+      { publicReference: string; locationName: string; requesterName: string; status: string }
+    > = {
+      PurchaseRequest: { publicReference: `AB-PR-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "PENDING_APPROVAL" },
+      QuotationRecommendation: { publicReference: `AB-PR-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Preparer", status: "PENDING_APPROVAL" },
+      PurchaseOrder: { publicReference: `AB-PO-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Preparer", status: "PENDING_APPROVAL" },
+      PurchaseOrderBalanceClosure: { publicReference: `AB-PO-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "PENDING_APPROVAL" },
+      PurchaseOrderAmendment: { publicReference: `AB-PO-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "PENDING_APPROVAL" },
+      WastageReport: { publicReference: `AB-W-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "PENDING_APPROVAL" },
+      StockAdjustment: { publicReference: `AB-SA-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "PENDING_APPROVAL" },
+      FinanceCloseRun: { publicReference: `AB-CLOSE-${suffix}`, locationName: "Company period close", requesterName: "Breadth Preparer", status: "LOCK_PERIOD_PENDING" },
+      BudgetRevision: { publicReference: `AB-B-${suffix} R1`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "SUBMITTED" },
+      ExpenseRequest: { publicReference: `AB-E-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "AWAITING_APPROVAL" },
+      CashAdvanceRequest: { publicReference: `AB-CA-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "AWAITING_APPROVAL" },
+      PettyCashRequest: { publicReference: `AB-PC-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "AWAITING_APPROVAL" },
+      PaymentRequest: { publicReference: `AB-PAY-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "AWAITING_APPROVAL" },
+      PaymentRelease: { publicReference: `AB-REL-${suffix}`, locationName: "Breadth Location", requesterName: "Payment release preparer", status: "DRAFT" },
+      EmployeeLeaveRequest: { publicReference: `LEAVE-${suffix.toUpperCase()}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "UNDER_REVIEW" },
+      EmployeeOvertimeRecord: { publicReference: `OT-${suffix.toUpperCase()}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "SUBMITTED" },
+      WorkforceSchedule: { publicReference: `AB-WS-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "UNDER_REVIEW" },
+      AttendanceImportBatch: { publicReference: `AB-AT-${suffix}`, locationName: "Breadth Location", requesterName: "Breadth Requester", status: "VALIDATING" },
+    };
+
+    expect(Object.keys(detailExpected).sort()).toEqual([...supportedApprovalDocumentTypes].sort());
+    for (const fixture of fixtures) {
+      const detail = await getApprovalDetail(session, fixture.approvalInstanceId);
+      expect(detail, `${fixture.documentType} detail`).not.toBeNull();
+      expect(detail).toMatchObject({
+        approvalKind: fixture.documentType,
+        documentType: fixture.documentType,
+        ...detailExpected[fixture.documentType],
+      });
+    }
   });
 });
