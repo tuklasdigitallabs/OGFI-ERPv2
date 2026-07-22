@@ -315,11 +315,12 @@ function AnalyticsDonutPanel({
   approvals,
   exceptions
 }: {
-  approvals: number;
+  approvals: number | null;
   exceptions: number;
 }) {
-  const total = approvals + exceptions;
-  const approvalDegrees = total > 0 ? (approvals / total) * 360 : 0;
+  const knownApprovals = approvals ?? 0;
+  const total = knownApprovals + exceptions;
+  const approvalDegrees = total > 0 ? (knownApprovals / total) * 360 : 0;
   const background =
     total > 0
       ? `conic-gradient(#2563eb 0deg ${approvalDegrees}deg, #f59e0b ${approvalDegrees}deg 360deg)`
@@ -339,7 +340,7 @@ function AnalyticsDonutPanel({
             <div>
               <p className="text-3xl font-bold text-slate-950">{total}</p>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                open alerts
+                known alerts
               </p>
             </div>
           </div>
@@ -348,10 +349,14 @@ function AnalyticsDonutPanel({
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="font-bold text-blue-950">Approval alerts</p>
-              <p className="text-2xl font-bold text-blue-700">{approvals}</p>
+              <p className="text-2xl font-bold text-blue-700">
+                {approvals === null ? "Unavailable" : approvals}
+              </p>
             </div>
             <p className="mt-1 text-sm text-blue-900/70">
-              Decisions assigned to the logged-in user and visible scope.
+              {approvals === null
+                ? "Use Approval Inbox while its controlled routing transition is active."
+                : "Decisions assigned to the logged-in user and visible scope."}
             </p>
           </div>
           <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
@@ -382,9 +387,13 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge tone="warning" size="sm">
-              {dashboard.approvalQueueContract.displayedCount} priority approvals shown
-            </Badge>
+            {dashboard.approvalQueueContract.availability === "UNAVAILABLE" ? (
+              <Badge tone="neutral" size="sm">Approval preview unavailable</Badge>
+            ) : (
+              <Badge tone="warning" size="sm">
+                {dashboard.approvalQueueContract.displayedCount} priority approvals shown
+              </Badge>
+            )}
             <Badge tone="warning" size="sm">
               {dashboard.exceptionQueueContract.displayedCount} priority exceptions shown
             </Badge>
@@ -401,11 +410,22 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
                 Open approvals
               </ButtonLink>
             </div>
-            <QueueList
-              actionLabel="Review assigned approval"
-              emptyDetail="Assigned approval decisions will appear here after controlled records are submitted."
-              items={dashboard.approvalQueueContract.items}
-            />
+            {dashboard.approvalQueueContract.availability === "UNAVAILABLE" ? (
+              <div className="p-4">
+                <EmptyDashboardState
+                  title="Approval preview is temporarily unavailable"
+                  detail={dashboard.approvalQueueContract.unavailableDetail ?? "Use Approval Inbox for your controlled approval work."}
+                  actionHref="/approvals"
+                  actionLabel="Open Approval Inbox"
+                />
+              </div>
+            ) : (
+              <QueueList
+                actionLabel="Review assigned approval"
+                emptyDetail="Assigned approval decisions will appear here after controlled records are submitted."
+                items={dashboard.approvalQueueContract.items}
+              />
+            )}
           </section>
           <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 p-4">
@@ -596,7 +616,7 @@ function DashboardAnalytics({
 
       {activePanel === "attention" ? (
         <AnalyticsDonutPanel
-          approvals={dashboard.approvalQueue.length}
+          approvals={dashboard.approvalQueueContract.availability === "AVAILABLE" ? dashboard.approvalQueue.length : null}
           exceptions={dashboard.exceptionQueue.length}
         />
       ) : null}
@@ -668,7 +688,7 @@ function DashboardReports({ dashboard }: { dashboard: Awaited<ReturnType<typeof 
       title: "Approval Queue",
       detail: "Pending approvals assigned by role, scope, approver eligibility, and status.",
       href: "/approvals",
-      available: dashboard.approvalQueue.length > 0
+      available: dashboard.approvalQueueContract.availability === "AVAILABLE"
     },
     {
       title: "Food Cost Analysis",
@@ -801,7 +821,9 @@ function DashboardNotifications({ dashboard }: { dashboard: Awaited<ReturnType<t
             <p className="text-sm font-semibold text-slate-500">Approval alerts</p>
           </div>
           <p className="mt-2 text-3xl font-bold text-slate-950">
-            {dashboard.approvalQueue.length}
+            {dashboard.approvalQueueContract.availability === "UNAVAILABLE"
+              ? "Unavailable"
+              : dashboard.approvalQueue.length}
           </p>
         </Panel>
         <Panel className="ogfi-detail-card">

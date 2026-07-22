@@ -14,7 +14,6 @@ import {
   canUseWastageReports,
   permissions
 } from "./authorization";
-import { listPendingApprovals, type ApprovalQueueItem } from "./approvals";
 import type { SessionContext } from "./context";
 import {
   getBranchOperationsDashboard,
@@ -124,6 +123,8 @@ export type DashboardQueueContract = {
   totalCount: number;
   displayedCount: number;
   displayLimit: number;
+  availability: "AVAILABLE" | "UNAVAILABLE";
+  unavailableDetail?: string;
 };
 
 type DashboardQueueItemDraft = Omit<
@@ -173,7 +174,7 @@ export type OperationalDashboard = {
 };
 
 export type OperationalDashboardSource = {
-  approvals?: ApprovalQueueItem[];
+  approvalPreviewUnavailable?: boolean;
   purchaseRequests?: PurchaseRequest[];
   purchaseRequestDashboard?: PurchaseRequestDashboardRead;
   purchaseOrders?: PurchaseOrderSummary[];
@@ -345,7 +346,8 @@ function buildDashboardQueueContract(
     items: items.slice(0, displayLimit),
     totalCount: items.length,
     displayedCount: Math.min(items.length, displayLimit),
-    displayLimit
+    displayLimit,
+    availability: "AVAILABLE"
   };
 }
 
@@ -431,17 +433,6 @@ export function buildOperationalDashboardModel(
     source.purchaseOrderDashboard?.primaryCurrency ??
     source.purchaseOrders?.find((order) => order.currencyCode)?.currencyCode ??
     "PHP";
-
-  if (source.approvals) {
-    cards.push({
-      id: "pending-approvals",
-      label: "Pending Approvals",
-      value: source.approvals.length,
-      href: "/approvals",
-      description: "Assigned decisions only",
-      tone: cardTone(source.approvals.length)
-    });
-  }
 
   if (source.purchaseRequests || source.purchaseRequestDashboard) {
     const value = source.purchaseRequestDashboard
@@ -1351,28 +1342,16 @@ export function buildOperationalDashboardModel(
     }
   );
 
-  const approvalQueueDrafts =
-    source.approvals?.map((approval) => ({
-      id: approval.approvalInstanceId,
-      label: approval.documentType,
-      reference: approval.publicReference,
-      detail: `${approval.requesterName} / ${approval.locationName}`,
-      status: approval.status,
-      href: `/approvals/${approval.approvalInstanceId}`,
-      tone: "warning" as const,
-      nextAction: "Review assigned approval",
-      nextActor: session.user.displayName,
-      priority: "HIGH" as const,
-      locationName: approval.locationName,
-      ownerLabel: session.user.displayName,
-      dueAt: approval.requiredDate,
-      isOverdue: isDateOverdue(approval.requiredDate)
-    })) ?? [];
   const approvalQueueContract = buildDashboardQueueContract(
     session,
-    approvalQueueDrafts,
+    [],
     approvalQueueDisplayLimit
   );
+  if (source.approvalPreviewUnavailable) {
+    approvalQueueContract.availability = "UNAVAILABLE";
+    approvalQueueContract.unavailableDetail =
+      "Use Approval Inbox while approval-routing transition safeguards are active.";
+  }
   const exceptionQueueContract = buildDashboardQueueContract(
     session,
     exceptionQueue,
@@ -1397,9 +1376,7 @@ export function buildOperationalDashboardModel(
       isOverridden: source.dashboardTrustGate?.isOverridden ?? false,
       sourceDecisionId: source.dashboardTrustGate?.sourceDecisionId ?? "DEC-0036"
     },
-    approvalQueue: toLegacyDashboardQueueItems(
-      approvalQueueDrafts.slice(0, approvalQueueDisplayLimit)
-    ),
+    approvalQueue: [],
     exceptionQueue: toLegacyDashboardQueueItems(
       exceptionQueue.slice(0, exceptionQueueDisplayLimit)
     ),
@@ -1415,8 +1392,8 @@ export async function getOperationalDashboard(
 
   await Promise.all([
     canUseApprovals(session.permissionCodes)
-      ? listPendingApprovals(session).then((approvals) => {
-          source.approvals = approvals;
+      ? Promise.resolve().then(() => {
+          source.approvalPreviewUnavailable = true;
         })
       : Promise.resolve(),
     canUsePurchaseRequests(session.permissionCodes)

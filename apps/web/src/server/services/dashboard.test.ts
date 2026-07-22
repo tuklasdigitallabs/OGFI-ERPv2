@@ -760,4 +760,25 @@ describe("operational dashboard model", () => {
     expect(dashboardPageSource).toContain("Assigned to: {item.nextActor}");
     expect(dashboardPageSource).not.toContain("Incidents and Maintenance");
   });
+
+  it("uses an explicit Approval Inbox state instead of a misleading empty approval preview", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      approvalPreviewUnavailable: true,
+    });
+
+    expect(dashboard.approvalQueue).toEqual([]);
+    expect(dashboard.approvalQueueContract).toMatchObject({
+      availability: "UNAVAILABLE",
+      totalCount: 0,
+      displayedCount: 0,
+      unavailableDetail: expect.stringContaining("Approval Inbox"),
+    });
+    const dashboardServiceSource = readFileSync(
+      path.resolve(__dirname, "dashboard.ts"),
+      "utf8",
+    );
+    expect(dashboardServiceSource).not.toContain("listPendingApprovals");
+    expect(dashboardPageSource).toContain("Approval preview is temporarily unavailable");
+    expect(dashboardPageSource).toContain("Open Approval Inbox");
+  });
 });
