@@ -23,6 +23,10 @@ import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
 import { getPurchasingControlPolicy } from "./policySettings";
 import { reverseBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
+import {
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 
 export type PurchaseRequestStatus =
   | "DRAFT"
@@ -40,6 +44,7 @@ export type PurchaseRequest = {
   brandId: string;
   requestLocationId: string;
   requesterUserId: string;
+  requesterName: string;
   createdAt: string;
   requiredDate: string;
   urgency: string;
@@ -488,6 +493,7 @@ function toPurchaseRequest(
     brandId: record.brandId ?? "",
     requestLocationId: record.requestLocationId,
     requesterUserId: record.requesterUserId,
+    requesterName: record.requester.displayName,
     createdAt: record.createdAt.toISOString(),
     requiredDate: record.requiredDate.toISOString().slice(0, 10),
     urgency: record.urgency,
@@ -590,6 +596,7 @@ function findPurchaseRequestRecord(session: SessionContext, id: string) {
       requestLocationId: session.context.locationId,
     },
     include: {
+      requester: { select: { displayName: true } },
       lines: {
         orderBy: { lineNumber: "asc" },
         include: {
@@ -749,6 +756,89 @@ export type PurchaseRequestDashboardRead = {
   taskCandidates: PurchaseRequestDashboardTaskCandidate[];
 };
 
+export type PurchaseRequestMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    recordId: string;
+    publicReference: string;
+    status: "DRAFT";
+    actionLabel: "Submit purchase request";
+    requestLocationName: string;
+    requiredDate: string;
+    createdAt: string;
+  }>;
+  nextCursor: DashboardTaskCursor | null;
+};
+
+const purchaseRequestMyTaskPageSize = 25;
+
+/**
+ * Returns only the current requester's own draft purchase requests that they
+ * can submit. Submission on behalf is intentionally not inferred from read
+ * scope or the generic submit permission; it requires a separate controlled
+ * delegation policy.
+ */
+export async function listPurchaseRequestMyTaskPage(
+  session: SessionContext,
+  input: { after?: DashboardTaskCursor; take?: number } = {}
+): Promise<PurchaseRequestMyTaskPage> {
+  if (!canUsePurchaseRequests(session.permissionCodes)) {
+    throw new Error("PERMISSION_DENIED");
+  }
+  if (!session.permissionCodes.includes(permissions.purchaseRequestSubmit)) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+  const take = Math.min(Math.max(input.take ?? purchaseRequestMyTaskPageSize, 1), 50);
+  const afterWhere = dashboardTaskAfterWhere("PURCHASE_REQUEST", input.after);
+  const scope = {
+    ...purchaseRequestScope(session),
+    requesterUserId: session.user.id,
+    status: "DRAFT" as const
+  };
+  const [totalCount, rows] = await Promise.all([
+    prisma.purchaseRequest.count({ where: scope }),
+    prisma.purchaseRequest.findMany({
+      where: {
+        ...scope,
+        ...(afterWhere ? { AND: [afterWhere] } : {})
+      },
+      select: {
+        id: true,
+        publicReference: true,
+        requiredDate: true,
+        createdAt: true,
+        requestLocation: { select: { name: true } }
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: take + 1
+    })
+  ]);
+  const pageRows = rows.slice(0, take);
+  const lastRow = pageRows.at(-1);
+  return {
+    totalCount,
+    items: pageRows.map((request) => ({
+      taskId: `purchase-request-${request.id}`,
+      recordId: request.id,
+      publicReference: request.publicReference,
+      status: "DRAFT",
+      actionLabel: "Submit purchase request",
+      requestLocationName: request.requestLocation.name,
+      requiredDate: request.requiredDate.toISOString().slice(0, 10),
+      createdAt: request.createdAt.toISOString()
+    })),
+    nextCursor:
+      rows.length > take && lastRow
+        ? {
+            createdAt: lastRow.createdAt.toISOString(),
+            sourceType: "PURCHASE_REQUEST",
+            recordId: lastRow.id
+          }
+        : null
+  };
+}
+
 function purchaseRequestScope(session: SessionContext) {
   return {
     tenantId: session.context.tenantId,
@@ -870,6 +960,7 @@ async function listPurchaseRequestsWithOptions(
   const records = await prisma.purchaseRequest.findMany({
     where: purchaseRequestListWhere(session, filters, options.dashboardProfile),
     include: {
+      requester: { select: { displayName: true } },
       lines: {
         orderBy: { lineNumber: "asc" },
         include: {
@@ -1364,6 +1455,9 @@ export async function submitPurchaseRequest(id: string) {
   const existing = await getPurchaseRequest(session, id);
   if (!existing) {
     throw new Error("PURCHASE_REQUEST_NOT_FOUND");
+  }
+  if (existing.requesterUserId !== session.user.id) {
+    throw new Error("PERMISSION_DENIED");
   }
   if (existing.status !== "DRAFT") {
     throw new Error("INVALID_STATUS_TRANSITION");

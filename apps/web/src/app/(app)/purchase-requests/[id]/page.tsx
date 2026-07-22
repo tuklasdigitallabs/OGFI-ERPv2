@@ -91,10 +91,11 @@ async function completeEmergencyPostReview(formData: FormData) {
   revalidatePath(`/purchase-requests/${id}`);
 }
 
-function getNextAction(status: string) {
-  if (status === "DRAFT") {
+function getNextAction(status: string, canSubmit: boolean) {
+  if (status === "DRAFT" && canSubmit) {
     return "Submit for approval";
   }
+  if (status === "DRAFT") return "Requester must submit";
   if (status === "RETURNED") {
     return "Reopen as draft";
   }
@@ -142,6 +143,10 @@ export default async function PurchaseRequestDetailPage({
     !request.emergencyPostReviewCompleted &&
     request.requesterUserId !== session.user.id &&
     session.permissionCodes.includes(permissions.purchaseRequestApprove);
+  const canSubmit =
+    request.status === "DRAFT" &&
+    request.requesterUserId === session.user.id &&
+    session.permissionCodes.includes(permissions.purchaseRequestSubmit);
 
   return (
     <AppShell
@@ -180,7 +185,7 @@ export default async function PurchaseRequestDetailPage({
           <dl className="mt-6 grid gap-4 ogfi-record-summary p-4 sm:grid-cols-2">
             <div>
               <dt className="text-sm font-medium text-slate-500">Requester</dt>
-              <dd className="text-slate-950">{session.user.displayName}</dd>
+              <dd className="text-slate-950">{request.requesterName}</dd>
             </div>
             <div>
               <dt className="text-sm font-medium text-slate-500">
@@ -203,7 +208,7 @@ export default async function PurchaseRequestDetailPage({
                 Next action
               </dt>
               <dd className="text-slate-950">
-                {getNextAction(request.status)}
+                {getNextAction(request.status, canSubmit)}
               </dd>
             </div>
           </dl>
@@ -389,13 +394,18 @@ export default async function PurchaseRequestDetailPage({
             >
               Back to list
             </ButtonLink>
-            {request.status === "DRAFT" ? (
+            {canSubmit ? (
               <form action={submit}>
                 <input name="id" type="hidden" value={request.id} />
                 <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
                   Submit for Approval
                 </button>
               </form>
+            ) : null}
+            {request.status === "DRAFT" && !canSubmit ? (
+              <p className="text-sm text-slate-600">
+                Only the recorded requester can submit this draft for approval.
+              </p>
             ) : null}
             {request.status === "RETURNED" ? (
               <form action={reopen}>

@@ -3,7 +3,8 @@ import {
   canUseStockAdjustments,
   canUseTransfers,
   canUseWastageReports,
-  canUseReceiving
+  canUseReceiving,
+  canUsePurchaseRequests
 } from "./authorization";
 import {
   signInternalServerValue,
@@ -18,6 +19,7 @@ import {
 } from "./dashboardTasks";
 import { listStockAdjustmentMyTaskPage } from "./stockAdjustments";
 import { listReceivingMyTaskPage } from "./receiving";
+import { listPurchaseRequestMyTaskPage } from "./purchaseRequests";
 import { listTransferMyTaskPage } from "./transfers";
 import { listWastageMyTaskPage } from "./wastage";
 
@@ -141,6 +143,28 @@ type EnrolledSource = {
 
 function enrolledSources(session: SessionContext): EnrolledSource[] {
   const sources: EnrolledSource[] = [];
+  if (canUsePurchaseRequests(session.permissionCodes)) {
+    sources.push({
+      type: "PURCHASE_REQUEST",
+      label: "Purchase requests",
+      read: async (after, take) => {
+        const page = await listPurchaseRequestMyTaskPage(session, {
+          take,
+          ...(after ? { after } : {})
+        });
+        return {
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            sourceType: "PURCHASE_REQUEST" as const,
+            sourceLabel: "Purchase request",
+            locationLabel: `${item.requestLocationName} · required ${item.requiredDate}`,
+            href: `/purchase-requests/${item.recordId}`
+          }))
+        };
+      }
+    });
+  }
   if (canUseTransfers(session.permissionCodes)) {
     sources.push({
       type: "TRANSFER",

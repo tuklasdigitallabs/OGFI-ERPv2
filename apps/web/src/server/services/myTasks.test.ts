@@ -9,13 +9,17 @@ import {
 const mocks = vi.hoisted(() => ({
   transfers: vi.fn(),
   wastage: vi.fn(),
-  adjustments: vi.fn()
+  adjustments: vi.fn(),
+  purchaseRequests: vi.fn()
 }));
 
 vi.mock("./transfers", () => ({ listTransferMyTaskPage: mocks.transfers }));
 vi.mock("./wastage", () => ({ listWastageMyTaskPage: mocks.wastage }));
 vi.mock("./stockAdjustments", () => ({
   listStockAdjustmentMyTaskPage: mocks.adjustments
+}));
+vi.mock("./purchaseRequests", () => ({
+  listPurchaseRequestMyTaskPage: mocks.purchaseRequests
 }));
 
 const session = {
@@ -56,6 +60,11 @@ describe("My Tasks queue", () => {
       nextCursor: null,
       items: [{ taskId: "stock-adjustment-a1", recordId: "a1", publicReference: "ADJ-1", adjustmentType: "COUNT_VARIANCE", actionLabel: "Post stock adjustment", inventoryLocationName: "Branch", createdAt: "2026-07-21T00:00:00.000Z" }]
     });
+    mocks.purchaseRequests.mockResolvedValue({
+      totalCount: 1,
+      nextCursor: null,
+      items: [{ taskId: "purchase-request-pr1", recordId: "pr1", publicReference: "PR-1", status: "DRAFT", actionLabel: "Submit purchase request", requestLocationName: "Branch", requiredDate: "2026-07-25", createdAt: "2026-07-19T00:00:00.000Z" }]
+    });
   });
 
   test("merges enrolled sources in the shared stable order", async () => {
@@ -90,6 +99,18 @@ describe("My Tasks queue", () => {
       totalCount: null,
       isComplete: false,
       unavailableSources: [{ type: "WASTAGE", label: "Wastage" }]
+    });
+  });
+
+  test("enrolls the requester-owned Purchase Request source contract", async () => {
+    await expect(
+      getMyTasksPage(
+        { ...session, permissionCodes: [permissions.purchaseRequestSubmit] } as never
+      )
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      enrolledSources: [{ type: "PURCHASE_REQUEST", label: "Purchase requests" }],
+      items: [{ taskId: "purchase-request-pr1", sourceType: "PURCHASE_REQUEST" }]
     });
   });
 });

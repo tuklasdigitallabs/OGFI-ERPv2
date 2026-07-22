@@ -84,6 +84,8 @@ The baseline policy is confirmed by `DEC-0036`. The exact configured values belo
 
 13. **Food Cost dashboard definitions (`DEC-0062`, open):** Before a bounded Overview projection can replace the analytical read, confirm and correct: (a) the default business-date rule so posted sales, import batches, and ledger evidence never mix dates; (b) incomplete inventory-movement valuation behavior so missing cost remains pending/unavailable rather than becoming a trusted zero; and (c) the definition and label of `AWAITING_ACTUALS` so it reflects the approved reporting meaning. The safe fallback is no Overview Food Cost summary; the analytical workspace remains the authoritative read and must retain its source/trust notices until source-level parity is demonstrated.
 
+14. **Purchase Request submission on behalf:** The current controlled default is requester-only submission, reopening, and cancellation. Decide whether a purchasing, manager, or delegated user may submit a draft for its identified requester, and if so define a distinct authority, scope, requester acknowledgment or reason/evidence, actor/requester display, approval segregation, audit, notification, expiry, and revocation rules. Read access or the generic submit permission must not be treated as delegation.
+
 ## 6. Change request format
 
 Every policy change request should include:

@@ -54,8 +54,21 @@ describe("purchase request workflow controls", () => {
     expect(submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
       submit.indexOf("await tx.purchaseRequest.update")
     );
+    expect(submit).toContain("if (existing.requesterUserId !== session.user.id)");
+    expect(submit).toContain('throw new Error("PERMISSION_DENIED")');
     expect(submit).toContain("recipientUserIds: [firstEligibleActor.userId]");
     expect(submit).not.toContain("resolveScopedNotificationRecipients");
+  });
+
+  test("keeps My Tasks draft submission requester-owned and excludes on-behalf inference", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseRequests.ts"), "utf8");
+    const start = source.indexOf("export async function listPurchaseRequestMyTaskPage");
+    const end = source.indexOf("export async function getPurchaseRequestDashboardRead", start);
+    const taskPage = source.slice(start, end);
+
+    expect(taskPage).toContain("requesterUserId: session.user.id");
+    expect(taskPage).toContain('status: "DRAFT"');
+    expect(taskPage).toContain("purchaseRequestSubmit");
   });
 
   test("purchase request creation uses a task sheet with bounded multi-line entry", () => {

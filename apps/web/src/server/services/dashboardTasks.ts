@@ -6,6 +6,7 @@
  * priority/due contract must extend this tuple before joining the registry.
  */
 export const dashboardTaskSources = [
+  "PURCHASE_REQUEST",
   "TRANSFER",
   "WASTAGE",
   "STOCK_ADJUSTMENT",

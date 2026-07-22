@@ -25,7 +25,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 
 1. Confirm your active location in the header.
 2. Open `Operations Dashboard` and review `Today’s work` first. It lists the highest-priority assigned approvals and operational exceptions visible in your selected scope.
-3. Open `My Tasks` when you need the current paginated operational action queue. It presently includes eligible Transfer, Wastage, Stock Adjustment, and draft Receiving Report posting actions only.
+3. Open `My Tasks` when you need the current paginated operational action queue. It presently includes your own draft Purchase Request submission, eligible Transfer, Wastage, Stock Adjustment, and draft Receiving Report posting actions only.
 4. Read the location, owner, timing, severity, status, and next-action labels before opening a source record.
 5. Select `Open` or `Open approvals` to continue in the relevant controlled workspace. The `Open POs`, `Open PRs`, and `Transfer Follow-up` cards open their selected location's closed source-list views.
 5. Open `Approval Inbox` to review assigned approval decisions.
@@ -55,6 +55,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - A dashboard drilldown narrows an already authorized source list. It does not grant access to a PO, PR, or transfer; alter the selected scope; or permit changing the dashboard filter through the URL.
 - `Today’s work` is a prioritized read-only view. Opening an item does not bypass the source record’s permission, status, or segregation-of-duties checks.
 - `My Tasks` is not a replacement for Approval Inbox or project `My Work`, and it does not yet include every operational source. Its signed page cursor only continues the current queue page; it does not grant access or action authority.
+- A Purchase Request draft may only be submitted by its recorded requester. The system does not treat location read access as authority to submit another person’s request; submission on behalf requires a separate approved delegation workflow.
 - When the dashboard says the approval preview is unavailable, open `Approval Inbox` to see and act on controlled approval work. This is not a zero-approval result and does not change who can approve a record.
 - Notifications are reminders or alerts; the source record remains the controlling record.
 - `Scan Approvals` and `Scan Reminders` are manual in-app reminder tools. They do not approve, reject, post, receive, close, reverse, or escalate authority.
