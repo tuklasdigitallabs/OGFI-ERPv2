@@ -200,7 +200,7 @@ export type StockCountDashboardRead = {
 export async function getStockCountDashboardRead(
   session: SessionContext
 ): Promise<StockCountDashboardRead> {
-  await requireStockCountRead(session);
+  await requirePermission(session, permissions.stockCountReview);
 
   const varianceWhere = {
     ...scopedStockCountWhere(session),
@@ -272,6 +272,9 @@ export async function listStockCountFormOptions(session: SessionContext) {
 export async function listStockCounts(session: SessionContext) {
   await requireStockCountRead(session);
   const cadencePolicy = await getStockCountCadencePolicy(session);
+  const canReviewStockCounts = session.permissionCodes.includes(
+    permissions.stockCountReview
+  );
 
   const counts = await prisma.stockCountSession.findMany({
     where: scopedStockCountWhere(session),
@@ -302,9 +305,11 @@ export async function listStockCounts(session: SessionContext) {
     cutoffAt: count.cutoffAt?.toISOString() ?? null,
     submittedAt: count.submittedAt?.toISOString() ?? null,
     lineCount: count.lines.length,
-    varianceCount: count.lines.filter(
-      (line) => Number(line.varianceQuantityBaseUom ?? 0) !== 0
-    ).length
+    varianceCount: canReviewStockCounts
+      ? count.lines.filter(
+          (line) => Number(line.varianceQuantityBaseUom ?? 0) !== 0
+        ).length
+      : null
   }));
 }
 
@@ -483,7 +488,7 @@ export async function getStockCount(session: SessionContext, id: string) {
     reviewedAt: count.reviewedAt?.toISOString() ?? null,
     cancelledAt: count.cancelledAt?.toISOString() ?? null,
     cancellationReason: count.cancellationReason ?? null,
-    reviewNotes: count.reviewNotes ?? null,
+    reviewNotes: canShowSystemQuantity ? count.reviewNotes ?? null : null,
     varianceAdjustmentId: count.stockAdjustments[0]?.id ?? null,
     varianceAdjustmentReference:
       count.stockAdjustments[0]?.publicReference ?? null,
@@ -505,19 +510,21 @@ export async function getStockCount(session: SessionContext, id: string) {
           ? null
           : Number(line.countedQuantityBaseUom),
       varianceQuantityBaseUom:
-        line.varianceQuantityBaseUom === null
-          ? null
-          : Number(line.varianceQuantityBaseUom),
+        canShowSystemQuantity && line.varianceQuantityBaseUom !== null
+          ? Number(line.varianceQuantityBaseUom)
+          : null,
       notes: line.notes ?? null,
       countedByName: line.countedBy?.displayName ?? null,
       countedAt: line.countedAt?.toISOString() ?? null
     })),
-    auditEvents: auditEvents.map((event) => ({
-      id: event.id,
-      eventType: event.eventType,
-      occurredAt: event.occurredAt.toISOString(),
-      metadata: event.metadata
-    }))
+    auditEvents: canShowSystemQuantity
+      ? auditEvents.map((event) => ({
+          id: event.id,
+          eventType: event.eventType,
+          occurredAt: event.occurredAt.toISOString(),
+          metadata: event.metadata
+        }))
+      : []
   };
 }
 

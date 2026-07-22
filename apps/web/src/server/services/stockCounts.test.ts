@@ -12,12 +12,14 @@ import {
   assertStockCountReviewerSegregation,
   calculateCountVariance,
   filterCountVarianceLines,
+  getStockCount,
   getStockCountDashboardRead,
   recommendedStockCountCadenceDays
 } from "./stockCounts";
 
 const mockPrisma = vi.hoisted(() => ({
-  stockCountSession: { count: vi.fn(), findMany: vi.fn() },
+  stockCountSession: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+  auditEvent: { findMany: vi.fn() },
   userRoleAssignment: { findMany: vi.fn() }
 }));
 
@@ -65,7 +67,7 @@ describe("stock count foundation rules", () => {
     expect(source).toContain("canUseStockCounts(session.permissionCodes)");
   });
 
-  test("dashboard read scopes count variance and returns bounded header-only candidates", async () => {
+  test("dashboard read requires stock-count review permission and returns bounded header-only candidates", async () => {
     mockPrisma.stockCountSession.count.mockResolvedValue(3);
     mockPrisma.stockCountSession.findMany.mockResolvedValue([
       {
@@ -78,15 +80,29 @@ describe("stock count foundation rules", () => {
       }
     ]);
 
-    await expect(getStockCountDashboardRead(dashboardSession as never)).resolves.toMatchObject({
+    const reviewerSession = {
+      ...dashboardSession,
+      permissionCodes: [permissions.stockCountReview]
+    };
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValue([{
+      role: {
+        permissions: [{
+          permission: {
+            tenantId: reviewerSession.context.tenantId,
+            code: permissions.stockCountReview
+          }
+        }]
+      }
+    }]);
+    await expect(getStockCountDashboardRead(reviewerSession as never)).resolves.toMatchObject({
       varianceCount: 3,
       taskCandidates: [{ inventoryLocationName: "BGC Store", varianceLineCount: 2 }]
     });
     expect(mockPrisma.stockCountSession.count).toHaveBeenCalledWith({
       where: expect.objectContaining({
-        tenantId: dashboardSession.context.tenantId,
-        companyId: dashboardSession.context.companyId,
-        inventoryLocation: { locationId: dashboardSession.context.locationId },
+        tenantId: reviewerSession.context.tenantId,
+        companyId: reviewerSession.context.companyId,
+        inventoryLocation: { locationId: reviewerSession.context.locationId },
         lines: { some: { varianceQuantityBaseUom: { not: 0 } } }
       })
     });
@@ -99,11 +115,69 @@ describe("stock count foundation rules", () => {
     );
   });
 
-  test("dashboard read rejects callers without stock-count access before querying", async () => {
+  test("dashboard read rejects non-review stock-count callers before querying", async () => {
     await expect(
-      getStockCountDashboardRead({ ...dashboardSession, permissionCodes: [] } as never)
+      getStockCountDashboardRead(dashboardSession as never)
     ).rejects.toThrow("PERMISSION_DENIED");
     expect(mockPrisma.stockCountSession.count).not.toHaveBeenCalled();
+  });
+
+  test("stock count detail redacts blind-count and variance facts for non-review callers", async () => {
+    mockPrisma.stockCountSession.findFirst.mockResolvedValue({
+      id: "count-1",
+      publicReference: "SC-2026-00001",
+      status: "SUBMITTED",
+      countType: "FULL",
+      blindCount: true,
+      freezeMovements: false,
+      inventoryLocationId: "inventory-location-1",
+      inventoryLocation: { name: "BGC Store", location: { name: "BGC" } },
+      createdBy: { displayName: "Creator" },
+      assignedTo: null,
+      reviewedBy: { displayName: "Reviewer" },
+      scheduledDate: null,
+      cutoffAt: null,
+      startedAt: null,
+      submittedAt: null,
+      reviewedAt: null,
+      cancelledAt: null,
+      cancellationReason: null,
+      reviewNotes: "Variance checked",
+      stockAdjustments: [],
+      lines: [{
+        id: "line-1",
+        lineNumber: 1,
+        item: { itemCode: "RICE", itemName: "Rice" },
+        uom: { uomCode: "KG" },
+        lotNumber: null,
+        expiryDate: null,
+        systemQuantityBaseUom: 12,
+        countedQuantityBaseUom: 10,
+        varianceQuantityBaseUom: -2,
+        notes: "physical count",
+        countedBy: { displayName: "Counter" },
+        countedAt: new Date("2026-07-20T00:00:00.000Z")
+      }]
+    });
+    mockPrisma.auditEvent.findMany.mockResolvedValue([{
+      id: "audit-1",
+      eventType: "stock_count.reviewed",
+      occurredAt: new Date("2026-07-20T01:00:00.000Z"),
+      metadata: { reviewNotes: "Variance checked", varianceQuantityBaseUom: -2 }
+    }]);
+
+    const count = await getStockCount(dashboardSession as never, "count-1");
+
+    expect(count).toMatchObject({
+      reviewNotes: null,
+      canShowSystemQuantity: false,
+      lines: [{
+        systemQuantityBaseUom: null,
+        countedQuantityBaseUom: 10,
+        varianceQuantityBaseUom: null
+      }],
+      auditEvents: []
+    });
   });
 
   test("stock count cadence reads configurable DEC-0036 policy", () => {

@@ -228,9 +228,11 @@ export default async function CountsPage({ searchParams }: CountsPageProps) {
                     </div>
                     <div className="text-left md:text-right">
                       <Badge tone={statusTone(count.status)}>{count.status}</Badge>
-                      <p className="mt-2 text-sm font-semibold text-slate-900">
-                        {count.varianceCount} variance line(s)
-                      </p>
+                      {count.varianceCount !== null ? (
+                        <p className="mt-2 text-sm font-semibold text-slate-900">
+                          {count.varianceCount} variance line(s)
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">

@@ -9,7 +9,6 @@ import {
   canUseReceiving,
   canUseRecipesAndCosting,
   canUseStockAdjustments,
-  canUseStockCounts,
   canUseTransfers,
   canUseWastageReports,
   permissions
@@ -622,11 +621,14 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.stockCounts || source.stockCountDashboard) {
+  if (
+    session.permissionCodes.includes(permissions.stockCountReview) &&
+    (source.stockCounts || source.stockCountDashboard)
+  ) {
     const value = source.stockCountDashboard
       ? source.stockCountDashboard.varianceCount
       : source.stockCounts?.filter(
-          (count) => countActionStatuses.has(count.status) && count.varianceCount > 0
+          (count) => countActionStatuses.has(count.status) && (count.varianceCount ?? 0) > 0
         ).length ?? 0;
     cards.push({
       id: "count-variance",
@@ -644,7 +646,7 @@ export function buildOperationalDashboardModel(
         }))
       : source.stockCounts ?? [];
     for (const count of stockCountCandidates) {
-      if (countActionStatuses.has(count.status) && count.varianceCount > 0) {
+      if (countActionStatuses.has(count.status) && (count.varianceCount ?? 0) > 0) {
         exceptionQueue.push({
           id: `count-${count.id}`,
           label: "Count variance",
@@ -1465,7 +1467,7 @@ export async function getOperationalDashboard(
           source.transferDashboard = transferDashboard;
         })
       : Promise.resolve(),
-    canUseStockCounts(session.permissionCodes)
+    session.permissionCodes.includes(permissions.stockCountReview)
       ? getStockCountDashboardRead(session).then((stockCountDashboard) => {
           source.stockCountDashboard = stockCountDashboard;
         })

@@ -32,13 +32,16 @@ const session: SessionContext = {
 
 describe("operational dashboard model", () => {
   it("only renders widgets for supplied authorized source records", () => {
-    const dashboard = buildOperationalDashboardModel(session, {
+    const dashboard = buildOperationalDashboardModel(
+      { ...session, permissionCodes: ["inventory.stock_count.review"] },
+      {
       purchaseRequests: [
         { id: "pr-1", publicReference: "PR-001", status: "PENDING_APPROVAL" },
         { id: "pr-2", publicReference: "PR-002", status: "APPROVED" },
         { id: "pr-3", publicReference: "PR-003", status: "CANCELLED" }
       ] as never
-    });
+      }
+    );
 
     expect(dashboard.scope.locationName).toBe("Selected Branch");
     expect(dashboard.cards.map((card) => card.id)).toEqual([
@@ -50,6 +53,25 @@ describe("operational dashboard model", () => {
       href: "/purchase-requests?dashboard=purchase-request-open-v1",
       tone: "warning"
     });
+  });
+
+  it("does not render Count Variance data for a non-reviewer even if a source is supplied", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      stockCountDashboard: {
+        varianceCount: 2,
+        taskCandidates: [{
+          id: "count-1",
+          publicReference: "SC-001",
+          status: "SUBMITTED",
+          inventoryLocationName: "Branch Stock",
+          varianceLineCount: 2,
+          createdAt: "2026-07-20T00:00:00.000Z"
+        }]
+      }
+    });
+
+    expect(dashboard.cards.some((card) => card.id === "count-variance")).toBe(false);
+    expect(dashboard.exceptionQueue.some((item) => item.id === "count-count-1")).toBe(false);
   });
 
   it("links Transfer Follow-up to its closed server-owned profile", () => {
@@ -316,7 +338,9 @@ describe("operational dashboard model", () => {
   });
 
   it("covers every Phase 1 operational visibility lane without replacing source records", () => {
-    const dashboard = buildOperationalDashboardModel(session, {
+    const dashboard = buildOperationalDashboardModel(
+      { ...session, permissionCodes: ["inventory.stock_count.review"] },
+      {
       approvals: [
         {
           approvalInstanceId: "approval-1",
@@ -414,7 +438,8 @@ describe("operational dashboard model", () => {
           }
         ]
       }
-    });
+      }
+    );
 
     expect(dashboard.cards.map((card) => card.id)).toEqual([
       "pending-approvals",

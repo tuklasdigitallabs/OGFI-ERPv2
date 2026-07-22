@@ -20802,7 +20802,7 @@
   {
     "id": "server/services/dashboard.ts#getOperationalDashboard",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.inventoryBalanceView | permissions.inventoryLedgerView",
+    "permission": "permissions.stockCountReview | permissions.inventoryBalanceView | permissions.inventoryLedgerView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -33894,7 +33894,7 @@
   {
     "id": "server/services/stockCounts.ts#getStockCountDashboardRead",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockCountView",
+    "permission": "permissions.stockCountReview",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -33936,7 +33936,7 @@
   {
     "id": "server/services/stockCounts.ts#listStockCounts",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockCountView",
+    "permission": "permissions.stockCountReview | permissions.stockCountView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",

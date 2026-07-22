@@ -234,13 +234,13 @@ export default async function CountDetailPage({
               <dt className="text-sm font-medium text-slate-500">Reviewed by</dt>
               <dd className="text-slate-950">{count.reviewedByName ?? "Not reviewed"}</dd>
             </div>
-            {count.reviewNotes ? (
+            {canReview && count.reviewNotes ? (
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-slate-500">Review notes</dt>
                 <dd className="text-slate-950">{count.reviewNotes}</dd>
               </div>
             ) : null}
-            {count.varianceAdjustmentId ? (
+            {canReview && count.varianceAdjustmentId ? (
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-slate-500">
                   Variance adjustment
@@ -335,7 +335,9 @@ export default async function CountDetailPage({
                         <th className="w-36 px-4 py-3">System</th>
                       ) : null}
                       <th className="w-36 px-4 py-3">Counted</th>
-                      <th className="w-36 px-4 py-3">Variance</th>
+                      {canReview ? (
+                        <th className="w-36 px-4 py-3">Variance</th>
+                      ) : null}
                       <th className="w-52 px-4 py-3">Notes</th>
                     </tr>
                   </thead>
@@ -367,9 +369,11 @@ export default async function CountDetailPage({
                         <td className="px-4 py-3 font-semibold text-slate-950">
                           {line.countedQuantityBaseUom ?? "Not counted"} {line.uomCode}
                         </td>
-                        <td className="px-4 py-3 font-semibold text-slate-950">
-                          {line.varianceQuantityBaseUom ?? "Not counted"} {line.uomCode}
-                        </td>
+                        {canReview ? (
+                          <td className="px-4 py-3 font-semibold text-slate-950">
+                            {line.varianceQuantityBaseUom ?? "Not counted"} {line.uomCode}
+                          </td>
+                        ) : null}
                         <td className="px-4 py-3 text-slate-700">
                           {line.notes ?? "-"}
                         </td>
@@ -435,31 +439,33 @@ export default async function CountDetailPage({
           </div>
         </Panel>
 
-        <Panel className="ogfi-detail-card">
-          <h2 className="text-lg font-bold text-slate-950">Audit History</h2>
-          <ol className="mt-4 space-y-4">
-            {count.auditEvents.length === 0 ? (
-              <li className="text-sm text-slate-500">No audit events recorded.</li>
-            ) : (
-              count.auditEvents.map((event) => (
-                <li key={event.id} className="border-l-2 border-blue-200 pl-3">
-                  <p className="text-sm font-medium text-slate-950">{event.eventType}</p>
-                  <p className="text-xs text-slate-500">{event.occurredAt}</p>
-                  {getMetadataText(event.metadata, "reason") ? (
-                    <p className="mt-1 text-sm text-slate-700">
-                      Reason: {getMetadataText(event.metadata, "reason")}
-                    </p>
-                  ) : null}
-                  {getMetadataText(event.metadata, "reviewNotes") ? (
-                    <p className="mt-1 text-sm text-slate-700">
-                      Notes: {getMetadataText(event.metadata, "reviewNotes")}
-                    </p>
-                  ) : null}
-                </li>
-              ))
-            )}
-          </ol>
-        </Panel>
+        {canReview ? (
+          <Panel className="ogfi-detail-card">
+            <h2 className="text-lg font-bold text-slate-950">Audit History</h2>
+            <ol className="mt-4 space-y-4">
+              {count.auditEvents.length === 0 ? (
+                <li className="text-sm text-slate-500">No audit events recorded.</li>
+              ) : (
+                count.auditEvents.map((event) => (
+                  <li key={event.id} className="border-l-2 border-blue-200 pl-3">
+                    <p className="text-sm font-medium text-slate-950">{event.eventType}</p>
+                    <p className="text-xs text-slate-500">{event.occurredAt}</p>
+                    {getMetadataText(event.metadata, "reason") ? (
+                      <p className="mt-1 text-sm text-slate-700">
+                        Reason: {getMetadataText(event.metadata, "reason")}
+                      </p>
+                    ) : null}
+                    {getMetadataText(event.metadata, "reviewNotes") ? (
+                      <p className="mt-1 text-sm text-slate-700">
+                        Notes: {getMetadataText(event.metadata, "reviewNotes")}
+                      </p>
+                    ) : null}
+                  </li>
+                ))
+              )}
+            </ol>
+          </Panel>
+        ) : null}
       </div>
     </AppShell>
   );
