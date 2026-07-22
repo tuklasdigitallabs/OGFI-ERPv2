@@ -182,6 +182,7 @@ export type OperationalDashboardSource = {
   approvals?: ApprovalQueueItem[];
   approvalPreviewUnavailable?: boolean;
   hasUnavailableSource?: boolean;
+  unavailableSources?: DashboardUnavailableSource[];
   purchaseRequests?: PurchaseRequest[];
   purchaseRequestDashboard?: PurchaseRequestDashboardRead;
   purchaseOrders?: PurchaseOrderSummary[];
@@ -204,6 +205,12 @@ export type OperationalDashboardSource = {
   incidents?: IncidentDashboard;
   maintenance?: MaintenanceDashboard;
   dashboardTrustGate?: Awaited<ReturnType<typeof getDashboardTrustGatePolicy>>;
+};
+
+type DashboardUnavailableSource = {
+  id: string;
+  label: string;
+  href: string;
 };
 
 const purchaseRequestOpenStatuses = new Set([
@@ -1316,7 +1323,16 @@ export function buildOperationalDashboardModel(
   }
 
   sourceHealth.push(
-    ...(source.hasUnavailableSource
+    ...(source.unavailableSources?.map((unavailableSource) => ({
+          id: `dashboard-source-unavailable-${unavailableSource.id}`,
+          label: `${unavailableSource.label} summary`,
+          displayValue: "Unavailable",
+          detail:
+            "This dashboard summary could not be refreshed. Open the source workspace for the authoritative current record.",
+          href: unavailableSource.href,
+          tone: "warning" as const,
+        })) ??
+      (source.hasUnavailableSource
       ? [
           {
             id: "dashboard-source-unavailable",
@@ -1327,7 +1343,7 @@ export function buildOperationalDashboardModel(
             tone: "warning" as const,
           },
         ]
-      : []),
+      : [])),
     {
       id: "dashboard-trust-gate",
       label: "Reporting trust gate",
@@ -1441,89 +1457,144 @@ export async function getOperationalDashboard(
 ): Promise<OperationalDashboard> {
   const source: OperationalDashboardSource = {};
 
-  const sourceResults = await Promise.allSettled([
-    canUseApprovals(session.permissionCodes)
+  const dashboardSources: Array<{
+    unavailableSource: DashboardUnavailableSource;
+    read: Promise<void>;
+  }> = [
+    {
+      unavailableSource: { id: "approvals", label: "Approvals", href: "/approvals" },
+      read: canUseApprovals(session.permissionCodes)
       ? Promise.resolve().then(() => {
           source.approvalPreviewUnavailable = true;
         })
-      : Promise.resolve(),
-    canUsePurchaseRequests(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "purchase-requests", label: "Purchase Requests", href: "/purchase-requests" },
+      read: canUsePurchaseRequests(session.permissionCodes)
       ? getPurchaseRequestDashboardRead(session).then((purchaseRequestDashboard) => {
           source.purchaseRequestDashboard = purchaseRequestDashboard;
         })
-      : Promise.resolve(),
-    canReadPurchaseOrders(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "purchase-orders", label: "Purchase Orders", href: "/purchase-orders" },
+      read: canReadPurchaseOrders(session.permissionCodes)
       ? getPurchaseOrderDashboardRead(session).then((purchaseOrderDashboard) => {
           source.purchaseOrderDashboard = purchaseOrderDashboard;
         })
-      : Promise.resolve(),
-    canUseReceiving(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "receiving", label: "Receiving", href: "/receiving" },
+      read: canUseReceiving(session.permissionCodes)
       ? getReceivingDashboardRead(session).then((receivingDashboard) => {
           source.receivingDashboard = receivingDashboard;
         })
-      : Promise.resolve(),
-    canUseTransfers(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "transfers", label: "Transfers", href: "/transfers" },
+      read: canUseTransfers(session.permissionCodes)
       ? getTransferDashboardRead(session).then((transferDashboard) => {
           source.transferDashboard = transferDashboard;
         })
-      : Promise.resolve(),
-    session.permissionCodes.includes(permissions.stockCountReview)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "stock-counts", label: "Stock Counts", href: "/counts" },
+      read: session.permissionCodes.includes(permissions.stockCountReview)
       ? getStockCountDashboardRead(session).then((stockCountDashboard) => {
           source.stockCountDashboard = stockCountDashboard;
         })
-      : Promise.resolve(),
-    canUseWastageReports(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "wastage", label: "Wastage", href: "/wastage" },
+      read: canUseWastageReports(session.permissionCodes)
       ? getWastageDashboardRead(session).then((wastageDashboard) => {
           source.wastageDashboard = wastageDashboard;
         })
-      : Promise.resolve(),
-    canUseStockAdjustments(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "stock-adjustments", label: "Stock Adjustments", href: "/adjustments" },
+      read: canUseStockAdjustments(session.permissionCodes)
       ? getStockAdjustmentDashboardRead(session).then((stockAdjustmentDashboard) => {
           source.stockAdjustmentDashboard = stockAdjustmentDashboard;
         })
-      : Promise.resolve(),
-    session.permissionCodes.includes(permissions.inventoryBalanceView)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "inventory-balances", label: "Inventory balances", href: "/inventory" },
+      read: session.permissionCodes.includes(permissions.inventoryBalanceView)
       ? listInventoryBalances(session).then((inventoryBalances) => {
           source.inventoryBalances = inventoryBalances;
         })
-      : Promise.resolve(),
-    session.permissionCodes.includes(permissions.inventoryLedgerView)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "inventory-reconciliation", label: "Ledger reconciliation", href: "/inventory" },
+      read: session.permissionCodes.includes(permissions.inventoryLedgerView)
       ? getInventoryBalanceReconciliation(session).then((reconciliation) => {
           source.reconciliation = reconciliation;
         })
-      : Promise.resolve(),
-    canUseRecipesAndCosting(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "food-cost-analysis", label: "Food cost analysis", href: "/recipes/analysis" },
+      read: canUseRecipesAndCosting(session.permissionCodes)
       ? getFoodCostAnalysisDashboard(session).then((foodCostAnalysis) => {
           source.foodCostAnalysis = foodCostAnalysis;
         })
-      : Promise.resolve(),
-    canUseBranchOperations(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "branch-operations", label: "Branch operations", href: "/operations" },
+      read: canUseBranchOperations(session.permissionCodes)
       ? getBranchOperationsDashboard(session).then((branchOperations) => {
           source.branchOperations = branchOperations;
         })
-      : Promise.resolve(),
-    canUseFoodSafety(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "food-safety", label: "Food safety", href: "/food-safety" },
+      read: canUseFoodSafety(session.permissionCodes)
       ? getFoodSafetyDashboard(session).then((foodSafety) => {
           source.foodSafety = foodSafety;
         })
-      : Promise.resolve(),
-    canUseIncidents(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "incidents", label: "Incidents", href: "/incidents" },
+      read: canUseIncidents(session.permissionCodes)
       ? getIncidentDashboard(session).then((incidents) => {
           source.incidents = incidents;
         })
-      : Promise.resolve(),
-    canUseMaintenance(session.permissionCodes)
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "maintenance", label: "Maintenance", href: "/maintenance" },
+      read: canUseMaintenance(session.permissionCodes)
       ? getMaintenanceDashboard(session).then((maintenance) => {
           source.maintenance = maintenance;
         })
-      : Promise.resolve(),
-    getDashboardTrustGatePolicy(session).then((dashboardTrustGate) => {
-      source.dashboardTrustGate = dashboardTrustGate;
-    })
-  ]);
-  source.hasUnavailableSource = sourceResults.some(
-    (result) => result.status === "rejected",
-  );
+      : Promise.resolve()
+    },
+    {
+      unavailableSource: { id: "trust-gate", label: "Dashboard trust status", href: "/inventory" },
+      read: getDashboardTrustGatePolicy(session).then((dashboardTrustGate) => {
+        source.dashboardTrustGate = dashboardTrustGate;
+      })
+    }
+  ];
+  const sourceResults = await Promise.allSettled(dashboardSources.map((sourceRead) => sourceRead.read));
+  source.unavailableSources = sourceResults.flatMap((result, index) => {
+    const dashboardSource = dashboardSources[index];
+    return result.status === "rejected" && dashboardSource
+      ? [dashboardSource.unavailableSource]
+      : [];
+  });
 
   return buildOperationalDashboardModel(session, source);
 }

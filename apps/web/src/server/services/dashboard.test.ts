@@ -822,18 +822,22 @@ describe("operational dashboard model", () => {
     expect(dashboardPageSource).toContain("Open Approval Inbox");
   });
 
-  it("reports a generic source-refresh warning without exposing an internal failure", () => {
+  it("reports each unavailable dashboard source without exposing an internal failure", () => {
     const dashboard = buildOperationalDashboardModel(session, {
-      hasUnavailableSource: true,
+      unavailableSources: [
+        { id: "receiving", label: "Receiving", href: "/receiving" },
+      ],
     });
 
     expect(dashboard.sourceHealth).toContainEqual(
       expect.objectContaining({
-        id: "dashboard-source-unavailable",
-        displayValue: "Some data unavailable",
+        id: "dashboard-source-unavailable-receiving",
+        label: "Receiving summary",
+        displayValue: "Unavailable",
+        href: "/receiving",
       }),
     );
-    expect(dashboard.sourceHealth.find((metric) => metric.id === "dashboard-source-unavailable")?.detail)
+    expect(dashboard.sourceHealth.find((metric) => metric.id === "dashboard-source-unavailable-receiving")?.detail)
       .not.toContain("Error");
   });
 });
