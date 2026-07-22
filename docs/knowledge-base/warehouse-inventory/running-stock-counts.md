@@ -3,7 +3,7 @@
 **Audience / required role:** Storekeepers, warehouse staff, branch managers, or authorized inventory users with stock count access  
 **Applies to:** Current assigned inventory location  
 **Related phase/module:** Phase I / Physical Inventory Counts  
-**Last verified against:** implemented stock count foundation and `DEC-0013`
+**Last verified against:** implemented stock count foundation, `DEC-0013`, and `DEC-0060`
 
 ## Purpose
 
@@ -33,8 +33,8 @@ Use this article to schedule, start, enter, submit, and review a physical stock 
 ## Expected result
 
 - The count keeps a stable cutoff snapshot of system quantity by item, UOM, lot, and expiry.
-- Blind counters enter actual quantities without needing to see system quantities.
-- Submitted counts show variance for review.
+- Blind counters enter actual quantities without access to system quantities, calculated variance, reviewer notes, or variance-disclosing audit details.
+- Only an authorized count reviewer within the current assigned scope can view variance information for review.
 - Reviewed counts remain evidence records and may support a linked Stock Adjustment where the workflow allows it.
 - No balance update is posted directly from count review. Inventory changes only after the linked Stock Adjustment is approved and posted.
 
@@ -44,6 +44,8 @@ Use this article to schedule, start, enter, submit, and review a physical stock 
 - Count variance correction must pass through the controlled Stock Adjustment workflow before it affects inventory.
 - Cancelled counts remain visible with cancellation reason and audit history.
 - Submitted counts cannot be edited through normal entry; request a recount instead.
+- Access to a count or dashboard does not authorize review, approval, adjustment posting, or inventory movement. The source workflow checks that authority again.
+- Recount history and variance activation remain controlled release work. Do not use a reviewer view as evidence that stock has been corrected.
 
 ## Related articles
 
