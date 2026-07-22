@@ -180,7 +180,7 @@ describe("operational dashboard model", () => {
     expect(
       dashboard.cards.map((card) => [card.id, card.value, card.href])
     ).toEqual([
-      ["open-purchase-orders", 1, "/purchase-orders"],
+      ["open-purchase-orders", 1, "/purchase-orders?dashboard=po-open-v1"],
       ["receiving-variance", 1, "/receiving"],
       ["ledger-reconciliation", 1, "/inventory"]
     ]);

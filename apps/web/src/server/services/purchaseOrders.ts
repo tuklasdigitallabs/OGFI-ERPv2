@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type Prisma } from "@ogfi/database";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import {
@@ -40,7 +40,7 @@ const purchaseOrderIssueMethods = [
   "Manual handoff",
 ] as const;
 
-const purchaseOrderOpenStatuses = [
+export const purchaseOrderOpenStatuses = [
   "DRAFT",
   "PENDING_APPROVAL",
   "APPROVED",
@@ -48,6 +48,25 @@ const purchaseOrderOpenStatuses = [
   "AMENDMENT_PENDING",
   "PARTIALLY_RECEIVED",
 ] as const;
+
+export const purchaseOrderDashboardProfiles = ["po-open-v1"] as const;
+
+export type PurchaseOrderDashboardProfile =
+  (typeof purchaseOrderDashboardProfiles)[number];
+
+export function resolvePurchaseOrderDashboardProfile(
+  value: string | undefined,
+): PurchaseOrderDashboardProfile | null {
+  return purchaseOrderDashboardProfiles.includes(value as PurchaseOrderDashboardProfile)
+    ? (value as PurchaseOrderDashboardProfile)
+    : null;
+}
+
+export function purchaseOrderDashboardProfileHref(
+  profile: PurchaseOrderDashboardProfile,
+) {
+  return `/purchase-orders?dashboard=${profile}`;
+}
 
 const issuePurchaseOrderSchema = z.object({
   id: z.string().uuid(),
@@ -144,6 +163,60 @@ export function normalizePurchaseOrderFilters(
         : undefined,
     approver: filters.approver?.trim() || undefined,
   };
+}
+
+function purchaseOrderScope(session: SessionContext) {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    deliveryLocationId: session.context.locationId,
+  };
+}
+
+function purchaseOrderDashboardProfileStatusWhere(
+  profile: PurchaseOrderDashboardProfile,
+) {
+  switch (profile) {
+    case "po-open-v1":
+      return { status: { in: [...purchaseOrderOpenStatuses] } };
+  }
+}
+
+function purchaseOrderListWhere(
+  session: SessionContext,
+  filters: PurchaseOrderListFilters,
+  dashboardProfile?: PurchaseOrderDashboardProfile,
+): Prisma.PurchaseOrderWhereInput {
+  const where: Prisma.PurchaseOrderWhereInput = purchaseOrderScope(session);
+  if (dashboardProfile) {
+    Object.assign(where, purchaseOrderDashboardProfileStatusWhere(dashboardProfile));
+    return where;
+  }
+  if (filters.status) {
+    where.status = filters.status;
+  }
+  if (filters.expectedFrom || filters.expectedTo) {
+    where.expectedDeliveryDate = {
+      ...(filters.expectedFrom ? { gte: new Date(filters.expectedFrom) } : {}),
+      ...(filters.expectedTo ? { lte: new Date(filters.expectedTo) } : {}),
+    };
+  }
+  if (filters.minAmount || filters.maxAmount) {
+    where.totalAmount = {
+      ...(filters.minAmount ? { gte: filters.minAmount } : {}),
+      ...(filters.maxAmount ? { lte: filters.maxAmount } : {}),
+    };
+  }
+  if (filters.query) {
+    where.OR = [
+      { publicReference: { contains: filters.query, mode: "insensitive" } },
+      { supplier: { legalName: { contains: filters.query, mode: "insensitive" } } },
+      { supplier: { tradingName: { contains: filters.query, mode: "insensitive" } } },
+      { purchaseRequest: { publicReference: { contains: filters.query, mode: "insensitive" } } },
+      { selectedSupplierQuotation: { quoteReference: { contains: filters.query, mode: "insensitive" } } },
+    ];
+  }
+  return where;
 }
 
 type QuoteLineSnapshotInput = {
@@ -684,17 +757,13 @@ export async function getPurchaseOrderDashboardRead(
 ): Promise<PurchaseOrderDashboardRead> {
   await requirePurchaseOrderRead(session);
 
-  const scope = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    deliveryLocationId: session.context.locationId,
-  };
+  const scope = purchaseOrderScope(session);
   const today = new Date().toISOString().slice(0, 10);
   const todayStart = new Date(`${today}T00:00:00.000Z`);
   const [openCount, commitment, fulfillmentLines, overdueOrders, currencyOrder] =
     await Promise.all([
       prisma.purchaseOrder.count({
-        where: { ...scope, status: { in: [...purchaseOrderOpenStatuses] } },
+        where: purchaseOrderListWhere(session, {}, "po-open-v1"),
       }),
       prisma.purchaseOrder.aggregate({
         where: scope,
@@ -754,88 +823,21 @@ export async function getPurchaseOrderDashboardRead(
   };
 }
 
-export async function listPurchaseOrders(
+async function listPurchaseOrdersWithOptions(
   session: SessionContext,
   filters: PurchaseOrderListFilters = {},
+  options: {
+    dashboardProfile?: PurchaseOrderDashboardProfile;
+    pagination?: { page: number; pageSize: number };
+  } = {},
 ) {
   await requirePurchaseOrderRead(session);
-  const normalizedFilters = normalizePurchaseOrderFilters(filters);
+  const normalizedFilters = options.dashboardProfile
+    ? {}
+    : normalizePurchaseOrderFilters(filters);
 
   const orders = await prisma.purchaseOrder.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      deliveryLocationId: session.context.locationId,
-      ...(normalizedFilters.status ? { status: normalizedFilters.status } : {}),
-      ...(normalizedFilters.expectedFrom || normalizedFilters.expectedTo
-        ? {
-            expectedDeliveryDate: {
-              ...(normalizedFilters.expectedFrom
-                ? { gte: new Date(normalizedFilters.expectedFrom) }
-                : {}),
-              ...(normalizedFilters.expectedTo
-                ? { lte: new Date(normalizedFilters.expectedTo) }
-                : {}),
-            },
-          }
-        : {}),
-      ...(normalizedFilters.minAmount || normalizedFilters.maxAmount
-        ? {
-            totalAmount: {
-              ...(normalizedFilters.minAmount
-                ? { gte: normalizedFilters.minAmount }
-                : {}),
-              ...(normalizedFilters.maxAmount
-                ? { lte: normalizedFilters.maxAmount }
-                : {}),
-            },
-          }
-        : {}),
-      ...(normalizedFilters.query
-        ? {
-            OR: [
-              {
-                publicReference: {
-                  contains: normalizedFilters.query,
-                  mode: "insensitive",
-                },
-              },
-              {
-                supplier: {
-                  legalName: {
-                    contains: normalizedFilters.query,
-                    mode: "insensitive",
-                  },
-                },
-              },
-              {
-                supplier: {
-                  tradingName: {
-                    contains: normalizedFilters.query,
-                    mode: "insensitive",
-                  },
-                },
-              },
-              {
-                purchaseRequest: {
-                  publicReference: {
-                    contains: normalizedFilters.query,
-                    mode: "insensitive",
-                  },
-                },
-              },
-              {
-                selectedSupplierQuotation: {
-                  quoteReference: {
-                    contains: normalizedFilters.query,
-                    mode: "insensitive",
-                  },
-                },
-              },
-            ],
-          }
-        : {}),
-    },
+    where: purchaseOrderListWhere(session, normalizedFilters, options.dashboardProfile),
     include: {
       supplier: true,
       purchaseRequest: true,
@@ -854,7 +856,13 @@ export async function listPurchaseOrders(
       },
       createdBy: true,
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    ...(options.pagination
+      ? {
+          skip: (options.pagination.page - 1) * options.pagination.pageSize,
+          take: options.pagination.pageSize,
+        }
+      : {}),
   });
 
   const approvalInstances =
@@ -1029,7 +1037,7 @@ export async function listPurchaseOrders(
     };
   });
 
-  if (normalizedFilters.approver) {
+  if (!options.dashboardProfile && normalizedFilters.approver) {
     const approverQuery = normalizedFilters.approver.toLowerCase();
     return mappedOrders.filter((order) =>
       order.currentApproverName?.toLowerCase().includes(approverQuery),
@@ -1037,6 +1045,62 @@ export async function listPurchaseOrders(
   }
 
   return mappedOrders;
+}
+
+export async function listPurchaseOrders(
+  session: SessionContext,
+  filters: PurchaseOrderListFilters = {},
+) {
+  return listPurchaseOrdersWithOptions(session, filters);
+}
+
+export type PurchaseOrderDashboardProfilePage = {
+  profile: PurchaseOrderDashboardProfile;
+  items: Awaited<ReturnType<typeof listPurchaseOrders>>;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export async function listPurchaseOrdersDashboardProfilePage(
+  session: SessionContext,
+  profileValue: string | undefined,
+  requestedPage: number,
+): Promise<PurchaseOrderDashboardProfilePage | null> {
+  const profile = resolvePurchaseOrderDashboardProfile(profileValue);
+  if (!profile) {
+    return null;
+  }
+  await requirePurchaseOrderRead(session);
+  const pageSize = 25;
+  const totalCount = await prisma.purchaseOrder.count({
+    where: purchaseOrderListWhere(session, {}, profile),
+  });
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, requestedPage), totalPages);
+  const items = await listPurchaseOrdersWithOptions(session, {}, {
+    dashboardProfile: profile,
+    pagination: { page, pageSize },
+  });
+
+  return { profile, items, totalCount, page, pageSize, totalPages };
+}
+
+/**
+ * Export companion for a closed dashboard profile. This intentionally accepts no
+ * ordinary workspace filters so a dashboard export cannot silently change the
+ * population shown by its count and pages.
+ */
+export async function listPurchaseOrdersDashboardProfile(
+  session: SessionContext,
+  profileValue: string | undefined,
+) {
+  const profile = resolvePurchaseOrderDashboardProfile(profileValue);
+  if (!profile) {
+    return null;
+  }
+  return listPurchaseOrdersWithOptions(session, {}, { dashboardProfile: profile });
 }
 
 export async function getPurchaseOrder(session: SessionContext, id: string) {

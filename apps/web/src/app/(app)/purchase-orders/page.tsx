@@ -19,6 +19,8 @@ import {
   createPurchaseOrderFromRecommendation,
   listApprovedRecommendationsForPo,
   listPurchaseOrders,
+  listPurchaseOrdersDashboardProfilePage,
+  resolvePurchaseOrderDashboardProfile,
   type PurchaseOrderListFilters
 } from "@/server/services/purchaseOrders";
 
@@ -94,19 +96,32 @@ export default async function PurchaseOrdersPage({
     maxAmount: getSearchParam(params, "maxAmount"),
     approver: getSearchParam(params, "approver")
   };
+  const dashboardProfile = resolvePurchaseOrderDashboardProfile(
+    getSearchParam(params, "dashboard")
+  );
+  const requestedPage = Math.max(1, Number(getSearchParam(params, "page")) || 1);
   const exportParams = new URLSearchParams();
-  Object.entries(filters).forEach(([key, value]) => {
-    if (value) {
-      exportParams.set(key, value);
-    }
-  });
+  if (dashboardProfile) {
+    exportParams.set("dashboard", dashboardProfile);
+  } else {
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) {
+        exportParams.set(key, value);
+      }
+    });
+  }
 
-  const [orders, approvedRecommendations] = await Promise.all([
-    listPurchaseOrders(session, filters),
+  const [dashboardProfilePage, workspaceOrders, approvedRecommendations] = await Promise.all([
+    dashboardProfile
+      ? listPurchaseOrdersDashboardProfilePage(session, dashboardProfile, requestedPage)
+      : Promise.resolve(null),
+    dashboardProfile ? Promise.resolve([]) : listPurchaseOrders(session, filters),
     canCreatePurchaseOrders
       ? listApprovedRecommendationsForPo(session)
       : Promise.resolve([])
   ]);
+  const orders = dashboardProfilePage?.items ?? workspaceOrders;
+  const totalOrders = dashboardProfilePage?.totalCount ?? orders.length;
   const scopedTotal = orders.reduce((total, order) => total + order.totalAmount, 0);
   const firstRecommendation = approvedRecommendations[0];
 
@@ -135,10 +150,12 @@ export default async function PurchaseOrdersPage({
       <div className="mb-5 grid gap-4 md:grid-cols-4">
         <Panel>
           <p className="text-sm font-semibold text-slate-500">Scoped POs</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{orders.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{totalOrders}</p>
         </Panel>
         <Panel>
-          <p className="text-sm font-semibold text-slate-500">Filtered value</p>
+          <p className="text-sm font-semibold text-slate-500">
+            {dashboardProfile ? "Page value" : "Filtered value"}
+          </p>
           <p className="mt-2 text-2xl font-bold text-blue-700">
             {orders[0]?.currencyCode ?? "PHP"} {scopedTotal.toFixed(2)}
           </p>
@@ -223,6 +240,17 @@ export default async function PurchaseOrdersPage({
               <Badge tone="info">Lifecycle</Badge>
             </div>
           </div>
+          {dashboardProfile ? (
+            <div className="mx-4 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700">
+              <p>
+                <strong>Dashboard filter: Open purchase orders.</strong> This list,
+                its pages, and its export use the selected location's open PO lifecycle.
+              </p>
+              <ButtonLink href="/purchase-orders" tone="secondary">
+                Clear dashboard filter
+              </ButtonLink>
+            </div>
+          ) : (
           <form className="ogfi-filter-bar grid gap-3 md:grid-cols-2 lg:grid-cols-4">
             <label className="grid gap-1 text-sm font-medium text-slate-700">
               Search
@@ -312,6 +340,7 @@ export default async function PurchaseOrdersPage({
               </ButtonLink>
             </div>
           </form>
+          )}
           {orders.length === 0 ? (
             <div className="ogfi-empty-state">
               <p className="font-semibold text-slate-900">No purchase orders found</p>
@@ -420,6 +449,27 @@ export default async function PurchaseOrdersPage({
               ))}
             </div>
           )}
+          {dashboardProfilePage ? (
+            <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+              <p>
+                Showing {(dashboardProfilePage.page - 1) * dashboardProfilePage.pageSize + (orders.length ? 1 : 0)}-
+                {(dashboardProfilePage.page - 1) * dashboardProfilePage.pageSize + orders.length} of {dashboardProfilePage.totalCount} open purchase orders
+              </p>
+              <div className="flex items-center gap-2">
+                {dashboardProfilePage.page > 1 ? (
+                  <ButtonLink href={`/purchase-orders?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page - 1}`} tone="secondary">Previous</ButtonLink>
+                ) : (
+                  <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Previous</span>
+                )}
+                <span className="font-semibold text-slate-700">Page {dashboardProfilePage.page} of {dashboardProfilePage.totalPages}</span>
+                {dashboardProfilePage.page < dashboardProfilePage.totalPages ? (
+                  <ButtonLink href={`/purchase-orders?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page + 1}`} tone="secondary">Next</ButtonLink>
+                ) : (
+                  <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Next</span>
+                )}
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
     </AppShell>

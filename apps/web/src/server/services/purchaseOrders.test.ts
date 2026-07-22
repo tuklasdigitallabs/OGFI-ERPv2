@@ -22,6 +22,9 @@ import {
   derivePurchaseOrderCancellationSubtype,
   normalizePurchaseOrderFilters,
   parsePurchaseOrderAmendmentLines,
+  purchaseOrderDashboardProfileHref,
+  purchaseOrderOpenStatuses,
+  resolvePurchaseOrderDashboardProfile,
   summarizePurchaseOrderFulfillment
 } from "./purchaseOrders";
 import { canReadPurchaseOrders } from "./authorization";
@@ -695,6 +698,23 @@ describe("purchase order lifecycle rules", () => {
       maxAmount: undefined,
       approver: undefined
     });
+  });
+
+  test("keeps the dashboard open-PO contract closed and aligned to its lifecycle set", () => {
+    expect(resolvePurchaseOrderDashboardProfile("po-open-v1")).toBe("po-open-v1");
+    expect(resolvePurchaseOrderDashboardProfile("open")).toBeNull();
+    expect(resolvePurchaseOrderDashboardProfile("po-open-v1&status=CLOSED")).toBeNull();
+    expect(purchaseOrderDashboardProfileHref("po-open-v1")).toBe(
+      "/purchase-orders?dashboard=po-open-v1"
+    );
+    expect(purchaseOrderOpenStatuses).toEqual([
+      "DRAFT",
+      "PENDING_APPROVAL",
+      "APPROVED",
+      "ISSUED",
+      "AMENDMENT_PENDING",
+      "PARTIALLY_RECEIVED"
+    ]);
   });
 
   test("builds immutable PO line snapshots from selected supplier quote lines", () => {

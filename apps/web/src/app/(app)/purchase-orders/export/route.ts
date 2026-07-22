@@ -11,7 +11,9 @@ import {
 import { canExportPurchaseOrders } from "@/server/services/exportAuthorization";
 import {
   listPurchaseOrders,
+  listPurchaseOrdersDashboardProfile,
   normalizePurchaseOrderFilters,
+  resolvePurchaseOrderDashboardProfile,
   type PurchaseOrderListFilters
 } from "@/server/services/purchaseOrders";
 import { getOperationalReportTrustContext } from "@/server/services/reports";
@@ -25,6 +27,9 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
+  const dashboardProfile = resolvePurchaseOrderDashboardProfile(
+    url.searchParams.get("dashboard") ?? undefined
+  );
   const filters: PurchaseOrderListFilters = normalizePurchaseOrderFilters({
     query: url.searchParams.get("q") ?? undefined,
     status: url.searchParams.get("status") ?? undefined,
@@ -43,7 +48,7 @@ export async function GET(request: Request) {
     locationId: session.context.locationId,
     locationName: session.context.locationName,
     locationType: session.context.locationType,
-    filters,
+    filters: dashboardProfile ? { dashboardProfile } : filters,
     trustGateMode: trustContext.trustGateMode,
     trustGateLabel: trustContext.trustGateLabel,
     trustGateSourceDecisionId: trustContext.trustGateSourceDecisionId,
@@ -67,7 +72,12 @@ export async function GET(request: Request) {
     metadata: auditMetadata
   });
   try {
-    const orders = await listPurchaseOrders(session, filters);
+    const orders = dashboardProfile
+      ? await listPurchaseOrdersDashboardProfile(session, dashboardProfile)
+      : await listPurchaseOrders(session, filters);
+    if (!orders) {
+      return new Response("Unknown dashboard profile", { status: 400 });
+    }
     const rows = [
       [
         "PO Number",

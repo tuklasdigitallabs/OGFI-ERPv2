@@ -12041,6 +12041,7 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/purchaseOrders.ts#listPurchaseOrders",
+      "server/services/purchaseOrders.ts#listPurchaseOrdersDashboardProfile",
       "server/services/reports.ts#getOperationalReportTrustContext"
     ],
     "callChains": [
@@ -12048,6 +12049,7 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/purchaseOrders.ts#listPurchaseOrders",
+      "GET -> server/services/purchaseOrders.ts#listPurchaseOrdersDashboardProfile",
       "GET -> server/services/reports.ts#getOperationalReportTrustContext"
     ],
     "boundaryClassifications": [
@@ -12059,17 +12061,23 @@
       "session validation",
       "live context resolution",
       "guarded-export-caller",
-      "assertReportExportScopeFilters"
+      "assertReportExportScopeFilters",
+      "live-read-permission",
+      "tenant-company-delivery-location-scope",
+      "closed-dashboard-profile"
     ],
     "boundaryCaseIds": [
       "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "FIN-AUTHZ-EXPORT-AUDIT-001"
+      "FIN-AUTHZ-EXPORT-AUDIT-001",
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
     ],
     "noMutationControls": [
       "invalid or stale session cannot authorize protected mutation",
       "report-source",
       "money",
-      "inventory"
+      "inventory",
+      "PurchaseOrder",
+      "AuditEvent"
     ]
   },
   {
@@ -31459,6 +31467,83 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/purchaseOrders.ts#listPurchaseOrdersDashboardProfile",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.purchaseOrderView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-read-permission",
+      "tenant-company-delivery-location-scope",
+      "closed-dashboard-profile"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "PurchaseOrder",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/purchaseOrders.ts#listPurchaseOrdersDashboardProfilePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.purchaseOrderView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-read-permission",
+      "tenant-company-delivery-location-scope",
+      "closed-dashboard-profile",
+      "server-pagination"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "PurchaseOrder",
+      "AuditEvent"
+    ]
   },
   {
     "id": "server/services/purchaseOrders.ts#requestPurchaseOrderAmendment",

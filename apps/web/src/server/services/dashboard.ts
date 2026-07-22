@@ -34,6 +34,7 @@ import { getMaintenanceDashboard, type MaintenanceDashboard } from "./maintenanc
 import {
   getPurchaseOrderDashboardRead,
   listPurchaseOrders,
+  purchaseOrderDashboardProfileHref,
   type PurchaseOrderDashboardRead
 } from "./purchaseOrders";
 import {
@@ -489,7 +490,7 @@ export function buildOperationalDashboardModel(
       id: "open-purchase-orders",
       label: "Open POs",
       value,
-      href: "/purchase-orders",
+      href: purchaseOrderDashboardProfileHref("po-open-v1"),
       description: "Approval, issue, and receiving pipeline",
       tone: cardTone(value)
     });
