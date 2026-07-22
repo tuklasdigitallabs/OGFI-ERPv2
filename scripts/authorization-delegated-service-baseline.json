@@ -2,6 +2,8 @@
   "server/services/approvalCancellation.ts#terminatePendingApprovalForCancellation",
   "server/services/approvalRouting.ts#activateApprovalStepWithEligibility",
   "server/services/approvalRouting.ts#configureApprovalStepRouting",
+  "server/services/approvalRouting.ts#lockNormalizedApprovalLifecycleActors",
+  "server/services/approvalRouting.ts#lockNormalizedApprovalLifecycleGraph",
   "server/services/approvalRouting.ts#prepareNormalizedApprovalDecisionPreflight",
   "server/services/approvalRoutingBackfill.ts#inspectApprovalRoutingReadiness",
   "server/services/approvalRoutingBackfill.ts#runApprovalRoutingBackfill",

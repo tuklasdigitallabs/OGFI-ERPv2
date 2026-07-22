@@ -3,6 +3,10 @@ import { normalizedApprovalRoutingEnabled } from "./approvalRouting";
 
 export type ApprovalCancellationPolicy = "APPROVAL_OPTIONAL" | "APPROVAL_REQUIRED";
 
+export type ApprovalCancellationCoherenceMode =
+  | "ACTIONABLE"
+  | "BUDGET_PRE_REVIEW_ALL_WAITING";
+
 export const approvalCancellationErrors = {
   missing: "APPROVAL_CANCELLATION_PENDING_APPROVAL_REQUIRED",
   ambiguous: "APPROVAL_CANCELLATION_PENDING_APPROVAL_AMBIGUOUS",
@@ -21,6 +25,9 @@ type LockedStep = {
   id: string;
   stepOrder: number;
   status: string;
+  actedAt: Date | null;
+  activatedAt: Date | null;
+  dueAt: Date | null;
 };
 
 export type ApprovalCancellationResult =
@@ -42,6 +49,7 @@ export async function terminatePendingApprovalForCancellation(
     documentType: string;
     documentId: string;
     policy: ApprovalCancellationPolicy;
+    coherenceMode?: ApprovalCancellationCoherenceMode;
   }
 ): Promise<ApprovalCancellationResult> {
   if (!normalizedApprovalRoutingEnabled()) {
@@ -75,7 +83,12 @@ export async function terminatePendingApprovalForCancellation(
   }
 
   const steps = await tx.$queryRaw<LockedStep[]>`
-    SELECT s.id, s."stepOrder", s.status::text AS status
+    SELECT s.id,
+           s."stepOrder",
+           s.status::text AS status,
+           s."actedAt",
+           s."activatedAt",
+           s."dueAt"
       FROM "ApprovalInstanceStep" s
      WHERE s."approvalInstanceId" = ${approval.id}::uuid
      ORDER BY s."stepOrder" ASC, s.id ASC
@@ -84,28 +97,48 @@ export async function terminatePendingApprovalForCancellation(
   const current = steps.filter(
     (step) => step.stepOrder === approval.currentStepOrder
   );
+  const coherenceMode = input.coherenceMode ?? "ACTIONABLE";
   const coherent =
-    current.length === 1 &&
-    current[0]?.status === "PENDING" &&
-    steps.every((step) => {
-      if (step.stepOrder < approval.currentStepOrder!) {
-        return step.status === "APPROVED";
-      }
-      if (step.stepOrder > approval.currentStepOrder!) {
-        return step.status === "WAITING";
-      }
-      return step.status === "PENDING";
-    });
+    coherenceMode === "BUDGET_PRE_REVIEW_ALL_WAITING"
+      ? input.documentType === "BudgetRevision" &&
+        steps.length > 0 &&
+        current.length === 1 &&
+        approval.currentStepOrder === steps[0]?.stepOrder &&
+        steps.every(
+          (step, index) =>
+            step.status === "WAITING" &&
+            step.actedAt === null &&
+            step.activatedAt === null &&
+            step.dueAt === null &&
+            (index === 0 || steps[index - 1]!.stepOrder < step.stepOrder)
+        )
+      : current.length === 1 &&
+        current[0]?.status === "PENDING" &&
+        steps.every((step) => {
+          if (step.stepOrder < approval.currentStepOrder!) {
+            return step.status === "APPROVED";
+          }
+          if (step.stepOrder > approval.currentStepOrder!) {
+            return step.status === "WAITING";
+          }
+          return step.status === "PENDING";
+        });
   if (!coherent) throw new Error(approvalCancellationErrors.incoherent);
 
-  const activeStepIds = steps
-    .filter((step) => step.stepOrder >= approval.currentStepOrder!)
-    .map((step) => step.id);
+  const activeStepIds =
+    coherenceMode === "BUDGET_PRE_REVIEW_ALL_WAITING"
+      ? steps.map((step) => step.id)
+      : steps
+          .filter((step) => step.stepOrder >= approval.currentStepOrder!)
+          .map((step) => step.id);
   const skipped = await tx.approvalInstanceStep.updateMany({
     where: {
       id: { in: activeStepIds },
       approvalInstanceId: approval.id,
-      status: { in: ["PENDING", "WAITING"] },
+      status:
+        coherenceMode === "BUDGET_PRE_REVIEW_ALL_WAITING"
+          ? "WAITING"
+          : { in: ["PENDING", "WAITING"] },
       approvalInstance: {
         tenantId: input.tenantId,
         companyId: input.companyId,

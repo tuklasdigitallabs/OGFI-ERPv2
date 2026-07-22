@@ -10,6 +10,10 @@ function exportedFunction(fileName: string, functionName: string) {
   return source.slice(start, next < 0 ? undefined : next)
 }
 
+function fileSource(fileName: string) {
+  return readFileSync(path.resolve(__dirname, fileName), "utf8")
+}
+
 const cases = [
   ["budgetControl.ts", "cancelBudgetRevision", "BudgetRevision", "BUDGET_REVISION_CANCELLATION_CONFLICT"],
   ["expenseRequests.ts", "cancelExpenseRequest", "ExpenseRequest", "EXPENSE_REQUEST_CANCELLATION_CONFLICT"],
@@ -24,23 +28,35 @@ describe("finance source cancellation integration", () => {
   for (const [fileName, functionName, documentType, conflictError] of cases) {
     test(`${functionName} terminates approval before scoped source CAS`, () => {
       const source = exportedFunction(fileName, functionName)
-      const termination = source.indexOf("terminatePendingApprovalForCancellation")
-      const sourceCas = source.indexOf(".updateMany(", termination)
+      const implementationSource =
+        functionName === "cancelBudgetRevision" ? fileSource(fileName) : source
+      const termination = implementationSource.indexOf("terminatePendingApprovalForCancellation")
+      const sourceCas = source.indexOf(".updateMany(")
       expect(termination).toBeGreaterThanOrEqual(0)
-      expect(sourceCas).toBeGreaterThan(termination)
-      expect(source).toContain(`documentType: "${documentType}"`)
+      expect(sourceCas).toBeGreaterThanOrEqual(0)
+      expect(implementationSource).toContain(`documentType: "${documentType}"`)
       expect(source).toContain("tenantId: session.context.tenantId")
       expect(source).toContain("companyId: session.context.companyId")
       expect(source).toContain("status:")
       expect(source).toContain(conflictError)
       expect(source).toContain("approvalTerminationMode")
       expect(source).toContain("approvalInstanceId")
+      if (functionName === "cancelBudgetRevision") {
+        expect(source).toContain("prepareNormalizedBudgetRevisionCancellation")
+        expect(source).toContain("prepareLegacyBudgetRevisionCancellation")
+        expect(implementationSource).toContain("APPROVAL_REQUIRED")
+      } else {
+        expect(sourceCas).toBeGreaterThan(termination)
+      }
     })
   }
 
   test("pending source states require an approval while post-approval-only families are optional", () => {
     for (const [fileName, functionName] of cases.slice(0, 5)) {
-      expect(exportedFunction(fileName, functionName)).toContain("APPROVAL_REQUIRED")
+      const source = functionName === "cancelBudgetRevision"
+        ? fileSource(fileName)
+        : exportedFunction(fileName, functionName)
+      expect(source).toContain("APPROVAL_REQUIRED")
     }
     expect(exportedFunction("finance.ts", "cancelPaymentRelease")).toContain('policy: "APPROVAL_OPTIONAL"')
     expect(exportedFunction("financePeriodClose.ts", "cancelPeriodCloseRun")).toContain('policy: "APPROVAL_OPTIONAL"')

@@ -294,7 +294,41 @@ async function grantCancellationAuthority(
   } satisfies SessionContext;
 }
 
-async function createFixture(item: Case) {
+async function grantBudgetReviewAuthority(fixture: ApprovalDecisionPgFixture) {
+  const permission = await prisma.permission.findUniqueOrThrow({
+    where: { code: permissions.financeBudgetCommitmentReview },
+    select: { id: true },
+  });
+  const role = await prisma.role.create({
+    data: {
+      tenantId: fixture.tenantId,
+      code: `BUDGET_REVIEW_${fixture.tenantId.slice(0, 8)}`,
+      name: "Budget commitment reviewer",
+      permissions: { create: { permissionId: permission.id } },
+    },
+  });
+  await prisma.userRoleAssignment.create({
+    data: {
+      userId: fixture.approverUserIds[0],
+      roleId: role.id,
+      startsAt: new Date(Date.now() - 60_000),
+    },
+  });
+  const base = fixture.sessionFor(1);
+  return {
+    ...base,
+    permissionCodes: [
+      ...base.permissionCodes,
+      permissions.financeBudgetCommitmentReview,
+    ],
+  } satisfies SessionContext;
+}
+
+async function createFixture(
+  item: Case,
+  input: { budgetPreReview?: boolean } = {},
+) {
+  const budgetPreReview = item.family === "BudgetRevision" && input.budgetPreReview !== false;
   const ids = {
     tenantId: randomUUID(),
     companyId: randomUUID(),
@@ -360,7 +394,12 @@ async function createFixture(item: Case) {
       status: "PENDING",
       currentStepOrder: 1,
       steps: { create: [
-        { id: ids.stepOneId, stepOrder: 1, assignedRoleId: ids.roleId, status: "PENDING" },
+        {
+          id: ids.stepOneId,
+          stepOrder: 1,
+          assignedRoleId: ids.roleId,
+          status: budgetPreReview ? "WAITING" : "PENDING",
+        },
         { id: ids.stepTwoId, stepOrder: 2, assignedRoleId: ids.roleId, status: "WAITING" },
       ] },
     },
@@ -376,9 +415,13 @@ async function createFixture(item: Case) {
       companyId: ids.companyId,
       routingPolicy: approvalRoutingPolicies[item.family],
       requiredPermissionCode: approvalPermissionByFamily[item.family],
-      activatedAt: index === 0 ? new Date() : null,
-      dueAt,
-      activationAudit: index === 0 ? { actorUserId: null, source: "approval-cancellation-postgresql-fixture" } : undefined,
+      activatedAt:
+        index === 0 && !budgetPreReview ? new Date() : null,
+      dueAt: budgetPreReview ? null : dueAt,
+      activationAudit:
+        index === 0 && !budgetPreReview
+          ? { actorUserId: null, source: "approval-cancellation-postgresql-fixture" }
+          : undefined,
       scopeGroups: [{ groupOrder: 1, targetMatchMode: "ANY", targets: scopeTargets }],
       prohibitedActors: [
         { userId: ids.requesterUserId, reasonCode: "REQUESTER" },
@@ -549,6 +592,521 @@ describe.skipIf(!runPg).sequential("public approval cancellation PostgreSQL matr
     expect(await prisma.auditEvent.count({ where: { tenantId: fixture.tenantId, eventType: item.eventType, entityId: fixture.relatedEntityIds[0] } })).toBe(1);
     expect(await prisma.notification.count({ where: { tenantId: fixture.tenantId, entityId: fixture.sourceId, notificationType: { startsWith: "APPROVAL_OUTCOME_" } } })).toBe(0);
   });
+
+  test("Budget legacy start-review and cancellation retain the flag-off graph and audit behavior", async () => {
+    const item = cases.find(({ family }) => family === "BudgetRevision")!;
+    process.env.APPROVAL_ROUTING_V1_ENABLED = "false";
+    try {
+      const { fixture, session: cancellationSession } = await createFixture(item, {
+        budgetPreReview: false,
+      });
+      const reviewSession = await grantBudgetReviewAuthority(fixture);
+      const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
+      await expect(startBudgetRevisionReview(reviewSession, {
+        budgetRevisionId: fixture.sourceId,
+        reason: "Legacy commitment-fit review",
+        evidenceReference,
+      })).resolves.toMatchObject({ status: "UNDER_REVIEW" });
+      await expect(executeCancellation(item, fixture, cancellationSession)).resolves.toMatchObject({
+        status: "CANCELLED",
+      });
+      expect(await prisma.approvalInstance.findUniqueOrThrow({
+        where: { id: fixture.approvalInstanceId },
+        select: { status: true, currentStepOrder: true },
+      })).toEqual({ status: "PENDING", currentStepOrder: 1 });
+      expect(await prisma.approvalInstanceStep.findMany({
+        where: { approvalInstanceId: fixture.approvalInstanceId },
+        orderBy: { stepOrder: "asc" },
+        select: { status: true },
+      })).toEqual([{ status: "PENDING" }, { status: "WAITING" }]);
+      expect(await prisma.auditEvent.count({
+        where: {
+          tenantId: fixture.tenantId,
+          entityId: fixture.relatedEntityIds[0],
+          eventType: { in: ["budget.revision_review_started", item.eventType] },
+        },
+      })).toBe(2);
+      expect(await prisma.notification.count({
+        where: { tenantId: fixture.tenantId, entityId: fixture.sourceId },
+      })).toBe(0);
+    } finally {
+      process.env.APPROVAL_ROUTING_V1_ENABLED = "true";
+    }
+  }, 10_000);
+
+  test("Budget start-review wins without deadlock and stale pre-review cancellation rolls back", async () => {
+    const item = cases.find(({ family }) => family === "BudgetRevision")!;
+    const { fixture, session: cancellationSession } = await createFixture(item);
+    const reviewSession = await grantBudgetReviewAuthority(fixture);
+    const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
+    const sourceLocked = deferred();
+    const releaseSource = deferred();
+    let blockerPid = 0;
+    const blocker = prisma.$transaction(async (tx) => {
+      [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+        SELECT pg_backend_pid() AS pid
+      `;
+      await tx.$queryRaw`
+        SELECT revision.id
+          FROM "BudgetRevision" revision
+         WHERE revision.id = ${fixture.sourceId}::uuid
+         FOR UPDATE
+      `;
+      sourceLocked.resolve();
+      await releaseSource.promise;
+    });
+    await sourceLocked.promise;
+
+    const review = startBudgetRevisionReview(reviewSession, {
+      budgetRevisionId: fixture.sourceId,
+      reason: "Concurrent commitment-fit review",
+      evidenceReference,
+    });
+    let cancellation: ReturnType<typeof executeCancellation> | undefined;
+    try {
+      const reviewPid = await waitForBlockedPid(blockerPid);
+      cancellation = executeCancellation(item, fixture, cancellationSession);
+      await waitForBlockedPid(reviewPid, [blockerPid]);
+    } finally {
+      releaseSource.resolve();
+    }
+    const [reviewResult, cancellationResult, blockerResult] = await Promise.allSettled([
+      review,
+      cancellation!,
+      blocker,
+    ]);
+    expect(reviewResult.status).toBe("fulfilled");
+    expect(cancellationResult.status).toBe("rejected");
+    expect(blockerResult.status).toBe("fulfilled");
+    expect(await sourceStatus(item.family, fixture.sourceId)).toBe("UNDER_REVIEW");
+    expect(await prisma.approvalInstanceStep.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: { stepOrder: "asc" },
+      select: { status: true },
+    })).toEqual([{ status: "PENDING" }, { status: "WAITING" }]);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: "budget.revision_review_started",
+      },
+    })).toBe(1);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: item.eventType,
+      },
+    })).toBe(0);
+  }, 10_000);
+
+  test("Budget pre-review cancellation wins without deadlock and review activation rolls back", async () => {
+    const item = cases.find(({ family }) => family === "BudgetRevision")!;
+    const { fixture, session: cancellationSession } = await createFixture(item);
+    const reviewSession = await grantBudgetReviewAuthority(fixture);
+    const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
+    const sourceLocked = deferred();
+    const releaseSource = deferred();
+    let blockerPid = 0;
+    const blocker = prisma.$transaction(async (tx) => {
+      [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+        SELECT pg_backend_pid() AS pid
+      `;
+      await tx.$queryRaw`
+        SELECT revision.id
+          FROM "BudgetRevision" revision
+         WHERE revision.id = ${fixture.sourceId}::uuid
+         FOR UPDATE
+      `;
+      sourceLocked.resolve();
+      await releaseSource.promise;
+    });
+    await sourceLocked.promise;
+
+    const cancellation = executeCancellation(item, fixture, cancellationSession);
+    let review: ReturnType<typeof startBudgetRevisionReview> | undefined;
+    try {
+      const cancellationPid = await waitForBlockedPid(blockerPid);
+      review = startBudgetRevisionReview(reviewSession, {
+        budgetRevisionId: fixture.sourceId,
+        reason: "Concurrent commitment-fit review",
+        evidenceReference,
+      });
+      await waitForBlockedPid(cancellationPid, [blockerPid]);
+    } finally {
+      releaseSource.resolve();
+    }
+    const [cancellationResult, reviewResult, blockerResult] = await Promise.allSettled([
+      cancellation,
+      review!,
+      blocker,
+    ]);
+    expect(cancellationResult.status).toBe("fulfilled");
+    expect(reviewResult.status).toBe("rejected");
+    expect(blockerResult.status).toBe("fulfilled");
+    expect(await sourceStatus(item.family, fixture.sourceId)).toBe("CANCELLED");
+    expect(await prisma.approvalInstance.findUniqueOrThrow({
+      where: { id: fixture.approvalInstanceId },
+      select: { status: true, currentStepOrder: true },
+    })).toEqual({ status: "CANCELLED", currentStepOrder: null });
+    expect(await prisma.approvalInstanceStep.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: { stepOrder: "asc" },
+      select: { status: true },
+    })).toEqual([{ status: "SKIPPED" }, { status: "SKIPPED" }]);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: item.eventType,
+      },
+    })).toBe(1);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: "budget.revision_review_started",
+      },
+    })).toBe(0);
+  }, 10_000);
+
+  test("Budget approval wins without deadlock and stale cancellation rolls back", async () => {
+    const item = cases.find(({ family }) => family === "BudgetRevision")!;
+    const { fixture, session: cancellationSession } = await createFixture(item);
+    const reviewSession = await grantBudgetReviewAuthority(fixture);
+    const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
+    const { executeCanonicalApprovalDecision } = await import("../src/server/services/approvals");
+    await startBudgetRevisionReview(reviewSession, {
+      budgetRevisionId: fixture.sourceId,
+      reason: "Commitment-fit review completed before decision race",
+      evidenceReference,
+    });
+    const sourceLocked = deferred();
+    const releaseSource = deferred();
+    let blockerPid = 0;
+    const blocker = prisma.$transaction(async (tx) => {
+      [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+        SELECT pg_backend_pid() AS pid
+      `;
+      await tx.$queryRaw`
+        SELECT revision.id
+          FROM "BudgetRevision" revision
+         WHERE revision.id = ${fixture.sourceId}::uuid
+         FOR UPDATE
+      `;
+      sourceLocked.resolve();
+      await releaseSource.promise;
+    });
+    await sourceLocked.promise;
+
+    contextMock.requireSessionContext.mockReset();
+    contextMock.requireSessionContext.mockResolvedValue(fixture.sessionFor(1));
+    const approval = executeCanonicalApprovalDecision({
+      family: "BudgetRevision",
+      decision: "APPROVE",
+      approvalInstanceId: fixture.approvalInstanceId,
+      evidenceReference,
+    });
+    let cancellation: ReturnType<typeof executeCancellation> | undefined;
+    try {
+      const approvalPid = await waitForBlockedPid(blockerPid);
+      cancellation = executeCancellation(item, fixture, cancellationSession);
+      await waitForBlockedPid(approvalPid, [blockerPid]);
+    } finally {
+      releaseSource.resolve();
+    }
+    const [approvalResult, cancellationResult, blockerResult] = await Promise.allSettled([
+      approval,
+      cancellation!,
+      blocker,
+    ]);
+    expect(approvalResult.status).toBe("fulfilled");
+    expect(cancellationResult.status).toBe("rejected");
+    expect(blockerResult.status).toBe("fulfilled");
+    expect(await sourceStatus(item.family, fixture.sourceId)).toBe("UNDER_REVIEW");
+    expect(await prisma.approvalInstance.findUniqueOrThrow({
+      where: { id: fixture.approvalInstanceId },
+      select: { status: true, currentStepOrder: true },
+    })).toEqual({ status: "PENDING", currentStepOrder: 2 });
+    expect(await prisma.approvalInstanceStep.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: { stepOrder: "asc" },
+      select: { status: true },
+    })).toEqual([{ status: "APPROVED" }, { status: "PENDING" }]);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: "budget.revision_approval_step_approved",
+      },
+    })).toBe(1);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: item.eventType,
+      },
+    })).toBe(0);
+  }, 10_000);
+
+  test("Budget cancellation wins without deadlock and stale approval rolls back", async () => {
+    const item = cases.find(({ family }) => family === "BudgetRevision")!;
+    const { fixture, session: cancellationSession } = await createFixture(item);
+    const reviewSession = await grantBudgetReviewAuthority(fixture);
+    const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
+    const { executeCanonicalApprovalDecision } = await import("../src/server/services/approvals");
+    await startBudgetRevisionReview(reviewSession, {
+      budgetRevisionId: fixture.sourceId,
+      reason: "Commitment-fit review completed before decision race",
+      evidenceReference,
+    });
+    const sourceLocked = deferred();
+    const releaseSource = deferred();
+    let blockerPid = 0;
+    const blocker = prisma.$transaction(async (tx) => {
+      [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+        SELECT pg_backend_pid() AS pid
+      `;
+      await tx.$queryRaw`
+        SELECT revision.id
+          FROM "BudgetRevision" revision
+         WHERE revision.id = ${fixture.sourceId}::uuid
+         FOR UPDATE
+      `;
+      sourceLocked.resolve();
+      await releaseSource.promise;
+    });
+    await sourceLocked.promise;
+
+    const cancellation = executeCancellation(item, fixture, cancellationSession);
+    contextMock.requireSessionContext.mockReset();
+    contextMock.requireSessionContext.mockResolvedValue(fixture.sessionFor(1));
+    let approval: ReturnType<typeof executeCanonicalApprovalDecision> | undefined;
+    try {
+      const cancellationPid = await waitForBlockedPid(blockerPid);
+      approval = executeCanonicalApprovalDecision({
+        family: "BudgetRevision",
+        decision: "APPROVE",
+        approvalInstanceId: fixture.approvalInstanceId,
+        evidenceReference,
+      });
+      await waitForBlockedPid(cancellationPid, [blockerPid]);
+    } finally {
+      releaseSource.resolve();
+    }
+    const [cancellationResult, approvalResult, blockerResult] = await Promise.allSettled([
+      cancellation,
+      approval!,
+      blocker,
+    ]);
+    expect(cancellationResult.status).toBe("fulfilled");
+    expect(approvalResult.status).toBe("rejected");
+    expect(blockerResult.status).toBe("fulfilled");
+    expect(await sourceStatus(item.family, fixture.sourceId)).toBe("CANCELLED");
+    expect(await prisma.approvalInstance.findUniqueOrThrow({
+      where: { id: fixture.approvalInstanceId },
+      select: { status: true, currentStepOrder: true },
+    })).toEqual({ status: "CANCELLED", currentStepOrder: null });
+    expect(await prisma.approvalInstanceStep.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: { stepOrder: "asc" },
+      select: { status: true },
+    })).toEqual([{ status: "SKIPPED" }, { status: "SKIPPED" }]);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: item.eventType,
+      },
+    })).toBe(1);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: "budget.revision_approval_step_approved",
+      },
+    })).toBe(0);
+  }, 10_000);
+
+  test("Budget review activation rejects when its preselected approval anchor is revoked before the authority lock", async () => {
+    const item = cases.find(({ family }) => family === "BudgetRevision")!;
+    const { fixture } = await createFixture(item);
+    const reviewSession = await grantBudgetReviewAuthority(fixture);
+    const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
+    const approvalAnchorUserId = [...fixture.approverUserIds].sort()[0]!;
+    const approvalAssignment = await prisma.userRoleAssignment.findFirstOrThrow({
+      where: {
+        userId: approvalAnchorUserId,
+        role: {
+          permissions: {
+            some: {
+              permission: { code: permissions.financeBudgetApprove },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    const actorLocked = deferred();
+    const revokeAnchor = deferred();
+    let blockerPid = 0;
+    const blocker = prisma.$transaction(async (tx) => {
+      [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+        SELECT pg_backend_pid() AS pid
+      `;
+      await tx.$queryRaw`
+        SELECT actor.id
+          FROM "User" actor
+         WHERE actor.id = ${approvalAnchorUserId}::uuid
+         FOR UPDATE
+      `;
+      actorLocked.resolve();
+      await revokeAnchor.promise;
+      await tx.userRoleAssignment.update({
+        where: { id: approvalAssignment.id },
+        data: { status: "INACTIVE", endsAt: new Date() },
+      });
+      await tx.user.update({
+        where: { id: approvalAnchorUserId },
+        data: { privilegeEpoch: { increment: 1 } },
+      });
+    });
+    await actorLocked.promise;
+
+    const review = startBudgetRevisionReview(reviewSession, {
+      budgetRevisionId: fixture.sourceId,
+      reason: "Must reject a stale approval anchor",
+      evidenceReference,
+    });
+    try {
+      await waitForBlockedPid(blockerPid);
+    } finally {
+      revokeAnchor.resolve();
+    }
+    const [reviewResult, blockerResult] = await Promise.allSettled([review, blocker]);
+    expect(reviewResult.status).toBe("rejected");
+    expect(blockerResult.status).toBe("fulfilled");
+    expect(await sourceStatus(item.family, fixture.sourceId)).toBe("SUBMITTED");
+    expect(await prisma.approvalInstanceStep.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: { stepOrder: "asc" },
+      select: { status: true },
+    })).toEqual([{ status: "WAITING" }, { status: "WAITING" }]);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: "budget.revision_review_started",
+      },
+    })).toBe(0);
+  }, 10_000);
+
+  test("Budget review activation rejects a source-only stale snapshot without changing its approval graph", async () => {
+    const item = cases.find(({ family }) => family === "BudgetRevision")!;
+    const { fixture } = await createFixture(item);
+    const reviewSession = await grantBudgetReviewAuthority(fixture);
+    const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
+    const sourceLocked = deferred();
+    const updateSource = deferred();
+    let blockerPid = 0;
+    const blocker = prisma.$transaction(async (tx) => {
+      [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+        SELECT pg_backend_pid() AS pid
+      `;
+      await tx.$queryRaw`
+        SELECT revision.id
+          FROM "BudgetRevision" revision
+         WHERE revision.id = ${fixture.sourceId}::uuid
+         FOR UPDATE
+      `;
+      sourceLocked.resolve();
+      await updateSource.promise;
+      await tx.budgetRevision.update({
+        where: { id: fixture.sourceId },
+        data: { reason: "Concurrent same-status source snapshot change" },
+      });
+    });
+    await sourceLocked.promise;
+
+    const review = startBudgetRevisionReview(reviewSession, {
+      budgetRevisionId: fixture.sourceId,
+      reason: "Must reject a stale source snapshot",
+      evidenceReference,
+    });
+    try {
+      await waitForBlockedPid(blockerPid);
+    } finally {
+      updateSource.resolve();
+    }
+    const [reviewResult, blockerResult] = await Promise.allSettled([review, blocker]);
+    expect(reviewResult.status).toBe("rejected");
+    expect(blockerResult.status).toBe("fulfilled");
+    expect(await sourceStatus(item.family, fixture.sourceId)).toBe("SUBMITTED");
+    expect(await prisma.approvalInstanceStep.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: { stepOrder: "asc" },
+      select: { status: true },
+    })).toEqual([{ status: "WAITING" }, { status: "WAITING" }]);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: "budget.revision_review_started",
+      },
+    })).toBe(0);
+  }, 10_000);
+
+  test("Budget review retry remains idempotent after a prior step advances", async () => {
+    const item = cases.find(({ family }) => family === "BudgetRevision")!;
+    const { fixture } = await createFixture(item);
+    const reviewSession = await grantBudgetReviewAuthority(fixture);
+    const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
+    const firstReview = await startBudgetRevisionReview(reviewSession, {
+      budgetRevisionId: fixture.sourceId,
+      reason: "Initial commitment-fit review",
+      evidenceReference,
+    });
+    expect(firstReview.status).toBe("UNDER_REVIEW");
+    contextMock.requireSessionContext.mockReset();
+    contextMock.requireSessionContext.mockResolvedValue(fixture.sessionFor(1));
+    const { executeCanonicalApprovalDecision } = await import("../src/server/services/approvals");
+    await executeCanonicalApprovalDecision({
+      family: "BudgetRevision",
+      decision: "APPROVE",
+      approvalInstanceId: fixture.approvalInstanceId,
+      evidenceReference,
+    });
+    const retry = await startBudgetRevisionReview(reviewSession, {
+      budgetRevisionId: fixture.sourceId,
+      reason: "Duplicate commitment-fit review request",
+      evidenceReference,
+    });
+    expect(retry.status).toBe("UNDER_REVIEW");
+    expect(await prisma.approvalInstance.findUniqueOrThrow({
+      where: { id: fixture.approvalInstanceId },
+      select: { status: true, currentStepOrder: true },
+    })).toEqual({ status: "PENDING", currentStepOrder: 2 });
+    expect(await prisma.approvalInstanceStep.findMany({
+      where: { approvalInstanceId: fixture.approvalInstanceId },
+      orderBy: { stepOrder: "asc" },
+      select: { status: true },
+    })).toEqual([{ status: "APPROVED" }, { status: "PENDING" }]);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.relatedEntityIds[0],
+        eventType: "budget.revision_review_started",
+      },
+    })).toBe(1);
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: fixture.tenantId,
+        entityType: "ApprovalInstanceStep",
+        entityId: fixture.stepIds[0],
+        eventType: "approval.step_activated",
+      },
+    })).toBe(1);
+  }, 10_000);
 
   test("FIN-AUTHZ-CANCELLATION-001 an actor from another tenant cannot cancel or terminate the approval", async () => {
     const item = cases.find(({ family }) => family === "ExpenseRequest")!;

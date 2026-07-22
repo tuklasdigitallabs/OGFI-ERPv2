@@ -438,6 +438,18 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
         : {}),
     });
     if (family === "BudgetRevision") {
+      const beforeActivation = await approvalDecisionPgSnapshot(fixture);
+      contextMock.requireSessionContext.mockReset();
+      contextMock.requireSessionContext.mockResolvedValue(fixture.sessionFor(1));
+      const { executeCanonicalApprovalDecision } = await import("../src/server/services/approvals");
+      await expect(executeCanonicalApprovalDecision({
+        family: "BudgetRevision",
+        decision: "APPROVE",
+        approvalInstanceId: fixture.approvalInstanceId,
+        evidenceReference: "fixture://decision/evidence",
+      })).rejects.toThrow("APPROVAL_NOT_ACTIONABLE");
+      expect(await approvalDecisionPgSnapshot(fixture)).toEqual(beforeActivation);
+      expect(await readSpecializedStatus(family, fixture.sourceId)).toBe("SUBMITTED");
       const { startBudgetRevisionReview } = await import("../src/server/services/budgetControl");
       await startBudgetRevisionReview(fixture.sessionFor(1), {
         budgetRevisionId: fixture.sourceId,

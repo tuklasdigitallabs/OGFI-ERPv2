@@ -90,6 +90,20 @@ export type NormalizedApprovalDecisionPreflight = {
   directRecipientUserId: string | null;
 };
 
+export type LockedNormalizedApprovalLifecycleStep =
+  LockedNormalizedApprovalStepRouting & {
+    status: string;
+    actedAt: Date | null;
+    activatedAt: Date | null;
+    dueAt: Date | null;
+  };
+
+export type LockedNormalizedApprovalLifecycleGraph = {
+  approvalInstanceId: string;
+  currentStepOrder: number;
+  steps: LockedNormalizedApprovalLifecycleStep[];
+};
+
 type ApprovalStepActivationInput = ApprovalStepEligibilityIdentity & {
   activatedAt?: Date;
   dueAt?: Date | null;
@@ -704,6 +718,7 @@ async function readNormalizedApprovalDecisionRouting(
       id: input.currentStepId,
       approvalInstanceId: input.approvalInstanceId,
       stepOrder: input.currentStepOrder,
+      status: "PENDING",
       approvalInstance: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId
@@ -739,6 +754,118 @@ async function readNormalizedApprovalDecisionRouting(
       })
     : null;
   return { currentStep, nextStep };
+}
+
+/**
+ * Locks the live workflow principals before a normalized lifecycle operation
+ * acquires approval or source rows. Entitlement mutation paths fence their
+ * changes through the affected User privilege epoch, so this shared User lock
+ * keeps the later in-transaction permission and scope revalidation stable.
+ */
+export async function lockNormalizedApprovalLifecycleActors(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { additionalActorUserIds?: string[]; now?: Date } = {}
+) {
+  const now = input.now ?? new Date();
+  const actorIds = [
+    session.user.id,
+    ...(input.additionalActorUserIds ?? [])
+  ]
+    .filter((id, index, values) => values.indexOf(id) === index)
+    .sort();
+  const lockedActors = new Map<string, LockedApprovalDecisionActor>();
+  for (const userId of actorIds) {
+    const rows = await tx.$queryRaw<LockedApprovalDecisionActor[]>`
+      SELECT id, status, "privilegeEpoch"
+        FROM "User"
+       WHERE id = ${userId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+       FOR SHARE
+    `;
+    const actor = rows[0];
+    if (rows.length !== 1 || !actor || actor.status !== "ACTIVE") {
+      throw new Error("APPROVAL_AUTHORITY_STALE");
+    }
+    lockedActors.set(userId, actor);
+  }
+
+  if (session.authentication?.sessionId) {
+    const rows = await tx.$queryRaw<LockedApprovalDecisionSession[]>`
+      SELECT status, "privilegeEpochAtIssue", "idleExpiresAt", "absoluteExpiresAt"
+        FROM "AuthSession"
+       WHERE id = ${session.authentication.sessionId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "userId" = ${session.user.id}::uuid
+       FOR SHARE
+    `;
+    const liveSession = rows[0];
+    const actingUser = lockedActors.get(session.user.id);
+    if (
+      !liveSession ||
+      !actingUser ||
+      liveSession.status !== "ACTIVE" ||
+      liveSession.privilegeEpochAtIssue !== actingUser.privilegeEpoch ||
+      liveSession.idleExpiresAt <= now ||
+      liveSession.absoluteExpiresAt <= now
+    ) {
+      throw new Error("APPROVAL_AUTHORITY_STALE");
+    }
+  }
+
+  return { now, actorIds };
+}
+
+/** Locks one complete normalized approval graph in deterministic row order. */
+export async function lockNormalizedApprovalLifecycleGraph(
+  tx: TransactionClient,
+  input: {
+    tenantId: string;
+    companyId: string;
+    approvalInstanceId: string;
+    documentType: string;
+    documentId: string;
+  }
+): Promise<LockedNormalizedApprovalLifecycleGraph> {
+  const instances = await tx.$queryRaw<Array<{
+    id: string;
+    currentStepOrder: number | null;
+  }>>`
+    SELECT ai.id, ai."currentStepOrder"
+      FROM "ApprovalInstance" ai
+     WHERE ai.id = ${input.approvalInstanceId}::uuid
+       AND ai."tenantId" = ${input.tenantId}::uuid
+       AND ai."companyId" = ${input.companyId}::uuid
+       AND ai."documentType" = ${input.documentType}
+       AND ai."documentId" = ${input.documentId}::uuid
+       AND ai.status = 'PENDING'::"ApprovalStatus"
+     FOR UPDATE OF ai
+  `;
+  const instance = instances[0];
+  if (!instance || instance.currentStepOrder === null) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+
+  const steps = await tx.$queryRaw<LockedNormalizedApprovalLifecycleStep[]>`
+    SELECT step.id,
+           step."stepOrder",
+           step."assignedUserId",
+           step."assignedRoleId",
+           step.status::text AS status,
+           step."actedAt",
+           step."activatedAt",
+           step."dueAt"
+      FROM "ApprovalInstanceStep" step
+     WHERE step."approvalInstanceId" = ${instance.id}::uuid
+     ORDER BY step."stepOrder" ASC, step.id ASC
+     FOR UPDATE OF step
+  `;
+  if (steps.length === 0) throw new Error("APPROVAL_NOT_ACTIONABLE");
+  return {
+    approvalInstanceId: instance.id,
+    currentStepOrder: instance.currentStepOrder,
+    steps
+  };
 }
 
 async function lockNormalizedApprovalDecisionAuthority(

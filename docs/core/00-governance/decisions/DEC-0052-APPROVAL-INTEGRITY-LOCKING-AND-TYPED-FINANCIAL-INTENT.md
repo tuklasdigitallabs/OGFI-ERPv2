@@ -98,6 +98,16 @@ The selected structure provides those controls without inventing the unresolved 
 - Knowledge base / training: Dunong must assess role-based approval guidance only after the finance policies, implemented labels, and verified behavior are confirmed. No user-facing article should describe intermediate amount changes or payment readiness yet.
 - Tests / UAT: Require populated-migration duplicate preflight, uniqueness race, canonical entry-point parity, lock-order/deadlock, stale source/version, live revocation, scope, no-self-approval, retry, rollback, audit/notification cardinality, petty-cash intent history, exact `NUMERIC` payment capacity, and concurrent payment-request coverage on PostgreSQL for every registered family.
 
+### Budget Revision normalized-routing checkpoint — 2026-07-22
+
+The confirmed order is now implemented for the normalized **Budget Revision** lifecycle only:
+
+`sorted authority Users → acting AuthSession when present → exact pending ApprovalInstance → all ApprovalInstanceSteps by (stepOrder, id) → exact BudgetRevision source row → guarded mutations, audit, and permitted notification`.
+
+`start_review` locks the acting commitment reviewer and the preselected deterministic first-step eligibility anchor, then revalidates that exact anchor at the original eligibility time. It changes only a coherent `SUBMITTED + all WAITING` graph to `UNDER_REVIEW + first PENDING`. Cancellation has an explicit Budget-only pre-review mode that atomically terminates the genuine all-`WAITING` graph. Approval, rejection, review activation, and cancellation fence stale requests with the source status plus `updatedAt`; this is a bounded stale-action token, not a numeric-version substitute. The invariant relies on Budget Revision having no same-status material mutation or transition back to `SUBMITTED`.
+
+Fresh disposable PostgreSQL evidence applies all 126 migrations and passes 22/22 cancellation/lifecycle cases, including a flag-off Budget start-review/cancellation regression, both start orders for cancellation versus start-review and cancellation versus a first-step approval, exact-anchor revocation while lock-blocked, source-only stale-snapshot rollback, post-advance Start Review retry, atomic rollback, and no duplicate audit. Terminal final-step decision-versus-cancellation races remain an activation gate. This is a feature-disabled implementation checkpoint only. It does not enable normalized routing, resolve the remaining family/policy gates, or authorize production promotion.
+
 ## Open policy gaps preserved by this decision
 
 1. **Petty-cash amount changes:** Finance and Operations must confirm whether a later approver may reduce, increase, restore, or leave unchanged the current proposal; the applicable bounds; required reason; whose acknowledgment or renewed consent is required; and which value is displayed at each step. The typed persistence structure records only behavior authorized by that future policy.
@@ -110,7 +120,7 @@ The selected structure provides those controls without inventing the unresolved 
 |---|---|---|---|
 | Design and review the partial unique-index and typed petty-cash intent migrations, including populated-data preflight and rollback | Database Engineering + Architecture | Before implementation merge | Pending |
 | Perform authorized audited reconciliation if migration preflight finds duplicate pending tuples | Product Governance + Operations + Data owner | Before migration retry | Conditional; never automatic |
-| Implement the single typed dispatcher, deterministic lock order, and transaction-bound family adapters | Backend Engineering + Architecture | Before normalized-routing activation review | Pending |
+| Implement the single typed dispatcher, deterministic lock order, and transaction-bound family adapters | Backend Engineering + Architecture | Before normalized-routing activation review | In progress; Budget Revision normalized lifecycle checkpoint completed, remaining families pending |
 | Confirm petty-cash later-step amount-change, reason, and acknowledgment policy | Finance + Operations | Before any intermediate amount-change behavior | Open policy |
 | Confirm payment readiness, match/exception/status, outstanding-capacity, and active-request matrix | Finance + Accounts Payable | Before production payment-request approval | Open policy |
 | Prove the all-family PostgreSQL behavioral matrix, including duplicate, lock, concurrency, intent, and exact-capacity cases | QA + Database Engineering + Security + Backend Engineering | Before flag enablement | Pending |

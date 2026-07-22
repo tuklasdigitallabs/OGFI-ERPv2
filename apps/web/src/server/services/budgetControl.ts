@@ -16,6 +16,9 @@ import {
   activateApprovalStepWithEligibility,
   assertAnyEligibleApprovalActorForStep,
   configureApprovalStepRouting,
+  findAnyEligibleApprovalActorForStep,
+  lockNormalizedApprovalLifecycleActors,
+  lockNormalizedApprovalLifecycleGraph,
   normalizedApprovalRoutingEnabled,
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
@@ -596,6 +599,95 @@ async function requireBudgetScopeInTransaction(
   if (assignments.length === 0) {
     throw new Error("SCOPE_DENIED");
   }
+}
+
+async function assertBudgetLifecyclePermissionAfterActorLock(
+  tx: TransactionClient,
+  session: SessionContext,
+  permissionCode: string,
+) {
+  const grants = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT ura.id
+      FROM "UserRoleAssignment" ura
+      JOIN "Role" role ON role.id = ura."roleId"
+      JOIN "RolePermission" rp ON rp."roleId" = role.id
+      JOIN "Permission" permission ON permission.id = rp."permissionId"
+     WHERE ura."userId" = ${session.user.id}::uuid
+       AND ura.status = 'ACTIVE'::"RecordStatus"
+       AND ura."startsAt" <= NOW()
+       AND (ura."endsAt" IS NULL OR ura."endsAt" > NOW())
+       AND role.status = 'ACTIVE'::"RecordStatus"
+       AND (role."tenantId" IS NULL OR role."tenantId" = ${session.context.tenantId}::uuid)
+       AND permission.code = ${permissionCode}
+       AND (permission."tenantId" IS NULL OR permission."tenantId" = ${session.context.tenantId}::uuid)
+     LIMIT 1
+  `;
+  if (grants.length !== 1) throw new Error("PERMISSION_DENIED");
+}
+
+async function assertBudgetLifecycleScopeAfterActorLock(
+  tx: TransactionClient,
+  session: SessionContext,
+  budget: { locationId: string | null; lines: Array<{ locationId: string | null }> },
+) {
+  const locationIds = [...new Set([
+    budget.locationId,
+    ...budget.lines.map((line) => line.locationId),
+  ].filter((locationId): locationId is string => Boolean(locationId)))].sort();
+  for (const locationId of locationIds) {
+    const assignments = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT usa.id
+        FROM "UserScopeAssignment" usa
+       WHERE usa."userId" = ${session.user.id}::uuid
+         AND usa.status = 'ACTIVE'::"RecordStatus"
+         AND usa."startsAt" <= NOW()
+         AND (usa."endsAt" IS NULL OR usa."endsAt" > NOW())
+         AND (
+           (usa."scopeType" = 'LOCATION'::"ScopeType" AND usa."scopeId" = ${locationId}::uuid)
+           OR (
+             usa."scopeType" = 'COMPANY'::"ScopeType"
+             AND usa."scopeId" = ${session.context.companyId}::uuid
+             AND usa."accessLevel" = 'MANAGE'::"AccessLevel"
+           )
+         )
+       LIMIT 1
+    `;
+    if (assignments.length !== 1) throw new Error("SCOPE_DENIED");
+  }
+}
+
+async function lockAndRevalidateBudgetRevisionSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    budgetRevisionId: string;
+    expectedStatus: string;
+    expectedUpdatedAt: Date;
+  },
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    status: string;
+    updatedAt: Date;
+  }>>`
+    SELECT revision.id,
+           revision.status::text AS status,
+           revision."updatedAt"
+      FROM "BudgetRevision" revision
+     WHERE revision.id = ${input.budgetRevisionId}::uuid
+       AND revision."tenantId" = ${session.context.tenantId}::uuid
+       AND revision."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF revision
+  `;
+  const locked = rows[0];
+  if (!locked) throw new Error("BUDGET_REVISION_NOT_FOUND");
+  if (
+    locked.status !== input.expectedStatus ||
+    locked.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+  ) {
+    throw new Error("BUDGET_REVISION_STALE_ACTION");
+  }
+  return locked;
 }
 
 async function getScopedBudgetOrThrow(
@@ -2300,6 +2392,210 @@ export async function submitBudgetRevisionForReview(
   });
 }
 
+async function findSinglePendingBudgetRevisionApproval(
+  tx: TransactionClient,
+  session: SessionContext,
+  budgetRevisionId: string,
+) {
+  const approvals = await tx.approvalInstance.findMany({
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "BudgetRevision",
+      documentId: budgetRevisionId,
+      status: "PENDING",
+    },
+    include: { steps: { orderBy: [{ stepOrder: "asc" }, { id: "asc" }] } },
+    orderBy: { createdAt: "asc" },
+    take: 2,
+  });
+  if (approvals.length !== 1) {
+    throw new Error(
+      approvals.length === 0
+        ? "BUDGET_REVISION_APPROVAL_NOT_FOUND"
+        : "BUDGET_REVISION_APPROVAL_AMBIGUOUS",
+    );
+  }
+  const approval = approvals[0]!;
+  const currentStep = approval.steps.find(
+    (step) => step.stepOrder === approval.currentStepOrder,
+  );
+  if (!currentStep) throw new Error("BUDGET_REVISION_APPROVAL_STEP_NOT_FOUND");
+  return { approval, currentStep };
+}
+
+async function prepareNormalizedBudgetRevisionReview(
+  tx: TransactionClient,
+  session: SessionContext,
+  budgetRevisionId: string,
+) {
+  const preliminaryRevision = await getScopedBudgetRevisionOrThrow(
+    tx,
+    session,
+    budgetRevisionId,
+  );
+  if (!["SUBMITTED", "UNDER_REVIEW"].includes(preliminaryRevision.status)) {
+    assertBudgetRevisionTransition({
+      transition: "start_review",
+      status: preliminaryRevision.status,
+    });
+  }
+  const { approval: preliminaryApproval, currentStep: preliminaryStep } =
+    await findSinglePendingBudgetRevisionApproval(
+      tx,
+      session,
+      preliminaryRevision.id,
+    );
+  const eligibilityAt = new Date();
+  const anchor = preliminaryRevision.status === "SUBMITTED"
+    ? await findAnyEligibleApprovalActorForStep(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceStepId: preliminaryStep.id,
+        now: eligibilityAt,
+      })
+    : null;
+  if (preliminaryRevision.status === "SUBMITTED" && !anchor) {
+    throw new Error("APPROVAL_STEP_ELIGIBLE_ACTOR_NOT_AVAILABLE");
+  }
+
+  await lockNormalizedApprovalLifecycleActors(tx, session, {
+    ...(anchor ? { additionalActorUserIds: [anchor.userId] } : {}),
+    now: eligibilityAt,
+  });
+  const graph = await lockNormalizedApprovalLifecycleGraph(tx, {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    approvalInstanceId: preliminaryApproval.id,
+    documentType: "BudgetRevision",
+    documentId: preliminaryRevision.id,
+  });
+  await lockAndRevalidateBudgetRevisionSource(tx, session, {
+    budgetRevisionId: preliminaryRevision.id,
+    expectedStatus: preliminaryRevision.status,
+    expectedUpdatedAt: preliminaryRevision.updatedAt,
+  });
+  const revision = await getScopedBudgetRevisionOrThrow(
+    tx,
+    session,
+    preliminaryRevision.id,
+  );
+  await assertBudgetLifecyclePermissionAfterActorLock(
+    tx,
+    session,
+    permissions.financeBudgetCommitmentReview,
+  );
+  await assertBudgetLifecycleScopeAfterActorLock(
+    tx,
+    session,
+    revision.budget,
+  );
+  if (revision.requestedByUserId === session.user.id) {
+    throw new Error("BUDGET_REVISION_SELF_REVIEW_BLOCKED");
+  }
+
+  const currentStep = graph.steps.find(
+    (step) => step.stepOrder === graph.currentStepOrder,
+  );
+  if (!currentStep || currentStep.id !== preliminaryStep.id) {
+    throw new Error("BUDGET_REVISION_APPROVAL_STATE_INCOHERENT");
+  }
+  if (revision.status === "SUBMITTED") {
+    const firstStep = graph.steps[0];
+    const coherentPreReview = graph.steps.every(
+      (step) =>
+        step.status === "WAITING" &&
+        step.actedAt === null &&
+        step.activatedAt === null &&
+        step.dueAt === null,
+    );
+    if (
+      !firstStep ||
+      graph.currentStepOrder !== firstStep.stepOrder ||
+      !coherentPreReview
+    ) {
+      throw new Error("BUDGET_REVISION_APPROVAL_STATE_INCOHERENT");
+    }
+  } else if (revision.status === "UNDER_REVIEW") {
+    const coherentActionableChain = graph.steps.every((step) => {
+      if (step.stepOrder < graph.currentStepOrder) return step.status === "APPROVED";
+      if (step.stepOrder === graph.currentStepOrder) return step.status === "PENDING";
+      return step.status === "WAITING";
+    });
+    if (!coherentActionableChain) {
+      throw new Error("BUDGET_REVISION_REVIEW_ACTIVATION_INCOMPLETE");
+    }
+  } else {
+    throw new Error("BUDGET_REVISION_REVIEW_ACTIVATION_INCOMPLETE");
+  }
+
+  if (anchor) {
+    await assertAnyEligibleApprovalActorForStep(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceStepId: currentStep.id,
+      actorUserId: anchor.userId,
+      now: eligibilityAt,
+    });
+  }
+  return {
+    revision,
+    approval: preliminaryApproval,
+    firstStep: currentStep,
+    activationAnchorUserId: anchor?.userId,
+    eligibilityAt: anchor ? eligibilityAt : undefined,
+  };
+}
+
+async function prepareLegacyBudgetRevisionReview(
+  tx: TransactionClient,
+  session: SessionContext,
+  budgetRevisionId: string,
+) {
+  const lockedRevision = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT revision.id
+      FROM "BudgetRevision" AS revision
+     WHERE revision.id = ${budgetRevisionId}::uuid
+       AND revision."tenantId" = ${session.context.tenantId}::uuid
+       AND revision."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE
+  `;
+  if (lockedRevision.length !== 1) throw new Error("BUDGET_REVISION_NOT_FOUND");
+  const revision = await getScopedBudgetRevisionOrThrow(
+    tx,
+    session,
+    budgetRevisionId,
+  );
+  const { approval, currentStep } = await findSinglePendingBudgetRevisionApproval(
+    tx,
+    session,
+    revision.id,
+  );
+  if (revision.status === "UNDER_REVIEW") {
+    if (currentStep.status !== "PENDING") {
+      throw new Error("BUDGET_REVISION_REVIEW_ACTIVATION_INCOMPLETE");
+    }
+    return {
+      revision,
+      approval,
+      firstStep: currentStep,
+      activationAnchorUserId: undefined,
+      eligibilityAt: undefined,
+    };
+  }
+  assertBudgetRevisionTransition({ transition: "start_review", status: revision.status });
+  if (currentStep.status !== "PENDING") {
+    throw new Error("BUDGET_REVISION_APPROVAL_STEP_NOT_ACTIONABLE");
+  }
+  return {
+    revision,
+    approval,
+    firstStep: currentStep,
+    activationAnchorUserId: undefined,
+    eligibilityAt: undefined,
+  };
+}
+
 export async function startBudgetRevisionReview(
   session: SessionContext,
   input: BudgetRevisionLifecycleActionInput,
@@ -2308,58 +2604,21 @@ export async function startBudgetRevisionReview(
     throw new Error("PERMISSION_DENIED");
   }
   await requirePermission(session, permissions.financeBudgetCommitmentReview);
+  const useNormalizedRouting = normalizedApprovalRoutingEnabled();
   return prisma.$transaction(async (tx) => {
-    const lockedRevision = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT revision.id
-      FROM "BudgetRevision" AS revision
-      WHERE revision.id = ${input.budgetRevisionId}::uuid
-        AND revision."tenantId" = ${session.context.tenantId}::uuid
-        AND revision."companyId" = ${session.context.companyId}::uuid
-      FOR UPDATE
-    `;
-    if (lockedRevision.length !== 1) {
-      throw new Error("BUDGET_REVISION_NOT_FOUND");
-    }
-    const revision = await getScopedBudgetRevisionOrThrow(
-      tx,
-      session,
-      input.budgetRevisionId,
-    );
-    const useNormalizedRouting = normalizedApprovalRoutingEnabled();
-    const approvals = await tx.approvalInstance.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        documentType: "BudgetRevision",
-        documentId: revision.id,
-        status: "PENDING",
-      },
-      include: {
-        steps: {
-          orderBy: { stepOrder: "asc" },
-        },
-      },
-      orderBy: { createdAt: "asc" },
-      take: 2,
-    });
-    if (approvals.length !== 1) {
-      throw new Error(
-        approvals.length === 0
-          ? "BUDGET_REVISION_APPROVAL_NOT_FOUND"
-          : "BUDGET_REVISION_APPROVAL_AMBIGUOUS",
-      );
-    }
-    const approval = approvals[0]!;
-    const firstStep = approval.steps.find(
-      (step) => step.stepOrder === approval.currentStepOrder,
-    );
-    if (!firstStep) {
-      throw new Error("BUDGET_REVISION_APPROVAL_STEP_NOT_FOUND");
-    }
+    const prepared = useNormalizedRouting
+      ? await prepareNormalizedBudgetRevisionReview(
+          tx,
+          session,
+          input.budgetRevisionId,
+        )
+      : await prepareLegacyBudgetRevisionReview(
+          tx,
+          session,
+          input.budgetRevisionId,
+        );
+    const { revision, approval, firstStep } = prepared;
     if (revision.status === "UNDER_REVIEW") {
-      if (useNormalizedRouting && firstStep.status !== "PENDING") {
-        throw new Error("BUDGET_REVISION_REVIEW_ACTIVATION_INCOMPLETE");
-      }
       return revision;
     }
     assertBudgetRevisionTransition({
@@ -2374,6 +2633,10 @@ export async function startBudgetRevisionReview(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         approvalInstanceStepId: firstStep.id,
+        ...(prepared.activationAnchorUserId
+          ? { actorUserId: prepared.activationAnchorUserId }
+          : {}),
+        ...(prepared.eligibilityAt ? { now: prepared.eligibilityAt } : {}),
         dueAt: revision.effectiveFrom ?? null,
         activationAudit: {
           actorUserId: session.user.id,
@@ -2393,6 +2656,7 @@ export async function startBudgetRevisionReview(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "SUBMITTED",
+        ...(useNormalizedRouting ? { updatedAt: revision.updatedAt } : {}),
       },
       data: { status: "UNDER_REVIEW" },
     });
@@ -2565,6 +2829,129 @@ export async function rejectBudgetRevision(
   });
 }
 
+async function prepareNormalizedBudgetRevisionCancellation(
+  tx: TransactionClient,
+  session: SessionContext,
+  budgetRevisionId: string,
+) {
+  const preliminaryRevision = await getScopedBudgetRevisionOrThrow(
+    tx,
+    session,
+    budgetRevisionId,
+  );
+  if (preliminaryRevision.status !== "CANCELLED") {
+    assertBudgetRevisionTransition({
+      transition: "cancel",
+      status: preliminaryRevision.status,
+    });
+  }
+  const preliminaryApproval = ["SUBMITTED", "UNDER_REVIEW"].includes(
+    preliminaryRevision.status,
+  )
+    ? await findSinglePendingBudgetRevisionApproval(
+        tx,
+        session,
+        preliminaryRevision.id,
+      )
+    : null;
+  await lockNormalizedApprovalLifecycleActors(tx, session);
+  const requiresApproval = ["SUBMITTED", "UNDER_REVIEW"].includes(
+    preliminaryRevision.status,
+  );
+  if (preliminaryApproval) {
+    const lockedGraph = await lockNormalizedApprovalLifecycleGraph(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: preliminaryApproval.approval.id,
+      documentType: "BudgetRevision",
+      documentId: preliminaryRevision.id,
+    });
+    const preliminarySteps = preliminaryApproval.approval.steps;
+    const graphUnchanged =
+      lockedGraph.currentStepOrder ===
+        preliminaryApproval.approval.currentStepOrder &&
+      lockedGraph.steps.length === preliminarySteps.length &&
+      lockedGraph.steps.every((step, index) => {
+        const preliminary = preliminarySteps[index];
+        return (
+          preliminary !== undefined &&
+          step.id === preliminary.id &&
+          step.stepOrder === preliminary.stepOrder &&
+          step.status === preliminary.status
+        );
+      });
+    if (!graphUnchanged) throw new Error("BUDGET_REVISION_STALE_ACTION");
+  }
+  const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "BudgetRevision",
+    documentId: preliminaryRevision.id,
+    policy: requiresApproval ? "APPROVAL_REQUIRED" : "APPROVAL_OPTIONAL",
+    ...(preliminaryRevision.status === "SUBMITTED"
+      ? { coherenceMode: "BUDGET_PRE_REVIEW_ALL_WAITING" as const }
+      : {}),
+  });
+  await lockAndRevalidateBudgetRevisionSource(tx, session, {
+    budgetRevisionId: preliminaryRevision.id,
+    expectedStatus: preliminaryRevision.status,
+    expectedUpdatedAt: preliminaryRevision.updatedAt,
+  });
+  const revision = await getScopedBudgetRevisionOrThrow(
+    tx,
+    session,
+    preliminaryRevision.id,
+  );
+  await assertBudgetLifecyclePermissionAfterActorLock(
+    tx,
+    session,
+    permissions.financeBudgetManage,
+  );
+  await assertBudgetLifecycleScopeAfterActorLock(tx, session, revision.budget);
+  return { revision, approvalTermination };
+}
+
+async function prepareLegacyBudgetRevisionCancellation(
+  tx: TransactionClient,
+  session: SessionContext,
+  budgetRevisionId: string,
+) {
+  const lockedRevision = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT revision.id
+      FROM "BudgetRevision" AS revision
+     WHERE revision.id = ${budgetRevisionId}::uuid
+       AND revision."tenantId" = ${session.context.tenantId}::uuid
+       AND revision."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE
+  `;
+  if (lockedRevision.length !== 1) throw new Error("BUDGET_REVISION_NOT_FOUND");
+  const revision = await getScopedBudgetRevisionOrThrow(
+    tx,
+    session,
+    budgetRevisionId,
+  );
+  if (revision.status === "CANCELLED") {
+    return {
+      revision,
+      approvalTermination: {
+        mode: "LEGACY" as const,
+        approvalInstanceId: null,
+      },
+    };
+  }
+  assertBudgetRevisionTransition({ transition: "cancel", status: revision.status });
+  const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "BudgetRevision",
+    documentId: revision.id,
+    policy: ["SUBMITTED", "UNDER_REVIEW"].includes(revision.status)
+      ? "APPROVAL_REQUIRED"
+      : "APPROVAL_OPTIONAL",
+  });
+  return { revision, approvalTermination };
+}
+
 export async function cancelBudgetRevision(
   session: SessionContext,
   input: BudgetRevisionLifecycleActionInput,
@@ -2574,45 +2961,29 @@ export async function cancelBudgetRevision(
   }
   await requirePermission(session, permissions.financeBudgetManage);
   assertReason(input.reason, "BUDGET_REVISION_CANCELLATION_REASON_REQUIRED");
+  const useNormalizedRouting = normalizedApprovalRoutingEnabled();
   return prisma.$transaction(async (tx) => {
-    const lockedRevision = await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT revision.id
-      FROM "BudgetRevision" AS revision
-      WHERE revision.id = ${input.budgetRevisionId}::uuid
-        AND revision."tenantId" = ${session.context.tenantId}::uuid
-        AND revision."companyId" = ${session.context.companyId}::uuid
-      FOR UPDATE
-    `;
-    if (lockedRevision.length !== 1) {
-      throw new Error("BUDGET_REVISION_NOT_FOUND");
-    }
-    const revision = await getScopedBudgetRevisionOrThrow(
-      tx,
-      session,
-      input.budgetRevisionId,
-    );
+    const { revision, approvalTermination } = useNormalizedRouting
+      ? await prepareNormalizedBudgetRevisionCancellation(
+          tx,
+          session,
+          input.budgetRevisionId,
+        )
+      : await prepareLegacyBudgetRevisionCancellation(
+          tx,
+          session,
+          input.budgetRevisionId,
+        );
     if (revision.status === "CANCELLED") {
       return revision;
     }
-    assertBudgetRevisionTransition({
-      transition: "cancel",
-      status: revision.status,
-    });
-    const approvalTermination = await terminatePendingApprovalForCancellation(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      documentType: "BudgetRevision",
-      documentId: revision.id,
-      policy: ["SUBMITTED", "UNDER_REVIEW"].includes(revision.status)
-        ? "APPROVAL_REQUIRED"
-        : "APPROVAL_OPTIONAL",
-    });
     const sourceUpdate = await tx.budgetRevision.updateMany({
       where: {
         id: revision.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: revision.status,
+        ...(useNormalizedRouting ? { updatedAt: revision.updatedAt } : {}),
       },
       data: { status: "CANCELLED" },
     });
