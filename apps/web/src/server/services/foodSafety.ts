@@ -82,6 +82,25 @@ export type FoodSafetyDashboard = {
   logs: FoodSafetyLogSummary[];
 };
 
+export type FoodSafetyDashboardCandidate = {
+  id: string;
+  title: string;
+  businessDate: string;
+  logType: string;
+  status: string;
+  exceptionCount: number;
+  hasCriticalException: boolean;
+};
+
+export type FoodSafetyDashboardRead = {
+  totalReadings: number;
+  exceptionCount: number;
+  statusCounts: FoodSafetyStatusCounts;
+  severityCounts: FoodSafetySeverityCounts;
+  reviewCandidates: FoodSafetyDashboardCandidate[];
+  exceptionCandidates: FoodSafetyDashboardCandidate[];
+};
+
 export type FoodSafetyExportFilters = {
   q?: string;
   type?: string;
@@ -502,6 +521,101 @@ export async function getFoodSafetyDashboard(
     statusCounts,
     severityCounts,
     logs: summaries
+  };
+}
+
+export async function getFoodSafetyDashboardRead(
+  session: SessionContext
+): Promise<FoodSafetyDashboardRead> {
+  assertFoodSafetyAccess(session);
+
+  const where: Prisma.FoodSafetyLogWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId
+  };
+  const scopedReadingWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId
+  };
+  const [summary, statusRows, totalReadings, criticalExceptions, reviewRows, exceptionRows] =
+    await Promise.all([
+      prisma.foodSafetyLog.aggregate({
+        where,
+        _sum: { exceptionCount: true }
+      }),
+      prisma.foodSafetyLog.groupBy({
+        by: ["status"],
+        where,
+        _count: { _all: true }
+      }),
+      prisma.foodSafetyReading.count({ where: scopedReadingWhere }),
+      prisma.foodSafetyReading.count({
+        where: { ...scopedReadingWhere, result: "EXCEPTION", severity: "CRITICAL" }
+      }),
+      prisma.foodSafetyLog.findMany({
+        where: { ...where, status: { in: [...reviewableFoodSafetyStatuses] } },
+        orderBy: [{ businessDate: "desc" }, { logType: "asc" }],
+        take: 3,
+        select: {
+          id: true,
+          title: true,
+          businessDate: true,
+          logType: true,
+          status: true,
+          exceptionCount: true,
+          readings: {
+            where: { result: "EXCEPTION", severity: "CRITICAL" },
+            select: { id: true },
+            take: 1
+          }
+        }
+      }),
+      prisma.foodSafetyLog.findMany({
+        where: { ...where, exceptionCount: { gt: 0 } },
+        orderBy: [{ businessDate: "desc" }, { logType: "asc" }],
+        take: 3,
+        select: {
+          id: true,
+          title: true,
+          businessDate: true,
+          logType: true,
+          status: true,
+          exceptionCount: true,
+          readings: {
+            where: { result: "EXCEPTION", severity: "CRITICAL" },
+            select: { id: true },
+            take: 1
+          }
+        }
+      })
+    ]);
+  const statusCounts = emptyStatusCounts();
+  for (const row of statusRows) {
+    if (row.status in statusCounts) {
+      statusCounts[row.status as keyof FoodSafetyStatusCounts] = row._count._all;
+    }
+  }
+  const toCandidate = (row: (typeof reviewRows)[number]): FoodSafetyDashboardCandidate => ({
+    id: row.id,
+    title: row.title,
+    businessDate: row.businessDate.toISOString().slice(0, 10),
+    logType: row.logType,
+    status: row.status,
+    exceptionCount: row.exceptionCount,
+    hasCriticalException: row.readings.length > 0
+  });
+
+  return {
+    totalReadings,
+    exceptionCount: summary._sum.exceptionCount ?? 0,
+    statusCounts,
+    severityCounts: { ...emptySeverityCounts(), CRITICAL: criticalExceptions },
+    reviewCandidates: reviewRows.map(toCandidate),
+    exceptionCandidates: exceptionRows.map(toCandidate)
   };
 }
 

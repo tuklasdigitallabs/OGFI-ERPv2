@@ -679,6 +679,11 @@ describe("Phase 2 food safety foundation", () => {
 
   it("keeps food safety controlled and separate from inventory and incidents", () => {
     expect(serviceSource).toContain("getFoodSafetyDashboard");
+    expect(serviceSource).toContain("getFoodSafetyDashboardRead");
+    expect(serviceSource).toContain("reviewCandidates");
+    expect(serviceSource).toContain("exceptionCandidates");
+    expect(serviceSource).toContain("take: 3");
+    expect(serviceSource).toContain("_sum: { exceptionCount: true }");
     expect(serviceSource).toContain("FoodSafetyStatusCounts");
     expect(serviceSource).toContain("FoodSafetySeverityCounts");
     expect(serviceSource).toContain("statusCounts");

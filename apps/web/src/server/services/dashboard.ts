@@ -24,7 +24,11 @@ import {
   getFoodCostAnalysisDashboard,
   type FoodCostAnalysisDashboard
 } from "./recipes";
-import { getFoodSafetyDashboard, type FoodSafetyDashboard } from "./foodSafety";
+import {
+  getFoodSafetyDashboardRead,
+  type FoodSafetyDashboard,
+  type FoodSafetyDashboardRead
+} from "./foodSafety";
 import { getIncidentDashboard, type IncidentDashboard } from "./incidents";
 import {
   getInventoryBalanceReconciliation,
@@ -203,6 +207,7 @@ export type OperationalDashboardSource = {
   foodCostAnalysis?: FoodCostAnalysisDashboard;
   branchOperations?: BranchOperationsDashboard;
   foodSafety?: FoodSafetyDashboard;
+  foodSafetyDashboard?: FoodSafetyDashboardRead;
   incidents?: IncidentDashboard;
   maintenance?: MaintenanceDashboard;
   branchOperationsDashboard?: BranchOperationsDashboardRead;
@@ -1066,20 +1071,22 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.foodSafety) {
+  if (source.foodSafety || source.foodSafetyDashboard) {
+    const foodSafety = source.foodSafetyDashboard ?? source.foodSafety!;
     const reviewReadyLogCount =
-      source.foodSafety.statusCounts.SUBMITTED +
-      source.foodSafety.statusCounts.EXCEPTION_REVIEW;
-    const reviewReadyLogs = source.foodSafety.logs.filter((logSummary) =>
+      foodSafety.statusCounts.SUBMITTED + foodSafety.statusCounts.EXCEPTION_REVIEW;
+    const reviewReadyLogs = source.foodSafetyDashboard
+      ? source.foodSafetyDashboard.reviewCandidates
+      : source.foodSafety!.logs.filter((logSummary) =>
       foodSafetyReviewStatuses.has(logSummary.status)
     );
     cards.push({
       id: "food-safety-exceptions",
       label: "Food Safety Exceptions",
-      value: source.foodSafety.exceptionCount,
+      value: foodSafety.exceptionCount,
       href: "/food-safety",
-      description: `${source.foodSafety.totalReadings} reading${source.foodSafety.totalReadings === 1 ? "" : "s"} checked`,
-      tone: cardTone(source.foodSafety.exceptionCount)
+      description: `${foodSafety.totalReadings} reading${foodSafety.totalReadings === 1 ? "" : "s"} checked`,
+      tone: cardTone(foodSafety.exceptionCount)
     });
     cards.push({
       id: "food-safety-reviews",
@@ -1093,27 +1100,27 @@ export function buildOperationalDashboardModel(
       {
         id: "food-safety-critical-count",
         label: "Critical food-safety exceptions",
-        displayValue: number(source.foodSafety.severityCounts.CRITICAL),
+        displayValue: number(foodSafety.severityCounts.CRITICAL),
         detail: "Critical food-safety reading exceptions in current scope",
         href: "/food-safety",
         tone:
-          source.foodSafety.severityCounts.CRITICAL > 0 ? "warning" : "success"
+          foodSafety.severityCounts.CRITICAL > 0 ? "warning" : "success"
       },
       {
         id: "food-safety-exception-review-count",
         label: "Exception review logs",
-        displayValue: number(source.foodSafety.statusCounts.EXCEPTION_REVIEW),
+        displayValue: number(foodSafety.statusCounts.EXCEPTION_REVIEW),
         detail: "Food-safety logs waiting for exception review",
         href: "/food-safety",
         tone:
-          source.foodSafety.statusCounts.EXCEPTION_REVIEW > 0
+          foodSafety.statusCounts.EXCEPTION_REVIEW > 0
             ? "warning"
             : "success"
       },
       {
         id: "food-safety-reviewed-count",
         label: "Reviewed food-safety logs",
-        displayValue: number(source.foodSafety.statusCounts.REVIEWED),
+        displayValue: number(foodSafety.statusCounts.REVIEWED),
         detail: "Reviewed food-safety logs in current scope",
         href: "/food-safety",
         tone: "success"
@@ -1131,14 +1138,22 @@ export function buildOperationalDashboardModel(
         tone: "warning",
         nextAction: "Review food-safety log",
         priority: "HIGH",
-        locationName: log.locationName,
+        locationName: session.context.locationName,
         sourceAgeAt: log.businessDate
       });
     }
 
-    for (const log of source.foodSafety.logs
-      .filter((logSummary) => logSummary.exceptionCount > 0)
-      .slice(0, 3)) {
+    const exceptionLogs = source.foodSafetyDashboard
+      ? source.foodSafetyDashboard.exceptionCandidates
+      : source.foodSafety!.logs
+          .filter((logSummary) => logSummary.exceptionCount > 0)
+          .slice(0, 3);
+    for (const log of exceptionLogs) {
+      const hasCriticalException = "hasCriticalException" in log
+        ? log.hasCriticalException
+        : log.readings.some(
+            (reading) => reading.result === "EXCEPTION" && reading.severity === "CRITICAL"
+          );
       exceptionQueue.push({
         id: `food-safety-${log.id}`,
         label: "Food safety exception",
@@ -1146,25 +1161,11 @@ export function buildOperationalDashboardModel(
         detail: `${log.businessDate} / ${log.exceptionCount} exception${log.exceptionCount === 1 ? "" : "s"}`,
         status: log.status,
         href: `/food-safety/${log.id}`,
-        tone: log.readings.some(
-          (reading) =>
-            reading.result === "EXCEPTION" && reading.severity === "CRITICAL"
-        )
-          ? "warning"
-          : "info",
+        tone: hasCriticalException ? "warning" : "info",
         nextAction: "Acknowledge food-safety deviation",
-        priority: log.readings.some(
-          (reading) => reading.result === "EXCEPTION" && reading.severity === "CRITICAL"
-        )
-          ? "CRITICAL"
-          : "NORMAL",
-        severityLabel: log.readings.some(
-          (reading) =>
-            reading.result === "EXCEPTION" && reading.severity === "CRITICAL"
-        )
-          ? "CRITICAL"
-          : "No severity reported",
-        locationName: log.locationName,
+        priority: hasCriticalException ? "CRITICAL" : "NORMAL",
+        severityLabel: hasCriticalException ? "CRITICAL" : "No severity reported",
+        locationName: session.context.locationName,
         sourceAgeAt: log.businessDate
       });
     }
@@ -1561,8 +1562,8 @@ export async function getOperationalDashboard(
     {
       unavailableSource: { id: "food-safety", label: "Food safety", href: "/food-safety" },
       read: canUseFoodSafety(session.permissionCodes)
-      ? getFoodSafetyDashboard(session).then((foodSafety) => {
-          source.foodSafety = foodSafety;
+      ? getFoodSafetyDashboardRead(session).then((foodSafetyDashboard) => {
+          source.foodSafetyDashboard = foodSafetyDashboard;
         })
       : Promise.resolve()
     },
