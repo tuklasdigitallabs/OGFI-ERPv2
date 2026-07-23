@@ -205,6 +205,25 @@ const mappedOperationalCodes = [
 ];
 
 describe("action feedback helpers", () => {
+  it("provides specific user-safe messages for Receiving validation and conflict errors", () => {
+    const codes = [
+      "RECEIVING_STATUS_FILTER_INVALID",
+      "RECEIVING_DATE_FILTER_INVALID",
+      "RECEIVING_DATE_FILTER_RANGE_INVALID",
+      "RECEIVING_DASHBOARD_PROFILE_SEARCH_TOO_LONG",
+      "RECEIVING_DASHBOARD_PROFILE_UNSUPPORTED",
+      "RECEIVING_FOLLOW_UP_REASON_UNAVAILABLE",
+      "RECEIVING_SEARCH_QUERY_TOO_LONG",
+      "GOODS_RECEIPT_DISCREPANCY_CONFLICT",
+      "GOODS_RECEIPT_PURCHASE_ORDER_LINE_MISMATCH"
+    ];
+    for (const code of codes) {
+      const feedback = getActionFeedback({ error: code });
+      expect(feedback?.message).toBeTruthy();
+      expect(feedback?.message).not.toBe("The action could not be completed. Review the form and try again.");
+    }
+  });
+
   it("does not distinguish missing local accounts from invalid credentials", () => {
     expect(getActionFeedback({ error: "LOGIN_ACCOUNT_NOT_FOUND" })?.message).toBe(
       getActionFeedback({ error: "LOGIN_CREDENTIALS_INVALID" })?.message

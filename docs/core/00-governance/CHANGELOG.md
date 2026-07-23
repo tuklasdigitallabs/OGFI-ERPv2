@@ -5,6 +5,7 @@
 - Added transactional company/document-type/year sequencing for Goods Receipt public references (`DEC-0092`), replacing the concurrency-unsafe count-based allocator.
 - Added user-safe feedback for invalid Receiving status/date filters and reversed date ranges.
 - Added user-safe feedback for remaining Receiving discrepancy, stale-line, profile, follow-up, and search errors.
+- Added a regression guard preventing these Receiving errors from falling back to generic action copy.
 
 ## 2026-07-24 — Branch Operations Register Pagination
 
