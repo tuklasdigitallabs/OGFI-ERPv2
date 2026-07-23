@@ -844,8 +844,51 @@ export async function getFoodSafetyLogSummary(
   session: SessionContext,
   logId: string
 ) {
-  const dashboard = await getFoodSafetyDashboard(session);
-  return dashboard.logs.find((log) => log.id === logId) ?? null;
+  assertFoodSafetyAccess(session);
+  const log = await prisma.foodSafetyLog.findFirst({
+    where: {
+      id: logId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+      locationId: session.context.locationId
+    },
+    include: { location: true, readings: { orderBy: { lineNo: "asc" } } }
+  }) as FoodSafetyLogWithReadings | null;
+  if (!log) return null;
+  const actorIds = [log.recordedByUserId, log.reviewedByUserId].filter((id): id is string => Boolean(id));
+  const actors = actorIds.length
+    ? await prisma.user.findMany({ where: { id: { in: actorIds }, tenantId: session.context.tenantId }, select: { id: true, displayName: true, email: true } })
+    : [];
+  const names = userDisplayNameById(actors);
+  return {
+    id: log.id,
+    title: log.title,
+    locationName: log.location.name,
+    businessDate: log.businessDate.toISOString().slice(0, 10),
+    logType: log.logType,
+    status: log.status,
+    recordedByUserId: log.recordedByUserId,
+    reviewedByUserId: log.reviewedByUserId,
+    recordedByName: log.recordedByUserId ? names.get(log.recordedByUserId) ?? "Unknown user" : null,
+    reviewedByName: log.reviewedByUserId ? names.get(log.reviewedByUserId) ?? "Unknown user" : null,
+    reviewedAt: dateOrNull(log.reviewedAt),
+    exceptionCount: log.exceptionCount,
+    readings: log.readings.map((reading) => ({
+      id: reading.id,
+      lineNo: reading.lineNo,
+      station: reading.station,
+      readingType: reading.readingType,
+      readingValue: numberOrNull(reading.readingValue),
+      readingUom: reading.readingUom,
+      expectedMinValue: numberOrNull(reading.expectedMinValue),
+      expectedMaxValue: numberOrNull(reading.expectedMaxValue),
+      result: reading.result,
+      severity: reading.severity,
+      correctiveAction: reading.correctiveAction,
+      evidenceReference: reading.evidenceReference
+    }))
+  } satisfies FoodSafetyLogSummary;
 }
 
 export async function createFoodSafetyLog(formData: FormData) {
