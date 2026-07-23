@@ -24,6 +24,8 @@ Do not use production as a test environment.
 
 Local setup should run with Docker Compose or an equivalent reproducible container setup.
 
+When a local Next.js development server is active, run any simultaneous production-build verification with an isolated output directory, for example `pnpm --dir apps/web exec cross-env NEXT_DIST_DIR=.next-ogfi-build next build`. Do not interrupt a shared-output build and assume its child workers exited; resolve and terminate only verified orphaned build processes before retrying. Hosted CI and release builds run without a concurrent development server and retain their configured release output directory.
+
 Required local services:
 
 ```text
