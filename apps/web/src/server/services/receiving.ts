@@ -270,6 +270,7 @@ export async function listReceivingMyTaskPage(
   input: { after?: DashboardTaskCursor; take?: number } = {}
 ): Promise<ReceivingMyTaskPage> {
   await requireReceivingRead(session);
+
   if (!session.permissionCodes.includes(permissions.receivingPost)) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
@@ -756,6 +757,20 @@ async function getBaseQuantity(
 }
 
 type ReceivingRegisterTab = "all" | "draft" | "posted" | "discrepancies";
+const receivingRegisterStatuses = [
+  "DRAFT", "POSTING", "POSTED", "POSTED_WITH_DISCREPANCY", "REVERSING", "REVERSED"
+] as const;
+type ReceivingRegisterStatus = (typeof receivingRegisterStatuses)[number];
+
+function parseReceivingDate(value: string | undefined, endExclusive = false) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year = 0, month = 0, day = 0] = value.split("-").map(Number);
+  const utc = Date.UTC(year, month - 1, day) - 8 * 60 * 60 * 1000;
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
+  const date = new Date(utc + (endExclusive ? 24 * 60 * 60 * 1000 : 0));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 function mapGoodsReceipt(receipt: {
   id: string;
@@ -812,7 +827,7 @@ export async function listGoodsReceipts(session: SessionContext) {
 
 export async function listGoodsReceiptPage(
   session: SessionContext,
-  input: { tab?: ReceivingRegisterTab; page?: number; pageSize?: number; query?: string } = {}
+  input: { tab?: ReceivingRegisterTab; page?: number; pageSize?: number; query?: string; status?: string; receivedFrom?: string; receivedTo?: string } = {}
 ) {
   await requireReceivingRead(session);
   const tab = input.tab ?? "all";
@@ -824,13 +839,25 @@ export async function listGoodsReceiptPage(
   if (query && query.length > 120) {
     throw new Error("RECEIVING_SEARCH_QUERY_TOO_LONG");
   }
+  const status = input.status ? (receivingRegisterStatuses.includes(input.status as ReceivingRegisterStatus) ? input.status : null) : null;
+  if (input.status && !status) throw new Error("RECEIVING_STATUS_FILTER_INVALID");
+  const receivedFrom = input.receivedFrom ? parseReceivingDate(input.receivedFrom) : null;
+  const receivedTo = input.receivedTo ? parseReceivingDate(input.receivedTo, true) : null;
+  if ((input.receivedFrom && !receivedFrom) || (input.receivedTo && !receivedTo)) throw new Error("RECEIVING_DATE_FILTER_INVALID");
+  if (receivedFrom && receivedTo && receivedFrom >= receivedTo) throw new Error("RECEIVING_DATE_FILTER_RANGE_INVALID");
   const where: Prisma.GoodsReceiptWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     receivingLocationId: session.context.locationId,
-    ...(tab === "draft" ? { status: "DRAFT" } : {}),
-    ...(tab === "posted" ? { status: { not: "DRAFT" } } : {}),
     ...(tab === "discrepancies" ? { discrepancyFlag: true } : {}),
+    ...((tab === "draft" || tab === "posted" || status)
+      ? { AND: [
+          ...(tab === "draft" ? [{ status: "DRAFT" }] : []),
+          ...(tab === "posted" ? [{ status: { not: "DRAFT" } }] : []),
+          ...(status ? [{ status }] : [])
+        ] }
+      : {}),
+    ...(receivedFrom || receivedTo ? { receivedAt: { ...(receivedFrom ? { gte: receivedFrom } : {}), ...(receivedTo ? { lt: receivedTo } : {}) } } : {}),
     ...(query
       ? {
           OR: [
@@ -884,9 +911,16 @@ export async function buildReceivingReportExportRows(
   session: SessionContext,
   profile?: ReceivingDashboardProfile,
   query?: string,
-  tab: ReceivingRegisterTab = "all"
+  tab: ReceivingRegisterTab = "all",
+  filters: { status?: string; receivedFrom?: string; receivedTo?: string } = {}
 ) {
   await requireReceivingRead(session);
+
+  if (filters.status && !receivingRegisterStatuses.includes(filters.status as ReceivingRegisterStatus)) throw new Error("RECEIVING_STATUS_FILTER_INVALID");
+  const exportFrom = filters.receivedFrom ? parseReceivingDate(filters.receivedFrom) : null;
+  const exportTo = filters.receivedTo ? parseReceivingDate(filters.receivedTo, true) : null;
+  if ((filters.receivedFrom && !exportFrom) || (filters.receivedTo && !exportTo)) throw new Error("RECEIVING_DATE_FILTER_INVALID");
+  if (exportFrom && exportTo && exportFrom >= exportTo) throw new Error("RECEIVING_DATE_FILTER_RANGE_INVALID");
 
   if (profile) {
     const receipts = await prisma.goodsReceipt.findMany({
@@ -937,6 +971,11 @@ export async function buildReceivingReportExportRows(
       ...(tab === "draft" ? { status: "DRAFT" } : {}),
       ...(tab === "posted" ? { status: { not: "DRAFT" } } : {}),
       ...(tab === "discrepancies" ? { discrepancyFlag: true } : {}),
+      ...(filters.status && receivingRegisterStatuses.includes(filters.status as ReceivingRegisterStatus) ? { status: filters.status } : {}),
+      ...(filters.receivedFrom || filters.receivedTo ? { receivedAt: {
+        ...(filters.receivedFrom ? { gte: parseReceivingDate(filters.receivedFrom) ?? undefined } : {}),
+        ...(filters.receivedTo ? { lt: parseReceivingDate(filters.receivedTo, true) ?? undefined } : {})
+      } } : {}),
       ...(query?.trim()
         ? {
             OR: [
@@ -947,7 +986,7 @@ export async function buildReceivingReportExportRows(
             ]
           }
         : {})
-    },
+    } as Prisma.GoodsReceiptWhereInput,
     include: {
       purchaseOrder: true,
       supplier: true,

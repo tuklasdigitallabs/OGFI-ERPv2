@@ -43,6 +43,9 @@ export async function GET(request: Request) {
   }
   const query = profile ? searchParams.get("q") ?? undefined : undefined;
   const ordinaryQuery = profile ? undefined : searchParams.get("q") ?? undefined;
+  const status = profile ? undefined : searchParams.get("status") ?? undefined;
+  const receivedFrom = profile ? undefined : searchParams.get("receivedFrom") ?? undefined;
+  const receivedTo = profile ? undefined : searchParams.get("receivedTo") ?? undefined;
   const tabParam = searchParams.get("tab") ?? "all";
   const tab = ["all", "draft", "posted", "discrepancies"].includes(tabParam)
     ? (tabParam as "all" | "draft" | "posted" | "discrepancies")
@@ -54,7 +57,7 @@ export async function GET(request: Request) {
   }
   const auditMetadata = profile
     ? { dashboardProfile: profile, searchQuery: query?.trim() || null }
-    : { tab, searchQuery: ordinaryQuery?.trim() || null };
+    : { tab, searchQuery: ordinaryQuery?.trim() || null, status: status ?? null, receivedFrom: receivedFrom ?? null, receivedTo: receivedTo ?? null };
 
   try {
     await logOperationalExportAudit({
@@ -67,7 +70,8 @@ export async function GET(request: Request) {
       session,
       profile ?? undefined,
       profile ? query : ordinaryQuery,
-      profile ? "all" : tab
+      profile ? "all" : tab,
+      profile ? {} : { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }
     );
     await logOperationalExportAudit({
       session,

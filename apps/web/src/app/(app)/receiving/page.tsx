@@ -64,7 +64,7 @@ function getQuery(searchParams: Record<string, string | string[] | undefined>) {
   return (getStringParam(searchParams, "q") ?? "").trim();
 }
 
-function receivingHref(tab: ReceivingTab, page = 1, query?: string) {
+function receivingHref(tab: ReceivingTab, page = 1, query?: string, filters: { status?: string; receivedFrom?: string; receivedTo?: string } = {}) {
   const params = new URLSearchParams();
   if (tab !== "all") {
     params.set("tab", tab);
@@ -75,6 +75,9 @@ function receivingHref(tab: ReceivingTab, page = 1, query?: string) {
   if (query) {
     params.set("q", query);
   }
+  if (filters.status) params.set("status", filters.status);
+  if (filters.receivedFrom) params.set("receivedFrom", filters.receivedFrom);
+  if (filters.receivedTo) params.set("receivedTo", filters.receivedTo);
   const serialized = params.toString();
   return serialized ? `/receiving?${serialized}` : "/receiving";
 }
@@ -153,6 +156,9 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
     );
   }
   const query = getQuery(params);
+  const status = getStringParam(params, "status") ?? undefined;
+  const receivedFrom = getStringParam(params, "receivedFrom") ?? undefined;
+  const receivedTo = getStringParam(params, "receivedTo") ?? undefined;
   if (profile && query.length > 120) {
     return (
       <AppShell
@@ -186,7 +192,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
   const [registerPage, receivableOrders] = profile
     ? [null, []]
     : await Promise.all([
-        listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE, ...(query ? { query } : {}) }),
+        listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE, ...(query ? { query } : {}), ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
         canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([])
       ]);
   const receipts = registerPage?.items ?? [];
@@ -269,7 +275,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
                 <ButtonLink
                   href={profile
                     ? `/receiving/export?dashboard=${profile}${profilePage?.query ? `&q=${encodeURIComponent(profilePage.query)}` : ""}`
-                    : `/receiving/export?tab=${activeTab}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
+                    : `/receiving/export?tab=${activeTab}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${receivedFrom ? `&receivedFrom=${receivedFrom}` : ""}${receivedTo ? `&receivedTo=${receivedTo}` : ""}`}
                   className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
@@ -320,6 +326,12 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
                 maxLength={120}
                 placeholder="Search GRN, Purchase Order, or supplier"
               />
+              <select name="status" defaultValue={status ?? ""} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm">
+                <option value="">Any status</option>
+                {['DRAFT','POSTING','POSTED','POSTED_WITH_DISCREPANCY','REVERSING','REVERSED'].map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+              <input name="receivedFrom" type="date" defaultValue={receivedFrom} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm" />
+              <input name="receivedTo" type="date" defaultValue={receivedTo} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm" />
               <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white">Search</button>
               {query ? <ButtonLink href={receivingHref(activeTab)} tone="secondary">Clear</ButtonLink> : null}
             </form>
@@ -328,25 +340,25 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               items={[
                 {
                   label: "All receipts",
-                  href: receivingHref("all", 1, query),
+                  href: receivingHref("all", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
                   active: activeTab === "all",
                   count: registerPage?.tabCounts.all ?? 0
                 },
                 {
                   label: "Draft",
-                  href: receivingHref("draft", 1, query),
+                  href: receivingHref("draft", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
                   active: activeTab === "draft",
                   count: registerPage?.tabCounts.draft ?? 0
                 },
                 {
                   label: "Posted",
-                  href: receivingHref("posted", 1, query),
+                  href: receivingHref("posted", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
                   active: activeTab === "posted",
                   count: registerPage?.tabCounts.posted ?? 0
                 },
                 {
                   label: "Discrepancies",
-                  href: receivingHref("discrepancies", 1, query),
+                  href: receivingHref("discrepancies", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
                   active: activeTab === "discrepancies",
                   count: registerPage?.tabCounts.discrepancies ?? 0
                 }
@@ -472,7 +484,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               pageSize={registerPage?.pageSize ?? PAGE_SIZE}
               totalItems={registerPage?.totalItems ?? 0}
               itemLabel="receipts"
-              getPageHref={(nextPage) => receivingHref(activeTab, nextPage, query)}
+              getPageHref={(nextPage) => receivingHref(activeTab, nextPage, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) })}
             />
           ) : null}
         </section>

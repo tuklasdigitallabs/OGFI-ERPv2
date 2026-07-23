@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Receiving Status and Date Filters
+
+- Added strict lifecycle-status filtering and inclusive operational receipt-date filtering to the ordinary Receiving register and matching full-result export. Filters remain scoped to the selected receiving location.
+
 ## 2026-07-24 — Receiving Register Query and Export Parity
 
 - Added a bounded server-side GRN/PO/supplier query to the ordinary Receiving register and carried the active query/tab into full-result CSV export. Follow-up dashboard filtering remains isolated.
