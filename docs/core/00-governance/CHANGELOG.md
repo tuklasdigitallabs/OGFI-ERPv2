@@ -21,6 +21,7 @@
 - Maintenance actor-name search and empty-versus-no-match state handling now preserve prior register behavior.
 - Maintenance completion-date defaults now honor the operational timezone and invalid requested-date filters return the existing safe validation message.
 - Maintenance and Incident cancelled rows now use neutral terminal-state styling.
+- Full web regression baseline passes 1,258 tests across 119 files; environment-gated PostgreSQL/browser/hosted checks remain pending.
 
 ## 2026-07-24 — Receiving Status and Date Filters
 
