@@ -4,6 +4,10 @@
 
 - Moved the ordinary Branch Operations register to server-backed 25-row pagination with exact scoped counts, filter parity, deterministic ordering, and preserved dashboard/export separation (`DEC-0088`).
 
+## 2026-07-24 — Food Safety Register Pagination
+
+- Moved the ordinary Food Safety register to server-backed 25-row pagination with exact scoped counts, nested-reading and actor search parity, deterministic ordering, and preserved dashboard/export separation (`DEC-0089`).
+
 ## 2026-07-24 — Receiving Status and Date Filters
 
 - Added strict lifecycle-status filtering and inclusive operational receipt-date filtering to the ordinary Receiving register and matching full-result export. Filters remain scoped to the selected receiving location.

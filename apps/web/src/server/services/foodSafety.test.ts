@@ -926,14 +926,14 @@ describe("Phase 2 food safety foundation", () => {
     expect(listPageSource).toContain('name="businessDate"');
     expect(listPageSource).toContain('name="type"');
     expect(listPageSource).toContain('name="status"');
-    expect(listPageSource).toContain("visibleLogs");
-    expect(listPageSource).toContain("PAGE_SIZE = 10");
+    expect(listPageSource).toContain("workspace");
+    expect(listPageSource).toContain("PAGE_SIZE = 25");
     expect(listPageSource).toContain("normalizePage");
     expect(listPageSource).toContain("paginatedLogs");
     expect(listPageSource).toContain("pageHref");
-    expect(listPageSource).toContain("Showing {showingStart}-{showingEnd} of {visibleLogs.length} logs");
-    expect(listPageSource).toContain("Page {currentPage} of {totalPages}");
-    expect(listPageSource).toContain("filterFoodSafetyLogs(dashboard.logs");
+    expect(listPageSource).toContain("workspace.page");
+    expect(listPageSource).toContain("Page {workspace.page} of {workspace.totalPages}");
+    expect(listPageSource).toContain("listFoodSafetyLogPage");
     expect(listPageSource).toContain("log.recordedByName");
     expect(listPageSource).toContain("log.reviewedByName");
     expect(listPageSource).toContain("buildQueryHref(\"/food-safety/export\"");
@@ -954,7 +954,7 @@ describe("Phase 2 food safety foundation", () => {
     expect(listPageSource).toContain('status === "SUBMITTED"');
     expect(listPageSource).toContain("status.includes(\"EXCEPTION\")");
     expect(listPageSource).toContain("No food-safety logs match the filters");
-    expect(listPageSource).toContain("getFoodSafetyDashboard(session)");
+    expect(listPageSource).toContain("getFoodSafetyDashboardRead(session)");
     expect(listPageSource).toContain("Record Food-Safety Log");
     expect(listPageSource).toContain("createFoodSafetyLogAction");
     expect(listPageSource).toContain("permissions.foodSafetyCreate");

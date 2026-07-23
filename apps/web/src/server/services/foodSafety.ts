@@ -97,6 +97,10 @@ export type FoodSafetyDashboardCandidate = {
 };
 
 export type FoodSafetyDashboardRead = {
+  locationName: string;
+  businessDate: string | null;
+  totalLogs: number;
+  reviewedLogs: number;
   totalReadings: number;
   exceptionCount: number;
   statusCounts: FoodSafetyStatusCounts;
@@ -110,6 +114,14 @@ export type FoodSafetyExportFilters = {
   type?: string;
   status?: string;
   businessDate?: string;
+};
+
+export type FoodSafetyLogPage = {
+  items: FoodSafetyLogSummary[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
 };
 
 export type FoodSafetyMyTaskPage = {
@@ -424,6 +436,112 @@ export function filterFoodSafetyLogs(
   });
 }
 
+export async function listFoodSafetyLogPage(
+  session: SessionContext,
+  filters: FoodSafetyExportFilters = {},
+  input: { page?: number; pageSize?: number } = {}
+): Promise<FoodSafetyLogPage> {
+  assertFoodSafetyAccess(session);
+  const rawPageSize = input.pageSize ?? 25;
+  const pageSize = Number.isFinite(rawPageSize)
+    ? Math.min(Math.max(Math.floor(rawPageSize), 1), 50)
+    : 25;
+  const rawPage = input.page ?? 1;
+  const requestedPage = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
+  const query = normalizedFilterText(filters.q);
+  const logType = filters.type && filters.type !== "ALL" ? filters.type : null;
+  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
+  const businessDate = filters.businessDate?.trim() || null;
+  const date = businessDate ? parseDateOnlyUtc(businessDate) : null;
+  if (businessDate && !date) {
+    throw new Error("FOOD_SAFETY_BUSINESS_DATE_INVALID");
+  }
+  const actorMatches = query
+    ? await prisma.user.findMany({
+        where: {
+          tenantId: session.context.tenantId,
+          OR: [
+            { displayName: { contains: query, mode: "insensitive" } },
+            { email: { contains: query, mode: "insensitive" } }
+          ]
+        },
+        select: { id: true }
+      })
+    : [];
+  const where: Prisma.FoodSafetyLogWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId,
+    ...(logType ? { logType } : {}),
+    ...(status ? { status } : {}),
+    ...(date ? { businessDate: date } : {}),
+    ...(query
+      ? {
+          OR: [
+            { title: { contains: query, mode: "insensitive" } },
+            { logType: { contains: query, mode: "insensitive" } },
+            { status: { contains: query, mode: "insensitive" } },
+            { recordedByUserId: { in: actorMatches.map((row) => row.id) } },
+            { reviewedByUserId: { in: actorMatches.map((row) => row.id) } },
+            { readings: { some: { OR: [
+              { station: { contains: query, mode: "insensitive" } },
+              { readingType: { contains: query, mode: "insensitive" } },
+              { result: { contains: query, mode: "insensitive" } },
+              { severity: { contains: query, mode: "insensitive" } },
+              { correctiveAction: { contains: query, mode: "insensitive" } },
+              { evidenceReference: { contains: query, mode: "insensitive" } }
+            ] } } }
+          ]
+        }
+      : {})
+  };
+  const totalItems = await prisma.foodSafetyLog.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const rows = await prisma.foodSafetyLog.findMany({
+    where,
+    include: { location: true, readings: { orderBy: { lineNo: "asc" } } },
+    orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  }) as FoodSafetyLogWithReadings[];
+  const actorIds = Array.from(new Set(rows.flatMap((row) => [row.recordedByUserId, row.reviewedByUserId].filter((id): id is string => Boolean(id)))));
+  const actors = actorIds.length
+    ? await prisma.user.findMany({ where: { id: { in: actorIds }, tenantId: session.context.tenantId }, select: { id: true, displayName: true, email: true } })
+    : [];
+  const actorNameById = userDisplayNameById(actors);
+  const items = rows.map((log): FoodSafetyLogSummary => ({
+    id: log.id,
+    title: log.title,
+    locationName: log.location.name,
+    businessDate: log.businessDate.toISOString().slice(0, 10),
+    logType: log.logType,
+    status: log.status,
+    recordedByUserId: log.recordedByUserId,
+    reviewedByUserId: log.reviewedByUserId,
+    recordedByName: log.recordedByUserId ? actorNameById.get(log.recordedByUserId) ?? "Unknown user" : null,
+    reviewedByName: log.reviewedByUserId ? actorNameById.get(log.reviewedByUserId) ?? "Unknown user" : null,
+    reviewedAt: dateOrNull(log.reviewedAt),
+    exceptionCount: log.exceptionCount,
+    readings: log.readings.map((reading) => ({
+      id: reading.id,
+      lineNo: reading.lineNo,
+      station: reading.station,
+      readingType: reading.readingType,
+      readingValue: numberOrNull(reading.readingValue),
+      readingUom: reading.readingUom,
+      expectedMinValue: numberOrNull(reading.expectedMinValue),
+      expectedMaxValue: numberOrNull(reading.expectedMaxValue),
+      result: reading.result,
+      severity: reading.severity,
+      correctiveAction: reading.correctiveAction,
+      evidenceReference: reading.evidenceReference
+    }))
+  }));
+  return { items, page, pageSize, totalItems, totalPages };
+}
+
 export async function getFoodSafetyDashboard(
   session: SessionContext
 ): Promise<FoodSafetyDashboard> {
@@ -561,7 +679,7 @@ export async function getFoodSafetyDashboardRead(
     ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
     locationId: session.context.locationId
   };
-  const [summary, statusRows, totalReadings, criticalExceptions, reviewRows, exceptionRows] =
+  const [summary, statusRows, totalLogs, latestLog, totalReadings, criticalExceptions, reviewRows, exceptionRows] =
     await Promise.all([
       prisma.foodSafetyLog.aggregate({
         where,
@@ -572,6 +690,8 @@ export async function getFoodSafetyDashboardRead(
         where,
         _count: { _all: true }
       }),
+      prisma.foodSafetyLog.count({ where }),
+      prisma.foodSafetyLog.findFirst({ where, orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }], select: { businessDate: true } }),
       prisma.foodSafetyReading.count({ where: scopedReadingWhere }),
       prisma.foodSafetyReading.count({
         where: { ...scopedReadingWhere, result: "EXCEPTION", severity: "CRITICAL" }
@@ -630,6 +750,10 @@ export async function getFoodSafetyDashboardRead(
   });
 
   return {
+    locationName: session.context.locationName,
+    businessDate: latestLog?.businessDate.toISOString().slice(0, 10) ?? null,
+    totalLogs,
+    reviewedLogs: statusCounts.REVIEWED + statusCounts.CLOSED,
     totalReadings,
     exceptionCount: summary._sum.exceptionCount ?? 0,
     statusCounts,

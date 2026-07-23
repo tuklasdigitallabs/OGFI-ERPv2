@@ -17,8 +17,8 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportFoodSafety } from "@/server/services/exportAuthorization";
 import {
   createFoodSafetyLog,
-  filterFoodSafetyLogs,
-  getFoodSafetyDashboard
+  getFoodSafetyDashboardRead,
+  listFoodSafetyLogPage
 } from "@/server/services/foodSafety";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +44,7 @@ const statusOptions = [
 ] as const;
 const readingResultOptions = ["PASS", "EXCEPTION", "NOT_APPLICABLE"] as const;
 const readingSeverityOptions = ["NORMAL", "LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 
 async function createFoodSafetyLogAction(formData: FormData) {
   "use server";
@@ -122,7 +122,7 @@ export default async function FoodSafetyPage({
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
-  const dashboard = await getFoodSafetyDashboard(session);
+  const dashboardRead = await getFoodSafetyDashboardRead(session);
   const canExport = canExportFoodSafety(session);
   const canCreate = session.permissionCodes.includes(permissions.foodSafetyCreate);
   const params = searchParams ? await searchParams : {};
@@ -131,19 +131,25 @@ export default async function FoodSafetyPage({
   const businessDate = getSearchParam(params, "businessDate") ?? "";
   const logTypeFilter = normalizeOption(getSearchParam(params, "type"), logTypeOptions);
   const statusFilter = normalizeOption(getSearchParam(params, "status"), statusOptions);
-  const visibleLogs = filterFoodSafetyLogs(dashboard.logs, {
+  const workspace = await listFoodSafetyLogPage(session, {
     q: query,
     businessDate,
     type: logTypeFilter,
     status: statusFilter
-  });
-  const requestedPage = normalizePage(getSearchParam(params, "page"));
-  const totalPages = Math.max(1, Math.ceil(visibleLogs.length / PAGE_SIZE));
-  const currentPage = Math.min(requestedPage, totalPages);
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const paginatedLogs = visibleLogs.slice(startIndex, startIndex + PAGE_SIZE);
-  const showingStart = visibleLogs.length === 0 ? 0 : startIndex + 1;
-  const showingEnd = Math.min(startIndex + PAGE_SIZE, visibleLogs.length);
+  }, { page: normalizePage(getSearchParam(params, "page")), pageSize: PAGE_SIZE });
+  const dashboard = {
+    locationName: dashboardRead.locationName,
+    businessDate: dashboardRead.businessDate,
+    totalLogs: dashboardRead.totalLogs,
+    reviewedLogs: dashboardRead.reviewedLogs,
+    totalReadings: dashboardRead.totalReadings,
+    exceptionCount: dashboardRead.exceptionCount,
+    criticalExceptions: dashboardRead.severityCounts.CRITICAL,
+    statusCounts: dashboardRead.statusCounts,
+    severityCounts: dashboardRead.severityCounts,
+    logs: workspace.items
+  };
+  const paginatedLogs = workspace.items;
   const pageHref = (page: number) =>
     buildQueryHref("/food-safety", {
       q: getSearchParam(params, "q"),
@@ -321,7 +327,7 @@ export default async function FoodSafetyPage({
           </div>
         </form>
 
-        {dashboard.logs.length === 0 ? (
+        {workspace.totalItems === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">No food-safety logs yet</p>
             <p className="mt-1 text-sm text-slate-600">
@@ -329,7 +335,7 @@ export default async function FoodSafetyPage({
               compliance status.
             </p>
           </div>
-        ) : visibleLogs.length === 0 ? (
+        ) : workspace.items.length === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">
               No food-safety logs match the filters
@@ -410,12 +416,12 @@ export default async function FoodSafetyPage({
             </div>
             <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
               <p>
-                Showing {showingStart}-{showingEnd} of {visibleLogs.length} logs
+                Showing {workspace.items.length === 0 ? 0 : (workspace.page - 1) * workspace.pageSize + 1}-{workspace.items.length === 0 ? 0 : Math.min((workspace.page - 1) * workspace.pageSize + workspace.items.length, workspace.totalItems)} of {workspace.totalItems} logs
               </p>
-              {totalPages > 1 ? (
+              {workspace.totalPages > 1 ? (
                 <div className="flex items-center gap-2">
-                  {currentPage > 1 ? (
-                    <ButtonLink href={pageHref(currentPage - 1)} tone="secondary">
+                  {workspace.page > 1 ? (
+                    <ButtonLink href={pageHref(workspace.page - 1)} tone="secondary" className="min-h-11">
                       Previous
                     </ButtonLink>
                   ) : (
@@ -424,10 +430,10 @@ export default async function FoodSafetyPage({
                     </span>
                   )}
                   <span className="font-semibold text-slate-700">
-                    Page {currentPage} of {totalPages}
+                    Page {workspace.page} of {workspace.totalPages}
                   </span>
-                  {currentPage < totalPages ? (
-                    <ButtonLink href={pageHref(currentPage + 1)} tone="secondary">
+                  {workspace.page < workspace.totalPages ? (
+                    <ButtonLink href={pageHref(workspace.page + 1)} tone="secondary" className="min-h-11">
                       Next
                     </ButtonLink>
                   ) : (
