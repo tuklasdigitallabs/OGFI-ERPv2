@@ -21,8 +21,13 @@ describe("quotation recommendation rules", () => {
     expect(submit).toContain("recommendation.preparedByUserId");
     expect(submit).toContain("purchaseRequest.requesterUserId");
     expect(submit).toContain("assertAnyEligibleApprovalActorForStep(tx");
-    expect(submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
-      submit.indexOf("await tx.quotationRecommendation.update")
+    expect(submit).toContain("const claimed = await tx.quotationRecommendation.updateMany");
+    expect(submit).toContain('status: "DRAFT"');
+    expect(submit.indexOf("const claimed = await tx.quotationRecommendation.updateMany")).toBeLessThan(
+      submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")
+    );
+    expect(submit.indexOf("const claimed = await tx.quotationRecommendation.updateMany")).toBeLessThan(
+      submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")
     );
     expect(submit).toContain("actorUserId: firstRoutedStep.userId");
     expect(submit).toContain("if (firstRoutedStep.userId)");

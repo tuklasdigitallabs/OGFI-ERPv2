@@ -1464,6 +1464,22 @@ export async function submitPurchaseRequest(id: string) {
   }
 
   await prisma.$transaction(async (tx) => {
+    const claimed = await tx.purchaseRequest.updateMany({
+      where: {
+        id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "DRAFT",
+      },
+      data: {
+        status: "PENDING_APPROVAL",
+        version: { increment: 1 },
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new Error("INVALID_STATUS_TRANSITION");
+    }
+
     const route = resolvePurchaseRequestApprovalRule({
       rules: await findPurchaseRequestApprovalRule(tx, session),
       isEmergency: existing.isEmergency,
@@ -1546,11 +1562,7 @@ export async function submitPurchaseRequest(id: string) {
 
     await tx.purchaseRequest.update({
       where: { id },
-      data: {
-        status: "PENDING_APPROVAL",
-        currentApprovalStep: firstStep.stepOrder,
-        version: { increment: 1 },
-      },
+      data: { currentApprovalStep: firstStep.stepOrder },
     });
 
     await tx.auditEvent.create({

@@ -63,6 +63,8 @@ describe("purchase order lifecycle rules", () => {
     expect(source).toContain("order.purchaseRequest.requesterUserId");
     expect(source).toContain("order.quotationRecommendation.preparedByUserId");
     expect(source).toContain("const closureId = randomUUID()");
+    expect(source).toContain('SELECT id FROM "PurchaseOrder"');
+    expect(source).toContain("FOR UPDATE");
     expect(source).toContain("const amendmentId = randomUUID()");
     expect(source).not.toContain("resolveScopedNotificationRecipients");
 

@@ -2271,6 +2271,10 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    // Serialize competing closure requests on the authoritative PO row before
+    // evaluating pending closures and creating the approval child record.
+    await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${order.id} AND "tenantId" = ${session.context.tenantId} AND "companyId" = ${session.context.companyId} FOR UPDATE`;
+
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
         tenantId: session.context.tenantId,

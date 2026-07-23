@@ -794,6 +794,23 @@ export async function submitQuotationRecommendation(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    const claimed = await tx.quotationRecommendation.updateMany({
+      where: {
+        id: recommendation.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "DRAFT",
+      },
+      data: {
+        status: "PENDING_APPROVAL",
+        submittedAt: new Date(),
+        version: { increment: 1 },
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new Error("QUOTATION_RECOMMENDATION_ALREADY_SUBMITTED");
+    }
+
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -887,11 +904,7 @@ export async function submitQuotationRecommendation(formData: FormData) {
 
     await tx.quotationRecommendation.update({
       where: { id: recommendation.id },
-      data: {
-        status: "PENDING_APPROVAL",
-        submittedAt: new Date(),
-        version: { increment: 1 }
-      }
+      data: { updatedAt: new Date() },
     });
 
     await tx.auditEvent.create({

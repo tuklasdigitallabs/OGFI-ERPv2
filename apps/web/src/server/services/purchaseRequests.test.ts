@@ -51,8 +51,10 @@ describe("purchase request workflow controls", () => {
     expect(submit).toContain("locationId: existing.requestLocationId");
     expect(submit).toContain("userId: existing.requesterUserId");
     expect(submit).toContain("assertAnyEligibleApprovalActorForStep(tx");
-    expect(submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
-      submit.indexOf("await tx.purchaseRequest.update")
+    expect(submit).toContain("status: \"DRAFT\"");
+    expect(submit).toContain("const claimed = await tx.purchaseRequest.updateMany");
+    expect(submit.indexOf("const claimed = await tx.purchaseRequest.updateMany")).toBeLessThan(
+      submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")
     );
     expect(submit).toContain("if (existing.requesterUserId !== session.user.id)");
     expect(submit).toContain('throw new Error("PERMISSION_DENIED")');

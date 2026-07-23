@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — DEC-0078 Initial Procurement Source Serialization
+
+- Added transactional source claims for Purchase Request and Quotation Recommendation submission and an authoritative Purchase Order row lock for balance-closure requests. Focused procurement tests pass; disposable PostgreSQL race evidence remains an activation gate.
+
 ## 2026-07-24 — DEC-0050 Initial Procurement Notification Parity
 
 - Aligned five legacy initial procurement submission paths with the shared direct-user/role-scoped step-ready notification contract. Focused local tests pass; PostgreSQL execution and source-serialization races remain explicit activation gates.
