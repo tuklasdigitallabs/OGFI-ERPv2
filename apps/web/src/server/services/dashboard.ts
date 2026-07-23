@@ -57,7 +57,10 @@ import {
 } from "./purchaseRequests";
 import {
   getReceivingDashboardRead,
+  isReceivingFollowUp,
   listGoodsReceipts,
+  receivingDashboardProfileHref,
+  receivingFollowUpInclusionReason,
   type ReceivingDashboardRead
 } from "./receiving";
 import {
@@ -243,11 +246,6 @@ const purchaseOrderOpenStatuses = new Set([
   "ISSUED",
   "AMENDMENT_PENDING",
   "PARTIALLY_RECEIVED"
-]);
-const receivingExceptionStatuses = new Set([
-  "DRAFT",
-  "POSTING",
-  "POSTED_WITH_DISCREPANCY"
 ]);
 const transferExceptionStatuses = new Set([
   "REQUESTED",
@@ -595,39 +593,42 @@ export function buildOperationalDashboardModel(
 
   if (source.goodsReceipts || source.receivingDashboard) {
     const value = source.receivingDashboard
-      ? source.receivingDashboard.exceptionCount
+      ? source.receivingDashboard.followUpCount
       : countRecords(
           source.goodsReceipts,
-          (receipt) =>
-            receivingExceptionStatuses.has(receipt.status) ||
-            (receipt.discrepancyFlag && receipt.status !== "REVERSED")
+          isReceivingFollowUp
         );
     cards.push({
-      id: "receiving-variance",
-      label: "Receiving Variance",
+      id: "receiving-follow-up",
+      label: "Receiving Follow-up",
       value,
-      href: "/receiving",
-      description: "Draft, posting, or discrepancy receipts",
+      href: receivingDashboardProfileHref("receiving-follow-up-v1"),
+      description: "Draft, posting, or discrepancy follow-up",
       tone: cardTone(value)
     });
 
     const receiptCandidates = source.receivingDashboard
-      ? source.receivingDashboard.taskCandidates.map((receipt) => ({
-          ...receipt,
-          discrepancyFlag: true
-        }))
+      ? source.receivingDashboard.taskCandidates
       : source.goodsReceipts ?? [];
     for (const receipt of receiptCandidates) {
-      if (receipt.discrepancyFlag && receipt.status !== "REVERSED") {
+      if (isReceivingFollowUp(receipt)) {
+        const inclusionReason =
+          "inclusionReason" in receipt
+            ? receipt.inclusionReason
+            : receivingFollowUpInclusionReason(receipt);
         exceptionQueue.push({
           id: `grn-${receipt.id}`,
-          label: "Receiving discrepancy",
+          label: "Receiving follow-up",
           reference: receipt.publicReference,
-          detail: `${receipt.supplierName} / ${receipt.purchaseOrderReference}`,
+          detail: `${inclusionReason} / ${receipt.supplierName} / ${receipt.purchaseOrderReference}`,
           status: receipt.status,
           href: `/receiving/${receipt.id}`,
           tone: "warning",
-          priority: "HIGH",
+          priority:
+            receipt.discrepancyFlag ||
+            receipt.status === "POSTED_WITH_DISCREPANCY"
+              ? "HIGH"
+              : "NORMAL",
           locationName: session.context.locationName,
           sourceAgeAt: "receivedAt" in receipt ? receipt.receivedAt : undefined
         });
@@ -1530,7 +1531,11 @@ export async function getOperationalDashboard(
       : Promise.resolve()
     },
     {
-      unavailableSource: { id: "receiving", label: "Receiving", href: "/receiving" },
+      unavailableSource: {
+        id: "receiving",
+        label: "Receiving Follow-up",
+        href: receivingDashboardProfileHref("receiving-follow-up-v1")
+      },
       read: canUseReceiving(session.permissionCodes)
       ? getReceivingDashboardRead(session).then((receivingDashboard) => {
           source.receivingDashboard = receivingDashboard;

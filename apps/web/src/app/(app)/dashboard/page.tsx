@@ -673,10 +673,10 @@ function DashboardReports({ dashboard }: { dashboard: Awaited<ReturnType<typeof 
       available: dashboard.metrics.some((metric) => metric.id.includes("po"))
     },
     {
-      title: "Receiving Variance Review",
-      detail: "Receipts with damaged, rejected, short, or discrepancy handling status.",
-      href: "/receiving",
-      available: dashboard.cards.some((card) => card.id === "receiving-variance")
+      title: "Receiving Follow-up",
+      detail: "Unposted drafts, posting receipts, and active receiving discrepancies.",
+      href: "/receiving?dashboard=receiving-follow-up-v1",
+      available: dashboard.cards.some((card) => card.id === "receiving-follow-up")
     },
     {
       title: "Transfer Follow-up",

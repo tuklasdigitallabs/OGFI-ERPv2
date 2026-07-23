@@ -7,8 +7,15 @@ import {
   assertGoodsReceiptCanBeReversed,
   assertPurchaseOrderCanBeReceived,
   calculatePurchaseOrderReceivingStatus,
+  buildReceivingReportExportRows,
   getReceivingDashboardRead,
+  isReceivingFollowUp,
+  listReceivingDashboardProfilePage,
   listReceivingMyTaskPage,
+  receivingDashboardProfileHref,
+  receivingDashboardProfileWhere,
+  receivingFollowUpInclusionReason,
+  resolveReceivingDashboardProfile,
   validateReceivingQuantities
 } from "./receiving";
 
@@ -60,6 +67,7 @@ describe("receiving foundation rules", () => {
         id: "receipt-1",
         publicReference: "RR-2026-00001",
         status: "POSTED_WITH_DISCREPANCY",
+        discrepancyFlag: false,
         receivedAt: new Date("2026-07-20T00:00:00.000Z"),
         supplier: { tradingName: "Fresh Foods", legalName: "Fresh Foods Inc." },
         purchaseOrder: { publicReference: "PO-2026-00001" }
@@ -67,11 +75,12 @@ describe("receiving foundation rules", () => {
     ]);
 
     await expect(getReceivingDashboardRead(dashboardSession as never)).resolves.toEqual({
-      exceptionCount: 2,
+      followUpCount: 2,
       taskCandidates: [
         expect.objectContaining({
           supplierName: "Fresh Foods",
-          purchaseOrderReference: "PO-2026-00001"
+          purchaseOrderReference: "PO-2026-00001",
+          inclusionReason: "Discrepancy recorded"
         })
       ]
     });
@@ -84,11 +93,200 @@ describe("receiving foundation rules", () => {
     });
     expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            {
+              discrepancyFlag: false,
+              status: { in: ["DRAFT", "POSTING"] }
+            },
+            { status: "POSTED_WITH_DISCREPANCY" },
+            {
+              discrepancyFlag: true,
+              status: {
+                in: [
+                  "DRAFT",
+                  "POSTING",
+                  "POSTED",
+                  "POSTED_WITH_DISCREPANCY",
+                  "REVERSING"
+                ]
+              }
+            }
+          ]
+        }),
         take: 8,
         orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
         select: expect.not.objectContaining({ lines: expect.anything() })
       })
     );
+  });
+
+  test("resolves only the closed Receiving Follow-up profile and exact allow-list", () => {
+    expect(resolveReceivingDashboardProfile("receiving-follow-up-v1")).toBe(
+      "receiving-follow-up-v1"
+    );
+    expect(resolveReceivingDashboardProfile("all")).toBeNull();
+    expect(resolveReceivingDashboardProfile("receiving-follow-up-v1&status=REVERSED")).toBeNull();
+    expect(receivingDashboardProfileHref("receiving-follow-up-v1", {
+      page: 2,
+      query: "RR-25"
+    })).toBe("/receiving?dashboard=receiving-follow-up-v1&q=RR-25&page=2");
+    expect(receivingDashboardProfileWhere(
+      dashboardSession as never,
+      "receiving-follow-up-v1"
+    )).toEqual({
+      tenantId: dashboardSession.context.tenantId,
+      companyId: dashboardSession.context.companyId,
+      receivingLocationId: dashboardSession.context.locationId,
+      OR: [
+        { discrepancyFlag: false, status: { in: ["DRAFT", "POSTING"] } },
+        { status: "POSTED_WITH_DISCREPANCY" },
+        {
+          discrepancyFlag: true,
+          status: {
+            in: [
+              "DRAFT",
+              "POSTING",
+              "POSTED",
+              "POSTED_WITH_DISCREPANCY",
+              "REVERSING"
+            ]
+          }
+        }
+      ]
+    });
+    expect(receivingFollowUpInclusionReason({
+      status: "POSTED",
+      discrepancyFlag: true
+    })).toBe("Discrepancy recorded");
+    expect(receivingFollowUpInclusionReason({
+      status: "DRAFT",
+      discrepancyFlag: false
+    })).toBe("Unposted draft");
+    expect(receivingFollowUpInclusionReason({
+      status: "REVERSING",
+      discrepancyFlag: true
+    })).toBe("Reversal in progress");
+    expect(receivingFollowUpInclusionReason({
+      status: "POSTING",
+      discrepancyFlag: false
+    })).toBe("Posting in progress");
+  });
+
+  test("fails closed across every current and future status/flag combination", () => {
+    const included = new Set([
+      "DRAFT:false",
+      "DRAFT:true",
+      "POSTING:false",
+      "POSTING:true",
+      "POSTED:true",
+      "POSTED_WITH_DISCREPANCY:false",
+      "POSTED_WITH_DISCREPANCY:true",
+      "REVERSING:true"
+    ]);
+    for (const status of [
+      "DRAFT",
+      "POSTING",
+      "POSTED",
+      "POSTED_WITH_DISCREPANCY",
+      "REVERSING",
+      "REVERSED",
+      "CANCELLED",
+      "REJECTED",
+      "FUTURE_STATUS"
+    ]) {
+      for (const discrepancyFlag of [false, true]) {
+        expect(
+          isReceivingFollowUp({ status, discrepancyFlag }),
+          `${status}:${discrepancyFlag}`
+        ).toBe(included.has(`${status}:${discrepancyFlag}`));
+      }
+    }
+  });
+
+  test("profile page applies additive search and deterministic server pagination", async () => {
+    mockPrisma.goodsReceipt.count.mockResolvedValue(26);
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([{
+      id: "receipt-26",
+      publicReference: "RR-2026-00026",
+      status: "POSTED",
+      discrepancyFlag: true,
+      receivedAt: new Date("2026-07-22T00:00:00.000Z"),
+      createdAt: new Date("2026-07-21T00:00:00.000Z"),
+      supplier: { tradingName: "Fresh Foods", legalName: "Fresh Foods Inc." },
+      purchaseOrder: { publicReference: "PO-2026-00026" },
+      receivingLocation: { name: "BGC" }
+    }]);
+
+    await expect(listReceivingDashboardProfilePage(
+      dashboardSession as never,
+      "receiving-follow-up-v1",
+      { page: 99, query: "  fresh  " }
+    )).resolves.toEqual({
+      items: [expect.objectContaining({
+        id: "receipt-26",
+        inclusionReason: "Discrepancy recorded",
+        supplierName: "Fresh Foods",
+        receivingLocationName: "BGC"
+      })],
+      totalItems: 26,
+      page: 2,
+      pageSize: 25,
+      query: "fresh"
+    });
+    const countWhere = mockPrisma.goodsReceipt.count.mock.calls[0]?.[0]?.where;
+    expect(countWhere).toMatchObject({
+      tenantId: dashboardSession.context.tenantId,
+      companyId: dashboardSession.context.companyId,
+      receivingLocationId: dashboardSession.context.locationId,
+      OR: expect.any(Array),
+      AND: [expect.objectContaining({ OR: expect.any(Array) })]
+    });
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: countWhere,
+        select: expect.not.objectContaining({ lines: expect.anything() }),
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        skip: 25,
+        take: 25
+      })
+    );
+  });
+
+  test("profile export reuses the locked predicate and ignores unsupported raw filters", async () => {
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([]);
+    const rows = await buildReceivingReportExportRows(
+      dashboardSession as never,
+      "receiving-follow-up-v1",
+      "PO-2026"
+    );
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: dashboardSession.context.tenantId,
+          companyId: dashboardSession.context.companyId,
+          receivingLocationId: dashboardSession.context.locationId,
+          OR: expect.any(Array),
+          AND: [expect.objectContaining({ OR: expect.any(Array) })]
+        }),
+        select: expect.not.objectContaining({
+          lines: expect.anything(),
+          receivedBy: expect.anything(),
+          reversedBy: expect.anything()
+        }),
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }]
+      })
+    );
+    expect(rows[0]).toEqual([
+      "Reference",
+      "Status",
+      "Follow-up Reason",
+      "Supplier",
+      "Purchase Order",
+      "Receiving Location",
+      "Received At",
+      "Created At"
+    ]);
   });
 
   test("dashboard read rejects callers without receiving access before querying", async () => {
@@ -354,7 +552,14 @@ describe("receiving foundation rules", () => {
     expect(service).toContain("Evidence Reference");
     expect(service).toContain("Discrepancy Reason");
     expect(service).toContain("Posted Movement");
-    expect(route).toContain("buildReceivingReportExportRows(session)");
+    expect(route).toContain("resolveReceivingDashboardProfile");
+    expect(route).toContain("Unsupported receiving dashboard profile.");
+    expect(route).toContain("profile ? \"receiving-follow-up.csv\"");
+    expect(route).toContain("canExportReceivingReports(session)");
+    expect(route).toContain('eventType: "report.export_started"');
+    expect(route).toContain('eventType: "report.export_completed"');
+    expect(route).toContain("buildReportCsvMetadata");
+    expect(route).toContain("logOperationalExportFailure");
     expect(route).not.toContain("postInventoryMovementInTransaction");
     expect(route).not.toContain("goodsReceipt.update");
   });

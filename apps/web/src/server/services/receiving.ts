@@ -1,4 +1,4 @@
-import { prisma, type TransactionClient } from "@ogfi/database";
+import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { canUseReceiving, permissions, requirePermission } from "./authorization";
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
@@ -79,11 +79,158 @@ async function requireReceivingRead(session: SessionContext) {
   }
 }
 
+export const receivingDashboardProfiles = ["receiving-follow-up-v1"] as const;
+export type ReceivingDashboardProfile =
+  (typeof receivingDashboardProfiles)[number];
+
+const receivingFollowUpCleanStatuses = ["DRAFT", "POSTING"] as const;
+const receivingFollowUpFlaggedStatuses = [
+  "DRAFT",
+  "POSTING",
+  "POSTED",
+  "POSTED_WITH_DISCREPANCY",
+  "REVERSING"
+] as const;
+const receivingDashboardProfilePageSize = 25;
+const receivingDashboardProfileSearchMaxLength = 120;
+
+export function isReceivingFollowUp(receipt: {
+  status: string;
+  discrepancyFlag: boolean;
+}) {
+  return (
+    (!receipt.discrepancyFlag &&
+      receivingFollowUpCleanStatuses.includes(
+        receipt.status as (typeof receivingFollowUpCleanStatuses)[number]
+      )) ||
+    receipt.status === "POSTED_WITH_DISCREPANCY" ||
+    (receipt.discrepancyFlag &&
+      receivingFollowUpFlaggedStatuses.includes(
+        receipt.status as (typeof receivingFollowUpFlaggedStatuses)[number]
+      ))
+  );
+}
+
+export function resolveReceivingDashboardProfile(
+  value: string | undefined
+): ReceivingDashboardProfile | null {
+  return value === "receiving-follow-up-v1" ? value : null;
+}
+
+export function receivingDashboardProfileHref(
+  profile: ReceivingDashboardProfile,
+  input: { page?: number; query?: string } = {}
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  const query = input.query?.trim();
+  if (query) params.set("q", query);
+  if (input.page && input.page > 1) params.set("page", String(input.page));
+  return `/receiving?${params.toString()}`;
+}
+
+/** The one closed, server-owned Receiving Follow-up population. */
+export function receivingDashboardProfileWhere(
+  session: SessionContext,
+  profile: ReceivingDashboardProfile
+) {
+  if (profile !== "receiving-follow-up-v1") {
+    throw new Error("RECEIVING_DASHBOARD_PROFILE_UNSUPPORTED");
+  }
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    receivingLocationId: session.context.locationId,
+    OR: [
+      {
+        discrepancyFlag: false,
+        status: { in: [...receivingFollowUpCleanStatuses] }
+      },
+      { status: "POSTED_WITH_DISCREPANCY" },
+      {
+        discrepancyFlag: true,
+        status: { in: [...receivingFollowUpFlaggedStatuses] }
+      }
+    ]
+  } satisfies Prisma.GoodsReceiptWhereInput;
+}
+
+function normalizeReceivingDashboardProfileSearch(query?: string) {
+  const normalized = query?.trim() || null;
+  if (
+    normalized &&
+    normalized.length > receivingDashboardProfileSearchMaxLength
+  ) {
+    throw new Error("RECEIVING_DASHBOARD_PROFILE_SEARCH_TOO_LONG");
+  }
+  return normalized;
+}
+
+function receivingDashboardProfileSearchWhere(query: string) {
+  return {
+    OR: [
+      { publicReference: { contains: query, mode: "insensitive" as const } },
+      {
+        purchaseOrder: {
+          publicReference: { contains: query, mode: "insensitive" as const }
+        }
+      },
+      {
+        supplier: {
+          OR: [
+            { tradingName: { contains: query, mode: "insensitive" as const } },
+            { legalName: { contains: query, mode: "insensitive" as const } }
+          ]
+        }
+      }
+    ]
+  } satisfies Prisma.GoodsReceiptWhereInput;
+}
+
+function receivingDashboardProfileFilteredWhere(
+  session: SessionContext,
+  profile: ReceivingDashboardProfile,
+  query?: string
+) {
+  const profileWhere = receivingDashboardProfileWhere(session, profile);
+  const normalizedQuery = normalizeReceivingDashboardProfileSearch(query);
+  return {
+    where: normalizedQuery
+      ? {
+          ...profileWhere,
+          AND: [receivingDashboardProfileSearchWhere(normalizedQuery)]
+        }
+      : profileWhere,
+    normalizedQuery
+  };
+}
+
+export type ReceivingFollowUpInclusionReason =
+  | "Reversal in progress"
+  | "Discrepancy recorded"
+  | "Unposted draft"
+  | "Posting in progress";
+
+export function receivingFollowUpInclusionReason(receipt: {
+  status: string;
+  discrepancyFlag: boolean;
+}): ReceivingFollowUpInclusionReason {
+  if (receipt.status === "REVERSING") return "Reversal in progress";
+  if (
+    receipt.status === "POSTED_WITH_DISCREPANCY" ||
+    receipt.discrepancyFlag
+  ) {
+    return "Discrepancy recorded";
+  }
+  if (receipt.status === "POSTING") return "Posting in progress";
+  if (receipt.status === "DRAFT") return "Unposted draft";
+  throw new Error("RECEIVING_FOLLOW_UP_REASON_UNAVAILABLE");
+}
+
 const receivingDashboardTaskCandidateLimit = 8;
 const receivingMyTaskPageSize = 25;
 
 export type ReceivingDashboardRead = {
-  exceptionCount: number;
+  followUpCount: number;
   taskCandidates: Array<{
     id: string;
     publicReference: string;
@@ -91,6 +238,8 @@ export type ReceivingDashboardRead = {
     supplierName: string;
     purchaseOrderReference: string;
     receivedAt: string;
+    discrepancyFlag: boolean;
+    inclusionReason: ReceivingFollowUpInclusionReason;
   }>;
 };
 
@@ -179,6 +328,83 @@ export async function listReceivingMyTaskPage(
   };
 }
 
+export type ReceivingFollowUpProfilePage = {
+  items: Array<{
+    id: string;
+    publicReference: string;
+    status: string;
+    discrepancyFlag: boolean;
+    inclusionReason: ReceivingFollowUpInclusionReason;
+    supplierName: string;
+    purchaseOrderReference: string;
+    receivingLocationName: string;
+    receivedAt: string;
+    createdAt: string;
+  }>;
+  totalItems: number;
+  page: number;
+  pageSize: number;
+  query: string | null;
+};
+
+export async function listReceivingDashboardProfilePage(
+  session: SessionContext,
+  profile: ReceivingDashboardProfile,
+  input: { page?: number; query?: string } = {}
+): Promise<ReceivingFollowUpProfilePage> {
+  await requireReceivingRead(session);
+  const requestedPage =
+    input.page && Number.isFinite(input.page) && input.page > 0
+      ? Math.floor(input.page)
+      : 1;
+  const { where, normalizedQuery } = receivingDashboardProfileFilteredWhere(
+    session,
+    profile,
+    input.query
+  );
+  const totalItems = await prisma.goodsReceipt.count({ where });
+  const page = Math.min(
+    requestedPage,
+    Math.max(1, Math.ceil(totalItems / receivingDashboardProfilePageSize))
+  );
+  const receipts = await prisma.goodsReceipt.findMany({
+    where,
+    select: {
+      id: true,
+      publicReference: true,
+      status: true,
+      discrepancyFlag: true,
+      receivedAt: true,
+      createdAt: true,
+      supplier: { select: { tradingName: true, legalName: true } },
+      purchaseOrder: { select: { publicReference: true } },
+      receivingLocation: { select: { name: true } }
+    },
+    orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * receivingDashboardProfilePageSize,
+    take: receivingDashboardProfilePageSize
+  });
+
+  return {
+    items: receipts.map((receipt) => ({
+      id: receipt.id,
+      publicReference: receipt.publicReference,
+      status: receipt.status,
+      discrepancyFlag: receipt.discrepancyFlag,
+      inclusionReason: receivingFollowUpInclusionReason(receipt),
+      supplierName: receipt.supplier.tradingName ?? receipt.supplier.legalName,
+      purchaseOrderReference: receipt.purchaseOrder.publicReference,
+      receivingLocationName: receipt.receivingLocation.name,
+      receivedAt: receipt.receivedAt.toISOString(),
+      createdAt: receipt.createdAt.toISOString()
+    })),
+    totalItems,
+    page,
+    pageSize: receivingDashboardProfilePageSize,
+    query: normalizedQuery
+  };
+}
+
 /**
  * Deliberately narrow dashboard read. The receiving workspace remains the
  * authoritative place for receipt detail and line-level discrepancy review.
@@ -187,32 +413,20 @@ export async function getReceivingDashboardRead(
   session: SessionContext
 ): Promise<ReceivingDashboardRead> {
   await requireReceivingRead(session);
+  const where = receivingDashboardProfileWhere(
+    session,
+    "receiving-follow-up-v1"
+  );
 
-  const scope = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    receivingLocationId: session.context.locationId
-  };
-  const exceptionWhere = {
-    ...scope,
-    OR: [
-      { status: { in: ["DRAFT", "POSTING", "POSTED_WITH_DISCREPANCY"] } },
-      { discrepancyFlag: true, status: { not: "REVERSED" } }
-    ]
-  };
-
-  const [exceptionCount, candidates] = await Promise.all([
-    prisma.goodsReceipt.count({ where: exceptionWhere }),
+  const [followUpCount, candidates] = await Promise.all([
+    prisma.goodsReceipt.count({ where }),
     prisma.goodsReceipt.findMany({
-      where: {
-        ...scope,
-        discrepancyFlag: true,
-        status: { not: "REVERSED" }
-      },
+      where,
       select: {
         id: true,
         publicReference: true,
         status: true,
+        discrepancyFlag: true,
         receivedAt: true,
         supplier: { select: { tradingName: true, legalName: true } },
         purchaseOrder: { select: { publicReference: true } }
@@ -223,14 +437,16 @@ export async function getReceivingDashboardRead(
   ]);
 
   return {
-    exceptionCount,
+    followUpCount,
     taskCandidates: candidates.map((receipt) => ({
       id: receipt.id,
       publicReference: receipt.publicReference,
       status: receipt.status,
       supplierName: receipt.supplier.tradingName ?? receipt.supplier.legalName,
       purchaseOrderReference: receipt.purchaseOrder.publicReference,
-      receivedAt: receipt.receivedAt.toISOString()
+      receivedAt: receipt.receivedAt.toISOString(),
+      discrepancyFlag: receipt.discrepancyFlag,
+      inclusionReason: receivingFollowUpInclusionReason(receipt)
     }))
   };
 }
@@ -578,8 +794,53 @@ export async function listGoodsReceipts(session: SessionContext) {
   }));
 }
 
-export async function buildReceivingReportExportRows(session: SessionContext) {
+export async function buildReceivingReportExportRows(
+  session: SessionContext,
+  profile?: ReceivingDashboardProfile,
+  query?: string
+) {
   await requireReceivingRead(session);
+
+  if (profile) {
+    const receipts = await prisma.goodsReceipt.findMany({
+      where: receivingDashboardProfileFilteredWhere(session, profile, query).where,
+      select: {
+        id: true,
+        publicReference: true,
+        status: true,
+        discrepancyFlag: true,
+        receivedAt: true,
+        createdAt: true,
+        purchaseOrder: { select: { publicReference: true } },
+        supplier: { select: { legalName: true, tradingName: true } },
+        receivingLocation: { select: { name: true } }
+      },
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }]
+    });
+
+    return [
+      [
+        "Reference",
+        "Status",
+        "Follow-up Reason",
+        "Supplier",
+        "Purchase Order",
+        "Receiving Location",
+        "Received At",
+        "Created At"
+      ],
+      ...receipts.map((receipt) => [
+        receipt.publicReference,
+        receipt.status,
+        receivingFollowUpInclusionReason(receipt),
+        receipt.supplier.tradingName ?? receipt.supplier.legalName,
+        receipt.purchaseOrder.publicReference,
+        receipt.receivingLocation.name,
+        receipt.receivedAt.toISOString(),
+        receipt.createdAt.toISOString()
+      ])
+    ] satisfies CsvRow[];
+  }
 
   const receipts = await prisma.goodsReceipt.findMany({
     where: {

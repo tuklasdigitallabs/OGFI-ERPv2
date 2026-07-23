@@ -19,9 +19,12 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportReceivingReports } from "@/server/services/exportAuthorization";
 import {
   createGoodsReceiptFromPurchaseOrder,
+  listReceivingDashboardProfilePage,
   listGoodsReceipts,
   listReceivablePurchaseOrders,
-  postGoodsReceipt
+  postGoodsReceipt,
+  receivingDashboardProfileHref,
+  resolveReceivingDashboardProfile
 } from "@/server/services/receiving";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +58,10 @@ function getReceivingTab(
 function getPage(searchParams: Record<string, string | string[] | undefined>) {
   const page = Number.parseInt(getStringParam(searchParams, "page") ?? "1", 10);
   return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+function getQuery(searchParams: Record<string, string | string[] | undefined>) {
+  return (getStringParam(searchParams, "q") ?? "").trim();
 }
 
 function receivingHref(tab: ReceivingTab, page = 1) {
@@ -118,11 +125,66 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
     );
   }
 
-  const [receipts, receivableOrders] = await Promise.all([
-    listGoodsReceipts(session),
-    canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([])
-  ]);
   const params = searchParams ? await searchParams : {};
+  const profileParam = getStringParam(params, "dashboard");
+  const profile = resolveReceivingDashboardProfile(profileParam);
+  if (profileParam && !profile) {
+    return (
+      <AppShell
+        session={session}
+        title="Receiving Follow-up unavailable"
+        subtitle="The requested dashboard profile is unsupported or retired"
+        activeNav="receiving"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Receiving Follow-up is unavailable"
+            description="This dashboard link cannot be opened safely. Return to Overview for the current follow-up card, or deliberately open the full Receiving workspace."
+          />
+          <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+            <ButtonLink href="/dashboard">Back to Overview</ButtonLink>
+            <ButtonLink href="/receiving" tone="secondary">Open Receiving workspace</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  const query = getQuery(params);
+  if (profile && query.length > 120) {
+    return (
+      <AppShell
+        session={session}
+        title="Receiving Follow-up"
+        subtitle={`${session.context.companyName} / ${session.context.locationName}`}
+        activeNav="receiving"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Search is too long"
+            description="Use no more than 120 characters and search by GRN, Purchase Order, or supplier. The Receiving Follow-up population and selected scope were not changed."
+          />
+          <div className="mt-4 flex justify-center">
+            <ButtonLink href={receivingDashboardProfileHref(profile)}>
+              Clear search
+            </ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  const profilePage = profile
+    ? await listReceivingDashboardProfilePage(session, profile, {
+        page: getPage(params),
+        ...(query ? { query } : {})
+      })
+    : null;
+  const [workspaceReceipts, receivableOrders] = profile
+    ? [null, []]
+    : await Promise.all([
+        listGoodsReceipts(session),
+        canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([])
+      ]);
+  const receipts = workspaceReceipts ?? [];
   const actionFeedback = getActionFeedback(params);
   const activeTab = getReceivingTab(params);
   const page = getPage(params);
@@ -188,7 +250,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
         </p>
       </div>
       <div className="space-y-4">
-        {canCreateReceiving ? (
+        {!profile && canCreateReceiving ? (
           <div className="flex justify-end">
             <TaskSheet title="Create Draft Receipt" description="Receive one issued purchase order with controlled accepted and discrepancy quantities." trigger={<span>Create Draft Receipt</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
               {receivableOrders.length === 0 ? <div className="m-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No issued Purchase Orders are ready for receiving in this location.</div> : <GoodsReceiptLinesEditor action={createReceiptAction} orders={receivableOrders} />}
@@ -199,17 +261,26 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
         <section className="ogfi-data-surface">
           <div className="ogfi-section-header">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">Receiving Reports</h2>
+              <h2 className="text-lg font-bold text-slate-950">
+                {profile ? "Receiving Follow-up" : "Receiving Reports"}
+              </h2>
               <p className="text-sm text-slate-500">
-                {receipts.length} total, {draftReceipts.length} draft,{" "}
-                {discrepantReceipts.length} with discrepancies
+                {profile
+                  ? `${profilePage?.totalItems ?? 0} unposted, processing, or discrepancy records at ${session.context.locationName}`
+                  : `${receipts.length} total, ${draftReceipts.length} draft, ${discrepantReceipts.length} with discrepancies`}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Badge tone="info">GRN</Badge>
+              {profile ? (
+                <ButtonLink href="/receiving">Exit follow-up view</ButtonLink>
+              ) : (
+                <Badge tone="info">GRN</Badge>
+              )}
               {canExportReceiving ? (
                 <ButtonLink
-                  href="/receiving/export"
+                  href={profile
+                    ? `/receiving/export?dashboard=${profile}${profilePage?.query ? `&q=${encodeURIComponent(profilePage.query)}` : ""}`
+                    : "/receiving/export"}
                   className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
@@ -217,6 +288,39 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               ) : null}
             </div>
           </div>
+          {profile ? (
+            <div className="border-b border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="info">Dashboard profile</Badge>
+                <Badge tone="neutral">{session.context.companyName}</Badge>
+                <Badge tone="neutral">{session.context.locationName}</Badge>
+              </div>
+              <p className="mt-3">
+                This read-only view shows unposted drafts, posting receipts, and active discrepancy records in the selected receiving location. It does not resolve discrepancies or grant posting, reversal, Purchase Order, or inventory authority. Open Receiving Report detail for current facts and independently authorized actions.
+              </p>
+            </div>
+          ) : null}
+          {profile ? (
+            <form className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-end" method="get">
+              <input name="dashboard" type="hidden" value={profile} />
+              <label className="flex-1 text-sm font-semibold text-slate-700">
+                Search follow-up records
+                <input
+                  className="mt-1 min-h-10 w-full rounded-md border border-slate-300 px-3 font-normal"
+                  defaultValue={profilePage?.query ?? ""}
+                  maxLength={120}
+                  name="q"
+                  placeholder="GRN, PO, or supplier"
+                />
+              </label>
+              <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" type="submit">
+                Search
+              </button>
+              {profilePage?.query ? (
+                <ButtonLink href={receivingDashboardProfileHref(profile)}>Clear search</ButtonLink>
+              ) : null}
+            </form>
+          ) : (
           <div className="border-b border-slate-100 p-4">
             <WorkspaceTabs
               items={[
@@ -247,7 +351,48 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               ]}
             />
           </div>
-          {visibleReceipts.length === 0 ? (
+          )}
+          {profile ? (
+            profilePage && profilePage.items.length > 0 ? (
+              <div className="divide-y divide-slate-100">
+                {profilePage.items.map((receipt) => (
+                  <div key={receipt.id} className="ogfi-list-row grid gap-3">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase text-slate-400">{receipt.publicReference}</p>
+                        <h3 className="mt-1 text-lg font-bold text-slate-950">{receipt.supplierName}</h3>
+                        <p className="text-sm text-slate-600">PO {receipt.purchaseOrderReference}</p>
+                        <p className="mt-1 text-xs text-slate-500">Received {new Date(receipt.receivedAt).toLocaleString()}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 md:justify-end">
+                        <Badge tone="neutral">{receipt.status}</Badge>
+                        <Badge tone={receipt.inclusionReason === "Discrepancy recorded" ? "warning" : "info"}>
+                          {receipt.inclusionReason}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <ButtonLink
+                        href={`/receiving/${receipt.id}?from=${profile}&page=${profilePage.page}${profilePage.query ? `&q=${encodeURIComponent(profilePage.query)}` : ""}`}
+                        className="bg-slate-100 text-blue-700 hover:bg-blue-50"
+                      >
+                        View Receiving Report
+                      </ButtonLink>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-5">
+                <EmptyState
+                  title={profilePage?.query ? "No matching follow-up records" : "No receiving follow-up"}
+                  description={profilePage?.query
+                    ? "No unposted, processing, or discrepancy records match this search in the selected receiving location."
+                    : "No unposted drafts, posting receipts, or active discrepancy records are in the selected receiving location."}
+                />
+              </div>
+            )
+          ) : visibleReceipts.length === 0 ? (
             <div className="p-5">
               <EmptyState title={emptyCopy.title} description={emptyCopy.description} />
             </div>
@@ -307,7 +452,18 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               ))}
             </div>
           )}
-          {visibleReceipts.length > 0 ? (
+          {profile && profilePage && profilePage.totalItems > 0 ? (
+            <PaginationBar
+              page={profilePage.page}
+              pageSize={profilePage.pageSize}
+              totalItems={profilePage.totalItems}
+              itemLabel="follow-up records"
+              getPageHref={(nextPage) => receivingDashboardProfileHref(profile, {
+                page: nextPage,
+                ...(profilePage.query ? { query: profilePage.query } : {})
+              })}
+            />
+          ) : !profile && visibleReceipts.length > 0 ? (
             <PaginationBar
               page={safePage}
               pageSize={PAGE_SIZE}

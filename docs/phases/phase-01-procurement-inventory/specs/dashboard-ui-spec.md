@@ -56,6 +56,7 @@ Example: `Receive Transfer TO-2026-00182 · Main Warehouse → YL-MOA · Due tod
 - Widgets are role-default, not freely draggable in Phase I.
 - Users may filter within permitted scope; global scope cannot be widened beyond assignment.
 - Every KPI/widget links to a filtered list or report.
+- The implemented `Receiving Follow-up` widget opens a closed, read-only `receiving-follow-up-v1` profile. Its dashboard count, bounded candidates, server-paginated list, constrained header search, and CSV export share the exact selected-location predicate confirmed in `DEC-0069`; client status, discrepancy, scope, tab, token, or reason inputs cannot redefine it.
 - Empty widget state gives an accurate positive message such as `No overdue transfers in your assigned locations.`
 
 ## 6. My Tasks requirements

@@ -54,6 +54,8 @@ Implemented audit note: Receiving Report detail shows append-only audit events w
 
 Implemented cache/update note: Posting a Receiving Report refreshes the receiving list/detail, Purchase Order list, and affected Purchase Order detail so PO status and receiving progress stay current.
 
+Implemented dashboard profile note: `Receiving Follow-up` is a read-only, selected-location profile for unposted drafts, receipts being posted, active recorded discrepancies, and discrepancy-bearing reversals in progress. It uses server pagination, constrained GRN/PO/supplier search, and a profile-parity CSV export. The list provides detail navigation only; it does not create, post, reverse, or resolve a discrepancy, and Receiving Report detail reauthorizes every available source action.
+
 ### Line-level controls
 
 For each PO line show:

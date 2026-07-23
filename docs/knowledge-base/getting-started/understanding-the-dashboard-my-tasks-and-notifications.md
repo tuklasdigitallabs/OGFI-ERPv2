@@ -3,7 +3,7 @@
 **Audience / required role:** All operational users, managers, approvers, and project users  
 **Applies to:** Operations Dashboard, My Tasks, My Work, Approval Inbox, and Notifications
 **Related phase/module:** Phase I and Phase 1.5 / Operational Visibility  
-**Last verified against:** implemented action-first Operations Dashboard checkpoint, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, and Transfer Follow-up drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
+**Last verified against:** implemented action-first Operations Dashboard checkpoint, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, and Receiving Follow-up drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
 
 ## Purpose
 
@@ -27,7 +27,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 2. Open `Operations Dashboard` and review `Today’s work` first. It lists the highest-priority assigned approvals and operational exceptions visible in your selected scope.
 3. Open `My Tasks` when you need the current paginated operational action queue. It presently includes your own draft Purchase Request submission, eligible draft Purchase Order submission or approved PO supplier-send actions, Transfer, Wastage, Stock Adjustment, draft Receiving Report posting, assigned first-pass Stock Count start, entry, or submission, eligible Branch Operations or Food Safety review and returned-record correction, eligible Incident resolution, and eligible Maintenance completion.
 4. Read the location, owner, timing, severity, status, and next-action labels before opening a source record.
-5. Select `Open` or `Open approvals` to continue in the relevant controlled workspace. The `Open POs`, `Open PRs`, and `Transfer Follow-up` cards open their selected location's closed source-list views.
+5. Select `Open` or `Open approvals` to continue in the relevant controlled workspace. The `Open POs`, `Open PRs`, `Transfer Follow-up`, and `Receiving Follow-up` cards open their selected location's closed source-list views.
 5. Open `Approval Inbox` to review assigned approval decisions.
 6. Open `My Work` for project tasks assigned to you.
 7. Open `Notifications` to review unread or actionable alerts.
@@ -50,6 +50,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - `Open POs` opens a paginated list of the same open PO lifecycle used by that dashboard count. Its CSV export uses that same list; use `Clear dashboard filter` to return to normal Purchase Order filtering.
 - `Open PRs` opens a paginated list of the same open PR lifecycle used by that dashboard count: Draft, Pending Approval, Approved, and Returned. Its CSV export uses that same list; use `Clear dashboard filter` to return to normal Purchase Request filtering.
 - `Transfer Follow-up` opens a paginated list of requested, dispatched, partially received, and disputed transfers where your selected location is either endpoint. Its CSV export uses that same list. The drilldown is read-only: use the controlled transfer record for any permitted dispatch, receipt, settlement, or reversal action.
+- `Receiving Follow-up` opens a searchable, paginated list of unposted drafts, posting receipts, active recorded discrepancies, and discrepancy-bearing reversals in progress at the selected receiving location. A row is labeled `Unposted draft`, `Posting in progress`, `Discrepancy recorded`, or `Reversal in progress`. The list and its CSV export share the same fixed population. It is a monitoring and navigation view, not a discrepancy-resolution queue; posting and reversal remain independently authorized actions on Receiving Report detail.
 - Approval Inbox shows records assigned to you or your active approval role.
 - My Work shows project tasks according to project visibility and assignment.
 - Notifications show scoped alerts and links to the related work where available.
@@ -58,7 +59,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 ## Important Controls And Warnings
 
 - Dashboard cards are read-only and do not approve, post, receive, dispatch, or reverse records.
-- A dashboard drilldown narrows an already authorized source list. It does not grant access to a PO, PR, or transfer; alter the selected scope; or permit changing the dashboard filter through the URL.
+- A dashboard drilldown narrows an already authorized source list. It does not grant access to a PO, PR, transfer, or Receiving Report; alter the selected scope; or permit changing the dashboard filter through the URL.
 - `Today’s work` is a prioritized read-only view. Opening an item does not bypass the source record’s permission, status, or segregation-of-duties checks.
 - `My Tasks` is not a replacement for Approval Inbox or project `My Work`, and it does not yet include every operational source. Its signed page cursor only continues the current queue page; it does not grant access or action authority.
 - If a task page expires or no longer matches your user, scope, permissions, or the current source registry, My Tasks restarts at page one and explains the reset. It never weakens cursor validation to preserve an old page.

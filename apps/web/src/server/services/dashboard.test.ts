@@ -106,6 +106,41 @@ describe("operational dashboard model", () => {
     );
   });
 
+  it("labels and links Receiving Follow-up to its closed server-owned profile", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      receivingDashboard: {
+        followUpCount: 2,
+        taskCandidates: [{
+          id: "receipt-1",
+          publicReference: "RR-001",
+          status: "POSTED_WITH_DISCREPANCY",
+          supplierName: "Demo Supplier",
+          purchaseOrderReference: "PO-001",
+          receivedAt: "2026-07-20T00:00:00.000Z",
+          discrepancyFlag: false,
+          inclusionReason: "Discrepancy recorded"
+        }]
+      }
+    });
+
+    expect(dashboard.cards).toContainEqual(
+      expect.objectContaining({
+        id: "receiving-follow-up",
+        label: "Receiving Follow-up",
+        href: "/receiving?dashboard=receiving-follow-up-v1",
+        description: "Draft, posting, or discrepancy follow-up",
+        value: 2
+      })
+    );
+    expect(dashboard.exceptionQueue).toContainEqual(
+      expect.objectContaining({
+        label: "Receiving follow-up",
+        detail: "Discrepancy recorded / Demo Supplier / PO-001",
+        href: "/receiving/receipt-1"
+      })
+    );
+  });
+
   it("uses the filtered approval queue instead of raw approval counts", () => {
     const dashboard = buildOperationalDashboardModel(session, {
       approvals: [
@@ -235,7 +270,11 @@ describe("operational dashboard model", () => {
       dashboard.cards.map((card) => [card.id, card.value, card.href])
     ).toEqual([
       ["open-purchase-orders", 1, "/purchase-orders?dashboard=po-open-v1"],
-      ["receiving-variance", 1, "/receiving"],
+      [
+        "receiving-follow-up",
+        1,
+        "/receiving?dashboard=receiving-follow-up-v1"
+      ],
       ["ledger-reconciliation", 1, "/inventory"]
     ]);
     expect(dashboard.exceptionQueue.map((item) => item.href)).toEqual([
@@ -462,7 +501,7 @@ describe("operational dashboard model", () => {
       "pending-approvals",
       "open-purchase-requests",
       "open-purchase-orders",
-      "receiving-variance",
+      "receiving-follow-up",
       "transfer-follow-up",
       "count-variance",
       "wastage-exceptions",
@@ -472,7 +511,7 @@ describe("operational dashboard model", () => {
     expect(
       dashboard.exceptionQueue.map((item) => [item.label, item.href])
     ).toEqual([
-      ["Receiving discrepancy", "/receiving/grn-1"],
+      ["Receiving follow-up", "/receiving/grn-1"],
       ["Transfer follow-up", "/transfers/transfer-1"],
       ["Count variance", "/counts/count-1"],
       ["Wastage follow-up", "/wastage/waste-1"],

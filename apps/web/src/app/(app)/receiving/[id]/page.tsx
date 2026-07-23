@@ -17,7 +17,9 @@ import {
 import { getSessionContext } from "@/server/services/context";
 import {
   getGoodsReceipt,
+  isReceivingFollowUp,
   postGoodsReceipt,
+  receivingDashboardProfileHref,
   reverseGoodsReceipt
 } from "@/server/services/receiving";
 
@@ -27,6 +29,14 @@ type ReceivingDetailPageProps = {
   params: Promise<{ id: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
+
+function getStringParam(
+  searchParams: Record<string, string | string[] | undefined>,
+  key: string
+) {
+  const value = searchParams[key];
+  return Array.isArray(value) ? value[0] : value;
+}
 
 async function postReceiptAction(formData: FormData) {
   "use server";
@@ -113,6 +123,24 @@ export default async function ReceivingDetailPage({
   );
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(resolvedSearchParams);
+  const fromFollowUp =
+    getStringParam(resolvedSearchParams, "from") === "receiving-follow-up-v1";
+  const returnQuery = (getStringParam(resolvedSearchParams, "q") ?? "").trim();
+  const rawReturnPage = Number.parseInt(
+    getStringParam(resolvedSearchParams, "page") ?? "1",
+    10
+  );
+  const returnPage = Number.isFinite(rawReturnPage) && rawReturnPage > 0
+    ? rawReturnPage
+    : 1;
+  const validReturnQuery = returnQuery.length <= 120 ? returnQuery : "";
+  const receivingReturnHref = fromFollowUp
+    ? receivingDashboardProfileHref("receiving-follow-up-v1", {
+        page: returnPage,
+        ...(validReturnQuery ? { query: validReturnQuery } : {})
+      })
+    : "/receiving";
+  const remainsInFollowUp = isReceivingFollowUp(receipt);
 
   return (
     <AppShell
@@ -122,6 +150,11 @@ export default async function ReceivingDetailPage({
       activeNav="receiving"
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
+      {fromFollowUp && !remainsInFollowUp ? (
+        <Panel className="mb-4 border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+          This Receiving Report no longer matches Receiving Follow-up. Its current authoritative status is shown below; returning will reopen the same locked follow-up view and search.
+        </Panel>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <Panel className="ogfi-detail-card">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -281,8 +314,8 @@ export default async function ReceivingDetailPage({
           </div>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <ButtonLink href="/receiving" className="bg-slate-700 hover:bg-slate-800">
-              Back to Receiving
+            <ButtonLink href={receivingReturnHref} className="bg-slate-700 hover:bg-slate-800">
+              {fromFollowUp ? "Back to Receiving Follow-up" : "Back to Receiving"}
             </ButtonLink>
             {canAccessPurchaseOrders ? (
               <ButtonLink

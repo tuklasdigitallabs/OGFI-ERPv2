@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Closed Receiving Follow-up Drilldown
+
+- Confirmed and implemented `DEC-0069`: the misleading `Receiving Variance` dashboard label is now `Receiving Follow-up` with a finite, selected-location lifecycle predicate.
+- Added one read-only, searchable, server-paginated profile whose count, candidates, pages, inclusion reasons, and CSV export share the same source-owned authorization boundary.
+- Kept create, post, reverse, discrepancy resolution, Purchase Order effects, and inventory authority on independently authorized source workflows, and aligned dashboard/Receiving specifications, glossary, and user guidance.
+
 ## 2026-07-23 — Assigned Stock Count My Tasks And Inventory Serialization
 
 - Confirmed and implemented `DEC-0068`: My Tasks enrolls exactly one assigned first-pass Stock Count Start, Enter, or Submit obligation with fixed high/no-due ordering; recount, review, cancellation, variance generation, empty snapshots, and future starts remain excluded.
