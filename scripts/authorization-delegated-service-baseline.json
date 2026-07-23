@@ -49,6 +49,7 @@
   "server/services/context.ts#getConfiguredContext",
   "server/services/context.ts#getSessionContext",
   "server/services/context.ts#requireSessionContext",
+  "server/services/controlledEvidenceQualification.ts#qualifyControlledEvidenceForAction",
   "server/services/coreAdmin.ts#touchUserPrivilegeEpoch",
   "server/services/evidenceScanLifecycle.ts#processEvidenceScan",
   "server/services/evidenceScanLifecycle.ts#readAvailableEvidenceAttachmentForSession",

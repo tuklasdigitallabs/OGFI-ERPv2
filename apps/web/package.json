@@ -39,6 +39,8 @@
     "test:authorization-workforce:execute": "vitest run tests/authorizationWorkforce.integration.test.ts",
     "test:evidence-authorization": "node ../../scripts/run-disposable-postgres-tests.mjs evidence-authorization -- pnpm --dir apps/web test:evidence-authorization:execute",
     "test:evidence-authorization:execute": "vitest run tests/evidenceAuthorization.integration.test.ts",
+    "test:controlled-evidence-qualification": "node ../../scripts/run-disposable-postgres-tests.mjs controlled-evidence-qualification -- pnpm --dir apps/web test:controlled-evidence-qualification:execute",
+    "test:controlled-evidence-qualification:execute": "cross-env RUN_CONTROLLED_EVIDENCE_QUALIFICATION_PG_TESTS=true vitest run --no-file-parallelism src/server/services/controlledEvidenceQualification.test.ts tests/controlledEvidenceQualificationPg.integration.test.ts",
     "test:authorization-manifest": "vitest run tests/authorizationManifest.test.mjs",
     "test:authorization-denials:execute": "vitest run tests/authorizationDenials.integration.test.ts",
     "test:approval-routing": "vitest run src/server/services/approvalRoutingRegistry.test.ts src/server/services/approvalRoutingBackfill.test.ts src/server/services/approvalRouting.test.ts",

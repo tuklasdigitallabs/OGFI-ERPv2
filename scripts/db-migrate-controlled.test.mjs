@@ -141,6 +141,10 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
   assert.match(reconcile, /GRANT EXECUTE ON FUNCTION public\.operator_transition_authentication_throttle_control/);
   assert.match(reconcile, /GRANT UPDATE \("requestCount", "failureReservationCount", "successCount", "deniedCount", "lastRequestAt", "thresholdReachedAt", "updatedAt"\)/);
   assert.match(reconcile, /GRANT SELECT, DELETE ON TABLE public\."AuthLoginAttempt"/);
+  assert.match(reconcile, /ControlledEvidenceActionQualification/);
+  assert.match(reconcile, /ControlledEvidenceActionSelection/);
+  assert.match(reconcile, /ControlledEvidencePolicyVersion/);
+  assert.match(reconcile, /ControlledEvidencePolicyActivation/);
   assert.match(reconcile, /AuthenticationThrottleWindow" FROM %I', column_name, runtime_role/);
   assert.match(reconcile, /AuthLoginAttempt" FROM %I', column_name, runtime_role/);
   assert.match(reconcile, /GRANT UPDATE \("denialCount", "lastDeniedAt", "updatedAt", "finalizedAt", "finalAuditEventId"\)/);
@@ -161,6 +165,8 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
   assert.match(verify, /md5\(p\.prosrc\) <> expected\.source_md5/);
   assert.match(verify, /Reviewed control function semantics drifted/);
   assert.match(verify, /PettyCashApprovalStepIntent trigger contract is incomplete/);
+  assert.match(verify, /ControlledEvidencePolicyVersion append-only trigger is incomplete/);
+  assert.match(verify, /ControlledEvidencePolicyActivation transition trigger is incomplete/);
   assert.match(verify, /validate_petty_cash_approval_step_intent_lineage\(\)'::regprocedure/);
   assert.match(verify, /reject_petty_cash_approval_step_intent_mutation\(\)'::regprocedure/);
   assert.match(verify, /Migrator membership must be exactly owner/);

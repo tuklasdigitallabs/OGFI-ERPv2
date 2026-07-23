@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "cluster": "controlled-evidence",
   "testFiles": [
-    "apps/web/tests/evidenceAuthorization.integration.test.ts"
+    "apps/web/tests/evidenceAuthorization.integration.test.ts",
+    "apps/web/src/server/services/controlledEvidenceQualification.test.ts"
   ],
   "cases": [
     {
@@ -37,6 +38,18 @@
         "canonical live write permission",
         "caller-selected view permission cannot authorize writes",
         "no source, attachment, link, or private-byte mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-EVIDENCE-QUALIFICATION-CLOSED-ADAPTER-NO-MUTATION",
+      "file": "apps/web/src/server/services/controlledEvidenceQualification.test.ts",
+      "testName": "keeps the runtime adapter registry closed and fails before touching a transaction",
+      "kind": "DATABASE_BOUNDARY_CONTRACT",
+      "coveredControls": [
+        "constant-disabled runtime",
+        "closed empty production adapter registry",
+        "unknown action denial before transaction access",
+        "no qualification or source mutation"
       ]
     },
     {
@@ -101,6 +114,14 @@
     }
   ],
   "boundaries": [
+    {
+      "surfaceId": "server/services/controlledEvidenceQualification.ts#qualifyControlledEvidenceForAction",
+      "classification": "INTERNAL_CALLER_PRECONDITION",
+      "adapterIds": ["closed production adapter registry", "constant-disabled runtime", "caller-owned authorized transaction"],
+      "caseIds": ["AUTHZ-EVIDENCE-QUALIFICATION-CLOSED-ADAPTER-NO-MUTATION"],
+      "noMutationControls": ["source record", "qualification", "selection", "policy state"],
+      "status": "COVERED"
+    },
     {
       "surfaceId": "server/services/attachments.ts#authorizeControlledEvidenceSourceAction",
       "classification": "INTERNAL_CALLER_PRECONDITION",

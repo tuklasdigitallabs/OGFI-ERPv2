@@ -990,6 +990,11 @@ model Tenant {
   attachmentScanAttempts                  AttachmentScanAttempt[]
   attachmentCompanyQuotaUsage             AttachmentCompanyQuotaUsage[]
   controlledEvidenceAttachments           ControlledEvidenceAttachment[]
+  controlledEvidencePolicyVersions        ControlledEvidencePolicyVersion[]
+  controlledEvidencePolicyActivations     ControlledEvidencePolicyActivation[]
+  controlledEvidencePolicyActivationEvents ControlledEvidencePolicyActivationEvent[]
+  controlledEvidenceQualifications        ControlledEvidenceActionQualification[]
+  controlledEvidenceSelections            ControlledEvidenceActionSelection[]
   companyPolicySettings                   CompanyPolicySetting[]
   releaseReadinessGates                   ReleaseReadinessGate[]
   deploymentEvidenceRecords               DeploymentEvidenceRecord[]
@@ -1158,6 +1163,11 @@ model Company {
   attachmentScanAttempts                  AttachmentScanAttempt[]
   attachmentQuotaUsage                    AttachmentCompanyQuotaUsage[]
   policySettings                          CompanyPolicySetting[]
+  controlledEvidencePolicyVersions        ControlledEvidencePolicyVersion[]
+  controlledEvidencePolicyActivations     ControlledEvidencePolicyActivation[]
+  controlledEvidencePolicyActivationEvents ControlledEvidencePolicyActivationEvent[]
+  controlledEvidenceQualifications        ControlledEvidenceActionQualification[]
+  controlledEvidenceSelections            ControlledEvidenceActionSelection[]
   releaseReadinessGates                   ReleaseReadinessGate[]
   deploymentEvidenceRecords               DeploymentEvidenceRecord[]
   enablementEvidenceRecords               EnablementEvidenceRecord[]
@@ -1567,6 +1577,10 @@ model User {
   updatedProjectRequirements          ProjectRequirement[]                  @relation("ProjectRequirementUpdater")
   createdControlledEvidenceLinks      ControlledEvidenceAttachment[]        @relation("ControlledEvidenceAttachmentCreator")
   archivedControlledEvidenceLinks     ControlledEvidenceAttachment[]        @relation("ControlledEvidenceAttachmentArchiver")
+  createdControlledEvidencePolicies   ControlledEvidencePolicyVersion[]     @relation("ControlledEvidencePolicyVersionCreator")
+  activatedControlledEvidencePolicies ControlledEvidencePolicyActivationEvent[] @relation("ControlledEvidencePolicyActivationActor")
+  qualifiedControlledEvidenceActions  ControlledEvidenceActionQualification[] @relation("ControlledEvidenceQualificationActor")
+  activatedPolicyQualificationFacts   ControlledEvidenceActionQualification[] @relation("ControlledEvidenceQualificationPolicyActivator")
   requestedPaymentRequests            PaymentRequest[]                      @relation("PaymentRequestRequester")
   submittedPaymentRequests            PaymentRequest[]                      @relation("PaymentRequestSubmitter")
   approvedPaymentRequests             PaymentRequest[]                      @relation("PaymentRequestApprover")
@@ -2005,7 +2019,9 @@ model AuthSession {
   tenant                Tenant        @relation(fields: [tenantId], references: [id])
   user                  User          @relation(fields: [userId, tenantId], references: [id, tenantId])
   authIdentity          AuthIdentity? @relation(fields: [authIdentityId, tenantId, userId], references: [id, tenantId, userId])
+  controlledEvidenceQualifications ControlledEvidenceActionQualification[] @relation("ControlledEvidenceQualificationAuthSession")
 
+  @@unique([id, tenantId, userId], map: "AuthSession_scope_user_key")
   @@index([tenantId, userId, status])
   @@index([idleExpiresAt, status])
   @@index([absoluteExpiresAt, status])
@@ -6988,7 +7004,9 @@ model ApprovalInstance {
   pettyCashRequest             PettyCashRequest?
   pettyCashApprovalStepIntents PettyCashApprovalStepIntent[]
   paymentRelease               PaymentRelease?
+  controlledEvidenceQualifications ControlledEvidenceActionQualification[]
 
+  @@unique([id, tenantId, companyId], map: "ApprovalInstance_scope_key")
   @@index([tenantId, documentType, documentId])
   @@index([tenantId, companyId, status], map: "ApprovalInstance_tenantId_companyId_status_idx")
 }
@@ -7014,7 +7032,9 @@ model ApprovalInstanceStep {
   scopeGroups                 ApprovalInstanceStepScopeGroup[]
   prohibitedActors            ApprovalInstanceStepProhibitedActor[]
   pettyCashApprovalStepIntent PettyCashApprovalStepIntent?
+  controlledEvidenceQualifications ControlledEvidenceActionQualification[]
 
+  @@unique([id, approvalInstanceId], map: "ApprovalInstanceStep_instance_key")
   @@unique([approvalInstanceId, stepOrder])
   @@index([actedByUserId], map: "ApprovalInstanceStep_actedByUserId_idx")
   @@index([status, assignedUserId, approvalInstanceId], map: "ApprovalInstanceStep_pending_user_idx")
@@ -7189,6 +7209,7 @@ model Attachment {
   replacedBy                   Attachment?                    @relation("AttachmentReplacement")
   uploadIntents                AttachmentUploadIntent[]
   scanAttempts                 AttachmentScanAttempt[]
+  controlledEvidenceSelections ControlledEvidenceActionSelection[]
   projectLinks                 ProjectAttachment[]
   controlledEvidenceLinks      ControlledEvidenceAttachment[]
   employeeTrainingCertificates EmployeeTrainingRecord[]       @relation("EmployeeTrainingCertificate")
@@ -7264,7 +7285,9 @@ model AttachmentScanAttempt {
   tenant               Tenant              @relation(fields: [tenantId], references: [id])
   company              Company             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "AttachmentScanAttempt_company_scope_fkey")
   attachment           Attachment          @relation(fields: [attachmentId, tenantId, companyId, objectVersionId], references: [id, tenantId, companyId, objectVersionId], onDelete: Restrict, map: "AttachmentScanAttempt_attachment_exact_version_fkey")
+  controlledEvidenceSelections ControlledEvidenceActionSelection[]
 
+  @@unique([id, tenantId, companyId, attachmentId, objectVersionId], map: "AttachmentScanAttempt_exact_scope_key")
   @@index([tenantId, companyId, attachmentId, completedAt], map: "AttachmentScanAttempt_scope_attachment_completed_idx")
   @@index([result, completedAt], map: "AttachmentScanAttempt_result_completed_idx")
 }
@@ -7307,16 +7330,202 @@ model ControlledEvidenceAttachment {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
   tenant            Tenant       @relation(fields: [tenantId], references: [id])
-  company           Company      @relation(fields: [companyId], references: [id])
+  company           Company      @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidenceAttachment_company_scope_fkey")
   attachment        Attachment   @relation(fields: [attachmentId, tenantId, companyId], references: [id, tenantId, companyId], map: "ControlledEvidenceAttachment_attachment_scope_fkey")
-  createdBy         User         @relation("ControlledEvidenceAttachmentCreator", fields: [createdByUserId], references: [id])
-  archivedBy        User?        @relation("ControlledEvidenceAttachmentArchiver", fields: [archivedByUserId], references: [id])
+  createdBy         User         @relation("ControlledEvidenceAttachmentCreator", fields: [createdByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidenceAttachment_creator_scope_fkey")
+  archivedBy        User?        @relation("ControlledEvidenceAttachmentArchiver", fields: [archivedByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidenceAttachment_archiver_scope_fkey")
+  actionSelections  ControlledEvidenceActionSelection[]
 
+  @@unique([id, tenantId, companyId, attachmentId], map: "ControlledEvidenceAttachment_exact_scope_key")
   @@unique([tenantId, companyId, sourceType, sourceKey, attachmentId], map: "ControlledEvidenceAttachment_sourceKey_attachment_key")
   @@index([tenantId, companyId, sourceType, sourceRecordId, status], map: "ControlledEvidenceAttachment_sourceRecord_status_idx")
   @@index([tenantId, companyId, sourceLineId, status], map: "ControlledEvidenceAttachment_sourceLine_status_idx")
   @@index([attachmentId, status])
   @@index([createdByUserId, createdAt])
+}
+
+model ControlledEvidencePolicyVersion {
+  id                            String                                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                      String                                  @db.Uuid
+  companyId                     String                                  @db.Uuid
+  actionCode                    String                                  @db.VarChar(120)
+  version                       Int
+  schemaVersion                 Int
+  policy                        Json
+  canonicalJson                 String                                  @db.Text
+  configHash                    String                                  @db.Char(64)
+  provenance                    Json
+  sourceDecisionId              String                                  @db.VarChar(40)
+  createdByUserId               String                                  @db.Uuid
+  createdAt                     DateTime                                @default(now())
+  tenant                        Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Restrict, map: "ControlledEvidencePolicyVersion_tenant_fkey")
+  company                       Company                                 @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidencePolicyVersion_company_scope_fkey")
+  createdBy                     User                                    @relation("ControlledEvidencePolicyVersionCreator", fields: [createdByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidencePolicyVersion_creator_scope_fkey")
+  activationEvents              ControlledEvidencePolicyActivationEvent[]
+  actionQualifications          ControlledEvidenceActionQualification[]
+  priorActionQualifications     ControlledEvidenceActionQualification[] @relation("ControlledEvidenceQualificationPriorPolicy")
+
+  @@unique([tenantId, companyId, actionCode, version], map: "ControlledEvidencePolicyVersion_scope_action_version_key")
+  @@unique([id, tenantId, companyId, actionCode, version], map: "ControlledEvidencePolicyVersion_exact_scope_key")
+  @@index([tenantId, companyId, actionCode, createdAt], map: "ControlledEvidencePolicyVersion_scope_action_created_idx")
+}
+
+model ControlledEvidencePolicyActivation {
+  id                      String                                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String                                    @db.Uuid
+  companyId               String                                    @db.Uuid
+  actionCode              String                                    @db.VarChar(120)
+  activeActivationEventId String                                    @db.Uuid
+  pointerVersion          Int
+  createdAt               DateTime                                  @default(now())
+  updatedAt               DateTime                                  @updatedAt
+  tenant                  Tenant                                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, map: "ControlledEvidencePolicyActivation_tenant_fkey")
+  company                 Company                                   @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidencePolicyActivation_company_scope_fkey")
+  activeActivationEvent   ControlledEvidencePolicyActivationEvent   @relation(fields: [activeActivationEventId, tenantId, companyId, actionCode, pointerVersion], references: [id, tenantId, companyId, actionCode, pointerVersion], onDelete: Restrict, map: "ControlledEvidencePolicyActivation_active_event_exact_fkey")
+  actionQualifications    ControlledEvidenceActionQualification[]
+
+  @@unique([tenantId, companyId, actionCode], map: "ControlledEvidencePolicyActivation_scope_action_key")
+  @@unique([id, tenantId, companyId, actionCode], map: "ControlledEvidencePolicyActivation_exact_scope_key")
+  @@index([tenantId, companyId, updatedAt], map: "ControlledEvidencePolicyActivation_scope_updated_idx")
+}
+
+model ControlledEvidencePolicyActivationEvent {
+  id                     String                                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String                                    @db.Uuid
+  companyId              String                                    @db.Uuid
+  actionCode             String                                    @db.VarChar(120)
+  policyVersionId        String                                    @db.Uuid
+  policyVersion          Int
+  priorActivationEventId String?                                   @db.Uuid
+  pointerVersion         Int
+  activatedByUserId      String                                    @db.Uuid
+  activatedAt            DateTime
+  activationReason       String                                    @db.Text
+  provenance             Json
+  canonicalJson          String                                    @db.Text
+  activationHash         String                                    @db.Char(64)
+  createdAt              DateTime                                  @default(now())
+  tenant                 Tenant                                    @relation(fields: [tenantId], references: [id], onDelete: Restrict, map: "ControlledEvidencePolicyActivationEvent_tenant_fkey")
+  company                Company                                   @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidencePolicyActivationEvent_company_scope_fkey")
+  policyVersionRow       ControlledEvidencePolicyVersion           @relation(fields: [policyVersionId, tenantId, companyId, actionCode, policyVersion], references: [id, tenantId, companyId, actionCode, version], onDelete: Restrict, map: "ControlledEvidencePolicyActivationEvent_policy_exact_fkey")
+  priorActivationEvent   ControlledEvidencePolicyActivationEvent?  @relation("ControlledEvidencePolicyActivationEventChain", fields: [priorActivationEventId, tenantId, companyId, actionCode], references: [id, tenantId, companyId, actionCode], onDelete: Restrict, map: "ControlledEvidencePolicyActivationEvent_prior_exact_fkey")
+  nextActivationEvents   ControlledEvidencePolicyActivationEvent[] @relation("ControlledEvidencePolicyActivationEventChain")
+  activatedBy            User                                      @relation("ControlledEvidencePolicyActivationActor", fields: [activatedByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidencePolicyActivationEvent_actor_scope_fkey")
+  activePointers         ControlledEvidencePolicyActivation[]
+  actionQualifications   ControlledEvidenceActionQualification[]
+
+  @@unique([tenantId, companyId, actionCode, pointerVersion], map: "ControlledEvidencePolicyActivationEvent_scope_version_key")
+  @@unique([id, tenantId, companyId, actionCode], map: "ControlledEvidencePolicyActivationEvent_exact_scope_key")
+  @@unique([id, tenantId, companyId, actionCode, pointerVersion], map: "ControlledEvidencePolicyActivationEvent_pointer_exact_key")
+  @@index([tenantId, companyId, actionCode, activatedAt], map: "ControlledEvidencePolicyActivationEvent_scope_activated_idx")
+}
+
+model ControlledEvidenceActionQualification {
+  id                         String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String                              @db.Uuid
+  companyId                  String                              @db.Uuid
+  actionCode                 String                              @db.VarChar(120)
+  actionSchemaVersion        Int
+  sourceType                 String                              @db.VarChar(120)
+  sourceRecordId             String                              @db.Uuid
+  sourceLineId               String?                             @db.Uuid
+  sourceVersion              String                              @db.VarChar(120)
+  executionKey               String                              @db.VarChar(200)
+  idempotencyKey             String                              @db.VarChar(200)
+  executionCanonicalJson     String                              @db.Text
+  executionHash              String                              @db.Char(64)
+  policyActivationId         String                              @db.Uuid
+  policyActivationPointerId  String                              @db.Uuid
+  policyPointerVersion       Int
+  policyActivatedByUserId    String                              @db.Uuid
+  policyActivatedAt          DateTime
+  policyActivationReason     String                              @db.Text
+  priorPolicyVersionId       String?                             @db.Uuid
+  priorPolicyVersion         Int?
+  policyVersionId            String                              @db.Uuid
+  policyVersion              Int
+  policySchemaVersion        Int
+  policySnapshot             Json
+  policyCanonicalJson        String                              @db.Text
+  policyConfigHash           String                              @db.Char(64)
+  selectionHash              String                              @db.Char(64)
+  selectionCount             Int
+  actorUserId                String                              @db.Uuid
+  actorAuthSessionId         String?                             @db.Uuid
+  actorPrivilegeEpoch        Int
+  approvalInstanceId         String?                             @db.Uuid
+  approvalInstanceStepId     String?                             @db.Uuid
+  provenance                 Json
+  qualifiedAt                DateTime
+  createdAt                  DateTime                            @default(now())
+  tenant                     Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict, map: "ControlledEvidenceActionQualification_tenant_fkey")
+  company                    Company                             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidenceActionQualification_company_scope_fkey")
+  policyActivationEvent      ControlledEvidencePolicyActivationEvent @relation(fields: [policyActivationId, tenantId, companyId, actionCode, policyPointerVersion], references: [id, tenantId, companyId, actionCode, pointerVersion], onDelete: Restrict, map: "ControlledEvidenceActionQualification_event_exact_fkey")
+  policyActivationPointer    ControlledEvidencePolicyActivation @relation(fields: [policyActivationPointerId, tenantId, companyId, actionCode], references: [id, tenantId, companyId, actionCode], onDelete: Restrict, map: "ControlledEvidenceActionQualification_pointer_scope_fkey")
+  policyVersionRow           ControlledEvidencePolicyVersion     @relation(fields: [policyVersionId, tenantId, companyId, actionCode, policyVersion], references: [id, tenantId, companyId, actionCode, version], onDelete: Restrict, map: "ControlledEvidenceActionQualification_policy_exact_fkey")
+  priorPolicyVersionRow      ControlledEvidencePolicyVersion?    @relation("ControlledEvidenceQualificationPriorPolicy", fields: [priorPolicyVersionId, tenantId, companyId, actionCode, priorPolicyVersion], references: [id, tenantId, companyId, actionCode, version], onDelete: Restrict, map: "ControlledEvidenceActionQualification_prior_policy_fkey")
+  actor                      User                                @relation("ControlledEvidenceQualificationActor", fields: [actorUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidenceActionQualification_actor_scope_fkey")
+  policyActivatedBy          User                                @relation("ControlledEvidenceQualificationPolicyActivator", fields: [policyActivatedByUserId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidenceActionQualification_policy_actor_fkey")
+  actorAuthSession           AuthSession?                        @relation("ControlledEvidenceQualificationAuthSession", fields: [actorAuthSessionId, tenantId, actorUserId], references: [id, tenantId, userId], onDelete: Restrict, map: "ControlledEvidenceActionQualification_auth_session_scope_fkey")
+  approvalInstance           ApprovalInstance?                   @relation(fields: [approvalInstanceId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "ControlledEvidenceActionQualification_approval_scope_fkey")
+  approvalInstanceStep       ApprovalInstanceStep?               @relation(fields: [approvalInstanceStepId, approvalInstanceId], references: [id, approvalInstanceId], onDelete: Restrict, map: "ControlledEvidenceActionQualification_approval_step_fkey")
+  selections                 ControlledEvidenceActionSelection[]
+
+  @@unique([tenantId, companyId, actionCode, executionKey], map: "ControlledEvidenceActionQualification_execution_key")
+  @@unique([tenantId, companyId, actionCode, idempotencyKey], map: "ControlledEvidenceActionQualification_idempotency_key")
+  @@unique([id, tenantId, companyId], map: "ControlledEvidenceActionQualification_exact_scope_key")
+  @@index([tenantId, companyId, sourceType, sourceRecordId, qualifiedAt], map: "ControlledEvidenceActionQualification_source_idx")
+  @@index([tenantId, companyId, actionCode, qualifiedAt], map: "ControlledEvidenceActionQualification_action_idx")
+  @@index([actorUserId, qualifiedAt], map: "ControlledEvidenceActionQualification_actor_idx")
+  @@index([approvalInstanceId, approvalInstanceStepId], map: "ControlledEvidenceActionQualification_approval_idx")
+}
+
+model ControlledEvidenceActionSelection {
+  id                              String                                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                        String                                @db.Uuid
+  companyId                       String                                @db.Uuid
+  qualificationId                 String                                @db.Uuid
+  ordinal                         Int
+  controlledEvidenceAttachmentId  String                                @db.Uuid
+  attachmentId                    String                                @db.Uuid
+  sourceLineId                    String?                               @db.Uuid
+  purpose                         String                                @db.VarChar(120)
+  controlledEvidenceLinkStatus    RecordStatus
+  controlledEvidenceLinkUpdatedAt DateTime
+  controlledEvidenceLinkArchivedAt DateTime?
+  objectVersionId                 String                                @db.Text
+  attachmentRowVersion            Int
+  attachmentStatus                RecordStatus
+  scanVerifiedObjectVersionId     String                                @db.Text
+  replacementAttachmentId         String?                               @db.Uuid
+  attachmentChecksum              String                                @db.Char(64)
+  attachmentDetectedChecksum      String                                @db.Char(64)
+  attachmentStoredChecksum        String                                @db.Char(64)
+  uploadState                     AttachmentUploadState
+  scanState                       AttachmentScanState
+  availabilityState               AttachmentAvailabilityState
+  physicalState                   AttachmentPhysicalState
+  scanAttemptId                   String                                @db.Uuid
+  scanResult                      AttachmentScanState
+  scanCompletedAt                 DateTime
+  scanProvider                    String                                @db.Text
+  scannerEngineVersion            String                                @db.Text
+  scanSignatureVersion            String                                @db.Text
+  scanPlaintextChecksum           String                                @db.Char(64)
+  selectionCanonicalJson          String                                @db.Text
+  selectionHash                   String                                @db.Char(64)
+  createdAt                       DateTime                              @default(now())
+  tenant                          Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Restrict, map: "ControlledEvidenceActionSelection_tenant_fkey")
+  company                         Company                               @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ControlledEvidenceActionSelection_company_scope_fkey")
+  qualification                   ControlledEvidenceActionQualification @relation(fields: [qualificationId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "ControlledEvidenceActionSelection_qualification_scope_fkey")
+  controlledEvidenceAttachment    ControlledEvidenceAttachment          @relation(fields: [controlledEvidenceAttachmentId, tenantId, companyId, attachmentId], references: [id, tenantId, companyId, attachmentId], onDelete: Restrict, map: "ControlledEvidenceActionSelection_link_exact_fkey")
+  attachment                      Attachment                            @relation(fields: [attachmentId, tenantId, companyId, objectVersionId], references: [id, tenantId, companyId, objectVersionId], onDelete: Restrict, map: "ControlledEvidenceActionSelection_attachment_exact_version_fkey")
+  scanAttempt                     AttachmentScanAttempt                 @relation(fields: [scanAttemptId, tenantId, companyId, attachmentId, objectVersionId], references: [id, tenantId, companyId, attachmentId, objectVersionId], onDelete: Restrict, map: "ControlledEvidenceActionSelection_scan_exact_version_fkey")
+
+  @@unique([qualificationId, ordinal], map: "ControlledEvidenceActionSelection_qualification_ordinal_key")
+  @@unique([qualificationId, controlledEvidenceAttachmentId], map: "ControlledEvidenceActionSelection_qualification_link_key")
+  @@index([tenantId, companyId, attachmentId, objectVersionId], map: "ControlledEvidenceActionSelection_attachment_idx")
+  @@index([tenantId, companyId, scanAttemptId], map: "ControlledEvidenceActionSelection_scan_idx")
 }
 
 model AuditEvent {

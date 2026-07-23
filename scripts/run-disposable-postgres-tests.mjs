@@ -85,6 +85,10 @@ try {
     ["db:seed"],
     controlledSetupEnvironment(migratorUrl, identity),
   );
+  if (suiteName === "controlled-evidence-qualification") {
+    installControlledEvidenceQualificationFixture(migratorUrl);
+    verifyControlledEvidenceOwnerBoundary(migratorUrl);
+  }
   runPnpm(
     ["auth-throttle:control-bootstrap"],
     {
@@ -105,6 +109,7 @@ try {
   reconcileRoleContract(migratorUrl, identity);
   verifyRoleContract(migratorUrl, identity, "owner");
   verifyRoleContract(runtimeUrl, identity, "runtime");
+  verifyControlledEvidenceRuntimeBoundary(runtimeUrl, suiteName);
   verifyAuthenticationThrottleRuntimeBoundary(runtimeUrl);
   runPnpm(
     ["auth-throttle:runtime-probe"],
@@ -365,6 +370,84 @@ function reconcileRoleContract(migratorDatabaseUrl, marker) {
   );
 }
 
+function installControlledEvidenceQualificationFixture(migratorDatabaseUrl) {
+  runPsql(
+    migratorDatabaseUrl,
+    `
+      WITH fixture_scope AS (
+        SELECT company."tenantId", company."id" AS "companyId", app_user."id" AS "actorUserId"
+          FROM public."Company" company
+          JOIN public."User" app_user ON app_user."tenantId" = company."tenantId"
+         ORDER BY company."id", app_user."id"
+         LIMIT 1
+      )
+      INSERT INTO public."ControlledEvidencePolicyVersion" (
+        "id", "tenantId", "companyId", "actionCode", "version",
+        "schemaVersion", "policy", "canonicalJson", "configHash",
+        "provenance", "sourceDecisionId", "createdByUserId", "createdAt"
+      )
+      SELECT
+        'd0770000-0000-4000-8000-000000000001'::uuid,
+        "tenantId", "companyId", 'TEST.CONTROLLED_EVIDENCE.QUALIFY', 1, 1,
+        '{"purposeRequirements":[{"maximumCount":2,"minimumCount":1,"purpose":"APPROVAL_SUPPORT"}],"schemaVersion":1,"sourceType":"ControlledEvidenceSyntheticSource"}'::jsonb,
+        '{"purposeRequirements":[{"maximumCount":2,"minimumCount":1,"purpose":"APPROVAL_SUPPORT"}],"schemaVersion":1,"sourceType":"ControlledEvidenceSyntheticSource"}',
+        '1b15749b1b236585d92f2e95bb4ede6245c3edcc3798ba880bfc3cb1e6e05004',
+        jsonb_build_object('fixture', true, 'suite', 'controlled-evidence-qualification'),
+        'DEC-0077', "actorUserId", TIMESTAMP '2026-07-24 00:00:00'
+      FROM fixture_scope;
+
+      WITH fixture_scope AS (
+        SELECT policy."tenantId", policy."companyId", app_user."id" AS "actorUserId"
+          FROM public."ControlledEvidencePolicyVersion" policy
+          JOIN public."User" app_user ON app_user."tenantId" = policy."tenantId"
+         WHERE policy."id" = 'd0770000-0000-4000-8000-000000000001'::uuid
+         ORDER BY app_user."id"
+         LIMIT 1
+      ), event_payload AS (
+        SELECT fixture_scope.*,
+          jsonb_build_object(
+            'schemaVersion', 1, 'tenantId', "tenantId"::text, 'companyId', "companyId"::text,
+            'actionCode', 'TEST.CONTROLLED_EVIDENCE.QUALIFY', 'pointerVersion', 1,
+            'policyVersionId', 'd0770000-0000-4000-8000-000000000001', 'policyVersion', 1,
+            'priorActivationEventId', NULL, 'activatedByUserId', "actorUserId"::text,
+            'activatedAt', '2026-07-24T00:00:00.000Z',
+            'activationReason', 'DEC-0077 disposable synthetic contract fixture',
+            'provenance', jsonb_build_object('fixture', true, 'suite', 'controlled-evidence-qualification')
+          ) AS payload
+        FROM fixture_scope
+      )
+      INSERT INTO public."ControlledEvidencePolicyActivationEvent" (
+        "id", "tenantId", "companyId", "actionCode", "policyVersionId", "policyVersion",
+        "priorActivationEventId", "pointerVersion", "activatedByUserId", "activatedAt",
+        "activationReason", "provenance", "canonicalJson", "activationHash", "createdAt"
+      )
+      SELECT 'd0770000-0000-4000-8000-000000000003'::uuid, "tenantId", "companyId",
+        'TEST.CONTROLLED_EVIDENCE.QUALIFY', 'd0770000-0000-4000-8000-000000000001'::uuid, 1,
+        NULL, 1, "actorUserId", TIMESTAMP '2026-07-24 00:00:00',
+        'DEC-0077 disposable synthetic contract fixture', payload->'provenance',
+        public."controlled_evidence_canonical_json"(payload),
+        encode(digest(public."controlled_evidence_canonical_json"(payload), 'sha256'), 'hex'),
+        TIMESTAMP '2026-07-24 00:00:00'
+      FROM event_payload;
+
+      WITH fixture_scope AS (
+        SELECT "tenantId", "companyId" FROM public."ControlledEvidencePolicyActivationEvent"
+         WHERE "id" = 'd0770000-0000-4000-8000-000000000003'::uuid
+      )
+      INSERT INTO public."ControlledEvidencePolicyActivation" (
+        "id", "tenantId", "companyId", "actionCode",
+        "activeActivationEventId", "pointerVersion", "createdAt", "updatedAt"
+      )
+      SELECT
+        'd0770000-0000-4000-8000-000000000002'::uuid,
+        "tenantId", "companyId", 'TEST.CONTROLLED_EVIDENCE.QUALIFY',
+        'd0770000-0000-4000-8000-000000000003'::uuid, 1,
+        TIMESTAMP '2026-07-24 00:00:00', TIMESTAMP '2026-07-24 00:00:00'
+      FROM fixture_scope;
+    `,
+  );
+}
+
 function verifyRoleContract(databaseUrl, marker, verificationMode) {
   runPsqlFile(databaseUrl, path.join(roleSqlDir, "verify-role-contract.sql"), {
     verification_mode: verificationMode,
@@ -406,6 +489,9 @@ function verifyRuntimeDestructiveOperationsDenied(runtimeDatabaseUrl) {
     "ProjectActivityEvent",
     "InventoryMovement",
     "PettyCashApprovalStepIntent",
+    "AttachmentScanAttempt",
+    "ControlledEvidenceActionQualification",
+    "ControlledEvidenceActionSelection",
   ]) {
     // These mixed-case identifiers come only from this closed allowlist. The
     // generic lifecycle identifier helper deliberately accepts lowercase role
@@ -444,11 +530,78 @@ function verifyAuthenticationThrottleRuntimeBoundary(runtimeDatabaseUrl) {
   );
   expectPsqlFailure(
     runtimeDatabaseUrl,
+    'INSERT INTO public."ControlledEvidencePolicyActivationEvent" ("id") VALUES (gen_random_uuid())',
+    "42501",
+  );
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
     `SELECT * FROM public.operator_transition_authentication_throttle_control(
       0::bigint, 'ACTIVE'::public."AuthenticationThrottleControlStatus",
       1::integer, repeat('0', 64), repeat('0', 64)
     )`,
     "42501",
+  );
+}
+
+function verifyControlledEvidenceRuntimeBoundary(runtimeDatabaseUrl, activeSuiteName) {
+  runPsql(
+    runtimeDatabaseUrl,
+    `BEGIN;
+     SELECT "id"
+       FROM public."ControlledEvidencePolicyActivation"
+      ORDER BY "id"
+      LIMIT 1
+      FOR SHARE;
+     ROLLBACK`,
+  );
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    'UPDATE public."ControlledEvidencePolicyActivation" SET "pointerVersion" = "pointerVersion" WHERE false',
+    "42501",
+  );
+  expectPsqlFailure(
+    runtimeDatabaseUrl,
+    'INSERT INTO public."ControlledEvidencePolicyVersion" ("id") VALUES (gen_random_uuid())',
+    "42501",
+  );
+  if (activeSuiteName === "controlled-evidence-qualification") {
+    expectPsqlFailure(
+      runtimeDatabaseUrl,
+      `UPDATE public."ControlledEvidencePolicyActivation"
+          SET "updatedAt" = "updatedAt"
+        WHERE "id" = 'd0770000-0000-4000-8000-000000000002'::uuid`,
+      "40001",
+    );
+  }
+}
+
+function verifyControlledEvidenceOwnerBoundary(migratorDatabaseUrl) {
+  runPsql(
+    migratorDatabaseUrl,
+    `SELECT 1 / CASE WHEN
+       event."activatedAt" = event."createdAt"
+       AND event."activatedAt" <> TIMESTAMP '2026-07-24 00:00:00'
+       AND event."canonicalJson" = public."controlled_evidence_canonical_json"(event."canonicalJson"::jsonb)
+       AND event."activationHash" = encode(digest(event."canonicalJson", 'sha256'), 'hex')
+       AND pointer."createdAt" = pointer."updatedAt"
+     THEN 1 ELSE 0 END
+       FROM public."ControlledEvidencePolicyActivationEvent" event
+       JOIN public."ControlledEvidencePolicyActivation" pointer
+         ON pointer."activeActivationEventId" = event."id"
+      WHERE event."id" = 'd0770000-0000-4000-8000-000000000003'::uuid`,
+  );
+  expectPsqlFailure(
+    migratorDatabaseUrl,
+    `DELETE FROM public."ControlledEvidencePolicyActivation"
+      WHERE "id" = 'd0770000-0000-4000-8000-000000000002'::uuid`,
+    "55000",
+  );
+  expectPsqlFailure(
+    migratorDatabaseUrl,
+    `UPDATE public."ControlledEvidencePolicyActivation"
+        SET "pointerVersion" = "pointerVersion" + 1
+      WHERE "id" = 'd0770000-0000-4000-8000-000000000002'::uuid`,
+    "23503",
   );
 }
 

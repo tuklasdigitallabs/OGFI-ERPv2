@@ -29,6 +29,7 @@
 - Hold release and physical purge are not available in this release.
 - Legal holds prevent normal archival or disposal. Evidence that was already physically purged cannot be placed on hold.
 - All sensitive upload, scan, download, archive, hold, and denial actions preserve audit history.
+- A dormant technical foundation for future action-time evidence qualification is included, but it has no approved policy, production adapter, selector, or user-facing behavior. Uploaded files and text references must not be represented as satisfying a high-risk finance gate until the separate policy, PostgreSQL, hosted, and release gates pass.
 
 ## Learn more
 

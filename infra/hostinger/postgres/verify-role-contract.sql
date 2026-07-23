@@ -153,7 +153,34 @@ BEGIN
         ARRAY['search_path=pg_catalog']::text[]),
       ('public.reject_petty_cash_approval_step_intent_mutation()'::regprocedure,
         'c886b8b336d3daf45967144020532a5b', 'plpgsql', false,
-        ARRAY['search_path=pg_catalog']::text[])
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.controlled_evidence_canonical_json(jsonb)'::regprocedure,
+        '785127719b3458bca6dbf1f6f3a443b3', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.reject_controlled_evidence_history_mutation()'::regprocedure,
+        'fa38c0296149be8cdc1f5f14d0eb7614', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog']::text[]),
+      ('public.validate_controlled_evidence_policy_version()'::regprocedure,
+        'e74258e40e442cb2aa58f2557b2ba7de', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_controlled_evidence_activation_event_lineage()'::regprocedure,
+        '4bb4034c39dc8b06b6dedc3cda777bac', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_controlled_evidence_policy_activation_transition()'::regprocedure,
+        'd7dc69703ef2194f81bb1ac32e07cf30', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_controlled_evidence_qualification_lineage()'::regprocedure,
+        '9eb41146e7251996fa14d02462285670', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_controlled_evidence_selection_lineage()'::regprocedure,
+        'efbc56592297a6b492861bc9c8f64c46', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_controlled_evidence_selection_count()'::regprocedure,
+        '9e060bf5f40a0de0636e9877efc41870', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_controlled_evidence_selection_parent_count()'::regprocedure,
+        '7847f9d4872c1f3302d16fe624697e69', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[])
     ) AS expected(function_oid, source_md5, language_name, security_definer, settings)
     JOIN pg_proc p ON p.oid = expected.function_oid
     JOIN pg_language l ON l.oid = p.prolang
@@ -182,7 +209,10 @@ BEGIN
     'AuditEvent',
     'ProjectActivityEvent',
     'InventoryMovement',
-    'PettyCashApprovalStepIntent'
+    'PettyCashApprovalStepIntent',
+    'AttachmentScanAttempt',
+    'ControlledEvidenceActionQualification',
+    'ControlledEvidenceActionSelection'
   ]
   LOOP
     PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -235,6 +265,181 @@ BEGIN
         AND (t.tgtype & 16) = 16 AND (t.tgtype & 32) = 32;
     IF NOT FOUND THEN RAISE EXCEPTION '% append-only trigger contract is incomplete', protected_table; END IF;
   END LOOP;
+
+  FOREACH protected_table IN ARRAY ARRAY[
+    'ControlledEvidencePolicyVersion',
+    'ControlledEvidencePolicyActivationEvent'
+  ]
+  LOOP
+    PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND c.relowner = owner_oid;
+    IF NOT FOUND THEN RAISE EXCEPTION '% ownership is unsafe', protected_table; END IF;
+    IF NOT has_table_privilege(runtime_role, format('public.%I', protected_table), 'SELECT') THEN
+      RAISE EXCEPTION '% required runtime read privilege is missing', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace,
+        LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) acl
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND acl.grantee = 0
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC retains privileges on %', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_attribute a,
+        LATERAL aclexplode(a.attacl) acl
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND acl.grantee IN (0, runtime_oid)
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC or runtime retains a column ACL on %', protected_table;
+    END IF;
+    FOREACH destructive_privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+    LOOP
+      IF has_table_privilege(runtime_role, format('public.%I', protected_table), destructive_privilege) THEN
+        RAISE EXCEPTION '% runtime privilege exists on %', destructive_privilege, protected_table;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = 'ControlledEvidencePolicyActivation'
+      AND c.relowner = owner_oid;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ControlledEvidencePolicyActivation ownership is unsafe'; END IF;
+  IF NOT has_function_privilege(runtime_role, 'public.controlled_evidence_canonical_json(jsonb)', 'EXECUTE')
+     OR has_function_privilege('PUBLIC', 'public.controlled_evidence_canonical_json(jsonb)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Controlled-evidence canonicalizer runtime execution boundary is unsafe';
+  END IF;
+  PERFORM 1 FROM pg_proc
+   WHERE oid = 'public.controlled_evidence_canonical_json(jsonb)'::regprocedure
+     AND provolatile = 'i' AND proisstrict AND NOT prosecdef
+     AND proconfig = ARRAY['search_path=pg_catalog']::text[];
+  IF NOT FOUND THEN RAISE EXCEPTION 'Controlled-evidence canonicalizer properties drifted'; END IF;
+  IF NOT has_table_privilege(runtime_role, 'public."ControlledEvidencePolicyActivation"', 'SELECT') THEN
+    RAISE EXCEPTION 'ControlledEvidencePolicyActivation runtime read privilege is missing';
+  END IF;
+  FOREACH destructive_privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES']
+  LOOP
+    IF has_table_privilege(runtime_role, 'public."ControlledEvidencePolicyActivation"', destructive_privilege) THEN
+      RAISE EXCEPTION '% table-wide runtime privilege exists on ControlledEvidencePolicyActivation', destructive_privilege;
+    END IF;
+  END LOOP;
+  IF NOT has_column_privilege(runtime_role, 'public."ControlledEvidencePolicyActivation"', 'updatedAt', 'UPDATE') THEN
+    RAISE EXCEPTION 'ControlledEvidencePolicyActivation row-lock column privilege is missing';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_attribute a
+    WHERE a.attrelid = 'public."ControlledEvidencePolicyActivation"'::regclass
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname <> 'updatedAt'
+      AND has_column_privilege(runtime_role, a.attrelid, a.attnum, 'UPDATE')
+  ) THEN
+    RAISE EXCEPTION 'Runtime can update a ControlledEvidencePolicyActivation authority column';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace,
+      LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) acl
+    WHERE n.nspname = 'public'
+      AND c.relname = 'ControlledEvidencePolicyActivation'
+      AND acl.grantee = 0
+  ) THEN
+    RAISE EXCEPTION 'PUBLIC retains privileges on ControlledEvidencePolicyActivation';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_attribute a,
+      LATERAL aclexplode(a.attacl) acl
+    WHERE a.attrelid = 'public."ControlledEvidencePolicyActivation"'::regclass
+      AND a.attnum > 0 AND NOT a.attisdropped
+      AND acl.grantee = 0
+  ) THEN
+    RAISE EXCEPTION 'PUBLIC retains a column ACL on ControlledEvidencePolicyActivation';
+  END IF;
+
+  PERFORM 1 FROM pg_trigger
+    WHERE tgrelid = 'public."ControlledEvidencePolicyVersion"'::regclass
+      AND tgname = 'ControlledEvidencePolicyVersion_append_only_guard_trg'
+      AND tgfoid = 'public.reject_controlled_evidence_history_mutation()'::regprocedure
+      AND tgenabled = 'A' AND NOT tgisinternal
+      AND (tgtype & 1) = 0 AND (tgtype & 2) = 2 AND (tgtype & 8) = 8
+      AND (tgtype & 16) = 16 AND (tgtype & 32) = 32;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ControlledEvidencePolicyVersion append-only trigger is incomplete'; END IF;
+  PERFORM 1 FROM pg_trigger
+    WHERE tgrelid = 'public."ControlledEvidencePolicyActivationEvent"'::regclass
+      AND tgname = 'ControlledEvidencePolicyActivationEvent_append_only_guard_trg'
+      AND tgfoid = 'public.reject_controlled_evidence_history_mutation()'::regprocedure
+      AND tgenabled = 'A' AND NOT tgisinternal
+      AND (tgtype & 1) = 0 AND (tgtype & 2) = 2 AND (tgtype & 8) = 8
+      AND (tgtype & 16) = 16 AND (tgtype & 32) = 32;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ControlledEvidencePolicyActivationEvent append-only trigger is incomplete'; END IF;
+  PERFORM 1 FROM pg_trigger
+    WHERE tgrelid = 'public."ControlledEvidencePolicyActivation"'::regclass
+      AND tgname = 'ControlledEvidencePolicyActivation_transition_guard_trg'
+      AND tgfoid = 'public.validate_controlled_evidence_policy_activation_transition()'::regprocedure
+      AND tgenabled = 'A' AND NOT tgisinternal
+      AND (tgtype & 1) = 1 AND (tgtype & 2) = 2
+      AND (tgtype & 4) = 4 AND (tgtype & 16) = 16
+      AND (tgtype & 8) = 0 AND (tgtype & 32) = 0;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ControlledEvidencePolicyActivation transition trigger is incomplete'; END IF;
+  PERFORM 1 FROM pg_trigger
+    WHERE tgrelid = 'public."ControlledEvidencePolicyActivation"'::regclass
+      AND tgname = 'ControlledEvidencePolicyActivation_remove_guard_trg'
+      AND tgfoid = 'public.reject_controlled_evidence_history_mutation()'::regprocedure
+      AND tgenabled = 'A' AND NOT tgisinternal
+      AND (tgtype & 1) = 0 AND (tgtype & 2) = 2
+      AND (tgtype & 8) = 8 AND (tgtype & 32) = 32
+      AND (tgtype & 4) = 0 AND (tgtype & 16) = 0;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ControlledEvidencePolicyActivation remove trigger is incomplete'; END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('ControlledEvidencePolicyVersion', 'ControlledEvidencePolicyVersion_validation_trg', 7::smallint, false, false,
+       'public.validate_controlled_evidence_policy_version()'::regprocedure),
+      ('ControlledEvidencePolicyActivationEvent', 'ControlledEvidencePolicyActivationEvent_lineage_trg',
+       7::smallint, false, false, 'public.validate_controlled_evidence_activation_event_lineage()'::regprocedure),
+      ('ControlledEvidencePolicyActivation', 'ControlledEvidencePolicyActivation_transition_guard_trg',
+       23::smallint, false, false, 'public.validate_controlled_evidence_policy_activation_transition()'::regprocedure),
+      ('ControlledEvidencePolicyActivation', 'ControlledEvidencePolicyActivation_remove_guard_trg',
+       42::smallint, false, false, 'public.reject_controlled_evidence_history_mutation()'::regprocedure),
+      ('ControlledEvidenceActionQualification', 'ControlledEvidenceActionQualification_lineage_trg',
+       7::smallint, false, false, 'public.validate_controlled_evidence_qualification_lineage()'::regprocedure),
+      ('ControlledEvidenceActionQualification', 'ControlledEvidenceActionQualification_selection_count_trg',
+       5::smallint, true, true, 'public.validate_controlled_evidence_selection_count()'::regprocedure),
+      ('ControlledEvidenceActionSelection', 'ControlledEvidenceActionSelection_lineage_trg',
+       7::smallint, false, false, 'public.validate_controlled_evidence_selection_lineage()'::regprocedure),
+      ('ControlledEvidenceActionSelection', 'ControlledEvidenceActionSelection_parent_count_trg',
+       5::smallint, true, true, 'public.validate_controlled_evidence_selection_parent_count()'::regprocedure),
+      ('ControlledEvidenceActionQualification', 'ControlledEvidenceActionQualification_append_only_guard_trg',
+       58::smallint, false, false, 'public.reject_controlled_evidence_history_mutation()'::regprocedure),
+      ('ControlledEvidenceActionSelection', 'ControlledEvidenceActionSelection_append_only_guard_trg',
+       58::smallint, false, false, 'public.reject_controlled_evidence_history_mutation()'::regprocedure),
+      ('AttachmentScanAttempt', 'AttachmentScanAttempt_append_only_guard_trg',
+       58::smallint, false, false, 'public.reject_controlled_evidence_history_mutation()'::regprocedure)
+    ) AS expected(table_name, trigger_name, trigger_type, is_deferrable, is_deferred, function_oid)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.trigger_name
+        AND t.tgfoid = expected.function_oid
+        AND t.tgenabled = 'A'
+        AND t.tgtype = expected.trigger_type
+        AND t.tgdeferrable = expected.is_deferrable
+        AND t.tginitdeferred = expected.is_deferred
+        AND NOT t.tgisinternal
+    )
+  ) THEN
+    RAISE EXCEPTION 'Controlled-evidence lineage or cardinality trigger contract is incomplete';
+  END IF;
 
   IF NOT EXISTS (
     SELECT 1
@@ -555,6 +760,11 @@ BEGIN
         n.nspname = 'public'
         AND p.proname = 'lock_authentication_throttle_control'
         AND pg_get_function_identity_arguments(p.oid) = ''
+      )
+      AND NOT (
+        n.nspname = 'public'
+        AND p.proname = 'controlled_evidence_canonical_json'
+        AND pg_get_function_identity_arguments(p.oid) = 'payload jsonb'
       )
   ) THEN
     RAISE EXCEPTION 'Runtime or PUBLIC can execute a non-extension public routine';

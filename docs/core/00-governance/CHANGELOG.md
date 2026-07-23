@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Dormant Controlled-Evidence Qualification Foundation
+
+- Confirmed and implemented `DEC-0077` as a policy-empty, constant-disabled foundation: append-only policy/activation history and qualification facts, a scoped compare-and-swap pointer, database-authoritative canonical/hash/cardinality/readiness validation, commit-time evidence revalidation, least-privilege roles, and an empty closed adapter registry.
+- Added no production policy, publisher, adapter, call site, endpoint, UI, report, seed, or default. `DEC-0047` remains open and legacy evidence text remains supplemental.
+- Focused validation passes 8 qualifier tests and 7 database contracts; the full candidate passes lint, typecheck, production build, 1,252 web tests, 34 database tests, one worker test, the 20-case authorization manifest, 8 database-role tool tests, secret review, release-tool self-tests, and the 127-migration inventory with the new migration approved only for rehearsal. Twenty-three PostgreSQL cases are authored but cannot execute without `DISPOSABLE_DATABASE_ADMIN_URL`. Independent Architecture, Security, and QA approve only the dormant source checkpoint. PostgreSQL acceptance, hosted recovery, real integration, and activation remain NO-GO. Requested Spark/GPT-5.4 reviewers were unavailable, so GPT-5.6 specialist fallback was recorded without relaxing gates.
+
 ## 2026-07-23 — Petty Cash Immutable Step Intent And Proposal CAS
 
 - Confirmed and implemented `DEC-0076` behind `APPROVAL_ROUTING_V1_ENABLED=false`: Petty Cash alone opts into bounded `FULL_GRAPH` preflight, transactionally reconciles locked graph/scope/source state, and appends exactly one immutable unchanged-amount intent for every acted current-step approve, return, or reject.

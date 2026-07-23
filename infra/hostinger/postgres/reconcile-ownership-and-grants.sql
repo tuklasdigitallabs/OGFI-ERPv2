@@ -113,11 +113,22 @@ BEGIN
     EXECUTE format('REVOKE ALL ON ROUTINE %I.%I(%s) FROM %I', obj.nspname, obj.proname, obj.args, runtime_role);
   END LOOP;
 
+  -- Runtime append-only qualification inserts evaluate CHECK constraints that
+  -- call this immutable canonicalizer. Restore only this exact routine after
+  -- the blanket routine revocation above.
+  EXECUTE format(
+    'GRANT EXECUTE ON FUNCTION public.controlled_evidence_canonical_json(JSONB) TO %I',
+    runtime_role
+  );
+
   FOREACH protected_table IN ARRAY ARRAY[
     'AuditEvent',
     'ProjectActivityEvent',
     'InventoryMovement',
-    'PettyCashApprovalStepIntent'
+    'PettyCashApprovalStepIntent',
+    'AttachmentScanAttempt',
+    'ControlledEvidenceActionQualification',
+    'ControlledEvidenceActionSelection'
   ]
   LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
@@ -133,6 +144,37 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT SELECT, INSERT ON TABLE public.%I TO %I', protected_table, runtime_role);
   END LOOP;
+  FOREACH protected_table IN ARRAY ARRAY[
+    'ControlledEvidencePolicyVersion',
+    'ControlledEvidencePolicyActivationEvent'
+  ]
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', protected_table, runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM PUBLIC', column_name, protected_table);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM %I', column_name, protected_table, runtime_role);
+    END LOOP;
+    EXECUTE format('GRANT SELECT ON TABLE public.%I TO %I', protected_table, runtime_role);
+  END LOOP;
+  REVOKE ALL ON TABLE public."ControlledEvidencePolicyActivation" FROM PUBLIC;
+  EXECUTE format('REVOKE ALL ON TABLE public."ControlledEvidencePolicyActivation" FROM %I', runtime_role);
+  FOR column_name IN
+    SELECT a.attname
+    FROM pg_attribute a
+    WHERE a.attrelid = 'public."ControlledEvidencePolicyActivation"'::regclass
+      AND a.attnum > 0 AND NOT a.attisdropped
+  LOOP
+    EXECUTE format('REVOKE ALL (%I) ON TABLE public."ControlledEvidencePolicyActivation" FROM PUBLIC', column_name);
+    EXECUTE format('REVOKE ALL (%I) ON TABLE public."ControlledEvidencePolicyActivation" FROM %I', column_name, runtime_role);
+  END LOOP;
+  EXECUTE format('GRANT SELECT ON TABLE public."ControlledEvidencePolicyActivation" TO %I', runtime_role);
+  EXECUTE format('GRANT UPDATE ("updatedAt") ON TABLE public."ControlledEvidencePolicyActivation" TO %I', runtime_role);
   IF to_regclass('public."AuthorizationDenialBucket"') IS NOT NULL THEN
     REVOKE ALL ON TABLE public."AuthorizationDenialBucket" FROM PUBLIC;
     EXECUTE format('REVOKE UPDATE, DELETE ON TABLE public."AuthorizationDenialBucket" FROM %I', runtime_role);
