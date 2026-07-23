@@ -122,6 +122,7 @@ The interface must make the following immediately visible:
 - Users see only authorized locations.
 - Values must be based on posted stock movements, not manual display fields.
 - Clicking a balance opens the filtered inventory ledger.
+- Stock Balances uses server-side pagination with a bounded 10-row page, deterministic tie-breaking, query-aware counts, and URL-backed `All`, `Positive stock`, and `Expiring soon` filters. CSV export is a separate full-result operation for the current authorized location and search.
 
 ---
 

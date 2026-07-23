@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Server-Paginated Stock Balances
+
+- Moved ordinary Stock Balances filtering and paging to the server with bounded pages, deterministic ordering, query-aware tab counts, and unchanged full-result export semantics.
+
 ## 2026-07-24 — DEC-0078 Initial Procurement Source Serialization
 
 - Added transactional source claims for Purchase Request and Quotation Recommendation submission and an authoritative Purchase Order row lock for balance-closure requests. Focused procurement tests pass; disposable PostgreSQL race evidence remains an activation gate.

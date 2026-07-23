@@ -34,6 +34,8 @@ Use this article to view current stock on hand for the location selected in the 
 - The page shows only balance rows for your current authorized location.
 - Quantities come from posted inventory movements and cannot be edited from this page.
 - Lot and expiry details appear when the posted balance row carries those identifiers.
+- Results are loaded with server-side pagination (10 rows per page). Search, `Positive stock`, and `Expiring soon` filters are applied before counting and paging; tab counts remain query-aware.
+- `Export CSV` exports all matching current-location rows for the search, not just the visible page.
 
 ## Important controls and warnings
 

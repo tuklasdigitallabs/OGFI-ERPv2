@@ -85,11 +85,9 @@ describe("inventory ledger foundation rules", () => {
     for (const source of [balancePage, ledgerPage]) {
       expect(source).toContain("maxInventorySearchLength");
       expect(source).toContain("Search is limited to");
-      expect(source).toContain("? []");
     }
-    expect(balancePage).toContain(
-      "searchError\n    ? []\n    : await listInventoryBalances"
-    );
+    expect(balancePage).toContain("searchError\n    ? { items: []");
+    expect(balancePage).toContain("await listInventoryBalancePage");
     expect(ledgerPage).toContain("searchError || traceError");
     expect(ledgerPage).toContain(": await listInventoryMovements(session, filters)");
   });

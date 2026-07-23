@@ -13,7 +13,7 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportInventoryBalances } from "@/server/services/exportAuthorization";
 import {
   getInventoryBalanceReconciliation,
-  listInventoryBalances,
+  listInventoryBalancePage,
   maxInventorySearchLength,
   type InventoryBalanceFilters
 } from "@/server/services/inventory";
@@ -87,44 +87,27 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       ? `Search is limited to ${maxInventorySearchLength} characters.`
       : null;
   const filters: InventoryBalanceFilters = {
-    query: searchError ? undefined : normalizedQuery
+    query: searchError ? undefined : normalizedQuery,
+    tab: activeTab
   };
   const exportParams = new URLSearchParams();
   if (filters.query) {
     exportParams.set("q", filters.query);
   }
   const exportHref = `/inventory/export${exportParams.size ? `?${exportParams}` : ""}`;
-  const balances = searchError
-    ? []
-    : await listInventoryBalances(session, filters);
+  const balancePage = searchError
+    ? { items: [], totalItems: 0, positiveItems: 0, expiringItems: 0, page: 1, pageSize: PAGE_SIZE, totalPages: 1 }
+    : await listInventoryBalancePage(session, filters, { page, pageSize: PAGE_SIZE });
+  const balances = balancePage.items;
   const reconciliation = canViewLedger
     ? await getInventoryBalanceReconciliation(session)
     : null;
   const totalLots = balances.length;
-  const positiveBalanceRows = balances.filter((balance) => balance.qtyOnHand > 0);
-  const expiringBalanceRows = balances.filter((balance) => {
-    if (!balance.expiryDate) {
-      return false;
-    }
-    const expiry = new Date(balance.expiryDate).getTime();
-    const today = Date.now();
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
-    return expiry >= today && expiry <= today + thirtyDays;
-  });
-  const positiveBalances = positiveBalanceRows.length;
-  const expiringLots = expiringBalanceRows.length;
-  const visibleBalances =
-    activeTab === "positive"
-      ? positiveBalanceRows
-      : activeTab === "expiring"
-        ? expiringBalanceRows
-        : balances;
-  const pageCount = Math.max(1, Math.ceil(visibleBalances.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const pagedBalances = visibleBalances.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE
-  );
+  const positiveBalances = balancePage.positiveItems;
+  const expiringLots = balancePage.expiringItems;
+  const visibleBalances = balances;
+  const safePage = balancePage.page;
+  const pagedBalances = visibleBalances;
   const emptyCopy =
     activeTab === "positive"
       ? {
@@ -254,7 +237,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                 label: "All balances",
                 href: inventoryHref("all", filters.query),
                 active: activeTab === "all",
-                count: balances.length
+                ...(activeTab === "all" ? { count: balancePage.totalItems } : {})
               },
               {
                 label: "Positive stock",
@@ -330,7 +313,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
           <PaginationBar
             page={safePage}
             pageSize={PAGE_SIZE}
-            totalItems={visibleBalances.length}
+            totalItems={balancePage.totalItems}
             itemLabel="balance rows"
             getPageHref={(nextPage) =>
               inventoryHref(activeTab, filters.query, nextPage)

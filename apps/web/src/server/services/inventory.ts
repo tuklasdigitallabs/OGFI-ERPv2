@@ -60,6 +60,17 @@ const inventoryLocationPostingLockState = new WeakMap<
 
 export type InventoryBalanceFilters = {
   query?: string | undefined;
+  tab?: "all" | "positive" | "expiring" | undefined;
+};
+
+export type InventoryBalancePage = {
+  items: Awaited<ReturnType<typeof listInventoryBalances>>;
+  totalItems: number;
+  positiveItems: number;
+  expiringItems: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };
 
 export type InventoryMovementFilters = {
@@ -183,7 +194,8 @@ export function normalizeInventoryBalanceFilters(
   filters: InventoryBalanceFilters = {}
 ): InventoryBalanceFilters {
   return {
-    query: normalizeInventorySearchQuery(filters.query)
+    query: normalizeInventorySearchQuery(filters.query),
+    tab: filters.tab === "positive" || filters.tab === "expiring" ? filters.tab : "all"
   };
 }
 
@@ -1048,6 +1060,87 @@ export async function listInventoryBalances(
     version: balance.version,
     updatedAt: balance.updatedAt.toISOString()
   }));
+}
+
+export async function listInventoryBalancePage(
+  session: SessionContext,
+  filters: InventoryBalanceFilters = {},
+  input: { page?: number; pageSize?: number } = {}
+): Promise<InventoryBalancePage> {
+  await requirePermission(session, permissions.inventoryBalanceView);
+  const normalized = normalizeInventoryBalanceFilters(filters);
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 10)));
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const expiryCutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const where: Prisma.InventoryBalanceWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    inventoryLocation: { locationId: session.context.locationId, status: "ACTIVE" },
+    ...(normalized.tab === "positive" ? { qtyOnHand: { gt: 0 } } : {}),
+    ...(normalized.tab === "expiring"
+      ? { expiryDate: { not: null, gte: new Date(), lte: expiryCutoff } }
+      : {}),
+    ...(normalized.query
+      ? {
+          OR: [
+            { item: { itemCode: { contains: normalized.query, mode: "insensitive" } } },
+            { item: { itemName: { contains: normalized.query, mode: "insensitive" } } },
+            { inventoryLocation: { name: { contains: normalized.query, mode: "insensitive" } } },
+            { lotNumber: { contains: normalized.query, mode: "insensitive" } }
+          ]
+        }
+      : {})
+  };
+  const totalItems = await prisma.inventoryBalance.count({ where });
+  const baseWhere = { ...where };
+  delete baseWhere.qtyOnHand;
+  delete baseWhere.expiryDate;
+  const [positiveItems, expiringItems] = await Promise.all([
+    prisma.inventoryBalance.count({ where: { ...baseWhere, qtyOnHand: { gt: 0 } } }),
+    prisma.inventoryBalance.count({
+      where: { ...baseWhere, expiryDate: { not: null, gte: new Date(), lte: expiryCutoff } }
+    })
+  ]);
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const balances = await prisma.inventoryBalance.findMany({
+    where,
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+    include: {
+      inventoryLocation: { include: { location: true } },
+      item: { include: { category: true } },
+      baseUom: true
+    },
+    orderBy: [
+      { item: { itemName: "asc" } },
+      { inventoryLocation: { name: "asc" } },
+      { expiryDate: "asc" },
+      { id: "asc" }
+    ]
+  });
+  return {
+    items: balances.map((balance) => ({
+      id: balance.id,
+      inventoryLocationName: balance.inventoryLocation.name,
+      locationName: balance.inventoryLocation.location.name,
+      itemCode: balance.item.itemCode,
+      itemName: balance.item.itemName,
+      categoryName: balance.item.category.categoryName,
+      qtyOnHand: Number(balance.qtyOnHand),
+      baseUomCode: balance.baseUom.uomCode,
+      lotNumber: balance.lotNumber ?? null,
+      expiryDate: balance.expiryDate?.toISOString().slice(0, 10) ?? null,
+      version: balance.version,
+      updatedAt: balance.updatedAt.toISOString()
+    })),
+    totalItems,
+    positiveItems,
+    expiringItems,
+    page,
+    pageSize,
+    totalPages
+  };
 }
 
 export async function getInventoryBalanceDashboardRead(
