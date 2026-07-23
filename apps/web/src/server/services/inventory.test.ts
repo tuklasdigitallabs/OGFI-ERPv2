@@ -89,7 +89,7 @@ describe("inventory ledger foundation rules", () => {
     expect(balancePage).toContain("searchError\n    ? { items: []");
     expect(balancePage).toContain("await listInventoryBalancePage");
     expect(ledgerPage).toContain("searchError || traceError");
-    expect(ledgerPage).toContain(": await listInventoryMovements(session, filters)");
+    expect(ledgerPage).toContain("await listInventoryMovementPage(session, filters");
   });
 
   test("normalizes lot and expiry into a deterministic balance key", () => {

@@ -50,9 +50,9 @@ describe("exact inventory ledger trace UI", () => {
     expect(source).toContain('params.set("tracePage", String(input.page))');
     expect(source).toContain("totalItems={tracePage.totalItems}");
     expect(source).toContain("returnHref");
-    expect(source).toContain(
-      ': "Showing the latest 100 source-linked movements for this location"'
-    );
+    expect(source).toContain("listInventoryMovementPage");
+    expect(source).toContain('getSearchParam(params, "page")');
+    expect(source).toContain("source-linked movements`");
   });
 
   it("warns when a trace is resolved even if historical movements remain", () => {

@@ -81,6 +81,14 @@ export type InventoryMovementFilters = {
   lotKey?: string | undefined;
 };
 
+export type InventoryMovementPage = {
+  items: Awaited<ReturnType<typeof listInventoryMovements>>;
+  totalItems: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type InventoryBalanceReconciliationRow = {
   key: string;
   inventoryLocationName: string;
@@ -1510,6 +1518,18 @@ export async function listInventoryMovements(
     orderBy: { occurredAt: "desc" },
     take: 100
   });
+  return hydrateInventoryMovements(session, movements);
+}
+
+async function hydrateInventoryMovements(
+  session: SessionContext,
+  movements: Array<Prisma.InventoryMovementGetPayload<{ include: {
+    inventoryLocation: { include: { location: true } };
+    item: true;
+    enteredUom: true;
+    baseUom: true;
+  } }>>
+) {
   const postedByUserIds = Array.from(
     new Set(movements.map((movement) => movement.postedByUserId))
   );
@@ -1557,4 +1577,35 @@ export async function listInventoryMovements(
     reasonCode: movement.reasonCode ?? null,
     postedByName: postedByNames.get(movement.postedByUserId) ?? "Unknown user"
   }));
+}
+
+export async function listInventoryMovementPage(
+  session: SessionContext,
+  filters: InventoryMovementFilters = {},
+  input: { page?: number; pageSize?: number } = {}
+): Promise<InventoryMovementPage> {
+  await requirePermission(session, permissions.inventoryLedgerView);
+  const normalizedFilters = normalizeInventoryMovementFilters(filters);
+  if (normalizedFilters.inventoryLocationId || normalizedFilters.itemId || normalizedFilters.lotKey) {
+    throw new Error("INVENTORY_LEDGER_TRACE_REQUIRES_DEDICATED_SERVICE");
+  }
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const where = inventoryMovementListWhere(session, normalizedFilters);
+  const totalItems = await prisma.inventoryMovement.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const movements = await prisma.inventoryMovement.findMany({
+    where,
+    include: {
+      inventoryLocation: { include: { location: true } },
+      item: true,
+      enteredUom: true,
+      baseUom: true
+    },
+    orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  });
+  return { items: await hydrateInventoryMovements(session, movements), totalItems, page, pageSize, totalPages };
 }

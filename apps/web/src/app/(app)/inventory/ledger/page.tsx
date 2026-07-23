@@ -7,7 +7,7 @@ import { canExportInventoryLedger } from "@/server/services/exportAuthorization"
 import {
   inventoryDashboardProfileHref,
   getInventoryLedgerVarianceTracePage,
-  listInventoryMovements,
+  listInventoryMovementPage,
   maxInventorySearchLength,
   normalizeInventoryMovementFilters,
   resolveInventoryDashboardProfile,
@@ -164,11 +164,14 @@ export default async function InventoryLedgerPage({
         page: getPositivePage(getSearchParam(params, "tracePage"))
       })
     : null;
+  const movementPage = !isExactTrace && !searchError && !traceError
+    ? await listInventoryMovementPage(session, filters, { page: getPositivePage(getSearchParam(params, "page")) })
+    : null;
   const movements = tracePage
     ? tracePage.items
     : searchError || traceError
       ? []
-      : await listInventoryMovements(session, filters);
+      : movementPage?.items ?? [];
   const traceRangeStart =
     tracePage && tracePage.totalItems > 0
       ? (tracePage.page - 1) * tracePage.pageSize + 1
@@ -237,7 +240,7 @@ export default async function InventoryLedgerPage({
             <p className="text-sm text-slate-500">
               {isExactTrace
                 ? `Showing ${traceRangeStart}–${traceRangeEnd} of ${tracePage?.totalItems ?? 0} movements for the exact item, storage, lot, and expiry key`
-                : "Showing the latest 100 source-linked movements for this location"}
+                : `Showing ${movementPage && movementPage.totalItems > 0 ? (movementPage.page - 1) * movementPage.pageSize + 1 : 0}–${movementPage ? Math.min(movementPage.page * movementPage.pageSize, movementPage.totalItems) : 0} of ${movementPage?.totalItems ?? 0} source-linked movements`}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -424,6 +427,23 @@ export default async function InventoryLedgerPage({
                 returnHref
               })
             }
+          />
+        ) : null}
+        {!tracePage && movementPage && movementPage.totalItems > 0 ? (
+          <PaginationBar
+            page={movementPage.page}
+            pageSize={movementPage.pageSize}
+            totalItems={movementPage.totalItems}
+            itemLabel="ledger movements"
+            controlClassName="min-h-11"
+            getPageHref={(nextPage) => {
+              const params = new URLSearchParams();
+              if (filters.query) params.set("q", filters.query);
+              if (filters.movementType) params.set("movementType", filters.movementType);
+              if (nextPage > 1) params.set("page", String(nextPage));
+              const query = params.toString();
+              return `/inventory/ledger${query ? `?${query}` : ""}`;
+            }}
           />
         ) : null}
       </section>

@@ -25992,6 +25992,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/inventory.ts#listInventoryMovementPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryLedgerView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/inventory.ts#lockInventoryLocationForPosting",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",

@@ -26,7 +26,7 @@ Use this article to trace posted inventory movements for the location selected i
 3. Confirm the posting context in the header.
 4. Search by item, item code, lot, or source reference.
 5. Optionally filter by movement type.
-6. Review movement date, item, location, movement type, source document, entered quantity, in/out quantity, posted-by user, lot, expiry, and reason.
+6. Review movement date, item, location, movement type, source document, entered quantity, in/out quantity, posted-by user, lot, expiry, and reason. Use the server pagination controls to move through the matching history; search and movement-type filters are retained when changing pages.
 
 [Screenshot placeholder: Inventory Ledger page showing recent source-linked movements and movement-type filter.]
 
@@ -41,7 +41,7 @@ Use this article to trace posted inventory movements for the location selected i
 
 - The ledger is the source-of-truth movement trail. Do not edit posted ledger rows.
 - Balance corrections must be made through controlled workflows such as receiving correction, transfer, count variance, wastage, adjustment, or reversal when those workflows are released.
-- The current inquiry shows the latest 100 matching rows; broader export/reporting is future work.
+- The ordinary inquiry is server-paginated and scoped to the selected location. CSV export, when authorized, is a separate full filtered export; exact reconciliation traces use a dedicated controlled trace route.
 
 ## What happens next
 
