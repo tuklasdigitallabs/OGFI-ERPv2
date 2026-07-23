@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Canonical Prohibited-Actor And Revocation Evidence
+
+- Corrected and implemented `DEC-0075` as feature-disabled PostgreSQL specifications: the registry-derived matrix covers 49 preflight-executable commands (17 approve, 14 return, 18 reject) and excludes only Payment Request approve. Petty Cash no-amount approve and Petty Cash/Payment return/reject remain negative authority tests, not positive policy completion.
+- Added full no-write collateral snapshots and 12 deterministic revocation specifications spanning User, real AuthSession, permission-gate composition, production role/scope commands, next recipient, Expense specialized preflight, and decision-first serializations with query-aware ApprovalInstance/PID linkage.
+- Focused non-PostgreSQL execution passes 60 tests with 156 PostgreSQL cases skipped and two existing policy TODOs; the full candidate passes 1,234 web tests, 27 database-package tests, one worker test, lint, typecheck, and production build. Architecture, Security, and QA report no Critical/High finding and GO only for the feature-disabled source checkpoint. Both required disposable suites fail only with `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`, so behavioral acceptance and activation remain NO-GO. Dunong found no user-facing documentation or glossary change because behavior remains disabled and unchanged.
+
 ## 2026-07-23 — Shared Approval Step-Ready Notification Parity
 
 - Confirmed and implemented `DEC-0074` behind `APPROVAL_ROUTING_V1_ENABLED=false`: all seven families using the shared current-step advance now create direct-user readiness through the shared deterministic approval/step notification helper in the canonical transaction, while role-scoped activation creates zero personal fanout.

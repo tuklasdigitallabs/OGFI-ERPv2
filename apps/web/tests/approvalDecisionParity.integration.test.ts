@@ -28,6 +28,21 @@ vi.mock("../src/server/services/context", async () => {
 const runPg = process.env.RUN_APPROVAL_ROUTING_PG_TESTS === "true";
 const allDecisions = ["APPROVE", "RETURN", "REJECT"] as const;
 const remarks = "Canonical parity decision evidence";
+const prohibitedActorPolicyBlockedCommands = [
+  ["PaymentRequest", "APPROVE"],
+] as const;
+const prohibitedActorCases = supportedApprovalDocumentTypes.flatMap((family) =>
+  canonicalApprovalDecisionCapabilities[family]
+    .filter(
+      (decision) =>
+        !prohibitedActorPolicyBlockedCommands.some(
+          ([blockedFamily, blockedDecision]) =>
+            blockedFamily === family && blockedDecision === decision,
+        ),
+    )
+    .map((decision) => [family, decision] as const),
+);
+type ProhibitedActorFamily = (typeof prohibitedActorCases)[number][0];
 
 function deferred() {
   let resolve!: () => void;
@@ -63,6 +78,29 @@ describe("canonical approval decision capability matrix", () => {
     expect(supported.filter(({ decision }) => decision === "APPROVE")).toHaveLength(18);
     expect(supported.filter(({ decision }) => decision === "RETURN")).toHaveLength(14);
     expect(supported.filter(({ decision }) => decision === "REJECT")).toHaveLength(18);
+  });
+
+  test("prohibited-actor executable matrix is complete and excludes only policy-blocked families", () => {
+    const allSupportedCommands = supportedApprovalDocumentTypes.flatMap((family) =>
+      canonicalApprovalDecisionCapabilities[family].map(
+        (decision) => [family, decision] as const,
+      ),
+    );
+    expect(
+      allSupportedCommands.filter(
+        ([family, decision]) =>
+          !prohibitedActorCases.some(
+            ([candidateFamily, candidateDecision]) =>
+              candidateFamily === family && candidateDecision === decision,
+          ),
+      ),
+    ).toEqual(prohibitedActorPolicyBlockedCommands);
+    expect(prohibitedActorCases.filter(([, decision]) => decision === "APPROVE"))
+      .toHaveLength(17);
+    expect(prohibitedActorCases.filter(([, decision]) => decision === "RETURN"))
+      .toHaveLength(14);
+    expect(prohibitedActorCases.filter(([, decision]) => decision === "REJECT"))
+      .toHaveLength(18);
   });
 
   test.each(
@@ -152,7 +190,7 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
   }
 
   async function paymentRequestFixture() {
-    return createApprovalDecisionPgFixture({
+    const fixture = await createApprovalDecisionPgFixture({
       family: "PaymentRequest",
       steps: 1,
       createSource: async (context) => {
@@ -183,6 +221,63 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
         });
       },
     });
+    await prisma.paymentRequest.update({
+      where: { id: fixture.sourceId },
+      data: { approvalInstanceId: fixture.approvalInstanceId },
+    });
+    return fixture;
+  }
+
+  async function pettyCashRequestFixture() {
+    const fixture = await createApprovalDecisionPgFixture({
+      family: "PettyCashRequest",
+      steps: 1,
+      createSource: async (context) => {
+        const fund = await prisma.pettyCashFund.create({
+          data: {
+            tenantId: context.tenantId,
+            companyId: context.companyId,
+            brandId: context.brandId,
+            locationId: context.locationId,
+            publicReference: `PCF-PARITY-${context.suffix}`,
+            code: `PCF-${context.suffix}`,
+            name: "Canonical parity petty cash fund",
+            openingBalancePhp: 1_000,
+            currentBalancePhp: 1_000,
+            targetBalancePhp: 1_000,
+            lowBalanceAlertPhp: 100,
+            status: "ACTIVE",
+            custodianUserId: context.requesterUserId,
+            createdByUserId: context.requesterUserId,
+          },
+          select: { id: true },
+        });
+        return prisma.pettyCashRequest.create({
+          data: {
+            tenantId: context.tenantId,
+            companyId: context.companyId,
+            pettyCashFundId: fund.id,
+            locationId: context.locationId,
+            publicReference: `PCR-PARITY-${context.suffix}`,
+            requestType: "DISBURSEMENT",
+            status: "AWAITING_APPROVAL",
+            requestedAmountPhp: 100,
+            purpose: "Canonical prohibited-actor parity",
+            justification: "Action-ready return and reject fixture",
+            requestedByUserId: context.requesterUserId,
+            submittedByUserId: context.requesterUserId,
+            submittedAt: new Date(),
+            evidenceReference: "fixture://petty-cash/source-evidence",
+          },
+          select: { id: true },
+        });
+      },
+    });
+    await prisma.pettyCashRequest.update({
+      where: { id: fixture.sourceId },
+      data: { approvalInstanceId: fixture.approvalInstanceId },
+    });
+    return fixture;
   }
 
   const sharedFamilies = [
@@ -594,6 +689,142 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
         beneficiaryUserId: true,
         approvalInstanceId: true,
       },
+    });
+  }
+
+  const sourceTableByFamily = {
+    PurchaseRequest: "PurchaseRequest",
+    QuotationRecommendation: "QuotationRecommendation",
+    PurchaseOrder: "PurchaseOrder",
+    PurchaseOrderBalanceClosure: "PurchaseOrderBalanceClosure",
+    PurchaseOrderAmendment: "PurchaseOrderAmendment",
+    WastageReport: "WastageReport",
+    StockAdjustment: "StockAdjustment",
+    BudgetRevision: "BudgetRevision",
+    ExpenseRequest: "ExpenseRequest",
+    CashAdvanceRequest: "CashAdvanceRequest",
+    FinanceCloseRun: "FinanceCloseRun",
+    PaymentRelease: "PaymentRelease",
+    EmployeeLeaveRequest: "EmployeeLeaveRequest",
+    EmployeeOvertimeRecord: "EmployeeOvertimeRecord",
+    WorkforceSchedule: "WorkforceSchedule",
+    AttendanceImportBatch: "AttendanceImportBatch",
+    PettyCashRequest: "PettyCashRequest",
+    PaymentRequest: "PaymentRequest",
+  } as const;
+
+  async function prohibitedActorFixture(
+    family: ProhibitedActorFamily,
+  ) {
+    if (family === "PurchaseRequest") return purchaseRequestFixture(1, false);
+    if (family === "PettyCashRequest") return pettyCashRequestFixture();
+    if (family === "PaymentRequest") return paymentRequestFixture();
+    if (sharedFamilies.includes(family as SharedProcurementInventoryFamily)) {
+      return sharedFixture(family as SharedProcurementInventoryFamily, 1, false);
+    }
+    return specializedFixture(family as SpecializedParityFamily, 1, false);
+  }
+
+  async function prohibitedActorSourceSnapshot(
+    family: ProhibitedActorFamily,
+    sourceId: string,
+  ) {
+    const table = sourceTableByFamily[family];
+    const rows = await prisma.$queryRawUnsafe<Array<{ source: unknown }>>(
+      `SELECT to_jsonb(source) AS source FROM "${table}" source WHERE source.id = $1::uuid`,
+      sourceId,
+    );
+    if (!rows[0]) throw new Error("APPROVAL_PARITY_SOURCE_NOT_FOUND");
+    return rows[0].source;
+  }
+
+  async function prohibitedActorCollateralSnapshot(
+    fixture: ApprovalDecisionPgFixture,
+  ) {
+    const scope = {
+      tenantId: fixture.tenantId,
+      companyId: fixture.companyId,
+    };
+    const [
+      budgetCommitments,
+      budgets,
+      budgetLines,
+      inventoryMovements,
+      inventoryBalances,
+      accountingPeriods,
+      paymentRequests,
+      paymentRequestLines,
+      bankAccounts,
+      pettyCashFunds,
+      pettyCashApprovalStepIntents,
+      pettyCashLedgerEntries,
+      purchaseRequests,
+      purchaseOrders,
+    ] = await Promise.all([
+      prisma.budgetCommitment.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.budget.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.budgetLine.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.inventoryMovement.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.inventoryBalance.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.accountingPeriod.findMany({
+        where: { companyId: fixture.companyId },
+        orderBy: { id: "asc" },
+      }),
+      prisma.paymentRequest.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.paymentRequestLine.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.bankAccount.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.pettyCashFund.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.pettyCashApprovalStepIntent.findMany({
+        where: scope,
+        orderBy: { id: "asc" },
+      }),
+      prisma.pettyCashLedgerEntry.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.purchaseRequest.findMany({ where: scope, orderBy: { id: "asc" } }),
+      prisma.purchaseOrder.findMany({ where: scope, orderBy: { id: "asc" } }),
+    ]);
+    return {
+      budgetCommitments,
+      budgets,
+      budgetLines,
+      inventoryMovements,
+      inventoryBalances,
+      accountingPeriods,
+      paymentRequests,
+      paymentRequestLines,
+      bankAccounts,
+      pettyCashFunds,
+      pettyCashApprovalStepIntents,
+      pettyCashLedgerEntries,
+      purchaseRequests,
+      purchaseOrders,
+    };
+  }
+
+  async function executeProhibitedActorDecision(
+    fixture: ApprovalDecisionPgFixture,
+    family: ProhibitedActorFamily,
+    decision: (typeof allDecisions)[number],
+  ) {
+    contextMock.requireSessionContext.mockResolvedValue(fixture.sessionFor(1));
+    const { executeCanonicalApprovalDecision } = await import(
+      "../src/server/services/approvals"
+    );
+    const acceptsEvidence = [
+      "BudgetRevision",
+      "ExpenseRequest",
+      "CashAdvanceRequest",
+      "EmployeeLeaveRequest",
+      "EmployeeOvertimeRecord",
+      "WorkforceSchedule",
+    ].includes(family);
+    return executeCanonicalApprovalDecision({
+      family,
+      decision,
+      approvalInstanceId: fixture.approvalInstanceId,
+      ...(decision === "APPROVE" ? {} : { remarks }),
+      ...(acceptsEvidence
+        ? { evidenceReference: "fixture://decision/evidence" }
+        : {}),
     });
   }
 
@@ -1023,7 +1254,98 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
     })).toBe(budgetBefore);
   });
 
-  test("FIN-AUTHZ-PROHIBITED-ACTOR-001 an otherwise-authorized Expense requester cannot decide their own request", async () => {
+  test.each(prohibitedActorCases)(
+    "FIN-AUTHZ-PROHIBITED-ACTOR-MATRIX-001 %s %s fails closed for an otherwise-eligible metadata-prohibited current approver",
+    async (family, decision) => {
+      const fixture = await prohibitedActorFixture(family);
+      const actorSession = fixture.sessionFor(1);
+      expect(actorSession.user.id).toBe(fixture.approverUserIds[0]);
+      expect(actorSession.user.id).not.toBe(fixture.requesterUserId);
+      const { listEligibleApprovalStepPage } = await import(
+        "../src/server/services/approvalRouting"
+      );
+      await expect(
+        listEligibleApprovalStepPage(actorSession, {
+          approvalInstanceStepId: fixture.stepIds[0],
+          page: 1,
+          pageSize: 10,
+        }),
+      ).resolves.toEqual({
+        items: [
+          expect.objectContaining({
+            approvalInstanceId: fixture.approvalInstanceId,
+            approvalInstanceStepId: fixture.stepIds[0],
+            documentType: family,
+            documentId: fixture.sourceId,
+            stepOrder: 1,
+          }),
+        ],
+        totalItems: 1,
+        page: 1,
+        pageSize: 10,
+      });
+      await expect(
+        prisma.approvalInstanceStepProhibitedActor.count({
+          where: {
+            approvalInstanceStepId: fixture.stepIds[0],
+            userId: fixture.approverUserIds[0],
+          },
+        }),
+      ).resolves.toBe(0);
+      const persistedProhibition =
+        await prisma.approvalInstanceStepProhibitedActor.create({
+        data: {
+          approvalInstanceStepId: fixture.stepIds[0],
+          userId: fixture.approverUserIds[0],
+          reasonCode: "TEST_PROHIBITED_ACTOR",
+        },
+        select: {
+          id: true,
+          approvalInstanceStepId: true,
+          userId: true,
+          reasonCode: true,
+          createdAt: true,
+        },
+      });
+      const [approvalBefore, sourceBefore, collateralBefore] = await Promise.all([
+        approvalDecisionPgSnapshot(fixture),
+        prohibitedActorSourceSnapshot(family, fixture.sourceId),
+        prohibitedActorCollateralSnapshot(fixture),
+      ]);
+
+      await expect(
+        executeProhibitedActorDecision(fixture, family, decision),
+      ).rejects.toThrow("APPROVAL_AUTHORITY_STALE");
+
+      const [approvalAfter, sourceAfter, collateralAfter, prohibitionAfter] =
+        await Promise.all([
+        approvalDecisionPgSnapshot(fixture),
+        prohibitedActorSourceSnapshot(family, fixture.sourceId),
+        prohibitedActorCollateralSnapshot(fixture),
+        prisma.approvalInstanceStepProhibitedActor.findMany({
+          where: {
+            approvalInstanceStepId: fixture.stepIds[0],
+            userId: fixture.approverUserIds[0],
+          },
+          select: {
+            id: true,
+            approvalInstanceStepId: true,
+            userId: true,
+            reasonCode: true,
+            createdAt: true,
+          },
+          orderBy: { id: "asc" },
+        }),
+      ]);
+      expect(approvalAfter).toEqual(approvalBefore);
+      expect(sourceAfter).toEqual(sourceBefore);
+      expect(collateralAfter).toEqual(collateralBefore);
+      expect(prohibitionAfter).toEqual([persistedProhibition]);
+    },
+    15_000,
+  );
+
+  test("FIN-AUTHZ-SOURCE-SOD-EXPENSE-001 an otherwise-authorized Expense requester cannot decide their own request", async () => {
     const fixture = await specializedFixture("ExpenseRequest", 1);
     const requesterSession = await otherwiseAuthorizedRequesterSession(fixture);
     const approvalBefore = await approvalDecisionPgSnapshot(fixture);
@@ -1042,7 +1364,7 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
     expect(await financeSourceSnapshot("ExpenseRequest", fixture.sourceId)).toEqual(sourceBefore);
   });
 
-  test("FIN-AUTHZ-PROHIBITED-ACTOR-002 an otherwise-authorized Cash Advance beneficiary cannot decide the request", async () => {
+  test("FIN-AUTHZ-SOURCE-SOD-CASH-ADVANCE-001 an otherwise-authorized Cash Advance beneficiary cannot decide the request", async () => {
     const fixture = await specializedFixture("CashAdvanceRequest", 1);
     await prisma.cashAdvanceRequest.update({
       where: { id: fixture.sourceId },
