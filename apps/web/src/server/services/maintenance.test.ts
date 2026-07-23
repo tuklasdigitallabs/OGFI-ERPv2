@@ -1365,7 +1365,7 @@ describe("Phase 2 maintenance foundation", () => {
     expect(detailPageSource).toContain("ticket.ownerName");
     expect(detailPageSource).toContain("ticket.sourceIncidentId");
     expect(detailPageSource).toContain('status === "PENDING_VENDOR"');
-    expect(detailPageSource).toContain('status === "COMPLETED" || status === "CANCELLED"');
+    expect(detailPageSource).toContain('status === "COMPLETED"');
     expect(detailPageSource).toContain("sourceIncidentHref");
     expect(detailPageSource).toContain("/incidents/${sourceIncidentId}");
     expect(detailPageSource).toContain("Source incident (read-only reference)");
@@ -1421,7 +1421,8 @@ describe("Phase 2 maintenance foundation", () => {
     expect(listPageSource).toContain('"CANCELLED"');
     expect(listPageSource).not.toContain('"CLOSED"');
     expect(listPageSource).toContain('status === "PENDING_VENDOR"');
-    expect(listPageSource).toContain('status === "COMPLETED" || status === "CANCELLED"');
+    expect(listPageSource).toContain('status === "COMPLETED"');
+    expect(listPageSource).toContain('status === "CANCELLED"');
     expect(listPageSource).toContain("sourceIncidentHref");
     expect(listPageSource).toContain("/incidents/${sourceIncidentId}");
     expect(listPageSource).toContain("Source");

@@ -891,7 +891,7 @@ describe("Phase 2 incident management foundation", () => {
     expect(detailPageSource).toContain("incident.ownerName");
     expect(detailPageSource).toContain("incident.sourceRecordId");
     expect(detailPageSource).toContain('status === "PENDING_REVIEW"');
-    expect(detailPageSource).toContain('status === "RESOLVED" || status === "CANCELLED"');
+    expect(detailPageSource).toContain('status === "RESOLVED"');
     expect(detailPageSource).toContain("sourceRecordHref");
     expect(detailPageSource).toContain("/branch-operations/${sourceRecordId}");
     expect(detailPageSource).toContain("Source record (read-only reference)");
@@ -926,7 +926,8 @@ describe("Phase 2 incident management foundation", () => {
     expect(listPageSource).toContain('"CANCELLED"');
     expect(listPageSource).not.toContain('"CLOSED"');
     expect(listPageSource).toContain('status === "PENDING_REVIEW"');
-    expect(listPageSource).toContain('status === "RESOLVED" || status === "CANCELLED"');
+    expect(listPageSource).toContain('status === "RESOLVED"');
+    expect(listPageSource).toContain('status === "CANCELLED"');
     expect(listPageSource).toContain("sourceRecordHref");
     expect(listPageSource).toContain("/branch-operations/${sourceRecordId}");
     expect(listPageSource).toContain("Source");
