@@ -65,6 +65,9 @@ export type InventoryBalanceFilters = {
 export type InventoryMovementFilters = {
   query?: string | undefined;
   movementType?: string | undefined;
+  inventoryLocationId?: string | undefined;
+  itemId?: string | undefined;
+  lotKey?: string | undefined;
 };
 
 export type InventoryBalanceReconciliationRow = {
@@ -80,6 +83,36 @@ export type InventoryBalanceReconciliationRow = {
   ledgerQuantity: number;
   varianceQuantity: number;
   status: "MATCHED" | "VARIANCE";
+  traceHref?: string;
+};
+
+export const inventoryDashboardProfiles = ["ledger-variance-v1"] as const;
+export type InventoryDashboardProfile =
+  (typeof inventoryDashboardProfiles)[number];
+
+export type InventoryLedgerVarianceRow = InventoryBalanceReconciliationRow & {
+  status: "VARIANCE";
+};
+
+export type InventoryLedgerVarianceProfileRow = InventoryLedgerVarianceRow & {
+  traceHref: string;
+};
+
+export type InventoryLedgerVarianceProfilePage = {
+  profile: InventoryDashboardProfile;
+  items: InventoryLedgerVarianceProfileRow[];
+  totalItems: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  query: string | null;
+  generatedAt: string;
+};
+
+export type InventoryLedgerVarianceDashboardRead = {
+  varianceCount: number;
+  candidates: InventoryLedgerVarianceProfileRow[];
+  generatedAt: string;
 };
 
 const inventoryMovementTypes = [
@@ -96,6 +129,39 @@ const inventoryMovementTypes = [
 ] as const;
 
 export const maxInventorySearchLength = 120;
+const inventoryLedgerVariancePageSize = 25;
+const inventoryTraceUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function resolveInventoryDashboardProfile(
+  value: string | undefined
+): InventoryDashboardProfile | null {
+  return value === "ledger-variance-v1" ? value : null;
+}
+
+export function inventoryDashboardProfileHref(
+  profile: InventoryDashboardProfile,
+  input: { page?: number; query?: string } = {}
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  const query = input.query?.trim();
+  if (query) params.set("q", query);
+  if (input.page && input.page > 1) params.set("page", String(input.page));
+  return `/inventory/reconciliation?${params.toString()}`;
+}
+
+export function inventoryLedgerTraceHref(input: {
+  inventoryLocationId: string;
+  itemId: string;
+  lotKey: string;
+}) {
+  const params = new URLSearchParams({
+    inventoryLocationId: input.inventoryLocationId,
+    itemId: input.itemId,
+    lotKey: input.lotKey
+  });
+  return `/inventory/ledger?${params.toString()}`;
+}
 
 function normalizeInventorySearchQuery(query?: string) {
   const normalizedQuery = query?.trim() || undefined;
@@ -116,12 +182,39 @@ export function normalizeInventoryBalanceFilters(
 export function normalizeInventoryMovementFilters(
   filters: InventoryMovementFilters = {}
 ): InventoryMovementFilters {
-  return {
+  const traceValues = [
+    filters.inventoryLocationId?.trim() || undefined,
+    filters.itemId?.trim() || undefined,
+    filters.lotKey?.trim() || undefined
+  ] as const;
+  const suppliedTraceValues = traceValues.filter(Boolean).length;
+  if (suppliedTraceValues !== 0 && suppliedTraceValues !== traceValues.length) {
+    throw new Error("INVENTORY_LEDGER_TRACE_FILTER_INCOMPLETE");
+  }
+  if (
+    suppliedTraceValues === traceValues.length &&
+    (!inventoryTraceUuidPattern.test(traceValues[0]!) ||
+      !inventoryTraceUuidPattern.test(traceValues[1]!))
+  ) {
+    throw new Error("INVENTORY_LEDGER_TRACE_FILTER_INVALID");
+  }
+  if (suppliedTraceValues === traceValues.length) {
+    parseInventoryLotKey(traceValues[2]!);
+  }
+  const normalized: InventoryMovementFilters = {
     query: normalizeInventorySearchQuery(filters.query),
     movementType: inventoryMovementTypes.includes(filters.movementType as never)
       ? filters.movementType
       : undefined
   };
+  return suppliedTraceValues === traceValues.length
+    ? {
+        ...normalized,
+        inventoryLocationId: traceValues[0],
+        itemId: traceValues[1],
+        lotKey: traceValues[2]
+      }
+    : normalized;
 }
 
 export function normalizeInventoryLotKey(
@@ -133,6 +226,35 @@ export function normalizeInventoryLotKey(
     ? new Date(expiryDate).toISOString().slice(0, 10)
     : "NOEXP";
   return `${normalizedLot}|${normalizedExpiry}`;
+}
+
+function parseInventoryLotKey(lotKey: string) {
+  const separatorIndex = lotKey.lastIndexOf("|");
+  if (separatorIndex <= 0 || separatorIndex === lotKey.length - 1) {
+    throw new Error("INVENTORY_LEDGER_TRACE_FILTER_INVALID");
+  }
+  const lotPart = lotKey.slice(0, separatorIndex);
+  const expiryPart = lotKey.slice(separatorIndex + 1);
+  if (lotPart.length > 255) {
+    throw new Error("INVENTORY_LEDGER_TRACE_FILTER_INVALID");
+  }
+  if (expiryPart !== "NOEXP") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryPart)) {
+      throw new Error("INVENTORY_LEDGER_TRACE_FILTER_INVALID");
+    }
+    const expiryDate = new Date(`${expiryPart}T00:00:00.000Z`);
+    if (
+      Number.isNaN(expiryDate.getTime()) ||
+      expiryDate.toISOString().slice(0, 10) !== expiryPart
+    ) {
+      throw new Error("INVENTORY_LEDGER_TRACE_FILTER_INVALID");
+    }
+  }
+  return {
+    lotNumber: lotPart === "NOLOT" ? null : lotPart,
+    expiryDate:
+      expiryPart === "NOEXP" ? null : new Date(`${expiryPart}T00:00:00.000Z`)
+  };
 }
 
 export function assertInventoryMovementQuantities(
@@ -484,6 +606,354 @@ export async function postInventoryMovementInTransaction(
   return { movement, duplicate: false };
 }
 
+type InventoryLedgerVarianceRawRow = {
+  inventoryLocationId: string | null;
+  itemId: string | null;
+  lotKey: string | null;
+  inventoryLocationName: string | null;
+  locationName: string | null;
+  itemCode: string | null;
+  itemName: string | null;
+  lotNumber: string | null;
+  expiryDate: Date | string | null;
+  baseUomCode: string | null;
+  balanceQuantity: Prisma.Decimal | number | string | null;
+  ledgerQuantity: Prisma.Decimal | number | string | null;
+  varianceQuantity: Prisma.Decimal | number | string | null;
+  totalRows: bigint | number;
+  matchedRows: bigint | number;
+  varianceRows: bigint | number;
+  profileTotalCount: bigint | number;
+  safePage: bigint | number;
+  generatedAt: Date | string;
+};
+
+function inventoryLedgerVarianceSearchPattern(query: string | undefined) {
+  if (!query) return null;
+  return `%${query.replace(/[\\%_]/g, "\\$&")}%`;
+}
+
+/**
+ * One source-owned PostgreSQL reconciliation statement. Both cache and ledger
+ * sources are independently scope-qualified before their canonical keys are
+ * unioned; callers may change only bounded search and pagination.
+ */
+export function buildInventoryLedgerVarianceQuery(
+  session: SessionContext,
+  input: {
+    page?: number;
+    pageSize?: number | null;
+    query?: string;
+    exactKey?: {
+      inventoryLocationId: string;
+      itemId: string;
+      lotKey: string;
+    };
+    includeMatchedExact?: boolean;
+  } = {}
+) {
+  if (input.includeMatchedExact && !input.exactKey) {
+    throw new Error("INVENTORY_LEDGER_EXACT_KEY_REQUIRED");
+  }
+  const normalizedQuery = normalizeInventorySearchQuery(input.query);
+  const searchPattern = inventoryLedgerVarianceSearchPattern(normalizedQuery);
+  const requestedPage =
+    input.page && Number.isFinite(input.page) && input.page > 0
+      ? Math.floor(input.page)
+      : 1;
+  const pageSize =
+    input.pageSize === null
+      ? null
+      : Math.min(Math.max(Math.floor(input.pageSize ?? inventoryLedgerVariancePageSize), 1), 25);
+  const pagingSql = pageSize
+    ? Prisma.sql`OFFSET ((pm."safePage" - 1) * ${pageSize}) LIMIT ${pageSize}`
+    : Prisma.empty;
+  const exactKeySql = input.exactKey
+    ? Prisma.sql`
+        AND r."inventoryLocationId" = ${input.exactKey.inventoryLocationId}::uuid
+        AND r."itemId" = ${input.exactKey.itemId}::uuid
+        AND r."lotKey" = ${input.exactKey.lotKey}
+      `
+    : Prisma.empty;
+
+  return {
+    normalizedQuery,
+    query: Prisma.sql`
+      WITH balance_rows AS MATERIALIZED (
+        SELECT
+          b."inventoryLocationId",
+          b."itemId",
+          COALESCE(NULLIF(BTRIM(b."lotNumber"), ''), 'NOLOT') || '|' ||
+            COALESCE(TO_CHAR(b."expiryDate", 'YYYY-MM-DD'), 'NOEXP') AS "lotKey",
+          MIN(NULLIF(BTRIM(b."lotNumber"), '')) AS "lotNumber",
+          MIN(b."expiryDate"::date) AS "expiryDate",
+          SUM(b."qtyOnHand")::numeric AS "balanceQuantity"
+        FROM "InventoryBalance" b
+        INNER JOIN "InventoryLocation" il
+          ON il.id = b."inventoryLocationId"
+         AND il."tenantId" = ${session.context.tenantId}::uuid
+         AND il."companyId" = ${session.context.companyId}::uuid
+         AND il."locationId" = ${session.context.locationId}::uuid
+         AND il.status = CAST('ACTIVE' AS "RecordStatus")
+        WHERE b."tenantId" = ${session.context.tenantId}::uuid
+          AND b."companyId" = ${session.context.companyId}::uuid
+        GROUP BY b."inventoryLocationId", b."itemId", "lotKey"
+      ),
+      ledger_rows AS MATERIALIZED (
+        SELECT
+          m."inventoryLocationId",
+          m."itemId",
+          COALESCE(NULLIF(BTRIM(m."lotNumber"), ''), 'NOLOT') || '|' ||
+            COALESCE(TO_CHAR(m."expiryDate", 'YYYY-MM-DD'), 'NOEXP') AS "lotKey",
+          MIN(NULLIF(BTRIM(m."lotNumber"), '')) AS "lotNumber",
+          MIN(m."expiryDate"::date) AS "expiryDate",
+          SUM(m."quantityDeltaBaseUom")::numeric AS "ledgerQuantity"
+        FROM "InventoryMovement" m
+        INNER JOIN "InventoryLocation" il
+          ON il.id = m."inventoryLocationId"
+         AND il."tenantId" = ${session.context.tenantId}::uuid
+         AND il."companyId" = ${session.context.companyId}::uuid
+         AND il."locationId" = ${session.context.locationId}::uuid
+         AND il.status = CAST('ACTIVE' AS "RecordStatus")
+        WHERE m."tenantId" = ${session.context.tenantId}::uuid
+          AND m."companyId" = ${session.context.companyId}::uuid
+        GROUP BY m."inventoryLocationId", m."itemId", "lotKey"
+      ),
+      all_keys AS MATERIALIZED (
+        SELECT "inventoryLocationId", "itemId", "lotKey" FROM balance_rows
+        UNION
+        SELECT "inventoryLocationId", "itemId", "lotKey" FROM ledger_rows
+      ),
+      reconciled AS MATERIALIZED (
+        SELECT
+          k."inventoryLocationId",
+          k."itemId",
+          k."lotKey",
+          il.name AS "inventoryLocationName",
+          l.name AS "locationName",
+          i."itemCode",
+          i."itemName",
+          COALESCE(b."lotNumber", lr."lotNumber") AS "lotNumber",
+          COALESCE(b."expiryDate", lr."expiryDate") AS "expiryDate",
+          u."uomCode" AS "baseUomCode",
+          COALESCE(b."balanceQuantity", 0)::numeric AS "balanceQuantity",
+          COALESCE(lr."ledgerQuantity", 0)::numeric AS "ledgerQuantity",
+          ROUND(
+            COALESCE(b."balanceQuantity", 0)::numeric -
+            COALESCE(lr."ledgerQuantity", 0)::numeric,
+            6
+          ) AS "varianceQuantity"
+        FROM all_keys k
+        INNER JOIN "InventoryLocation" il
+          ON il.id = k."inventoryLocationId"
+         AND il."tenantId" = ${session.context.tenantId}::uuid
+         AND il."companyId" = ${session.context.companyId}::uuid
+         AND il."locationId" = ${session.context.locationId}::uuid
+         AND il.status = CAST('ACTIVE' AS "RecordStatus")
+        INNER JOIN "Location" l
+          ON l.id = il."locationId"
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+        INNER JOIN "Item" i
+          ON i.id = k."itemId"
+         AND i."tenantId" = ${session.context.tenantId}::uuid
+         AND i."companyId" = ${session.context.companyId}::uuid
+        INNER JOIN "Uom" u
+          ON u.id = i."baseUomId"
+         AND u."tenantId" = ${session.context.tenantId}::uuid
+         AND u."companyId" = ${session.context.companyId}::uuid
+        LEFT JOIN balance_rows b
+          ON b."inventoryLocationId" = k."inventoryLocationId"
+         AND b."itemId" = k."itemId"
+         AND b."lotKey" = k."lotKey"
+        LEFT JOIN ledger_rows lr
+          ON lr."inventoryLocationId" = k."inventoryLocationId"
+         AND lr."itemId" = k."itemId"
+         AND lr."lotKey" = k."lotKey"
+      ),
+      source_stats AS (
+        SELECT
+          COUNT(*)::bigint AS "totalRows",
+          COUNT(*) FILTER (WHERE "varianceQuantity" = 0)::bigint AS "matchedRows",
+          COUNT(*) FILTER (WHERE "varianceQuantity" <> 0)::bigint AS "varianceRows"
+        FROM reconciled
+      ),
+      filtered_variances AS MATERIALIZED (
+        SELECT *
+        FROM reconciled r
+        WHERE (r."varianceQuantity" <> 0 OR ${input.includeMatchedExact === true})
+          ${exactKeySql}
+          AND (
+            ${searchPattern}::text IS NULL OR
+            r."itemCode" ILIKE ${searchPattern} ESCAPE '\\' OR
+            r."itemName" ILIKE ${searchPattern} ESCAPE '\\' OR
+            r."inventoryLocationName" ILIKE ${searchPattern} ESCAPE '\\' OR
+            COALESCE(r."lotNumber", 'NOLOT') ILIKE ${searchPattern} ESCAPE '\\'
+          )
+      ),
+      profile_meta AS (
+        SELECT COUNT(*)::bigint AS "profileTotalCount" FROM filtered_variances
+      ),
+      page_meta AS (
+        SELECT
+          LEAST(
+            ${requestedPage}::bigint,
+            GREATEST(
+              1::bigint,
+              CEIL(pm."profileTotalCount"::numeric / ${pageSize ?? 1})::bigint
+            )
+          ) AS "safePage"
+        FROM profile_meta pm
+      )
+      SELECT
+        page_rows.*,
+        ss."totalRows",
+        ss."matchedRows",
+        ss."varianceRows",
+        profile_meta."profileTotalCount",
+        pm."safePage",
+        statement_timestamp() AS "generatedAt"
+      FROM source_stats ss
+      CROSS JOIN profile_meta
+      CROSS JOIN page_meta pm
+      LEFT JOIN LATERAL (
+        SELECT *
+        FROM filtered_variances fv
+        ORDER BY
+          fv."itemName" ASC,
+          fv."itemCode" ASC,
+          fv."inventoryLocationName" ASC,
+          fv."lotKey" ASC,
+          fv."inventoryLocationId" ASC,
+          fv."itemId" ASC
+        ${pagingSql}
+      ) page_rows ON TRUE
+    `
+  };
+}
+
+async function requireInventoryLedgerVarianceRead(session: SessionContext) {
+  await requirePermission(session, permissions.inventoryBalanceView);
+  await requirePermission(session, permissions.inventoryLedgerView);
+}
+
+function inventoryLedgerVarianceResult(rows: InventoryLedgerVarianceRawRow[]) {
+  const meta = rows[0];
+  const items = rows.flatMap((row): InventoryLedgerVarianceProfileRow[] => {
+    if (!row.inventoryLocationId || !row.itemId || !row.lotKey) return [];
+    const expiryDate = row.expiryDate
+      ? new Date(row.expiryDate).toISOString().slice(0, 10)
+      : null;
+    return [{
+      key: `${row.inventoryLocationId}|${row.itemId}|${row.lotKey}`,
+      inventoryLocationName: row.inventoryLocationName ?? "Unknown inventory location",
+      locationName: row.locationName ?? "Unknown location",
+      itemCode: row.itemCode ?? "Unknown item",
+      itemName: row.itemName ?? "Unknown item",
+      lotNumber: row.lotNumber,
+      expiryDate,
+      baseUomCode: row.baseUomCode ?? "",
+      balanceQuantity: Number(row.balanceQuantity ?? 0),
+      ledgerQuantity: Number(row.ledgerQuantity ?? 0),
+      varianceQuantity: Number(row.varianceQuantity ?? 0),
+      status: "VARIANCE",
+      traceHref: inventoryLedgerTraceHref({
+        inventoryLocationId: row.inventoryLocationId,
+        itemId: row.itemId,
+        lotKey: row.lotKey
+      })
+    }];
+  });
+  return {
+    items,
+    totalRows: Number(meta?.totalRows ?? 0),
+    matchedRows: Number(meta?.matchedRows ?? 0),
+    varianceRows: Number(meta?.varianceRows ?? 0),
+    profileTotalCount: Number(meta?.profileTotalCount ?? 0),
+    safePage: Number(meta?.safePage ?? 1),
+    generatedAt: meta
+      ? new Date(meta.generatedAt).toISOString()
+      : new Date().toISOString()
+  };
+}
+
+async function queryInventoryLedgerVariance(
+  session: SessionContext,
+  input: {
+    page?: number;
+    pageSize?: number | null;
+    query?: string;
+    exactKey?: {
+      inventoryLocationId: string;
+      itemId: string;
+      lotKey: string;
+    };
+    includeMatchedExact?: boolean;
+  } = {}
+) {
+  const built = buildInventoryLedgerVarianceQuery(session, input);
+  const rows = await prisma.$queryRaw<InventoryLedgerVarianceRawRow[]>(built.query);
+  return {
+    ...inventoryLedgerVarianceResult(rows),
+    normalizedQuery: built.normalizedQuery
+  };
+}
+
+export async function listInventoryLedgerVarianceProfilePage(
+  session: SessionContext,
+  input: { page?: number; query?: string } = {}
+): Promise<InventoryLedgerVarianceProfilePage> {
+  await requireInventoryLedgerVarianceRead(session);
+  const result = await queryInventoryLedgerVariance(session, {
+    pageSize: inventoryLedgerVariancePageSize,
+    ...(input.page !== undefined ? { page: input.page } : {}),
+    ...(input.query !== undefined ? { query: input.query } : {})
+  });
+  return {
+    profile: "ledger-variance-v1",
+    items: result.items,
+    totalItems: result.profileTotalCount,
+    page: result.safePage,
+    pageSize: inventoryLedgerVariancePageSize,
+    totalPages: Math.max(1, Math.ceil(result.profileTotalCount / inventoryLedgerVariancePageSize)),
+    query: result.normalizedQuery ?? null,
+    generatedAt: result.generatedAt
+  };
+}
+
+export async function getInventoryLedgerVarianceDashboardRead(
+  session: SessionContext
+): Promise<InventoryLedgerVarianceDashboardRead> {
+  await requireInventoryLedgerVarianceRead(session);
+  const result = await queryInventoryLedgerVariance(session, {
+    page: 1,
+    pageSize: 3
+  });
+  return {
+    varianceCount: result.profileTotalCount,
+    candidates: result.items,
+    generatedAt: result.generatedAt
+  };
+}
+
+export async function listInventoryLedgerVarianceExportRows(
+  session: SessionContext,
+  input: { query?: string } = {}
+) {
+  await requireInventoryLedgerVarianceRead(session);
+  const result = await queryInventoryLedgerVariance(session, {
+    page: 1,
+    pageSize: null,
+    ...(input.query !== undefined ? { query: input.query } : {})
+  });
+  return {
+    rows: result.items,
+    totalItems: result.profileTotalCount,
+    query: result.normalizedQuery ?? null,
+    generatedAt: result.generatedAt
+  };
+}
+
 export async function listInventoryBalances(
   session: SessionContext,
   filters: InventoryBalanceFilters = {}
@@ -572,128 +1042,296 @@ export async function listInventoryBalances(
   }));
 }
 
-export async function getInventoryBalanceReconciliation(session: SessionContext) {
-  await requirePermission(session, permissions.inventoryLedgerView);
+export async function getInventoryBalanceReconciliation(
+  session: SessionContext
+): Promise<{
+  totalRows: number;
+  matchedRows: number;
+  varianceRows: number;
+  rows: InventoryBalanceReconciliationRow[];
+  generatedAt?: string;
+}> {
+  await requireInventoryLedgerVarianceRead(session);
+  const result = await queryInventoryLedgerVariance(session, {
+    page: 1,
+    pageSize: null
+  });
+  return {
+    totalRows: result.totalRows,
+    matchedRows: result.matchedRows,
+    varianceRows: result.varianceRows,
+    rows: result.items,
+    generatedAt: result.generatedAt
+  };
+}
 
-  const [balances, movements] = await Promise.all([
-    prisma.inventoryBalance.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        inventoryLocation: {
-          locationId: session.context.locationId,
-          status: "ACTIVE"
-        }
-      },
-      include: {
-        inventoryLocation: {
-          include: {
-            location: true
-          }
-        },
-        item: true,
-        baseUom: true
+export function inventoryMovementListWhere(
+  session: SessionContext,
+  filters: InventoryMovementFilters = {}
+): Prisma.InventoryMovementWhereInput {
+  const normalizedFilters = normalizeInventoryMovementFilters(filters);
+  const clauses: Prisma.InventoryMovementWhereInput[] = [
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      inventoryLocation: {
+        locationId: session.context.locationId,
+        status: "ACTIVE"
       }
-    }),
-    prisma.inventoryMovement.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        inventoryLocation: {
-          locationId: session.context.locationId,
-          status: "ACTIVE"
-        }
-      },
-      include: {
-        inventoryLocation: {
-          include: {
-            location: true
-          }
-        },
-        item: true,
-        baseUom: true
-      }
-    })
-  ]);
-
-  const rowsByKey = new Map<string, InventoryBalanceReconciliationRow>();
-
-  for (const balance of balances) {
-    const key = `${balance.inventoryLocationId}|${balance.itemId}|${balance.lotKey}`;
-    rowsByKey.set(key, {
-      key,
-      inventoryLocationName: balance.inventoryLocation.name,
-      locationName: balance.inventoryLocation.location.name,
-      itemCode: balance.item.itemCode,
-      itemName: balance.item.itemName,
-      lotNumber: balance.lotNumber ?? null,
-      expiryDate: balance.expiryDate?.toISOString().slice(0, 10) ?? null,
-      baseUomCode: balance.baseUom.uomCode,
-      balanceQuantity: Number(balance.qtyOnHand),
-      ledgerQuantity: 0,
-      varianceQuantity: 0,
-      status: "MATCHED"
+    }
+  ];
+  if (normalizedFilters.movementType) {
+    clauses.push({
+      movementType: normalizedFilters.movementType as InventoryMovementType
     });
   }
+  if (normalizedFilters.query) {
+    clauses.push({
+      OR: [
+        {
+          item: {
+            itemCode: { contains: normalizedFilters.query, mode: "insensitive" }
+          }
+        },
+        {
+          item: {
+            itemName: { contains: normalizedFilters.query, mode: "insensitive" }
+          }
+        },
+        {
+          sourceDocumentType: {
+            contains: normalizedFilters.query,
+            mode: "insensitive"
+          }
+        },
+        {
+          sourceEventKey: {
+            contains: normalizedFilters.query,
+            mode: "insensitive"
+          }
+        },
+        {
+          lotNumber: { contains: normalizedFilters.query, mode: "insensitive" }
+        }
+      ]
+    });
+  }
+  if (
+    normalizedFilters.inventoryLocationId &&
+    normalizedFilters.itemId &&
+    normalizedFilters.lotKey
+  ) {
+    const lot = parseInventoryLotKey(normalizedFilters.lotKey);
+    const expiryWhere = lot.expiryDate
+      ? {
+          gte: lot.expiryDate,
+          lt: new Date(lot.expiryDate.getTime() + 24 * 60 * 60 * 1000)
+        }
+      : null;
+    clauses.push({
+      inventoryLocationId: normalizedFilters.inventoryLocationId,
+      itemId: normalizedFilters.itemId,
+      lotNumber: lot.lotNumber,
+      expiryDate: expiryWhere
+    });
+  }
+  return { AND: clauses };
+}
 
-  for (const movement of movements) {
-    const lotKey = normalizeInventoryLotKey(
-      movement.lotNumber,
-      movement.expiryDate
-    );
-    const key = `${movement.inventoryLocationId}|${movement.itemId}|${lotKey}`;
-    const existing = rowsByKey.get(key);
-    if (existing) {
-      existing.ledgerQuantity = Number(
-        (existing.ledgerQuantity + Number(movement.quantityDeltaBaseUom)).toFixed(6)
-      );
-      continue;
-    }
-    rowsByKey.set(key, {
-      key,
+const inventoryLedgerVarianceTracePageSize = 50;
+
+type InventoryLedgerVarianceTraceIdRow = {
+  id: string | null;
+  totalItems: bigint | number;
+  safePage: bigint | number;
+};
+
+export function buildInventoryLedgerVarianceTraceQuery(
+  session: SessionContext,
+  input: {
+    inventoryLocationId: string;
+    itemId: string;
+    lotKey: string;
+    page?: number;
+  }
+) {
+  const normalized = normalizeInventoryMovementFilters({
+    inventoryLocationId: input.inventoryLocationId,
+    itemId: input.itemId,
+    lotKey: input.lotKey
+  });
+  const inventoryLocationId = normalized.inventoryLocationId!;
+  const itemId = normalized.itemId!;
+  const lotKey = normalized.lotKey!;
+  const requestedPage =
+    input.page && Number.isFinite(input.page) && input.page > 0
+      ? Math.floor(input.page)
+      : 1;
+  return Prisma.sql`
+    WITH trace_rows AS MATERIALIZED (
+      SELECT
+        m.id,
+        m."occurredAt",
+        COUNT(*) OVER()::bigint AS "totalItems"
+      FROM "InventoryMovement" m
+      INNER JOIN "InventoryLocation" il
+        ON il.id = m."inventoryLocationId"
+       AND il."tenantId" = ${session.context.tenantId}::uuid
+       AND il."companyId" = ${session.context.companyId}::uuid
+       AND il."locationId" = ${session.context.locationId}::uuid
+       AND il.status = CAST('ACTIVE' AS "RecordStatus")
+      WHERE m."tenantId" = ${session.context.tenantId}::uuid
+        AND m."companyId" = ${session.context.companyId}::uuid
+        AND m."inventoryLocationId" = ${inventoryLocationId}::uuid
+        AND m."itemId" = ${itemId}::uuid
+        AND COALESCE(NULLIF(BTRIM(m."lotNumber"), ''), 'NOLOT') || '|' ||
+            COALESCE(TO_CHAR(m."expiryDate", 'YYYY-MM-DD'), 'NOEXP') = ${lotKey}
+    ),
+    trace_meta AS (
+      SELECT COALESCE(MAX("totalItems"), 0)::bigint AS "totalItems"
+      FROM trace_rows
+    ),
+    page_meta AS (
+      SELECT LEAST(
+        ${requestedPage}::bigint,
+        GREATEST(
+          1::bigint,
+          CEIL(tm."totalItems"::numeric / ${inventoryLedgerVarianceTracePageSize})::bigint
+        )
+      ) AS "safePage"
+      FROM trace_meta tm
+    )
+    SELECT
+      page_rows.id,
+      tm."totalItems",
+      pm."safePage"
+    FROM trace_meta tm
+    CROSS JOIN page_meta pm
+    LEFT JOIN LATERAL (
+      SELECT tr.id
+      FROM trace_rows tr
+      ORDER BY tr."occurredAt" DESC, tr.id DESC
+      OFFSET ((pm."safePage" - 1) * ${inventoryLedgerVarianceTracePageSize})
+      LIMIT ${inventoryLedgerVarianceTracePageSize}
+    ) page_rows ON TRUE
+  `;
+}
+
+export async function getInventoryLedgerVarianceTracePage(
+  session: SessionContext,
+  input: {
+    inventoryLocationId: string;
+    itemId: string;
+    lotKey: string;
+    page?: number;
+  }
+) {
+  await requireInventoryLedgerVarianceRead(session);
+  const normalized = normalizeInventoryMovementFilters({
+    inventoryLocationId: input.inventoryLocationId,
+    itemId: input.itemId,
+    lotKey: input.lotKey
+  });
+  const exactKey = {
+    inventoryLocationId: normalized.inventoryLocationId!,
+    itemId: normalized.itemId!,
+    lotKey: normalized.lotKey!
+  };
+  const [traceRows, currentVariance] = await Promise.all([
+    prisma.$queryRaw<InventoryLedgerVarianceTraceIdRow[]>(
+      buildInventoryLedgerVarianceTraceQuery(session, input)
+    ),
+    queryInventoryLedgerVariance(session, {
+      page: 1,
+      pageSize: 1,
+      exactKey,
+      includeMatchedExact: true
+    })
+  ]);
+  const ids = traceRows.flatMap((row) => (row.id ? [row.id] : []));
+  const movements = ids.length
+    ? await prisma.inventoryMovement.findMany({
+        where: {
+          AND: [
+            {
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+              inventoryLocation: {
+                locationId: session.context.locationId,
+                status: "ACTIVE"
+              }
+            },
+            {
+              inventoryLocationId: exactKey.inventoryLocationId,
+              itemId: exactKey.itemId,
+              id: { in: ids }
+            }
+          ]
+        },
+        include: {
+          inventoryLocation: { include: { location: true } },
+          item: true,
+          enteredUom: true,
+          baseUom: true
+        }
+      })
+    : [];
+  const postedByUserIds = Array.from(
+    new Set(movements.map((movement) => movement.postedByUserId))
+  );
+  const postedByUsers = postedByUserIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: { in: postedByUserIds },
+          tenantId: session.context.tenantId
+        },
+        select: { id: true, displayName: true }
+      })
+    : [];
+  const postedByNames = new Map(
+    postedByUsers.map((user) => [user.id, user.displayName])
+  );
+  const movementById = new Map(movements.map((movement) => [movement.id, movement]));
+  const items = ids.flatMap((id) => {
+    const movement = movementById.get(id);
+    if (!movement) return [];
+    const quantityDeltaBaseUom = Number(movement.quantityDeltaBaseUom);
+    return [{
+      id: movement.id,
+      occurredAt: movement.occurredAt.toISOString(),
+      movementType: movement.movementType,
       inventoryLocationName: movement.inventoryLocation.name,
       locationName: movement.inventoryLocation.location.name,
       itemCode: movement.item.itemCode,
       itemName: movement.item.itemName,
+      enteredQuantity: Number(movement.enteredQuantity),
+      enteredUomCode: movement.enteredUom.uomCode,
+      quantityDeltaBaseUom,
+      inQuantityBaseUom: quantityDeltaBaseUom > 0 ? quantityDeltaBaseUom : 0,
+      outQuantityBaseUom:
+        quantityDeltaBaseUom < 0 ? Math.abs(quantityDeltaBaseUom) : 0,
+      baseUomCode: movement.baseUom.uomCode,
       lotNumber: movement.lotNumber ?? null,
       expiryDate: movement.expiryDate?.toISOString().slice(0, 10) ?? null,
-      baseUomCode: movement.baseUom.uomCode,
-      balanceQuantity: 0,
-      ledgerQuantity: Number(movement.quantityDeltaBaseUom),
-      varianceQuantity: 0,
-      status: "MATCHED"
-    });
-  }
-
-  const rows = Array.from(rowsByKey.values())
-    .map((row) => {
-      const varianceQuantity = calculateInventoryBalanceVariance(
-        row.balanceQuantity,
-        row.ledgerQuantity
-      );
-      return {
-        ...row,
-        varianceQuantity,
-        status: getInventoryBalanceReconciliationStatus(
-          row.balanceQuantity,
-          row.ledgerQuantity
-        )
-      } satisfies InventoryBalanceReconciliationRow;
-    })
-    .sort((a, b) => {
-      if (a.status !== b.status) {
-        return a.status === "VARIANCE" ? -1 : 1;
-      }
-      return `${a.itemName}${a.inventoryLocationName}`.localeCompare(
-        `${b.itemName}${b.inventoryLocationName}`
-      );
-    });
-
+      sourceDocumentType: movement.sourceDocumentType,
+      sourceEventKey: movement.sourceEventKey,
+      reasonCode: movement.reasonCode ?? null,
+      postedByName: postedByNames.get(movement.postedByUserId) ?? "Unknown user"
+    }];
+  });
+  const meta = traceRows[0];
+  const current = currentVariance.items[0] ?? null;
   return {
-    totalRows: rows.length,
-    matchedRows: rows.filter((row) => row.status === "MATCHED").length,
-    varianceRows: rows.filter((row) => row.status === "VARIANCE").length,
-    rows
+    totalItems: Number(meta?.totalItems ?? 0),
+    page: Number(meta?.safePage ?? 1),
+    pageSize: inventoryLedgerVarianceTracePageSize,
+    items,
+    isCurrentVariance:
+      current !== null && current.varianceQuantity !== 0,
+    currentBalanceQuantity: current?.balanceQuantity ?? null,
+    currentLedgerQuantity: current?.ledgerQuantity ?? null,
+    currentVarianceQuantity: current?.varianceQuantity ?? null,
+    currentVarianceGeneratedAt: currentVariance.generatedAt
   };
 }
 
@@ -703,59 +1341,16 @@ export async function listInventoryMovements(
 ) {
   await requirePermission(session, permissions.inventoryLedgerView);
   const normalizedFilters = normalizeInventoryMovementFilters(filters);
+  if (
+    normalizedFilters.inventoryLocationId ||
+    normalizedFilters.itemId ||
+    normalizedFilters.lotKey
+  ) {
+    throw new Error("INVENTORY_LEDGER_TRACE_REQUIRES_DEDICATED_SERVICE");
+  }
 
   const movements = await prisma.inventoryMovement.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      inventoryLocation: {
-        locationId: session.context.locationId,
-        status: "ACTIVE"
-      },
-      ...(normalizedFilters.movementType
-        ? { movementType: normalizedFilters.movementType as InventoryMovementType }
-        : {}),
-      ...(normalizedFilters.query
-        ? {
-            OR: [
-              {
-                item: {
-                  itemCode: {
-                    contains: normalizedFilters.query,
-                    mode: "insensitive"
-                  }
-                }
-              },
-              {
-                item: {
-                  itemName: {
-                    contains: normalizedFilters.query,
-                    mode: "insensitive"
-                  }
-                }
-              },
-              {
-                sourceDocumentType: {
-                  contains: normalizedFilters.query,
-                  mode: "insensitive"
-                }
-              },
-              {
-                sourceEventKey: {
-                  contains: normalizedFilters.query,
-                  mode: "insensitive"
-                }
-              },
-              {
-                lotNumber: {
-                  contains: normalizedFilters.query,
-                  mode: "insensitive"
-                }
-              }
-            ]
-          }
-        : {})
-    },
+    where: inventoryMovementListWhere(session, normalizedFilters),
     include: {
       inventoryLocation: {
         include: {

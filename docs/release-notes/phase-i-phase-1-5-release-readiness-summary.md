@@ -12,6 +12,7 @@
 - Transfers support request, submit, dispatch, partial/discrepancy receipt, accepted-only destination posting, receipt-event audit, and receipt reversal.
 - Stock counts support blind entry, review/recount controls, frozen-count movement blocking, and reviewed count-generated Stock Adjustment records.
 - Wastage and Stock Adjustments use approval-first, separate posting, source-linked ledger movements, and full-document reversal controls.
+- The Operations Dashboard Ledger Variance signal now opens a dedicated, selected-location diagnostic profile for users with both Stock Balances and Inventory Ledger access. It compares cached balances with immutable ledger totals, provides exact ledger traces and a diagnostic CSV, and never edits balances or creates adjustments.
 - Implemented Phase I procurement and inventory multi-step approval routes keep the source record pending until the final step, notify each next eligible approver, and notify the requester or responsible owner after final approval, return, or rejection. Decision-time authority checks reject stale, reassigned, revoked, or losing concurrent actions instead of overwriting the accepted decision.
 - Wastage cancellation and approval are concurrency-controlled so one accepted action cannot be overwritten by the other.
 - Phase 1.5 Projects & Implementation Tracker supports scoped projects, templates, members, tasks, checklists, comments, blockers, risks, milestones, project reports, notifications, calendar visibility, and safe links to ERP records.
@@ -66,6 +67,7 @@
 - Confirm pilot support contacts, defect intake route, daily triage cadence, and rollback decision owner before go-live approval.
 - Capture evidence references during receiving discrepancies, transfer discrepancies, wastage, and stock adjustments.
 - Use dashboard cards and notifications to open source records; do not treat them as source records.
+- Investigate Ledger Variance through its exact ledger trace. Escalate a confirmed cache mismatch; do not use a Stock Adjustment to conceal a technical cache-to-ledger difference.
 
 ## Important notes
 

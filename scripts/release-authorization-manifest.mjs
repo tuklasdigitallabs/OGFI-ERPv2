@@ -74,6 +74,19 @@ const workspacePolicies = {
   workforce: ["workforce.view", ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"]],
 };
 
+const surfacePolicyOverrides = [
+  {
+    prefix: "inventory/reconciliation/",
+    permission: "inventory.balance.view AND inventory.ledger.view",
+    dimensions: ["TENANT", "COMPANY", "LOCATION"],
+  },
+  {
+    prefix: "inventory/ledger/",
+    permission: "inventory.ledger.view",
+    dimensions: ["TENANT", "COMPANY", "LOCATION"],
+  },
+];
+
 const highRiskActionPattern =
   /^(activate|add|apply|approve|archive|assign|attest|begin|cancel|close|complete|create|deactivate|decide|delete|dispatch|end|execute|finalize|fulfill|grant|import|initiate|issue|link|lock|log|manage|mark|notify|post|publish|reassign|receive|record|reject|release|remove|reopen|request|resolve|retry|return|review|revoke|reverse|save|send|set|submit|transition|unlink|update|upload|upsert|verify|void|waive)/i;
 const highRiskDisclosurePattern =
@@ -114,6 +127,15 @@ function relativeSurfacePath(absolutePath) {
 }
 
 function policyFor(relativePath) {
+  const override = surfacePolicyOverrides.find(({ prefix }) =>
+    relativePath.startsWith(prefix),
+  );
+  if (override) {
+    return {
+      permission: override.permission,
+      dimensions: override.dimensions,
+    };
+  }
   const workspace = relativePath.split("/")[0];
   const policy = workspacePolicies[workspace];
   if (!policy) {
@@ -1379,6 +1401,10 @@ export function buildAuthorizationSurfaceManifest() {
     }
   }
   for (const surface of entries) {
+    const conjunctivePermissionCodes = surface.permission.split(" AND ");
+    const isKnownConjunctivePermission =
+      conjunctivePermissionCodes.length > 1 &&
+      conjunctivePermissionCodes.every((code) => permissionCodes.has(code));
     const isReviewedSpecialPermission =
       surface.permission === "authenticated" ||
       surface.permission === "SERVICE_ENFORCED" ||
@@ -1387,6 +1413,7 @@ export function buildAuthorizationSurfaceManifest() {
       surface.permission.startsWith("permissions.");
     if (
       !isReviewedSpecialPermission &&
+      !isKnownConjunctivePermission &&
       !permissionCodes.has(surface.permission)
     ) {
       throw new Error(

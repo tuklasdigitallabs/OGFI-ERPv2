@@ -35,8 +35,10 @@ import {
   type IncidentDashboardRead
 } from "./incidents";
 import {
-  getInventoryBalanceReconciliation,
-  listInventoryBalances
+  getInventoryLedgerVarianceDashboardRead,
+  inventoryDashboardProfileHref,
+  listInventoryBalances,
+  type InventoryLedgerVarianceDashboardRead
 } from "./inventory";
 import {
   getMaintenanceDashboardRead,
@@ -106,9 +108,6 @@ type StockAdjustmentSummary = Awaited<
 type InventoryBalanceSummary = Awaited<
   ReturnType<typeof listInventoryBalances>
 >[number];
-type InventoryReconciliationSummary = Awaited<
-  ReturnType<typeof getInventoryBalanceReconciliation>
->;
 
 export type DashboardCard = {
   id: string;
@@ -214,7 +213,7 @@ export type OperationalDashboardSource = {
   stockAdjustments?: StockAdjustmentSummary[];
   stockAdjustmentDashboard?: StockAdjustmentDashboardRead;
   inventoryBalances?: InventoryBalanceSummary[];
-  reconciliation?: InventoryReconciliationSummary | null;
+  reconciliation?: InventoryLedgerVarianceDashboardRead | null;
   foodCostAnalysis?: FoodCostAnalysisDashboard;
   branchOperations?: BranchOperationsDashboard;
   foodSafety?: FoodSafetyDashboard;
@@ -798,22 +797,22 @@ export function buildOperationalDashboardModel(
     cards.push({
       id: "ledger-reconciliation",
       label: "Ledger Variance",
-      value: source.reconciliation.varianceRows,
-      href: "/inventory",
-      description: `${source.reconciliation.totalRows} balance row${source.reconciliation.totalRows === 1 ? "" : "s"} checked`,
-      tone: cardTone(source.reconciliation.varianceRows)
+      value: source.reconciliation.varianceCount,
+      href: inventoryDashboardProfileHref("ledger-variance-v1"),
+      description: "Cache-to-ledger difference rows",
+      tone: cardTone(source.reconciliation.varianceCount)
     });
 
-    for (const row of source.reconciliation.rows
-      .filter((reconciliationRow) => reconciliationRow.status === "VARIANCE")
-      .slice(0, 3)) {
+    for (const row of source.reconciliation.candidates) {
       exceptionQueue.push({
         id: `ledger-${row.key}`,
         label: "Ledger variance",
         reference: row.itemCode,
         detail: `${row.inventoryLocationName} / variance ${row.varianceQuantity} ${row.baseUomCode}`,
         status: row.status,
-        href: "/inventory",
+        href: inventoryDashboardProfileHref("ledger-variance-v1", {
+          query: row.itemCode
+        }),
         tone: "warning",
         priority: "HIGH",
         locationName: row.inventoryLocationName
@@ -1409,8 +1408,9 @@ export function buildOperationalDashboardModel(
             id: "ledger-reconciliation-blocked",
             label: "Ledger reconciliation",
             displayValue: "Blocked by trust gate",
-            detail: `${source.reconciliation.totalRows} balance row${source.reconciliation.totalRows === 1 ? "" : "s"} withheld until ledger reconciliation is accepted`,
-            href: "/inventory",
+            detail:
+              "Decision-ready values are withheld. Authorized investigators may open the warned diagnostic comparison.",
+            href: inventoryDashboardProfileHref("ledger-variance-v1"),
             tone: "warning" as const
           }
         ]
@@ -1583,9 +1583,15 @@ export async function getOperationalDashboard(
       : Promise.resolve()
     },
     {
-      unavailableSource: { id: "inventory-reconciliation", label: "Ledger reconciliation", href: "/inventory" },
-      read: session.permissionCodes.includes(permissions.inventoryLedgerView)
-      ? getInventoryBalanceReconciliation(session).then((reconciliation) => {
+      unavailableSource: {
+        id: "inventory-reconciliation",
+        label: "Ledger reconciliation",
+        href: inventoryDashboardProfileHref("ledger-variance-v1")
+      },
+      read:
+        session.permissionCodes.includes(permissions.inventoryBalanceView) &&
+        session.permissionCodes.includes(permissions.inventoryLedgerView)
+      ? getInventoryLedgerVarianceDashboardRead(session).then((reconciliation) => {
           source.reconciliation = reconciliation;
         })
       : Promise.resolve()

@@ -553,7 +553,7 @@ describe("receiving foundation rules", () => {
     expect(service).toContain("Discrepancy Reason");
     expect(service).toContain("Posted Movement");
     expect(route).toContain("resolveReceivingDashboardProfile");
-    expect(route).toContain("Unsupported receiving dashboard profile.");
+    expect(route).toContain("RECEIVING_DASHBOARD_PROFILE_UNSUPPORTED");
     expect(route).toContain("profile ? \"receiving-follow-up.csv\"");
     expect(route).toContain("canExportReceivingReports(session)");
     expect(route).toContain('eventType: "report.export_started"');

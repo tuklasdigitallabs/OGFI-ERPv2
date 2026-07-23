@@ -28,6 +28,8 @@ describe("protected route authorization matrix", () => {
     user: randomUUID(),
     role: randomUUID(),
     session: randomUUID(),
+    balancePermission: randomUUID(),
+    ledgerPermission: randomUUID(),
   };
   const sessionToken = `authz-route-${suffix}`;
   let prisma: PrismaClient;
@@ -47,6 +49,22 @@ describe("protected route authorization matrix", () => {
     await prisma.location.create({ data: { id: ids.location, tenantId: ids.tenant, companyId: ids.company, code: `RT-L-${suffix}`, name: `Route Location ${suffix}`, locationType: "BRANCH" } });
     await prisma.user.create({ data: { id: ids.user, tenantId: ids.tenant, email: `route-${suffix}@example.test`, displayName: "Route Matrix User" } });
     await prisma.role.create({ data: { id: ids.role, tenantId: ids.tenant, code: `ROUTE_${suffix}`, name: "Route Matrix No Permissions" } });
+    const [balancePermission, ledgerPermission] = await Promise.all([
+      prisma.permission.upsert({
+        where: { code: "inventory.balance.view" },
+        update: {},
+        create: { id: ids.balancePermission, code: "inventory.balance.view", module: "inventory", action: "balance.view" },
+        select: { id: true },
+      }),
+      prisma.permission.upsert({
+        where: { code: "inventory.ledger.view" },
+        update: {},
+        create: { id: ids.ledgerPermission, code: "inventory.ledger.view", module: "inventory", action: "ledger.view" },
+        select: { id: true },
+      }),
+    ]);
+    ids.balancePermission = balancePermission.id;
+    ids.ledgerPermission = ledgerPermission.id;
     await prisma.userRoleAssignment.create({ data: { userId: ids.user, roleId: ids.role } });
     await prisma.userScopeAssignment.create({ data: { userId: ids.user, scopeType: "LOCATION", scopeId: ids.location, accessLevel: "VIEW" } });
     await prisma.authSession.create({
@@ -122,6 +140,49 @@ describe("protected route authorization matrix", () => {
         },
       }),
     ).toBe(0);
+  }, 30_000);
+
+  it("AUTHZ-INVENTORY-RECONCILIATION-EXPORT-REQUIRES-BOTH-PERMISSIONS", async () => {
+    const { GET } = await import(
+      "../src/app/(app)/inventory/reconciliation/export/route"
+    );
+    const cases = [
+      { name: "neither", permissionIds: [], expectedStatus: 403 },
+      { name: "balance only", permissionIds: [ids.balancePermission], expectedStatus: 403 },
+      { name: "ledger only", permissionIds: [ids.ledgerPermission], expectedStatus: 403 },
+      { name: "both", permissionIds: [ids.balancePermission, ids.ledgerPermission], expectedStatus: 200 },
+    ];
+
+    try {
+      for (const testCase of cases) {
+        await prisma.rolePermission.deleteMany({ where: { roleId: ids.role } });
+        if (testCase.permissionIds.length > 0) {
+          await prisma.rolePermission.createMany({
+            data: testCase.permissionIds.map((permissionId) => ({
+              roleId: ids.role,
+              permissionId,
+            })),
+          });
+        }
+        const response = await GET(
+          new Request(
+            "http://localhost/inventory/reconciliation/export?dashboard=ledger-variance-v1",
+          ),
+        );
+        expect(response.status, testCase.name).toBe(testCase.expectedStatus);
+        if (testCase.expectedStatus === 403) {
+          expect(await response.json(), testCase.name).toEqual({
+            error: "PERMISSION_DENIED",
+          });
+        } else {
+          expect(response.headers.get("content-type"), testCase.name).toContain(
+            "text/csv",
+          );
+        }
+      }
+    } finally {
+      await prisma.rolePermission.deleteMany({ where: { roleId: ids.role } });
+    }
   }, 30_000);
 
   it("AUTHZ-SIGNOUT-ROUTE-UNTRUSTED-ORIGIN-NO-SESSION-MUTATION", async () => {

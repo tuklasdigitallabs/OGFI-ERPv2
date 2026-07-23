@@ -2,6 +2,7 @@ import { getSessionContext } from "@/server/services/context";
 import { csvExportResponse } from "@/server/services/csv";
 import {
   exportAuthRequiredResponse,
+  exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
 import {
@@ -35,9 +36,9 @@ export async function GET(request: Request) {
   const profileParam = new URL(request.url).searchParams.get("dashboard") ?? undefined;
   const profile = resolveStockAdjustmentDashboardProfile(profileParam);
   if (profileParam && !profile) {
-    return new Response("Unsupported stock adjustment dashboard profile.", {
-      status: 400
-    });
+    return exportErrorResponse(
+      new Error("STOCK_ADJUSTMENT_DASHBOARD_PROFILE_UNSUPPORTED")
+    )!;
   }
 
   try {

@@ -37,6 +37,7 @@ The interface must make the following immediately visible:
 7. Wastage
 8. Stock Adjustments
 9. Item Master shortcut, permission controlled
+10. Ledger Variance Reconciliation, permission and dashboard-profile controlled
 
 ### Phase I screens
 
@@ -55,6 +56,7 @@ The interface must make the following immediately visible:
 | INV-11 | Wastage Detail | Submit, review, approve, and post wastage |
 | INV-12 | Stock Adjustment List | Track controlled adjustments |
 | INV-13 | Stock Adjustment Detail | Review and approve adjustment request |
+| INV-14 | Ledger Variance Reconciliation | Read-only comparison of cached balances with immutable ledger totals |
 
 ---
 
@@ -148,6 +150,14 @@ The ledger is the source-of-truth movement view. No manual edit action is allowe
 - Every movement must link to its originating record.
 - Cancelled or reversed movements remain visible as part of the audit trail.
 - Users can filter but cannot alter posted movement history.
+
+### Ledger Variance diagnostic profile
+
+- `/inventory/reconciliation?dashboard=ledger-variance-v1` requires both `inventory.balance.view` and `inventory.ledger.view` for the selected company and location.
+- One database snapshot compares each active inventory-location, item, and normalized lot/expiry key found in either the balance cache or ledger. Only six-decimal non-zero differences appear.
+- Search may narrow by item, inventory-location name, or lot; it cannot change scope, membership, ordering, or the 25-row server page contract.
+- Each row provides an exact, independently authorized ledger trace. Exact traces require both reconciliation permissions, use deterministic 50-row server pages with an exact total, and identify keys that are no longer a current non-zero variance while preserving historical movement context. The profile and its CSV are diagnostic only and expose no balance edit, adjustment, posting, approval, or reversal action.
+- A blocking dashboard trust mode hides the numeric KPI, not the warned raw diagnostic comparison needed by authorized investigators.
 
 ---
 

@@ -3,6 +3,7 @@ import { getSessionContext } from "@/server/services/context";
 import { csvExportResponse } from "@/server/services/csv";
 import {
   exportAuthRequiredResponse,
+  exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
 import {
@@ -52,9 +53,13 @@ export async function GET(request: NextRequest) {
   }
 
   const searchParams = request.nextUrl.searchParams;
-  const dashboardProfile = resolvePurchaseRequestDashboardProfile(
-    searchParams.get("dashboard") ?? undefined,
-  );
+  const profileParam = searchParams.get("dashboard") ?? undefined;
+  const dashboardProfile = resolvePurchaseRequestDashboardProfile(profileParam);
+  if (profileParam && !dashboardProfile) {
+    return exportErrorResponse(
+      new Error("PURCHASE_REQUEST_DASHBOARD_PROFILE_UNSUPPORTED")
+    )!;
+  }
   try {
     await logOperationalExportAudit({
       session,
@@ -68,9 +73,10 @@ export async function GET(request: NextRequest) {
           search: searchParams.get("search") ?? ""
         });
     if (!records) {
-      return new Response("Unknown dashboard profile", { status: 400 });
+      return exportErrorResponse(
+        new Error("PURCHASE_REQUEST_DASHBOARD_PROFILE_UNSUPPORTED")
+      )!;
     }
-
     const rows = [
       [
         "Reference",

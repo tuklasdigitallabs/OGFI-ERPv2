@@ -2,6 +2,7 @@ import { getSessionContext } from "@/server/services/context";
 import { csvExportResponse } from "@/server/services/csv";
 import {
   exportAuthRequiredResponse,
+  exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
 import {
@@ -27,9 +28,13 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const dashboardProfile = resolvePurchaseOrderDashboardProfile(
-    url.searchParams.get("dashboard") ?? undefined
-  );
+  const profileParam = url.searchParams.get("dashboard") ?? undefined;
+  const dashboardProfile = resolvePurchaseOrderDashboardProfile(profileParam);
+  if (profileParam && !dashboardProfile) {
+    return exportErrorResponse(
+      new Error("PURCHASE_ORDER_DASHBOARD_PROFILE_UNSUPPORTED")
+    )!;
+  }
   const filters: PurchaseOrderListFilters = normalizePurchaseOrderFilters({
     query: url.searchParams.get("q") ?? undefined,
     status: url.searchParams.get("status") ?? undefined,
@@ -76,7 +81,9 @@ export async function GET(request: Request) {
       ? await listPurchaseOrdersDashboardProfile(session, dashboardProfile)
       : await listPurchaseOrders(session, filters);
     if (!orders) {
-      return new Response("Unknown dashboard profile", { status: 400 });
+      return exportErrorResponse(
+        new Error("PURCHASE_ORDER_DASHBOARD_PROFILE_UNSUPPORTED")
+      )!;
     }
     const rows = [
       [

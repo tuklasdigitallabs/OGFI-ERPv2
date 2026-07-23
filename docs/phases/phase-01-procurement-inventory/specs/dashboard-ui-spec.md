@@ -57,6 +57,7 @@ Example: `Receive Transfer TO-2026-00182 · Main Warehouse → YL-MOA · Due tod
 - Users may filter within permitted scope; global scope cannot be widened beyond assignment.
 - Every KPI/widget links to a filtered list or report.
 - The implemented `Receiving Follow-up` widget opens a closed, read-only `receiving-follow-up-v1` profile. Its dashboard count, bounded candidates, server-paginated list, constrained header search, and CSV export share the exact selected-location predicate confirmed in `DEC-0069`; client status, discrepancy, scope, tab, token, or reason inputs cannot redefine it.
+- The implemented `Ledger Variance` widget opens the dedicated, read-only `ledger-variance-v1` reconciliation profile confirmed in `DEC-0070`. The card, three bounded candidates, 25-row server pages, additive search, and diagnostic CSV use one variance-only cache-to-ledger query for the selected active location. Both balance-view and ledger-view permissions are required. Trust-gate `block` withholds the numeric dashboard value but keeps warned diagnostic evidence available to authorized investigators.
 - Empty widget state gives an accurate positive message such as `No overdue transfers in your assigned locations.`
 
 ## 6. My Tasks requirements

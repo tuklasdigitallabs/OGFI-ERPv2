@@ -222,7 +222,8 @@ describe("module preview navigation", () => {
 
     expect([...visibleActiveKeys].sort()).toEqual([
       "dashboard",
-      "knowledge-base"
+      "knowledge-base",
+      "my-tasks"
     ]);
     for (const activeKey of adminOnlyPreviewKeys) {
       expect(visibleActiveKeys.has(activeKey), `${activeKey} is hidden from non-admin nav`).toBe(

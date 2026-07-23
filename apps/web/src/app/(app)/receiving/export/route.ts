@@ -2,6 +2,7 @@ import { getSessionContext } from "@/server/services/context";
 import { csvExportResponse } from "@/server/services/csv";
 import {
   exportAuthRequiredResponse,
+  exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
 import {
@@ -36,15 +37,15 @@ export async function GET(request: Request) {
   const profileParam = searchParams.get("dashboard") ?? undefined;
   const profile = resolveReceivingDashboardProfile(profileParam);
   if (profileParam && !profile) {
-    return new Response("Unsupported receiving dashboard profile.", {
-      status: 400
-    });
+    return exportErrorResponse(
+      new Error("RECEIVING_DASHBOARD_PROFILE_UNSUPPORTED")
+    )!;
   }
   const query = profile ? searchParams.get("q") ?? undefined : undefined;
   if (query && query.trim().length > 120) {
-    return new Response("Receiving Follow-up search must be 120 characters or fewer.", {
-      status: 400
-    });
+    return exportErrorResponse(
+      new Error("RECEIVING_DASHBOARD_PROFILE_SEARCH_TOO_LONG")
+    )!;
   }
   const auditMetadata = profile
     ? { dashboardProfile: profile, searchQuery: query?.trim() || null }

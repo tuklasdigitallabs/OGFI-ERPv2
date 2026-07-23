@@ -244,10 +244,9 @@ describe("operational dashboard model", () => {
         }
       ] as never,
       reconciliation: {
-        totalRows: 3,
-        matchedRows: 2,
-        varianceRows: 1,
-        rows: [
+        varianceCount: 1,
+        generatedAt: "2026-07-23T00:00:00.000Z",
+        candidates: [
           {
             key: "loc-1|item-1|none",
             inventoryLocationName: "Branch Stock",
@@ -260,7 +259,8 @@ describe("operational dashboard model", () => {
             balanceQuantity: 5,
             ledgerQuantity: 4,
             varianceQuantity: 1,
-            status: "VARIANCE"
+            status: "VARIANCE",
+            traceHref: "/inventory/ledger?inventoryLocationId=loc-1&itemId=item-1&lotKey=none"
           }
         ]
       }
@@ -275,12 +275,16 @@ describe("operational dashboard model", () => {
         1,
         "/receiving?dashboard=receiving-follow-up-v1"
       ],
-      ["ledger-reconciliation", 1, "/inventory"]
+      [
+        "ledger-reconciliation",
+        1,
+        "/inventory/reconciliation?dashboard=ledger-variance-v1"
+      ]
     ]);
     expect(dashboard.exceptionQueue.map((item) => item.href)).toEqual([
       "/purchase-orders/po-1",
       "/receiving/grn-1",
-      "/inventory"
+      "/inventory/reconciliation?dashboard=ledger-variance-v1&q=RICE"
     ]);
   });
 
@@ -294,10 +298,9 @@ describe("operational dashboard model", () => {
         sourceDecisionId: "DEC-0036"
       },
       reconciliation: {
-        totalRows: 3,
-        matchedRows: 2,
-        varianceRows: 1,
-        rows: [
+        varianceCount: 1,
+        generatedAt: "2026-07-23T00:00:00.000Z",
+        candidates: [
           {
             key: "loc-1|item-1|none",
             inventoryLocationName: "Branch Stock",
@@ -310,7 +313,8 @@ describe("operational dashboard model", () => {
             balanceQuantity: 5,
             ledgerQuantity: 4,
             varianceQuantity: 1,
-            status: "VARIANCE"
+            status: "VARIANCE",
+            traceHref: "/inventory/ledger?inventoryLocationId=loc-1&itemId=item-1&lotKey=none"
           }
         ]
       }
@@ -332,7 +336,7 @@ describe("operational dashboard model", () => {
         expect.objectContaining({
           id: "ledger-reconciliation-blocked",
           displayValue: "Blocked by trust gate",
-          href: "/inventory",
+          href: "/inventory/reconciliation?dashboard=ledger-variance-v1",
           tone: "warning"
         })
       ])
@@ -474,10 +478,9 @@ describe("operational dashboard model", () => {
         }
       ] as never,
       reconciliation: {
-        totalRows: 1,
-        matchedRows: 0,
-        varianceRows: 1,
-        rows: [
+        varianceCount: 1,
+        generatedAt: "2026-07-23T00:00:00.000Z",
+        candidates: [
           {
             key: "loc-1|item-1|none",
             inventoryLocationName: "Branch Stock",
@@ -490,7 +493,8 @@ describe("operational dashboard model", () => {
             balanceQuantity: 12,
             ledgerQuantity: 11,
             varianceQuantity: 1,
-            status: "VARIANCE"
+            status: "VARIANCE",
+            traceHref: "/inventory/ledger?inventoryLocationId=loc-1&itemId=item-1&lotKey=none"
           }
         ]
       }
@@ -516,7 +520,10 @@ describe("operational dashboard model", () => {
       ["Count variance", "/counts/count-1"],
       ["Wastage follow-up", "/wastage/waste-1"],
       ["Adjustment follow-up", "/adjustments/adjustment-1"],
-      ["Ledger variance", "/inventory"]
+      [
+        "Ledger variance",
+        "/inventory/reconciliation?dashboard=ledger-variance-v1&q=TOMATO"
+      ]
     ]);
   });
 

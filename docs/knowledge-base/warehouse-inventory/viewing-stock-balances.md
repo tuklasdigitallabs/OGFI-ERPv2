@@ -47,6 +47,7 @@ Use the appropriate controlled workflow when the balance shows a need: transfer 
 
 ## Related articles
 
+- Reviewing Ledger Variance
 - Receiving Issued Purchase Orders
 - Understanding Purchase Order statuses
 - Requesting stock when a branch item is low

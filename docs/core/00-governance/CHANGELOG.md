@@ -1,5 +1,12 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Closed Ledger Variance Reconciliation Drilldown
+
+- Confirmed and implemented `DEC-0070`: Ledger Variance now opens a dedicated, read-only reconciliation profile requiring both balance-view and ledger-view authority.
+- Replaced the all-record application-memory comparison with one selected-location PostgreSQL full-key-union query shared by dashboard count/candidates, 25-row search/pages, exact ledger traces, and the audited diagnostic CSV.
+- Kept the immutable ledger authoritative and added explicit trust warnings and user guidance; the profile cannot edit balances, create Stock Adjustments, post, approve, or reverse inventory.
+- Hardened exact traces after independent review: both permissions are enforced at the page and service, movement history uses exact-total 50-row pages, resolved keys are labeled without hiding history, generated authorization evidence records the permission conjunction, and route controls now meet the 44px target with loading and retryable error states.
+
 ## 2026-07-23 — Closed Receiving Follow-up Drilldown
 
 - Confirmed and implemented `DEC-0069`: the misleading `Receiving Variance` dashboard label is now `Receiving Follow-up` with a finite, selected-location lifecycle predicate.

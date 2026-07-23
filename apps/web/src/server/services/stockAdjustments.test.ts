@@ -73,7 +73,7 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(page).toContain("!profile && canCreateAdjustments");
     expect(page).toContain("read-only profile does not grant adjustment or inventory actions");
     expect(route).toContain("listStockAdjustments(session, profile ?? undefined)");
-    expect(route).toContain("Unsupported stock adjustment dashboard profile.");
+    expect(route).toContain("STOCK_ADJUSTMENT_DASHBOARD_PROFILE_UNSUPPORTED");
   });
 
   test("stock adjustment pages explain approval, posting, and reversal controls", () => {

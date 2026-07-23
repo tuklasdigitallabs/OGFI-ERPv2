@@ -540,7 +540,7 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain("Evidence Reference");
     expect(route).toContain("resolveTransferDashboardProfile");
     expect(route).toContain("buildInventoryTransferExportRows(session, profile ?? undefined)");
-    expect(route).toContain("Unsupported transfer dashboard profile.");
+    expect(route).toContain("TRANSFER_DASHBOARD_PROFILE_UNSUPPORTED");
     expect(route).not.toContain("postInventoryMovementInTransaction");
     expect(route).not.toContain("inventoryTransfer.update");
   });

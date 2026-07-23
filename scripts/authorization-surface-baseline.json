@@ -9302,7 +9302,7 @@
   {
     "id": "inventory/ledger/export/route.ts#GET",
     "surfaceType": "ROUTE_HANDLER",
-    "permission": "inventory.balance.view",
+    "permission": "inventory.ledger.view",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -9363,7 +9363,7 @@
   {
     "id": "inventory/ledger/page.tsx#page",
     "surfaceType": "PAGE",
-    "permission": "inventory.balance.view",
+    "permission": "inventory.ledger.view",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -9383,6 +9383,86 @@
     "id": "inventory/page.tsx#page",
     "surfaceType": "PAGE",
     "permission": "inventory.balance.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "inventory/reconciliation/export/route.ts#GET",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "inventory.balance.view AND inventory.ledger.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "session",
+      "route-authorization",
+      "scoped-service-builder"
+    ],
+    "denialContract": "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ROUTE-MATRIX-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/context.ts#getSessionContext",
+      "server/services/exportAudit.ts#buildReportCsvMetadata",
+      "server/services/exportAudit.ts#logOperationalExportAudit",
+      "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/inventory.ts#listInventoryLedgerVarianceExportRows"
+    ],
+    "callChains": [
+      "GET -> server/services/context.ts#getSessionContext",
+      "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
+      "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
+      "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/inventory.ts#listInventoryLedgerVarianceExportRows"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY",
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution",
+      "guarded-export-caller",
+      "assertReportExportScopeFilters",
+      "authorized operational export route",
+      "server/services/exportAudit.ts#logOperationalExportAudit"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
+      "FIN-AUTHZ-EXPORT-AUDIT-001",
+      "FIN-AUTHZ-PERM-001",
+      "FIN-AUTHZ-RECORD-001"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation",
+      "report-source",
+      "money",
+      "inventory",
+      "failure audit only after an authenticated authorized export attempt",
+      "no money or workflow mutation"
+    ]
+  },
+  {
+    "id": "inventory/reconciliation/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "inventory.balance.view AND inventory.ledger.view",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -25650,7 +25730,49 @@
   {
     "id": "server/services/inventory.ts#getInventoryBalanceReconciliation",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.inventoryLedgerView",
+    "permission": "permissions.inventoryBalanceView | permissions.inventoryLedgerView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/inventory.ts#getInventoryLedgerVarianceDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryBalanceView | permissions.inventoryLedgerView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/inventory.ts#getInventoryLedgerVarianceTracePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryBalanceView | permissions.inventoryLedgerView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -25672,6 +25794,48 @@
     "id": "server/services/inventory.ts#listInventoryBalances",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.inventoryBalanceView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/inventory.ts#listInventoryLedgerVarianceExportRows",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryBalanceView | permissions.inventoryLedgerView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/inventory.ts#listInventoryLedgerVarianceProfilePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryBalanceView | permissions.inventoryLedgerView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",

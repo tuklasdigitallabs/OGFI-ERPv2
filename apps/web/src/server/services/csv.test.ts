@@ -79,6 +79,7 @@ describe("CSV helpers", () => {
       "expansion/export/route.ts",
       "inventory/export/route.ts",
       "inventory/ledger/export/route.ts",
+      "inventory/reconciliation/export/route.ts",
       "projects/activity/export/route.ts",
       "projects/export/route.ts",
       "projects/links/export/route.ts",

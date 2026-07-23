@@ -8,6 +8,7 @@ import {
   canExportExpansion,
   canExportInventoryBalances,
   canExportInventoryLedger,
+  canExportInventoryLedgerVariance,
   canExportInventoryTransfers,
   canExportProjects,
   canExportPurchaseOrders,
@@ -37,6 +38,7 @@ const exportRouteAuthorizationContracts = {
   "counts/export/route.ts": "canExportStockCounts",
   "inventory/export/route.ts": "canExportInventoryBalances",
   "inventory/ledger/export/route.ts": "canExportInventoryLedger",
+  "inventory/reconciliation/export/route.ts": "canExportInventoryLedgerVariance",
   "branch-operations/export/route.ts": "canExportBranchOperations",
   "food-safety/export/route.ts": "canExportFoodSafety",
   "expansion/export/route.ts": "canExportExpansion",
@@ -63,7 +65,7 @@ const exportPageVisibilityContracts = {
   "adjustments/page.tsx": {
     helperName: "canExportStockAdjustments",
     flagName: "canExportAdjustments",
-    hrefSnippet: 'href="/adjustments/export"'
+    hrefSnippet: 'href={profile ? `/adjustments/export?dashboard=${profile}` : "/adjustments/export"}'
   },
   "admin/page.tsx": {
     helperName: "canExportCoreAdminAudit",
@@ -89,6 +91,7 @@ const exportPageVisibilityContracts = {
   "inventory/ledger/page.tsx": {
     helperName: "canExportInventoryLedger",
     flagName: "canExportLedger",
+    gateFlagName: "canExportLedger && !isExactTrace",
     hrefSnippet: 'const exportHref = `/inventory/ledger/export'
   },
   "branch-operations/page.tsx": {
@@ -151,7 +154,7 @@ const exportPageVisibilityContracts = {
   "receiving/page.tsx": {
     helperName: "canExportReceivingReports",
     flagName: "canExportReceiving",
-    hrefSnippet: 'href="/receiving/export"'
+    hrefSnippet: 'href={profile'
   },
   "recipes/page.tsx": {
     helperName: "canExportRecipeCosting",
@@ -169,12 +172,13 @@ const exportPageVisibilityContracts = {
   "transfers/page.tsx": {
     helperName: "canExportInventoryTransfers",
     flagName: "canExportTransfers",
+    gateFlagName: "canExportTransfers && profile",
     hrefSnippet: 'href="/transfers/export"'
   },
   "wastage/page.tsx": {
     helperName: "canExportWastageReports",
     flagName: "canExportWastage",
-    hrefSnippet: 'href="/wastage/export"'
+    hrefSnippet: 'href={profile ? `/wastage/export?dashboard=${profile}` : "/wastage/export"}'
   },
   "workforce/page.tsx": {
     helperName: "canExportWorkforce",
@@ -191,6 +195,7 @@ const operationalExportAuditContracts = {
   "counts/export/route.ts": "stock-count-variance",
   "inventory/export/route.ts": "stock-balances",
   "inventory/ledger/export/route.ts": "movement-ledger",
+  "inventory/reconciliation/export/route.ts": "inventory-ledger-variance",
   "branch-operations/export/route.ts": "branch-checklist-compliance",
   "food-safety/export/route.ts": "food-safety-exceptions",
   "expansion/export/route.ts": "phase-4-expansion-portfolio",
@@ -395,6 +400,28 @@ describe("export authorization", () => {
     expect(canExportInventoryLedger(sessionWithPermissions([]))).toBe(false);
     expect(
       canExportInventoryLedger(sessionWithPermissions([permissions.inventoryLedgerView]))
+    ).toBe(true);
+  });
+
+  test("requires both balance and ledger permissions for variance exports", () => {
+    expect(canExportInventoryLedgerVariance(sessionWithPermissions([]))).toBe(false);
+    expect(
+      canExportInventoryLedgerVariance(
+        sessionWithPermissions([permissions.inventoryBalanceView])
+      )
+    ).toBe(false);
+    expect(
+      canExportInventoryLedgerVariance(
+        sessionWithPermissions([permissions.inventoryLedgerView])
+      )
+    ).toBe(false);
+    expect(
+      canExportInventoryLedgerVariance(
+        sessionWithPermissions([
+          permissions.inventoryBalanceView,
+          permissions.inventoryLedgerView
+        ])
+      )
     ).toBe(true);
   });
 

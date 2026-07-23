@@ -74,7 +74,7 @@ describe("wastage foundation rules", () => {
     expect(page).toContain("!profile && canCreateWastage");
     expect(page).toContain("This read-only");
     expect(route).toContain("listWastageReports(session, profile ?? undefined)");
-    expect(route).toContain("Unsupported wastage dashboard profile.");
+    expect(route).toContain("WASTAGE_DASHBOARD_PROFILE_UNSUPPORTED");
   });
 
   test("list page copy matches implemented approval, posting, and reversal workflow", () => {

@@ -271,7 +271,8 @@ export function PaginationBar({
   totalItems,
   getPageHref,
   itemLabel = "records",
-  className
+  className,
+  controlClassName
 }: {
   page: number;
   pageSize: number;
@@ -279,6 +280,7 @@ export function PaginationBar({
   getPageHref: (page: number) => string;
   itemLabel?: string;
   className?: string;
+  controlClassName?: string;
 }) {
   const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
   const safePage = Math.min(Math.max(1, page), pageCount);
@@ -307,11 +309,11 @@ export function PaginationBar({
       </p>
       <div className="flex items-center gap-2">
         {canGoPrevious ? (
-          <a className={cn(buttonClass, enabledClass)} href={getPageHref(safePage - 1)}>
+          <a className={cn(buttonClass, enabledClass, controlClassName)} href={getPageHref(safePage - 1)}>
             Previous
           </a>
         ) : (
-          <span aria-disabled="true" className={cn(buttonClass, disabledClass)}>
+          <span aria-disabled="true" className={cn(buttonClass, disabledClass, controlClassName)}>
             Previous
           </span>
         )}
@@ -319,11 +321,11 @@ export function PaginationBar({
           Page {safePage} of {pageCount}
         </span>
         {canGoNext ? (
-          <a className={cn(buttonClass, enabledClass)} href={getPageHref(safePage + 1)}>
+          <a className={cn(buttonClass, enabledClass, controlClassName)} href={getPageHref(safePage + 1)}>
             Next
           </a>
         ) : (
-          <span aria-disabled="true" className={cn(buttonClass, disabledClass)}>
+          <span aria-disabled="true" className={cn(buttonClass, disabledClass, controlClassName)}>
             Next
           </span>
         )}

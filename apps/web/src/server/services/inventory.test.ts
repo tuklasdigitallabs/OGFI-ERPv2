@@ -5,15 +5,21 @@ import { describe, expect, test, vi } from "vitest";
 import {
   assertInventoryMovementsNotFrozen,
   assertInventoryMovementQuantities,
+  buildInventoryLedgerVarianceQuery,
+  buildInventoryLedgerVarianceTraceQuery,
   calculateInventoryBalanceVariance,
   calculateBalanceQuantity,
   getInventoryBalanceReconciliationStatus,
+  inventoryDashboardProfileHref,
+  inventoryLedgerTraceHref,
+  inventoryMovementListWhere,
   lockInventoryLocationForPosting,
   lockInventoryLocationsForPosting,
   normalizeInventoryBalanceFilters,
   normalizeInventoryMovementFilters,
   normalizeInventoryLotKey,
-  postInventoryMovementInTransaction
+  postInventoryMovementInTransaction,
+  resolveInventoryDashboardProfile
 } from "./inventory";
 import type { SessionContext } from "./context";
 import { inventoryItemLotExpiryRequirements } from "./policySettings";
@@ -60,9 +66,8 @@ describe("inventory ledger foundation rules", () => {
     expect(balancePage).toContain(
       "searchError\n    ? []\n    : await listInventoryBalances"
     );
-    expect(ledgerPage).toContain(
-      "searchError\n    ? []\n    : await listInventoryMovements"
-    );
+    expect(ledgerPage).toContain("searchError || traceError");
+    expect(ledgerPage).toContain(": await listInventoryMovements(session, filters)");
   });
 
   test("normalizes lot and expiry into a deterministic balance key", () => {
@@ -200,13 +205,223 @@ describe("inventory ledger foundation rules", () => {
     ).toThrow("INVENTORY_SEARCH_QUERY_TOO_LONG");
   });
 
-  test("reconciliation service is read-only and ledger-permission gated", () => {
+  test("resolves only the dedicated ledger-variance profile and stable links", () => {
+    expect(resolveInventoryDashboardProfile("ledger-variance-v1")).toBe(
+      "ledger-variance-v1"
+    );
+    expect(resolveInventoryDashboardProfile("variance")).toBeNull();
+    expect(
+      inventoryDashboardProfileHref("ledger-variance-v1", {
+        page: 2,
+        query: "grill lot"
+      })
+    ).toBe(
+      "/inventory/reconciliation?dashboard=ledger-variance-v1&q=grill+lot&page=2"
+    );
+    expect(
+      inventoryLedgerTraceHref({
+        inventoryLocationId: "00000000-0000-4000-8000-000000000010",
+        itemId: "00000000-0000-4000-8000-000000000020",
+        lotKey: "LOT-1|2026-07-31"
+      })
+    ).toBe(
+      "/inventory/ledger?inventoryLocationId=00000000-0000-4000-8000-000000000010&itemId=00000000-0000-4000-8000-000000000020&lotKey=LOT-1%7C2026-07-31"
+    );
+  });
+
+  test("builds one parameterized, variance-only PostgreSQL reconciliation statement", () => {
+    const scopedSession = {
+      user: { id: "00000000-0000-4000-8000-000000000001" },
+      context: {
+        tenantId: "00000000-0000-4000-8000-000000000010",
+        companyId: "00000000-0000-4000-8000-000000000020",
+        locationId: "00000000-0000-4000-8000-000000000030"
+      }
+    } as SessionContext;
+    const built = buildInventoryLedgerVarianceQuery(scopedSession, {
+      page: 3,
+      pageSize: 25,
+      query: "grill_%"
+    });
+    const sql = built.query.sql;
+
+    expect(sql).toContain("WITH balance_rows AS MATERIALIZED");
+    expect(sql).toContain("ledger_rows AS MATERIALIZED");
+    expect(sql).toContain("all_keys AS MATERIALIZED");
+    expect(sql).toContain("UNION");
+    expect(sql).toContain('ROUND(');
+    expect(sql).toContain('r.\"varianceQuantity\" <> 0');
+    expect(sql).toContain('il.\"locationId\" = ');
+    expect(sql).toContain("CAST('ACTIVE' AS \"RecordStatus\")");
+    expect(sql).toContain("LEFT JOIN LATERAL");
+    expect(sql).toContain("LIMIT");
+    expect(sql).toContain("statement_timestamp()");
+    expect(sql).not.toContain('ABS(fv.\"varianceQuantity\")');
+    expect(sql).not.toContain("grill_%");
+    expect(built.query.values).toEqual(
+      expect.arrayContaining([
+        scopedSession.context.tenantId,
+        scopedSession.context.companyId,
+        scopedSession.context.locationId,
+        "%grill\\_\\%%",
+        3,
+        25
+      ])
+    );
+  });
+
+  test("requires complete typed trace filters and ANDs them with current scope", () => {
+    const scopedSession = {
+      user: { id: "00000000-0000-4000-8000-000000000001" },
+      context: {
+        tenantId: "00000000-0000-4000-8000-000000000010",
+        companyId: "00000000-0000-4000-8000-000000000020",
+        locationId: "00000000-0000-4000-8000-000000000030"
+      }
+    } as SessionContext;
+    const inventoryLocationId = "00000000-0000-4000-8000-000000000040";
+    const itemId = "00000000-0000-4000-8000-000000000050";
+    const expiryDate = new Date("2026-07-31T00:00:00.000Z");
+
+    expect(() =>
+      normalizeInventoryMovementFilters({ inventoryLocationId })
+    ).toThrow("INVENTORY_LEDGER_TRACE_FILTER_INCOMPLETE");
+    expect(() =>
+      normalizeInventoryMovementFilters({
+        inventoryLocationId: "not-a-uuid",
+        itemId,
+        lotKey: "LOT-1|2026-07-31"
+      })
+    ).toThrow("INVENTORY_LEDGER_TRACE_FILTER_INVALID");
+
+    expect(
+      inventoryMovementListWhere(scopedSession, {
+        inventoryLocationId,
+        itemId,
+        lotKey: "LOT-1|2026-07-31"
+      })
+    ).toEqual({
+      AND: [
+        {
+          tenantId: scopedSession.context.tenantId,
+          companyId: scopedSession.context.companyId,
+          inventoryLocation: {
+            locationId: scopedSession.context.locationId,
+            status: "ACTIVE"
+          }
+        },
+        {
+          inventoryLocationId,
+          itemId,
+          lotNumber: "LOT-1",
+          expiryDate: {
+            gte: expiryDate,
+            lt: new Date("2026-08-01T00:00:00.000Z")
+          }
+        }
+      ]
+    });
+    const source = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
+    expect(source).toContain("COALESCE(NULLIF(BTRIM(m.\"lotNumber\"), ''), 'NOLOT')");
+    expect(source).toContain('il.\"locationId\" = ${session.context.locationId}::uuid');
+  });
+
+  test("builds a deterministic counted trace page without silent truncation", () => {
+    const scopedSession = {
+      user: { id: "00000000-0000-4000-8000-000000000001" },
+      context: {
+        tenantId: "00000000-0000-4000-8000-000000000010",
+        companyId: "00000000-0000-4000-8000-000000000020",
+        locationId: "00000000-0000-4000-8000-000000000030"
+      }
+    } as SessionContext;
+    const query = buildInventoryLedgerVarianceTraceQuery(scopedSession, {
+      inventoryLocationId: "00000000-0000-4000-8000-000000000040",
+      itemId: "00000000-0000-4000-8000-000000000050",
+      lotKey: "LOT-1|2026-07-31",
+      page: 4
+    });
+
+    expect(query.sql).toContain("COUNT(*) OVER()");
+    expect(query.sql).toContain('ORDER BY tr.\"occurredAt\" DESC, tr.id DESC');
+    expect(query.sql).toContain("LIMIT");
+    expect(query.sql).not.toContain("LIMIT 100");
+    expect(query.values).toEqual(
+      expect.arrayContaining([
+        scopedSession.context.tenantId,
+        scopedSession.context.companyId,
+        scopedSession.context.locationId,
+        "00000000-0000-4000-8000-000000000040",
+        "00000000-0000-4000-8000-000000000050",
+        "LOT-1|2026-07-31",
+        4,
+        50
+      ])
+    );
+  });
+
+  test("keeps exact trace dual-authorized and rechecks current variance membership", () => {
+    const source = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
+    expect(source).toContain("getInventoryLedgerVarianceTracePage");
+    expect(source).toContain("await requireInventoryLedgerVarianceRead(session)");
+    expect(source).toContain("permissions.inventoryBalanceView");
+    expect(source).toContain("permissions.inventoryLedgerView");
+    expect(source).toContain("exactKey");
+    expect(source).toContain("includeMatchedExact: true");
+    expect(source).toContain("current !== null && current.varianceQuantity !== 0");
+    expect(source).toContain("currentBalanceQuantity");
+    expect(source).toContain("currentLedgerQuantity");
+    expect(source).toContain("currentVarianceQuantity");
+    expect(source).toContain("INVENTORY_LEDGER_TRACE_REQUIRES_DEDICATED_SERVICE");
+  });
+
+  test("narrows the shared reconciliation statement to the exact current key, including resolved membership", () => {
+    const scopedSession = {
+      user: { id: "00000000-0000-4000-8000-000000000001" },
+      context: {
+        tenantId: "00000000-0000-4000-8000-000000000010",
+        companyId: "00000000-0000-4000-8000-000000000020",
+        locationId: "00000000-0000-4000-8000-000000000030"
+      }
+    } as SessionContext;
+    const exactKey = {
+      inventoryLocationId: "00000000-0000-4000-8000-000000000040",
+      itemId: "00000000-0000-4000-8000-000000000050",
+      lotKey: "NOLOT|NOEXP"
+    };
+    const built = buildInventoryLedgerVarianceQuery(scopedSession, {
+      pageSize: 1,
+      exactKey,
+      includeMatchedExact: true
+    });
+
+    expect(built.query.sql).toContain('r.\"inventoryLocationId\" = ');
+    expect(built.query.sql).toContain('r.\"itemId\" = ');
+    expect(built.query.sql).toContain('r.\"lotKey\" = ');
+    expect(built.query.values).toEqual(
+      expect.arrayContaining([
+        exactKey.inventoryLocationId,
+        exactKey.itemId,
+        exactKey.lotKey,
+        true
+      ])
+    );
+    expect(() =>
+      buildInventoryLedgerVarianceQuery(scopedSession, {
+        includeMatchedExact: true
+      })
+    ).toThrow("INVENTORY_LEDGER_EXACT_KEY_REQUIRED");
+  });
+
+  test("reconciliation service is read-only, dual-permission gated, and SQL-owned", () => {
     const source = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
 
     expect(source).toContain("getInventoryBalanceReconciliation");
+    expect(source).toContain("permissions.inventoryBalanceView");
     expect(source).toContain("requirePermission(session, permissions.inventoryLedgerView)");
-    expect(source).toContain("prisma.inventoryBalance.findMany");
-    expect(source).toContain("prisma.inventoryMovement.findMany");
+    expect(source).toContain("buildInventoryLedgerVarianceQuery");
+    expect(source).toContain("prisma.$queryRaw<InventoryLedgerVarianceRawRow[]>");
+    expect(source).not.toContain("const rowsByKey = new Map");
     expect(source).not.toContain("lastReconciledAt");
   });
 });

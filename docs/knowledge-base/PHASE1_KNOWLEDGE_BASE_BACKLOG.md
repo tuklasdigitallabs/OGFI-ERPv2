@@ -20,6 +20,7 @@
 
 - [x] Receiving a complete supplier delivery — `purchasing/receiving-issued-purchase-orders.md`
 - [x] Viewing current stock balances — `warehouse-inventory/viewing-stock-balances.md`
+- [x] Reviewing Ledger Variance — `warehouse-inventory/reviewing-ledger-variance.md`
 - [x] Viewing inventory movement history — `warehouse-inventory/viewing-inventory-ledger.md`
 - [x] Creating a transfer request — `warehouse-inventory/creating-transfer-requests.md`
 - [x] Receiving a partial, short, damaged, or rejected delivery — `purchasing/receiving-partial-damaged-or-rejected-deliveries.md`

@@ -41,6 +41,13 @@ export function canExportInventoryLedger(session: SessionContext) {
   return session.permissionCodes.includes(permissions.inventoryLedgerView);
 }
 
+export function canExportInventoryLedgerVariance(session: SessionContext) {
+  return (
+    session.permissionCodes.includes(permissions.inventoryBalanceView) &&
+    session.permissionCodes.includes(permissions.inventoryLedgerView)
+  );
+}
+
 export function canExportReceivingReports(session: SessionContext) {
   return session.permissionCodes.includes(permissions.receivingView);
 }
