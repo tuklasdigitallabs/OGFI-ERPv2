@@ -90,6 +90,26 @@ describe("receiving foundation rules", () => {
     expect(pageSource).not.toContain("visibleReceipts.slice(");
   });
 
+  test("ordinary register query searches GRN, PO, and supplier without widening scope", async () => {
+    mockPrisma.goodsReceipt.count.mockResolvedValue(0);
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([]);
+    await listGoodsReceiptPage(dashboardSession as never, { query: "Fresh", page: 1 });
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: dashboardSession.context.tenantId,
+          companyId: dashboardSession.context.companyId,
+          receivingLocationId: dashboardSession.context.locationId,
+          OR: expect.arrayContaining([
+            expect.objectContaining({ publicReference: expect.any(Object) }),
+            expect.objectContaining({ purchaseOrder: expect.any(Object) }),
+            expect.objectContaining({ supplier: expect.any(Object) })
+          ])
+        })
+      })
+    );
+  });
+
   test("dashboard read authorizes and queries only scoped, bounded receipt candidates", async () => {
     mockPrisma.goodsReceipt.count.mockResolvedValue(2);
     mockPrisma.goodsReceipt.findMany.mockResolvedValue([
