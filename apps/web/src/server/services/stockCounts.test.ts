@@ -65,12 +65,15 @@ describe("stock count foundation rules", () => {
     );
 
     expect(source).toContain("canUseStockCounts(session.permissionCodes)");
+    expect(source).toContain("PaginationBar");
+    expect(source).toContain("countPage.totalItems");
   });
 
   test("service read gate allows every stock-count action permission", () => {
     const source = readFileSync(path.resolve(__dirname, "stockCounts.ts"), "utf8");
 
     expect(source).toContain("canUseStockCounts(session.permissionCodes)");
+    expect(source).toContain("listStockCountPage");
   });
 
   test("dashboard read requires stock-count review permission and returns bounded header-only candidates", async () => {

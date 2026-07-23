@@ -598,7 +598,14 @@ export async function listStockCounts(session: SessionContext) {
     orderBy: [{ createdAt: "desc" }]
   });
 
-  return counts.map((count) => {
+  return counts.map((count) => mapStockCount(session, count, cadencePolicy));
+}
+
+type StockCountWithRelations = Prisma.StockCountSessionGetPayload<{ include: {
+  inventoryLocation: true; createdBy: true; assignedTo: true; reviewedBy: true; lines: true;
+} }>;
+
+function mapStockCount(session: SessionContext, count: StockCountWithRelations, cadencePolicy: Awaited<ReturnType<typeof getStockCountCadencePolicy>>) {
     const canShowProtectedFacts = canExposeStockCountProtectedFacts(
       session,
       count
@@ -628,7 +635,28 @@ export async function listStockCounts(session: SessionContext) {
         ).length
       : null
     };
+  }
+
+export async function listStockCountPage(
+  session: SessionContext,
+  input: { page?: number; pageSize?: number } = {}
+) {
+  await requireStockCountRead(session);
+  const cadencePolicy = await getStockCountCadencePolicy(session);
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const where = scopedStockCountWhere(session);
+  const totalItems = await prisma.stockCountSession.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const counts = await prisma.stockCountSession.findMany({
+    where,
+    include: { inventoryLocation: true, createdBy: true, assignedTo: true, reviewedBy: true, lines: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
   });
+  return { items: counts.map((count) => mapStockCount(session, count, cadencePolicy)), totalItems, page, pageSize, totalPages };
 }
 
 export async function buildStockCountExportRows(session: SessionContext) {

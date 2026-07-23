@@ -23,6 +23,7 @@ Use this article to schedule, start, enter, submit, and review a physical stock 
 
 1. Open `Inventory`.
 2. Select `Stock Counts`.
+   The register is server-paginated for the selected authorized location; use its page controls to move through count sessions without loading the full history into the browser.
 3. Schedule a count by choosing the inventory location, count type, scheduled date, and blind-count option.
 4. Open the count and select `Start Count`.
 5. Enter counted quantities for each snapshot line.

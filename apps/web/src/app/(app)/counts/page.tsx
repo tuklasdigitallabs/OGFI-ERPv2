@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink } from "@ogfi/ui";
+import { Badge, ButtonLink, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -17,7 +17,7 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportStockCounts } from "@/server/services/exportAuthorization";
 import {
   listStockCountFormOptions,
-  listStockCounts,
+  listStockCountPage,
   scheduleStockCount
 } from "@/server/services/stockCounts";
 
@@ -73,12 +73,14 @@ export default async function CountsPage({ searchParams }: CountsPageProps) {
     );
   }
 
-  const [counts, formOptions] = await Promise.all([
-    listStockCounts(session),
+  const params = searchParams ? await searchParams : {};
+  const requestedPage = Math.max(1, Number.parseInt(String(params.page ?? "1"), 10) || 1);
+  const [countPage, formOptions] = await Promise.all([
+    listStockCountPage(session, { page: requestedPage }),
     canCreateCounts ? listStockCountFormOptions(session) : Promise.resolve(null)
   ]);
+  const counts = countPage.items;
   const firstInventoryLocation = formOptions?.inventoryLocations[0];
-  const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
 
   return (
@@ -256,6 +258,15 @@ export default async function CountsPage({ searchParams }: CountsPageProps) {
               ))}
             </div>
           )}
+          {countPage.totalItems > 0 ? (
+            <PaginationBar
+              page={countPage.page}
+              pageSize={countPage.pageSize}
+              totalItems={countPage.totalItems}
+              itemLabel="stock count sessions"
+              getPageHref={(nextPage) => `/counts?page=${nextPage}`}
+            />
+          ) : null}
         </section>
       </div>
     </AppShell>
