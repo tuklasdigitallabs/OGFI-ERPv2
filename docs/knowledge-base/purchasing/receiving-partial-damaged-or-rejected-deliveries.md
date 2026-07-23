@@ -67,6 +67,7 @@ The system writes linked `REVERSAL` inventory movements for accepted quantity, r
 - Reversal is full-document only in the current Phase I release. Partial line reversal, return-to-supplier, supplier credit, and finance effects remain future controlled workflows.
 - Receiving does not approve supplier invoices, release payment, post GL entries, or finalize valuation.
 - If a Receiving status or date filter is invalid, the workspace explains the required format or date ordering so you can correct the filter without exposing an internal error.
+- If a receipt changes during review or a search/profile value is no longer valid, the workspace explains the issue and directs you to refresh or shorten the input.
 
 ## Related articles
 

@@ -151,6 +151,10 @@ const actionFeedbackMessages: Record<string, string> = {
     "This transfer receipt changed while reversal was being processed. Refresh and try again.",
   GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED:
     "The receiving reference could not be allocated. Try again.",
+  GOODS_RECEIPT_DISCREPANCY_CONFLICT:
+    "This receiving discrepancy changed while you were working. Refresh and review the latest receipt.",
+  GOODS_RECEIPT_PURCHASE_ORDER_LINE_MISMATCH:
+    "The selected Purchase Order lines no longer match the receiving record.",
   PURCHASE_ORDER_NOT_FOUND:
     "The selected Purchase Order is no longer available.",
   PERMISSION_DENIED: "You do not have permission to perform this action.",
@@ -885,6 +889,14 @@ const actionFeedbackMessages: Record<string, string> = {
     "Enter valid receiving dates using YYYY-MM-DD.",
   RECEIVING_DATE_FILTER_RANGE_INVALID:
     "The receiving start date must be on or before the end date.",
+  RECEIVING_DASHBOARD_PROFILE_SEARCH_TOO_LONG:
+    "Use a shorter Receiving follow-up search.",
+  RECEIVING_DASHBOARD_PROFILE_UNSUPPORTED:
+    "That Receiving dashboard view is no longer available.",
+  RECEIVING_FOLLOW_UP_REASON_UNAVAILABLE:
+    "The Receiving follow-up reason is no longer available. Refresh and try again.",
+  RECEIVING_SEARCH_QUERY_TOO_LONG:
+    "Use a shorter Receiving search.",
   REQUESTER_ONLY_ACTION: "Only the original requester can perform this action.",
   ROLE_ASSIGNMENT_NOT_FOUND: "This role assignment is no longer available.",
   SELECTED_SUPPLIER_QUOTE_NOT_FOUND:
