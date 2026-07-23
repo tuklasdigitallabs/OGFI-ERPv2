@@ -23,6 +23,7 @@
 - Maintenance and Incident cancelled rows now use neutral terminal-state styling.
 - Full web regression baseline passes 1,258 tests across 119 files; environment-gated PostgreSQL/browser/hosted checks remain pending.
 - Closed the server-predicate UUID filter typing defect; Incident and Maintenance typecheck now pass with exact UUID source-link matching retained.
+- Added runtime Incident pagination contract coverage for scoped count/page parity and actor-name search.
 
 ## 2026-07-24 — Receiving Status and Date Filters
 

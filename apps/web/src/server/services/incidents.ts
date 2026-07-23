@@ -398,6 +398,15 @@ export async function listIncidentPage(
   const date = incidentDate ? parseDateOnlyUtc(incidentDate) : null;
   if (incidentDate && !date) throw new Error("INCIDENT_DATE_INVALID");
   const sourceIdFilter = /^[0-9a-f-]{36}$/i.test(query) ? [{ sourceRecordId: query }] : [];
+  const actorMatches = query
+    ? await prisma.user.findMany({
+        where: { tenantId: session.context.tenantId, OR: [
+          { displayName: { contains: query, mode: "insensitive" } },
+          { email: { contains: query, mode: "insensitive" } }
+        ] },
+        select: { id: true }
+      })
+    : [];
   const where: Prisma.OperationalIncidentWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
@@ -414,6 +423,8 @@ export async function listIncidentPage(
       { correctiveAction: { contains: query, mode: "insensitive" } },
       { evidenceReference: { contains: query, mode: "insensitive" } },
       { sourceRecordType: { contains: query, mode: "insensitive" } },
+      { reportedByUserId: { in: actorMatches.map((row) => row.id) } },
+      { ownerUserId: { in: actorMatches.map((row) => row.id) } },
       ...sourceIdFilter
     ] } : {})
   };

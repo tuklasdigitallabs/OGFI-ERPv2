@@ -8,6 +8,7 @@ import {
   createOperationalIncident,
   filterIncidents,
   getOperationalIncidentSummary,
+  listIncidentPage,
   listIncidentMyTaskPage,
   resolveOperationalIncident,
   type OperationalIncidentSummary
@@ -20,6 +21,7 @@ const mockPrisma = vi.hoisted(() => ({
     findMany: vi.fn(),
     findFirst: vi.fn()
   },
+  user: { findMany: vi.fn() },
   userRoleAssignment: {
     findMany: vi.fn()
   }
@@ -278,6 +280,30 @@ describe("Phase 2 incident management foundation", () => {
       }
     ]);
     mockPrisma.operationalIncident.count.mockResolvedValue(12);
+    mockPrisma.operationalIncident.findMany.mockResolvedValue([]);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+  });
+
+  it("keeps incident register count and page predicates aligned, including actor-name search", async () => {
+    mockPrisma.operationalIncident.count.mockResolvedValueOnce(26);
+    mockPrisma.user.findMany
+      .mockResolvedValueOnce([{ id: "actor-1" }])
+      .mockResolvedValueOnce([{ id: "actor-1", displayName: "Reporter", email: "reporter@example.test" }]);
+    mockPrisma.operationalIncident.findMany.mockResolvedValueOnce([{
+      id: "incident-page-1", incidentNumber: "INC-001", incidentDate: new Date("2026-07-24"),
+      category: "EQUIPMENT", severity: "HIGH", status: "OPEN", title: "Alarm",
+      summary: "Alarm requires review.", location: { name: "SM North Edsa" },
+      reportedByUserId: "actor-1", ownerUserId: null, sourceRecordType: null,
+      sourceRecordId: null, correctiveAction: null, evidenceReference: null,
+      dueAt: null, resolvedAt: null
+    }]);
+    const result = await listIncidentPage(session as never, { q: "reporter" }, { page: 2, pageSize: 25 });
+    expect(result).toMatchObject({ page: 2, totalItems: 26, totalPages: 2 });
+    expect(result.items[0]).toMatchObject({ reportedByName: "Reporter" });
+    const countWhere = mockPrisma.operationalIncident.count.mock.calls.at(-1)?.[0]?.where;
+    const pageQuery = mockPrisma.operationalIncident.findMany.mock.calls.at(-1)?.[0];
+    expect(pageQuery?.where).toEqual(countWhere);
+    expect(pageQuery).toMatchObject({ skip: 25, take: 25, orderBy: [{ incidentDate: "desc" }, { createdAt: "desc" }, { id: "desc" }] });
   });
 
   it("rejects incident due dates before the incident date before writing", async () => {
