@@ -879,6 +879,12 @@ const actionFeedbackMessages: Record<string, string> = {
     "Accepted, rejected, and damaged quantities cannot exceed the delivered quantity.",
   RECEIVING_QUANTITY_INVALID:
     "Receiving quantities must be zero or greater, with at least one quantity entered.",
+  RECEIVING_STATUS_FILTER_INVALID:
+    "The receiving status filter is not valid. Choose a listed status and try again.",
+  RECEIVING_DATE_FILTER_INVALID:
+    "Enter valid receiving dates using YYYY-MM-DD.",
+  RECEIVING_DATE_FILTER_RANGE_INVALID:
+    "The receiving start date must be on or before the end date.",
   REQUESTER_ONLY_ACTION: "Only the original requester can perform this action.",
   ROLE_ASSIGNMENT_NOT_FOUND: "This role assignment is no longer available.",
   SELECTED_SUPPLIER_QUOTE_NOT_FOUND:

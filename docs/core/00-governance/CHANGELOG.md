@@ -3,6 +3,7 @@
 ## 2026-07-24 — Goods Receipt Reference Allocation
 
 - Added transactional company/document-type/year sequencing for Goods Receipt public references (`DEC-0092`), replacing the concurrency-unsafe count-based allocator.
+- Added user-safe feedback for invalid Receiving status/date filters and reversed date ranges.
 
 ## 2026-07-24 — Branch Operations Register Pagination
 
