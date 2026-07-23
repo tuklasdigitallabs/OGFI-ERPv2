@@ -3,7 +3,8 @@ import { permissions } from "./authorization";
 import {
   decodeMyTasksCursor,
   encodeMyTasksCursor,
-  getMyTasksPage
+  getMyTasksPage,
+  myTasksRegistryVersion
 } from "./myTasks";
 
 const mocks = vi.hoisted(() => ({
@@ -132,6 +133,7 @@ describe("My Tasks queue", () => {
   });
 
   test("binds a cursor to its current user scope and rejects tampering", () => {
+    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v2");
     const cursor = encodeMyTasksCursor(session as never, {
       priority: "HIGH",
       dueAt: null,

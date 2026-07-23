@@ -33,6 +33,9 @@ import { listMaintenanceMyTaskPage } from "./maintenance";
 import { listStockCountMyTaskPage } from "./stockCounts";
 
 const myTasksCursorDomain = "my-tasks-v2";
+// Bump whenever an enrolled source predicate, ordering contract, or adapter
+// projection changes. Signed cursors must never outlive that contract.
+export const myTasksRegistryVersion = "my-tasks-registry-v2";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
 const defaultPageSize = 20;
 const maxPageSize = 25;
@@ -67,6 +70,7 @@ export type MyTasksPage = {
 
 function taskScopeHash(session: SessionContext) {
   const values = [
+    myTasksRegistryVersion,
     session.user.id,
     session.context.tenantId,
     session.context.companyId,
