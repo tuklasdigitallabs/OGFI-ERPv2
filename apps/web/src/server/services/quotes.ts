@@ -4,7 +4,7 @@ import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
 import {
-  recordWorkflowNotifications
+  recordApprovalStepReadyNotification
 } from "./notifications";
 import {
   assertAnyEligibleApprovalActorForStep,
@@ -876,10 +876,13 @@ export async function submitQuotationRecommendation(formData: FormData) {
         prohibitedActors
       });
     }
-    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+    await assertAnyEligibleApprovalActorForStep(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+      ...(firstRoutedStep.userId
+        ? { actorUserId: firstRoutedStep.userId }
+        : {})
     });
 
     await tx.quotationRecommendation.update({
@@ -891,7 +894,7 @@ export async function submitQuotationRecommendation(formData: FormData) {
       }
     });
 
-    const auditEvent = await tx.auditEvent.create({
+    await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
@@ -912,32 +915,28 @@ export async function submitQuotationRecommendation(formData: FormData) {
       }
     });
 
-    const selectedSupplierName =
-      recommendation.selectedSupplierQuotation.supplier.tradingName ??
-      recommendation.selectedSupplierQuotation.supplier.legalName;
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: recommendation.quotationRequest.purchaseRequest.requestLocationId,
-      recipientUserIds: [firstEligibleActor.userId],
-      notificationType: "APPROVE_QUOTATION_RECOMMENDATION",
-      priority: "NORMAL",
-      title: `Approve Supplier Recommendation ${recommendation.quotationRequest.publicReference}`,
-      body: `${session.user.displayName} submitted ${selectedSupplierName} for supplier-selection approval.`,
-      deepLink: `/approvals/${approvalInstance.id}`,
-      entityType: "QuotationRecommendation",
-      entityId: recommendation.id,
-      sourceEventKey: auditEvent.id,
-      recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role",
-      metadata: {
+    if (firstRoutedStep.userId) {
+      const purchaseRequest = recommendation.quotationRequest.purchaseRequest;
+      await recordApprovalStepReadyNotification(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: purchaseRequest.requestLocationId,
         approvalInstanceId: approvalInstance.id,
-        approvalStepOrder: firstStep.stepOrder,
-        quotationRequestId: recommendation.quotationRequestId,
-        quotationRecommendationId: recommendation.id,
-        selectedSupplierQuotationId:
-          recommendation.selectedSupplierQuotationId,
-        purchaseRequestId: recommendation.quotationRequest.purchaseRequestId
-      }
-    });
+        approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+        stepOrder: firstRoutedStep.stepOrder,
+        recipientUserId: firstRoutedStep.userId,
+        publicReference: purchaseRequest.publicReference,
+        locationName: session.context.locationName,
+        entityLabel: "Quotation recommendation",
+        entityType: "PurchaseRequest",
+        entityId: purchaseRequest.id,
+        routingContext: {
+          assignedRoleId: firstRoutedStep.roleId,
+          requiredPermissionCode: permissions.quoteApprove,
+          scopeType: "LOCATION_CONTEXT",
+          scopeId: purchaseRequest.requestLocationId
+        }
+      });
+    }
   });
 }

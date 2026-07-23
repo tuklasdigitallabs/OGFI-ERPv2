@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — DEC-0050 Initial Procurement Notification Parity
+
+- Aligned five legacy initial procurement submission paths with the shared direct-user/role-scoped step-ready notification contract. Focused local tests pass; PostgreSQL execution and source-serialization races remain explicit activation gates.
+
 ## 2026-07-24 — Dormant Controlled-Evidence Qualification Foundation
 
 - Confirmed and implemented `DEC-0077` as a policy-empty, constant-disabled foundation: append-only policy/activation history and qualification facts, a scoped compare-and-swap pointer, database-authoritative canonical/hash/cardinality/readiness validation, commit-time evidence revalidation, least-privilege roles, and an empty closed adapter registry.

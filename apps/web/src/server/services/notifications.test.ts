@@ -52,7 +52,7 @@ describe("notification foundation wiring", () => {
     );
   });
 
-  test("workflow submissions create approval notifications from source audit events", () => {
+  test("initial procurement approval work uses direct-user step readiness and zero role fanout", () => {
     const purchaseRequests = readFileSync(
       path.resolve(__dirname, "purchaseRequests.ts"),
       "utf8"
@@ -65,15 +65,24 @@ describe("notification foundation wiring", () => {
 
     for (const source of [purchaseRequests, purchaseOrders, quotes]) {
       expect(source).toContain("assertAnyEligibleApprovalActorForStep");
-      expect(source).toContain("recordWorkflowNotifications");
-      expect(source).toContain("recipientUserIds: [firstEligibleActor.userId]");
-      expect(source).toContain("sourceEventKey: auditEvent.id");
-      expect(source).toContain("deepLink: `/approvals/${approvalInstance.id}`");
+      expect(source).toContain("recordApprovalStepReadyNotification");
+      expect(source).toContain("actorUserId: firstRoutedStep.userId");
+      expect(source).toContain("if (firstRoutedStep.userId)");
+      expect(source).toContain("recipientUserId: firstRoutedStep.userId");
+      expect(source).toContain('scopeType: "LOCATION_CONTEXT"');
+      expect(source).not.toContain("recipientUserIds: [firstEligibleActor.userId]");
+      expect(source).not.toContain('recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role"');
     }
-    expect(purchaseRequests).toContain("APPROVE_PURCHASE_REQUEST");
-    expect(purchaseOrders).toContain("APPROVE_PURCHASE_ORDER");
-    expect(purchaseOrders).toContain("APPROVE_PO_BALANCE_CLOSURE");
-    expect(quotes).toContain("APPROVE_QUOTATION_RECOMMENDATION");
+    expect(purchaseRequests.match(/await recordApprovalStepReadyNotification\(tx/g)).toHaveLength(1);
+    expect(quotes.match(/await recordApprovalStepReadyNotification\(tx/g)).toHaveLength(1);
+    expect(purchaseOrders.match(/await recordApprovalStepReadyNotification\(tx/g)).toHaveLength(3);
+    expect(purchaseRequests).not.toContain("APPROVE_PURCHASE_REQUEST");
+    expect(purchaseOrders).not.toContain("APPROVE_PURCHASE_ORDER");
+    expect(purchaseOrders).not.toContain("APPROVE_PO_BALANCE_CLOSURE");
+    expect(purchaseOrders).not.toContain("APPROVE_PO_AMENDMENT");
+    expect(quotes).not.toContain("APPROVE_QUOTATION_RECOMMENDATION");
+    expect(quotes).toContain('entityType: "PurchaseRequest"');
+    expect(quotes).toContain("entityId: purchaseRequest.id");
   });
 
   test("project notifications derive scoped recipients and avoid source payload leaks", () => {

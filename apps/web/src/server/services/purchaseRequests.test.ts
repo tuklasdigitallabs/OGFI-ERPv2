@@ -56,7 +56,14 @@ describe("purchase request workflow controls", () => {
     );
     expect(submit).toContain("if (existing.requesterUserId !== session.user.id)");
     expect(submit).toContain('throw new Error("PERMISSION_DENIED")');
-    expect(submit).toContain("recipientUserIds: [firstEligibleActor.userId]");
+    expect(submit).toContain("actorUserId: firstRoutedStep.userId");
+    expect(submit).toContain("if (firstRoutedStep.userId)");
+    expect(submit).toContain("recordApprovalStepReadyNotification(tx");
+    expect(submit).toContain("recipientUserId: firstRoutedStep.userId");
+    expect(submit).toContain("approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId");
+    expect(submit).toContain("requiredPermissionCode: permissions.purchaseRequestApprove");
+    expect(submit).not.toContain("firstEligibleActor.userId");
+    expect(submit).not.toContain('recipientBasis: "assigned_role"');
     expect(submit).not.toContain("resolveScopedNotificationRecipients");
   });
 

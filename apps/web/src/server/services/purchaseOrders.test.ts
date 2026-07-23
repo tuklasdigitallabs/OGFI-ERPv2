@@ -48,12 +48,17 @@ describe("purchase order lifecycle rules", () => {
 
     expect(source.match(/configureApprovalStepRouting\(tx/g)).toHaveLength(3);
     expect(source.match(/assertAnyEligibleApprovalActorForStep\(tx/g)).toHaveLength(3);
-    expect(source.match(/requiredPermissionCode: permissions\.purchaseOrderApprove/g)).toHaveLength(3);
+    expect(source.match(/requiredPermissionCode: permissions\.purchaseOrderApprove/g)).toHaveLength(6);
     expect(source.match(/dueAt: order\.expectedDeliveryDate/g)).toHaveLength(3);
     expect(source).toContain('source: "purchase-order-submission"');
     expect(source).toContain('source: "purchase-order-balance-closure-request"');
     expect(source).toContain('source: "purchase-order-amendment-request"');
-    expect(source.match(/recipientUserIds: \[firstEligibleActor\.userId\]/g)).toHaveLength(3);
+    expect(source.match(/actorUserId: firstRoutedStep\.userId/g)).toHaveLength(3);
+    expect(source.match(/if \(firstRoutedStep\.userId\)/g)).toHaveLength(3);
+    expect(source.match(/await recordApprovalStepReadyNotification\(tx/g)).toHaveLength(3);
+    expect(source.match(/recipientUserId: firstRoutedStep\.userId/g)).toHaveLength(3);
+    expect(source).not.toContain("firstEligibleActor.userId");
+    expect(source).not.toContain('recipientBasis: "assigned_role"');
     expect(source).toContain("order.createdByUserId");
     expect(source).toContain("order.purchaseRequest.requesterUserId");
     expect(source).toContain("order.quotationRecommendation.preparedByUserId");

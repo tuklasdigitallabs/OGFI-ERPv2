@@ -24,7 +24,14 @@ describe("quotation recommendation rules", () => {
     expect(submit.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
       submit.indexOf("await tx.quotationRecommendation.update")
     );
-    expect(submit).toContain("recipientUserIds: [firstEligibleActor.userId]");
+    expect(submit).toContain("actorUserId: firstRoutedStep.userId");
+    expect(submit).toContain("if (firstRoutedStep.userId)");
+    expect(submit).toContain("recordApprovalStepReadyNotification(tx");
+    expect(submit).toContain("recipientUserId: firstRoutedStep.userId");
+    expect(submit).toContain('entityType: "PurchaseRequest"');
+    expect(submit).toContain("entityId: purchaseRequest.id");
+    expect(submit).not.toContain("firstEligibleActor.userId");
+    expect(submit).not.toContain('recipientBasis: "assigned_role"');
     expect(submit).not.toContain("resolveScopedNotificationRecipients");
   });
 

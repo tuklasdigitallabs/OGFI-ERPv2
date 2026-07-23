@@ -12,7 +12,7 @@ import {
   type SessionContext,
 } from "./context";
 import {
-  recordWorkflowNotifications,
+  recordApprovalStepReadyNotification,
 } from "./notifications";
 import {
   assertAnyEligibleApprovalActorForStep,
@@ -1881,10 +1881,13 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
         prohibitedActors
       });
     }
-    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+    await assertAnyEligibleApprovalActorForStep(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+      ...(firstRoutedStep.userId
+        ? { actorUserId: firstRoutedStep.userId }
+        : {})
     });
 
     const updated = await tx.purchaseOrder.updateMany({
@@ -1903,7 +1906,7 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
       throw new Error("PURCHASE_ORDER_NOT_DRAFT_FOR_APPROVAL");
     }
 
-    const auditEvent = await tx.auditEvent.create({
+    await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
@@ -1927,27 +1930,28 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
       },
     });
 
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: order.deliveryLocationId,
-      recipientUserIds: [firstEligibleActor.userId],
-      notificationType: "APPROVE_PURCHASE_ORDER",
-      priority: "NORMAL",
-      title: `Approve Purchase Order ${order.publicReference}`,
-      body: `${session.user.displayName} submitted ${order.publicReference} for ${order.supplier.tradingName ?? order.supplier.legalName}.`,
-      deepLink: `/approvals/${approvalInstance.id}`,
-      entityType: "PurchaseOrder",
-      entityId: order.id,
-      sourceEventKey: auditEvent.id,
-      recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role",
-      metadata: {
+    if (firstRoutedStep.userId) {
+      await recordApprovalStepReadyNotification(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: order.deliveryLocationId,
         approvalInstanceId: approvalInstance.id,
-        approvalStepOrder: firstStep.stepOrder,
+        approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+        stepOrder: firstRoutedStep.stepOrder,
+        recipientUserId: firstRoutedStep.userId,
         publicReference: order.publicReference,
-        supplierId: order.supplierId,
-      },
-    });
+        locationName: order.deliveryLocation.name,
+        entityLabel: "Purchase order",
+        entityType: "PurchaseOrder",
+        entityId: order.id,
+        routingContext: {
+          assignedRoleId: firstRoutedStep.roleId,
+          requiredPermissionCode: permissions.purchaseOrderApprove,
+          scopeType: "LOCATION_CONTEXT",
+          scopeId: order.deliveryLocationId
+        }
+      });
+    }
   });
 }
 
@@ -2405,10 +2409,13 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
         prohibitedActors
       });
     }
-    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+    await assertAnyEligibleApprovalActorForStep(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+      ...(firstRoutedStep.userId
+        ? { actorUserId: firstRoutedStep.userId }
+        : {})
     });
 
     const closure = await tx.purchaseOrderBalanceClosure.create({
@@ -2428,7 +2435,7 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
       },
     });
 
-    const auditEvent = await tx.auditEvent.create({
+    await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
@@ -2453,29 +2460,28 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
       },
     });
 
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: order.deliveryLocationId,
-      recipientUserIds: [firstEligibleActor.userId],
-      notificationType: "APPROVE_PO_BALANCE_CLOSURE",
-      priority: "NORMAL",
-      title: `Approve Balance Closure ${order.publicReference}`,
-      body: `${session.user.displayName} requested closure of the remaining balance on ${order.publicReference}.`,
-      deepLink: `/approvals/${approvalInstance.id}`,
-      entityType: "PurchaseOrderBalanceClosure",
-      entityId: closure.id,
-      sourceEventKey: auditEvent.id,
-      recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role",
-      metadata: {
+    if (firstRoutedStep.userId) {
+      await recordApprovalStepReadyNotification(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: order.deliveryLocationId,
         approvalInstanceId: approvalInstance.id,
-        approvalStepOrder: firstStep.stepOrder,
-        purchaseOrderId: order.id,
+        approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+        stepOrder: firstRoutedStep.stepOrder,
+        recipientUserId: firstRoutedStep.userId,
         publicReference: order.publicReference,
-        totalClosedQuantity: currentOutstandingQty,
-        totalClosedValue: currentClosedValue,
-      },
-    });
+        locationName: session.context.locationName,
+        entityLabel: "Purchase order balance closure",
+        entityType: "PurchaseOrderBalanceClosure",
+        entityId: closure.id,
+        routingContext: {
+          assignedRoleId: firstRoutedStep.roleId,
+          requiredPermissionCode: permissions.purchaseOrderApprove,
+          scopeType: "LOCATION_CONTEXT",
+          scopeId: order.deliveryLocationId
+        }
+      });
+    }
   });
 }
 
@@ -2693,10 +2699,13 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
         prohibitedActors
       });
     }
-    const firstEligibleActor = await assertAnyEligibleApprovalActorForStep(tx, {
+    await assertAnyEligibleApprovalActorForStep(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
+      approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+      ...(firstRoutedStep.userId
+        ? { actorUserId: firstRoutedStep.userId }
+        : {})
     });
 
     const amendment = await tx.purchaseOrderAmendment.create({
@@ -2730,7 +2739,7 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
       throw new Error("PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT");
     }
 
-    const auditEvent = await tx.auditEvent.create({
+    await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
@@ -2752,27 +2761,27 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
       },
     });
 
-    await recordWorkflowNotifications(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      locationId: order.deliveryLocationId,
-      recipientUserIds: [firstEligibleActor.userId],
-      notificationType: "APPROVE_PO_AMENDMENT",
-      priority: "NORMAL",
-      title: `Approve PO Amendment ${order.publicReference}`,
-      body: `${session.user.displayName} requested an amendment to ${order.publicReference}.`,
-      deepLink: `/approvals/${approvalInstance.id}`,
-      entityType: "PurchaseOrderAmendment",
-      entityId: amendment.id,
-      sourceEventKey: auditEvent.id,
-      recipientBasis: firstStep.userId ? "assigned_user" : "assigned_role",
-      metadata: {
+    if (firstRoutedStep.userId) {
+      await recordApprovalStepReadyNotification(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: order.deliveryLocationId,
         approvalInstanceId: approvalInstance.id,
-        approvalStepOrder: firstStep.stepOrder,
-        purchaseOrderId: order.id,
+        approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
+        stepOrder: firstRoutedStep.stepOrder,
+        recipientUserId: firstRoutedStep.userId,
         publicReference: order.publicReference,
-        proposedTotalAmount: proposedSnapshot.totals.totalAmount,
-      },
-    });
+        locationName: session.context.locationName,
+        entityLabel: "Purchase order amendment",
+        entityType: "PurchaseOrderAmendment",
+        entityId: amendment.id,
+        routingContext: {
+          assignedRoleId: firstRoutedStep.roleId,
+          requiredPermissionCode: permissions.purchaseOrderApprove,
+          scopeType: "LOCATION_CONTEXT",
+          scopeId: order.deliveryLocationId
+        }
+      });
+    }
   });
 }
