@@ -30,6 +30,7 @@ import { listBranchOperationMyTaskPage } from "./branchOperations";
 import { listFoodSafetyMyTaskPage } from "./foodSafety";
 import { listIncidentMyTaskPage } from "./incidents";
 import { listMaintenanceMyTaskPage } from "./maintenance";
+import { listStockCountMyTaskPage } from "./stockCounts";
 
 const myTasksCursorDomain = "my-tasks-v2";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
@@ -392,6 +393,33 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
             sourceLabel: "Maintenance ticket",
             locationLabel: `${session.context.locationName}${item.dueAt ? ` · due ${item.dueAt.slice(0, 10)}` : " · no due date"}`,
             href: `/maintenance/${item.recordId}`
+          }))
+        };
+      }
+    });
+  }
+  if (
+    session.permissionCodes.includes(permissions.stockCountEnter) ||
+    session.permissionCodes.includes(permissions.stockCountSubmit)
+  ) {
+    sources.push({
+      type: "STOCK_COUNT",
+      label: "Stock counts",
+      read: async (after, take) => {
+        const page = await listStockCountMyTaskPage(session, {
+          take,
+          ...(after ? { after } : {})
+        });
+        return {
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
+            sourceType: "STOCK_COUNT" as const,
+            sourceLabel: "Stock count",
+            locationLabel: session.context.locationName,
+            href: `/counts/${item.recordId}`
           }))
         };
       }

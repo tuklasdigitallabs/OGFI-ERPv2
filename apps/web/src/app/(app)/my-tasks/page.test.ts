@@ -19,3 +19,12 @@ describe("My Tasks Maintenance presentation", () => {
     );
   });
 });
+
+describe("My Tasks Stock Count presentation", () => {
+  it("identifies assigned Stock Count work without implying pooled access", () => {
+    expect(source).toContain("assigned Stock Count start, entry, or submission");
+    expect(source).toContain(
+      "Stock Count work is shown only to its assigned counter"
+    );
+  });
+});

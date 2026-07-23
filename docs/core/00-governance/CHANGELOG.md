@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Assigned Stock Count My Tasks And Inventory Serialization
+
+- Confirmed and implemented `DEC-0068`: My Tasks enrolls exactly one assigned first-pass Stock Count Start, Enter, or Submit obligation with fixed high/no-due ordering; recount, review, cancellation, variance generation, empty snapshots, and future starts remain excluded.
+- Enforced assigned-counter destination parity, actor/state-aware blind redaction, complete review lineage, zero-snapshot rollback, post-lock live authority, and transactionally serialized count actions.
+- Added one tenant/company-scoped, deduplicated, sorted Inventory Location lock contract shared by count freeze transitions and every receiving, transfer, wastage, and adjustment posting/reversal path. Real PostgreSQL contention, browser, and hosted gates remain pending before Workspace 1 or Stock Counts may be called production-ready.
+
 ## 2026-07-23 — Incident My Tasks And V2 Ordering
 
 - Confirmed and implemented `DEC-0066`: My Tasks now uses a v2 priority/due/age/source cursor and enrolls bounded, role-pooled Incident resolution with severity-aware independent-review controls.

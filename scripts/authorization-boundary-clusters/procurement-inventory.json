@@ -10,7 +10,7 @@
       "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
       "testName": "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION",
       "kind": "REAL_POSTGRESQL_NEGATIVE_TABLE",
-      "coveredControls": ["live permission revocation/absence", "no business-row mutation", "no approval mutation", "no movement or balance mutation", "no audit mutation"]
+      "coveredControls": ["live permission revocation/absence", "personal-task non-disclosure", "no business-row mutation", "no approval mutation", "no movement or balance mutation", "no audit mutation"]
     },
     {
       "id": "AUTHZ-PI-INVENTORY-POST-SCOPE-MATRIX",
@@ -24,7 +24,7 @@
       "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
       "testName": "AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK",
       "kind": "REAL_POSTGRESQL_NEGATIVE",
-      "coveredControls": ["location", "transaction rollback", "no movement or balance mutation", "no audit mutation"]
+      "coveredControls": ["tenant and company lock scope", "mixed exact lock-set rejection", "downstream selected-location denial", "transaction rollback", "no movement or balance mutation", "no audit mutation"]
     },
     {
       "id": "AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION",
@@ -112,6 +112,8 @@
     }
   ],
   "boundaries": [
+    {"surfaceId":"server/services/inventory.ts#lockInventoryLocationForPosting","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["single-location-delegation","tenant-company-location-row-lock","exact-lock-set"],"caseIds":["AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"],"noMutationControls":["InventoryLocation","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventory.ts#lockInventoryLocationsForPosting","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["tenant-company-location-row-lock","exact-lock-set"],"caseIds":["AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"],"noMutationControls":["InventoryLocation","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/inventory.ts#postInventoryMovement","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["inventory-posting-scope-adapter","inventory-source-event-idempotency"],"caseIds":["AUTHZ-PI-INVENTORY-POST-SCOPE-MATRIX","AUTHZ-PI-INVENTORY-IDEMPOTENT-RETRY-POSTS-EXACTLY-ONCE"],"noMutationControls":["InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/inventory.ts#postInventoryMovementInTransaction","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["inventory-posting-scope-adapter"],"caseIds":["AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"],"noMutationControls":["InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
 
@@ -217,6 +219,8 @@
     {"surfaceId":"server/services/stockAdjustments.ts#submitStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","ApprovalInstance","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/stockAdjustments.ts#cancelStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","ApprovalInstance","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/stockAdjustments.ts#postStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","inventory-posting"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
-    {"surfaceId":"server/services/stockAdjustments.ts#reverseStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","inventory-reversal"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"}
+    {"surfaceId":"server/services/stockAdjustments.ts#reverseStockAdjustment","classification":"PUBLIC_BOUNDARY","adapterIds":["permission","inventory-location-scope","inventory-reversal"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["StockAdjustment","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
+
+    {"surfaceId":"server/services/myTasks.ts#getMyTasksPage","classification":"PUBLIC_BOUNDARY","adapterIds":["permission-gated-source-enrollment"],"caseIds":["AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["read-only personal task aggregation"],"status":"COVERED"}
   ]
 }

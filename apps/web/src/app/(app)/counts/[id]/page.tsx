@@ -173,9 +173,30 @@ export default async function CountDetailPage({
   const canGenerateVarianceAdjustment = session.permissionCodes.includes(
     permissions.stockAdjustmentCreate
   );
+  const isAssignedEntryActor = count.assignedToCurrentUser;
+  const canStartCount =
+    canStartOrEnter &&
+    isAssignedEntryActor &&
+    count.status === "DRAFT" &&
+    count.scheduledStartEligible;
   const canEditLines =
     canStartOrEnter &&
-    (count.status === "IN_PROGRESS" || count.status === "RECOUNT_REQUESTED");
+    isAssignedEntryActor &&
+    count.status === "IN_PROGRESS" &&
+    count.hasSnapshotLines &&
+    count.hasUncountedLines;
+  const canSubmitCount =
+    canSubmit &&
+    isAssignedEntryActor &&
+    count.status === "IN_PROGRESS" &&
+    count.hasSnapshotLines &&
+    !count.hasUncountedLines;
+  const canShowEnteredCountFacts =
+    isAssignedEntryActor || count.canShowSystemQuantity;
+  const canReviewCount = count.canReviewCurrentActor;
+  const isActiveMovementFreeze =
+    count.freezeMovements &&
+    ["IN_PROGRESS", "RECOUNT_REQUESTED", "SUBMITTED"].includes(count.status);
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(resolvedSearchParams);
 
@@ -207,6 +228,19 @@ export default async function CountDetailPage({
             and posting. No inventory movement is posted directly from this count page.
           </div>
 
+          {count.freezeMovements ? (
+            <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-950">
+              <p className="font-semibold">Inventory movement freeze</p>
+              <p className="mt-1 leading-6">
+                {isActiveMovementFreeze
+                  ? `Inventory posting for ${count.inventoryLocationName} is frozen while this count is active. Receiving, transfer, wastage, and adjustment posting remain blocked until the count is reviewed, cancelled, or otherwise leaves the active workflow.`
+                  : count.status === "DRAFT"
+                    ? `A movement freeze is configured for ${count.inventoryLocationName}. It begins when the assigned counter starts this count.`
+                    : `This count used a movement freeze for ${count.inventoryLocationName}; the freeze is no longer active for this count status.`}
+              </p>
+            </div>
+          ) : null}
+
           <dl className="mt-6 grid gap-4 ogfi-record-summary p-4 sm:grid-cols-2">
             <div>
               <dt className="text-sm font-medium text-slate-500">Location</dt>
@@ -230,17 +264,21 @@ export default async function CountDetailPage({
               <dt className="text-sm font-medium text-slate-500">Assigned counter</dt>
               <dd className="text-slate-950">{count.assignedToName ?? "Not assigned"}</dd>
             </div>
-            <div>
-              <dt className="text-sm font-medium text-slate-500">Reviewed by</dt>
-              <dd className="text-slate-950">{count.reviewedByName ?? "Not reviewed"}</dd>
-            </div>
-            {canReview && count.reviewNotes ? (
+            {count.canShowSystemQuantity ? (
+              <div>
+                <dt className="text-sm font-medium text-slate-500">Reviewed by</dt>
+                <dd className="text-slate-950">
+                  {count.reviewedByName ?? "Not reviewed"}
+                </dd>
+              </div>
+            ) : null}
+            {count.canShowSystemQuantity && count.reviewNotes ? (
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-slate-500">Review notes</dt>
                 <dd className="text-slate-950">{count.reviewNotes}</dd>
               </div>
             ) : null}
-            {canReview && count.varianceAdjustmentId ? (
+            {count.canShowSystemQuantity && count.varianceAdjustmentId ? (
               <div className="sm:col-span-2">
                 <dt className="text-sm font-medium text-slate-500">
                   Variance adjustment
@@ -268,7 +306,7 @@ export default async function CountDetailPage({
             <ButtonLink href="/counts" className="bg-slate-700 hover:bg-slate-800">
               Back to Counts
             </ButtonLink>
-            {count.status === "DRAFT" && canStartOrEnter ? (
+            {canStartCount ? (
               <form action={startCountAction}>
                 <input name="id" type="hidden" value={count.id} />
                 <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
@@ -276,9 +314,7 @@ export default async function CountDetailPage({
                 </button>
               </form>
             ) : null}
-            {canSubmit &&
-            (count.status === "IN_PROGRESS" ||
-              count.status === "RECOUNT_REQUESTED") ? (
+            {canSubmitCount ? (
               <form action={submitCountAction}>
                 <input name="id" type="hidden" value={count.id} />
                 <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-auto">
@@ -288,6 +324,7 @@ export default async function CountDetailPage({
             ) : null}
             {count.status === "REVIEWED" &&
             canGenerateVarianceAdjustment &&
+            count.canShowSystemQuantity &&
             !count.varianceAdjustmentId ? (
               <form action={generateVarianceAdjustmentAction}>
                 <input name="id" type="hidden" value={count.id} />
@@ -298,12 +335,59 @@ export default async function CountDetailPage({
             ) : null}
           </div>
 
-          {count.lines.length === 0 ? (
+          {!isAssignedEntryActor &&
+          ["DRAFT", "IN_PROGRESS"].includes(count.status) ? (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-semibold text-slate-950">Read-only count access</p>
+              <p className="mt-1 leading-6">
+                This count is assigned to {count.assignedToName ?? "another counter"}.
+                Only the assigned counter can start it, enter snapshot quantities, or
+                submit it for review.
+              </p>
+            </div>
+          ) : null}
+
+          {count.status === "SUBMITTED" && canReview && !canReviewCount ? (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-semibold text-slate-950">Independent review required</p>
+              <p className="mt-1 leading-6">
+                Review is available only to an authorized user who did not create or
+                count this session and after every count line has complete counter
+                evidence.
+              </p>
+            </div>
+          ) : null}
+
+          {count.status === "DRAFT" &&
+          isAssignedEntryActor &&
+          canStartOrEnter &&
+          !count.scheduledStartEligible ? (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+              <p className="font-semibold">Scheduled count has not opened</p>
+              <p className="mt-1 leading-6">
+                Start Count becomes available on {count.scheduledDate ?? "the scheduled date"}.
+                The count cannot be started early.
+              </p>
+            </div>
+          ) : null}
+
+          {count.status === "IN_PROGRESS" &&
+          isAssignedEntryActor &&
+          count.hasSnapshotLines &&
+          count.hasUncountedLines ? (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+              Enter a physical quantity for every snapshot line before submitting this
+              count for review.
+            </div>
+          ) : null}
+
+          {!count.hasSnapshotLines ? (
             <div className="mt-6 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-5">
               <p className="font-semibold text-slate-900">No snapshot lines yet</p>
               <p className="mt-1 text-sm text-slate-600">
-                Start the count to snapshot current balance rows for this inventory
-                location.
+                {count.status === "DRAFT"
+                  ? "Starting the count snapshots current balance rows for this inventory location."
+                  : "No balance rows were captured when this count started. Count entry and submission are unavailable; ask an authorized stock-count coordinator to review or cancel this session."}
               </p>
             </div>
           ) : (
@@ -334,11 +418,15 @@ export default async function CountDetailPage({
                       {count.canShowSystemQuantity ? (
                         <th className="w-36 px-4 py-3">System</th>
                       ) : null}
-                      <th className="w-36 px-4 py-3">Counted</th>
-                      {canReview ? (
+                      {canShowEnteredCountFacts ? (
+                        <th className="w-36 px-4 py-3">Counted</th>
+                      ) : null}
+                      {count.canShowSystemQuantity ? (
                         <th className="w-36 px-4 py-3">Variance</th>
                       ) : null}
-                      <th className="w-52 px-4 py-3">Notes</th>
+                      {canShowEnteredCountFacts ? (
+                        <th className="w-52 px-4 py-3">Notes</th>
+                      ) : null}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -366,17 +454,21 @@ export default async function CountDetailPage({
                             {line.systemQuantityBaseUom} {line.uomCode}
                           </td>
                         ) : null}
-                        <td className="px-4 py-3 font-semibold text-slate-950">
-                          {line.countedQuantityBaseUom ?? "Not counted"} {line.uomCode}
-                        </td>
-                        {canReview ? (
+                        {canShowEnteredCountFacts ? (
+                          <td className="px-4 py-3 font-semibold text-slate-950">
+                            {line.countedQuantityBaseUom ?? "Not counted"} {line.uomCode}
+                          </td>
+                        ) : null}
+                        {count.canShowSystemQuantity ? (
                           <td className="px-4 py-3 font-semibold text-slate-950">
                             {line.varianceQuantityBaseUom ?? "Not counted"} {line.uomCode}
                           </td>
                         ) : null}
-                        <td className="px-4 py-3 text-slate-700">
-                          {line.notes ?? "-"}
-                        </td>
+                        {canShowEnteredCountFacts ? (
+                          <td className="px-4 py-3 text-slate-700">
+                            {line.notes ?? "-"}
+                          </td>
+                        ) : null}
                       </tr>
                     ))}
                   </tbody>
@@ -386,7 +478,7 @@ export default async function CountDetailPage({
           )}
 
           <div className="mt-6 flex flex-wrap gap-2">
-            {count.status === "SUBMITTED" && canReview ? (
+            {count.status === "SUBMITTED" && canReviewCount ? (
               <EntryModal title="Review Stock Count" triggerLabel="Review Count">
                 <form action={reviewCountAction} className="mt-4 grid gap-3">
                   <input name="id" type="hidden" value={count.id} />
@@ -439,7 +531,7 @@ export default async function CountDetailPage({
           </div>
         </Panel>
 
-        {canReview ? (
+        {count.canShowSystemQuantity ? (
           <Panel className="ogfi-detail-card">
             <h2 className="text-lg font-bold text-slate-950">Audit History</h2>
             <ol className="mt-4 space-y-4">

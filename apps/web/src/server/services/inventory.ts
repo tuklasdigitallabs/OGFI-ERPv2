@@ -1,4 +1,4 @@
-import { prisma, type TransactionClient } from "@ogfi/database";
+import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { permissions, requirePermission } from "./authorization";
 import type { SessionContext } from "./context";
 import {
@@ -39,6 +39,24 @@ export type InventoryMovementPostingInput = {
   notes?: string | null;
   reversalOfMovementId?: string | null;
 };
+
+const inventoryLocationPostingLockBrand = Symbol(
+  "inventoryLocationPostingLock"
+);
+
+export type InventoryLocationPostingLock = {
+  readonly [inventoryLocationPostingLockBrand]: true;
+};
+
+const inventoryLocationPostingLockState = new WeakMap<
+  InventoryLocationPostingLock,
+  {
+    transaction: TransactionClient;
+    tenantId: string;
+    companyId: string;
+    inventoryLocationIds: ReadonlySet<string>;
+  }
+>();
 
 export type InventoryBalanceFilters = {
   query?: string | undefined;
@@ -164,6 +182,87 @@ export function assertInventoryMovementsNotFrozen(input: {
   }
 }
 
+export async function lockInventoryLocationsForPosting(
+  tx: TransactionClient,
+  session: SessionContext,
+  inventoryLocationIds: readonly string[]
+): Promise<InventoryLocationPostingLock> {
+  const sortedInventoryLocationIds = [...new Set(inventoryLocationIds)].sort();
+  if (sortedInventoryLocationIds.length === 0) {
+    throw new Error("INVENTORY_LOCATION_POSTING_LOCK_SET_EMPTY");
+  }
+
+  const lockedLocations = await tx.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`
+      SELECT il.id
+        FROM "InventoryLocation" il
+       WHERE il.id IN (${Prisma.join(
+         sortedInventoryLocationIds.map((id) => Prisma.sql`${id}::uuid`)
+       )})
+         AND il."tenantId" = ${session.context.tenantId}::uuid
+         AND il."companyId" = ${session.context.companyId}::uuid
+       ORDER BY il.id ASC
+       FOR UPDATE OF il
+    `
+  );
+
+  if (
+    lockedLocations.length !== sortedInventoryLocationIds.length ||
+    lockedLocations.some(
+      (location, index) => location.id !== sortedInventoryLocationIds[index]
+    )
+  ) {
+    throw new Error("INVENTORY_LOCATION_POSTING_LOCK_SCOPE_DENIED");
+  }
+
+  const lock = Object.freeze({
+    [inventoryLocationPostingLockBrand]: true as const
+  });
+  inventoryLocationPostingLockState.set(lock, {
+    transaction: tx,
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    inventoryLocationIds: new Set(sortedInventoryLocationIds)
+  });
+  return lock;
+}
+
+export async function lockInventoryLocationForPosting(
+  tx: TransactionClient,
+  session: SessionContext,
+  inventoryLocationId: string
+) {
+  return await lockInventoryLocationsForPosting(tx, session, [inventoryLocationId]);
+}
+
+function assertInventoryLocationPostingLock(
+  tx: TransactionClient,
+  session: SessionContext,
+  lock: InventoryLocationPostingLock,
+  input: InventoryMovementPostingInput
+) {
+  const lockState = inventoryLocationPostingLockState.get(lock);
+  const requiredInventoryLocationIds = [
+    input.inventoryLocationId,
+    ...(input.relatedInventoryLocationId
+      ? [input.relatedInventoryLocationId]
+      : [])
+  ];
+  if (
+    lock[inventoryLocationPostingLockBrand] !== true ||
+    !lockState ||
+    lockState.transaction !== tx ||
+    lockState.tenantId !== session.context.tenantId ||
+    lockState.companyId !== session.context.companyId ||
+    requiredInventoryLocationIds.some(
+      (inventoryLocationId) =>
+        !lockState.inventoryLocationIds.has(inventoryLocationId)
+    )
+  ) {
+    throw new Error("INVENTORY_LOCATION_POSTING_LOCK_REQUIRED");
+  }
+}
+
 export async function postInventoryMovement(
   session: SessionContext,
   input: InventoryMovementPostingInput
@@ -189,16 +288,24 @@ export async function postInventoryMovement(
     return { movement: existingMovement, duplicate: true };
   }
 
-  return prisma.$transaction((tx) =>
-    postInventoryMovementInTransaction(tx, session, input)
-  );
+  return prisma.$transaction(async (tx) => {
+    const lock = await lockInventoryLocationsForPosting(tx, session, [
+      input.inventoryLocationId,
+      ...(input.relatedInventoryLocationId
+        ? [input.relatedInventoryLocationId]
+        : [])
+    ]);
+    return postInventoryMovementInTransaction(tx, session, lock, input);
+  });
 }
 
 export async function postInventoryMovementInTransaction(
   tx: TransactionClient,
   session: SessionContext,
+  lock: InventoryLocationPostingLock,
   input: InventoryMovementPostingInput
 ) {
+  assertInventoryLocationPostingLock(tx, session, lock, input);
   assertInventoryMovementQuantities(
     input.enteredQuantity,
     input.quantityDeltaBaseUom

@@ -34,6 +34,8 @@ Count type, location, item scope, assigned counters, due date, and policy must b
 - Allow pause/resume draft count with user/time audit.
 - Provide search, category filters, scan support where available, and mobile-first item cards.
 - Require reason/comment for a manual item addition or exception count.
+- Show Start, Entry, and Submit controls only to the recorded assigned counter and only for the current first-pass state. Explain future schedule, another counter's assignment, incomplete lines, and an empty snapshot instead of showing an action that will fail.
+- A blind assigned counter does not receive system quantity, variance, reviewer notes, adjustment context, or variance-bearing audit facts merely because the user also holds review permission.
 
 ## 4. Review and variance
 
@@ -70,3 +72,5 @@ Rejected / Cancelled only with reason and audit history
 - Variance is calculated consistently from ledger/system balance snapshot.
 - Approved variance posting writes controlled inventory movement and audit event.
 - Count report reconciles to item-level record and posted adjustment where applicable.
+- Count start and inventory posting use the same canonically ordered inventory-location serialization boundary, so a racing movement is either included before cutoff or blocked by an active freeze.
+- My Tasks exposes at most one assigned first-pass Start, Enter, or Submit action and does not expose recount, review, cancellation, or variance work.

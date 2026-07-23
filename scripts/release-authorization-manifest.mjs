@@ -55,6 +55,7 @@ const workspacePolicies = {
   "knowledge-base": ["authenticated", ["TENANT", "COMPANY"]],
   maintenance: ["restaurant.maintenance.view", ["TENANT", "COMPANY", "LOCATION"]],
   marketing: ["authenticated", ["TENANT", "COMPANY", "BRAND", "LOCATION"]],
+  "my-tasks": ["SERVICE_ENFORCED", ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"]],
   "my-work": ["authenticated", ["TENANT", "COMPANY"]],
   notifications: ["authenticated", ["TENANT", "COMPANY"]],
   "project-templates": ["projects.template.view", ["TENANT", "COMPANY"]],
@@ -80,6 +81,9 @@ const highRiskDisclosurePattern =
 const standardServiceEntrypointNames = new Set(["verifyPassword"]);
 const reviewedNonCallableServiceReexports = new Set([
   "server/services/expansionProjects.ts|./expansionProjectTypes|expansionProjectTypes|expansionProjectTypes",
+]);
+const reviewedServicePermissionOverrides = new Map([
+  ["server/services/myTasks.ts#getMyTasksPage", "SERVICE_ENFORCED"],
 ]);
 
 function isHighRiskSurfaceName(name) {
@@ -1307,6 +1311,8 @@ export function buildAuthorizationSurfaceManifest() {
     for (const serviceEntrypoint of serviceEntrypoints) {
       const functionName = serviceEntrypoint.name;
       const functionSource = serviceEntrypoint.source;
+      const serviceId = `${relativePath}#${functionName}`;
+      const reviewedPermission = reviewedServicePermissionOverrides.get(serviceId);
       const permissionNames = Array.from(
         new Set(serviceEntrypoint.permissionNames),
       ).filter((permissionName) => permissionSymbols.has(permissionName));
@@ -1316,14 +1322,16 @@ export function buildAuthorizationSurfaceManifest() {
         : "STANDARD";
       entries.push(
         entry({
-          id: `${relativePath}#${functionName}`,
+          id: serviceId,
           surfaceType: "SERVICE_ENTRYPOINT",
           permission:
-            permissionNames.length > 0
+            reviewedPermission ?? (permissionNames.length > 0
               ? permissionNames.map((name) => `permissions.${name}`).join(" | ")
-              : "DELEGATED_INTERNAL_GUARD",
+              : "DELEGATED_INTERNAL_GUARD"),
           permissionSource:
-            permissionNames.length > 0
+            reviewedPermission
+              ? "REVIEWED_SERVICE_COMPOSITION"
+              : permissionNames.length > 0
               ? "EXPLICIT_CATALOG_REFERENCE"
               : "REVIEWED_DELEGATION",
           dimensions: projectScoped

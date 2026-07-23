@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import type { SessionContext } from "../src/server/services/context";
 import type {
+  lockInventoryLocationForPosting as lockInventoryLocationForPostingType,
+  lockInventoryLocationsForPosting as lockInventoryLocationsForPostingType,
   postInventoryMovement as postInventoryMovementType,
   postInventoryMovementInTransaction as postInventoryMovementInTransactionType,
 } from "../src/server/services/inventory";
@@ -81,6 +83,8 @@ describe("procurement and inventory authorization boundaries", () => {
   };
 
   let prisma: PrismaClient;
+  let lockInventoryLocationForPosting: typeof lockInventoryLocationForPostingType;
+  let lockInventoryLocationsForPosting: typeof lockInventoryLocationsForPostingType;
   let postInventoryMovement: typeof postInventoryMovementType;
   let postInventoryMovementInTransaction: typeof postInventoryMovementInTransactionType;
   const sessionToken = `authz-procurement-inventory-${randomUUID()}`;
@@ -121,9 +125,12 @@ describe("procurement and inventory authorization boundaries", () => {
 
   beforeAll(async () => {
     ({ prisma } = await import("@ogfi/database"));
-    ({ postInventoryMovement, postInventoryMovementInTransaction } = await import(
-      "../src/server/services/inventory"
-    ));
+    ({
+      lockInventoryLocationForPosting,
+      lockInventoryLocationsForPosting,
+      postInventoryMovement,
+      postInventoryMovementInTransaction,
+    } = await import("../src/server/services/inventory"));
     await prisma.$connect();
     await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
@@ -962,6 +969,7 @@ describe("procurement and inventory authorization boundaries", () => {
       stockCounts,
       wastage,
       stockAdjustments,
+      myTasks,
     ] = await Promise.all([
       import("../src/server/services/approvals"),
       import("../src/server/services/purchaseRequests"),
@@ -972,6 +980,7 @@ describe("procurement and inventory authorization boundaries", () => {
       import("../src/server/services/stockCounts"),
       import("../src/server/services/wastage"),
       import("../src/server/services/stockAdjustments"),
+      import("../src/server/services/myTasks"),
     ]);
     const emptyForm = () => new FormData();
     const boundaries: Array<{ id: string; invoke: () => Promise<unknown> }> = [
@@ -1051,6 +1060,14 @@ describe("procurement and inventory authorization boundaries", () => {
     for (const boundary of boundaries) {
       await expect(boundary.invoke(), boundary.id).rejects.toThrow("PERMISSION_DENIED");
     }
+    await expect(myTasks.getMyTasksPage(session)).resolves.toEqual({
+      enrolledSources: [],
+      isComplete: true,
+      items: [],
+      nextCursor: null,
+      totalCount: 0,
+      unavailableSources: [],
+    });
     expect(await workflowMutationSnapshot()).toEqual(before);
   });
 
@@ -2189,14 +2206,38 @@ describe("procurement and inventory authorization boundaries", () => {
   it("AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK", async () => {
     const before = await mutationSnapshot();
     await expect(
-      prisma.$transaction((tx) =>
-        postInventoryMovementInTransaction(
+      prisma.$transaction(async (tx) => {
+        const lock = await lockInventoryLocationsForPosting(tx, session, [
+          ids.adjacentInventoryLocationId,
+        ]);
+        return postInventoryMovementInTransaction(
           tx,
           session,
+          lock,
           movementInput(ids.adjacentInventoryLocationId),
+        );
+      }),
+    ).rejects.toThrow("INVENTORY_LOCATION_SCOPE_DENIED");
+    await expect(
+      prisma.$transaction((tx) =>
+        lockInventoryLocationForPosting(
+          tx,
+          session,
+          ids.adjacentCompanyInventoryLocationId,
         ),
       ),
-    ).rejects.toThrow("INVENTORY_LOCATION_SCOPE_DENIED");
+    ).rejects.toThrow("INVENTORY_LOCATION_POSTING_LOCK_SCOPE_DENIED");
+    for (const inventoryLocationIds of [
+      [ids.adjacentCompanyInventoryLocationId],
+      [ids.foreignInventoryLocationId],
+      [ids.inventoryLocationId, ids.adjacentCompanyInventoryLocationId],
+    ]) {
+      await expect(
+        prisma.$transaction((tx) =>
+          lockInventoryLocationsForPosting(tx, session, inventoryLocationIds),
+        ),
+      ).rejects.toThrow("INVENTORY_LOCATION_POSTING_LOCK_SCOPE_DENIED");
+    }
     expect(await mutationSnapshot()).toEqual(before);
   });
 

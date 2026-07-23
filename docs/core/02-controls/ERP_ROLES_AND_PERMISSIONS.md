@@ -129,8 +129,8 @@ Phase II recipe and menu-costing permission boundary:
 | `inventory.transfer.discrepancy.settle` | Settle a disputed transfer at the authorized destination location with reason and evidence reference. This is a non-posting audit closure and does not grant dispatch, receipt, reversal, adjustment, wastage, or finance authority. |
 | `inventory.stock_count.view` | View scoped physical count sessions for the user's current authorized location. This is read-only and does not grant count entry, review, or variance posting authority. |
 | `inventory.stock_count.create` | Schedule scoped physical count sessions and define count type, blind-count flag, and cutoff/freeze intent. This does not post stock variance. |
-| `inventory.stock_count.enter` | Start a scoped count, snapshot current balance rows, and enter blind counted quantities. This does not expose system quantity unless review permission is also granted. |
-| `inventory.stock_count.submit` | Submit a counted session for review, locking ordinary count entry. This does not approve or post variance. |
+| `inventory.stock_count.enter` | Start and enter a first-pass scoped count only when the user is its recorded assigned counter. Blind protected facts remain hidden from the assigned counter even when that user also holds review permission. This does not post variance. |
+| `inventory.stock_count.submit` | Submit a non-empty, fully counted first-pass session only when the user is its recorded assigned counter, locking ordinary count entry. This does not approve or post variance. |
 | `inventory.stock_count.review` | Review submitted count variances and mark reviewed or request recount. This does not post `COUNT_VARIANCE_*` movements or create a stock adjustment by itself. |
 | `inventory.stock_count.cancel` | Cancel an unreviewed count session with reason while preserving audit history. |
 | `inventory.wastage.view` | View scoped wastage reports for the user's current authorized inventory location. This is read-only and does not grant approval or stock posting authority. |

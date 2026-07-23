@@ -64,6 +64,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0065-FOOD-SAFETY-MY-TASKS-ENROLLMENT.md`
 - `DEC-0066-INCIDENT-MY-TASKS-AND-V2-ORDERING.md`
 - `DEC-0067-MAINTENANCE-MY-TASKS-AND-CORRECTION-AUTHORITY.md`
+- `DEC-0068-STOCK-COUNT-MY-TASKS-AND-INVENTORY-LOCATION-SERIALIZATION.md`
 
 ## Suggested future decision records
 

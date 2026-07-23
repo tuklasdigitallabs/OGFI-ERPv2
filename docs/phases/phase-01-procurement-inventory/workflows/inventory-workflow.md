@@ -216,6 +216,12 @@ Implemented Phase I note under `DEC-0026`: reviewed count variances generate one
 
 When a count session is configured to freeze movements and is active for an inventory location, receiving, transfer, wastage, and adjustment posting for that locked location is blocked at the inventory movement posting boundary until the count is reviewed, cancelled, or otherwise no longer active.
 
+The count-start boundary and every inventory posting path serialize on the complete tenant/company-scoped set of affected inventory locations in stable identifier order. Count start reads the balance snapshot only after that lock is held and commits the database cutoff, non-empty snapshot, status transition, and audit atomically. A racing movement therefore either commits before the cutoff and is included in the snapshot, or waits and is rejected when an active freeze applies.
+
+First-pass count execution is assigned work. Only the recorded counter may start, enter, or submit the count; a future-scheduled count cannot start before its Manila operating date. Entry, submission, review, cancellation, and variance-adjustment generation lock and reload the current count before mutation so submitted or cancelled evidence cannot be overwritten by a stale save. A zero-balance snapshot does not activate the count and must be corrected through setup or cancellation/rescheduling rather than a false empty task.
+
+`My Tasks` enrolls only assigned first-pass `DRAFT` start and `IN_PROGRESS` entry/submission. It excludes `RECOUNT_REQUESTED`, submitted review/recount, cancellation, reviewed variance generation, and empty snapshots. These exclusions do not activate Count Variance or resolve the immutable recount-attempt work required by `DEC-0061`.
+
 ### 9.6 Recount
 
 Recount is required where policy calls for it, for example high-value variance, missing lot detail, counter / verifier mismatch, or audit request. Recount creates a separate record or version and never overwrites original evidence.

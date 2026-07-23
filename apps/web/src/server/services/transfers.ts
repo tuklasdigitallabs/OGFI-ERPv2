@@ -4,7 +4,10 @@ import { TRANSFER_MAX_LINES } from "../../lib/workflowLimits";
 import { canUseTransfers, permissions, requirePermission } from "./authorization";
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
 import type { CsvRow } from "./csv";
-import { postInventoryMovementInTransaction } from "./inventory";
+import {
+  lockInventoryLocationsForPosting,
+  postInventoryMovementInTransaction
+} from "./inventory";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import {
   dashboardTaskAfterWhere,
@@ -1231,6 +1234,14 @@ export async function dispatchInventoryTransfer(formData: FormData) {
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
+    const inventoryLocationLock = await lockInventoryLocationsForPosting(
+      tx,
+      session,
+      transfer.lines.flatMap((line) => [
+        line.sourceInventoryLocationId,
+        line.destinationInventoryLocationId
+      ])
+    );
     const dispatched = await tx.inventoryTransfer.updateMany({
       where: {
         id: transfer.id,
@@ -1256,7 +1267,7 @@ export async function dispatchInventoryTransfer(formData: FormData) {
         throw new Error("TRANSFER_LINE_ALREADY_DISPATCHED");
       }
 
-      const { duplicate } = await postInventoryMovementInTransaction(tx, session, {
+      const { duplicate } = await postInventoryMovementInTransaction(tx, session, inventoryLocationLock, {
         inventoryLocationId: line.sourceInventoryLocationId,
         relatedInventoryLocationId: line.destinationInventoryLocationId,
         itemId: line.itemId,
@@ -1338,6 +1349,14 @@ export async function receiveInventoryTransfer(formData: FormData) {
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
+    const inventoryLocationLock = await lockInventoryLocationsForPosting(
+      tx,
+      session,
+      transfer.lines.flatMap((line) => [
+        line.sourceInventoryLocationId,
+        line.destinationInventoryLocationId
+      ])
+    );
     const receipt = await tx.inventoryTransferReceipt.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1442,7 +1461,7 @@ export async function receiveInventoryTransfer(formData: FormData) {
       });
 
       if (acceptedQty > 0) {
-        const { movement } = await postInventoryMovementInTransaction(tx, session, {
+        const { movement } = await postInventoryMovementInTransaction(tx, session, inventoryLocationLock, {
           inventoryLocationId: line.destinationInventoryLocationId,
           relatedInventoryLocationId: line.sourceInventoryLocationId,
           itemId: line.itemId,
@@ -1718,6 +1737,25 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
+    const reversalInventoryLocationIds = receipt.lines.flatMap((line) => {
+      if (Number(line.acceptedQty) <= 0 || !line.postedMovement) {
+        return [];
+      }
+      return [
+        line.postedMovement.inventoryLocationId,
+        ...(line.postedMovement.relatedInventoryLocationId
+          ? [line.postedMovement.relatedInventoryLocationId]
+          : [])
+      ];
+    });
+    const inventoryLocationLock =
+      reversalInventoryLocationIds.length > 0
+        ? await lockInventoryLocationsForPosting(
+            tx,
+            session,
+            reversalInventoryLocationIds
+          )
+        : null;
     const claimed = await tx.inventoryTransferReceipt.updateMany({
       where: {
         id: receipt.id,
@@ -1777,7 +1815,7 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
           throw new Error("TRANSFER_RECEIPT_LINE_ALREADY_REVERSED");
         }
 
-        const { movement } = await postInventoryMovementInTransaction(tx, session, {
+        const { movement } = await postInventoryMovementInTransaction(tx, session, inventoryLocationLock!, {
           inventoryLocationId: original.inventoryLocationId,
           relatedInventoryLocationId: original.relatedInventoryLocationId,
           itemId: original.itemId,

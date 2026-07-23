@@ -1,16 +1,21 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import type { TransactionClient } from "@ogfi/database";
+import { describe, expect, test, vi } from "vitest";
 import {
   assertInventoryMovementsNotFrozen,
   assertInventoryMovementQuantities,
   calculateInventoryBalanceVariance,
   calculateBalanceQuantity,
   getInventoryBalanceReconciliationStatus,
+  lockInventoryLocationForPosting,
+  lockInventoryLocationsForPosting,
   normalizeInventoryBalanceFilters,
   normalizeInventoryMovementFilters,
-  normalizeInventoryLotKey
+  normalizeInventoryLotKey,
+  postInventoryMovementInTransaction
 } from "./inventory";
+import type { SessionContext } from "./context";
 import { inventoryItemLotExpiryRequirements } from "./policySettings";
 
 describe("inventory ledger foundation rules", () => {
@@ -203,5 +208,120 @@ describe("inventory ledger foundation rules", () => {
     expect(source).toContain("prisma.inventoryBalance.findMany");
     expect(source).toContain("prisma.inventoryMovement.findMany");
     expect(source).not.toContain("lastReconciledAt");
+  });
+});
+
+describe("inventory-location posting serialization", () => {
+  const locationA = "00000000-0000-4000-8000-000000000001";
+  const locationB = "00000000-0000-4000-8000-000000000002";
+  const tenantId = "00000000-0000-4000-8000-000000000010";
+  const companyId = "00000000-0000-4000-8000-000000000020";
+  const session = {
+    user: { id: "00000000-0000-4000-8000-000000000030" },
+    context: {
+      tenantId,
+      companyId,
+      locationId: "00000000-0000-4000-8000-000000000040"
+    }
+  } as SessionContext;
+
+  function transactionWithLockedLocations(ids: string[]) {
+    return {
+      $queryRaw: vi.fn().mockResolvedValue(ids.map((id) => ({ id })))
+    } as unknown as TransactionClient;
+  }
+
+  test("deduplicates and locks the complete scoped UUID set in one canonical query", async () => {
+    const tx = transactionWithLockedLocations([locationA, locationB]);
+
+    const lock = await lockInventoryLocationsForPosting(tx, session, [
+      locationB,
+      locationA,
+      locationB
+    ]);
+
+    expect(lock).toBeDefined();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const query = vi.mocked(tx.$queryRaw).mock.calls[0]?.[0] as {
+      sql: string;
+      values: unknown[];
+    };
+    expect(query.sql).toContain('FROM "InventoryLocation" il');
+    expect(query.sql).toContain("ORDER BY il.id ASC");
+    expect(query.sql).toContain("FOR UPDATE OF il");
+    expect(query.values).toEqual([locationA, locationB, tenantId, companyId]);
+  });
+
+  test("rejects empty and incomplete tenant-company lock sets", async () => {
+    const emptyTx = transactionWithLockedLocations([]);
+    await expect(
+      lockInventoryLocationsForPosting(emptyTx, session, [])
+    ).rejects.toThrow("INVENTORY_LOCATION_POSTING_LOCK_SET_EMPTY");
+    expect(emptyTx.$queryRaw).not.toHaveBeenCalled();
+
+    const incompleteTx = transactionWithLockedLocations([locationA]);
+    await expect(
+      lockInventoryLocationsForPosting(incompleteTx, session, [
+        locationA,
+        locationB
+      ])
+    ).rejects.toThrow("INVENTORY_LOCATION_POSTING_LOCK_SCOPE_DENIED");
+  });
+
+  test("singular wrapper locks one inventory location", async () => {
+    const tx = transactionWithLockedLocations([locationA]);
+    await expect(
+      lockInventoryLocationForPosting(tx, session, locationA)
+    ).resolves.toBeDefined();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  test("posting rejects a lock from another transaction or incomplete set", async () => {
+    const lockingTx = transactionWithLockedLocations([locationA]);
+    const lock = await lockInventoryLocationForPosting(
+      lockingTx,
+      session,
+      locationA
+    );
+    const otherTx = transactionWithLockedLocations([]);
+    const input = {
+      inventoryLocationId: locationA,
+      relatedInventoryLocationId: locationB,
+      itemId: "00000000-0000-4000-8000-000000000050",
+      movementType: "TRANSFER_OUT" as const,
+      occurredAt: new Date("2026-07-23T00:00:00.000Z"),
+      enteredQuantity: 1,
+      enteredUomId: "00000000-0000-4000-8000-000000000060",
+      quantityDeltaBaseUom: -1,
+      sourceDocumentType: "InventoryTransfer",
+      sourceDocumentId: "00000000-0000-4000-8000-000000000070",
+      sourceEventKey: "dispatch:line-1"
+    };
+
+    await expect(
+      postInventoryMovementInTransaction(otherTx, session, lock, input)
+    ).rejects.toThrow("INVENTORY_LOCATION_POSTING_LOCK_REQUIRED");
+    await expect(
+      postInventoryMovementInTransaction(lockingTx, session, lock, input)
+    ).rejects.toThrow("INVENTORY_LOCATION_POSTING_LOCK_REQUIRED");
+  });
+
+  test("nested movement services prelock once and pass the branded token", () => {
+    const sources = [
+      "receiving.ts",
+      "transfers.ts",
+      "wastage.ts",
+      "stockAdjustments.ts"
+    ].map((file) => readFileSync(path.resolve(__dirname, file), "utf8"));
+
+    for (const source of sources) {
+      expect(source).toContain("lockInventoryLocationsForPosting");
+      expect(source).toMatch(
+        /postInventoryMovementInTransaction\(\s*tx,\s*session,\s*inventoryLocationLock[!,]*/
+      );
+    }
+    expect(sources[1]).toMatch(
+      /flatMap\(\(line\) => \[\s*line\.sourceInventoryLocationId,\s*line\.destinationInventoryLocationId/
+    );
   });
 });

@@ -3,7 +3,10 @@ import { z } from "zod";
 import { canUseReceiving, permissions, requirePermission } from "./authorization";
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
 import type { CsvRow } from "./csv";
-import { postInventoryMovementInTransaction } from "./inventory";
+import {
+  lockInventoryLocationsForPosting,
+  postInventoryMovementInTransaction
+} from "./inventory";
 import { classifyPurchaseOrderDeliveryAging } from "./purchaseOrders";
 import {
   dashboardTaskAfterWhere,
@@ -1140,6 +1143,17 @@ export async function postGoodsReceipt(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    const postingInventoryLocationIds = receipt.lines
+      .filter((line) => Number(line.acceptedQty) > 0)
+      .map((line) => line.inventoryDestinationLocationId);
+    const inventoryLocationLock =
+      postingInventoryLocationIds.length > 0
+        ? await lockInventoryLocationsForPosting(
+            tx,
+            session,
+            postingInventoryLocationIds
+          )
+        : null;
     await lockScopedPurchaseOrder(tx, session, receipt.purchaseOrderId);
     await lockScopedPurchaseOrderLines(tx, session, receipt.purchaseOrderId);
 
@@ -1288,27 +1302,32 @@ export async function postGoodsReceipt(formData: FormData) {
         acceptedQty: line.acceptedQty,
         item: line.item
       });
-      const { movement, duplicate } = await postInventoryMovementInTransaction(tx, session, {
-        inventoryLocationId: line.inventoryDestinationLocationId,
-        itemId: line.itemId,
-        movementType: "RECEIPT_IN",
-        occurredAt: currentReceipt.receivedAt,
-        enteredQuantity: Number(line.acceptedQty),
-        enteredUomId: line.uomId,
-        quantityDeltaBaseUom,
-        sourceDocumentType: "GoodsReceipt",
-        sourceDocumentId: currentReceipt.id,
-        sourceDocumentLineId: line.id,
-        sourceEventKey: `posted:${line.id}`,
-        lotNumber: line.lotNumber,
-        expiryDate: line.expiryDate,
-        unitCost: line.unitCost ? Number(line.unitCost) : null,
-        totalCost: line.unitCost
-          ? Number(line.unitCost) * Number(line.acceptedQty)
-          : null,
-        reasonCode: "SUPPLIER_RECEIPT",
-        notes: line.notes
-      });
+      const { movement, duplicate } = await postInventoryMovementInTransaction(
+        tx,
+        session,
+        inventoryLocationLock!,
+        {
+          inventoryLocationId: line.inventoryDestinationLocationId,
+          itemId: line.itemId,
+          movementType: "RECEIPT_IN",
+          occurredAt: currentReceipt.receivedAt,
+          enteredQuantity: Number(line.acceptedQty),
+          enteredUomId: line.uomId,
+          quantityDeltaBaseUom,
+          sourceDocumentType: "GoodsReceipt",
+          sourceDocumentId: currentReceipt.id,
+          sourceDocumentLineId: line.id,
+          sourceEventKey: `posted:${line.id}`,
+          lotNumber: line.lotNumber,
+          expiryDate: line.expiryDate,
+          unitCost: line.unitCost ? Number(line.unitCost) : null,
+          totalCost: line.unitCost
+            ? Number(line.unitCost) * Number(line.acceptedQty)
+            : null,
+          reasonCode: "SUPPLIER_RECEIPT",
+          notes: line.notes
+        }
+      );
 
       await tx.goodsReceiptLine.update({
         where: { id: line.id },
@@ -1403,6 +1422,14 @@ export async function reverseGoodsReceipt(formData: FormData) {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       receivingLocationId: session.context.locationId
+    },
+    include: {
+      lines: {
+        select: {
+          acceptedQty: true,
+          inventoryDestinationLocationId: true
+        }
+      }
     }
   });
 
@@ -1429,6 +1456,17 @@ export async function reverseGoodsReceipt(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    const reversalInventoryLocationIds = receipt.lines
+      .filter((line) => Number(line.acceptedQty) > 0)
+      .map((line) => line.inventoryDestinationLocationId);
+    const inventoryLocationLock =
+      reversalInventoryLocationIds.length > 0
+        ? await lockInventoryLocationsForPosting(
+            tx,
+            session,
+            reversalInventoryLocationIds
+          )
+        : null;
     await lockScopedPurchaseOrder(tx, session, receipt.purchaseOrderId);
     await lockScopedPurchaseOrderLines(tx, session, receipt.purchaseOrderId);
     const lockedReceipts = await tx.$queryRaw<Array<{ id: string }>>`
@@ -1571,28 +1609,33 @@ export async function reverseGoodsReceipt(formData: FormData) {
       }
 
       const quantityDeltaBaseUom = -Math.abs(Number(original.quantityDeltaBaseUom));
-      const { movement } = await postInventoryMovementInTransaction(tx, session, {
-        inventoryLocationId: line.inventoryDestinationLocationId,
-        itemId: line.itemId,
-        movementType: "REVERSAL",
-        occurredAt: new Date(),
-        enteredQuantity: Number(line.acceptedQty),
-        enteredUomId: line.uomId,
-        quantityDeltaBaseUom,
-        sourceDocumentType: "GoodsReceipt",
-        sourceDocumentId: currentReceipt.id,
-        sourceDocumentLineId: line.id,
-        sourceEventKey: `reversed:${line.id}`,
-        lotNumber: line.lotNumber,
-        expiryDate: line.expiryDate,
-        unitCost: line.unitCost ? Number(line.unitCost) : null,
-        totalCost: line.unitCost
-          ? -Math.abs(Number(line.unitCost) * Number(line.acceptedQty))
-          : null,
-        reasonCode: "GOODS_RECEIPT_REVERSAL",
-        notes: values.reversalReason,
-        reversalOfMovementId: original.id
-      });
+      const { movement } = await postInventoryMovementInTransaction(
+        tx,
+        session,
+        inventoryLocationLock!,
+        {
+          inventoryLocationId: line.inventoryDestinationLocationId,
+          itemId: line.itemId,
+          movementType: "REVERSAL",
+          occurredAt: new Date(),
+          enteredQuantity: Number(line.acceptedQty),
+          enteredUomId: line.uomId,
+          quantityDeltaBaseUom,
+          sourceDocumentType: "GoodsReceipt",
+          sourceDocumentId: currentReceipt.id,
+          sourceDocumentLineId: line.id,
+          sourceEventKey: `reversed:${line.id}`,
+          lotNumber: line.lotNumber,
+          expiryDate: line.expiryDate,
+          unitCost: line.unitCost ? Number(line.unitCost) : null,
+          totalCost: line.unitCost
+            ? -Math.abs(Number(line.unitCost) * Number(line.acceptedQty))
+            : null,
+          reasonCode: "GOODS_RECEIPT_REVERSAL",
+          notes: values.reversalReason,
+          reversalOfMovementId: original.id
+        }
+      );
 
       const restoredPoLine = await tx.purchaseOrderLine.updateMany({
         where: {

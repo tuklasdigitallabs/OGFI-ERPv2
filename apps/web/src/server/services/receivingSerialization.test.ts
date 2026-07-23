@@ -25,6 +25,7 @@ const mockPrivilegedMfa = vi.hoisted(() => ({
 }));
 
 const mockInventory = vi.hoisted(() => ({
+  lockInventoryLocationsForPosting: vi.fn(),
   postInventoryMovementInTransaction: vi.fn()
 }));
 
@@ -56,6 +57,8 @@ vi.mock("./privilegedMfaGuard", () => ({
 }));
 
 vi.mock("./inventory", () => ({
+  lockInventoryLocationsForPosting:
+    mockInventory.lockInventoryLocationsForPosting,
   postInventoryMovementInTransaction:
     mockInventory.postInventoryMovementInTransaction
 }));
@@ -354,11 +357,16 @@ function makePostTransaction(input?: {
 }
 
 describe("receiving Purchase Order serialization", () => {
+  const inventoryLocationLock = Object.freeze({ locked: true });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockContext.requireSessionContext.mockResolvedValue(session);
     mockAuthorization.requirePermission.mockResolvedValue(undefined);
     mockPrivilegedMfa.assertPrivilegedMfaForAction.mockResolvedValue(undefined);
+    mockInventory.lockInventoryLocationsForPosting.mockResolvedValue(
+      inventoryLocationLock
+    );
     mockInventory.postInventoryMovementInTransaction.mockResolvedValue({
       movement: { id: ids.movement },
       duplicate: false
@@ -478,6 +486,12 @@ describe("receiving Purchase Order serialization", () => {
     expect(tx.$queryRaw.mock.calls[2]?.[0].join(" ")).toContain(
       'FROM "GoodsReceipt" gr'
     );
+    expect(
+      mockInventory.lockInventoryLocationsForPosting
+    ).toHaveBeenCalledWith(tx, session, [ids.inventoryLocation]);
+    expect(
+      mockInventory.lockInventoryLocationsForPosting.mock.invocationCallOrder[0]
+    ).toBeLessThan(tx.$queryRaw.mock.invocationCallOrder[0] ?? 0);
     expect(tx.$queryRaw.mock.invocationCallOrder[2]).toBeLessThan(
       tx.goodsReceipt.updateMany.mock.invocationCallOrder[0] ?? 0
     );
@@ -486,6 +500,7 @@ describe("receiving Purchase Order serialization", () => {
     ).toHaveBeenCalledWith(
       tx,
       session,
+      inventoryLocationLock,
       expect.objectContaining({
         movementType: "RECEIPT_IN",
         sourceDocumentId: ids.receipt,

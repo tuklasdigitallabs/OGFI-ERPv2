@@ -81,6 +81,8 @@
   "server/services/expenseRequests.ts#upsertExpenseRequestBudgetCommitments",
   "server/services/exportAudit.ts#logOperationalExportAudit",
   "server/services/exportAudit.ts#logOperationalExportFailure",
+  "server/services/inventory.ts#lockInventoryLocationForPosting",
+  "server/services/inventory.ts#lockInventoryLocationsForPosting",
   "server/services/inventory.ts#postInventoryMovement",
   "server/services/inventory.ts#postInventoryMovementInTransaction",
   "server/services/notifications.ts#archiveNotification",

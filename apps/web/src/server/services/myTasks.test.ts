@@ -15,7 +15,8 @@ const mocks = vi.hoisted(() => ({
   branchOperations: vi.fn(),
   foodSafety: vi.fn(),
   incidents: vi.fn(),
-  maintenance: vi.fn()
+  maintenance: vi.fn(),
+  stockCounts: vi.fn()
 }));
 
 vi.mock("./transfers", () => ({ listTransferMyTaskPage: mocks.transfers }));
@@ -36,6 +37,9 @@ vi.mock("./foodSafety", () => ({ listFoodSafetyMyTaskPage: mocks.foodSafety }));
 vi.mock("./incidents", () => ({ listIncidentMyTaskPage: mocks.incidents }));
 vi.mock("./maintenance", () => ({
   listMaintenanceMyTaskPage: mocks.maintenance
+}));
+vi.mock("./stockCounts", () => ({
+  listStockCountMyTaskPage: mocks.stockCounts
 }));
 
 const session = {
@@ -105,6 +109,11 @@ describe("My Tasks queue", () => {
       totalCount: 1,
       nextCursor: null,
       items: [{ taskId: "maintenance-m1", recordId: "m1", publicReference: "MT-1", status: "IN_PROGRESS", priority: "HIGH", dueAt: "2026-07-24T00:00:00.000Z", actionLabel: "Complete maintenance ticket", createdAt: "2026-07-22T03:00:00.000Z" }]
+    });
+    mocks.stockCounts.mockResolvedValue({
+      totalCount: 1,
+      nextCursor: null,
+      items: [{ taskId: "stock-count-sc1", recordId: "sc1", publicReference: "SC-1", status: "IN_PROGRESS", actionLabel: "Submit stock count", createdAt: "2026-07-22T04:00:00.000Z" }]
     });
   });
 
@@ -223,5 +232,26 @@ describe("My Tasks queue", () => {
       }]
     });
     expect(mocks.maintenance).toHaveBeenCalled();
+  });
+
+  test("enrolls assigned Stock Count work only for entry or submit authority", async () => {
+    await expect(
+      getMyTasksPage({
+        ...session,
+        permissionCodes: [permissions.stockCountSubmit]
+      } as never)
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      enrolledSources: [{ type: "STOCK_COUNT", label: "Stock counts" }],
+      items: [{
+        taskId: "stock-count-sc1",
+        sourceType: "STOCK_COUNT",
+        priority: "HIGH",
+        dueAt: null,
+        sourceLabel: "Stock count",
+        href: "/counts/sc1"
+      }]
+    });
+    expect(mocks.stockCounts).toHaveBeenCalled();
   });
 });

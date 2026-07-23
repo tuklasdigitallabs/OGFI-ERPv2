@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { canUseStockCounts, permissions, requirePermission } from "./authorization";
 import {
@@ -7,9 +7,18 @@ import {
   type SessionContext
 } from "./context";
 import type { CsvRow } from "./csv";
-import { normalizeInventoryLotKey } from "./inventory";
+import {
+  lockInventoryLocationForPosting,
+  normalizeInventoryLotKey
+} from "./inventory";
 import { getStockCountCadencePolicy } from "./policySettings";
 import { nextStockAdjustmentReference } from "./stockAdjustments";
+import { dateOnlyInTimeZone } from "./projectDates";
+import {
+  compareDashboardTaskOrder,
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 
 const countTypes = ["FULL", "CYCLE", "SPOT", "HIGH_VALUE", "OPENING"] as const;
 
@@ -59,14 +68,98 @@ export function assertStockCountCanStart(status: string) {
 }
 
 export function assertStockCountCanEnter(status: string) {
-  if (status !== "IN_PROGRESS" && status !== "RECOUNT_REQUESTED") {
+  if (status !== "IN_PROGRESS") {
     throw new Error("STOCK_COUNT_NOT_OPEN_FOR_ENTRY");
   }
 }
 
 export function assertStockCountCanSubmit(status: string) {
-  if (status !== "IN_PROGRESS" && status !== "RECOUNT_REQUESTED") {
+  if (status !== "IN_PROGRESS") {
     throw new Error("STOCK_COUNT_NOT_OPEN_FOR_SUBMIT");
+  }
+}
+
+export function assertStockCountAssignedActor(input: {
+  assignedToUserId: string | null;
+  actorUserId: string;
+}) {
+  if (!input.assignedToUserId || input.assignedToUserId !== input.actorUserId) {
+    throw new Error("STOCK_COUNT_NOT_ASSIGNED_TO_ACTOR");
+  }
+}
+
+export function isStockCountScheduledStartEligible(
+  scheduledDate: Date | null,
+  now = new Date()
+) {
+  return (
+    scheduledDate === null ||
+    scheduledDate.toISOString().slice(0, 10) <= dateOnlyInTimeZone(now)
+  );
+}
+
+type StockCountProtectedRead = {
+  status: string;
+  blindCount: boolean;
+  createdByUserId: string;
+  lines: Array<{
+    countedQuantityBaseUom: unknown;
+    countedByUserId: string | null;
+    countedAt: Date | null;
+  }>;
+};
+
+function hasCompleteStockCountLineage(count: StockCountProtectedRead) {
+  return (
+    count.lines.length > 0 &&
+    count.lines.every(
+      (line) =>
+        line.countedQuantityBaseUom !== null &&
+        Boolean(line.countedByUserId) &&
+        Boolean(line.countedAt)
+    )
+  );
+}
+
+export function canExposeStockCountProtectedFacts(
+  session: SessionContext,
+  count: StockCountProtectedRead
+) {
+  if (!session.permissionCodes.includes(permissions.stockCountReview)) {
+    return false;
+  }
+  if (!count.blindCount) {
+    return true;
+  }
+  if (count.status === "REVIEWED") {
+    return true;
+  }
+  return canReviewStockCountCurrentActor(session, count);
+}
+
+export function canReviewStockCountCurrentActor(
+  session: SessionContext,
+  count: StockCountProtectedRead
+) {
+  return (
+    session.permissionCodes.includes(permissions.stockCountReview) &&
+    count.status === "SUBMITTED" &&
+    hasCompleteStockCountLineage(count) &&
+    count.createdByUserId !== session.user.id &&
+    count.lines.every((line) => line.countedByUserId !== session.user.id)
+  );
+}
+
+function assertStockCountReviewLineage(
+  count: Pick<StockCountProtectedRead, "lines">
+) {
+  if (!hasCompleteStockCountLineage({
+    status: "SUBMITTED",
+    blindCount: true,
+    createdByUserId: "lineage-check",
+    lines: count.lines
+  })) {
+    throw new Error("STOCK_COUNT_REVIEW_LINEAGE_INCOMPLETE");
   }
 }
 
@@ -174,6 +267,203 @@ function scopedStockCountWhere(session: SessionContext, id?: string) {
   };
 }
 
+type LockedStockCount = {
+  id: string;
+  inventoryLocationId: string;
+  status: string;
+  blindCount: boolean;
+  scheduledDate: Date | null;
+  createdByUserId: string;
+  assignedToUserId: string | null;
+  updatedAt: Date;
+  databaseNow: Date;
+};
+
+async function findScopedStockCountLocation(
+  session: SessionContext,
+  id: string
+) {
+  const count = await prisma.stockCountSession.findFirst({
+    where: scopedStockCountWhere(session, id),
+    select: { id: true, inventoryLocationId: true }
+  });
+  if (!count) {
+    throw new Error("STOCK_COUNT_NOT_FOUND");
+  }
+  return count;
+}
+
+async function lockScopedStockCount(
+  tx: TransactionClient,
+  session: SessionContext,
+  id: string,
+  inventoryLocationId: string
+) {
+  const rows = await tx.$queryRaw<LockedStockCount[]>(Prisma.sql`
+    SELECT sc.id,
+           sc."inventoryLocationId",
+           sc.status,
+           sc."blindCount",
+           sc."scheduledDate",
+           sc."createdByUserId",
+           sc."assignedToUserId",
+           sc."updatedAt",
+           clock_timestamp() AS "databaseNow"
+      FROM "StockCountSession" sc
+      JOIN "InventoryLocation" il
+        ON il.id = sc."inventoryLocationId"
+       AND il."tenantId" = sc."tenantId"
+       AND il."companyId" = sc."companyId"
+     WHERE sc.id = ${id}::uuid
+       AND sc."tenantId" = ${session.context.tenantId}::uuid
+       AND sc."companyId" = ${session.context.companyId}::uuid
+       AND sc."inventoryLocationId" = ${inventoryLocationId}::uuid
+       AND il."locationId" = ${session.context.locationId}::uuid
+     FOR UPDATE OF sc
+  `);
+  const count = rows[0];
+  if (!count || rows.length !== 1) {
+    throw new Error("STOCK_COUNT_NOT_FOUND");
+  }
+  return count;
+}
+
+type StockCountMyTaskItem = {
+  taskId: string;
+  recordId: string;
+  publicReference: string;
+  status: string;
+  actionLabel: "Start stock count" | "Enter stock count" | "Submit stock count";
+  createdAt: string;
+  sourceType: "STOCK_COUNT";
+};
+
+export type StockCountMyTaskPage = {
+  totalCount: number;
+  items: StockCountMyTaskItem[];
+  nextCursor: DashboardTaskCursor | null;
+};
+
+function stockCountTaskPredicates(
+  session: SessionContext,
+  eligibleBefore: Date
+) {
+  const actor = { assignedToUserId: session.user.id };
+  const predicates: Array<{
+    actionLabel: StockCountMyTaskItem["actionLabel"];
+    where: Prisma.StockCountSessionWhereInput;
+  }> = [];
+  if (session.permissionCodes.includes(permissions.stockCountEnter)) {
+    predicates.push(
+      {
+        actionLabel: "Start stock count",
+        where: {
+          ...actor,
+          status: "DRAFT",
+          OR: [
+            { scheduledDate: null },
+            { scheduledDate: { lt: eligibleBefore } }
+          ]
+        }
+      },
+      {
+        actionLabel: "Enter stock count",
+        where: {
+          ...actor,
+          status: "IN_PROGRESS",
+          lines: {
+            some: { countedQuantityBaseUom: null }
+          }
+        }
+      }
+    );
+  }
+  if (session.permissionCodes.includes(permissions.stockCountSubmit)) {
+    predicates.push({
+      actionLabel: "Submit stock count",
+      where: {
+        ...actor,
+        status: "IN_PROGRESS",
+        lines: {
+          some: {},
+          none: { countedQuantityBaseUom: null }
+        }
+      }
+    });
+  }
+  return predicates;
+}
+
+/** Returns one assigned, first-pass Stock Count obligation per session. */
+export async function listStockCountMyTaskPage(
+  session: SessionContext,
+  input: { after?: DashboardTaskCursor; take?: number } = {}
+): Promise<StockCountMyTaskPage> {
+  const today = new Date(`${dateOnlyInTimeZone(new Date())}T00:00:00.000Z`);
+  const eligibleBefore = new Date(today.getTime() + 86_400_000);
+  const predicates = stockCountTaskPredicates(session, eligibleBefore);
+  if (predicates.length === 0) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+  const take = Math.min(Math.max(input.take ?? 25, 1), 50);
+  const scopedWhere = scopedStockCountWhere(session);
+  const afterWhere = dashboardTaskAfterWhere("STOCK_COUNT", input.after);
+  const select = {
+    id: true,
+    publicReference: true,
+    status: true,
+    createdAt: true
+  } satisfies Prisma.StockCountSessionSelect;
+  const [totalCount, ...taskRows] = await Promise.all([
+    prisma.stockCountSession.count({
+      where: { ...scopedWhere, OR: predicates.map(({ where }) => where) }
+    }),
+    ...predicates.map(async ({ actionLabel, where }) => ({
+      actionLabel,
+      rows: await prisma.stockCountSession.findMany({
+        where: {
+          ...scopedWhere,
+          AND: [where, ...(afterWhere ? [afterWhere] : [])]
+        },
+        select,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: take + 1
+      })
+    }))
+  ]);
+  const merged = taskRows
+    .flatMap(({ actionLabel, rows }) =>
+      rows.map((row) => ({
+        taskId: `stock-count-${row.id}`,
+        recordId: row.id,
+        publicReference: row.publicReference,
+        status: row.status,
+        actionLabel,
+        createdAt: row.createdAt.toISOString(),
+        sourceType: "STOCK_COUNT" as const,
+        priority: "HIGH" as const,
+        dueAt: null
+      }))
+    )
+    .sort(compareDashboardTaskOrder);
+  const items = merged.slice(0, take);
+  const last = items.at(-1);
+  return {
+    totalCount,
+    items,
+    nextCursor:
+      merged.length > take && last
+        ? {
+            priority: "HIGH",
+            dueAt: null,
+            createdAt: last.createdAt,
+            sourceType: "STOCK_COUNT",
+            recordId: last.recordId
+          }
+        : null
+  };
+}
+
 const stockCountDashboardTaskCandidateLimit = 8;
 const stockCountDashboardActionStatuses = [
   "SUBMITTED",
@@ -205,8 +495,32 @@ export async function getStockCountDashboardRead(
   const varianceWhere = {
     ...scopedStockCountWhere(session),
     status: { in: stockCountDashboardActionStatuses },
-    lines: { some: { varianceQuantityBaseUom: { not: 0 } } }
-  };
+    lines: { some: { varianceQuantityBaseUom: { not: 0 } } },
+    OR: [
+      { blindCount: false },
+      { blindCount: true, status: "REVIEWED" },
+      {
+        blindCount: true,
+        status: "SUBMITTED",
+        NOT: { createdByUserId: session.user.id },
+        lines: {
+          some: {
+            countedQuantityBaseUom: { not: null },
+            countedByUserId: { not: null },
+            countedAt: { not: null }
+          },
+          every: {
+            AND: [
+              { countedQuantityBaseUom: { not: null } },
+              { countedByUserId: { not: null } },
+              { NOT: { countedByUserId: session.user.id } },
+              { countedAt: { not: null } }
+            ]
+          }
+        }
+      }
+    ]
+  } satisfies Prisma.StockCountSessionWhereInput;
   const [varianceCount, candidates] = await Promise.all([
     prisma.stockCountSession.count({ where: varianceWhere }),
     prisma.stockCountSession.findMany({
@@ -272,10 +586,6 @@ export async function listStockCountFormOptions(session: SessionContext) {
 export async function listStockCounts(session: SessionContext) {
   await requireStockCountRead(session);
   const cadencePolicy = await getStockCountCadencePolicy(session);
-  const canReviewStockCounts = session.permissionCodes.includes(
-    permissions.stockCountReview
-  );
-
   const counts = await prisma.stockCountSession.findMany({
     where: scopedStockCountWhere(session),
     include: {
@@ -288,7 +598,12 @@ export async function listStockCounts(session: SessionContext) {
     orderBy: [{ createdAt: "desc" }]
   });
 
-  return counts.map((count) => ({
+  return counts.map((count) => {
+    const canShowProtectedFacts = canExposeStockCountProtectedFacts(
+      session,
+      count
+    );
+    return {
     id: count.id,
     publicReference: count.publicReference,
     status: count.status,
@@ -296,7 +611,9 @@ export async function listStockCounts(session: SessionContext) {
     inventoryLocationName: count.inventoryLocation.name,
     createdByName: count.createdBy.displayName,
     assignedToName: count.assignedTo?.displayName ?? null,
-    reviewedByName: count.reviewedBy?.displayName ?? null,
+    reviewedByName: canShowProtectedFacts
+      ? count.reviewedBy?.displayName ?? null
+      : null,
     scheduledDate: count.scheduledDate?.toISOString().slice(0, 10) ?? null,
     recommendedCadenceDays: recommendedStockCountCadenceDays(
       count.countType,
@@ -305,37 +622,54 @@ export async function listStockCounts(session: SessionContext) {
     cutoffAt: count.cutoffAt?.toISOString() ?? null,
     submittedAt: count.submittedAt?.toISOString() ?? null,
     lineCount: count.lines.length,
-    varianceCount: canReviewStockCounts
+    varianceCount: canShowProtectedFacts
       ? count.lines.filter(
           (line) => Number(line.varianceQuantityBaseUom ?? 0) !== 0
         ).length
       : null
-  }));
+    };
+  });
 }
 
 export async function buildStockCountExportRows(session: SessionContext) {
   await requireStockCountRead(session);
-  const canShowSystemQuantity = session.permissionCodes.includes(
-    permissions.stockCountReview
-  );
-
   const counts = await prisma.stockCountSession.findMany({
     where: scopedStockCountWhere(session),
-    include: {
-      inventoryLocation: true,
-      createdBy: true,
-      assignedTo: true,
-      reviewedBy: true,
+    select: {
+      publicReference: true,
+      status: true,
+      countType: true,
+      blindCount: true,
+      createdByUserId: true,
+      assignedToUserId: true,
+      scheduledDate: true,
+      cutoffAt: true,
+      submittedAt: true,
+      reviewedAt: true,
+      inventoryLocation: { select: { name: true } },
+      createdBy: { select: { displayName: true } },
+      assignedTo: { select: { displayName: true } },
+      reviewedBy: { select: { displayName: true } },
       stockAdjustments: {
         orderBy: { createdAt: "desc" },
-        take: 1
+        take: 1,
+        select: { publicReference: true, status: true }
       },
       lines: {
         orderBy: { lineNumber: "asc" },
-        include: {
-          item: true,
-          uom: true,
-          countedBy: true
+        select: {
+          lineNumber: true,
+          lotNumber: true,
+          expiryDate: true,
+          systemQuantityBaseUom: true,
+          countedQuantityBaseUom: true,
+          varianceQuantityBaseUom: true,
+          notes: true,
+          countedByUserId: true,
+          countedAt: true,
+          item: { select: { itemCode: true, itemName: true } },
+          uom: { select: { uomCode: true } },
+          countedBy: { select: { displayName: true } }
         }
       }
     },
@@ -373,6 +707,12 @@ export async function buildStockCountExportRows(session: SessionContext) {
   ];
 
   for (const count of counts) {
+    const canShowSystemQuantity = canExposeStockCountProtectedFacts(
+      session,
+      count
+    );
+    const canShowEnteredCountFacts =
+      count.assignedToUserId === session.user.id || canShowSystemQuantity;
     const adjustment = count.stockAdjustments[0];
     const sharedColumns: CsvRow = [
       count.publicReference,
@@ -381,13 +721,13 @@ export async function buildStockCountExportRows(session: SessionContext) {
       count.inventoryLocation.name,
       count.createdBy.displayName,
       count.assignedTo?.displayName ?? "",
-      count.reviewedBy?.displayName ?? "",
+      canShowSystemQuantity ? count.reviewedBy?.displayName ?? "" : "",
       count.scheduledDate?.toISOString().slice(0, 10) ?? "",
       count.cutoffAt?.toISOString() ?? "",
       count.submittedAt?.toISOString() ?? "",
-      count.reviewedAt?.toISOString() ?? "",
-      adjustment?.publicReference ?? "",
-      adjustment?.status ?? ""
+      canShowSystemQuantity ? count.reviewedAt?.toISOString() ?? "" : "",
+      canShowSystemQuantity ? adjustment?.publicReference ?? "" : "",
+      canShowSystemQuantity ? adjustment?.status ?? "" : ""
     ];
 
     if (count.lines.length === 0) {
@@ -405,15 +745,15 @@ export async function buildStockCountExportRows(session: SessionContext) {
         line.lotNumber ?? "",
         line.expiryDate?.toISOString().slice(0, 10) ?? "",
         canShowSystemQuantity ? Number(line.systemQuantityBaseUom) : "",
-        line.countedQuantityBaseUom === null
+        !canShowEnteredCountFacts || line.countedQuantityBaseUom === null
           ? ""
           : Number(line.countedQuantityBaseUom),
         canShowSystemQuantity && line.varianceQuantityBaseUom !== null
           ? Number(line.varianceQuantityBaseUom)
           : "",
-        line.notes ?? "",
-        line.countedBy?.displayName ?? "",
-        line.countedAt?.toISOString() ?? ""
+        canShowEnteredCountFacts ? line.notes ?? "" : "",
+        canShowEnteredCountFacts ? line.countedBy?.displayName ?? "" : "",
+        canShowEnteredCountFacts ? line.countedAt?.toISOString() ?? "" : ""
       ]);
     }
   }
@@ -464,8 +804,23 @@ export async function getStockCount(session: SessionContext, id: string) {
     orderBy: { occurredAt: "asc" }
   });
 
-  const canShowSystemQuantity = session.permissionCodes.includes(
-    permissions.stockCountReview
+  const canShowSystemQuantity = canExposeStockCountProtectedFacts(
+    session,
+    count
+  );
+  const canReviewCurrentActor = canReviewStockCountCurrentActor(
+    session,
+    count
+  );
+  const assignedToCurrentUser = count.assignedToUserId === session.user.id;
+  const canShowEnteredCountFacts =
+    assignedToCurrentUser || canShowSystemQuantity;
+  const scheduledStartEligible = isStockCountScheduledStartEligible(
+    count.scheduledDate
+  );
+  const hasSnapshotLines = count.lines.length > 0;
+  const hasUncountedLines = count.lines.some(
+    (line) => line.countedQuantityBaseUom === null
   );
 
   return {
@@ -480,19 +835,34 @@ export async function getStockCount(session: SessionContext, id: string) {
     locationName: count.inventoryLocation.location.name,
     createdByName: count.createdBy.displayName,
     assignedToName: count.assignedTo?.displayName ?? null,
-    reviewedByName: count.reviewedBy?.displayName ?? null,
+    reviewedByName: canShowSystemQuantity
+      ? count.reviewedBy?.displayName ?? null
+      : null,
     scheduledDate: count.scheduledDate?.toISOString().slice(0, 10) ?? null,
     cutoffAt: count.cutoffAt?.toISOString() ?? null,
     startedAt: count.startedAt?.toISOString() ?? null,
     submittedAt: count.submittedAt?.toISOString() ?? null,
-    reviewedAt: count.reviewedAt?.toISOString() ?? null,
+    reviewedAt: canShowSystemQuantity
+      ? count.reviewedAt?.toISOString() ?? null
+      : null,
     cancelledAt: count.cancelledAt?.toISOString() ?? null,
     cancellationReason: count.cancellationReason ?? null,
     reviewNotes: canShowSystemQuantity ? count.reviewNotes ?? null : null,
-    varianceAdjustmentId: count.stockAdjustments[0]?.id ?? null,
+    varianceAdjustmentId: canShowSystemQuantity
+      ? count.stockAdjustments[0]?.id ?? null
+      : null,
     varianceAdjustmentReference:
-      count.stockAdjustments[0]?.publicReference ?? null,
-    varianceAdjustmentStatus: count.stockAdjustments[0]?.status ?? null,
+      canShowSystemQuantity
+        ? count.stockAdjustments[0]?.publicReference ?? null
+        : null,
+    varianceAdjustmentStatus: canShowSystemQuantity
+      ? count.stockAdjustments[0]?.status ?? null
+      : null,
+    assignedToCurrentUser,
+    scheduledStartEligible,
+    hasSnapshotLines,
+    hasUncountedLines,
+    canReviewCurrentActor,
     canShowSystemQuantity,
     lines: count.lines.map((line) => ({
       id: line.id,
@@ -506,16 +876,20 @@ export async function getStockCount(session: SessionContext, id: string) {
         ? Number(line.systemQuantityBaseUom)
         : null,
       countedQuantityBaseUom:
-        line.countedQuantityBaseUom === null
+        !canShowEnteredCountFacts || line.countedQuantityBaseUom === null
           ? null
           : Number(line.countedQuantityBaseUom),
       varianceQuantityBaseUom:
         canShowSystemQuantity && line.varianceQuantityBaseUom !== null
           ? Number(line.varianceQuantityBaseUom)
           : null,
-      notes: line.notes ?? null,
-      countedByName: line.countedBy?.displayName ?? null,
-      countedAt: line.countedAt?.toISOString() ?? null
+      notes: canShowEnteredCountFacts ? line.notes ?? null : null,
+      countedByName: canShowEnteredCountFacts
+        ? line.countedBy?.displayName ?? null
+        : null,
+      countedAt: canShowEnteredCountFacts
+        ? line.countedAt?.toISOString() ?? null
+        : null
     })),
     auditEvents: canShowSystemQuantity
       ? auditEvents.map((event) => ({
@@ -607,65 +981,89 @@ export async function startStockCount(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.stockCountEnter);
   const values = stockCountActionSchema.parse(Object.fromEntries(formData));
-
-  const count = await prisma.stockCountSession.findFirst({
-    where: scopedStockCountWhere(session, values.id),
-    include: {
-      inventoryLocation: true
-    }
-  });
-  if (!count) {
-    throw new Error("STOCK_COUNT_NOT_FOUND");
-  }
-  assertStockCountCanStart(count.status);
-
-  const now = new Date();
-  const balances = await prisma.inventoryBalance.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      inventoryLocationId: count.inventoryLocationId
-    },
-    include: {
-      item: true
-    },
-    orderBy: [{ item: { itemName: "asc" } }, { expiryDate: "asc" }]
-  });
+  const target = await findScopedStockCountLocation(session, values.id);
 
   await prisma.$transaction(async (tx) => {
+    await lockInventoryLocationForPosting(
+      tx,
+      session,
+      target.inventoryLocationId
+    );
+    const count = await lockScopedStockCount(
+      tx,
+      session,
+      target.id,
+      target.inventoryLocationId
+    );
+    await requirePermission(session, permissions.stockCountEnter);
+    assertStockCountCanStart(count.status);
+    assertStockCountAssignedActor({
+      assignedToUserId: count.assignedToUserId,
+      actorUserId: session.user.id
+    });
+    if (!isStockCountScheduledStartEligible(count.scheduledDate, count.databaseNow)) {
+      throw new Error("STOCK_COUNT_SCHEDULED_DATE_IN_FUTURE");
+    }
+
+    const existingLineCount = await tx.stockCountLine.count({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        stockCountSessionId: count.id,
+        inventoryLocationId: count.inventoryLocationId
+      }
+    });
+    if (existingLineCount !== 0) {
+      throw new Error("STOCK_COUNT_DRAFT_HAS_EXISTING_LINES");
+    }
+    const balances = await tx.inventoryBalance.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId
+      },
+      include: { item: true },
+      orderBy: [{ item: { itemName: "asc" } }, { expiryDate: "asc" }]
+    });
+    if (balances.length === 0) {
+      throw new Error("STOCK_COUNT_HAS_NO_BALANCES");
+    }
+
     const started = await tx.stockCountSession.updateMany({
       where: {
         id: count.id,
-        status: "DRAFT"
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId,
+        assignedToUserId: session.user.id,
+        status: "DRAFT",
+        updatedAt: count.updatedAt
       },
       data: {
         status: "IN_PROGRESS",
-        startedAt: now,
-        cutoffAt: now
+        startedAt: count.databaseNow,
+        cutoffAt: count.databaseNow
       }
     });
     if (started.count !== 1) {
-      throw new Error("STOCK_COUNT_NOT_DRAFT_FOR_START");
+      throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
     }
 
-    if (balances.length > 0) {
-      await tx.stockCountLine.createMany({
-        data: balances.map((balance, index) => ({
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          stockCountSessionId: count.id,
-          inventoryLocationId: count.inventoryLocationId,
-          itemId: balance.itemId,
-          uomId: balance.baseUomId,
-          lineNumber: index + 1,
-          lotKey: balance.lotKey,
-          lotNumber: balance.lotNumber,
-          expiryDate: balance.expiryDate,
-          systemQuantityBaseUom: balance.qtyOnHand
-        })),
-        skipDuplicates: true
-      });
-    }
+    await tx.stockCountLine.createMany({
+      data: balances.map((balance, index) => ({
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        stockCountSessionId: count.id,
+        inventoryLocationId: count.inventoryLocationId,
+        itemId: balance.itemId,
+        uomId: balance.baseUomId,
+        lineNumber: index + 1,
+        lotKey: balance.lotKey,
+        lotNumber: balance.lotNumber,
+        expiryDate: balance.expiryDate,
+        systemQuantityBaseUom: balance.qtyOnHand
+      }))
+    });
 
     await tx.auditEvent.create({
       data: {
@@ -678,7 +1076,7 @@ export async function startStockCount(formData: FormData) {
         beforeData: { status: "DRAFT" },
         afterData: { status: "IN_PROGRESS" },
         metadata: {
-          cutoffAt: now.toISOString(),
+          cutoffAt: count.databaseNow.toISOString(),
           snapshotLineCount: balances.length
         }
       }
@@ -691,21 +1089,42 @@ export async function saveStockCountEntries(rawValues: unknown) {
   await requirePermission(session, permissions.stockCountEnter);
   const values = saveStockCountSchema.parse(rawValues);
 
-  const count = await prisma.stockCountSession.findFirst({
-    where: scopedStockCountWhere(session, values.id),
-    include: {
-      lines: true
-    }
-  });
-  if (!count) {
-    throw new Error("STOCK_COUNT_NOT_FOUND");
+  if (new Set(values.lines.map((line) => line.lineId)).size !== values.lines.length) {
+    throw new Error("STOCK_COUNT_LINE_DUPLICATE");
   }
-  assertStockCountCanEnter(count.status);
-
-  const linesById = new Map(count.lines.map((line) => [line.id, line]));
-  const now = new Date();
+  const target = await findScopedStockCountLocation(session, values.id);
 
   await prisma.$transaction(async (tx) => {
+    await lockInventoryLocationForPosting(
+      tx,
+      session,
+      target.inventoryLocationId
+    );
+    const count = await lockScopedStockCount(
+      tx,
+      session,
+      target.id,
+      target.inventoryLocationId
+    );
+    await requirePermission(session, permissions.stockCountEnter);
+    assertStockCountCanEnter(count.status);
+    assertStockCountAssignedActor({
+      assignedToUserId: count.assignedToUserId,
+      actorUserId: session.user.id
+    });
+    const lines = await tx.stockCountLine.findMany({
+      where: {
+        id: { in: values.lines.map((line) => line.lineId) },
+        stockCountSessionId: count.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId
+      }
+    });
+    if (lines.length !== values.lines.length) {
+      throw new Error("STOCK_COUNT_LINE_NOT_FOUND");
+    }
+    const linesById = new Map(lines.map((line) => [line.id, line]));
     for (const entry of values.lines) {
       const line = linesById.get(entry.lineId);
       if (!line) {
@@ -715,16 +1134,41 @@ export async function saveStockCountEntries(rawValues: unknown) {
         entry.countedQuantityBaseUom,
         Number(line.systemQuantityBaseUom)
       );
-      await tx.stockCountLine.update({
-        where: { id: entry.lineId },
+      const updated = await tx.stockCountLine.updateMany({
+        where: {
+          id: entry.lineId,
+          stockCountSessionId: count.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          inventoryLocationId: count.inventoryLocationId,
+          updatedAt: line.updatedAt
+        },
         data: {
           countedQuantityBaseUom: entry.countedQuantityBaseUom,
           varianceQuantityBaseUom: variance,
           notes: entry.notes || null,
           countedByUserId: session.user.id,
-          countedAt: now
+          countedAt: count.databaseNow
         }
       });
+      if (updated.count !== 1) {
+        throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
+      }
+    }
+    const touched = await tx.stockCountSession.updateMany({
+      where: {
+        id: count.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId,
+        assignedToUserId: session.user.id,
+        status: "IN_PROGRESS",
+        updatedAt: count.updatedAt
+      },
+      data: { updatedAt: count.databaseNow }
+    });
+    if (touched.count !== 1) {
+      throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
     }
 
     await tx.auditEvent.create({
@@ -746,34 +1190,65 @@ export async function submitStockCount(formData: FormData) {
   await requirePermission(session, permissions.stockCountSubmit);
   const values = stockCountActionSchema.parse(Object.fromEntries(formData));
 
-  const count = await prisma.stockCountSession.findFirst({
-    where: scopedStockCountWhere(session, values.id),
-    include: { lines: true }
-  });
-  if (!count) {
-    throw new Error("STOCK_COUNT_NOT_FOUND");
-  }
-  assertStockCountCanSubmit(count.status);
-  if (count.lines.length === 0) {
-    throw new Error("STOCK_COUNT_HAS_NO_LINES");
-  }
-  if (count.lines.some((line) => line.countedQuantityBaseUom === null)) {
-    throw new Error("STOCK_COUNT_HAS_UNCOUNTED_LINES");
-  }
+  const target = await findScopedStockCountLocation(session, values.id);
 
   await prisma.$transaction(async (tx) => {
+    await lockInventoryLocationForPosting(
+      tx,
+      session,
+      target.inventoryLocationId
+    );
+    const count = await lockScopedStockCount(
+      tx,
+      session,
+      target.id,
+      target.inventoryLocationId
+    );
+    await requirePermission(session, permissions.stockCountSubmit);
+    assertStockCountCanSubmit(count.status);
+    assertStockCountAssignedActor({
+      assignedToUserId: count.assignedToUserId,
+      actorUserId: session.user.id
+    });
+    const lines = await tx.stockCountLine.findMany({
+      where: {
+        stockCountSessionId: count.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId
+      },
+      select: {
+        countedQuantityBaseUom: true,
+        countedByUserId: true,
+        countedAt: true
+      }
+    });
+    if (lines.length === 0) {
+      throw new Error("STOCK_COUNT_HAS_NO_LINES");
+    }
+    if (lines.some((line) => line.countedQuantityBaseUom === null)) {
+      throw new Error("STOCK_COUNT_HAS_UNCOUNTED_LINES");
+    }
+    if (lines.some((line) => !line.countedByUserId || !line.countedAt)) {
+      throw new Error("STOCK_COUNT_ENTRY_LINEAGE_INCOMPLETE");
+    }
     const submitted = await tx.stockCountSession.updateMany({
       where: {
         id: count.id,
-        status: { in: ["IN_PROGRESS", "RECOUNT_REQUESTED"] }
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId,
+        assignedToUserId: session.user.id,
+        status: "IN_PROGRESS",
+        updatedAt: count.updatedAt
       },
       data: {
         status: "SUBMITTED",
-        submittedAt: new Date()
+        submittedAt: count.databaseNow
       }
     });
     if (submitted.count !== 1) {
-      throw new Error("STOCK_COUNT_NOT_OPEN_FOR_SUBMIT");
+      throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
     }
     await tx.auditEvent.create({
       data: {
@@ -783,7 +1258,7 @@ export async function submitStockCount(formData: FormData) {
         eventType: "stock_count.submitted",
         entityType: "StockCountSession",
         entityId: count.id,
-        beforeData: { status: count.status },
+        beforeData: { status: "IN_PROGRESS" },
         afterData: { status: "SUBMITTED" }
       }
     });
@@ -795,41 +1270,60 @@ export async function reviewStockCount(formData: FormData) {
   await requirePermission(session, permissions.stockCountReview);
   const values = reviewStockCountSchema.parse(Object.fromEntries(formData));
 
-  const count = await prisma.stockCountSession.findFirst({
-    where: scopedStockCountWhere(session, values.id),
-    include: {
-      lines: {
-        select: { countedByUserId: true }
-      }
-    }
-  });
-  if (!count) {
-    throw new Error("STOCK_COUNT_NOT_FOUND");
-  }
-  assertStockCountCanReview(count.status);
-  assertStockCountReviewerSegregation({
-    reviewerUserId: session.user.id,
-    createdByUserId: count.createdByUserId,
-    countedByUserIds: count.lines.map((line) => line.countedByUserId)
-  });
-
+  const target = await findScopedStockCountLocation(session, values.id);
   const nextStatus =
     values.reviewAction === "RECOUNT" ? "RECOUNT_REQUESTED" : "REVIEWED";
   await prisma.$transaction(async (tx) => {
+    await lockInventoryLocationForPosting(
+      tx,
+      session,
+      target.inventoryLocationId
+    );
+    const count = await lockScopedStockCount(
+      tx,
+      session,
+      target.id,
+      target.inventoryLocationId
+    );
+    await requirePermission(session, permissions.stockCountReview);
+    assertStockCountCanReview(count.status);
+    const lines = await tx.stockCountLine.findMany({
+      where: {
+        stockCountSessionId: count.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId
+      },
+      select: {
+        countedQuantityBaseUom: true,
+        countedByUserId: true,
+        countedAt: true
+      }
+    });
+    assertStockCountReviewLineage({ lines });
+    assertStockCountReviewerSegregation({
+      reviewerUserId: session.user.id,
+      createdByUserId: count.createdByUserId,
+      countedByUserIds: lines.map((line) => line.countedByUserId)
+    });
     const reviewed = await tx.stockCountSession.updateMany({
       where: {
         id: count.id,
-        status: "SUBMITTED"
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId,
+        status: "SUBMITTED",
+        updatedAt: count.updatedAt
       },
       data: {
         status: nextStatus,
-        reviewedAt: new Date(),
+        reviewedAt: count.databaseNow,
         reviewedByUserId: session.user.id,
         reviewNotes: values.reviewNotes
       }
     });
     if (reviewed.count !== 1) {
-      throw new Error("STOCK_COUNT_NOT_SUBMITTED_FOR_REVIEW");
+      throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
     }
     await tx.auditEvent.create({
       data: {
@@ -855,28 +1349,39 @@ export async function cancelStockCount(formData: FormData) {
   await requirePermission(session, permissions.stockCountCancel);
   const values = cancelStockCountSchema.parse(Object.fromEntries(formData));
 
-  const count = await prisma.stockCountSession.findFirst({
-    where: scopedStockCountWhere(session, values.id)
-  });
-  if (!count) {
-    throw new Error("STOCK_COUNT_NOT_FOUND");
-  }
-  assertStockCountCanCancel(count.status);
+  const target = await findScopedStockCountLocation(session, values.id);
 
   await prisma.$transaction(async (tx) => {
+    await lockInventoryLocationForPosting(
+      tx,
+      session,
+      target.inventoryLocationId
+    );
+    const count = await lockScopedStockCount(
+      tx,
+      session,
+      target.id,
+      target.inventoryLocationId
+    );
+    await requirePermission(session, permissions.stockCountCancel);
+    assertStockCountCanCancel(count.status);
     const cancelled = await tx.stockCountSession.updateMany({
       where: {
         id: count.id,
-        status: { notIn: ["REVIEWED", "CANCELLED"] }
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocationId: count.inventoryLocationId,
+        status: count.status,
+        updatedAt: count.updatedAt
       },
       data: {
         status: "CANCELLED",
-        cancelledAt: new Date(),
+        cancelledAt: count.databaseNow,
         cancellationReason: values.cancellationReason
       }
     });
     if (cancelled.count !== 1) {
-      throw new Error("STOCK_COUNT_NOT_CANCELLABLE");
+      throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
     }
     await tx.auditEvent.create({
       data: {
@@ -898,57 +1403,73 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.stockAdjustmentCreate);
   const values = stockCountActionSchema.parse(Object.fromEntries(formData));
-
-  const count = await prisma.stockCountSession.findFirst({
-    where: scopedStockCountWhere(session, values.id),
-    include: {
-      inventoryLocation: true,
-      lines: {
-        orderBy: { lineNumber: "asc" },
-        include: {
-          item: true,
-          uom: true
-        }
-      },
-      stockAdjustments: {
-        where: {
-          sourceStockCountSessionId: values.id
-        },
-        orderBy: { createdAt: "desc" },
-        take: 1
-      }
-    }
-  });
-  if (!count) {
-    throw new Error("STOCK_COUNT_NOT_FOUND");
-  }
-  assertAuthorizedLocation(session, count.inventoryLocation.locationId);
-  assertStockCountCanGenerateAdjustment(count.status);
-
-  const existingAdjustment = count.stockAdjustments[0];
-  if (existingAdjustment) {
-    return existingAdjustment.id;
-  }
-
-  const varianceLines = filterCountVarianceLines(count.lines);
-  if (varianceLines.length === 0) {
-    throw new Error("STOCK_COUNT_HAS_NO_VARIANCE_LINES");
-  }
+  const target = await findScopedStockCountLocation(session, values.id);
 
   let adjustmentId: string | null = null;
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
       const adjustment = await prisma.$transaction(async (tx) => {
+        await lockInventoryLocationForPosting(
+          tx,
+          session,
+          target.inventoryLocationId
+        );
+        const locked = await lockScopedStockCount(
+          tx,
+          session,
+          target.id,
+          target.inventoryLocationId
+        );
+        await requirePermission(session, permissions.stockAdjustmentCreate);
+        assertStockCountCanGenerateAdjustment(locked.status);
+
         const existing = await tx.stockAdjustment.findFirst({
           where: {
             tenantId: session.context.tenantId,
             companyId: session.context.companyId,
-            sourceStockCountSessionId: count.id
+            sourceStockCountSessionId: locked.id
           },
           select: { id: true }
         });
         if (existing) {
           return existing;
+        }
+
+        const count = await tx.stockCountSession.findFirst({
+          where: {
+            id: locked.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            inventoryLocationId: locked.inventoryLocationId,
+            status: "REVIEWED"
+          },
+          select: {
+            id: true,
+            publicReference: true,
+            inventoryLocationId: true,
+            lines: {
+              orderBy: { lineNumber: "asc" },
+              select: {
+                id: true,
+                itemId: true,
+                uomId: true,
+                lotNumber: true,
+                expiryDate: true,
+                systemQuantityBaseUom: true,
+                countedQuantityBaseUom: true,
+                varianceQuantityBaseUom: true,
+                notes: true,
+                uom: { select: { uomCode: true } }
+              }
+            }
+          }
+        });
+        if (!count) {
+          throw new Error("STOCK_COUNT_NOT_REVIEWED_FOR_ADJUSTMENT");
+        }
+        const varianceLines = filterCountVarianceLines(count.lines);
+        if (varianceLines.length === 0) {
+          throw new Error("STOCK_COUNT_HAS_NO_VARIANCE_LINES");
         }
 
         const created = await tx.stockAdjustment.create({

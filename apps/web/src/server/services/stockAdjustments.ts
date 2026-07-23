@@ -13,6 +13,7 @@ import {
   type SessionContext
 } from "./context";
 import {
+  lockInventoryLocationsForPosting,
   normalizeInventoryLotKey,
   postInventoryMovementInTransaction
 } from "./inventory";
@@ -1533,6 +1534,11 @@ export async function postStockAdjustment(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    const inventoryLocationLock = await lockInventoryLocationsForPosting(
+      tx,
+      session,
+      adjustment.lines.map((line) => line.inventoryLocationId)
+    );
     const claimed = await tx.stockAdjustment.updateMany({
       where: {
         id: adjustment.id,
@@ -1572,7 +1578,7 @@ export async function postStockAdjustment(formData: FormData) {
           : quantityDeltaBaseUom > 0
             ? "ADJUSTMENT_IN"
             : "ADJUSTMENT_OUT";
-      const { movement } = await postInventoryMovementInTransaction(tx, session, {
+      const { movement } = await postInventoryMovementInTransaction(tx, session, inventoryLocationLock, {
         inventoryLocationId: line.inventoryLocationId,
         itemId: line.itemId,
         movementType,
@@ -1674,6 +1680,16 @@ export async function reverseStockAdjustment(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    const inventoryLocationLock = await lockInventoryLocationsForPosting(
+      tx,
+      session,
+      adjustment.lines.flatMap((line) => [
+        line.postedMovement?.inventoryLocationId ?? line.inventoryLocationId,
+        ...(line.postedMovement?.relatedInventoryLocationId
+          ? [line.postedMovement.relatedInventoryLocationId]
+          : [])
+      ])
+    );
     const claimed = await tx.stockAdjustment.updateMany({
       where: {
         id: adjustment.id,
@@ -1729,7 +1745,7 @@ export async function reverseStockAdjustment(formData: FormData) {
         throw new Error("STOCK_ADJUSTMENT_LINE_ALREADY_REVERSED");
       }
 
-      const { movement } = await postInventoryMovementInTransaction(tx, session, {
+      const { movement } = await postInventoryMovementInTransaction(tx, session, inventoryLocationLock, {
         inventoryLocationId: original.inventoryLocationId,
         relatedInventoryLocationId: original.relatedInventoryLocationId,
         itemId: original.itemId,

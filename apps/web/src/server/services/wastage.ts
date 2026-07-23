@@ -8,7 +8,10 @@ import {
   requireSessionContext,
   type SessionContext
 } from "./context";
-import { postInventoryMovementInTransaction } from "./inventory";
+import {
+  lockInventoryLocationsForPosting,
+  postInventoryMovementInTransaction
+} from "./inventory";
 import {
   recordWorkflowNotifications
 } from "./notifications";
@@ -1682,6 +1685,11 @@ export async function postWastageReport(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    const inventoryLocationLock = await lockInventoryLocationsForPosting(
+      tx,
+      session,
+      report.lines.map((line) => line.inventoryLocationId)
+    );
     const claimed = await tx.wastageReport.updateMany({
       where: {
         id: report.id,
@@ -1715,7 +1723,7 @@ export async function postWastageReport(formData: FormData) {
       }
 
       const quantityBaseUom = Number(line.quantityBaseUom);
-      const { movement } = await postInventoryMovementInTransaction(tx, session, {
+      const { movement } = await postInventoryMovementInTransaction(tx, session, inventoryLocationLock, {
         inventoryLocationId: line.inventoryLocationId,
         itemId: line.itemId,
         movementType: "WASTAGE_OUT",
@@ -1829,6 +1837,16 @@ export async function reverseWastageReport(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    const inventoryLocationLock = await lockInventoryLocationsForPosting(
+      tx,
+      session,
+      report.lines.flatMap((line) => [
+        line.postedMovement?.inventoryLocationId ?? line.inventoryLocationId,
+        ...(line.postedMovement?.relatedInventoryLocationId
+          ? [line.postedMovement.relatedInventoryLocationId]
+          : [])
+      ])
+    );
     const claimed = await tx.wastageReport.updateMany({
       where: {
         id: report.id,
@@ -1881,7 +1899,7 @@ export async function reverseWastageReport(formData: FormData) {
       }
 
       const quantityDeltaBaseUom = Math.abs(Number(original.quantityDeltaBaseUom));
-      const { movement } = await postInventoryMovementInTransaction(tx, session, {
+      const { movement } = await postInventoryMovementInTransaction(tx, session, inventoryLocationLock, {
         inventoryLocationId: original.inventoryLocationId,
         relatedInventoryLocationId: original.relatedInventoryLocationId,
         itemId: original.itemId,

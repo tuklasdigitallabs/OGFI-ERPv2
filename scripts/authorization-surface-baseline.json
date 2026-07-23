@@ -10202,6 +10202,27 @@
     ]
   },
   {
+    "id": "my-tasks/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
     "id": "my-work/[taskId]/page.tsx#addChecklistItemAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -17555,6 +17576,27 @@
     "id": "server/services/branchOperations.ts#getBranchOperationsDashboardRead",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.branchOperationsView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/branchOperations.ts#listBranchOperationMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.branchOperationsReview | permissions.branchOperationsCreate | permissions.branchOperationsView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -25248,6 +25290,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/foodSafety.ts#listFoodSafetyMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.foodSafetyReview | permissions.foodSafetyCreate | permissions.foodSafetyView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/foodSafety.ts#returnFoodSafetyLogForCorrection",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.foodSafetyCorrect",
@@ -25527,6 +25590,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/incidents.ts#listIncidentMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.incidentResolve | permissions.incidentView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/incidents.ts#resolveOperationalIncident",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.incidentResolve",
@@ -25625,6 +25709,85 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/inventory.ts#lockInventoryLocationForPosting",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "single-location-delegation",
+      "tenant-company-location-row-lock",
+      "exact-lock-set"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"
+    ],
+    "noMutationControls": [
+      "InventoryLocation",
+      "InventoryMovement",
+      "InventoryBalance",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "server/services/inventory.ts#lockInventoryLocationsForPosting",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "tenant-company-location-row-lock",
+      "exact-lock-set"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"
+    ],
+    "noMutationControls": [
+      "InventoryLocation",
+      "InventoryMovement",
+      "InventoryBalance",
+      "AuditEvent"
+    ]
   },
   {
     "id": "server/services/inventory.ts#postInventoryMovement",
@@ -26228,7 +26391,7 @@
   {
     "id": "server/services/maintenance.ts#correctMaintenanceTicket",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.maintenanceCreate",
+    "permission": "permissions.maintenanceCorrect",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -26381,6 +26544,62 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/maintenance.ts#listMaintenanceMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.maintenanceComplete | permissions.maintenanceView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/myTasks.ts#getMyTasksPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "permissionSource": "REVIEWED_SERVICE_COMPOSITION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "permission-gated-source-enrollment"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "read-only personal task aggregation"
+    ]
   },
   {
     "id": "server/services/notifications.ts#archiveNotification",
@@ -31540,6 +31759,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/purchaseOrders.ts#listPurchaseOrderMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.purchaseOrderSubmit | permissions.purchaseOrderIssue | permissions.purchaseOrderView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/purchaseOrders.ts#listPurchaseOrders",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.purchaseOrderView",
@@ -31962,6 +32202,27 @@
     "guardChain": [
       "session-delegated-by-caller",
       "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/purchaseRequests.ts#listPurchaseRequestMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.purchaseRequestSubmit",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
@@ -32439,6 +32700,27 @@
     "id": "server/services/receiving.ts#listReceivablePurchaseOrders",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.receivingCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/receiving.ts#listReceivingMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.receivingPost | permissions.receivingView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -33679,6 +33961,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/stockAdjustments.ts#listStockAdjustmentMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.stockAdjustmentPost | permissions.stockAdjustmentView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/stockAdjustments.ts#listStockAdjustments",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockAdjustmentView",
@@ -33841,7 +34144,7 @@
   {
     "id": "server/services/stockCounts.ts#buildStockCountExportRows",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockCountReview | permissions.stockCountView",
+    "permission": "permissions.stockCountView | permissions.stockCountReview",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -33957,7 +34260,7 @@
   {
     "id": "server/services/stockCounts.ts#getStockCount",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockCountReview | permissions.stockCountView",
+    "permission": "permissions.stockCountView | permissions.stockCountReview",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -34018,9 +34321,30 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/stockCounts.ts#listStockCountMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.stockCountEnter | permissions.stockCountSubmit",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/stockCounts.ts#listStockCounts",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockCountReview | permissions.stockCountView",
+    "permission": "permissions.stockCountView | permissions.stockCountReview",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -34737,6 +35061,27 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/transfers.ts#listTransferMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.transferDispatch | permissions.transferReceive | permissions.transferView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/transfers.ts#receiveInventoryTransfer",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.transferReceive",
@@ -35041,6 +35386,27 @@
     "id": "server/services/wastage.ts#listWastageFormOptions",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.wastageCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/wastage.ts#listWastageMyTaskPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.wastageReview | permissions.wastagePost | permissions.wastageView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
