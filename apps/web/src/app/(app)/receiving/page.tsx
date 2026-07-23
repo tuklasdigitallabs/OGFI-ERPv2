@@ -64,7 +64,7 @@ function getQuery(searchParams: Record<string, string | string[] | undefined>) {
   return (getStringParam(searchParams, "q") ?? "").trim();
 }
 
-function receivingHref(tab: ReceivingTab, page = 1) {
+function receivingHref(tab: ReceivingTab, page = 1, query?: string) {
   const params = new URLSearchParams();
   if (tab !== "all") {
     params.set("tab", tab);
@@ -72,8 +72,11 @@ function receivingHref(tab: ReceivingTab, page = 1) {
   if (page > 1) {
     params.set("page", String(page));
   }
-  const query = params.toString();
-  return query ? `/receiving?${query}` : "/receiving";
+  if (query) {
+    params.set("q", query);
+  }
+  const serialized = params.toString();
+  return serialized ? `/receiving?${serialized}` : "/receiving";
 }
 
 async function createReceiptAction(formData: FormData) {
@@ -183,7 +186,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
   const [registerPage, receivableOrders] = profile
     ? [null, []]
     : await Promise.all([
-        listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE }),
+        listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE, ...(query ? { query } : {}) }),
         canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([])
       ]);
   const receipts = registerPage?.items ?? [];
@@ -266,7 +269,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
                 <ButtonLink
                   href={profile
                     ? `/receiving/export?dashboard=${profile}${profilePage?.query ? `&q=${encodeURIComponent(profilePage.query)}` : ""}`
-                    : "/receiving/export"}
+                    : `/receiving/export?tab=${activeTab}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
                   className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
@@ -307,36 +310,50 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               ) : null}
             </form>
           ) : (
+          <>
+            <form className="border-b border-slate-100 p-4 flex gap-2" method="get">
+              <input type="hidden" name="tab" value={activeTab} />
+              <input
+                className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 text-sm"
+                name="q"
+                defaultValue={query}
+                maxLength={120}
+                placeholder="Search GRN, Purchase Order, or supplier"
+              />
+              <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white">Search</button>
+              {query ? <ButtonLink href={receivingHref(activeTab)} tone="secondary">Clear</ButtonLink> : null}
+            </form>
           <div className="border-b border-slate-100 p-4">
             <WorkspaceTabs
               items={[
                 {
                   label: "All receipts",
-                  href: receivingHref("all"),
+                  href: receivingHref("all", 1, query),
                   active: activeTab === "all",
                   count: registerPage?.tabCounts.all ?? 0
                 },
                 {
                   label: "Draft",
-                  href: receivingHref("draft"),
+                  href: receivingHref("draft", 1, query),
                   active: activeTab === "draft",
                   count: registerPage?.tabCounts.draft ?? 0
                 },
                 {
                   label: "Posted",
-                  href: receivingHref("posted"),
+                  href: receivingHref("posted", 1, query),
                   active: activeTab === "posted",
                   count: registerPage?.tabCounts.posted ?? 0
                 },
                 {
                   label: "Discrepancies",
-                  href: receivingHref("discrepancies"),
+                  href: receivingHref("discrepancies", 1, query),
                   active: activeTab === "discrepancies",
                   count: registerPage?.tabCounts.discrepancies ?? 0
                 }
               ]}
             />
           </div>
+          </>
           )}
           {profile ? (
             profilePage && profilePage.items.length > 0 ? (
@@ -455,7 +472,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               pageSize={registerPage?.pageSize ?? PAGE_SIZE}
               totalItems={registerPage?.totalItems ?? 0}
               itemLabel="receipts"
-              getPageHref={(nextPage) => receivingHref(activeTab, nextPage)}
+              getPageHref={(nextPage) => receivingHref(activeTab, nextPage, query)}
             />
           ) : null}
         </section>

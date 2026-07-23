@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Receiving Register Query and Export Parity
+
+- Added a bounded server-side GRN/PO/supplier query to the ordinary Receiving register and carried the active query/tab into full-result CSV export. Follow-up dashboard filtering remains isolated.
+
 ## 2026-07-24 — Server-Paginated Receiving Register
 
 - Moved the ordinary Receiving register to server-side tab filtering, bounded pagination, deterministic ordering, and server tab counts; the follow-up profile remains separately paginated.

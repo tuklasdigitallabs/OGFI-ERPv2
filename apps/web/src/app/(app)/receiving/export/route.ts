@@ -42,6 +42,11 @@ export async function GET(request: Request) {
     )!;
   }
   const query = profile ? searchParams.get("q") ?? undefined : undefined;
+  const ordinaryQuery = profile ? undefined : searchParams.get("q") ?? undefined;
+  const tabParam = searchParams.get("tab") ?? "all";
+  const tab = ["all", "draft", "posted", "discrepancies"].includes(tabParam)
+    ? (tabParam as "all" | "draft" | "posted" | "discrepancies")
+    : "all";
   if (query && query.trim().length > 120) {
     return exportErrorResponse(
       new Error("RECEIVING_DASHBOARD_PROFILE_SEARCH_TOO_LONG")
@@ -49,7 +54,7 @@ export async function GET(request: Request) {
   }
   const auditMetadata = profile
     ? { dashboardProfile: profile, searchQuery: query?.trim() || null }
-    : undefined;
+    : { tab, searchQuery: ordinaryQuery?.trim() || null };
 
   try {
     await logOperationalExportAudit({
@@ -61,7 +66,8 @@ export async function GET(request: Request) {
     const rows = await buildReceivingReportExportRows(
       session,
       profile ?? undefined,
-      query
+      profile ? query : ordinaryQuery,
+      profile ? "all" : tab
     );
     await logOperationalExportAudit({
       session,

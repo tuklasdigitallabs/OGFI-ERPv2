@@ -812,7 +812,7 @@ export async function listGoodsReceipts(session: SessionContext) {
 
 export async function listGoodsReceiptPage(
   session: SessionContext,
-  input: { tab?: ReceivingRegisterTab; page?: number; pageSize?: number } = {}
+  input: { tab?: ReceivingRegisterTab; page?: number; pageSize?: number; query?: string } = {}
 ) {
   await requireReceivingRead(session);
   const tab = input.tab ?? "all";
@@ -820,13 +820,27 @@ export async function listGoodsReceiptPage(
   const rawPage = Number(input.page ?? 1);
   const pageSize = Math.min(50, Math.max(1, Number.isFinite(rawPageSize) ? Math.trunc(rawPageSize) : 10));
   const requestedPage = Math.max(1, Number.isFinite(rawPage) ? Math.trunc(rawPage) : 1);
-  const where = {
+  const query = input.query?.trim() || undefined;
+  if (query && query.length > 120) {
+    throw new Error("RECEIVING_SEARCH_QUERY_TOO_LONG");
+  }
+  const where: Prisma.GoodsReceiptWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     receivingLocationId: session.context.locationId,
     ...(tab === "draft" ? { status: "DRAFT" } : {}),
     ...(tab === "posted" ? { status: { not: "DRAFT" } } : {}),
-    ...(tab === "discrepancies" ? { discrepancyFlag: true } : {})
+    ...(tab === "discrepancies" ? { discrepancyFlag: true } : {}),
+    ...(query
+      ? {
+          OR: [
+            { publicReference: { contains: query, mode: "insensitive" } },
+            { purchaseOrder: { publicReference: { contains: query, mode: "insensitive" } } },
+            { supplier: { legalName: { contains: query, mode: "insensitive" } } },
+            { supplier: { tradingName: { contains: query, mode: "insensitive" } } }
+          ]
+        }
+      : {})
   };
   const totalItems = await prisma.goodsReceipt.count({ where });
   const baseWhere = {
@@ -869,7 +883,8 @@ export async function listGoodsReceiptPage(
 export async function buildReceivingReportExportRows(
   session: SessionContext,
   profile?: ReceivingDashboardProfile,
-  query?: string
+  query?: string,
+  tab: ReceivingRegisterTab = "all"
 ) {
   await requireReceivingRead(session);
 
@@ -918,7 +933,20 @@ export async function buildReceivingReportExportRows(
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      receivingLocationId: session.context.locationId
+      receivingLocationId: session.context.locationId,
+      ...(tab === "draft" ? { status: "DRAFT" } : {}),
+      ...(tab === "posted" ? { status: { not: "DRAFT" } } : {}),
+      ...(tab === "discrepancies" ? { discrepancyFlag: true } : {}),
+      ...(query?.trim()
+        ? {
+            OR: [
+              { publicReference: { contains: query.trim(), mode: "insensitive" } },
+              { purchaseOrder: { publicReference: { contains: query.trim(), mode: "insensitive" } } },
+              { supplier: { legalName: { contains: query.trim(), mode: "insensitive" } } },
+              { supplier: { tradingName: { contains: query.trim(), mode: "insensitive" } } }
+            ]
+          }
+        : {})
     },
     include: {
       purchaseOrder: true,
