@@ -755,6 +755,38 @@ async function getBaseQuantity(
   return acceptedQty * Number(conversion.conversionFactor);
 }
 
+type ReceivingRegisterTab = "all" | "draft" | "posted" | "discrepancies";
+
+function mapGoodsReceipt(receipt: {
+  id: string;
+  publicReference: string;
+  purchaseOrder: { publicReference: string; status: string; expectedDeliveryDate: Date };
+  supplier: { tradingName: string | null; legalName: string };
+  receivedBy: { displayName: string };
+  reversedBy: { displayName: string } | null;
+  receivedAt: Date;
+  reversedAt: Date | null;
+  status: string;
+  lines: { id: string }[];
+  discrepancyFlag: boolean;
+}) {
+  return {
+    id: receipt.id,
+    publicReference: receipt.publicReference,
+    purchaseOrderReference: receipt.purchaseOrder.publicReference,
+    purchaseOrderStatus: receipt.purchaseOrder.status,
+    purchaseOrderExpectedDeliveryDate: receipt.purchaseOrder.expectedDeliveryDate.toISOString().slice(0, 10),
+    supplierName: receipt.supplier.tradingName ?? receipt.supplier.legalName,
+    receivedByName: receipt.receivedBy.displayName,
+    reversedByName: receipt.reversedBy?.displayName ?? null,
+    receivedAt: receipt.receivedAt.toISOString(),
+    reversedAt: receipt.reversedAt?.toISOString() ?? null,
+    status: receipt.status,
+    lineCount: receipt.lines.length,
+    discrepancyFlag: receipt.discrepancyFlag
+  };
+}
+
 export async function listGoodsReceipts(session: SessionContext) {
   await requireReceivingRead(session);
 
@@ -775,23 +807,63 @@ export async function listGoodsReceipts(session: SessionContext) {
     orderBy: { createdAt: "desc" }
   });
 
-  return receipts.map((receipt) => ({
-    id: receipt.id,
-    publicReference: receipt.publicReference,
-    purchaseOrderReference: receipt.purchaseOrder.publicReference,
-    purchaseOrderStatus: receipt.purchaseOrder.status,
-    purchaseOrderExpectedDeliveryDate: receipt.purchaseOrder.expectedDeliveryDate
-      .toISOString()
-      .slice(0, 10),
-    supplierName: receipt.supplier.tradingName ?? receipt.supplier.legalName,
-    receivedByName: receipt.receivedBy.displayName,
-    reversedByName: receipt.reversedBy?.displayName ?? null,
-    receivedAt: receipt.receivedAt.toISOString(),
-    reversedAt: receipt.reversedAt?.toISOString() ?? null,
-    status: receipt.status,
-    lineCount: receipt.lines.length,
-    discrepancyFlag: receipt.discrepancyFlag
-  }));
+  return receipts.map(mapGoodsReceipt);
+}
+
+export async function listGoodsReceiptPage(
+  session: SessionContext,
+  input: { tab?: ReceivingRegisterTab; page?: number; pageSize?: number } = {}
+) {
+  await requireReceivingRead(session);
+  const tab = input.tab ?? "all";
+  const rawPageSize = Number(input.pageSize ?? 10);
+  const rawPage = Number(input.page ?? 1);
+  const pageSize = Math.min(50, Math.max(1, Number.isFinite(rawPageSize) ? Math.trunc(rawPageSize) : 10));
+  const requestedPage = Math.max(1, Number.isFinite(rawPage) ? Math.trunc(rawPage) : 1);
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    receivingLocationId: session.context.locationId,
+    ...(tab === "draft" ? { status: "DRAFT" } : {}),
+    ...(tab === "posted" ? { status: { not: "DRAFT" } } : {}),
+    ...(tab === "discrepancies" ? { discrepancyFlag: true } : {})
+  };
+  const totalItems = await prisma.goodsReceipt.count({ where });
+  const baseWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    receivingLocationId: session.context.locationId
+  };
+  const [allItems, draftItems, postedItems, discrepancyItems] = await Promise.all([
+    prisma.goodsReceipt.count({ where: baseWhere }),
+    prisma.goodsReceipt.count({ where: { ...baseWhere, status: "DRAFT" } }),
+    prisma.goodsReceipt.count({ where: { ...baseWhere, status: { not: "DRAFT" } } }),
+    prisma.goodsReceipt.count({ where: { ...baseWhere, discrepancyFlag: true } })
+  ]);
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const receipts = await prisma.goodsReceipt.findMany({
+    where,
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+    include: {
+      purchaseOrder: true,
+      supplier: true,
+      receivingLocation: true,
+      receivedBy: true,
+      reversedBy: true,
+      lines: true
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+  });
+  return {
+    items: receipts.map(mapGoodsReceipt),
+    totalItems,
+    page,
+    pageSize,
+    totalPages,
+    tabCounts: { all: allItems, draft: draftItems, posted: postedItems, discrepancies: discrepancyItems }
+  };
 }
 
 export async function buildReceivingReportExportRows(

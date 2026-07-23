@@ -11,6 +11,7 @@ import {
   getReceivingDashboardRead,
   isReceivingFollowUp,
   listReceivingDashboardProfilePage,
+  listGoodsReceiptPage,
   listReceivingMyTaskPage,
   receivingDashboardProfileHref,
   receivingDashboardProfileWhere,
@@ -58,6 +59,35 @@ describe("receiving foundation rules", () => {
 
     expect(source).toContain("canUseReceiving(session.permissionCodes)");
     expect(source).toContain("receivingReverse");
+  });
+
+  test("ordinary register is server-paged with scoped tab predicates and stable ordering", async () => {
+    mockPrisma.goodsReceipt.count.mockResolvedValue(25);
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([]);
+    const result = await listGoodsReceiptPage(dashboardSession as never, {
+      tab: "discrepancies",
+      page: 99,
+      pageSize: 1000
+    });
+    expect(result.pageSize).toBe(50);
+    expect(result.page).toBe(1);
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 50,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        where: expect.objectContaining({
+          tenantId: dashboardSession.context.tenantId,
+          companyId: dashboardSession.context.companyId,
+          receivingLocationId: dashboardSession.context.locationId,
+          discrepancyFlag: true
+        })
+      })
+    );
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/receiving/page.tsx"), "utf8");
+    expect(pageSource).toContain("listGoodsReceiptPage");
+    expect(pageSource).toContain("totalItems={registerPage?.totalItems ?? 0}");
+    expect(pageSource).not.toContain("visibleReceipts.slice(");
   });
 
   test("dashboard read authorizes and queries only scoped, bounded receipt candidates", async () => {

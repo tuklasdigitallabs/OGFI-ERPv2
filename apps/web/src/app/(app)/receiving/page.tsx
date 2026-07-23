@@ -19,8 +19,8 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportReceivingReports } from "@/server/services/exportAuthorization";
 import {
   createGoodsReceiptFromPurchaseOrder,
+  listGoodsReceiptPage,
   listReceivingDashboardProfilePage,
-  listGoodsReceipts,
   listReceivablePurchaseOrders,
   postGoodsReceipt,
   receivingDashboardProfileHref,
@@ -178,33 +178,19 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
         ...(query ? { query } : {})
       })
     : null;
-  const [workspaceReceipts, receivableOrders] = profile
-    ? [null, []]
-    : await Promise.all([
-        listGoodsReceipts(session),
-        canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([])
-      ]);
-  const receipts = workspaceReceipts ?? [];
-  const actionFeedback = getActionFeedback(params);
   const activeTab = getReceivingTab(params);
   const page = getPage(params);
-  const draftReceipts = receipts.filter((receipt) => receipt.status === "DRAFT");
-  const postedReceipts = receipts.filter((receipt) => receipt.status !== "DRAFT");
-  const discrepantReceipts = receipts.filter((receipt) => receipt.discrepancyFlag);
-  const visibleReceipts =
-    activeTab === "draft"
-      ? draftReceipts
-      : activeTab === "posted"
-        ? postedReceipts
-        : activeTab === "discrepancies"
-          ? discrepantReceipts
-          : receipts;
-  const pageCount = Math.max(1, Math.ceil(visibleReceipts.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const pagedReceipts = visibleReceipts.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE
-  );
+  const [registerPage, receivableOrders] = profile
+    ? [null, []]
+    : await Promise.all([
+        listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE }),
+        canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([])
+      ]);
+  const receipts = registerPage?.items ?? [];
+  const actionFeedback = getActionFeedback(params);
+  const visibleReceipts = receipts;
+  const safePage = registerPage?.page ?? 1;
+  const pagedReceipts = visibleReceipts;
   const emptyCopy =
     activeTab === "draft"
       ? {
@@ -267,7 +253,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               <p className="text-sm text-slate-500">
                 {profile
                   ? `${profilePage?.totalItems ?? 0} unposted, processing, or discrepancy records at ${session.context.locationName}`
-                  : `${receipts.length} total, ${draftReceipts.length} draft, ${discrepantReceipts.length} with discrepancies`}
+                  : `${registerPage?.tabCounts.all ?? 0} total, ${registerPage?.tabCounts.draft ?? 0} draft, ${registerPage?.tabCounts.discrepancies ?? 0} with discrepancies`}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -328,25 +314,25 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
                   label: "All receipts",
                   href: receivingHref("all"),
                   active: activeTab === "all",
-                  count: receipts.length
+                  count: registerPage?.tabCounts.all ?? 0
                 },
                 {
                   label: "Draft",
                   href: receivingHref("draft"),
                   active: activeTab === "draft",
-                  count: draftReceipts.length
+                  count: registerPage?.tabCounts.draft ?? 0
                 },
                 {
                   label: "Posted",
                   href: receivingHref("posted"),
                   active: activeTab === "posted",
-                  count: postedReceipts.length
+                  count: registerPage?.tabCounts.posted ?? 0
                 },
                 {
                   label: "Discrepancies",
                   href: receivingHref("discrepancies"),
                   active: activeTab === "discrepancies",
-                  count: discrepantReceipts.length
+                  count: registerPage?.tabCounts.discrepancies ?? 0
                 }
               ]}
             />
@@ -466,8 +452,8 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
           ) : !profile && visibleReceipts.length > 0 ? (
             <PaginationBar
               page={safePage}
-              pageSize={PAGE_SIZE}
-              totalItems={visibleReceipts.length}
+              pageSize={registerPage?.pageSize ?? PAGE_SIZE}
+              totalItems={registerPage?.totalItems ?? 0}
               itemLabel="receipts"
               getPageHref={(nextPage) => receivingHref(activeTab, nextPage)}
             />

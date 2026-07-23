@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Server-Paginated Receiving Register
+
+- Moved the ordinary Receiving register to server-side tab filtering, bounded pagination, deterministic ordering, and server tab counts; the follow-up profile remains separately paginated.
+
 ## 2026-07-24 — Server-Paginated Stock Balances
 
 - Moved ordinary Stock Balances filtering and paging to the server with bounded pages, deterministic ordering, query-aware tab counts, and unchanged full-result export semantics.
