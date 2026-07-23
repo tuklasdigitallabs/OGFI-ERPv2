@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Branch Operations My Tasks Enrollment
+
+- Confirmed and implemented `DEC-0064`: `My Tasks` now enrolls independently reviewable Branch Operations checklists and role-pooled returned-checklist correction work through one scoped, read-only, count/page-parity adapter. Final close remains deferred pending its self-action/final-signoff policy.
+- Hardened direct review and Return-for-Correction so missing opener or latest-submitter lineage fails closed before mutation, and aligned the visible Return control with `restaurant.branch_operations.correct`.
+- Updated My Tasks copy, glossary, user guidance, and the Branch Operations workflow to distinguish personal work from role-pooled work and preserve source-record reauthorization.
+
 ## 2026-07-23 — Action-First Overview Checkpoint
 
 - Added confirmed `DEC-0053`, selecting a bounded, scope-authorized dashboard read contract with closed server-generated drilldowns, per-source degradation requirements, and target-service reauthorization. The earlier Phase I KPI-first wording was aligned with the core action-first dashboard standard.

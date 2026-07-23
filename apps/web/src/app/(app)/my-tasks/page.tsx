@@ -36,7 +36,7 @@ export default async function MyTasksPage({
     <AppShell
       session={session}
       title="My Tasks"
-      subtitle="Current controlled actions assigned to your selected operating scope"
+      subtitle="Current controlled actions available in your selected operating scope"
       activeNav="my-tasks"
     >
       <section className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
@@ -48,7 +48,7 @@ export default async function MyTasksPage({
             <div>
               <h2 className="text-base font-bold text-slate-950">Current action queue</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                This initial queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, and Receiving controls. Use each source workspace for other approved work.
+                This controlled queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, Receiving, and eligible Branch Operations controls. Some branch actions are role-pooled rather than personally assigned. Use each source workspace for other approved work.
               </p>
             </div>
           </div>

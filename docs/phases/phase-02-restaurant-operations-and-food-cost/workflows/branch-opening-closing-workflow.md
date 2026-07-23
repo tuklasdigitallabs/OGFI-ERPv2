@@ -64,6 +64,9 @@ Submitted → Manager Review → Closed
    mutation.
 9. Desktop/tablet/mobile actions: list, detail, create modal, review, return,
    correction apply, close, and export.
+   The shared `My Tasks` queue may surface independent review work and pooled
+   returned-checklist correction work, but the source detail reauthorizes every
+   action. Final close is not enrolled until its self-action policy is confirmed.
 10. Reports and UAT scenarios: covered by the Phase II UAT scenarios and
     Restaurant Ops export/report specs.
 

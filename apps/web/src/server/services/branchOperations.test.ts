@@ -7,6 +7,7 @@ import {
   closeBranchOperationChecklist,
   createBranchOperationChecklist,
   filterBranchOperationChecklists,
+  listBranchOperationMyTaskPage,
   reviewBranchOperationChecklist,
   returnBranchOperationChecklistForCorrection,
   type BranchOperationChecklistSummary
@@ -15,6 +16,10 @@ import {
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
   userRoleAssignment: {
+    findMany: vi.fn()
+  },
+  branchOperationalChecklist: {
+    count: vi.fn(),
     findMany: vi.fn()
   }
 }));
@@ -339,6 +344,43 @@ describe("Phase 2 branch operations foundation", () => {
 
     expect(tx.branchOperationalChecklist.updateMany).not.toHaveBeenCalled();
     expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("fails review and return closed when checklist actor lineage is incomplete", async () => {
+    const incomplete = {
+      id: "00000000-0000-4000-8000-000000000301",
+      businessDate: new Date("2026-07-03T00:00:00.000Z"),
+      status: "SUBMITTED",
+      openedByUserId: null,
+      submittedByUserId: "00000000-0000-4000-8000-000000000202",
+      reviewedAt: null,
+      reviewedByUserId: null,
+      exceptionCount: 0
+    };
+    for (const [permission, action, form] of [
+      [permissions.branchOperationsReview, reviewBranchOperationChecklist, branchReviewForm],
+      [permissions.branchOperationsCorrect, returnBranchOperationChecklistForCorrection, branchReturnCorrectionForm]
+    ] as const) {
+      mockContext.requireSessionContext.mockResolvedValueOnce({
+        ...session,
+        permissionCodes: [permission]
+      });
+      mockPrisma.userRoleAssignment.findMany.mockResolvedValueOnce([
+        { role: { permissions: [{ permission: { tenantId: session.context.tenantId, code: permission } }] } }
+      ]);
+      const tx = {
+        branchOperationalChecklist: {
+          findFirst: vi.fn().mockResolvedValue(incomplete),
+          updateMany: vi.fn()
+        }
+      };
+      mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
+
+      await expect(action(form())).rejects.toThrow(
+        "BRANCH_CHECKLIST_ACTOR_LINEAGE_REQUIRED"
+      );
+      expect(tx.branchOperationalChecklist.updateMany).not.toHaveBeenCalled();
+    }
   });
 
   it("closes reviewed branch checklists with reason and audit history", async () => {
@@ -925,5 +967,79 @@ describe("Phase 2 branch operations foundation", () => {
         status: "ALL"
       }).map((checklist) => checklist.id)
     ).toEqual(["checklist-1", "checklist-2"]);
+  });
+});
+
+describe("Branch Operations My Tasks adapter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.branchOperationalChecklist.count.mockResolvedValue(2);
+    mockPrisma.branchOperationalChecklist.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000301",
+        checklistName: "Opening Readiness",
+        status: "SUBMITTED",
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        shiftType: "OPENING",
+        createdAt: new Date("2026-07-23T01:00:00.000Z"),
+        location: { name: "SM North Edsa" }
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000302",
+        checklistName: "Closing Readiness",
+        status: "RETURNED",
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        shiftType: "CLOSING",
+        createdAt: new Date("2026-07-23T02:00:00.000Z"),
+        location: { name: "SM North Edsa" }
+      }
+    ]);
+  });
+
+  it("uses one scoped predicate for independent review and pooled correction tasks", async () => {
+    const actor = {
+      ...session,
+      permissionCodes: [
+        permissions.branchOperationsReview,
+        permissions.branchOperationsCreate
+      ]
+    };
+
+    await expect(listBranchOperationMyTaskPage(actor as never)).resolves.toMatchObject({
+      totalCount: 2,
+      items: [
+        { actionLabel: "Review branch checklist", status: "SUBMITTED" },
+        { actionLabel: "Correct and resubmit checklist", status: "RETURNED" }
+      ]
+    });
+    const countWhere = mockPrisma.branchOperationalChecklist.count.mock.calls[0]![0].where;
+    const pageWhere = mockPrisma.branchOperationalChecklist.findMany.mock.calls[0]![0].where;
+    expect(pageWhere).toEqual(countWhere);
+    expect(countWhere).toMatchObject({
+      tenantId: actor.context.tenantId,
+      companyId: actor.context.companyId,
+      brandId: actor.context.brandId,
+      locationId: actor.context.locationId,
+      OR: [
+        expect.objectContaining({
+          status: { in: ["SUBMITTED", "MANAGER_REVIEW"] },
+          openedByUserId: { not: null },
+          submittedByUserId: { not: null },
+          NOT: [
+            { openedByUserId: actor.user.id },
+            { submittedByUserId: actor.user.id }
+          ]
+        }),
+        { status: "RETURNED" }
+      ]
+    });
+  });
+
+  it("does not query tasks for a view-only user", async () => {
+    await expect(
+      listBranchOperationMyTaskPage({ ...session, permissionCodes: [permissions.branchOperationsView] } as never)
+    ).resolves.toEqual({ totalCount: 0, items: [], nextCursor: null });
+    expect(mockPrisma.branchOperationalChecklist.count).not.toHaveBeenCalled();
+    expect(mockPrisma.branchOperationalChecklist.findMany).not.toHaveBeenCalled();
   });
 });

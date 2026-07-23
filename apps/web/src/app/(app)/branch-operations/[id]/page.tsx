@@ -132,6 +132,15 @@ export default async function BranchOperationChecklistDetailPage({
   const canReview =
     session.permissionCodes.includes(permissions.branchOperationsReview) &&
     ["SUBMITTED", "MANAGER_REVIEW"].includes(checklist.status) &&
+    Boolean(checklist.openedByUserId) &&
+    Boolean(checklist.submittedByUserId) &&
+    checklist.openedByUserId !== session.user.id &&
+    checklist.submittedByUserId !== session.user.id;
+  const canReturn =
+    session.permissionCodes.includes(permissions.branchOperationsCorrect) &&
+    ["SUBMITTED", "MANAGER_REVIEW"].includes(checklist.status) &&
+    Boolean(checklist.openedByUserId) &&
+    Boolean(checklist.submittedByUserId) &&
     checklist.openedByUserId !== session.user.id &&
     checklist.submittedByUserId !== session.user.id;
   const canClose =
@@ -210,7 +219,7 @@ export default async function BranchOperationChecklistDetailPage({
               </form>
             </EntryModal>
           ) : null}
-          {canReview ? (
+          {canReturn ? (
             <EntryModal
               title="Return Branch Checklist"
               triggerLabel="Return for Correction"

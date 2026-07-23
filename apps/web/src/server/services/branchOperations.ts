@@ -13,6 +13,10 @@ import {
 } from "./context";
 import { recordOperationalStatusTransition } from "./operationalWorkflow";
 import { parseDateOnlyUtc } from "./projectDates";
+import {
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 
 type BranchOperationalChecklistWithLines =
   Prisma.BranchOperationalChecklistGetPayload<{
@@ -107,6 +111,22 @@ export type BranchOperationsExportFilters = {
   shift?: string;
   status?: string;
   businessDate?: string;
+};
+
+export type BranchOperationMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    recordId: string;
+    publicReference: string;
+    status: string;
+    actionLabel: "Review branch checklist" | "Correct and resubmit checklist";
+    locationName: string;
+    businessDate: string;
+    shiftType: string;
+    createdAt: string;
+  }>;
+  nextCursor: DashboardTaskCursor | null;
 };
 
 const reviewableChecklistStatuses = [
@@ -609,6 +629,90 @@ export async function getBranchOperationsDashboardRead(
   };
 }
 
+/**
+ * Returns only branch-checklist work with a currently executable focused
+ * action. Review tasks fail closed when actor lineage is incomplete and never
+ * include the opener or latest submitter. Returned corrections remain pooled
+ * work for scoped creators because the source workflow has no assignee field.
+ * Final close is intentionally excluded pending a confirmed self-action policy.
+ */
+export async function listBranchOperationMyTaskPage(
+  session: SessionContext,
+  input: { after?: DashboardTaskCursor; take?: number } = {}
+): Promise<BranchOperationMyTaskPage> {
+  assertBranchOperationsAccess(session);
+
+  const actionPredicates: Prisma.BranchOperationalChecklistWhereInput[] = [
+    ...(session.permissionCodes.includes(permissions.branchOperationsReview)
+      ? [{
+          status: { in: [...reviewableChecklistStatuses] },
+          openedByUserId: { not: null },
+          submittedByUserId: { not: null },
+          NOT: [
+            { openedByUserId: session.user.id },
+            { submittedByUserId: session.user.id }
+          ]
+        } satisfies Prisma.BranchOperationalChecklistWhereInput]
+      : []),
+    ...(session.permissionCodes.includes(permissions.branchOperationsCreate)
+      ? [{ status: "RETURNED" } satisfies Prisma.BranchOperationalChecklistWhereInput]
+      : [])
+  ];
+  if (actionPredicates.length === 0) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+
+  const take = Math.min(Math.max(input.take ?? 25, 1), 50);
+  const afterWhere = dashboardTaskAfterWhere("BRANCH_OPERATION", input.after);
+  const baseWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId,
+    OR: actionPredicates
+  } satisfies Prisma.BranchOperationalChecklistWhereInput;
+  const [totalCount, rows] = await Promise.all([
+    prisma.branchOperationalChecklist.count({ where: baseWhere }),
+    prisma.branchOperationalChecklist.findMany({
+      where: afterWhere ? { ...baseWhere, AND: [afterWhere] } : baseWhere,
+      select: {
+        id: true,
+        checklistName: true,
+        status: true,
+        businessDate: true,
+        shiftType: true,
+        createdAt: true,
+        location: { select: { name: true } }
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: take + 1
+    })
+  ]);
+  const hasMore = rows.length > take;
+  const items = rows.slice(0, take).map((row) => ({
+    taskId: `branch-operation-${row.id}`,
+    recordId: row.id,
+    publicReference: row.checklistName,
+    status: row.status,
+    actionLabel: row.status === "RETURNED"
+      ? "Correct and resubmit checklist" as const
+      : "Review branch checklist" as const,
+    locationName: row.location.name,
+    businessDate: row.businessDate.toISOString().slice(0, 10),
+    shiftType: row.shiftType,
+    createdAt: row.createdAt.toISOString()
+  }));
+  const last = items.at(-1);
+
+  return {
+    totalCount,
+    items,
+    nextCursor: hasMore && last
+      ? { createdAt: last.createdAt, sourceType: "BRANCH_OPERATION", recordId: last.recordId }
+      : null
+  };
+}
+
 export async function getBranchOperationChecklistSummary(
   session: SessionContext,
   checklistId: string
@@ -742,6 +846,9 @@ export async function reviewBranchOperationChecklist(formData: FormData) {
     if (!(reviewableChecklistStatuses as readonly string[]).includes(current.status)) {
       throw new Error("BRANCH_CHECKLIST_STATUS_NOT_REVIEWABLE");
     }
+    if (!current.openedByUserId || !current.submittedByUserId) {
+      throw new Error("BRANCH_CHECKLIST_ACTOR_LINEAGE_REQUIRED");
+    }
     if (reviewedAt < current.businessDate) {
       throw new Error("BRANCH_REVIEWED_AT_BEFORE_BUSINESS_DATE");
     }
@@ -849,6 +956,9 @@ export async function returnBranchOperationChecklistForCorrection(
     }
     if (!(reviewableChecklistStatuses as readonly string[]).includes(current.status)) {
       throw new Error("BRANCH_CHECKLIST_STATUS_NOT_REVIEWABLE");
+    }
+    if (!current.openedByUserId || !current.submittedByUserId) {
+      throw new Error("BRANCH_CHECKLIST_ACTOR_LINEAGE_REQUIRED");
     }
     if (
       current.openedByUserId === session.user.id ||

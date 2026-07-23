@@ -5,7 +5,8 @@ import {
   canUseWastageReports,
   canUseReceiving,
   canUsePurchaseRequests,
-  canReadPurchaseOrders
+  canReadPurchaseOrders,
+  permissions
 } from "./authorization";
 import {
   signInternalServerValue,
@@ -24,6 +25,7 @@ import { listPurchaseRequestMyTaskPage } from "./purchaseRequests";
 import { listPurchaseOrderMyTaskPage } from "./purchaseOrders";
 import { listTransferMyTaskPage } from "./transfers";
 import { listWastageMyTaskPage } from "./wastage";
+import { listBranchOperationMyTaskPage } from "./branchOperations";
 
 const myTasksCursorDomain = "my-tasks-v1";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
@@ -270,6 +272,31 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
             sourceLabel: "Receiving",
             locationLabel: `${item.receivingLocationName} · PO ${item.purchaseOrderReference}`,
             href: `/receiving/${item.recordId}`
+          }))
+        };
+      }
+    });
+  }
+  if (
+    session.permissionCodes.includes(permissions.branchOperationsReview) ||
+    session.permissionCodes.includes(permissions.branchOperationsCreate)
+  ) {
+    sources.push({
+      type: "BRANCH_OPERATION",
+      label: "Branch operations",
+      read: async (after, take) => {
+        const page = await listBranchOperationMyTaskPage(session, {
+          take,
+          ...(after ? { after } : {})
+        });
+        return {
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            sourceType: "BRANCH_OPERATION" as const,
+            sourceLabel: "Branch checklist",
+            locationLabel: `${item.locationName} · ${item.businessDate} · ${item.shiftType.toLowerCase()}`,
+            href: `/branch-operations/${item.recordId}`
           }))
         };
       }

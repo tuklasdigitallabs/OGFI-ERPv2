@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   wastage: vi.fn(),
   adjustments: vi.fn(),
   purchaseRequests: vi.fn(),
-  purchaseOrders: vi.fn()
+  purchaseOrders: vi.fn(),
+  branchOperations: vi.fn()
 }));
 
 vi.mock("./transfers", () => ({ listTransferMyTaskPage: mocks.transfers }));
@@ -24,6 +25,9 @@ vi.mock("./purchaseRequests", () => ({
 }));
 vi.mock("./purchaseOrders", () => ({
   listPurchaseOrderMyTaskPage: mocks.purchaseOrders
+}));
+vi.mock("./branchOperations", () => ({
+  listBranchOperationMyTaskPage: mocks.branchOperations
 }));
 
 const session = {
@@ -73,6 +77,11 @@ describe("My Tasks queue", () => {
       totalCount: 1,
       nextCursor: null,
       items: [{ taskId: "purchase-order-po1", recordId: "po1", publicReference: "PO-1", status: "APPROVED", actionLabel: "Send PO to supplier", supplierName: "Supplier", deliveryLocationName: "Branch", createdAt: "2026-07-19T00:00:00.000Z" }]
+    });
+    mocks.branchOperations.mockResolvedValue({
+      totalCount: 1,
+      nextCursor: null,
+      items: [{ taskId: "branch-operation-bo1", recordId: "bo1", publicReference: "Opening Readiness", status: "SUBMITTED", actionLabel: "Review branch checklist", locationName: "Branch", businessDate: "2026-07-23", shiftType: "OPENING", createdAt: "2026-07-22T00:00:00.000Z" }]
     });
   });
 
@@ -133,5 +142,18 @@ describe("My Tasks queue", () => {
       enrolledSources: [{ type: "PURCHASE_ORDER", label: "Purchase orders" }],
       items: [{ taskId: "purchase-order-po1", sourceType: "PURCHASE_ORDER" }]
     });
+  });
+
+  test("enrolls Branch Operations only for its current review or correction controls", async () => {
+    await expect(
+      getMyTasksPage(
+        { ...session, permissionCodes: [permissions.branchOperationsReview] } as never
+      )
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      enrolledSources: [{ type: "BRANCH_OPERATION", label: "Branch operations" }],
+      items: [{ taskId: "branch-operation-bo1", sourceType: "BRANCH_OPERATION" }]
+    });
+    expect(mocks.branchOperations).toHaveBeenCalled();
   });
 });
