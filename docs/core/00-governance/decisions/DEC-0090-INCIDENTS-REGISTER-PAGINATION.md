@@ -8,3 +8,5 @@ The ordinary Incidents register uses a bounded server-owned 25-row page query. C
 Existing source-link authorization, evidence, owner/resolver controls, cancellation/correction/idempotency, audit, and source-record non-mutation behavior are preserved. Cancellation terminal-state metrics and detail messaging remain a separate required remediation.
 
 Cancellation terminal-state metrics and detail messaging now exclude cancelled incidents from overdue work and show cancellation explicitly.
+
+Cancelled list rows use neutral terminal-state styling.

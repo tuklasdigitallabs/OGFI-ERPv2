@@ -61,8 +61,11 @@ function badgeTone(status: string, priority?: string) {
   if (status === "OPEN" || status === "IN_PROGRESS" || status === "PENDING_VENDOR") {
     return "warning" as const;
   }
-  if (status === "COMPLETED" || status === "CANCELLED") {
+  if (status === "COMPLETED") {
     return "success" as const;
+  }
+  if (status === "CANCELLED") {
+    return "neutral" as const;
   }
   return "info" as const;
 }

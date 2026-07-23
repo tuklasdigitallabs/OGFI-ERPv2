@@ -62,8 +62,11 @@ function badgeTone(status: string, severity?: string) {
   if (status === "OPEN" || status === "IN_PROGRESS" || status === "PENDING_REVIEW") {
     return "warning" as const;
   }
-  if (status === "RESOLVED" || status === "CANCELLED") {
+  if (status === "RESOLVED") {
     return "success" as const;
+  }
+  if (status === "CANCELLED") {
+    return "neutral" as const;
   }
   return "info" as const;
 }

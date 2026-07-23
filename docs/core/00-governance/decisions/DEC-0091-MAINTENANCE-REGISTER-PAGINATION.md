@@ -10,3 +10,5 @@ Existing reporter-lineage, owner/completion/cancellation/correction, evidence, i
 Actor-name search resolves only tenant-scoped reporter/owner IDs; the empty register and no-match filter states remain distinct.
 
 Completion date defaults use the operational timezone, and malformed requested-date filters use the existing stable validation code.
+
+Cancelled list rows use neutral terminal-state styling.
