@@ -7630,6 +7630,6 @@ model DocumentNumberSequence {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@unique([companyId, documentType, year])
-  @@index([tenantId, companyId, documentType])
+  @@unique([companyId, documentType, year], map: "DocumentNumberSequence_company_document_year_key")
+  @@index([tenantId, companyId, documentType], map: "DocumentNumberSequence_tenant_company_type_idx")
 }
