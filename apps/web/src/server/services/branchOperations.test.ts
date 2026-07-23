@@ -844,6 +844,11 @@ describe("Phase 2 branch operations foundation", () => {
     expect(listPageSource).toContain("workspace.page");
     expect(listPageSource).toContain("Page {workspace.page} of {workspace.totalPages}");
     expect(listPageSource).toContain("listBranchOperationChecklistPage");
+    expect(serviceSource).toContain("branchOperationalChecklist.count({ where })");
+    expect(serviceSource).toContain("skip: (page - 1) * pageSize");
+    expect(serviceSource).toContain("take: pageSize");
+    expect(serviceSource).toContain('orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
+    expect(serviceSource).toContain('BRANCH_OPERATIONS_BUSINESS_DATE_INVALID');
     expect(listPageSource).toContain("checklist.openedByName");
     expect(listPageSource).toContain("checklist.reviewedByName");
     expect(listPageSource).toContain("buildQueryHref(\"/branch-operations/export\"");
