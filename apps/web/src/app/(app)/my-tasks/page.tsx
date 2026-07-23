@@ -64,7 +64,7 @@ export default async function MyTasksPage({
             <div>
               <h2 className="text-base font-bold text-slate-950">Current action queue</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                This controlled queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, Receiving, Branch Operations, Food Safety, and eligible Incident resolution. Some actions are role-pooled rather than personally assigned. Use each source workspace for other approved work.
+                This controlled queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, Receiving, Branch Operations, Food Safety, eligible Incident resolution, and eligible Maintenance completion. Some actions are role-pooled rather than personally assigned. Use each source workspace for other approved work.
               </p>
             </div>
           </div>
@@ -115,9 +115,9 @@ export default async function MyTasksPage({
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone="info" size="sm">{task.sourceLabel}</Badge>
                       <Badge size="sm">{task.status.replaceAll("_", " ")}</Badge>
-                      {task.sourceType === "INCIDENT" ? (
+                      {task.sourceType === "INCIDENT" || task.sourceType === "MAINTENANCE" ? (
                         <Badge tone={task.priority === "CRITICAL" ? "danger" : task.priority === "HIGH" ? "warning" : "neutral"} size="sm">
-                          {task.priority.toLowerCase()} severity
+                          {task.priority.toLowerCase()} {task.sourceType === "INCIDENT" ? "severity" : "priority"}
                         </Badge>
                       ) : null}
                     </div>

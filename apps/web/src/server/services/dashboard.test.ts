@@ -705,6 +705,8 @@ describe("operational dashboard model", () => {
             description: "Pilot not lighting",
             locationName: "Selected Branch",
             reportedByName: "Branch Manager",
+            hasReporter: true,
+            reportedByCurrentUser: false,
             ownerName: "Maintenance Lead",
             sourceIncidentId: null,
             downtimeMinutes: 45,

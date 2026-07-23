@@ -168,3 +168,8 @@ Add a dated entry whenever an approved decision changes product scope, business 
 - Added product specification, workflows, data extensions, UI specifications, build backlog, technical plan, reporting specification, UAT plan, and decision register.
 - Updated the product brief, phase plan, module map, roles and permissions, security/audit model, approval boundary, data dictionary, database schema guidance, UI standard, notification rules, reporting rules, test strategy, governance decision log, root AGENTS.md, documentation map, subagent prompts, and knowledge-base backlog.
 - Confirmed that task cards may link to controlled ERP records but may not mutate their approval, inventory, financial, or source workflow state.
+## 2026-07-23 — Maintenance My Tasks And Correction Authority
+
+- Confirmed and implemented `DEC-0067`: My Tasks now enrolls bounded, role-pooled Maintenance completion with native priority and due dates, exact nullable-brand scope, and independent high-risk completion controls.
+- Made Maintenance correction consistently require `restaurant.maintenance.correct`, and hardened high-risk completion/cancellation plus scoped dashboard, detail, history, and source-Incident reads.
+- Updated Maintenance workflow, UAT, glossary, and dashboard guidance; Workspace 1 remains open for its remaining browser, database, backlog, and hosted gates.

@@ -112,9 +112,11 @@ export default async function MaintenanceDetailPage({
   }
   const canComplete =
     session.permissionCodes.includes(permissions.maintenanceComplete) &&
-    !["COMPLETED", "CANCELLED"].includes(ticket.status);
+    !["COMPLETED", "CANCELLED"].includes(ticket.status) &&
+    (!["CRITICAL", "HIGH"].includes(ticket.priority) ||
+      (ticket.hasReporter && !ticket.reportedByCurrentUser));
   const canCorrect =
-    session.permissionCodes.includes(permissions.maintenanceCreate) &&
+    session.permissionCodes.includes(permissions.maintenanceCorrect) &&
     ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"].includes(ticket.status);
   const today = new Date().toISOString().slice(0, 10);
   const actionFeedback = getActionFeedback(searchParams ? await searchParams : {});
@@ -623,6 +625,9 @@ export default async function MaintenanceDetailPage({
                 ? "Review completion evidence and retain ticket history."
                 : canComplete
                   ? "Complete this ticket after the fix is verified and evidence is attached."
+                  : ["CRITICAL", "HIGH"].includes(ticket.priority) &&
+                      (!ticket.hasReporter || ticket.reportedByCurrentUser)
+                    ? "This high-risk ticket requires a known reporter and a different authorized maintainer for completion or cancellation."
                   : "Coordinate owner/vendor follow-up and ask an authorized maintainer to complete the ticket after verification."}
             </p>
           </Panel>

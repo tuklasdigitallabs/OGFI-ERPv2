@@ -320,7 +320,8 @@ export function canUseMaintenance(permissionCodes: string[]) {
   return (
     permissionCodes.includes(permissions.maintenanceView) ||
     permissionCodes.includes(permissions.maintenanceCreate) ||
-    permissionCodes.includes(permissions.maintenanceComplete)
+    permissionCodes.includes(permissions.maintenanceComplete) ||
+    permissionCodes.includes(permissions.maintenanceCorrect)
   );
 }
 

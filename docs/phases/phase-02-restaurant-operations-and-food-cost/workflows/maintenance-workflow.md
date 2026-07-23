@@ -36,10 +36,14 @@ Non-terminal detail correction keeps the current status and records correction r
 8. No downstream purchasing, inventory, incident, finance, or approval mutation
 9. Desktop detail/list actions with source-incident navigation and same-asset history
 10. Reports and UAT scenarios for create, correct, complete, cancel, filter, history, and export
+11. Role-pooled `My Tasks` completion for active tickets, ordered by native priority, target due date, and age
 
 ## Non-Negotiable Controls
 
 - No user may act outside assigned scope.
+- Brand scope is exact, including company-level records whose brand is null.
+- Critical- and high-priority completion or cancellation requires a known reporter and a different acting user. Medium- and low-priority tickets follow the current direct-completion policy.
+- Ticket correction requires `restaurant.maintenance.correct`; create authority does not grant correction authority.
 - Important actions require a timestamped audit event.
 - Approval, financial, compliance or inventory-impacting actions must not be silently overwritten.
 - Free-text comments do not replace structured fields, reason codes or evidence where those are required.

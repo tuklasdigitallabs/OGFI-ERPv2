@@ -48,6 +48,12 @@ describe("dashboard task ordering", () => {
         cursor
       )
     ).toBeGreaterThan(0);
+    expect(
+      compareDashboardTaskOrder(
+        { ...cursor, sourceType: "MAINTENANCE", recordId: "maintenance-1" },
+        { ...cursor, sourceType: "INCIDENT", recordId: "incident-1" }
+      )
+    ).toBeGreaterThan(0);
   });
 
   test("orders by priority and absolute due date before age", () => {

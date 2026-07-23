@@ -29,6 +29,7 @@ import { listWastageMyTaskPage } from "./wastage";
 import { listBranchOperationMyTaskPage } from "./branchOperations";
 import { listFoodSafetyMyTaskPage } from "./foodSafety";
 import { listIncidentMyTaskPage } from "./incidents";
+import { listMaintenanceMyTaskPage } from "./maintenance";
 
 const myTasksCursorDomain = "my-tasks-v2";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
@@ -369,6 +370,28 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
             sourceLabel: "Incident",
             locationLabel: `${session.context.locationName}${item.dueAt ? ` · due ${item.dueAt.slice(0, 10)}` : " · no due date"}`,
             href: `/incidents/${item.recordId}`
+          }))
+        };
+      }
+    });
+  }
+  if (session.permissionCodes.includes(permissions.maintenanceComplete)) {
+    sources.push({
+      type: "MAINTENANCE",
+      label: "Maintenance",
+      read: async (after, take) => {
+        const page = await listMaintenanceMyTaskPage(session, {
+          take,
+          ...(after ? { after } : {})
+        });
+        return {
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            sourceType: "MAINTENANCE" as const,
+            sourceLabel: "Maintenance ticket",
+            locationLabel: `${session.context.locationName}${item.dueAt ? ` · due ${item.dueAt.slice(0, 10)}` : " · no due date"}`,
+            href: `/maintenance/${item.recordId}`
           }))
         };
       }

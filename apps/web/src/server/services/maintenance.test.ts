@@ -8,13 +8,24 @@ import {
   correctMaintenanceTicket,
   createMaintenanceTicket,
   filterMaintenanceTickets,
+  getMaintenanceDashboard,
+  getMaintenanceDashboardRead,
+  getMaintenanceTicketDetail,
+  listMaintenanceMyTaskPage,
   type MaintenanceTicketSummary
 } from "./maintenance";
 
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
   maintenanceTicket: {
-    count: vi.fn()
+    aggregate: vi.fn(),
+    count: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    groupBy: vi.fn()
+  },
+  user: {
+    findMany: vi.fn()
   },
   userRoleAssignment: {
     findMany: vi.fn()
@@ -79,7 +90,11 @@ const session = {
     locationName: "SM North Edsa",
     locationType: "BRANCH"
   },
-  permissionCodes: [permissions.maintenanceCreate, permissions.incidentView]
+  permissionCodes: [
+    permissions.maintenanceCreate,
+    permissions.maintenanceCorrect,
+    permissions.incidentView
+  ]
 };
 
 function maintenanceFormWithInvalidTargetDate() {
@@ -165,12 +180,240 @@ describe("Phase 2 maintenance foundation", () => {
                 tenantId: session.context.tenantId,
                 code: permissions.maintenanceCreate
               }
+            },
+            {
+              permission: {
+                tenantId: session.context.tenantId,
+                code: permissions.maintenanceCorrect
+              }
             }
           ]
         }
       }
     ]);
     mockPrisma.maintenanceTicket.count.mockResolvedValue(12);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValue([]);
+    mockPrisma.maintenanceTicket.aggregate.mockResolvedValue({
+      _sum: { downtimeMinutes: null }
+    });
+    mockPrisma.maintenanceTicket.groupBy.mockResolvedValue([]);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+  });
+
+  it("returns a bounded, exactly scoped completion queue with minimal fields", async () => {
+    const completionSession = {
+      ...session,
+      permissionCodes: [permissions.maintenanceComplete]
+    };
+    mockPrisma.maintenanceTicket.count.mockResolvedValueOnce(4);
+    mockPrisma.maintenanceTicket.findMany
+      .mockResolvedValueOnce([
+        {
+          id: "critical-1",
+          ticketNumber: "MT-CRITICAL-1",
+          status: "OPEN",
+          priority: "CRITICAL",
+          targetDueAt: new Date("2026-07-23T00:00:00.000Z"),
+          createdAt: new Date("2026-07-20T00:00:00.000Z")
+        }
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: "medium-1",
+          ticketNumber: "MT-MEDIUM-1",
+          status: "PENDING_VENDOR",
+          priority: "MEDIUM",
+          targetDueAt: null,
+          createdAt: new Date("2026-07-19T00:00:00.000Z")
+        }
+      ])
+      .mockResolvedValueOnce([]);
+
+    const page = await listMaintenanceMyTaskPage(completionSession as never, {
+      take: 1
+    });
+
+    expect(page).toMatchObject({
+      totalCount: 4,
+      items: [
+        {
+          taskId: "maintenance-critical-1",
+          recordId: "critical-1",
+          priority: "CRITICAL",
+          dueAt: "2026-07-23T00:00:00.000Z",
+          actionLabel: "Complete maintenance ticket"
+        }
+      ],
+      nextCursor: {
+        priority: "CRITICAL",
+        sourceType: "MAINTENANCE",
+        recordId: "critical-1"
+      }
+    });
+    expect(mockPrisma.maintenanceTicket.findMany).toHaveBeenCalledTimes(4);
+    for (const [query] of mockPrisma.maintenanceTicket.findMany.mock.calls) {
+      expect(query).toMatchObject({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          brandId: session.context.brandId,
+          locationId: session.context.locationId,
+          status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] },
+          completedAt: null,
+          OR: [
+            { priority: { in: ["MEDIUM", "LOW"] } },
+            {
+              priority: { in: ["CRITICAL", "HIGH"] },
+              reportedByUserId: { not: null },
+              NOT: { reportedByUserId: session.user.id }
+            }
+          ]
+        },
+        select: {
+          id: true,
+          ticketNumber: true,
+          status: true,
+          priority: true,
+          targetDueAt: true,
+          createdAt: true
+        },
+        orderBy: [
+          { targetDueAt: { sort: "asc", nulls: "last" } },
+          { createdAt: "asc" },
+          { id: "asc" }
+        ],
+        take: 2
+      });
+    }
+  });
+
+  it("seeks maintenance priority and due-date streams without rescanning earlier work", async () => {
+    const completionSession = {
+      ...session,
+      permissionCodes: [permissions.maintenanceComplete]
+    };
+    mockPrisma.maintenanceTicket.count.mockResolvedValueOnce(0);
+
+    await listMaintenanceMyTaskPage(completionSession as never, {
+      take: 5,
+      after: {
+        priority: "HIGH",
+        dueAt: "2026-07-24T00:00:00.000Z",
+        createdAt: "2026-07-20T00:00:00.000Z",
+        sourceType: "MAINTENANCE",
+        recordId: "ticket-2"
+      }
+    });
+
+    expect(mockPrisma.maintenanceTicket.findMany).toHaveBeenCalledTimes(3);
+    expect(mockPrisma.maintenanceTicket.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          priority: "HIGH",
+          AND: [
+            {
+              OR: [
+                { targetDueAt: null },
+                { targetDueAt: { gt: new Date("2026-07-24T00:00:00.000Z") } },
+                {
+                  targetDueAt: new Date("2026-07-24T00:00:00.000Z"),
+                  AND: [
+                    {
+                      OR: [
+                        { createdAt: { gt: new Date("2026-07-20T00:00:00.000Z") } },
+                        {
+                          createdAt: new Date("2026-07-20T00:00:00.000Z"),
+                          id: { gt: "ticket-2" }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        })
+      })
+    );
+  });
+
+  it("does not query maintenance tasks without completion authority", async () => {
+    await expect(
+      listMaintenanceMyTaskPage(
+        { ...session, permissionCodes: [permissions.maintenanceView] } as never
+      )
+    ).resolves.toEqual({ totalCount: 0, items: [], nextCursor: null });
+    expect(mockPrisma.maintenanceTicket.count).not.toHaveBeenCalled();
+    expect(mockPrisma.maintenanceTicket.findMany).not.toHaveBeenCalled();
+  });
+
+  it("uses exact null-brand scope for dashboard, detail, history, and actor markers", async () => {
+    const nullBrandSession = {
+      ...session,
+      context: { ...session.context, brandId: null, brandName: null },
+      permissionCodes: [permissions.maintenanceView]
+    };
+    const current = {
+      id: "ticket-null-brand",
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: null,
+      locationId: session.context.locationId,
+      ticketNumber: "MT-NULL-1",
+      requestedAt: new Date("2026-07-20T00:00:00.000Z"),
+      category: "EQUIPMENT",
+      assetName: "Grill 1",
+      assetArea: "Dining",
+      priority: "HIGH",
+      status: "OPEN",
+      title: "Igniter issue",
+      description: "Igniter requires independent maintenance review.",
+      reportedByUserId: session.user.id,
+      ownerUserId: null,
+      sourceIncidentId: null,
+      downtimeMinutes: 30,
+      targetDueAt: null,
+      completedAt: null,
+      correctiveAction: null,
+      evidenceReference: null,
+      createdAt: new Date("2026-07-20T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-20T00:00:00.000Z"),
+      location: { name: session.context.locationName }
+    };
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([]);
+    await getMaintenanceDashboard(nullBrandSession as never);
+    expect(mockPrisma.maintenanceTicket.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({ brandId: null })
+      })
+    );
+
+    mockPrisma.maintenanceTicket.count.mockResolvedValueOnce(0);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([]);
+    await getMaintenanceDashboardRead(nullBrandSession as never);
+    expect(mockPrisma.maintenanceTicket.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ brandId: null }) })
+    );
+
+    mockPrisma.maintenanceTicket.findFirst.mockResolvedValueOnce(current);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([]);
+    const detail = await getMaintenanceTicketDetail(
+      nullBrandSession as never,
+      current.id
+    );
+    expect(mockPrisma.maintenanceTicket.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ brandId: null }) })
+    );
+    expect(mockPrisma.maintenanceTicket.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ brandId: null }) })
+    );
+    expect(detail).toMatchObject({
+      hasReporter: true,
+      reportedByCurrentUser: true
+    });
   });
 
   it("rejects maintenance target dates before the request date before writing", async () => {
@@ -186,6 +429,11 @@ describe("Phase 2 maintenance foundation", () => {
   });
 
   it("rejects maintenance source incidents that are missing or outside scope", async () => {
+    const nullBrandSession = {
+      ...session,
+      context: { ...session.context, brandId: null, brandName: null }
+    };
+    mockContext.requireSessionContext.mockResolvedValueOnce(nullBrandSession);
     const tx = {
       operationalIncident: {
         findFirst: vi.fn().mockResolvedValue(null)
@@ -209,6 +457,7 @@ describe("Phase 2 maintenance foundation", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           id: "24000000-0000-4000-8000-000000000001",
+          brandId: null,
           locationId: session.context.locationId
         })
       })
@@ -337,6 +586,7 @@ describe("Phase 2 maintenance foundation", () => {
         findFirst: vi.fn().mockResolvedValue({
           id: "00000000-0000-4000-8000-000000000801",
           requestedAt: new Date("2026-07-03T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-03T10:00:00.000Z"),
           status: "OPEN",
           completedAt: null,
           downtimeMinutes: 45,
@@ -374,7 +624,8 @@ describe("Phase 2 maintenance foundation", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           id: "00000000-0000-4000-8000-000000000801",
-          completedAt: null
+          completedAt: null,
+          updatedAt: new Date("2026-07-03T10:00:00.000Z")
         }),
         data: expect.objectContaining({
           status: "COMPLETED",
@@ -423,6 +674,7 @@ describe("Phase 2 maintenance foundation", () => {
         findFirst: vi.fn().mockResolvedValue({
           id: "00000000-0000-4000-8000-000000000801",
           requestedAt: new Date("2026-07-03T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-03T11:00:00.000Z"),
           status: "OPEN",
           completedAt: null,
           downtimeMinutes: 45,
@@ -460,7 +712,8 @@ describe("Phase 2 maintenance foundation", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           id: "00000000-0000-4000-8000-000000000801",
-          completedAt: null
+          completedAt: null,
+          updatedAt: new Date("2026-07-03T11:00:00.000Z")
         }),
         data: expect.objectContaining({
           status: "CANCELLED",
@@ -592,7 +845,170 @@ describe("Phase 2 maintenance foundation", () => {
     expect(tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["completion", completeMaintenanceTicket, completeMaintenanceForm],
+    ["cancellation", cancelMaintenanceTicket, cancelMaintenanceForm]
+  ])("denies high-priority ticket %s when reporter lineage is missing", async (_label, action, form) => {
+    const completionSession = {
+      ...session,
+      permissionCodes: [permissions.maintenanceComplete]
+    };
+    mockContext.requireSessionContext.mockResolvedValueOnce(completionSession);
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValueOnce([
+      {
+        role: {
+          permissions: [
+            {
+              permission: {
+                tenantId: session.context.tenantId,
+                code: permissions.maintenanceComplete
+              }
+            }
+          ]
+        }
+      }
+    ]);
+    const tx = {
+      maintenanceTicket: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "00000000-0000-4000-8000-000000000801",
+          requestedAt: new Date("2026-07-03T00:00:00.000Z"),
+          status: "OPEN",
+          priority: "HIGH",
+          reportedByUserId: null
+        }),
+        updateMany: vi.fn()
+      },
+      operationalStatusTransition: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn()
+      },
+      auditEvent: { create: vi.fn() }
+    };
+    mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
+
+    await expect(action(form())).rejects.toThrow(
+      "MAINTENANCE_TICKET_INDEPENDENT_REVIEW_REQUIRED"
+    );
+    expect(tx.maintenanceTicket.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "completion",
+      completeMaintenanceTicket,
+      completeMaintenanceForm,
+      "MAINTENANCE_TICKET_COMPLETION_CONFLICT"
+    ],
+    [
+      "cancellation",
+      cancelMaintenanceTicket,
+      cancelMaintenanceForm,
+      "MAINTENANCE_TICKET_CANCELLATION_CONFLICT"
+    ]
+  ])("rolls back stale maintenance %s without audit history", async (_label, action, form, conflictCode) => {
+    const completionSession = {
+      ...session,
+      permissionCodes: [permissions.maintenanceComplete]
+    };
+    mockContext.requireSessionContext.mockResolvedValueOnce(completionSession);
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValueOnce([
+      {
+        role: {
+          permissions: [
+            {
+              permission: {
+                tenantId: session.context.tenantId,
+                code: permissions.maintenanceComplete
+              }
+            }
+          ]
+        }
+      }
+    ]);
+    const updatedAt = new Date("2026-07-03T14:00:00.000Z");
+    const tx = {
+      maintenanceTicket: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "00000000-0000-4000-8000-000000000801",
+          requestedAt: new Date("2026-07-03T00:00:00.000Z"),
+          updatedAt,
+          status: "OPEN",
+          priority: "HIGH",
+          reportedByUserId: "00000000-0000-4000-8000-000000000999"
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUniqueOrThrow: vi.fn()
+      },
+      operationalStatusTransition: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn()
+      },
+      auditEvent: { create: vi.fn() }
+    };
+    mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
+
+    await expect(action(form())).rejects.toThrow(conflictCode);
+    expect(tx.maintenanceTicket.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "00000000-0000-4000-8000-000000000801",
+          completedAt: null,
+          updatedAt
+        })
+      })
+    );
+    expect(tx.maintenanceTicket.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(tx.auditEvent.create).not.toHaveBeenCalled();
+    expect(tx.operationalStatusTransition.create).not.toHaveBeenCalled();
+  });
+
+  it("does not allow create authority to substitute for maintenance correction", async () => {
+    mockContext.requireSessionContext.mockResolvedValueOnce({
+      ...session,
+      permissionCodes: [permissions.maintenanceCreate]
+    });
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValueOnce([
+      {
+        role: {
+          permissions: [
+            {
+              permission: {
+                tenantId: session.context.tenantId,
+                code: permissions.maintenanceCreate
+              }
+            }
+          ]
+        }
+      }
+    ]);
+
+    await expect(correctMaintenanceTicket(correctMaintenanceForm())).rejects.toThrow(
+      "PERMISSION_DENIED"
+    );
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("corrects non-terminal maintenance ticket details with correction, audit, and transition history", async () => {
+    mockContext.requireSessionContext.mockResolvedValueOnce({
+      ...session,
+      permissionCodes: [permissions.maintenanceCorrect]
+    });
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValueOnce([
+      {
+        role: {
+          permissions: [
+            {
+              permission: {
+                tenantId: session.context.tenantId,
+                code: permissions.maintenanceCorrect
+              }
+            }
+          ]
+        }
+      }
+    ]);
     const currentTicket = {
       id: "00000000-0000-4000-8000-000000000801",
       brandId: session.context.brandId,
@@ -610,7 +1026,8 @@ describe("Phase 2 maintenance foundation", () => {
       completedAt: null,
       correctiveAction: "Technician assigned.",
       evidenceReference: "MT-OPEN-4",
-      sourceIncidentId: "24000000-0000-4000-8000-000000000001"
+      sourceIncidentId: "24000000-0000-4000-8000-000000000001",
+      updatedAt: new Date("2026-07-03T12:00:00.000Z")
     };
     const updatedTicket = {
       ...currentTicket,
@@ -653,7 +1070,8 @@ describe("Phase 2 maintenance foundation", () => {
         where: expect.objectContaining({
           id: currentTicket.id,
           status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] },
-          completedAt: null
+          completedAt: null,
+          updatedAt: currentTicket.updatedAt
         }),
         data: expect.objectContaining({
           requestedAt: new Date("2026-07-05T00:00:00.000Z"),
@@ -754,6 +1172,7 @@ describe("Phase 2 maintenance foundation", () => {
           description: "Table grill ignition did not start during opening checks.",
           downtimeMinutes: 45,
           targetDueAt: new Date("2026-07-04T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-03T13:00:00.000Z"),
           completedAt: null,
           correctiveAction: "Technician assigned.",
           evidenceReference: "MT-OPEN-4"
@@ -779,6 +1198,13 @@ describe("Phase 2 maintenance foundation", () => {
       "MAINTENANCE_TICKET_CORRECTION_CONFLICT"
     );
 
+    expect(tx.maintenanceTicket.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          updatedAt: new Date("2026-07-03T13:00:00.000Z")
+        })
+      })
+    );
     expect(tx.operationalCorrectionRecord.create).not.toHaveBeenCalled();
     expect(tx.operationalStatusTransition.create).not.toHaveBeenCalled();
     expect(tx.auditEvent.create).not.toHaveBeenCalled();
@@ -842,7 +1268,7 @@ describe("Phase 2 maintenance foundation", () => {
     expect(serviceSource).toContain("correctMaintenanceTicket");
     expect(serviceSource).toContain("correctMaintenanceTicketSchema");
     expect(serviceSource).toContain("correctableMaintenanceStatuses");
-    expect(serviceSource).toContain("requirePermission(session, permissions.maintenanceCreate)");
+    expect(serviceSource).toContain("requirePermission(session, permissions.maintenanceCorrect)");
     expect(serviceSource).toContain("MAINTENANCE_TICKET_STATUS_NOT_CORRECTABLE");
     expect(serviceSource).toContain("MAINTENANCE_TICKET_CORRECTION_CONFLICT");
     expect(serviceSource).toContain("maintenance_ticket.corrected");
@@ -869,7 +1295,7 @@ describe("Phase 2 maintenance foundation", () => {
     expect(detailPageSource).toContain("correctMaintenanceTicketAction");
     expect(detailPageSource).toContain("correctMaintenanceTicket");
     expect(detailPageSource).toContain("permissions.maintenanceComplete");
-    expect(detailPageSource).toContain("permissions.maintenanceCreate");
+    expect(detailPageSource).toContain("permissions.maintenanceCorrect");
     expect(detailPageSource).toContain("<EntryModal title=\"Complete Maintenance Ticket\"");
     expect(detailPageSource).toContain("<EntryModal title=\"Cancel Maintenance Ticket\"");
     expect(detailPageSource).toContain("Correct Maintenance Details");
@@ -966,6 +1392,8 @@ describe("Phase 2 maintenance foundation", () => {
         description: "Pilot will not light during opening checks",
         locationName: "SM North Edsa",
         reportedByName: "Bianca Reyes",
+        hasReporter: true,
+        reportedByCurrentUser: false,
         ownerName: "Alyssa Tan",
         sourceIncidentId: "24000000-0000-4000-8000-000000000001",
         downtimeMinutes: 45,
@@ -987,6 +1415,8 @@ describe("Phase 2 maintenance foundation", () => {
         description: "Fan vibration near counter seats",
         locationName: "SM Mall of Asia",
         reportedByName: "Paolo Cruz",
+        hasReporter: true,
+        reportedByCurrentUser: false,
         ownerName: "Marco Santos",
         sourceIncidentId: "24000000-0000-4000-8000-000000000002",
         downtimeMinutes: 20,
@@ -1008,6 +1438,8 @@ describe("Phase 2 maintenance foundation", () => {
         description: "Duplicate maintenance ticket was cancelled",
         locationName: "SM North Edsa",
         reportedByName: "Lia Mendoza",
+        hasReporter: true,
+        reportedByCurrentUser: false,
         ownerName: "Nico Valdez",
         sourceIncidentId: null,
         downtimeMinutes: 0,

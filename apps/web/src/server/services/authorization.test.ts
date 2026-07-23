@@ -204,6 +204,7 @@ describe("module access permission helpers", () => {
     expect(canUseMaintenance([permissions.maintenanceView])).toBe(true);
     expect(canUseMaintenance([permissions.maintenanceCreate])).toBe(true);
     expect(canUseMaintenance([permissions.maintenanceComplete])).toBe(true);
+    expect(canUseMaintenance([permissions.maintenanceCorrect])).toBe(true);
     expect(canUseMaintenance([permissions.incidentView])).toBe(false);
   });
 

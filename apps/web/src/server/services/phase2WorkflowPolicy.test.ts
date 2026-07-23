@@ -185,6 +185,19 @@ describe("Phase 2 workflow policy registry", () => {
     ]);
   });
 
+  test("requires the dedicated maintenance correction authority", () => {
+    expect(
+      getPhase2WorkflowActionsForStatus("MAINTENANCE_TICKET", "OPEN", [
+        permissions.maintenanceCreate
+      ]).map((transition) => transition.action)
+    ).toEqual([]);
+    expect(
+      getPhase2WorkflowActionsForStatus("MAINTENANCE_TICKET", "OPEN", [
+        permissions.maintenanceCorrect
+      ]).map((transition) => transition.action)
+    ).toEqual(["DETAIL_CORRECTION"]);
+  });
+
   test("identifies critical and high-risk controlled actions requiring independent review", () => {
     expect(
       requiresPhase2IndependentReview({

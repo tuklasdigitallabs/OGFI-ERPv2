@@ -160,7 +160,7 @@ Acceptance evidence:
 Acceptance evidence:
 
 - Only users with `restaurant.maintenance.create` can create tickets.
-- Only users with `restaurant.maintenance.create` can correct non-terminal maintenance ticket details.
+- Only users with `restaurant.maintenance.correct` can correct non-terminal maintenance ticket details.
 - Only users with `restaurant.maintenance.complete` can complete tickets.
 - Creation writes an audit event and does not approve purchasing, post inventory, mutate incidents, or create finance records.
 - Correction writes an applied `OperationalCorrectionRecord`, before/after audit history, and same-status transition history, blocks terminal-status correction, and does not approve purchasing, post inventory, mutate incidents, or create finance records.

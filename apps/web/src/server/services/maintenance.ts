@@ -12,6 +12,12 @@ import {
   requireSessionContext,
   type SessionContext
 } from "./context";
+import {
+  compareDashboardTaskOrder,
+  dashboardTaskSources,
+  type DashboardTaskCursor,
+  type DashboardTaskPriority
+} from "./dashboardTasks";
 import { recordOperationalStatusTransition } from "./operationalWorkflow";
 import {
   assertPhase2WorkflowTransitionAllowed,
@@ -112,6 +118,8 @@ export type MaintenanceTicketSummary = {
   description: string;
   locationName: string;
   reportedByName: string | null;
+  hasReporter: boolean;
+  reportedByCurrentUser: boolean;
   ownerName: string | null;
   sourceIncidentId: string | null;
   downtimeMinutes: number | null;
@@ -123,6 +131,21 @@ export type MaintenanceTicketSummary = {
 
 export type MaintenanceTicketDetail = MaintenanceTicketSummary & {
   history: MaintenanceTicketSummary[];
+};
+
+export type MaintenanceMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    recordId: string;
+    publicReference: string;
+    status: string;
+    priority: DashboardTaskPriority;
+    dueAt: string | null;
+    actionLabel: "Complete maintenance ticket";
+    createdAt: string;
+  }>;
+  nextCursor: DashboardTaskCursor | null;
 };
 
 export type MaintenanceStatusCounts = Record<
@@ -187,6 +210,10 @@ function assertMaintenanceCompleteAccess(session: SessionContext) {
   assertPermissionAllowed(session.permissionCodes, permissions.maintenanceComplete);
 }
 
+function assertMaintenanceCorrectAccess(session: SessionContext) {
+  assertPermissionAllowed(session.permissionCodes, permissions.maintenanceCorrect);
+}
+
 async function assertSourceIncidentVisible(
   tx: Prisma.TransactionClient,
   session: SessionContext,
@@ -203,7 +230,7 @@ async function assertSourceIncidentVisible(
       id: sourceIncidentId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+      brandId: session.context.brandId ?? null,
       locationId: session.context.locationId
     }
   });
@@ -286,7 +313,8 @@ function isUniqueConstraintError(error: unknown) {
 
 function summarizeMaintenanceTicket(
   ticket: MaintenanceTicketWithLocation,
-  actorNameById = new Map<string, string>()
+  actorNameById: Map<string, string>,
+  currentUserId: string
 ): MaintenanceTicketSummary {
   return {
     id: ticket.id,
@@ -303,6 +331,8 @@ function summarizeMaintenanceTicket(
     reportedByName: ticket.reportedByUserId
       ? actorNameById.get(ticket.reportedByUserId) ?? "Unknown user"
       : null,
+    hasReporter: Boolean(ticket.reportedByUserId),
+    reportedByCurrentUser: ticket.reportedByUserId === currentUserId,
     ownerName: ticket.ownerUserId
       ? actorNameById.get(ticket.ownerUserId) ?? "Unknown user"
       : null,
@@ -370,7 +400,7 @@ export async function getMaintenanceDashboard(
   const where: Prisma.MaintenanceTicketWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    brandId: session.context.brandId ?? null,
     locationId: session.context.locationId
   };
   const tickets = await prisma.maintenanceTicket.findMany({
@@ -401,7 +431,7 @@ export async function getMaintenanceDashboard(
 
   const todayDate = dateOnlyInTimeZone(new Date());
   const summaries = tickets.map((ticket) =>
-    summarizeMaintenanceTicket(ticket, actorNameById)
+    summarizeMaintenanceTicket(ticket, actorNameById, session.user.id)
   );
   const statusCounts = summaries.reduce<MaintenanceStatusCounts>(
     (counts, ticket) => {
@@ -462,7 +492,7 @@ export async function getMaintenanceDashboardRead(
   const where: Prisma.MaintenanceTicketWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    brandId: session.context.brandId ?? null,
     locationId: session.context.locationId
   };
   const todayDate = dateOnlyInTimeZone(new Date());
@@ -555,6 +585,137 @@ export async function getMaintenanceDashboardRead(
   };
 }
 
+const maintenanceTaskPriorities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
+
+function maintenanceCreatedAfterWhere(cursor: DashboardTaskCursor) {
+  const cursorDate = new Date(cursor.createdAt);
+  const maintenanceRank = dashboardTaskSources.indexOf("MAINTENANCE");
+  const cursorRank = dashboardTaskSources.indexOf(cursor.sourceType);
+  return {
+    OR: [
+      { createdAt: { gt: cursorDate } },
+      ...(maintenanceRank > cursorRank
+        ? [{ createdAt: cursorDate }]
+        : maintenanceRank === cursorRank
+          ? [{ createdAt: cursorDate, id: { gt: cursor.recordId } }]
+          : [])
+    ]
+  } satisfies Prisma.MaintenanceTicketWhereInput;
+}
+
+function maintenanceTaskAfterWhere(
+  priority: DashboardTaskPriority,
+  cursor: DashboardTaskCursor | undefined
+) {
+  if (!cursor) return null;
+  const priorityRank = maintenanceTaskPriorities.indexOf(priority);
+  const cursorRank = maintenanceTaskPriorities.indexOf(cursor.priority ?? "HIGH");
+  if (priorityRank < cursorRank) return false;
+  if (priorityRank > cursorRank) return null;
+
+  const createdAfter = maintenanceCreatedAfterWhere(cursor);
+  if (!cursor.dueAt) {
+    return {
+      targetDueAt: null,
+      AND: [createdAfter]
+    } satisfies Prisma.MaintenanceTicketWhereInput;
+  }
+  const cursorDueAt = new Date(cursor.dueAt);
+  return {
+    OR: [
+      { targetDueAt: null },
+      { targetDueAt: { gt: cursorDueAt } },
+      { targetDueAt: cursorDueAt, AND: [createdAfter] }
+    ]
+  } satisfies Prisma.MaintenanceTicketWhereInput;
+}
+
+/** Returns one role-pooled, currently executable completion obligation per ticket. */
+export async function listMaintenanceMyTaskPage(
+  session: SessionContext,
+  input: { after?: DashboardTaskCursor; take?: number } = {}
+): Promise<MaintenanceMyTaskPage> {
+  assertMaintenanceAccess(session);
+  if (!session.permissionCodes.includes(permissions.maintenanceComplete)) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+  const take = Math.min(Math.max(input.take ?? 25, 1), 50);
+  const baseWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    brandId: session.context.brandId ?? null,
+    locationId: session.context.locationId,
+    status: { in: [...completableMaintenanceStatuses] },
+    completedAt: null,
+    OR: [
+      { priority: { in: ["MEDIUM", "LOW"] } },
+      {
+        priority: { in: ["CRITICAL", "HIGH"] },
+        reportedByUserId: { not: null },
+        NOT: { reportedByUserId: session.user.id }
+      }
+    ]
+  } satisfies Prisma.MaintenanceTicketWhereInput;
+  const select = {
+    id: true,
+    ticketNumber: true,
+    status: true,
+    priority: true,
+    targetDueAt: true,
+    createdAt: true
+  } satisfies Prisma.MaintenanceTicketSelect;
+  const [totalCount, ...priorityRows] = await Promise.all([
+    prisma.maintenanceTicket.count({ where: baseWhere }),
+    ...maintenanceTaskPriorities.map((priority) => {
+      const afterWhere = maintenanceTaskAfterWhere(priority, input.after);
+      if (afterWhere === false) return Promise.resolve([]);
+      return prisma.maintenanceTicket.findMany({
+        where: {
+          ...baseWhere,
+          priority,
+          ...(afterWhere ? { AND: [afterWhere] } : {})
+        },
+        select,
+        orderBy: [
+          { targetDueAt: { sort: "asc", nulls: "last" } },
+          { createdAt: "asc" },
+          { id: "asc" }
+        ],
+        take: take + 1
+      });
+    })
+  ]);
+  const merged = priorityRows
+    .flat()
+    .map((row) => ({
+      taskId: `maintenance-${row.id}`,
+      recordId: row.id,
+      publicReference: row.ticketNumber,
+      status: row.status,
+      priority: row.priority as DashboardTaskPriority,
+      dueAt: row.targetDueAt?.toISOString() ?? null,
+      actionLabel: "Complete maintenance ticket" as const,
+      createdAt: row.createdAt.toISOString(),
+      sourceType: "MAINTENANCE" as const
+    }))
+    .sort(compareDashboardTaskOrder);
+  const items = merged.slice(0, take);
+  const last = items.at(-1);
+  return {
+    totalCount,
+    items,
+    nextCursor: merged.length > take && last
+      ? {
+          priority: last.priority,
+          dueAt: last.dueAt,
+          createdAt: last.createdAt,
+          sourceType: "MAINTENANCE",
+          recordId: last.recordId
+        }
+      : null
+  };
+}
+
 export async function getMaintenanceTicketSummary(
   session: SessionContext,
   ticketId: string
@@ -578,7 +739,7 @@ export async function getMaintenanceTicketDetail(
       id: ticketId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+      brandId: session.context.brandId ?? null,
       locationId: session.context.locationId
     },
     include: maintenanceTicketInclude
@@ -592,7 +753,7 @@ export async function getMaintenanceTicketDetail(
     where: {
       tenantId: current.tenantId,
       companyId: current.companyId,
-      ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+      brandId: current.brandId,
       locationId: current.locationId,
       assetName: current.assetName,
       assetArea: current.assetArea,
@@ -625,8 +786,10 @@ export async function getMaintenanceTicketDetail(
   const actorNameById = userDisplayNameById(actors);
 
   return {
-    ...summarizeMaintenanceTicket(current, actorNameById),
-    history: history.map((ticket) => summarizeMaintenanceTicket(ticket, actorNameById))
+    ...summarizeMaintenanceTicket(current, actorNameById, session.user.id),
+    history: history.map((ticket) =>
+      summarizeMaintenanceTicket(ticket, actorNameById, session.user.id)
+    )
   };
 }
 
@@ -784,7 +947,7 @@ export async function completeMaintenanceTicket(formData: FormData) {
         action: "COMPLETE",
         riskLevel: current.priority
       }) &&
-      current.reportedByUserId === session.user.id
+      (!current.reportedByUserId || current.reportedByUserId === session.user.id)
     ) {
       throw new Error("MAINTENANCE_TICKET_INDEPENDENT_REVIEW_REQUIRED");
     }
@@ -796,7 +959,8 @@ export async function completeMaintenanceTicket(formData: FormData) {
       where: {
         id: current.id,
         status: { in: [...completableMaintenanceStatuses] },
-        completedAt: null
+        completedAt: null,
+        updatedAt: current.updatedAt
       },
       data: {
         status: transition.toStatus,
@@ -916,7 +1080,7 @@ export async function cancelMaintenanceTicket(formData: FormData) {
         action: "CANCEL",
         riskLevel: current.priority
       }) &&
-      current.reportedByUserId === session.user.id
+      (!current.reportedByUserId || current.reportedByUserId === session.user.id)
     ) {
       throw new Error("MAINTENANCE_TICKET_INDEPENDENT_REVIEW_REQUIRED");
     }
@@ -925,7 +1089,8 @@ export async function cancelMaintenanceTicket(formData: FormData) {
       where: {
         id: current.id,
         status: { in: [...completableMaintenanceStatuses] },
-        completedAt: null
+        completedAt: null,
+        updatedAt: current.updatedAt
       },
       data: {
         status: transition.toStatus,
@@ -988,8 +1153,8 @@ export async function cancelMaintenanceTicket(formData: FormData) {
 
 export async function correctMaintenanceTicket(formData: FormData) {
   const session = await requireSessionContext();
-  await requirePermission(session, permissions.maintenanceCreate);
-  assertMaintenanceCreateAccess(session);
+  await requirePermission(session, permissions.maintenanceCorrect);
+  assertMaintenanceCorrectAccess(session);
   assertAuthorizedLocation(session, session.context.locationId);
 
   const values = correctMaintenanceTicketSchema.parse(Object.fromEntries(formData));
@@ -1063,7 +1228,8 @@ export async function correctMaintenanceTicket(formData: FormData) {
       where: {
         id: current.id,
         status: { in: [...correctableMaintenanceStatuses] },
-        completedAt: null
+        completedAt: null,
+        updatedAt: current.updatedAt
       },
       data: {
         status: transition.toStatus,

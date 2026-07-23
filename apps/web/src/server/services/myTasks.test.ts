@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   purchaseOrders: vi.fn(),
   branchOperations: vi.fn(),
   foodSafety: vi.fn(),
-  incidents: vi.fn()
+  incidents: vi.fn(),
+  maintenance: vi.fn()
 }));
 
 vi.mock("./transfers", () => ({ listTransferMyTaskPage: mocks.transfers }));
@@ -33,6 +34,9 @@ vi.mock("./branchOperations", () => ({
 }));
 vi.mock("./foodSafety", () => ({ listFoodSafetyMyTaskPage: mocks.foodSafety }));
 vi.mock("./incidents", () => ({ listIncidentMyTaskPage: mocks.incidents }));
+vi.mock("./maintenance", () => ({
+  listMaintenanceMyTaskPage: mocks.maintenance
+}));
 
 const session = {
   user: { id: "user-1", email: "user@example.test", displayName: "User", role: "Operator" },
@@ -96,6 +100,11 @@ describe("My Tasks queue", () => {
       totalCount: 1,
       nextCursor: null,
       items: [{ taskId: "incident-i1", recordId: "i1", publicReference: "INC-1", status: "OPEN", severity: "CRITICAL", priority: "CRITICAL", dueAt: "2026-07-23T00:00:00.000Z", actionLabel: "Resolve incident", createdAt: "2026-07-22T02:00:00.000Z" }]
+    });
+    mocks.maintenance.mockResolvedValue({
+      totalCount: 1,
+      nextCursor: null,
+      items: [{ taskId: "maintenance-m1", recordId: "m1", publicReference: "MT-1", status: "IN_PROGRESS", priority: "HIGH", dueAt: "2026-07-24T00:00:00.000Z", actionLabel: "Complete maintenance ticket", createdAt: "2026-07-22T03:00:00.000Z" }]
     });
   });
 
@@ -197,5 +206,22 @@ describe("My Tasks queue", () => {
       enrolledSources: [{ type: "INCIDENT", label: "Incidents" }],
       items: [{ taskId: "incident-i1", sourceType: "INCIDENT", priority: "CRITICAL" }]
     });
+  });
+
+  test("enrolls scoped maintenance completion work only for completion authority", async () => {
+    await expect(
+      getMyTasksPage({ ...session, permissionCodes: [permissions.maintenanceComplete] } as never)
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      enrolledSources: [{ type: "MAINTENANCE", label: "Maintenance" }],
+      items: [{
+        taskId: "maintenance-m1",
+        sourceType: "MAINTENANCE",
+        priority: "HIGH",
+        sourceLabel: "Maintenance ticket",
+        href: "/maintenance/m1"
+      }]
+    });
+    expect(mocks.maintenance).toHaveBeenCalled();
   });
 });

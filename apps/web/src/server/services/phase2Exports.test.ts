@@ -132,7 +132,9 @@ describe("Phase 2 reporting exports", () => {
     expect(phase2UatSource).toContain("Only users with `restaurant.incident.resolve`");
     expect(phase2UatSource).toContain("Only users with `restaurant.branch_operations.review`");
     expect(phase2UatSource).toContain("Only users with `restaurant.food_safety.review`");
-    expect(phase2UatSource).toContain("Only users with `restaurant.maintenance.create`");
+    expect(phase2UatSource).toContain(
+      "Only users with `restaurant.maintenance.correct` can correct"
+    );
     expect(phase2UatSource).toContain("Only users with `restaurant.maintenance.complete`");
     expect(phase2UatSource).toContain("Branch close requires a reason");
     expect(phase2UatSource).toContain("Food-safety close requires a reason");
