@@ -653,6 +653,7 @@ export async function approveExpenseRequestInTransaction(
   input: ExpenseRequestActionInput & {
     approvalInstanceId?: string
     supplementalEvidenceReference?: string
+    expectedSourceVersion?: number
   }
 ) {
   const request = await getScopedExpenseRequestOrThrow(
@@ -685,7 +686,10 @@ export async function approveExpenseRequestInTransaction(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       status: "AWAITING_APPROVAL",
-      version: request.version
+      version: input.expectedSourceVersion ?? request.version,
+      ...(input.expectedSourceVersion !== undefined && input.approvalInstanceId
+        ? { approvalInstanceId: input.approvalInstanceId }
+        : {})
     },
     data: {
       status: "APPROVED",
@@ -704,7 +708,11 @@ export async function approveExpenseRequestInTransaction(
     }
   })
   if (sourceUpdate.count !== 1) {
-    throw new Error("EXPENSE_REQUEST_NOT_AWAITING_APPROVAL")
+    throw new Error(
+      input.expectedSourceVersion !== undefined
+        ? "APPROVAL_SOURCE_CHANGED"
+        : "EXPENSE_REQUEST_NOT_AWAITING_APPROVAL"
+    )
   }
   const updated = await getScopedExpenseRequestOrThrow(
     tx,

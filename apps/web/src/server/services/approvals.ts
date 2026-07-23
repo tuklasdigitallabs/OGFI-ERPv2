@@ -759,6 +759,146 @@ async function lockAndRevalidateBudgetRevisionApprovalSource(
   }
 }
 
+type ExpenseApprovalSource = Prisma.ExpenseRequestGetPayload<{
+  include: { lines: true };
+}>;
+
+type CashAdvanceApprovalSource = Prisma.CashAdvanceRequestGetPayload<{
+  include: { movements: true; liquidations: true };
+}>;
+
+async function lockAndRevalidateExpenseApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  expected: ExpenseApprovalSource,
+  approvalInstanceId: string
+) {
+  if (!normalizedApprovalRoutingEnabled()) return expected;
+
+  await lockNormalizedApprovalLifecycleGraph(tx, {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    approvalInstanceId,
+    documentType: "ExpenseRequest",
+    documentId: expected.id
+  });
+  const sourceRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT request.id
+      FROM "ExpenseRequest" request
+     WHERE request.id = ${expected.id}::uuid
+       AND request."tenantId" = ${session.context.tenantId}::uuid
+       AND request."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF request
+  `;
+  if (sourceRows.length !== 1) throw new Error("APPROVAL_SOURCE_CHANGED");
+
+  const lockedLineRows = await tx.$queryRaw<Array<{
+    id: string;
+    tenantId: string;
+    companyId: string;
+    updatedAt: Date;
+  }>>`
+    SELECT line.id,
+           line."tenantId",
+           line."companyId",
+           line."updatedAt"
+      FROM "ExpenseRequestLine" line
+     WHERE line."expenseRequestId" = ${expected.id}::uuid
+     ORDER BY line.id
+     FOR UPDATE OF line
+  `;
+  const locked = await tx.expenseRequest.findFirst({
+    where: {
+      id: expected.id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId
+    },
+    include: { lines: true }
+  });
+  const expectedLines = [...expected.lines]
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((line) => `${line.id}:${line.updatedAt.getTime()}`);
+  const loadedLockedLines = [...(locked?.lines ?? [])]
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((line) => `${line.id}:${line.updatedAt.getTime()}`);
+  const lockedLines = lockedLineRows.map(
+    (line) => `${line.id}:${line.updatedAt.getTime()}`
+  );
+  if (
+    !locked ||
+    locked.status !== "AWAITING_APPROVAL" ||
+    locked.approvalInstanceId !== approvalInstanceId ||
+    locked.version !== expected.version ||
+    lockedLineRows.some(
+      (line) =>
+        line.tenantId !== session.context.tenantId ||
+        line.companyId !== session.context.companyId
+    ) ||
+    expectedLines.length !== lockedLines.length ||
+    expectedLines.some((line, index) => line !== lockedLines[index]) ||
+    loadedLockedLines.length !== lockedLines.length ||
+    loadedLockedLines.some((line, index) => line !== lockedLines[index])
+  ) {
+    throw new Error("APPROVAL_SOURCE_CHANGED");
+  }
+  await assertApprovalScope(session, locked.locationId);
+  if (locked.requestedByUserId === session.user.id) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  return locked;
+}
+
+async function lockAndRevalidateCashAdvanceApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  expected: CashAdvanceApprovalSource,
+  approvalInstanceId: string
+) {
+  if (!normalizedApprovalRoutingEnabled()) return expected;
+
+  await lockNormalizedApprovalLifecycleGraph(tx, {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    approvalInstanceId,
+    documentType: "CashAdvanceRequest",
+    documentId: expected.id
+  });
+  const sourceRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT request.id
+      FROM "CashAdvanceRequest" request
+     WHERE request.id = ${expected.id}::uuid
+       AND request."tenantId" = ${session.context.tenantId}::uuid
+       AND request."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF request
+  `;
+  if (sourceRows.length !== 1) throw new Error("APPROVAL_SOURCE_CHANGED");
+
+  const locked = await tx.cashAdvanceRequest.findFirst({
+    where: {
+      id: expected.id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId
+    },
+    include: { movements: true, liquidations: true }
+  });
+  if (
+    !locked ||
+    locked.status !== "AWAITING_APPROVAL" ||
+    locked.approvalInstanceId !== approvalInstanceId ||
+    locked.version !== expected.version
+  ) {
+    throw new Error("APPROVAL_SOURCE_CHANGED");
+  }
+  await assertApprovalScope(session, locked.locationId);
+  if (
+    locked.requestedByUserId === session.user.id ||
+    locked.beneficiaryUserId === session.user.id
+  ) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  return locked;
+}
+
 async function resolveSpecializedNextApprovalStep(
   tx: TransactionClient,
   input: {
@@ -7911,6 +8051,12 @@ export async function approveExpenseRequest(formData: FormData) {
         includeNextStep: true
       }
     );
+    const lockedRequest = await lockAndRevalidateExpenseApprovalSource(
+      tx,
+      session,
+      request,
+      approval.id
+    );
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -7948,7 +8094,7 @@ export async function approveExpenseRequest(formData: FormData) {
           actorUserId: session.user.id,
           eventType: "expense_request.approval_step_approved",
           entityType: "ExpenseRequest",
-          entityId: request.id,
+          entityId: lockedRequest.id,
           beforeData: { currentStepOrder: step.stepOrder },
           afterData: { currentStepOrder: nextStep.stepOrder },
           metadata: {
@@ -7973,12 +8119,15 @@ export async function approveExpenseRequest(formData: FormData) {
       nextStepOrder: null
     });
     await approveExpenseRequestInTransaction(tx, session, {
-      expenseRequestId: request.id,
+      expenseRequestId: lockedRequest.id,
       ...(values.remarks !== undefined ? { reason: values.remarks } : {}),
       ...(values.evidenceReference !== undefined
         ? { supplementalEvidenceReference: values.evidenceReference }
         : {}),
-      approvalInstanceId: approval.id
+      approvalInstanceId: approval.id,
+      ...(normalizedApprovalRoutingEnabled()
+        ? { expectedSourceVersion: lockedRequest.version }
+        : {})
     });
   });
 }
@@ -8004,6 +8153,12 @@ async function closeExpenseRequestWithDecision(
       currentStepOrder: step.stepOrder,
       includeNextStep: false
     });
+    const lockedRequest = await lockAndRevalidateExpenseApprovalSource(
+      tx,
+      session,
+      request,
+      approval.id
+    );
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -8029,10 +8184,16 @@ async function closeExpenseRequestWithDecision(
     });
     const updatedRequest = await tx.expenseRequest.updateMany({
       where: {
-        id: request.id,
+        id: lockedRequest.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
+        status: "AWAITING_APPROVAL",
+        ...(normalizedApprovalRoutingEnabled()
+          ? {
+              version: lockedRequest.version,
+              approvalInstanceId: approval.id
+            }
+          : {})
       },
       data:
         requestStatus === "RETURNED_FOR_REVISION"
@@ -8041,7 +8202,7 @@ async function closeExpenseRequestWithDecision(
               returnedByUserId: session.user.id,
               returnedAt: new Date(),
               returnReason: values.remarks,
-              evidenceReference: request.evidenceReference,
+              evidenceReference: lockedRequest.evidenceReference,
               version: { increment: 1 }
             }
           : {
@@ -8049,12 +8210,16 @@ async function closeExpenseRequestWithDecision(
               rejectedByUserId: session.user.id,
               rejectedAt: new Date(),
               rejectionReason: values.remarks,
-              evidenceReference: request.evidenceReference,
+              evidenceReference: lockedRequest.evidenceReference,
               version: { increment: 1 }
             }
     });
     if (updatedRequest.count !== 1) {
-      throw new Error("EXPENSE_REQUEST_NOT_AWAITING_APPROVAL");
+      throw new Error(
+        normalizedApprovalRoutingEnabled()
+          ? "APPROVAL_SOURCE_CHANGED"
+          : "EXPENSE_REQUEST_NOT_AWAITING_APPROVAL"
+      );
     }
     await tx.auditEvent.create({
       data: {
@@ -8063,13 +8228,13 @@ async function closeExpenseRequestWithDecision(
         actorUserId: session.user.id,
         eventType,
         entityType: "ExpenseRequest",
-        entityId: request.id,
+        entityId: lockedRequest.id,
         beforeData: { status: "AWAITING_APPROVAL" },
         afterData: { status: requestStatus },
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
-          evidenceReference: request.evidenceReference,
+          evidenceReference: lockedRequest.evidenceReference,
           supplementalEvidenceReference:
             values.evidenceReference?.trim() || null,
           noPaymentCreation: true,
@@ -8092,7 +8257,10 @@ export async function approveCashAdvanceRequest(formData: FormData) {
       values.approvalInstanceId
     );
 
-  if (request.budgetStatus === "OVER_BUDGET") {
+  if (
+    !normalizedApprovalRoutingEnabled() &&
+    request.budgetStatus === "OVER_BUDGET"
+  ) {
     if (!values.remarks?.trim()) {
       throw new Error("CASH_ADVANCE_BUDGET_OVERRIDE_REASON_REQUIRED");
     }
@@ -8113,6 +8281,21 @@ export async function approveCashAdvanceRequest(formData: FormData) {
         includeNextStep: true
       }
     );
+    const lockedRequest = await lockAndRevalidateCashAdvanceApprovalSource(
+      tx,
+      session,
+      request,
+      approval.id
+    );
+    if (lockedRequest.budgetStatus === "OVER_BUDGET") {
+      if (!values.remarks?.trim()) {
+        throw new Error("CASH_ADVANCE_BUDGET_OVERRIDE_REASON_REQUIRED");
+      }
+      assertAuthoritativeApprovalEvidence(
+        lockedRequest.evidenceReference,
+        "CASH_ADVANCE_BUDGET_OVERRIDE_EVIDENCE_REQUIRED"
+      );
+    }
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -8150,7 +8333,7 @@ export async function approveCashAdvanceRequest(formData: FormData) {
           actorUserId: session.user.id,
           eventType: "cash_advance.approval_step_approved",
           entityType: "CashAdvanceRequest",
-          entityId: request.id,
+          entityId: lockedRequest.id,
           beforeData: { currentStepOrder: step.stepOrder },
           afterData: { currentStepOrder: nextStep.stepOrder },
           metadata: {
@@ -8178,18 +8361,24 @@ export async function approveCashAdvanceRequest(formData: FormData) {
     });
     const updatedRequest = await tx.cashAdvanceRequest.updateMany({
       where: {
-        id: request.id,
+        id: lockedRequest.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
+        status: "AWAITING_APPROVAL",
+        ...(normalizedApprovalRoutingEnabled()
+          ? {
+              version: lockedRequest.version,
+              approvalInstanceId: approval.id
+            }
+          : {})
       },
       data: {
         status: "APPROVED",
         approvedByUserId: session.user.id,
         approvedAt: new Date(),
-        evidenceReference: request.evidenceReference,
+        evidenceReference: lockedRequest.evidenceReference,
         budgetSnapshot: {
-          budgetStatus: request.budgetStatus,
+          budgetStatus: lockedRequest.budgetStatus,
           overrideReason: values.remarks?.trim() ?? null,
           approvalInstanceId: approval.id,
           nonPostingApproval: true,
@@ -8201,7 +8390,11 @@ export async function approveCashAdvanceRequest(formData: FormData) {
       }
     });
     if (updatedRequest.count !== 1) {
-      throw new Error("CASH_ADVANCE_NOT_AWAITING_APPROVAL");
+      throw new Error(
+        normalizedApprovalRoutingEnabled()
+          ? "APPROVAL_SOURCE_CHANGED"
+          : "CASH_ADVANCE_NOT_AWAITING_APPROVAL"
+      );
     }
     await tx.auditEvent.create({
       data: {
@@ -8210,16 +8403,16 @@ export async function approveCashAdvanceRequest(formData: FormData) {
         actorUserId: session.user.id,
         eventType: "cash_advance.approved",
         entityType: "CashAdvanceRequest",
-        entityId: request.id,
+        entityId: lockedRequest.id,
         beforeData: { status: "AWAITING_APPROVAL" },
         afterData: { status: "APPROVED" },
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks ?? null,
-          evidenceReference: request.evidenceReference,
+          evidenceReference: lockedRequest.evidenceReference,
           supplementalEvidenceReference:
             values.evidenceReference?.trim() || null,
-          budgetStatus: request.budgetStatus,
+          budgetStatus: lockedRequest.budgetStatus,
           noSelfApproval: true,
           noPaymentCreation: true,
           noPaymentRelease: true,
@@ -8254,6 +8447,12 @@ async function closeCashAdvanceRequestWithDecision(
       currentStepOrder: step.stepOrder,
       includeNextStep: false
     });
+    const lockedRequest = await lockAndRevalidateCashAdvanceApprovalSource(
+      tx,
+      session,
+      request,
+      approval.id
+    );
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -8279,10 +8478,16 @@ async function closeCashAdvanceRequestWithDecision(
     });
     const updatedRequest = await tx.cashAdvanceRequest.updateMany({
       where: {
-        id: request.id,
+        id: lockedRequest.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
+        status: "AWAITING_APPROVAL",
+        ...(normalizedApprovalRoutingEnabled()
+          ? {
+              version: lockedRequest.version,
+              approvalInstanceId: approval.id
+            }
+          : {})
       },
       data:
         requestStatus === "RETURNED_FOR_REVISION"
@@ -8291,7 +8496,7 @@ async function closeCashAdvanceRequestWithDecision(
               returnedByUserId: session.user.id,
               returnedAt: new Date(),
               returnReason: values.remarks,
-              evidenceReference: request.evidenceReference,
+              evidenceReference: lockedRequest.evidenceReference,
               version: { increment: 1 }
             }
           : {
@@ -8299,12 +8504,16 @@ async function closeCashAdvanceRequestWithDecision(
               rejectedByUserId: session.user.id,
               rejectedAt: new Date(),
               rejectionReason: values.remarks,
-              evidenceReference: request.evidenceReference,
+              evidenceReference: lockedRequest.evidenceReference,
               version: { increment: 1 }
             }
     });
     if (updatedRequest.count !== 1) {
-      throw new Error("CASH_ADVANCE_NOT_AWAITING_APPROVAL");
+      throw new Error(
+        normalizedApprovalRoutingEnabled()
+          ? "APPROVAL_SOURCE_CHANGED"
+          : "CASH_ADVANCE_NOT_AWAITING_APPROVAL"
+      );
     }
     await tx.auditEvent.create({
       data: {
@@ -8313,13 +8522,13 @@ async function closeCashAdvanceRequestWithDecision(
         actorUserId: session.user.id,
         eventType,
         entityType: "CashAdvanceRequest",
-        entityId: request.id,
+        entityId: lockedRequest.id,
         beforeData: { status: "AWAITING_APPROVAL" },
         afterData: { status: requestStatus },
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
-          evidenceReference: request.evidenceReference,
+          evidenceReference: lockedRequest.evidenceReference,
           supplementalEvidenceReference:
             values.evidenceReference?.trim() || null,
           noPaymentCreation: true,

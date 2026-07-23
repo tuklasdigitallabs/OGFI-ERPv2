@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Expense And Cash Advance Approval Source Integrity
+
+- Confirmed and implemented `DEC-0073` behind `APPROVAL_ROUTING_V1_ENABLED=false`: normalized Expense Request and Cash Advance Request decisions now lock and revalidate the exact source/version/linkage, use locked-source evidence, budget, scope, prohibited-actor, and audit values, and apply version-aware compare-and-swap to terminal source mutations.
+- Expense approval-material lines are deterministically locked and snapshot-validated. PostgreSQL source/edit, linkage, child-drift/scope, prohibited-actor, evidence, rollback, and cardinality specifications are implemented but locally unexecuted because `DISPOSABLE_DATABASE_ADMIN_URL` is unavailable.
+- Web lint, typecheck, the isolated-output production build, focused tests, and the 1,233-test full non-database web suite pass. Independent Architecture, Database, and Security review returned GO only for the bounded feature-disabled source-control checkpoint; the new PostgreSQL cases remain unexecuted. Normalized-routing activation and production promotion remain NO-GO pending executable PostgreSQL, live-revocation, all-family parity, policy, cutover, exact-candidate, and hosted gates.
+
 ## 2026-07-23 — Food Cost Overview And Notification Safe Fallback
 
 - Confirmed `DEC-0071`: while the three `DEC-0062` definitions remain open, Overview publishes no Food Cost values, exceptions, availability failures, or source-health assertions and makes no Food Cost analytical read.

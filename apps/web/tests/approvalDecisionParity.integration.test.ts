@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@ogfi/database";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import {
@@ -14,6 +15,7 @@ import {
   type SharedProcurementInventoryFamily,
   type SpecializedParityFamily,
 } from "./helpers/approvalDecisionPgFixtures";
+import type { SessionContext } from "../src/server/services/context";
 
 const contextMock = vi.hoisted(() => ({ requireSessionContext: vi.fn() }));
 vi.mock("../src/server/services/context", async () => {
@@ -26,6 +28,29 @@ vi.mock("../src/server/services/context", async () => {
 const runPg = process.env.RUN_APPROVAL_ROUTING_PG_TESTS === "true";
 const allDecisions = ["APPROVE", "RETURN", "REJECT"] as const;
 const remarks = "Canonical parity decision evidence";
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+async function waitForBlockedPid(blockerPid: number) {
+  const deadline = Date.now() + 4_000;
+  while (Date.now() < deadline) {
+    const rows = await prisma.$queryRaw<Array<{ pid: number }>>`
+      SELECT activity.pid
+        FROM pg_stat_activity activity
+       WHERE activity.datname = current_database()
+         AND activity.pid <> pg_backend_pid()
+         AND ${blockerPid}::int = ANY(pg_blocking_pids(activity.pid))
+       ORDER BY activity.pid ASC
+    `;
+    if (rows[0]) return rows[0].pid;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`POSTGRES_BLOCKED_PID_NOT_OBSERVED:${blockerPid}`);
+}
 
 describe("canonical approval decision capability matrix", () => {
   test("declares exactly 18 approve, 14 return, and 18 reject capabilities", () => {
@@ -437,6 +462,18 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
           }
         : {}),
     });
+    if (family === "ExpenseRequest") {
+      await prisma.expenseRequest.update({
+        where: { id: fixture.sourceId },
+        data: { approvalInstanceId: fixture.approvalInstanceId },
+      });
+    }
+    if (family === "CashAdvanceRequest") {
+      await prisma.cashAdvanceRequest.update({
+        where: { id: fixture.sourceId },
+        data: { approvalInstanceId: fixture.approvalInstanceId },
+      });
+    }
     if (family === "BudgetRevision") {
       const beforeActivation = await approvalDecisionPgSnapshot(fixture);
       contextMock.requireSessionContext.mockReset();
@@ -522,6 +559,499 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
         : {}),
     });
   }
+
+  async function financeSourceSnapshot(
+    family: "ExpenseRequest" | "CashAdvanceRequest",
+    sourceId: string,
+  ) {
+    if (family === "ExpenseRequest") {
+      return prisma.expenseRequest.findUniqueOrThrow({
+        where: { id: sourceId },
+        select: {
+          status: true,
+          version: true,
+          title: true,
+          requestedByUserId: true,
+          approvalInstanceId: true,
+        },
+      });
+    }
+    return prisma.cashAdvanceRequest.findUniqueOrThrow({
+      where: { id: sourceId },
+      select: {
+        status: true,
+        version: true,
+        title: true,
+        requestedByUserId: true,
+        beneficiaryUserId: true,
+        approvalInstanceId: true,
+      },
+    });
+  }
+
+  async function otherwiseAuthorizedRequesterSession(
+    fixture: ApprovalDecisionPgFixture,
+  ): Promise<SessionContext> {
+    const step = await prisma.approvalInstanceStep.findUniqueOrThrow({
+      where: { id: fixture.stepIds[0] },
+      select: { assignedRoleId: true },
+    });
+    if (!step.assignedRoleId) {
+      throw new Error("APPROVAL_PARITY_ROLE_ASSIGNMENT_REQUIRED");
+    }
+    await prisma.userRoleAssignment.create({
+      data: {
+        userId: fixture.requesterUserId,
+        roleId: step.assignedRoleId,
+        startsAt: new Date(Date.now() - 60_000),
+      },
+    });
+    const requesterScope = await prisma.userScopeAssignment.create({
+      data: {
+        userId: fixture.requesterUserId,
+        scopeType: "LOCATION",
+        scopeId: fixture.locationId,
+        accessLevel: "APPROVE",
+        startsAt: new Date(Date.now() - 60_000),
+      },
+      select: { id: true },
+    });
+    const approverSession = fixture.sessionFor(1);
+    return {
+      ...approverSession,
+      user: {
+        ...approverSession.user,
+        id: fixture.requesterUserId,
+        email: `requester-${fixture.tenantId.slice(0, 8)}@test.invalid`,
+        displayName: "Requester with otherwise-valid approval authority",
+      },
+      authorizedLocations: approverSession.authorizedLocations.map((location) => ({
+        ...location,
+        scopeAssignmentId: requesterScope.id,
+      })),
+    };
+  }
+
+  test.each([
+    ["ExpenseRequest", "APPROVE", 2],
+    ["ExpenseRequest", "RETURN", 1],
+    ["ExpenseRequest", "REJECT", 1],
+    ["CashAdvanceRequest", "APPROVE", 1],
+    ["CashAdvanceRequest", "RETURN", 1],
+    ["CashAdvanceRequest", "REJECT", 1],
+  ] as const)(
+    "FIN-AUTHZ-SOURCE-DRIFT-001 %s %s rejects exact source version drift atomically",
+    async (family, decision, steps) => {
+      const fixture = await specializedFixture(family, steps);
+      const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+      const sourceBefore = await financeSourceSnapshot(family, fixture.sourceId);
+      const sourceLocked = deferred();
+      const commitDrift = deferred();
+      let blockerPid = 0;
+      const drift = prisma.$transaction(
+        async (tx) => {
+          [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+            SELECT pg_backend_pid() AS pid
+          `;
+          if (family === "ExpenseRequest") {
+            await tx.$queryRaw`
+              SELECT request.id
+                FROM "ExpenseRequest" request
+               WHERE request.id = ${fixture.sourceId}::uuid
+               FOR UPDATE
+            `;
+          } else {
+            await tx.$queryRaw`
+              SELECT request.id
+                FROM "CashAdvanceRequest" request
+               WHERE request.id = ${fixture.sourceId}::uuid
+               FOR UPDATE
+            `;
+          }
+          sourceLocked.resolve();
+          await commitDrift.promise;
+          const title = `${sourceBefore.title} / concurrent edit`;
+          if (family === "ExpenseRequest") {
+            await tx.expenseRequest.update({
+              where: { id: fixture.sourceId },
+              data: { title, version: { increment: 1 } },
+            });
+          } else {
+            await tx.cashAdvanceRequest.update({
+              where: { id: fixture.sourceId },
+              data: { title, version: { increment: 1 } },
+            });
+          }
+        },
+        { timeout: 10_000 },
+      );
+      await sourceLocked.promise;
+
+      const canonicalDecision = executeSpecializedDecision(
+        fixture,
+        family,
+        decision,
+        1,
+      );
+      const decisionExpectation = expect(canonicalDecision).rejects.toThrow(
+        "APPROVAL_SOURCE_CHANGED",
+      );
+      try {
+        await waitForBlockedPid(blockerPid);
+      } finally {
+        commitDrift.resolve();
+      }
+      await drift;
+
+      await decisionExpectation;
+      expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+      expect(await financeSourceSnapshot(family, fixture.sourceId)).toEqual({
+        ...sourceBefore,
+        title: `${sourceBefore.title} / concurrent edit`,
+        version: sourceBefore.version + 1,
+      });
+    },
+    10_000,
+  );
+
+  test.each([
+    ["ExpenseRequest", "APPROVE", 1],
+    ["ExpenseRequest", "RETURN", 1],
+    ["ExpenseRequest", "REJECT", 1],
+    ["CashAdvanceRequest", "APPROVE", 1],
+    ["CashAdvanceRequest", "RETURN", 1],
+    ["CashAdvanceRequest", "REJECT", 1],
+    ["ExpenseRequest", "APPROVE", 2],
+  ] as const)(
+    "FIN-AUTHZ-SOURCE-DRIFT-002 %s %s decision locks first and serializes a stale source edit (steps=%s)",
+    async (family, decisionKind, steps) => {
+      const fixture = await specializedFixture(family, steps);
+      const sourceBefore = await financeSourceSnapshot(family, fixture.sourceId);
+      const auditTableLocked = deferred();
+      const releaseAuditTable = deferred();
+      let blockerPid = 0;
+      const auditBlocker = prisma.$transaction(
+        async (tx) => {
+          [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+            SELECT pg_backend_pid() AS pid
+          `;
+          await tx.$executeRaw`LOCK TABLE "AuditEvent" IN ACCESS EXCLUSIVE MODE`;
+          auditTableLocked.resolve();
+          await releaseAuditTable.promise;
+        },
+        { timeout: 10_000 },
+      );
+      await auditTableLocked.promise;
+
+      const decision = executeSpecializedDecision(
+        fixture,
+        family,
+        decisionKind,
+        1,
+      );
+      const decisionExpectation = expect(decision).resolves.toBeUndefined();
+      let decisionPid: number;
+      try {
+        decisionPid = await waitForBlockedPid(blockerPid);
+      } catch (error) {
+        releaseAuditTable.resolve();
+        await auditBlocker;
+        throw error;
+      }
+      const staleTitle = `${sourceBefore.title} / stale concurrent edit`;
+      const staleEdit = (family === "ExpenseRequest"
+        ? prisma.expenseRequest.updateMany({
+            where: {
+              id: fixture.sourceId,
+              version: sourceBefore.version,
+              status: "AWAITING_APPROVAL",
+            },
+            data: { title: staleTitle, version: { increment: 1 } },
+          })
+        : prisma.cashAdvanceRequest.updateMany({
+            where: {
+              id: fixture.sourceId,
+              version: sourceBefore.version,
+              status: "AWAITING_APPROVAL",
+            },
+            data: { title: staleTitle, version: { increment: 1 } },
+          })).then((result) => result);
+      try {
+        await waitForBlockedPid(decisionPid);
+      } finally {
+        releaseAuditTable.resolve();
+      }
+
+      const [, staleEditResult] = await Promise.all([
+        auditBlocker,
+        staleEdit,
+      ]);
+      await decisionExpectation;
+      const intermediate = steps === 2;
+      expect(staleEditResult.count).toBe(intermediate ? 1 : 0);
+      const terminalStatus = decisionKind === "APPROVE"
+        ? "APPROVED"
+        : decisionKind === "RETURN"
+          ? "RETURNED_FOR_REVISION"
+          : "REJECTED";
+      expect(await financeSourceSnapshot(family, fixture.sourceId)).toEqual(
+        expect.objectContaining({
+          status: intermediate ? "AWAITING_APPROVAL" : terminalStatus,
+          version: sourceBefore.version + 1,
+          title: intermediate ? staleTitle : sourceBefore.title,
+        }),
+      );
+      const snapshot = await approvalDecisionPgSnapshot(fixture);
+      const approvalStatus = intermediate
+        ? "PENDING"
+        : decisionKind === "RETURN" ? "RETURNED" : decisionKind === "REJECT" ? "REJECTED" : "APPROVED";
+      expect(snapshot.instance).toEqual({
+        status: approvalStatus,
+        currentStepOrder: intermediate ? 2 : null,
+      });
+      expect(snapshot.steps).toEqual(intermediate
+        ? [
+            expect.objectContaining({ stepOrder: 1, status: "APPROVED", actedByUserId: fixture.approverUserIds[0] }),
+            expect.objectContaining({ stepOrder: 2, status: "PENDING", actedByUserId: null }),
+          ]
+        : [expect.objectContaining({
+            stepOrder: 1,
+            status: approvalStatus,
+            actedByUserId: fixture.approverUserIds[0],
+          })]);
+      const decisionAudit = intermediate
+        ? "expense_request.approval_step_approved"
+        : `${family === "ExpenseRequest" ? "expense_request" : "cash_advance"}.${decisionKind === "APPROVE" ? "approved" : decisionKind === "RETURN" ? "returned" : "rejected"}`;
+      expect(snapshot.audits.filter(({ eventType }) => eventType === decisionAudit)).toHaveLength(1);
+      const outcomes = snapshot.notifications.filter(({ notificationType }) =>
+        notificationType.startsWith("APPROVAL_OUTCOME_"));
+      expect(outcomes).toHaveLength(intermediate ? 0 : 1);
+      if (!intermediate) {
+        expect(outcomes[0]).toEqual(expect.objectContaining({
+          notificationType: `APPROVAL_OUTCOME_${approvalStatus}`,
+          recipientUserId: fixture.requesterUserId,
+        }));
+      }
+    },
+    10_000,
+  );
+
+  test.each([
+    ["ExpenseRequest", "SOURCE_LINK"],
+    ["ExpenseRequest", "DOCUMENT_TUPLE"],
+    ["CashAdvanceRequest", "SOURCE_LINK"],
+    ["CashAdvanceRequest", "DOCUMENT_TUPLE"],
+  ] as const)(
+    "FIN-AUTHZ-SOURCE-LINKAGE-001 %s rejects an exact %s mismatch atomically",
+    async (family, mismatch) => {
+      const fixture = await specializedFixture(family, 1);
+      if (mismatch === "DOCUMENT_TUPLE") {
+        await prisma.approvalInstance.update({
+          where: { id: fixture.approvalInstanceId },
+          data: { documentId: randomUUID() },
+        });
+      } else if (family === "ExpenseRequest") {
+        await prisma.expenseRequest.update({
+          where: { id: fixture.sourceId },
+          data: { approvalInstanceId: null },
+        });
+      } else {
+        await prisma.cashAdvanceRequest.update({
+          where: { id: fixture.sourceId },
+          data: { approvalInstanceId: null },
+        });
+      }
+      const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+      const sourceBefore = await financeSourceSnapshot(family, fixture.sourceId);
+      const budgetBefore = await prisma.budgetCommitment.count({
+        where: { tenantId: fixture.tenantId, companyId: fixture.companyId },
+      });
+
+      await expect(executeSpecializedDecision(
+        fixture,
+        family,
+        "APPROVE",
+        1,
+      )).rejects.toThrow(
+        mismatch === "DOCUMENT_TUPLE"
+          ? "APPROVAL_DOCUMENT_NOT_FOUND"
+          : "APPROVAL_SOURCE_CHANGED",
+      );
+      expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+      expect(await financeSourceSnapshot(family, fixture.sourceId)).toEqual(sourceBefore);
+      expect(await prisma.budgetCommitment.count({
+        where: { tenantId: fixture.tenantId, companyId: fixture.companyId },
+      })).toBe(budgetBefore);
+    },
+  );
+
+  test("FIN-AUTHZ-EXPENSE-LINE-DRIFT-001 rejects a concurrently changed Expense child line atomically", async () => {
+    const fixture = await specializedFixture("ExpenseRequest", 1);
+    const line = await prisma.expenseRequestLine.create({
+      data: {
+        expenseRequestId: fixture.sourceId,
+        tenantId: fixture.tenantId,
+        companyId: fixture.companyId,
+        lineNumber: 1,
+        lineDate: new Date(),
+        description: "Approval snapshot line",
+        categoryCode: "TEST",
+        requestedAmountPhp: 10,
+        lineTotalPhp: 10,
+        createdByUserId: fixture.requesterUserId,
+      },
+      select: { id: true, description: true },
+    });
+    const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+    const sourceBefore = await financeSourceSnapshot("ExpenseRequest", fixture.sourceId);
+    const budgetBefore = await prisma.budgetCommitment.count({
+      where: { tenantId: fixture.tenantId, companyId: fixture.companyId },
+    });
+    const lineLocked = deferred();
+    const commitLineDrift = deferred();
+    let blockerPid = 0;
+    const drift = prisma.$transaction(
+      async (tx) => {
+        [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+          SELECT pg_backend_pid() AS pid
+        `;
+        await tx.$queryRaw`
+          SELECT line.id
+            FROM "ExpenseRequestLine" line
+           WHERE line.id = ${line.id}::uuid
+           FOR UPDATE OF line
+        `;
+        lineLocked.resolve();
+        await commitLineDrift.promise;
+        await tx.expenseRequestLine.update({
+          where: { id: line.id },
+          data: { description: `${line.description} / concurrent edit` },
+        });
+      },
+      { timeout: 10_000 },
+    );
+    await lineLocked.promise;
+    const decision = executeSpecializedDecision(
+      fixture,
+      "ExpenseRequest",
+      "APPROVE",
+      1,
+    );
+    const decisionExpectation = expect(decision).rejects.toThrow("APPROVAL_SOURCE_CHANGED");
+    try {
+      await waitForBlockedPid(blockerPid);
+    } finally {
+      commitLineDrift.resolve();
+    }
+    await drift;
+    await decisionExpectation;
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+    expect(await financeSourceSnapshot("ExpenseRequest", fixture.sourceId)).toEqual(sourceBefore);
+    expect(await prisma.expenseRequestLine.findUniqueOrThrow({
+      where: { id: line.id },
+      select: { description: true },
+    })).toEqual({ description: `${line.description} / concurrent edit` });
+    expect(await prisma.budgetCommitment.count({
+      where: { tenantId: fixture.tenantId, companyId: fixture.companyId },
+    })).toBe(budgetBefore);
+  }, 10_000);
+
+  test("FIN-AUTHZ-EXPENSE-LINE-SCOPE-001 rejects a malformed cross-tenant/company Expense child line atomically", async () => {
+    const fixture = await specializedFixture("ExpenseRequest", 1);
+    const foreignTenantId = randomUUID();
+    const foreignCompanyId = randomUUID();
+    const foreignUserId = randomUUID();
+    const suffix = foreignTenantId.slice(0, 8);
+    await prisma.tenant.create({
+      data: { id: foreignTenantId, name: `Foreign line ${suffix}`, loginCode: `foreign-line-${suffix}` },
+    });
+    await prisma.company.create({
+      data: {
+        id: foreignCompanyId,
+        tenantId: foreignTenantId,
+        code: `FL-${suffix}`,
+        legalName: `Foreign line ${suffix}`,
+        currencyCode: "PHP",
+      },
+    });
+    await prisma.user.create({
+      data: {
+        id: foreignUserId,
+        tenantId: foreignTenantId,
+        email: `foreign-line-${suffix}@test.invalid`,
+        displayName: "Foreign line creator",
+      },
+    });
+    await prisma.expenseRequestLine.create({
+      data: {
+        expenseRequestId: fixture.sourceId,
+        tenantId: foreignTenantId,
+        companyId: foreignCompanyId,
+        lineNumber: 1,
+        lineDate: new Date(),
+        description: "Malformed cross-scope line",
+        categoryCode: "TEST",
+        requestedAmountPhp: 10,
+        lineTotalPhp: 10,
+        createdByUserId: foreignUserId,
+      },
+    });
+    const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+    const sourceBefore = await financeSourceSnapshot("ExpenseRequest", fixture.sourceId);
+    const budgetBefore = await prisma.budgetCommitment.count({
+      where: { tenantId: fixture.tenantId, companyId: fixture.companyId },
+    });
+
+    await expect(executeSpecializedDecision(
+      fixture,
+      "ExpenseRequest",
+      "APPROVE",
+      1,
+    )).rejects.toThrow("APPROVAL_SOURCE_CHANGED");
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+    expect(await financeSourceSnapshot("ExpenseRequest", fixture.sourceId)).toEqual(sourceBefore);
+    expect(await prisma.budgetCommitment.count({
+      where: { tenantId: fixture.tenantId, companyId: fixture.companyId },
+    })).toBe(budgetBefore);
+  });
+
+  test("FIN-AUTHZ-PROHIBITED-ACTOR-001 an otherwise-authorized Expense requester cannot decide their own request", async () => {
+    const fixture = await specializedFixture("ExpenseRequest", 1);
+    const requesterSession = await otherwiseAuthorizedRequesterSession(fixture);
+    const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+    const sourceBefore = await financeSourceSnapshot("ExpenseRequest", fixture.sourceId);
+    contextMock.requireSessionContext.mockResolvedValue(requesterSession);
+    const { executeCanonicalApprovalDecision } = await import(
+      "../src/server/services/approvals"
+    );
+
+    await expect(executeCanonicalApprovalDecision({
+      family: "ExpenseRequest",
+      decision: "APPROVE",
+      approvalInstanceId: fixture.approvalInstanceId,
+    })).rejects.toThrow("SELF_APPROVAL_BLOCKED");
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+    expect(await financeSourceSnapshot("ExpenseRequest", fixture.sourceId)).toEqual(sourceBefore);
+  });
+
+  test("FIN-AUTHZ-PROHIBITED-ACTOR-002 an otherwise-authorized Cash Advance beneficiary cannot decide the request", async () => {
+    const fixture = await specializedFixture("CashAdvanceRequest", 1);
+    await prisma.cashAdvanceRequest.update({
+      where: { id: fixture.sourceId },
+      data: { beneficiaryUserId: fixture.approverUserIds[0] },
+    });
+    const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+    const sourceBefore = await financeSourceSnapshot("CashAdvanceRequest", fixture.sourceId);
+
+    await expect(executeSpecializedDecision(
+      fixture,
+      "CashAdvanceRequest",
+      "APPROVE",
+      1,
+    )).rejects.toThrow("SELF_APPROVAL_BLOCKED");
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+    expect(await financeSourceSnapshot("CashAdvanceRequest", fixture.sourceId)).toEqual(sourceBefore);
+  });
 
   test.each(["ExpenseRequest", "CashAdvanceRequest"] as const)(
     "FIN-AUTHZ-CANONICAL-EVIDENCE-001 %s rejects supplemental decision text when authoritative source evidence is absent",
