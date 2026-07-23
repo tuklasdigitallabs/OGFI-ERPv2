@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import {
@@ -36,9 +37,14 @@ import {
   lockNormalizedApprovalLifecycleGraph,
   normalizedApprovalRoutingEnabled,
   prepareNormalizedApprovalDecisionPreflight,
-  type NormalizedApprovalDecisionPreflight
+  type LockedNormalizedPettyCashApprovalSource,
+  type NormalizedApprovalDecisionPreflight,
+  type NormalizedApprovalDecisionPreflightInput
 } from "./approvalRouting";
-import { skipFutureApprovalStepsForTerminalDecision } from "./approvalTerminal";
+import {
+  approvalTerminalErrors,
+  skipFutureApprovalStepsForTerminalDecision
+} from "./approvalTerminal";
 import { approveExpenseRequestInTransaction } from "./expenseRequests";
 import {
   approvePettyCashRequestInTransaction,
@@ -244,6 +250,63 @@ const pettyCashDecisionSchema = decisionSchema.extend({
 const remarksRequiredSchema = decisionSchema.extend({
   remarks: z.string().min(3).max(1000)
 });
+
+type PettyCashApprovalIntentAction = "APPROVE" | "RETURN" | "REJECT";
+
+type PettyCashApprovalIntentInput = {
+  tenantId: string;
+  companyId: string;
+  pettyCashRequestId: string;
+  approvalInstanceId: string;
+  approvalStepId: string;
+  stepOrder: number;
+  actorUserId: string;
+  action: PettyCashApprovalIntentAction;
+  requestedAmountSnapshotPhp: Prisma.Decimal;
+  beforeAmountPhp: Prisma.Decimal;
+  effectiveAmountPhp: Prisma.Decimal;
+  requestVersionBefore: number;
+  reason?: string | null | undefined;
+  supplementalEvidenceReference?: string | null | undefined;
+};
+
+export function buildPettyCashApprovalStepIntent(
+  input: PettyCashApprovalIntentInput
+) {
+  const reason = input.reason?.trim() || null;
+  const supplementalEvidenceReference =
+    input.supplementalEvidenceReference?.trim() || null;
+  const requestVersionAfter = input.requestVersionBefore + 1;
+  const canonicalPayload = JSON.stringify({
+    schemaVersion: 1,
+    action: input.action,
+    tenantId: input.tenantId,
+    companyId: input.companyId,
+    pettyCashRequestId: input.pettyCashRequestId,
+    approvalInstanceId: input.approvalInstanceId,
+    approvalStepId: input.approvalStepId,
+    stepOrder: input.stepOrder,
+    actorUserId: input.actorUserId,
+    requestedAmountSnapshotPhp: input.requestedAmountSnapshotPhp.toFixed(6),
+    beforeAmountPhp: input.beforeAmountPhp.toFixed(6),
+    effectiveAmountPhp: input.effectiveAmountPhp.toFixed(6),
+    requestVersionBefore: input.requestVersionBefore,
+    requestVersionAfter,
+    reason,
+    supplementalEvidenceReference
+  });
+  const decisionPayloadHash = createHash("sha256")
+    .update(canonicalPayload, "utf8")
+    .digest("hex");
+  return {
+    reason,
+    supplementalEvidenceReference,
+    requestVersionAfter,
+    decisionPayloadHash,
+    idempotencyKey: `petty-cash-approval-intent:v1:${decisionPayloadHash}`,
+    canonicalPayload
+  };
+}
 
 export async function executeCanonicalApprovalDecision(input: unknown) {
   const command = parseCanonicalApprovalDecisionCommand(input);
@@ -708,12 +771,7 @@ async function activateNextApprovalStep(
 async function prepareSpecializedApprovalDecisionAuthority(
   tx: TransactionClient,
   session: SessionContext,
-  input: {
-    approvalInstanceId: string;
-    currentStepId: string;
-    currentStepOrder: number;
-    includeNextStep: boolean;
-  }
+  input: NormalizedApprovalDecisionPreflightInput
 ) {
   if (!normalizedApprovalRoutingEnabled()) return null;
   return prepareNormalizedApprovalDecisionPreflight(tx, session, input);
@@ -2219,7 +2277,9 @@ async function findActionablePettyCashRequestApproval(
     throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
   }
 
-  await assertApprovalScope(session, request.fund.locationId);
+  if (!normalizedApprovalRoutingEnabled()) {
+    await assertApprovalScope(session, request.fund.locationId);
+  }
 
   if (request.requestedByUserId === session.user.id) {
     throw new Error("SELF_APPROVAL_BLOCKED");
@@ -8537,6 +8597,218 @@ async function closeCashAdvanceRequestWithDecision(
   });
 }
 
+async function appendPettyCashApprovalIntentAndAdvanceProposal(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    source: LockedNormalizedPettyCashApprovalSource;
+    approvalStepId: string;
+    stepOrder: number;
+    action: PettyCashApprovalIntentAction;
+    reason?: string | null | undefined;
+    supplementalEvidenceReference?: string | null | undefined;
+    terminal: boolean;
+  }
+) {
+  if (input.source.requestedByUserId === session.user.id) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  assertAuthoritativeApprovalEvidence(
+    input.source.evidenceReference,
+    "PETTY_CASH_REQUEST_EVIDENCE_REQUIRED"
+  );
+  const intent = buildPettyCashApprovalStepIntent({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    pettyCashRequestId: input.source.id,
+    approvalInstanceId: input.source.approvalInstanceId,
+    approvalStepId: input.approvalStepId,
+    stepOrder: input.stepOrder,
+    actorUserId: session.user.id,
+    action: input.action,
+    requestedAmountSnapshotPhp: input.source.requestedAmountPhp,
+    beforeAmountPhp: input.source.currentProposedAmountPhp,
+    effectiveAmountPhp: input.source.currentProposedAmountPhp,
+    requestVersionBefore: input.source.approvalProposalVersion,
+    reason: input.reason,
+    supplementalEvidenceReference: input.supplementalEvidenceReference
+  });
+  let created: { id: string };
+  try {
+    created = await tx.pettyCashApprovalStepIntent.create({
+      data: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        pettyCashRequestId: input.source.id,
+        approvalInstanceId: input.source.approvalInstanceId,
+        approvalStepId: input.approvalStepId,
+        stepOrder: input.stepOrder,
+        requestedAmountSnapshotPhp: input.source.requestedAmountPhp,
+        beforeAmountPhp: input.source.currentProposedAmountPhp,
+        effectiveAmountPhp: input.source.currentProposedAmountPhp,
+        actorUserId: session.user.id,
+        reason: intent.reason,
+        requestVersionBefore: input.source.approvalProposalVersion,
+        requestVersionAfter: intent.requestVersionAfter,
+        decisionPayloadHash: intent.decisionPayloadHash,
+        idempotencyKey: intent.idempotencyKey
+      },
+      select: { id: true }
+    });
+  } catch (error) {
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : null;
+    if (["P2002", "P2003", "P2004", "P2010"].includes(code ?? "")) {
+      throw new Error("PETTY_CASH_APPROVAL_INTENT_CONFLICT");
+    }
+    throw error;
+  }
+  const advanced = await tx.pettyCashRequest.updateMany({
+    where: {
+      id: input.source.id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      pettyCashFundId: input.source.pettyCashFundId,
+      status: "AWAITING_APPROVAL",
+      approvalInstanceId: input.source.approvalInstanceId,
+      requestedAmountPhp: input.source.requestedAmountPhp,
+      currentProposedAmountPhp: input.source.currentProposedAmountPhp,
+      approvalProposalVersion: input.source.approvalProposalVersion
+    },
+    data: {
+      currentProposedAmountPhp: input.terminal
+        ? null
+        : input.source.currentProposedAmountPhp,
+      approvalProposalVersion: { increment: 1 }
+    }
+  });
+  if (advanced.count !== 1) {
+    throw new Error("APPROVAL_SOURCE_CHANGED");
+  }
+  return { ...intent, intentId: created.id };
+}
+
+async function skipLockedPettyCashFutureApprovalSteps(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    approvalInstanceId: string;
+    currentStepOrder: number;
+    lockedGraph: NonNullable<
+      NormalizedApprovalDecisionPreflight["lockedFullGraph"]
+    >;
+  }
+) {
+  if (
+    input.lockedGraph.approvalInstanceId !== input.approvalInstanceId ||
+    input.lockedGraph.currentStepOrder !== input.currentStepOrder
+  ) {
+    throw new Error("APPROVAL_SOURCE_CHANGED");
+  }
+  const futureSteps = input.lockedGraph.steps.filter(
+    (step) => step.stepOrder > input.currentStepOrder
+  );
+  if (futureSteps.some((step) => step.status !== "WAITING")) {
+    throw new Error(approvalTerminalErrors.invalidFutureState);
+  }
+  if (futureSteps.length > 0) {
+    const skipped = await tx.approvalInstanceStep.updateMany({
+      where: {
+        id: { in: futureSteps.map((step) => step.id) },
+        approvalInstanceId: input.approvalInstanceId,
+        status: "WAITING",
+        approvalInstance: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          status: "PENDING",
+          currentStepOrder: input.currentStepOrder
+        }
+      },
+      data: { status: "SKIPPED" }
+    });
+    if (skipped.count !== futureSteps.length) {
+      throw new Error(approvalTerminalErrors.casFailed);
+    }
+  }
+  const residue = await tx.approvalInstanceStep.findFirst({
+    where: {
+      approvalInstanceId: input.approvalInstanceId,
+      stepOrder: { gt: input.currentStepOrder },
+      status: { not: "SKIPPED" },
+      approvalInstance: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
+      }
+    },
+    select: { id: true }
+  });
+  if (residue) throw new Error(approvalTerminalErrors.residueDetected);
+}
+
+async function finalizeNormalizedPettyCashApproval(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    source: LockedNormalizedPettyCashApprovalSource;
+    requestVersionAfter: number;
+    reason?: string | null | undefined;
+    supplementalEvidenceReference?: string | null | undefined;
+    approvalStepIntentId: string;
+    decisionPayloadHash: string;
+  }
+) {
+  const updated = await tx.pettyCashRequest.updateMany({
+    where: {
+      id: input.source.id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "AWAITING_APPROVAL",
+      approvalInstanceId: input.source.approvalInstanceId,
+      currentProposedAmountPhp: null,
+      approvalProposalVersion: input.requestVersionAfter
+    },
+    data: {
+      status: "APPROVED",
+      approvedByUserId: session.user.id,
+      approvedAt: new Date(),
+      approvedAmountPhp: input.source.currentProposedAmountPhp,
+      evidenceReference: input.source.evidenceReference
+    }
+  });
+  if (updated.count !== 1) throw new Error("APPROVAL_SOURCE_CHANGED");
+  await tx.auditEvent.create({
+    data: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      actorUserId: session.user.id,
+      eventType: "petty_cash.request_approved",
+      entityType: "PettyCashRequest",
+      entityId: input.source.id,
+      beforeData: { status: "AWAITING_APPROVAL" },
+      afterData: { status: "APPROVED" },
+      metadata: {
+        approvalInstanceId: input.source.approvalInstanceId,
+        pettyCashApprovalStepIntentId: input.approvalStepIntentId,
+        decisionPayloadHash: input.decisionPayloadHash,
+        requestVersionBefore: input.source.approvalProposalVersion,
+        requestVersionAfter: input.requestVersionAfter,
+        approvedAmountPhp: input.source.currentProposedAmountPhp.toFixed(6),
+        reason: input.reason?.trim() || null,
+        evidenceReference: input.source.evidenceReference,
+        supplementalEvidenceReference:
+          input.supplementalEvidenceReference?.trim() || null,
+        noPaymentCreation: true,
+        noPaymentRelease: true,
+        noJournalPosting: true,
+        noBankMutation: true,
+        noPeriodCloseMutation: true
+      }
+    }
+  });
+}
+
 export async function approvePettyCashRequest(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.financePettyCashApprove);
@@ -8561,7 +8833,12 @@ export async function approvePettyCashRequest(formData: FormData) {
         approvalInstanceId: approval.id,
         currentStepId: step.id,
         currentStepOrder: step.stepOrder,
-        includeNextStep: true
+        includeNextStep: true,
+        lockMode: "FULL_GRAPH",
+        fullGraphSource: {
+          documentType: "PettyCashRequest",
+          documentId: request.id
+        }
       }
     );
     const nextStep = await resolveSpecializedNextApprovalStep(tx, {
@@ -8569,12 +8846,36 @@ export async function approvePettyCashRequest(formData: FormData) {
       currentStepOrder: step.stepOrder,
       normalizedPreflight
     });
-    await validatePettyCashApprovalInTransaction(tx, session, {
-      pettyCashRequestId: request.id,
-      ...(values.approvedAmountPhp !== undefined
-        ? { approvedAmountPhp: values.approvedAmountPhp }
-        : {})
-    });
+    let normalizedIntent:
+      | Awaited<ReturnType<typeof appendPettyCashApprovalIntentAndAdvanceProposal>>
+      | null = null;
+    if (normalizedPreflight) {
+      const source = normalizedPreflight.lockedPettyCashSource;
+      if (!source) throw new Error("APPROVAL_SOURCE_CHANGED");
+      if (!nextStep) {
+        assertAuthoritativeApprovalEvidence(
+          source.evidenceReference,
+          "PETTY_CASH_REQUEST_EVIDENCE_REQUIRED"
+        );
+      }
+      normalizedIntent =
+        await appendPettyCashApprovalIntentAndAdvanceProposal(tx, session, {
+          source,
+          approvalStepId: step.id,
+          stepOrder: step.stepOrder,
+          action: "APPROVE",
+          reason: values.remarks,
+          supplementalEvidenceReference: values.evidenceReference,
+          terminal: !nextStep
+        });
+    } else {
+      await validatePettyCashApprovalInTransaction(tx, session, {
+        pettyCashRequestId: request.id,
+        ...(values.approvedAmountPhp !== undefined
+          ? { approvedAmountPhp: values.approvedAmountPhp }
+          : {})
+      });
+    }
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -8613,6 +8914,16 @@ export async function approvePettyCashRequest(formData: FormData) {
             approvalInstanceId: approval.id,
             approvedStepOrder: step.stepOrder,
             nextStepOrder: nextStep.stepOrder,
+            ...(normalizedIntent && normalizedPreflight?.lockedPettyCashSource
+              ? {
+                  pettyCashApprovalStepIntentId: normalizedIntent.intentId,
+                  decisionPayloadHash: normalizedIntent.decisionPayloadHash,
+                  requestVersionBefore:
+                    normalizedPreflight.lockedPettyCashSource
+                      .approvalProposalVersion,
+                  requestVersionAfter: normalizedIntent.requestVersionAfter
+                }
+              : {}),
             remarks: values.remarks ?? null,
             supplementalEvidenceReference: values.evidenceReference ?? null,
             noPaymentCreation: true,
@@ -8632,17 +8943,32 @@ export async function approvePettyCashRequest(formData: FormData) {
       status: "APPROVED",
       nextStepOrder: null
     });
-    await approvePettyCashRequestInTransaction(tx, session, {
-      pettyCashRequestId: request.id,
-      ...(values.approvedAmountPhp !== undefined
-        ? { approvedAmountPhp: values.approvedAmountPhp }
-        : {}),
-      ...(values.remarks !== undefined ? { reason: values.remarks } : {}),
-      ...(values.evidenceReference !== undefined
-        ? { supplementalEvidenceReference: values.evidenceReference }
-        : {}),
-      approvalInstanceId: approval.id
-    });
+    if (normalizedPreflight) {
+      const source = normalizedPreflight.lockedPettyCashSource;
+      if (!source || !normalizedIntent) {
+        throw new Error("APPROVAL_SOURCE_CHANGED");
+      }
+      await finalizeNormalizedPettyCashApproval(tx, session, {
+        source,
+        requestVersionAfter: normalizedIntent.requestVersionAfter,
+        reason: values.remarks,
+        supplementalEvidenceReference: values.evidenceReference,
+        approvalStepIntentId: normalizedIntent.intentId,
+        decisionPayloadHash: normalizedIntent.decisionPayloadHash
+      });
+    } else {
+      await approvePettyCashRequestInTransaction(tx, session, {
+        pettyCashRequestId: request.id,
+        ...(values.approvedAmountPhp !== undefined
+          ? { approvedAmountPhp: values.approvedAmountPhp }
+          : {}),
+        ...(values.remarks !== undefined ? { reason: values.remarks } : {}),
+        ...(values.evidenceReference !== undefined
+          ? { supplementalEvidenceReference: values.evidenceReference }
+          : {}),
+        approvalInstanceId: approval.id
+      });
+    }
   });
 }
 
@@ -8662,12 +8988,30 @@ async function closePettyCashRequestWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
-    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
-      approvalInstanceId: approval.id,
-      currentStepId: step.id,
-      currentStepOrder: step.stepOrder,
-      includeNextStep: false
-    });
+    const normalizedPreflight =
+      await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepId: step.id,
+        currentStepOrder: step.stepOrder,
+        includeNextStep: false,
+        lockMode: "FULL_GRAPH",
+        fullGraphSource: {
+          documentType: "PettyCashRequest",
+          documentId: request.id
+        }
+      });
+    const lockedSource = normalizedPreflight?.lockedPettyCashSource ?? null;
+    const normalizedIntent = lockedSource
+      ? await appendPettyCashApprovalIntentAndAdvanceProposal(tx, session, {
+          source: lockedSource,
+          approvalStepId: step.id,
+          stepOrder: step.stepOrder,
+          action: approvalStatus === "RETURNED" ? "RETURN" : "REJECT",
+          reason: values.remarks,
+          supplementalEvidenceReference: values.evidenceReference,
+          terminal: true
+        })
+      : null;
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -8679,12 +9023,20 @@ async function closePettyCashRequestWithDecision(
         remarks: values.remarks
       }
     });
-    await skipFutureApprovalStepsForTerminalDecision(tx, {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      approvalInstanceId: approval.id,
-      currentStepOrder: step.stepOrder
-    });
+    if (normalizedPreflight?.lockedFullGraph) {
+      await skipLockedPettyCashFutureApprovalSteps(tx, session, {
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder,
+        lockedGraph: normalizedPreflight.lockedFullGraph
+      });
+    } else {
+      await skipFutureApprovalStepsForTerminalDecision(tx, {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceId: approval.id,
+        currentStepOrder: step.stepOrder
+      });
+    }
     await transitionSpecializedApprovalInstance(tx, session, {
       approvalInstanceId: approval.id,
       currentStepOrder: step.stepOrder,
@@ -8693,11 +9045,17 @@ async function closePettyCashRequestWithDecision(
     });
     const updatedRequest = await tx.pettyCashRequest.updateMany({
       where: {
-        id: request.id,
+        id: lockedSource?.id ?? request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
-        approvalInstanceId: approval.id
+        approvalInstanceId: approval.id,
+        ...(lockedSource && normalizedIntent
+          ? {
+              currentProposedAmountPhp: null,
+              approvalProposalVersion: normalizedIntent.requestVersionAfter
+            }
+          : {})
       },
       data:
         requestStatus === "RETURNED_FOR_REVISION"
@@ -8707,7 +9065,8 @@ async function closePettyCashRequestWithDecision(
               returnedByUserId: session.user.id,
               returnedAt: new Date(),
               returnReason: values.remarks,
-              evidenceReference: request.evidenceReference
+              evidenceReference:
+                lockedSource?.evidenceReference ?? request.evidenceReference
             }
           : {
               status: requestStatus,
@@ -8715,11 +9074,16 @@ async function closePettyCashRequestWithDecision(
               rejectedByUserId: session.user.id,
               rejectedAt: new Date(),
               rejectionReason: values.remarks,
-              evidenceReference: request.evidenceReference
+              evidenceReference:
+                lockedSource?.evidenceReference ?? request.evidenceReference
             }
     });
     if (updatedRequest.count !== 1) {
-      throw new Error("PETTY_CASH_REQUEST_NOT_AWAITING_APPROVAL");
+      throw new Error(
+        normalizedPreflight
+          ? "APPROVAL_SOURCE_CHANGED"
+          : "PETTY_CASH_REQUEST_NOT_AWAITING_APPROVAL"
+      );
     }
     await tx.auditEvent.create({
       data: {
@@ -8728,13 +9092,22 @@ async function closePettyCashRequestWithDecision(
         actorUserId: session.user.id,
         eventType,
         entityType: "PettyCashRequest",
-        entityId: request.id,
+        entityId: lockedSource?.id ?? request.id,
         beforeData: { status: "AWAITING_APPROVAL" },
         afterData: { status: requestStatus },
         metadata: {
           approvalInstanceId: approval.id,
+          ...(normalizedIntent && lockedSource
+            ? {
+                pettyCashApprovalStepIntentId: normalizedIntent.intentId,
+                decisionPayloadHash: normalizedIntent.decisionPayloadHash,
+                requestVersionBefore: lockedSource.approvalProposalVersion,
+                requestVersionAfter: normalizedIntent.requestVersionAfter
+              }
+            : {}),
           remarks: values.remarks,
-          evidenceReference: request.evidenceReference,
+          evidenceReference:
+            lockedSource?.evidenceReference ?? request.evidenceReference,
           supplementalEvidenceReference:
             values.evidenceReference?.trim() || null,
           noPaymentCreation: true,

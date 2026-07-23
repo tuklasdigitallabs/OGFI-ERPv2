@@ -3,7 +3,7 @@
 **Who can do this:** Users with the applicable Petty Cash view, create, submit, approve, replenish, liquidate, or liquidation-review permission and access to the selected company and location  
 **Applies to:** Petty Cash funds and records in the user's authorized company and location scope  
 **Related phase/module:** Phase 3 / Finance / Petty Cash  
-**Last verified against:** Current Petty Cash page and service behavior on 2026-07-22
+**Last verified against:** Current Petty Cash page and service behavior, including feature-disabled DEC-0076 controls, on 2026-07-23
 
 ## Purpose
 
@@ -67,7 +67,7 @@ The request begins in `DRAFT`. A valid submission changes it to `AWAITING APPROV
 - An explicit approval amount that differs from the current amount is blocked in both the current source-workspace route and the feature-disabled normalized route. Finance and Operations have not approved rules for reducing, increasing, or restoring a request amount.
 - Request approval does not move cash. A separate authorized user records the offline movement after final approval.
 - `Return` and `Reject` require a reason. `Cancel` also requires a reason and follows the applicable approval-control path for the request's current status.
-- Normalized Approval Inbox routing is not production-active. Its immutable per-step amount-intent writer and proposal-version compare-and-set control remain pending, so no user guidance should claim that intermediate approval amount intent is currently recorded.
+- Normalized Approval Inbox routing is disabled and is not available to users. Its immutable per-step amount-intent writer and proposal-version compare-and-set control are implemented behind that disabled route, but disposable-PostgreSQL behavioral acceptance and production activation remain pending. Approval actions carry the current amount unchanged; they cannot propose or apply an amount change. The feature-disabled intent record creates no payment, bank, journal, Petty Cash fund, or Petty Cash ledger effect.
 
 ## Record Or Reverse An Approved Offline Cash Movement
 
@@ -136,7 +136,7 @@ The `Approved amount` shown in liquidation review applies only to the liquidatio
 - Approved requests still require a separate authorized offline custody movement or draft disbursement handoff.
 - Approved liquidations can be closed after review or reversed through the controlled correction path.
 - Reports show fund balances, open requests, open liquidations, evidence readiness, and exception cues. They do not represent official books or bank reconciliation.
-- Production activation of normalized routing, immutable step-intent writing, proposal-version compare-and-set, controlled finance evidence qualification, and related payment, bank, and journal effects remains pending.
+- The immutable step-intent writer and proposal-version compare-and-set control are implemented only behind disabled normalized routing. Disposable-PostgreSQL behavioral acceptance and production activation remain pending, so users cannot access this behavior. Controlled finance evidence qualification and any production payment, bank, or journal effects also remain pending; the intent control itself does not create those effects.
 
 ## Related Articles
 

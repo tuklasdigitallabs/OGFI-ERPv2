@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { prisma } from "@ogfi/database";
+import { prisma, type TransactionClient } from "@ogfi/database";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import {
   canonicalApprovalDecisionCapabilities,
   parseCanonicalApprovalDecisionCommand,
 } from "../src/server/services/approvalDecisionCommands";
+import { permissions } from "../src/server/services/authorization";
+import { cancelPettyCashRequest } from "../src/server/services/pettyCash";
 import { supportedApprovalDocumentTypes } from "../src/server/services/approvalRoutingRegistry";
 import {
   approvalDecisionPgSnapshot,
@@ -50,7 +52,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function waitForBlockedPid(blockerPid: number) {
+async function waitForBlockedPid(blockerPid: number, excludedPids: number[] = []) {
   const deadline = Date.now() + 4_000;
   while (Date.now() < deadline) {
     const rows = await prisma.$queryRaw<Array<{ pid: number }>>`
@@ -61,7 +63,8 @@ async function waitForBlockedPid(blockerPid: number) {
          AND ${blockerPid}::int = ANY(pg_blocking_pids(activity.pid))
        ORDER BY activity.pid ASC
     `;
-    if (rows[0]) return rows[0].pid;
+    const blocked = rows.find(({ pid }) => !excludedPids.includes(pid));
+    if (blocked) return blocked.pid;
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
   throw new Error(`POSTGRES_BLOCKED_PID_NOT_OBSERVED:${blockerPid}`);
@@ -228,10 +231,14 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
     return fixture;
   }
 
-  async function pettyCashRequestFixture() {
+  async function pettyCashRequestFixture(
+    steps: 1 | 2 = 1,
+    extraPermissionCodes: string[] = [],
+  ) {
     const fixture = await createApprovalDecisionPgFixture({
       family: "PettyCashRequest",
-      steps: 1,
+      steps,
+      extraPermissionCodes,
       createSource: async (context) => {
         const fund = await prisma.pettyCashFund.create({
           data: {
@@ -275,7 +282,11 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
     });
     await prisma.pettyCashRequest.update({
       where: { id: fixture.sourceId },
-      data: { approvalInstanceId: fixture.approvalInstanceId },
+      data: {
+        approvalInstanceId: fixture.approvalInstanceId,
+        currentProposedAmountPhp: 100,
+        approvalProposalVersion: 1,
+      },
     });
     return fixture;
   }
@@ -2049,6 +2060,636 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
     expect(final.notifications.map(({ notificationType }) => notificationType)).toContain("APPROVAL_OUTCOME_APPROVED");
   });
 
-  test.todo("PettyCashRequest approval awaits an approved amount-policy fixture");
+  async function executePettyCashDecision(
+    fixture: ApprovalDecisionPgFixture,
+    decision: "APPROVE" | "RETURN" | "REJECT",
+    actorStep: 1 | 2,
+  ) {
+    contextMock.requireSessionContext.mockResolvedValue(
+      fixture.sessionFor(actorStep),
+    );
+    const { executeCanonicalApprovalDecision } = await import(
+      "../src/server/services/approvals"
+    );
+    return executeCanonicalApprovalDecision({
+      family: "PettyCashRequest",
+      decision,
+      approvalInstanceId: fixture.approvalInstanceId,
+      ...(decision === "APPROVE" ? {} : { remarks }),
+      evidenceReference: `fixture://petty-cash/${decision.toLowerCase()}`,
+    });
+  }
+
+  async function readPettyCashIntentState(fixture: ApprovalDecisionPgFixture) {
+    const [source, intents] = await Promise.all([
+      prisma.pettyCashRequest.findUniqueOrThrow({
+        where: { id: fixture.sourceId },
+        select: {
+          status: true,
+          requestedAmountPhp: true,
+          approvedAmountPhp: true,
+          currentProposedAmountPhp: true,
+          approvalProposalVersion: true,
+        },
+      }),
+      prisma.pettyCashApprovalStepIntent.findMany({
+        where: {
+          tenantId: fixture.tenantId,
+          companyId: fixture.companyId,
+          pettyCashRequestId: fixture.sourceId,
+        },
+        orderBy: { stepOrder: "asc" },
+      }),
+    ]);
+    return { source, intents };
+  }
+
+  function withoutPettyCashIntents(
+    snapshot: Awaited<ReturnType<typeof prohibitedActorCollateralSnapshot>>,
+  ) {
+    const { pettyCashApprovalStepIntents: _intents, ...bounded } = snapshot;
+    return bounded;
+  }
+
+  function injectNextTransactionClient(
+    transform: (tx: TransactionClient) => TransactionClient,
+  ) {
+    const originalTransaction = prisma.$transaction.bind(prisma);
+    const transactionSpy = vi.spyOn(prisma, "$transaction");
+    const implementation = (
+      callback: (tx: TransactionClient) => Promise<unknown>,
+      options?: object,
+    ) =>
+      originalTransaction(
+        (tx) => callback(transform(tx)),
+        options as never,
+      );
+    transactionSpy.mockImplementationOnce(
+      implementation as unknown as typeof prisma.$transaction,
+    );
+    return transactionSpy;
+  }
+
+  test("PettyCashRequest two-step approve records one immutable unchanged-amount intent per acted step", async () => {
+    const fixture = await pettyCashRequestFixture(2);
+    const collateralBefore = withoutPettyCashIntents(
+      await prohibitedActorCollateralSnapshot(fixture),
+    );
+
+    await executePettyCashDecision(fixture, "APPROVE", 1);
+    const intermediate = await readPettyCashIntentState(fixture);
+    expect(intermediate.source.status).toBe("AWAITING_APPROVAL");
+    expect(intermediate.source.currentProposedAmountPhp?.toFixed(6)).toBe(
+      "100.000000",
+    );
+    expect(intermediate.source.approvalProposalVersion).toBe(2);
+    expect(intermediate.intents).toHaveLength(1);
+    expect(intermediate.intents[0]).toMatchObject({
+      approvalInstanceId: fixture.approvalInstanceId,
+      approvalStepId: fixture.stepIds[0],
+      stepOrder: 1,
+      actorUserId: fixture.approverUserIds[0],
+      requestVersionBefore: 1,
+      requestVersionAfter: 2,
+    });
+    expect(intermediate.intents[0]?.beforeAmountPhp.toFixed(6)).toBe(
+      "100.000000",
+    );
+    expect(intermediate.intents[0]?.effectiveAmountPhp.toFixed(6)).toBe(
+      "100.000000",
+    );
+    const intermediateGraph = await approvalDecisionPgSnapshot(fixture);
+    expect(intermediateGraph.instance).toEqual({
+      status: "PENDING",
+      currentStepOrder: 2,
+    });
+    expect(intermediateGraph.steps.map(({ status }) => status)).toEqual([
+      "APPROVED",
+      "PENDING",
+    ]);
+    expect(intermediateGraph.notifications).toEqual([]);
+
+    await executePettyCashDecision(fixture, "APPROVE", 2);
+    const terminal = await readPettyCashIntentState(fixture);
+    expect(terminal.source.status).toBe("APPROVED");
+    expect(terminal.source.currentProposedAmountPhp).toBeNull();
+    expect(terminal.source.approvalProposalVersion).toBe(3);
+    expect(terminal.source.approvedAmountPhp.toFixed(6)).toBe("100.000000");
+    expect(terminal.intents).toHaveLength(2);
+    expect(
+      terminal.intents.map((intent) => ({
+        stepOrder: intent.stepOrder,
+        before: intent.requestVersionBefore,
+        after: intent.requestVersionAfter,
+        amount: intent.effectiveAmountPhp.toFixed(6),
+        hash: intent.decisionPayloadHash,
+        key: intent.idempotencyKey,
+      })),
+    ).toEqual([
+      {
+        stepOrder: 1,
+        before: 1,
+        after: 2,
+        amount: "100.000000",
+        hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        key: expect.stringMatching(/^petty-cash-approval-intent:v1:[a-f0-9]{64}$/),
+      },
+      {
+        stepOrder: 2,
+        before: 2,
+        after: 3,
+        amount: "100.000000",
+        hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        key: expect.stringMatching(/^petty-cash-approval-intent:v1:[a-f0-9]{64}$/),
+      },
+    ]);
+    expect(
+      withoutPettyCashIntents(
+        await prohibitedActorCollateralSnapshot(fixture),
+      ),
+    ).toEqual(collateralBefore);
+    const audits = await prisma.auditEvent.findMany({
+      where: {
+        tenantId: fixture.tenantId,
+        entityId: fixture.sourceId,
+        eventType: {
+          in: [
+            "petty_cash.request_approval_step_approved",
+            "petty_cash.request_approved",
+          ],
+        },
+      },
+      select: { eventType: true, metadata: true },
+    });
+    expect(audits).toHaveLength(2);
+    expect(
+      audits.find(
+        ({ eventType }) =>
+          eventType === "petty_cash.request_approval_step_approved",
+      )?.metadata,
+    ).toEqual(
+      expect.objectContaining({
+        pettyCashApprovalStepIntentId: terminal.intents[0]?.id,
+        requestVersionBefore: 1,
+        requestVersionAfter: 2,
+      }),
+    );
+    expect(
+      (await approvalDecisionPgSnapshot(fixture)).notifications,
+    ).toEqual([
+      expect.objectContaining({
+        notificationType: "APPROVAL_OUTCOME_APPROVED",
+        recipientUserId: fixture.requesterUserId,
+        sourceEventKey: `approval:${fixture.approvalInstanceId}:outcome:APPROVED`,
+        priority: "NORMAL",
+        deepLink: `/approvals/${fixture.approvalInstanceId}`,
+        entityId: fixture.sourceId,
+      }),
+    ]);
+    expect(
+      audits.find(
+        ({ eventType }) => eventType === "petty_cash.request_approved",
+      )?.metadata,
+    ).toEqual(
+      expect.objectContaining({
+        pettyCashApprovalStepIntentId: terminal.intents[1]?.id,
+        requestVersionBefore: 2,
+        requestVersionAfter: 3,
+      }),
+    );
+    await expect(
+      executePettyCashDecision(fixture, "APPROVE", 2),
+    ).rejects.toThrow("APPROVAL_NOT_ACTIONABLE");
+    expect((await readPettyCashIntentState(fixture)).intents).toHaveLength(2);
+  });
+
+  test.each([
+    ["RETURN", "RETURNED_FOR_REVISION", "RETURNED"],
+    ["REJECT", "REJECTED", "REJECTED"],
+  ] as const)(
+    "PettyCashRequest %s records only the acted current-step intent and keeps the skipped step intent-free",
+    async (decision, sourceStatus, approvalStatus) => {
+      const fixture = await pettyCashRequestFixture(2);
+      const collateralBefore = withoutPettyCashIntents(
+        await prohibitedActorCollateralSnapshot(fixture),
+      );
+      await executePettyCashDecision(fixture, decision, 1);
+      const state = await readPettyCashIntentState(fixture);
+      expect(state.source).toMatchObject({
+        status: sourceStatus,
+        currentProposedAmountPhp: null,
+        approvalProposalVersion: 2,
+      });
+      expect(state.intents).toHaveLength(1);
+      expect(state.intents[0]).toMatchObject({
+        approvalStepId: fixture.stepIds[0],
+        stepOrder: 1,
+        requestVersionBefore: 1,
+        requestVersionAfter: 2,
+        reason: remarks,
+      });
+      const graph = await approvalDecisionPgSnapshot(fixture);
+      expect(graph.instance).toEqual({
+        status: approvalStatus,
+        currentStepOrder: null,
+      });
+      expect(graph.steps.map(({ status }) => status)).toEqual([
+        approvalStatus,
+        "SKIPPED",
+      ]);
+      const expectedEventType =
+        decision === "RETURN"
+          ? "petty_cash.request_returned"
+          : "petty_cash.request_rejected";
+      const decisionAudits = await prisma.auditEvent.findMany({
+        where: {
+          tenantId: fixture.tenantId,
+          entityId: fixture.sourceId,
+          eventType: expectedEventType,
+        },
+        select: { metadata: true },
+      });
+      expect(decisionAudits).toEqual([
+        {
+          metadata: expect.objectContaining({
+            pettyCashApprovalStepIntentId: state.intents[0]?.id,
+            requestVersionBefore: 1,
+            requestVersionAfter: 2,
+          }),
+        },
+      ]);
+      expect(graph.notifications).toEqual([
+        expect.objectContaining({
+          notificationType: `APPROVAL_OUTCOME_${approvalStatus}`,
+          recipientUserId: fixture.requesterUserId,
+          sourceEventKey: `approval:${fixture.approvalInstanceId}:outcome:${approvalStatus}`,
+          priority: approvalStatus === "REJECTED" ? "HIGH" : "NORMAL",
+          deepLink: `/approvals/${fixture.approvalInstanceId}`,
+          entityId: fixture.sourceId,
+        }),
+      ]);
+      expect(
+        withoutPettyCashIntents(
+          await prohibitedActorCollateralSnapshot(fixture),
+        ),
+      ).toEqual(collateralBefore);
+      await expect(
+        executePettyCashDecision(fixture, decision, 1),
+      ).rejects.toThrow("APPROVAL_NOT_ACTIONABLE");
+      expect((await readPettyCashIntentState(fixture)).intents).toHaveLength(1);
+    },
+  );
+
+  test.each(["APPROVE", "RETURN", "REJECT"] as const)(
+    "PettyCashRequest normalized %s requires authoritative locked source evidence before writing intent or graph state",
+    async (decision) => {
+      const fixture = await pettyCashRequestFixture(2);
+      await prisma.pettyCashRequest.update({
+        where: { id: fixture.sourceId },
+        data: { evidenceReference: null },
+      });
+      const [sourceBefore, graphBefore] = await Promise.all([
+        readPettyCashIntentState(fixture),
+        approvalDecisionPgSnapshot(fixture),
+      ]);
+      await expect(
+        executePettyCashDecision(fixture, decision, 1),
+      ).rejects.toThrow("PETTY_CASH_REQUEST_EVIDENCE_REQUIRED");
+      expect(await readPettyCashIntentState(fixture)).toEqual(sourceBefore);
+      expect(await approvalDecisionPgSnapshot(fixture)).toEqual(graphBefore);
+    },
+  );
+
+  test("PettyCashRequest normalized action rejects a locked fund location outside the current-step routing scope", async () => {
+    const fixture = await pettyCashRequestFixture(2);
+    const otherLocationId = randomUUID();
+    await prisma.location.create({
+      data: {
+        id: otherLocationId,
+        tenantId: fixture.tenantId,
+        companyId: fixture.companyId,
+        brandId: fixture.brandId,
+        locationType: "BRANCH",
+        code: `PC-SCOPE-${otherLocationId.slice(0, 8)}`,
+        name: "Petty Cash mismatched approval scope",
+      },
+    });
+    const request = await prisma.pettyCashRequest.findUniqueOrThrow({
+      where: { id: fixture.sourceId },
+      select: { pettyCashFundId: true },
+    });
+    await prisma.pettyCashFund.update({
+      where: { id: request.pettyCashFundId },
+      data: { locationId: otherLocationId },
+    });
+    const [sourceBefore, graphBefore] = await Promise.all([
+      readPettyCashIntentState(fixture),
+      approvalDecisionPgSnapshot(fixture),
+    ]);
+
+    await expect(
+      executePettyCashDecision(fixture, "APPROVE", 1),
+    ).rejects.toThrow("APPROVAL_SOURCE_SCOPE_MISMATCH");
+    expect(await readPettyCashIntentState(fixture)).toEqual(sourceBefore);
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(graphBefore);
+  });
+
+  test.each([
+    ["APPROVE", "APPROVED", "APPROVED"],
+    ["RETURN", "RETURNED_FOR_REVISION", "RETURNED"],
+    ["REJECT", "REJECTED", "REJECTED"],
+  ] as const)(
+    "PettyCashRequest flag-off %s preserves the legacy proposal version and writes no intent",
+    async (decision, sourceStatus, approvalStatus) => {
+      const fixture = await pettyCashRequestFixture();
+      process.env.APPROVAL_ROUTING_V1_ENABLED = "false";
+      try {
+        await executePettyCashDecision(fixture, decision, 1);
+      } finally {
+        process.env.APPROVAL_ROUTING_V1_ENABLED = "true";
+      }
+      const state = await readPettyCashIntentState(fixture);
+      expect(state.source.status).toBe(sourceStatus);
+      expect(state.source.currentProposedAmountPhp).toBeNull();
+      expect(state.source.approvalProposalVersion).toBe(1);
+      expect(state.intents).toEqual([]);
+      expect((await approvalDecisionPgSnapshot(fixture)).instance).toEqual({
+        status: approvalStatus,
+        currentStepOrder: null,
+      });
+    },
+  );
+
+  test("PettyCashRequest zero-row proposal CAS rolls back the newly inserted intent and every decision effect", async () => {
+    const fixture = await pettyCashRequestFixture();
+    const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+    const sourceBefore = await readPettyCashIntentState(fixture);
+    const collateralBefore = await prohibitedActorCollateralSnapshot(fixture);
+    let firstUpdate = true;
+    const transactionSpy = injectNextTransactionClient((tx) => {
+      const pettyCashRequest = new Proxy(tx.pettyCashRequest, {
+        get(target, property, receiver) {
+          if (property === "updateMany") {
+            return async (...args: Parameters<typeof target.updateMany>) => {
+              if (firstUpdate) {
+                firstUpdate = false;
+                return { count: 0 };
+              }
+              return target.updateMany(...args);
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      return new Proxy(tx, {
+        get(target, property, receiver) {
+          if (property === "pettyCashRequest") return pettyCashRequest;
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    });
+    try {
+      await expect(
+        executePettyCashDecision(fixture, "APPROVE", 1),
+      ).rejects.toThrow("APPROVAL_SOURCE_CHANGED");
+    } finally {
+      transactionSpy.mockRestore();
+    }
+    expect(firstUpdate).toBe(false);
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+    expect(await readPettyCashIntentState(fixture)).toEqual(sourceBefore);
+    expect(await prohibitedActorCollateralSnapshot(fixture)).toEqual(
+      collateralBefore,
+    );
+  });
+
+  test("PettyCashRequest conflicting one-step intent fails closed and preserves the existing immutable payload", async () => {
+    const fixture = await pettyCashRequestFixture();
+    const existing = await prisma.pettyCashApprovalStepIntent.create({
+      data: {
+        tenantId: fixture.tenantId,
+        companyId: fixture.companyId,
+        pettyCashRequestId: fixture.sourceId,
+        approvalInstanceId: fixture.approvalInstanceId,
+        approvalStepId: fixture.stepIds[0],
+        stepOrder: 1,
+        requestedAmountSnapshotPhp: 100,
+        beforeAmountPhp: 100,
+        effectiveAmountPhp: 100,
+        actorUserId: fixture.approverUserIds[0],
+        reason: "Conflicting immutable payload fixture",
+        requestVersionBefore: 1,
+        requestVersionAfter: 2,
+        decisionPayloadHash: "a".repeat(64),
+        idempotencyKey: `petty-cash-approval-intent:v1:${"a".repeat(64)}`,
+      },
+    });
+    const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+    const sourceBefore = await readPettyCashIntentState(fixture);
+    const collateralBefore = await prohibitedActorCollateralSnapshot(fixture);
+
+    await expect(
+      executePettyCashDecision(fixture, "REJECT", 1),
+    ).rejects.toThrow("PETTY_CASH_APPROVAL_INTENT_CONFLICT");
+
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+    expect(await readPettyCashIntentState(fixture)).toEqual(sourceBefore);
+    expect(await prohibitedActorCollateralSnapshot(fixture)).toEqual(
+      collateralBefore,
+    );
+    expect(
+      await prisma.pettyCashApprovalStepIntent.findMany({
+        where: { pettyCashRequestId: fixture.sourceId },
+      }),
+    ).toEqual([existing]);
+  });
+
+  test("PettyCashRequest terminal audit failure rolls back intent, proposal CAS, graph, notification, and source", async () => {
+    const fixture = await pettyCashRequestFixture();
+    const approvalBefore = await approvalDecisionPgSnapshot(fixture);
+    const sourceBefore = await readPettyCashIntentState(fixture);
+    const collateralBefore = await prohibitedActorCollateralSnapshot(fixture);
+    let auditFailureInjected = false;
+    const transactionSpy = injectNextTransactionClient((tx) => {
+      const auditEvent = new Proxy(tx.auditEvent, {
+        get(target, property, receiver) {
+          if (property === "create") {
+            return async (...args: Parameters<typeof target.create>) => {
+              if (
+                args[0].data.eventType === "petty_cash.request_approved"
+              ) {
+                auditFailureInjected = true;
+                throw new Error("INJECTED_PETTY_CASH_AUDIT_FAILURE");
+              }
+              return target.create(...args);
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      return new Proxy(tx, {
+        get(target, property, receiver) {
+          if (property === "auditEvent") return auditEvent;
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    });
+    try {
+      await expect(
+        executePettyCashDecision(fixture, "APPROVE", 1),
+      ).rejects.toThrow("INJECTED_PETTY_CASH_AUDIT_FAILURE");
+    } finally {
+      transactionSpy.mockRestore();
+    }
+    expect(auditFailureInjected).toBe(true);
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(approvalBefore);
+    expect(await readPettyCashIntentState(fixture)).toEqual(sourceBefore);
+    expect(await prohibitedActorCollateralSnapshot(fixture)).toEqual(
+      collateralBefore,
+    );
+  });
+
+  test("PettyCashRequest cancellation at step 2 retains the acted step-1 intent and creates no cancellation intent", async () => {
+    const fixture = await pettyCashRequestFixture(2, [
+      permissions.financePettyCashSubmit,
+    ]);
+    await executePettyCashDecision(fixture, "APPROVE", 1);
+    const collateralBefore = withoutPettyCashIntents(
+      await prohibitedActorCollateralSnapshot(fixture),
+    );
+    const priorIntent = (await readPettyCashIntentState(fixture)).intents[0];
+    const cancellationSession = fixture.sessionFor(2);
+
+    await expect(
+      cancelPettyCashRequest(cancellationSession, {
+        pettyCashRequestId: fixture.sourceId,
+        reason: "Requester no longer needs this petty cash request",
+        evidenceReference: "fixture://petty-cash/cancellation",
+      }),
+    ).resolves.toMatchObject({ status: "CANCELLED" });
+
+    const state = await readPettyCashIntentState(fixture);
+    expect(state.source).toMatchObject({
+      status: "CANCELLED",
+      currentProposedAmountPhp: null,
+      approvalProposalVersion: 2,
+    });
+    expect(state.intents).toEqual([priorIntent]);
+    const graph = await approvalDecisionPgSnapshot(fixture);
+    expect(graph.instance).toEqual({ status: "CANCELLED", currentStepOrder: null });
+    expect(graph.steps.map(({ status }) => status)).toEqual([
+      "APPROVED",
+      "SKIPPED",
+    ]);
+    expect(
+      graph.audits.filter(
+        ({ eventType }) => eventType === "petty_cash.request_cancelled",
+      ),
+    ).toHaveLength(1);
+    expect(
+      graph.notifications.filter(({ notificationType }) =>
+        notificationType.startsWith("APPROVAL_OUTCOME_"),
+      ),
+    ).toEqual([]);
+    expect(
+      withoutPettyCashIntents(
+        await prohibitedActorCollateralSnapshot(fixture),
+      ),
+    ).toEqual(collateralBefore);
+  });
+
+  test("PettyCashRequest final step decision blocks cancellation on the exact parent holder and completes without deadlock", async () => {
+    const fixture = await pettyCashRequestFixture(2, [
+      permissions.financePettyCashSubmit,
+    ]);
+    await executePettyCashDecision(fixture, "APPROVE", 1);
+    const collateralBefore = withoutPettyCashIntents(
+      await prohibitedActorCollateralSnapshot(fixture),
+    );
+    const sourceLocked = deferred();
+    const releaseSource = deferred();
+    let blockerPid = 0;
+    const blocker = prisma.$transaction(async (tx) => {
+      [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+        SELECT pg_backend_pid() AS pid
+      `;
+      await tx.$queryRaw`
+        SELECT request.id
+          FROM "PettyCashRequest" request
+         WHERE request.id = ${fixture.sourceId}::uuid
+         FOR UPDATE OF request
+      `;
+      sourceLocked.resolve();
+      await releaseSource.promise;
+    });
+    await sourceLocked.promise;
+
+    const decision = executePettyCashDecision(fixture, "APPROVE", 2);
+    let cancellation:
+      | ReturnType<typeof cancelPettyCashRequest>
+      | undefined;
+    try {
+      const decisionPid = await waitForBlockedPid(blockerPid);
+      cancellation = cancelPettyCashRequest(fixture.sessionFor(2), {
+        pettyCashRequestId: fixture.sourceId,
+        reason: "Concurrent cancellation must lose to the held final decision",
+        evidenceReference: "fixture://petty-cash/cancellation-race",
+      });
+      await waitForBlockedPid(decisionPid, [blockerPid]);
+    } finally {
+      releaseSource.resolve();
+    }
+    const [decisionResult, cancellationResult, blockerResult] =
+      await Promise.allSettled([decision, cancellation!, blocker]);
+    expect(decisionResult.status).toBe("fulfilled");
+    expect(cancellationResult).toEqual({
+      status: "rejected",
+      reason: expect.objectContaining({
+        message: "APPROVAL_CANCELLATION_PENDING_APPROVAL_REQUIRED",
+      }),
+    });
+    expect(blockerResult.status).toBe("fulfilled");
+
+    const state = await readPettyCashIntentState(fixture);
+    expect(state.source).toMatchObject({
+      status: "APPROVED",
+      currentProposedAmountPhp: null,
+      approvalProposalVersion: 3,
+    });
+    expect(state.intents).toHaveLength(2);
+    const graph = await approvalDecisionPgSnapshot(fixture);
+    expect(graph.instance).toEqual({ status: "APPROVED", currentStepOrder: null });
+    expect(graph.steps.map(({ status }) => status)).toEqual([
+      "APPROVED",
+      "APPROVED",
+    ]);
+    expect(
+      graph.audits.filter(
+        ({ eventType }) => eventType === "petty_cash.request_cancelled",
+      ),
+    ).toEqual([]);
+    expect(
+      graph.notifications.filter(
+        ({ notificationType }) =>
+          notificationType === "APPROVAL_OUTCOME_APPROVED",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        recipientUserId: fixture.requesterUserId,
+        sourceEventKey: `approval:${fixture.approvalInstanceId}:outcome:APPROVED`,
+        entityId: fixture.sourceId,
+      }),
+    ]);
+    expect(
+      withoutPettyCashIntents(
+        await prohibitedActorCollateralSnapshot(fixture),
+      ),
+    ).toEqual(collateralBefore);
+  }, 15_000);
+
   test.todo("PaymentRequest approval awaits an explicit payment-control policy fixture");
 });

@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Petty Cash Immutable Step Intent And Proposal CAS
+
+- Confirmed and implemented `DEC-0076` behind `APPROVAL_ROUTING_V1_ENABLED=false`: Petty Cash alone opts into bounded `FULL_GRAPH` preflight, transactionally reconciles locked graph/scope/source state, and appends exactly one immutable unchanged-amount intent for every acted current-step approve, return, or reject.
+- Added stable six-decimal server-derived hash/idempotency context, exact Decimal proposal-version compare-and-swap, retained terminal version after proposal clearing, and locked-graph future-step skipping without a second re-lock. Intent, decision, source, audit, notification, and bounded collateral state commit atomically with no amount, payment, bank, journal, fund, ledger, disbursement, settlement, inventory, purchasing, or receiving effect.
+- Fifteen disposable-PostgreSQL specifications are authored but unexecuted because the exact database command requires `DISPOSABLE_DATABASE_ADMIN_URL`. Focused tests pass 70 with 159 skipped and one unrelated TODO; the full root candidate passes 1,244 web tests, 27 database-package tests, one worker test, lint, typecheck, production build, and `git diff --check`. Architecture's three initial High findings were corrected; final Architecture, Data, QA, and Security reviews report no remaining Critical/High finding and GO only for the disabled source checkpoint, while PostgreSQL behavioral acceptance/activation remain NO-GO. Requested Spark/GPT-5.4 specialists were unavailable, so GPT-5.6 specialist fallback was used without relaxing gates. Dunong found no visible enablement behavior change while the flag remains false.
+
 ## 2026-07-23 — Canonical Prohibited-Actor And Revocation Evidence
 
 - Corrected and implemented `DEC-0075` as feature-disabled PostgreSQL specifications: the registry-derived matrix covers 49 preflight-executable commands (17 approve, 14 return, 18 reject) and excludes only Payment Request approve. Petty Cash no-amount approve and Petty Cash/Payment return/reject remain negative authority tests, not positive policy completion.

@@ -71,12 +71,28 @@ export type ApprovalStepEligibilityIdentity = {
   now?: Date;
 };
 
-export type NormalizedApprovalDecisionPreflightInput = {
+type NormalizedApprovalDecisionPreflightBaseInput = {
   approvalInstanceId: string;
   currentStepId: string;
   currentStepOrder: number;
   includeNextStep: boolean;
 };
+
+export type NormalizedApprovalDecisionPreflightInput =
+  NormalizedApprovalDecisionPreflightBaseInput &
+    (
+      | {
+          lockMode?: "ACTIONABLE_PAIR";
+          fullGraphSource?: never;
+        }
+      | {
+          lockMode: "FULL_GRAPH";
+          fullGraphSource: {
+            documentType: "PettyCashRequest";
+            documentId: string;
+          };
+        }
+    );
 
 export type LockedNormalizedApprovalStepRouting = {
   id: string;
@@ -88,6 +104,20 @@ export type LockedNormalizedApprovalStepRouting = {
 export type NormalizedApprovalDecisionPreflight = {
   nextStep: LockedNormalizedApprovalStepRouting | null;
   directRecipientUserId: string | null;
+  lockedFullGraph: LockedNormalizedApprovalLifecycleGraph | null;
+  lockedPettyCashSource: LockedNormalizedPettyCashApprovalSource | null;
+};
+
+export type LockedNormalizedPettyCashApprovalSource = {
+  id: string;
+  pettyCashFundId: string;
+  fundLocationId: string;
+  requestedByUserId: string;
+  requestedAmountPhp: Prisma.Decimal;
+  currentProposedAmountPhp: Prisma.Decimal;
+  approvalProposalVersion: number;
+  approvalInstanceId: string;
+  evidenceReference: string | null;
 };
 
 export type LockedNormalizedApprovalLifecycleStep =
@@ -873,6 +903,53 @@ async function lockNormalizedApprovalDecisionAuthority(
   session: SessionContext,
   input: NormalizedApprovalDecisionPreflightInput
 ) {
+  if (input.lockMode === "FULL_GRAPH") {
+    const graph = await lockNormalizedApprovalLifecycleGraph(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId: input.approvalInstanceId,
+      documentType: input.fullGraphSource.documentType,
+      documentId: input.fullGraphSource.documentId
+    });
+    const currentStep = graph.steps.find(
+      (step) =>
+        step.id === input.currentStepId &&
+        step.stepOrder === input.currentStepOrder &&
+        step.status === "PENDING"
+    );
+    if (
+      !currentStep ||
+      graph.currentStepOrder !== input.currentStepOrder
+    ) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await lockNormalizedApprovalStepScopeMetadata(tx, currentStep.id);
+    const nextStep = input.includeNextStep
+      ? graph.steps.find(
+          (step) =>
+            step.stepOrder > input.currentStepOrder &&
+            step.status === "WAITING"
+        ) ?? null
+      : null;
+    return {
+      currentStep: {
+        id: currentStep.id,
+        stepOrder: currentStep.stepOrder,
+        assignedUserId: currentStep.assignedUserId,
+        assignedRoleId: currentStep.assignedRoleId
+      },
+      nextStep: nextStep
+        ? {
+            id: nextStep.id,
+            stepOrder: nextStep.stepOrder,
+            assignedUserId: nextStep.assignedUserId,
+            assignedRoleId: nextStep.assignedRoleId
+          }
+        : null,
+      lockedFullGraph: graph
+    };
+  }
+
   const lockedInstances = await tx.$queryRaw<
     Array<{
       approvalStatus: string;
@@ -941,8 +1018,121 @@ async function lockNormalizedApprovalDecisionAuthority(
       assignedUserId: currentStep.assignedUserId,
       assignedRoleId: currentStep.assignedRoleId
     },
-    nextStep: nextRows[0] ?? null
+    nextStep: nextRows[0] ?? null,
+    lockedFullGraph: null
   };
+}
+
+async function lockNormalizedApprovalStepScopeMetadata(
+  tx: TransactionClient,
+  approvalInstanceStepId: string
+) {
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT scope_group.id
+      FROM "ApprovalInstanceStepScopeGroup" scope_group
+     WHERE scope_group."approvalInstanceStepId" = ${approvalInstanceStepId}::uuid
+     ORDER BY scope_group."groupOrder" ASC, scope_group.id ASC
+     FOR UPDATE OF scope_group
+  `;
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT target.id
+      FROM "ApprovalInstanceStepScopeTarget" target
+      JOIN "ApprovalInstanceStepScopeGroup" scope_group
+        ON scope_group.id = target."scopeGroupId"
+     WHERE scope_group."approvalInstanceStepId" = ${approvalInstanceStepId}::uuid
+     ORDER BY scope_group."groupOrder" ASC, target.id ASC
+     FOR UPDATE OF target
+  `;
+}
+
+async function lockNormalizedPettyCashApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: Extract<
+    NormalizedApprovalDecisionPreflightInput,
+    { lockMode: "FULL_GRAPH" }
+  >
+): Promise<LockedNormalizedPettyCashApprovalSource> {
+  const rows = await tx.$queryRaw<
+    LockedNormalizedPettyCashApprovalSource[]
+  >`
+    SELECT request.id,
+           request."pettyCashFundId",
+           fund."locationId" AS "fundLocationId",
+           request."requestedByUserId",
+           request."requestedAmountPhp",
+           request."currentProposedAmountPhp",
+           request."approvalProposalVersion",
+           request."approvalInstanceId",
+           request."evidenceReference"
+      FROM "PettyCashRequest" request
+      JOIN "PettyCashFund" fund
+        ON fund.id = request."pettyCashFundId"
+       AND fund."tenantId" = request."tenantId"
+       AND fund."companyId" = request."companyId"
+       AND fund.status = 'ACTIVE'::"PettyCashFundStatus"
+      JOIN "Location" location
+        ON location.id = fund."locationId"
+       AND location."tenantId" = request."tenantId"
+       AND location."companyId" = request."companyId"
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     WHERE request.id = ${input.fullGraphSource.documentId}::uuid
+       AND request."tenantId" = ${session.context.tenantId}::uuid
+       AND request."companyId" = ${session.context.companyId}::uuid
+       AND request.status = 'AWAITING_APPROVAL'::"PettyCashRequestStatus"
+       AND request."approvalInstanceId" = ${input.approvalInstanceId}::uuid
+       AND request."currentProposedAmountPhp" IS NOT NULL
+       AND request."currentProposedAmountPhp" > 0
+       AND request."currentProposedAmountPhp" <= request."requestedAmountPhp"
+       AND request."approvalProposalVersion" >= 1
+     FOR UPDATE OF request
+     FOR SHARE OF fund, location
+  `;
+  const source = rows[0];
+  if (rows.length !== 1 || !source) {
+    throw new Error("APPROVAL_SOURCE_CHANGED");
+  }
+  return source;
+}
+
+async function assertNormalizedPettyCashSourceRoutingScope(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    currentStepId: string;
+    source: LockedNormalizedPettyCashApprovalSource;
+  }
+) {
+  const rows = await tx.$queryRaw<Array<{ matchesScope: boolean }>>`
+    SELECT (
+      EXISTS (
+        SELECT 1
+          FROM "ApprovalInstanceStepScopeGroup" scope_group
+         WHERE scope_group."approvalInstanceStepId" = ${input.currentStepId}::uuid
+      )
+      AND NOT EXISTS (
+        SELECT 1
+          FROM "ApprovalInstanceStepScopeGroup" scope_group
+         WHERE scope_group."approvalInstanceStepId" = ${input.currentStepId}::uuid
+           AND NOT EXISTS (
+             SELECT 1
+               FROM "ApprovalInstanceStepScopeTarget" target
+               JOIN "Location" location
+                 ON location.id = ${input.source.fundLocationId}::uuid
+                AND location."tenantId" = ${session.context.tenantId}::uuid
+                AND location."companyId" = ${session.context.companyId}::uuid
+                AND location.status = 'ACTIVE'::"RecordStatus"
+              WHERE target."scopeGroupId" = scope_group.id
+                AND target."companyId" = ${session.context.companyId}::uuid
+                AND (target."brandId" IS NULL OR target."brandId" = location."brandId")
+                AND (target."locationId" IS NULL OR target."locationId" = location.id)
+           )
+      )
+    ) AS "matchesScope"
+  `;
+  if (rows[0]?.matchesScope !== true) {
+    throw new Error("APPROVAL_SOURCE_SCOPE_MISMATCH");
+  }
 }
 
 /**
@@ -1009,6 +1199,16 @@ export async function prepareNormalizedApprovalDecisionPreflight(
     session,
     input
   );
+  const lockedPettyCashSource =
+    input.lockMode === "FULL_GRAPH"
+      ? await lockNormalizedPettyCashApprovalSource(tx, session, input)
+      : null;
+  if (lockedPettyCashSource) {
+    await assertNormalizedPettyCashSourceRoutingScope(tx, session, {
+      currentStepId: input.currentStepId,
+      source: lockedPettyCashSource
+    });
+  }
   if (
     !sameLockedApprovalRouting(preliminary.currentStep, lockedRouting.currentStep) ||
     !sameLockedApprovalRouting(preliminary.nextStep, lockedRouting.nextStep)
@@ -1058,7 +1258,9 @@ export async function prepareNormalizedApprovalDecisionPreflight(
 
   return {
     nextStep: lockedRouting.nextStep,
-    directRecipientUserId: lockedRouting.nextStep?.assignedUserId ?? null
+    directRecipientUserId: lockedRouting.nextStep?.assignedUserId ?? null,
+    lockedFullGraph: lockedRouting.lockedFullGraph,
+    lockedPettyCashSource
   };
 }
 
