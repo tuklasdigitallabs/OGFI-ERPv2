@@ -11,6 +11,7 @@ import {
   getMaintenanceDashboard,
   getMaintenanceDashboardRead,
   getMaintenanceTicketDetail,
+  listMaintenanceTicketPage,
   listMaintenanceMyTaskPage,
   type MaintenanceTicketSummary
 } from "./maintenance";
@@ -198,6 +199,59 @@ describe("Phase 2 maintenance foundation", () => {
     });
     mockPrisma.maintenanceTicket.groupBy.mockResolvedValue([]);
     mockPrisma.user.findMany.mockResolvedValue([]);
+  });
+
+  it("uses one scoped predicate for count and bounded maintenance register rows", async () => {
+    mockPrisma.maintenanceTicket.count.mockResolvedValueOnce(51);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([
+      {
+        id: "ticket-page-1",
+        ticketNumber: "MT-001",
+        requestedAt: new Date("2026-07-24T00:00:00.000Z"),
+        category: "EQUIPMENT",
+        assetName: "Freezer",
+        assetArea: "Kitchen",
+        priority: "HIGH",
+        status: "OPEN",
+        title: "Freezer alarm",
+        description: "Temperature alarm requires inspection.",
+        location: { name: "SM North Edsa" },
+        reportedByUserId: "actor-1",
+        ownerUserId: "actor-2",
+        sourceIncidentId: null,
+        downtimeMinutes: 10,
+        targetDueAt: null,
+        completedAt: null,
+        correctiveAction: null,
+        evidenceReference: null
+      }
+    ]);
+    mockPrisma.user.findMany
+      .mockResolvedValueOnce([{ id: "actor-1" }, { id: "actor-2" }])
+      .mockResolvedValueOnce([
+      { id: "actor-1", displayName: "Reporter", email: "reporter@example.test" },
+      { id: "actor-2", displayName: "Owner", email: "owner@example.test" }
+      ]);
+
+    const result = await listMaintenanceTicketPage(session as never, {
+      q: "reporter",
+      requestedAt: "2026-07-24",
+      status: "OPEN",
+      priority: "HIGH"
+    }, { page: 9, pageSize: 25 });
+
+    expect(result).toMatchObject({ page: 3, pageSize: 25, totalItems: 51, totalPages: 3 });
+    expect(result.items[0]).toMatchObject({ reportedByName: "Reporter", ownerName: "Owner" });
+    const countWhere = mockPrisma.maintenanceTicket.count.mock.calls.at(-1)?.[0]?.where;
+    const pageQuery = mockPrisma.maintenanceTicket.findMany.mock.calls.at(-1)?.[0];
+    expect(pageQuery?.where).toEqual(countWhere);
+    expect(pageQuery).toMatchObject({ skip: 50, take: 25, orderBy: [{ requestedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }] });
+    expect(countWhere).toMatchObject({ tenantId: session.context.tenantId, companyId: session.context.companyId, brandId: session.context.brandId, locationId: session.context.locationId, status: "OPEN", priority: "HIGH" });
+  });
+
+  it("fails malformed requested-date filters with the stable user-safe code", async () => {
+    await expect(listMaintenanceTicketPage(session as never, { requestedAt: "not-a-date" })).rejects.toThrow("MAINTENANCE_REQUESTED_AT_INVALID");
+    expect(mockPrisma.maintenanceTicket.count).not.toHaveBeenCalled();
   });
 
   it("returns a bounded, exactly scoped completion queue with minimal fields", async () => {
