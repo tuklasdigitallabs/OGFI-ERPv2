@@ -447,7 +447,7 @@ export default async function IncidentDetailPage({
                   Resolved
                 </p>
                 <p className="mt-1 font-bold text-slate-950">
-                  {incident.resolvedAt ?? "Open"}
+                  {incident.status === "CANCELLED" ? "Cancelled" : incident.resolvedAt ?? "Open"}
                 </p>
               </Panel>
             </div>
@@ -491,7 +491,9 @@ export default async function IncidentDetailPage({
           <Panel className="ogfi-detail-card">
             <p className="text-sm font-semibold text-slate-500">Next action</p>
             <p className="mt-2 text-sm font-semibold text-slate-700">
-              {incident.resolvedAt
+              {incident.status === "CANCELLED"
+                ? "Cancelled; retain the cancellation reason and audit trail."
+                : incident.resolvedAt
                 ? "Review closure evidence and retain the audit trail."
                 : canResolve
                   ? "Resolve this incident after corrective action is verified and evidence is attached."

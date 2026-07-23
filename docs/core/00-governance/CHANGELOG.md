@@ -13,6 +13,7 @@
 ## 2026-07-24 — Incidents Register Pagination
 
 - Moved the ordinary Incidents register to server-backed 25-row pagination with exact scoped counts, validated filters, deterministic ordering, and preserved dashboard/export separation (`DEC-0090`).
+- Cancelled incidents no longer inflate overdue counts or display an unresolved follow-up in detail.
 
 ## 2026-07-24 — Receiving Status and Date Filters
 

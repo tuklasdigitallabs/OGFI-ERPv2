@@ -558,6 +558,7 @@ export async function getIncidentDashboard(
       (incident) =>
         incident.dueAt !== null &&
         incident.resolvedAt === null &&
+        incident.status !== "CANCELLED" &&
         dateOrNull(incident.dueAt)! < todayDate
     ).length,
     statusCounts,
@@ -593,7 +594,8 @@ export async function getIncidentDashboardRead(
       where: {
         ...where,
         dueAt: { lt: new Date(`${todayDate}T00:00:00.000Z`) },
-        resolvedAt: null
+        resolvedAt: null,
+        status: { not: "CANCELLED" }
       }
     }),
     prisma.operationalIncident.findMany({
