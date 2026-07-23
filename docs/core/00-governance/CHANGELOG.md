@@ -10,6 +10,10 @@
 - Food Safety detail reads now use a direct scoped record lookup instead of loading the full dashboard population.
 - Food Safety list rows now carry reading counts without hydrating nested reading payloads.
 
+## 2026-07-24 — Incidents Register Pagination
+
+- Moved the ordinary Incidents register to server-backed 25-row pagination with exact scoped counts, validated filters, deterministic ordering, and preserved dashboard/export separation (`DEC-0090`).
+
 ## 2026-07-24 — Receiving Status and Date Filters
 
 - Added strict lifecycle-status filtering and inclusive operational receipt-date filtering to the ordinary Receiving register and matching full-result export. Filters remain scoped to the selected receiving location.

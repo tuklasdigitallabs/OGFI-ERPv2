@@ -16,8 +16,8 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportIncidents } from "@/server/services/exportAuthorization";
 import {
   createOperationalIncident,
-  filterIncidents,
-  getIncidentDashboard
+  getIncidentDashboardRead,
+  listIncidentPage
 } from "@/server/services/incidents";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +41,7 @@ const createCategoryOptions = [
   "STAFFING",
   "OTHER"
 ] as const;
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 
 async function createIncidentAction(formData: FormData) {
   "use server";
@@ -130,7 +130,7 @@ export default async function IncidentsPage({
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
-  const dashboard = await getIncidentDashboard(session);
+  const dashboardRead = await getIncidentDashboardRead(session);
   const canExport = canExportIncidents(session);
   const canCreateIncident = session.permissionCodes.includes(permissions.incidentCreate);
   const params = searchParams ? await searchParams : {};
@@ -142,19 +142,28 @@ export default async function IncidentsPage({
     getSearchParam(params, "severity"),
     severityOptions
   );
-  const visibleIncidents = filterIncidents(dashboard.incidents, {
-    q: query,
-    incidentDate,
-    status: statusFilter,
-    severity: severityFilter
-  });
-  const requestedPage = normalizePage(getSearchParam(params, "page"));
-  const totalPages = Math.max(1, Math.ceil(visibleIncidents.length / PAGE_SIZE));
-  const currentPage = Math.min(requestedPage, totalPages);
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const paginatedIncidents = visibleIncidents.slice(startIndex, startIndex + PAGE_SIZE);
-  const showingStart = visibleIncidents.length === 0 ? 0 : startIndex + 1;
-  const showingEnd = Math.min(startIndex + PAGE_SIZE, visibleIncidents.length);
+  let workspace;
+  try {
+    workspace = await listIncidentPage(session, {
+      q: query,
+      incidentDate,
+      status: statusFilter,
+      severity: severityFilter
+    }, { page: normalizePage(getSearchParam(params, "page")), pageSize: PAGE_SIZE });
+  } catch (error) {
+    redirect(actionErrorRedirectPath("/incidents", error));
+  }
+  const dashboard = {
+    locationName: session.context.locationName,
+    totalIncidents: dashboardRead.totalIncidents,
+    openIncidents: dashboardRead.openIncidents,
+    criticalIncidents: dashboardRead.criticalIncidents,
+    overdueIncidents: dashboardRead.overdueIncidents,
+    statusCounts: dashboardRead.statusCounts,
+    severityCounts: dashboardRead.severityCounts,
+    incidents: workspace.items
+  };
+  const paginatedIncidents = workspace.items;
   const pageHref = (page: number) =>
     buildQueryHref("/incidents", {
       q: getSearchParam(params, "q"),
@@ -435,14 +444,14 @@ export default async function IncidentsPage({
           </div>
         </form>
 
-        {dashboard.incidents.length === 0 ? (
+        {workspace.totalItems === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">No incident records yet</p>
             <p className="mt-1 text-sm text-slate-600">
               Create or seed branch incidents before reviewing the incident queue.
             </p>
           </div>
-        ) : visibleIncidents.length === 0 ? (
+        ) : workspace.items.length === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">No incidents match the filters</p>
             <p className="mt-1 text-sm text-slate-600">
@@ -589,12 +598,12 @@ export default async function IncidentsPage({
             </div>
             <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
               <p>
-                Showing {showingStart}-{showingEnd} of {visibleIncidents.length} incidents
+                Showing {workspace.items.length === 0 ? 0 : (workspace.page - 1) * workspace.pageSize + 1}-{workspace.items.length === 0 ? 0 : Math.min((workspace.page - 1) * workspace.pageSize + workspace.items.length, workspace.totalItems)} of {workspace.totalItems} incidents
               </p>
-              {totalPages > 1 ? (
+              {workspace.totalPages > 1 ? (
                 <div className="flex items-center gap-2">
-                  {currentPage > 1 ? (
-                    <ButtonLink href={pageHref(currentPage - 1)} tone="secondary">
+                  {workspace.page > 1 ? (
+                    <ButtonLink href={pageHref(workspace.page - 1)} tone="secondary" className="min-h-11">
                       Previous
                     </ButtonLink>
                   ) : (
@@ -603,10 +612,10 @@ export default async function IncidentsPage({
                     </span>
                   )}
                   <span className="font-semibold text-slate-700">
-                    Page {currentPage} of {totalPages}
+                    Page {workspace.page} of {workspace.totalPages}
                   </span>
-                  {currentPage < totalPages ? (
-                    <ButtonLink href={pageHref(currentPage + 1)} tone="secondary">
+                  {workspace.page < workspace.totalPages ? (
+                    <ButtonLink href={pageHref(workspace.page + 1)} tone="secondary" className="min-h-11">
                       Next
                     </ButtonLink>
                   ) : (

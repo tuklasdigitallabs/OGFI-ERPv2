@@ -906,14 +906,14 @@ describe("Phase 2 incident management foundation", () => {
     expect(listPageSource).toContain('name="incidentDate"');
     expect(listPageSource).toContain('name="status"');
     expect(listPageSource).toContain('name="severity"');
-    expect(listPageSource).toContain("visibleIncidents");
-    expect(listPageSource).toContain("PAGE_SIZE = 10");
+    expect(listPageSource).toContain("workspace");
+    expect(listPageSource).toContain("PAGE_SIZE = 25");
     expect(listPageSource).toContain("normalizePage");
     expect(listPageSource).toContain("paginatedIncidents");
     expect(listPageSource).toContain("pageHref");
-    expect(listPageSource).toContain("Showing {showingStart}-{showingEnd} of {visibleIncidents.length} incidents");
-    expect(listPageSource).toContain("Page {currentPage} of {totalPages}");
-    expect(listPageSource).toContain("filterIncidents(dashboard.incidents");
+    expect(listPageSource).toContain("workspace.page");
+    expect(listPageSource).toContain("Page {workspace.page} of {workspace.totalPages}");
+    expect(listPageSource).toContain("listIncidentPage");
     expect(listPageSource).toContain("incident.ownerName");
     expect(listPageSource).toContain("buildQueryHref(\"/incidents/export\"");
     expect(exportRouteSource).toContain("getStrictDateSearchParam");
@@ -941,7 +941,7 @@ describe("Phase 2 incident management foundation", () => {
     expect(listPageSource).toContain('name="category"');
     expect(listPageSource).toContain('name="correctiveAction"');
     expect(listPageSource).toContain("No incidents match the filters");
-    expect(listPageSource).toContain("getIncidentDashboard(session)");
+    expect(listPageSource).toContain("getIncidentDashboardRead(session)");
     expect(listPageSource).not.toContain("operationalIncident.update");
   });
 

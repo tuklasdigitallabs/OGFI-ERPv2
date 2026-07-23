@@ -188,6 +188,9 @@ export type IncidentDashboardCandidate = {
 };
 
 export type IncidentDashboardRead = {
+  totalIncidents: number;
+  openIncidents: number;
+  criticalIncidents: number;
   overdueIncidents: number;
   statusCounts: IncidentStatusCounts;
   severityCounts: IncidentSeverityCounts;
@@ -199,6 +202,14 @@ export type IncidentExportFilters = {
   status?: string;
   severity?: string;
   incidentDate?: string;
+};
+
+export type IncidentPage = {
+  items: OperationalIncidentSummary[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
 };
 
 function assertIncidentAccess(session: SessionContext) {
@@ -370,6 +381,78 @@ export function filterIncidents(
   });
 }
 
+export async function listIncidentPage(
+  session: SessionContext,
+  filters: IncidentExportFilters = {},
+  input: { page?: number; pageSize?: number } = {}
+): Promise<IncidentPage> {
+  assertIncidentAccess(session);
+  const rawPageSize = input.pageSize ?? 25;
+  const pageSize = Number.isFinite(rawPageSize) ? Math.min(Math.max(Math.floor(rawPageSize), 1), 50) : 25;
+  const rawPage = input.page ?? 1;
+  const requestedPage = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
+  const query = normalizedFilterText(filters.q);
+  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
+  const severity = filters.severity && filters.severity !== "ALL" ? filters.severity : null;
+  const incidentDate = filters.incidentDate?.trim() || null;
+  const date = incidentDate ? parseDateOnlyUtc(incidentDate) : null;
+  if (incidentDate && !date) throw new Error("INCIDENT_DATE_INVALID");
+  const where: Prisma.OperationalIncidentWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId,
+    ...(status ? { status } : {}),
+    ...(severity ? { severity } : {}),
+    ...(date ? { incidentDate: date } : {}),
+    ...(query ? { OR: [
+      { incidentNumber: { contains: query, mode: "insensitive" } },
+      { title: { contains: query, mode: "insensitive" } },
+      { summary: { contains: query, mode: "insensitive" } },
+      { category: { contains: query, mode: "insensitive" } },
+      { correctiveAction: { contains: query, mode: "insensitive" } },
+      { evidenceReference: { contains: query, mode: "insensitive" } },
+      { sourceRecordType: { contains: query, mode: "insensitive" } },
+      { sourceRecordId: { contains: query, mode: "insensitive" } }
+    ] } : {})
+  };
+  const totalItems = await prisma.operationalIncident.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const rows = await prisma.operationalIncident.findMany({
+    where,
+    include: { location: true },
+    orderBy: [{ incidentDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  }) as OperationalIncidentWithLocation[];
+  const actorIds = Array.from(new Set(rows.flatMap((row) => [row.reportedByUserId, row.ownerUserId].filter((id): id is string => Boolean(id)))));
+  const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds }, tenantId: session.context.tenantId }, select: { id: true, displayName: true, email: true } }) : [];
+  const names = userDisplayNameById(actors);
+  const items = rows.map((incident) => ({
+    id: incident.id,
+    incidentNumber: incident.incidentNumber,
+    incidentDate: incident.incidentDate.toISOString().slice(0, 10),
+    category: incident.category,
+    severity: incident.severity,
+    status: incident.status,
+    title: incident.title,
+    summary: incident.summary,
+    locationName: incident.location.name,
+    reportedByName: incident.reportedByUserId ? names.get(incident.reportedByUserId) ?? "Unknown user" : null,
+    hasReporter: Boolean(incident.reportedByUserId),
+    reportedByCurrentUser: incident.reportedByUserId === session.user.id,
+    ownerName: incident.ownerUserId ? names.get(incident.ownerUserId) ?? "Unknown user" : null,
+    sourceRecordType: incident.sourceRecordType,
+    sourceRecordId: incident.sourceRecordId,
+    correctiveAction: incident.correctiveAction,
+    evidenceReference: incident.evidenceReference,
+    dueAt: dateOrNull(incident.dueAt),
+    resolvedAt: dateOrNull(incident.resolvedAt)
+  }));
+  return { items, page, pageSize, totalItems, totalPages };
+}
+
 export async function getIncidentDashboard(
   session: SessionContext
 ): Promise<IncidentDashboard> {
@@ -494,7 +577,7 @@ export async function getIncidentDashboardRead(
     locationId: session.context.locationId
   };
   const todayDate = dateOnlyInTimeZone(new Date());
-  const [statusRows, severityRows, overdueIncidents, candidates] = await Promise.all([
+  const [statusRows, severityRows, totalIncidents, overdueIncidents, candidates] = await Promise.all([
     prisma.operationalIncident.groupBy({
       by: ["status"],
       where,
@@ -505,6 +588,7 @@ export async function getIncidentDashboardRead(
       where,
       _count: { _all: true }
     }),
+    prisma.operationalIncident.count({ where }),
     prisma.operationalIncident.count({
       where: {
         ...where,
@@ -563,6 +647,9 @@ export async function getIncidentDashboardRead(
   const ownerNameById = userDisplayNameById(owners);
 
   return {
+    totalIncidents,
+    openIncidents: statusCounts.OPEN + statusCounts.IN_PROGRESS + statusCounts.PENDING_REVIEW,
+    criticalIncidents: severityCounts.CRITICAL,
     overdueIncidents,
     statusCounts,
     severityCounts,
