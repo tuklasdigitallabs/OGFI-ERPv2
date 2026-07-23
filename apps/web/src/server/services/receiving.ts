@@ -791,7 +791,8 @@ function mapGoodsReceipt(receipt: {
   receivedAt: Date;
   reversedAt: Date | null;
   status: string;
-  lines: { id: string }[];
+  lines?: { id: string }[];
+  _count?: { lines: number };
   discrepancyFlag: boolean;
 }) {
   return {
@@ -806,7 +807,7 @@ function mapGoodsReceipt(receipt: {
     receivedAt: receipt.receivedAt.toISOString(),
     reversedAt: receipt.reversedAt?.toISOString() ?? null,
     status: receipt.status,
-    lineCount: receipt.lines.length,
+    lineCount: receipt._count?.lines ?? receipt.lines?.length ?? 0,
     discrepancyFlag: receipt.discrepancyFlag
   };
 }
@@ -826,7 +827,7 @@ export async function listGoodsReceipts(session: SessionContext) {
       receivingLocation: true,
       receivedBy: true,
       reversedBy: true,
-      lines: true
+      _count: { select: { lines: true } }
     },
     orderBy: { createdAt: "desc" }
   });
@@ -910,7 +911,7 @@ export async function listGoodsReceiptPage(
       receivingLocation: true,
       receivedBy: true,
       reversedBy: true,
-      lines: true
+      _count: { select: { lines: true } }
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }]
   });

@@ -162,6 +162,7 @@ Direct web-mounted `local-private` storage remains suitable for local developmen
 
 - Added the server-owned `q` filter for ordinary Receiving: case-insensitive GRN, Purchase Order reference, and supplier legal/trading-name matching, capped at 120 characters. Tab links, page links, search form, and ordinary CSV export retain the active query and tab; dashboard follow-up filtering remains isolated.
 - Focused Receiving coverage remains green at 20/20; full suite, production build, and hosted gates remain required. Exact status/date filters now use strict lifecycle allow-lists and operational `Asia/Manila` receipt-date windows; item/receiver/value selectors remain deferred pending a larger option-loading/query-plan slice. Tab counts share the active query/status/date scope, while the legacy Posted tab intentionally remains `status != DRAFT` for backward compatibility.
+- The ordinary Receiving page projection now uses Prisma `_count.lines` instead of hydrating every receipt line solely to display the line count. The mapper retains a compatibility fallback for detail/list callers that still provide line arrays; focused Receiving coverage remains 20/20 and web typecheck passes. This closes one bounded-list projection gap but does not close the remaining filter, query-plan, browser, production-build, or hosted gates.
 
 ### SPF-008 ordinary Inventory Ledger pagination checkpoint — July 24, 2026
 

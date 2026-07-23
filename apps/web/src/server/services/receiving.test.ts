@@ -76,6 +76,9 @@ describe("receiving foundation rules", () => {
         skip: 0,
         take: 50,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        include: expect.objectContaining({
+          _count: { select: { lines: true } }
+        }),
         where: expect.objectContaining({
           tenantId: dashboardSession.context.tenantId,
           companyId: dashboardSession.context.companyId,

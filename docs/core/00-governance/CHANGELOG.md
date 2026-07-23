@@ -11,6 +11,7 @@
 - Recorded the latest production-build attempt stalling after Next.js initialization; build readiness remains unverified.
 - Recorded the root test gate: database 34 passed/18 skipped, worker 1 passed, and web 1,260 passed.
 - Recorded the passing release-helper self-test and the still-hanging Prisma generation gate.
+- Receiving register pages now use a bounded line-count projection instead of loading all receipt lines for list display; detail and export behavior remain unchanged.
 
 ## 2026-07-24 — Branch Operations Register Pagination
 
