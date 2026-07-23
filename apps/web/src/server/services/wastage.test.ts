@@ -70,8 +70,11 @@ describe("wastage foundation rules", () => {
     expect(source).toContain("wastageDashboardProfileWhere(");
     expect(source).toContain('"wastage-exceptions-v1"');
     expect(source).toContain("listWastageDashboardProfilePage");
+    expect(source).toContain("listWastageReportPage");
     expect(source).toContain("take: wastageDashboardProfilePageSize");
     expect(page).toContain("!profile && canCreateWastage");
+    expect(page).toContain("listWastageReportPage(session");
+    expect(page).toContain("workspacePage.totalItems");
     expect(page).toContain("This read-only");
     expect(route).toContain("listWastageReports(session, profile ?? undefined)");
     expect(route).toContain("WASTAGE_DASHBOARD_PROFILE_UNSUPPORTED");

@@ -877,7 +877,20 @@ export async function listWastageReports(
     orderBy: { createdAt: "desc" }
   });
 
-  return reports.map((report) => ({
+  return reports.map(mapWastageReport);
+}
+
+type WastageReportWithRelations = Prisma.WastageReportGetPayload<{ include: {
+  inventoryLocation: true;
+  reportedBy: true;
+  reviewedBy: true;
+  postedBy: true;
+  reversedBy: true;
+  lines: true;
+} }>;
+
+function mapWastageReport(report: WastageReportWithRelations) {
+  return {
     id: report.id,
     publicReference: report.publicReference,
     status: report.status,
@@ -904,7 +917,35 @@ export async function listWastageReports(
       (total, line) => total + Number(line.quantityBaseUom),
       0
     )
-  }));
+  };
+}
+
+export async function listWastageReportPage(
+  session: SessionContext,
+  input: { page?: number; pageSize?: number } = {}
+) {
+  await requireWastageRead(session);
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const where = scopedWastageWhere(session);
+  const totalItems = await prisma.wastageReport.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const reports = await prisma.wastageReport.findMany({
+    where,
+    include: {
+      inventoryLocation: true,
+      reportedBy: true,
+      reviewedBy: true,
+      postedBy: true,
+      reversedBy: true,
+      lines: true
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  });
+  return { items: reports.map(mapWastageReport), totalItems, page, pageSize, totalPages };
 }
 
 export type WastageExceptionProfilePage = {

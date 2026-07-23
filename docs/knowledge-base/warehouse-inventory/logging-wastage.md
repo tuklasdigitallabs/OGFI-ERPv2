@@ -24,7 +24,7 @@ Use this article to record spoiled, expired, damaged, consumed, or otherwise los
 
 ## Steps
 
-1. Open `Wastage`.
+1. Open `Wastage`. The ordinary register is server-paginated and shows the current authorized location’s reports; use the page controls to move through the full register without loading all reports into the browser.
 2. Select the inventory location and item.
 3. Enter the wasted quantity and estimated unit cost.
 4. Select the wastage type.

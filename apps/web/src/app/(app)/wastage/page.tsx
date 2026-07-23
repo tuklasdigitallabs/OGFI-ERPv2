@@ -20,7 +20,7 @@ import {
   createWastageReport,
   listWastageDashboardProfilePage,
   listWastageFormOptions,
-  listWastageReports,
+  listWastageReportPage,
   resolveWastageDashboardProfile,
   wastageDashboardProfileHref
 } from "@/server/services/wastage";
@@ -108,13 +108,13 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
   const profilePage = profile
     ? await listWastageDashboardProfilePage(session, profile, getPage(params))
     : null;
-  const [workspaceReports, formOptions] = profile
+  const [workspacePage, formOptions] = profile
     ? [null, null]
     : await Promise.all([
-        listWastageReports(session),
+        listWastageReportPage(session, { page: getPage(params) }),
         canCreateWastage ? listWastageFormOptions(session) : Promise.resolve(null)
       ]);
-  const reports = profilePage?.reports ?? workspaceReports ?? [];
+  const reports = profilePage?.reports ?? workspacePage?.items ?? [];
   const firstInventoryLocation = formOptions?.inventoryLocations[0];
   const firstItem = formOptions?.items[0];
   const actionFeedback = getActionFeedback(params);
@@ -262,13 +262,15 @@ export default async function WastagePage({ searchParams }: WastagePageProps) {
               ))}
             </div>
           )}
-          {profile && reports.length > 0 ? (
+          {(profile && reports.length > 0) || (!profile && workspacePage && workspacePage.totalItems > 0) ? (
             <PaginationBar
-              page={profilePage?.page ?? 1}
-              pageSize={profilePage?.pageSize ?? 25}
-              totalItems={profilePage?.totalItems ?? reports.length}
+              page={profile ? profilePage?.page ?? 1 : workspacePage?.page ?? 1}
+              pageSize={profile ? profilePage?.pageSize ?? 25 : workspacePage?.pageSize ?? 25}
+              totalItems={profile ? profilePage?.totalItems ?? reports.length : workspacePage?.totalItems ?? 0}
               itemLabel="wastage reports"
-              getPageHref={(nextPage) => wastageDashboardProfileHref(profile, nextPage)}
+              getPageHref={(nextPage) => profile
+                ? wastageDashboardProfileHref(profile, nextPage)
+                : `/wastage?page=${nextPage}`}
             />
           ) : null}
         </section>
