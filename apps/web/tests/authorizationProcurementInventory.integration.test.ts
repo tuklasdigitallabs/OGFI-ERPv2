@@ -1082,35 +1082,45 @@ describe("procurement and inventory authorization boundaries", () => {
         ]
       });
 
-      await expect(getInventoryBalanceDashboardRead({
-        ...session,
-        permissionCodes: ["inventory.balance.view"]
-      })).resolves.toEqual({
-        totalRows: 3,
-        positiveRows: 2,
-        zeroRows: 1,
-        lotExpiryTrackedRows: 2,
-        recentlyUpdatedRows: 2
-      });
+      const revokeBalancePermission = await grantPermission("inventory.balance.view");
 
-      const dashboard = await getOperationalDashboard({
-        ...session,
-        permissionCodes: ["inventory.balance.view"]
-      });
-      expect(dashboard.sourceObservations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            id: "inventory-balances",
-            availability: "AVAILABLE"
-          })
-        ])
-      );
-      expect(dashboard.metrics).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ id: "stocked-items", displayValue: "2" }),
-          expect.objectContaining({ id: "lot-expiry-tracked", displayValue: "2" })
-        ])
-      );
+      try {
+        await expect(getInventoryBalanceDashboardRead({
+          ...session,
+          permissionCodes: ["inventory.balance.view"]
+        })).resolves.toEqual({
+          totalRows: 3,
+          positiveRows: 2,
+          zeroRows: 1,
+          lotExpiryTrackedRows: 2,
+          recentlyUpdatedRows: 2
+        });
+
+        const dashboard = await getOperationalDashboard({
+          ...session,
+          permissionCodes: ["inventory.balance.view"]
+        });
+        expect(dashboard.sourceObservations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: "inventory-balances",
+              availability: "AVAILABLE"
+            })
+          ])
+        );
+        expect(dashboard.metrics).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: "stocked-items", displayValue: "2" })
+          ])
+        );
+        expect(dashboard.stockHealth).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: "lot-expiry-coverage", displayValue: "2" })
+          ])
+        );
+      } finally {
+        await revokeBalancePermission();
+      }
     } finally {
       await prisma.inventoryBalance.deleteMany({
         where: { id: { in: balanceIds } }

@@ -738,7 +738,7 @@ export async function listIncidentMyTaskPage(
   const baseWhere = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    brandId: session.context.brandId ?? null,
+    brandId: session.context.brandId || null,
     locationId: session.context.locationId,
     status: { in: [...resolvableIncidentStatuses] },
     resolvedAt: null,
@@ -821,7 +821,7 @@ export async function getOperationalIncidentSummary(
       id: incidentId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      brandId: session.context.brandId ?? null,
+      brandId: session.context.brandId || null,
       locationId: session.context.locationId
     },
     include: { location: true }
@@ -987,7 +987,7 @@ export async function resolveOperationalIncident(formData: FormData) {
         id: values.incidentId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        brandId: session.context.brandId ?? null,
+        brandId: session.context.brandId || null,
         locationId: session.context.locationId
       }
     });
@@ -1112,7 +1112,7 @@ export async function cancelOperationalIncident(formData: FormData) {
         id: values.incidentId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        brandId: session.context.brandId ?? null,
+        brandId: session.context.brandId || null,
         locationId: session.context.locationId
       }
     });
@@ -1255,7 +1255,7 @@ export async function correctOperationalIncident(formData: FormData) {
         id: values.incidentId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        brandId: session.context.brandId ?? null,
+        brandId: session.context.brandId || null,
         locationId: session.context.locationId
       }
     });

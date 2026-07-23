@@ -310,7 +310,13 @@ BEGIN
       AND c.relowner = owner_oid;
   IF NOT FOUND THEN RAISE EXCEPTION 'ControlledEvidencePolicyActivation ownership is unsafe'; END IF;
   IF NOT has_function_privilege(runtime_role, 'public.controlled_evidence_canonical_json(jsonb)', 'EXECUTE')
-     OR has_function_privilege('PUBLIC', 'public.controlled_evidence_canonical_json(jsonb)', 'EXECUTE') THEN
+     OR EXISTS (
+       SELECT 1
+       FROM pg_proc p,
+         LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+       WHERE p.oid = 'public.controlled_evidence_canonical_json(jsonb)'::regprocedure
+         AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+     ) THEN
     RAISE EXCEPTION 'Controlled-evidence canonicalizer runtime execution boundary is unsafe';
   END IF;
   PERFORM 1 FROM pg_proc

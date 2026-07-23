@@ -247,7 +247,7 @@ async function assertSourceIncidentVisible(
       id: sourceIncidentId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      brandId: session.context.brandId ?? null,
+      brandId: session.context.brandId || null,
       locationId: session.context.locationId
     }
   });
@@ -438,7 +438,7 @@ export async function listMaintenanceTicketPage(
   const where: Prisma.MaintenanceTicketWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    brandId: session.context.brandId ?? null,
+    brandId: session.context.brandId || null,
     locationId: session.context.locationId,
     ...(status ? { status } : {}),
     ...(priority ? { priority } : {}),
@@ -504,7 +504,7 @@ export async function getMaintenanceDashboard(
   const where: Prisma.MaintenanceTicketWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    brandId: session.context.brandId ?? null,
+    ...(session.context.brandId === "" ? {} : { brandId: session.context.brandId ?? null }),
     locationId: session.context.locationId
   };
   const tickets = await prisma.maintenanceTicket.findMany({
@@ -596,7 +596,7 @@ export async function getMaintenanceDashboardRead(
   const where: Prisma.MaintenanceTicketWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    brandId: session.context.brandId ?? null,
+    ...(session.context.brandId === "" ? {} : { brandId: session.context.brandId ?? null }),
     locationId: session.context.locationId
   };
   const todayDate = dateOnlyInTimeZone(new Date());
@@ -751,7 +751,7 @@ export async function listMaintenanceMyTaskPage(
   const baseWhere = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    brandId: session.context.brandId ?? null,
+    brandId: session.context.brandId || null,
     locationId: session.context.locationId,
     status: { in: [...completableMaintenanceStatuses] },
     completedAt: null,
@@ -847,7 +847,7 @@ export async function getMaintenanceTicketDetail(
       id: ticketId,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      brandId: session.context.brandId ?? null,
+      brandId: session.context.brandId || null,
       locationId: session.context.locationId
     },
     include: maintenanceTicketInclude
@@ -1041,7 +1041,7 @@ export async function completeMaintenanceTicket(formData: FormData) {
         id: values.ticketId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        brandId: session.context.brandId ?? null,
+        brandId: session.context.brandId || null,
         locationId: session.context.locationId
       }
     });
@@ -1171,7 +1171,7 @@ export async function cancelMaintenanceTicket(formData: FormData) {
         id: values.ticketId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        brandId: session.context.brandId ?? null,
+        brandId: session.context.brandId || null,
         locationId: session.context.locationId
       }
     });
@@ -1319,7 +1319,7 @@ export async function correctMaintenanceTicket(formData: FormData) {
         id: values.ticketId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        brandId: session.context.brandId ?? null,
+        brandId: session.context.brandId || null,
         locationId: session.context.locationId
       }
     });

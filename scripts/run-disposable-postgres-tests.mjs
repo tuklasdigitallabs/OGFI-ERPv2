@@ -877,17 +877,24 @@ function executePsql(databaseUrl, args, input) {
     throw new Error("DISPOSABLE_DATABASE_PSQL_TRANSPORT_CONFLICT");
   }
   assertSafePsqlDockerContainer(container);
-  if (!loopbackPsqlHost(env.PGHOST) || env.PGPORT !== "5432") {
+  if (
+    !loopbackPsqlHost(env.PGHOST) ||
+    !/^([1-9][0-9]{0,4})$/.test(env.PGPORT ?? "") ||
+    Number(env.PGPORT) > 65535
+  ) {
     throw new Error("DISPOSABLE_DATABASE_PSQL_DOCKER_TARGET_UNSAFE");
   }
   const forwardedEnvironment = [
     "PGHOST",
-    "PGPORT",
     "PGDATABASE",
     "PGSSLMODE",
     "PGUSER",
     "PGPASSWORD",
   ].flatMap((name) => (env[name] === undefined ? [] : ["-e", name]));
+  // The host-side admin/runtime URL may use a non-default forwarded port,
+  // while the psql transport runs inside the PostgreSQL container itself.
+  // Keep the host target loopback-only, but pin the in-container service port.
+  forwardedEnvironment.push("-e", "PGPORT=5432");
   return spawnSync(
     "docker",
     ["exec", "-i", ...forwardedEnvironment, container, "psql", ...args],

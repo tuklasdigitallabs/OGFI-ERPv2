@@ -345,7 +345,7 @@ export async function lockInventoryLocationsForPosting(
   const lockedLocations = await tx.$queryRaw<Array<{ id: string }>>(
     Prisma.sql`
       SELECT il.id
-        FROM "InventoryLocation" il
+       FROM "InventoryLocation" il
        WHERE il.id IN (${Prisma.join(
          sortedInventoryLocationIds.map((id) => Prisma.sql`${id}::uuid`)
        )})
@@ -421,6 +421,33 @@ export async function postInventoryMovement(
     input.enteredQuantity,
     input.quantityDeltaBaseUom
   );
+
+  const locationIds = [
+    input.inventoryLocationId,
+    ...(input.relatedInventoryLocationId
+      ? [input.relatedInventoryLocationId]
+      : [])
+  ];
+  const scopedLocations = await prisma.inventoryLocation.findMany({
+    where: {
+      id: { in: locationIds },
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId
+    },
+    select: { id: true, locationId: true }
+  });
+  if (scopedLocations.length !== new Set(locationIds).size) {
+    throw new Error("INVENTORY_LOCATION_NOT_FOUND");
+  }
+  const scopedLocationById = new Map(
+    scopedLocations.map((location) => [location.id, location])
+  );
+  if (
+    scopedLocationById.get(input.inventoryLocationId)?.locationId !==
+    session.context.locationId
+  ) {
+    throw new Error("INVENTORY_LOCATION_SCOPE_DENIED");
+  }
 
   const existingMovement = await prisma.inventoryMovement.findUnique({
     where: {
@@ -725,7 +752,11 @@ export function buildInventoryLedgerVarianceQuery(
          AND il.status = CAST('ACTIVE' AS "RecordStatus")
         WHERE b."tenantId" = ${session.context.tenantId}::uuid
           AND b."companyId" = ${session.context.companyId}::uuid
-        GROUP BY b."inventoryLocationId", b."itemId", "lotKey"
+        GROUP BY
+          b."inventoryLocationId",
+          b."itemId",
+          COALESCE(NULLIF(BTRIM(b."lotNumber"), ''), 'NOLOT') || '|' ||
+            COALESCE(TO_CHAR(b."expiryDate", 'YYYY-MM-DD'), 'NOEXP')
       ),
       ledger_rows AS MATERIALIZED (
         SELECT
@@ -745,7 +776,11 @@ export function buildInventoryLedgerVarianceQuery(
          AND il.status = CAST('ACTIVE' AS "RecordStatus")
         WHERE m."tenantId" = ${session.context.tenantId}::uuid
           AND m."companyId" = ${session.context.companyId}::uuid
-        GROUP BY m."inventoryLocationId", m."itemId", "lotKey"
+        GROUP BY
+          m."inventoryLocationId",
+          m."itemId",
+          COALESCE(NULLIF(BTRIM(m."lotNumber"), ''), 'NOLOT') || '|' ||
+            COALESCE(TO_CHAR(m."expiryDate", 'YYYY-MM-DD'), 'NOEXP')
       ),
       all_keys AS MATERIALIZED (
         SELECT "inventoryLocationId", "itemId", "lotKey" FROM balance_rows
@@ -1170,11 +1205,11 @@ export async function getInventoryBalanceDashboardRead(
       FROM "InventoryBalance" balance
       JOIN "InventoryLocation" inventory_location
         ON inventory_location."id" = balance."inventoryLocationId"
-       AND inventory_location."tenantId" = ${scope.tenantId}
-       AND inventory_location."companyId" = ${scope.companyId}
-     WHERE balance."tenantId" = ${scope.tenantId}
-       AND balance."companyId" = ${scope.companyId}
-       AND inventory_location."locationId" = ${scope.locationId}
+       AND inventory_location."tenantId" = ${scope.tenantId}::uuid
+       AND inventory_location."companyId" = ${scope.companyId}::uuid
+     WHERE balance."tenantId" = ${scope.tenantId}::uuid
+       AND balance."companyId" = ${scope.companyId}::uuid
+       AND inventory_location."locationId" = ${scope.locationId}::uuid
        AND inventory_location."status" = 'ACTIVE'`;
 
   return rows[0] ?? {

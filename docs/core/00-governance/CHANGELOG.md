@@ -310,3 +310,9 @@ Add a dated entry whenever an approved decision changes product scope, business 
 - Replaced eager shared source mutation with lazy authorized descriptors, immutable result patches, and a configurable 2.5-second technical deadline capped at 3 seconds.
 - Added explicit partial-result provenance and nullable cross-source totals, replaced the unbounded Inventory Balance dashboard read with a bounded aggregate, and aligned dashboard UI, environment, glossary, help, and release guidance.
 - Workspace 1 remains open for authenticated responsive-browser, staging fault-injection/performance, production-build, database, and hosted gates.
+
+## 2026-07-24 — Authorization Gate And Inventory Scope Hardening
+
+- Hardened inventory posting preflight and transfer locking against tenant/company leakage, unordered related-location results, and duplicate-retry authorization bypasses; corrected scoped dashboard UUID casting and reconciliation lot-key grouping for PostgreSQL.
+- Corrected disposable PostgreSQL Docker transport for non-default loopback ports and aligned the role-contract verifier with PostgreSQL ACL behavior.
+- Normalized empty brand context handling for maintenance dashboard reads while preserving explicit nullable-brand scope semantics. Disposable PostgreSQL authorization evidence now covers authentication, procurement/inventory, projects/operations, access-control, adapters, admin/platform, finance, workforce, and protected routes; hosted production gates remain open.
