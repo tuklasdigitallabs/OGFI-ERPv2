@@ -367,6 +367,8 @@ Phase I covers the platform foundation, approvals, supplier master data, purchas
 | IT Administrator | System health / admin | Security and system alerts | V (support only if authorized) | Limited | V/X |
 | Auditor | Audit reporting | Audit-assigned alerts | V | X | V/X |
 
+Notification history is not tenant-wide merely because the recipient is the same user. List, unread-count, read, and archive access recheck the exact selected company and, when present, exact selected location against a current active assignment. Company-less rows fail closed; company-wide rows may omit location but remain selected-company scoped.
+
 ---
 
 ## 8. Confidential Data Controls

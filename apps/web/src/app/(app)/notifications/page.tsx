@@ -17,7 +17,6 @@ import {
   canUseFoodSafety,
   canUseIncidents,
   canUseMaintenance,
-  canUseRecipesAndCosting,
   permissions
 } from "@/server/services/authorization";
 import { runRestaurantOpsExceptionReminderScan } from "@/server/services/restaurantOpsNotifications";
@@ -234,7 +233,9 @@ export default async function NotificationsPage({
     (notification) => notification.status === "UNREAD"
   ).length;
   const actionCount = notifications.filter(
-    (notification) => notification.priority !== "INFORMATIONAL"
+    (notification) =>
+      notification.priority !== "INFORMATIONAL" &&
+      notification.notificationType !== "FOOD_COST_EXCEPTION"
   ).length;
   const canRunProjectReminderScan = session.permissionCodes.includes(
     permissions.projectManage
@@ -247,7 +248,6 @@ export default async function NotificationsPage({
     permissions.stockAdjustmentApprove
   ].some((permission) => session.permissionCodes.includes(permission));
   const canRunRestaurantOpsReminderScan =
-    canUseRecipesAndCosting(session.permissionCodes) ||
     canUseBranchOperations(session.permissionCodes) ||
     canUseFoodSafety(session.permissionCodes) ||
     canUseIncidents(session.permissionCodes) ||
@@ -330,8 +330,8 @@ export default async function NotificationsPage({
                 Restaurant operations exceptions
               </p>
               <p className="text-sm text-slate-500">
-                Manual scan for food-cost, checklist review, food-safety review,
-                incident, and maintenance follow-ups in your authorized scope
+                Manual scan for checklist review, food-safety review, incident,
+                and maintenance follow-ups in your authorized scope
               </p>
             </div>
             <form action={scanRestaurantOpsRemindersAction}>
@@ -446,6 +446,20 @@ export default async function NotificationsPage({
                     {notification.title}
                   </h3>
                   <p className="mt-1 text-sm text-slate-600">{notification.body}</p>
+                  {notification.notificationType === "FOOD_COST_EXCEPTION" ? (
+                    <div
+                      className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+                      role="note"
+                    >
+                      <p className="font-semibold">Historical Food Cost reminder</p>
+                      <p className="mt-1">
+                        This reminder used a legacy definition that is not used for new
+                        reminders. Verify current evidence and trust notices in Food Cost
+                        Analysis. This warning does not change, resolve, or recalculate the
+                        historical notification.
+                      </p>
+                    </div>
+                  ) : null}
                   <p className="mt-2 text-xs text-slate-500">
                     {new Date(notification.generatedAt).toLocaleString()} /{" "}
                     {notification.entityType}
@@ -454,14 +468,14 @@ export default async function NotificationsPage({
                 <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
                   <ButtonLink
                     href={notification.deepLink}
-                    className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
+                    className="min-h-11 bg-slate-100 text-blue-700 hover:bg-blue-50"
                   >
                     Open Record
                   </ButtonLink>
                   {notification.status === "UNREAD" ? (
                     <form action={markReadAction}>
                       <input name="id" type="hidden" value={notification.id} />
-                      <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+                      <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
                         Mark Read
                       </button>
                     </form>
@@ -469,7 +483,7 @@ export default async function NotificationsPage({
                   {notification.archivedAt ? null : (
                     <form action={archiveAction}>
                       <input name="id" type="hidden" value={notification.id} />
-                      <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+                      <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
                         Archive
                       </button>
                     </form>

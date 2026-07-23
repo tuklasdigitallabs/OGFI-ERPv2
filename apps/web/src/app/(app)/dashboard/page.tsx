@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
+import { canUseRecipesAndCosting } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
 import {
   getOperationalDashboard,
@@ -35,11 +36,7 @@ const metricIcons = {
   "lot-expiry-coverage": Database,
   "recent-stock-updates": ClipboardCheck,
   "sales-source": BarChart3,
-  "inventory-value-source": Boxes,
-  "restaurant-net-sales": CircleDollarSign,
-  "theoretical-food-cost": Utensils,
-  "actual-food-cost": ClipboardCheck,
-  "food-cost-variance": AlertTriangle
+  "inventory-value-source": Boxes
 };
 
 const dashboardViews = ["overview", "analytics", "reports", "notifications"] as const;
@@ -453,7 +450,7 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
             <div>
               <h2 className="text-lg font-bold text-slate-950">Operational Indicators</h2>
               <p className="text-sm text-slate-500">
-                Counts and exceptions from purchasing, receiving, stock controls, restaurant operations, and food cost
+                Counts and exceptions from purchasing, receiving, stock controls, and restaurant operations
               </p>
             </div>
             <Badge tone="info" size="sm">{dashboard.cards.length} indicators</Badge>
@@ -658,7 +655,13 @@ function DashboardAnalytics({
   );
 }
 
-function DashboardReports({ dashboard }: { dashboard: Awaited<ReturnType<typeof getOperationalDashboard>> }) {
+function DashboardReports({
+  canOpenFoodCostAnalysis,
+  dashboard
+}: {
+  canOpenFoodCostAnalysis: boolean;
+  dashboard: Awaited<ReturnType<typeof getOperationalDashboard>>;
+}) {
   const reports = [
     {
       title: "Inventory Balance Report",
@@ -696,18 +699,17 @@ function DashboardReports({ dashboard }: { dashboard: Awaited<ReturnType<typeof 
       href: "/approvals",
       available: dashboard.approvalQueueContract.availability === "AVAILABLE"
     },
-    {
-      title: "Food Cost Analysis",
-      detail: "Posted sales imports, theoretical food cost, actual ledger evidence, and variance follow-up.",
-      href: "/recipes/analysis",
-      available: dashboard.metrics.some((metric) => metric.id === "restaurant-net-sales")
-    },
-    {
-      title: "Recipes and Menu Costing",
-      detail: "Published recipe versions, line costs, menu prices, and target food cost visibility.",
-      href: "/recipes",
-      available: dashboard.metrics.some((metric) => metric.id === "theoretical-food-cost")
-    },
+    ...(canOpenFoodCostAnalysis
+      ? [
+          {
+            title: "Food Cost Analysis",
+            detail:
+              "Open the source workspace to review its current evidence and trust notices.",
+            href: "/recipes/analysis",
+            sourceWorkspace: true
+          }
+        ]
+      : []),
     {
       title: "Branch Checklist Compliance",
       detail: "Opening and closing checklists, exception counts, completion, and source detail.",
@@ -764,13 +766,21 @@ function DashboardReports({ dashboard }: { dashboard: Awaited<ReturnType<typeof 
                   <FileText aria-hidden="true" className="h-5 w-5" />
                 )}
               </span>
-              <Badge tone={report.available ? "success" : "neutral"} size="sm">
-                {report.available ? "Data available" : "Ready"}
-              </Badge>
+              {"sourceWorkspace" in report ? (
+                <span className="text-xs font-semibold text-slate-500">
+                  Source workspace
+                </span>
+              ) : (
+                <Badge tone={report.available ? "success" : "neutral"} size="sm">
+                  {report.available ? "Data available" : "Ready"}
+                </Badge>
+              )}
             </div>
             <h3 className="mt-4 font-bold text-slate-950">{report.title}</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">{report.detail}</p>
-            <p className="mt-4 text-sm font-bold text-blue-700">Open report source</p>
+            <p className="mt-4 text-sm font-bold text-blue-700">
+              {"sourceWorkspace" in report ? "Open source" : "Open report source"}
+            </p>
           </a>
         ))}
       </div>
@@ -925,7 +935,12 @@ export default async function DashboardPage({
           dashboard={dashboard}
         />
       ) : null}
-      {activeView === "reports" ? <DashboardReports dashboard={dashboard} /> : null}
+      {activeView === "reports" ? (
+        <DashboardReports
+          canOpenFoodCostAnalysis={canUseRecipesAndCosting(session.permissionCodes)}
+          dashboard={dashboard}
+        />
+      ) : null}
       {activeView === "notifications" ? (
         <DashboardNotifications dashboard={dashboard} />
       ) : null}

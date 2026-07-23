@@ -41,6 +41,14 @@ filter context, export audit, and source-record boundaries.
 - CSV export includes source/evidence fields and preserves filters.
 - The analysis view does not create sales imports, allocate actual cost by
   assumption, approve prices, post inventory, or create finance records.
+- The Operations Dashboard deliberately withholds Food Cost cards, KPIs,
+  exception rows, and source-health claims while the `DEC-0062` business-date,
+  missing-valuation, and status definitions remain open. Authorized users reach
+  this source workspace through neutral navigation instead of a dashboard
+  readiness claim.
+- Restaurant Operations scans do not create new Food Cost exception reminders
+  while those definitions remain open. Existing reminders remain historical
+  records and are not automatically deleted, rewritten, read, or archived.
 
 ## Acceptance Criteria
 

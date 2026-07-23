@@ -1,4 +1,4 @@
-import { prisma, type TransactionClient } from "@ogfi/database";
+import { prisma, type Prisma, type TransactionClient } from "@ogfi/database";
 import type { SessionContext } from "./context";
 
 type NotificationClient = typeof prisma | TransactionClient;
@@ -218,15 +218,79 @@ export async function recordApprovalStepReadyNotification(
   });
 }
 
+function notificationVisibilityWhere(
+  session: SessionContext,
+  now: Date,
+  notificationId?: string
+): Prisma.NotificationWhereInput {
+  return {
+    ...(notificationId ? { id: notificationId } : {}),
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    recipientUserId: session.user.id,
+    OR: [
+      { locationId: null },
+      { locationId: session.context.locationId }
+    ],
+    recipient: {
+      tenantId: session.context.tenantId,
+      status: "ACTIVE",
+      scopeAssignments: {
+        some: {
+          status: "ACTIVE",
+          startsAt: { lte: now },
+          AND: [
+            { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
+            {
+              OR: [
+                {
+                  scopeType: "COMPANY",
+                  scopeId: session.context.companyId
+                },
+                {
+                  scopeType: "LOCATION",
+                  scopeId: session.context.locationId
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  };
+}
+
+async function currentNotificationVisibilityWhere(
+  session: SessionContext,
+  notificationId?: string
+) {
+  const selectedLocation = await prisma.location.findFirst({
+    where: {
+      id: session.context.locationId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE"
+    },
+    select: { id: true }
+  });
+  if (!selectedLocation) {
+    return null;
+  }
+  return notificationVisibilityWhere(session, new Date(), notificationId);
+}
+
 export async function listNotifications(
   session: SessionContext,
   filters: { status?: "UNREAD" | "ARCHIVED" | "ALL" } = {}
 ) {
   const status = filters.status ?? "ALL";
+  const visibilityWhere = await currentNotificationVisibilityWhere(session);
+  if (!visibilityWhere) {
+    return [];
+  }
   const notifications = await prisma.notification.findMany({
     where: {
-      tenantId: session.context.tenantId,
-      recipientUserId: session.user.id,
+      AND: [visibilityWhere],
       ...(status === "UNREAD"
         ? { status: "UNREAD", archivedAt: null }
         : status === "ARCHIVED"
@@ -254,10 +318,13 @@ export async function listNotifications(
 }
 
 export async function getUnreadNotificationCount(session: SessionContext) {
+  const visibilityWhere = await currentNotificationVisibilityWhere(session);
+  if (!visibilityWhere) {
+    return 0;
+  }
   return prisma.notification.count({
     where: {
-      tenantId: session.context.tenantId,
-      recipientUserId: session.user.id,
+      AND: [visibilityWhere],
       status: "UNREAD",
       archivedAt: null
     }
@@ -268,12 +335,15 @@ export async function markNotificationRead(
   session: SessionContext,
   notificationId: string
 ) {
+  const visibilityWhere = await currentNotificationVisibilityWhere(
+    session,
+    notificationId
+  );
+  if (!visibilityWhere) {
+    return;
+  }
   await prisma.notification.updateMany({
-    where: {
-      id: notificationId,
-      tenantId: session.context.tenantId,
-      recipientUserId: session.user.id
-    },
+    where: visibilityWhere,
     data: {
       status: "READ",
       readAt: new Date()
@@ -285,12 +355,15 @@ export async function archiveNotification(
   session: SessionContext,
   notificationId: string
 ) {
+  const visibilityWhere = await currentNotificationVisibilityWhere(
+    session,
+    notificationId
+  );
+  if (!visibilityWhere) {
+    return;
+  }
   await prisma.notification.updateMany({
-    where: {
-      id: notificationId,
-      tenantId: session.context.tenantId,
-      recipientUserId: session.user.id
-    },
+    where: visibilityWhere,
     data: {
       status: "ARCHIVED",
       archivedAt: new Date()

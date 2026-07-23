@@ -62,8 +62,20 @@ describe("projects and operations database-backed authorization boundaries", () 
     removableMemberId: randomUUID(),
     checklistItemId: randomUUID(),
     blockerId: randomUUID(),
+    locationScopeId: randomUUID(),
     actorNotificationId: randomUUID(),
     ownerNotificationId: randomUUID(),
+    companyWideNotificationId: randomUUID(),
+    adjacentCompanyNotificationId: randomUUID(),
+    adjacentLocationNotificationId: randomUUID(),
+    nullCompanyNotificationId: randomUUID(),
+    legacyFoodCostNotificationId: randomUUID(),
+    branchChecklistId: randomUUID(),
+    branchChecklistLineId: randomUUID(),
+    foodSafetyLogId: randomUUID(),
+    foodSafetyReadingId: randomUUID(),
+    operationalIncidentId: randomUUID(),
+    maintenanceTicketId: randomUUID(),
     companyManageScopeId: randomUUID(),
   };
   const actorEmail = `authz-project-ops-${suffix}@example.test`;
@@ -412,6 +424,7 @@ describe("projects and operations database-backed authorization boundaries", () 
     await prisma.userScopeAssignment.createMany({
       data: [
         {
+          id: ids.locationScopeId,
           userId: ids.actorUserId,
           scopeType: "LOCATION",
           scopeId: ids.locationId,
@@ -655,6 +668,75 @@ describe("projects and operations database-backed authorization boundaries", () 
           entityType: "Project",
           entityId: ids.restrictedProjectId,
           sourceEventKey: `authz-project-owner-${suffix}`,
+        },
+        {
+          id: ids.companyWideNotificationId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          locationId: null,
+          recipientUserId: ids.actorUserId,
+          notificationType: "AUTHORIZATION_TEST",
+          title: "Company-wide actor notification",
+          body: "Company-wide actor notification body",
+          deepLink: "/notifications",
+          entityType: "Company",
+          entityId: ids.companyId,
+          sourceEventKey: `authz-project-company-wide-${suffix}`,
+        },
+        {
+          id: ids.adjacentCompanyNotificationId,
+          tenantId: ids.tenantId,
+          companyId: ids.adjacentCompanyId,
+          locationId: null,
+          recipientUserId: ids.actorUserId,
+          notificationType: "AUTHORIZATION_TEST",
+          title: "Adjacent-company actor notification",
+          body: "Adjacent-company actor notification body",
+          deepLink: "/notifications",
+          entityType: "Company",
+          entityId: ids.adjacentCompanyId,
+          sourceEventKey: `authz-project-adjacent-company-${suffix}`,
+        },
+        {
+          id: ids.adjacentLocationNotificationId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          locationId: ids.adjacentLocationId,
+          recipientUserId: ids.actorUserId,
+          notificationType: "AUTHORIZATION_TEST",
+          title: "Adjacent-location actor notification",
+          body: "Adjacent-location actor notification body",
+          deepLink: "/notifications",
+          entityType: "Location",
+          entityId: ids.adjacentLocationId,
+          sourceEventKey: `authz-project-adjacent-location-${suffix}`,
+        },
+        {
+          id: ids.nullCompanyNotificationId,
+          tenantId: ids.tenantId,
+          companyId: null,
+          locationId: ids.locationId,
+          recipientUserId: ids.actorUserId,
+          notificationType: "AUTHORIZATION_TEST",
+          title: "Unscoped actor notification",
+          body: "Unscoped actor notification body",
+          deepLink: "/notifications",
+          entityType: "Location",
+          entityId: ids.locationId,
+          sourceEventKey: `authz-project-null-company-${suffix}`,
+        },
+        {
+          id: ids.legacyFoodCostNotificationId,
+          tenantId: ids.tenantId,
+          companyId: ids.companyId,
+          locationId: ids.locationId,
+          recipientUserId: ids.actorUserId,
+          notificationType: "FOOD_COST_EXCEPTION",
+          title: "Historical Food Cost exception",
+          body: "Historical Food Cost exception body",
+          deepLink: "/recipes/analysis",
+          entityType: "MenuItem",
+          sourceEventKey: `authz-project-legacy-food-cost-${suffix}`,
         },
       ],
     });
@@ -1300,6 +1382,336 @@ describe("projects and operations database-backed authorization boundaries", () 
       }),
     ).resolves.toEqual([]);
     expect(await snapshotProtectedState()).toEqual(before);
+  });
+
+  it("AUTHZ-NOTIFICATION-LIVE-CONTEXT-SCOPE-NON-ENUMERATING", async () => {
+    const session = await getConfiguredContext(actorEmail);
+    const seededVisibleIds = [
+      ids.actorNotificationId,
+      ids.companyWideNotificationId,
+      ids.legacyFoodCostNotificationId,
+    ];
+    const companyScopeId = randomUUID();
+
+    try {
+      expect(
+        (await notifications.listNotifications(session))
+          .map(({ id }) => id)
+          .sort(),
+      ).toEqual([...seededVisibleIds].sort());
+      expect(await notifications.getUnreadNotificationCount(session)).toBe(3);
+
+      const deniedIds = [
+        ids.ownerNotificationId,
+        ids.adjacentCompanyNotificationId,
+        ids.adjacentLocationNotificationId,
+        ids.nullCompanyNotificationId,
+        randomUUID(),
+      ];
+      const deniedBefore = await prisma.notification.findMany({
+        where: { id: { in: deniedIds } },
+        orderBy: { id: "asc" },
+        select: { id: true, status: true, readAt: true, archivedAt: true },
+      });
+      for (const notificationId of deniedIds) {
+        await notifications.markNotificationRead(session, notificationId);
+        await notifications.archiveNotification(session, notificationId);
+      }
+      expect(
+        await prisma.notification.findMany({
+          where: { id: { in: deniedIds } },
+          orderBy: { id: "asc" },
+          select: { id: true, status: true, readAt: true, archivedAt: true },
+        }),
+      ).toEqual(deniedBefore);
+
+      await notifications.markNotificationRead(
+        session,
+        ids.actorNotificationId,
+      );
+      expect(
+        await prisma.notification.findUniqueOrThrow({
+          where: { id: ids.actorNotificationId },
+          select: { status: true, readAt: true },
+        }),
+      ).toMatchObject({ status: "READ", readAt: expect.any(Date) });
+      await notifications.archiveNotification(
+        session,
+        ids.companyWideNotificationId,
+      );
+      expect(
+        (await notifications.listNotifications(session, { status: "ARCHIVED" }))
+          .map(({ id }) => id),
+      ).toContain(ids.companyWideNotificationId);
+      await prisma.notification.update({
+        where: { id: ids.companyWideNotificationId },
+        data: { status: "UNREAD", archivedAt: null },
+      });
+
+      const staleSession = { ...session };
+      await prisma.userScopeAssignment.update({
+        where: { id: ids.locationScopeId },
+        data: {
+          status: "ACTIVE",
+          endsAt: new Date(Date.now() - 1_000),
+        },
+      });
+      expect(await notifications.listNotifications(staleSession)).toEqual([]);
+      expect(await notifications.getUnreadNotificationCount(staleSession)).toBe(0);
+      await prisma.userScopeAssignment.update({
+        where: { id: ids.locationScopeId },
+        data: { status: "INACTIVE", endsAt: null },
+      });
+      const legacyBefore = await prisma.notification.findUniqueOrThrow({
+        where: { id: ids.legacyFoodCostNotificationId },
+        select: { status: true, readAt: true, archivedAt: true },
+      });
+      await notifications.markNotificationRead(
+        staleSession,
+        ids.legacyFoodCostNotificationId,
+      );
+      await notifications.archiveNotification(
+        staleSession,
+        ids.legacyFoodCostNotificationId,
+      );
+      expect(
+        await prisma.notification.findUniqueOrThrow({
+          where: { id: ids.legacyFoodCostNotificationId },
+          select: { status: true, readAt: true, archivedAt: true },
+        }),
+      ).toEqual(legacyBefore);
+
+      await prisma.userScopeAssignment.create({
+        data: {
+          id: companyScopeId,
+          userId: ids.actorUserId,
+          scopeType: "COMPANY",
+          scopeId: ids.companyId,
+          accessLevel: "VIEW",
+        },
+      });
+      expect(
+        (await notifications.listNotifications(staleSession))
+          .map(({ id }) => id)
+          .sort(),
+      ).toEqual([...seededVisibleIds].sort());
+      await prisma.userScopeAssignment.delete({ where: { id: companyScopeId } });
+      expect(await notifications.listNotifications(staleSession)).toEqual([]);
+
+      const forgedContextSession = {
+        ...staleSession,
+        context: {
+          ...staleSession.context,
+          companyId: ids.adjacentCompanyId,
+          locationId: ids.locationId,
+        },
+      };
+      expect(await notifications.listNotifications(forgedContextSession)).toEqual(
+        [],
+      );
+      expect(
+        await notifications.getUnreadNotificationCount(forgedContextSession),
+      ).toBe(0);
+    } finally {
+      await prisma.userScopeAssignment.deleteMany({
+        where: { id: companyScopeId },
+      });
+      await prisma.userScopeAssignment.update({
+        where: { id: ids.locationScopeId },
+        data: { status: "ACTIVE", endsAt: null },
+      });
+      await prisma.notification.updateMany({
+        where: {
+          id: {
+            in: [ids.actorNotificationId, ids.companyWideNotificationId],
+          },
+        },
+        data: { status: "UNREAD", readAt: null, archivedAt: null },
+      });
+    }
+  });
+
+  it("AUTHZ-DEC-0071-RESTAURANT-OPS-SCAN-IDEMPOTENT-NO-FOOD-COST", async () => {
+    const restaurantPermissionCodes = [
+      permissions.branchOperationsView,
+      permissions.foodSafetyView,
+      permissions.incidentView,
+      permissions.maintenanceView,
+    ];
+    const permissionRows = await prisma.permission.findMany({
+      where: { code: { in: restaurantPermissionCodes } },
+      select: { id: true, code: true },
+    });
+    expect(permissionRows).toHaveLength(restaurantPermissionCodes.length);
+    await prisma.rolePermission.createMany({
+      data: permissionRows.map(({ id }) => ({
+        roleId: ids.roleId,
+        permissionId: id,
+      })),
+    });
+
+    await prisma.branchOperationalChecklist.create({
+      data: {
+        id: ids.branchChecklistId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        brandId: ids.brandId,
+        locationId: ids.locationId,
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        shiftType: `AUTHZ-${suffix}`,
+        status: "SUBMITTED",
+        checklistName: "Authorization opening checklist",
+        openedByUserId: ids.actorUserId,
+        submittedByUserId: ids.actorUserId,
+        submittedAt: new Date("2026-07-23T01:00:00.000Z"),
+        exceptionCount: 1,
+        completionPercent: 100,
+        lines: {
+          create: {
+            id: ids.branchChecklistLineId,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            brandId: ids.brandId,
+            locationId: ids.locationId,
+            lineNo: 1,
+            area: "Kitchen",
+            checkName: "Opening control",
+            expectedResult: "PASS",
+            result: "EXCEPTION",
+            severity: "CRITICAL",
+          },
+        },
+      },
+    });
+    await prisma.foodSafetyLog.create({
+      data: {
+        id: ids.foodSafetyLogId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        brandId: ids.brandId,
+        locationId: ids.locationId,
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        logType: `AUTHZ-${suffix}`,
+        status: "EXCEPTION_REVIEW",
+        title: "Authorization temperature log",
+        recordedByUserId: ids.actorUserId,
+        exceptionCount: 1,
+        readings: {
+          create: {
+            id: ids.foodSafetyReadingId,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            brandId: ids.brandId,
+            locationId: ids.locationId,
+            lineNo: 1,
+            station: "Cold storage",
+            readingType: "TEMPERATURE",
+            result: "EXCEPTION",
+            severity: "CRITICAL",
+          },
+        },
+      },
+    });
+    await prisma.operationalIncident.create({
+      data: {
+        id: ids.operationalIncidentId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        brandId: ids.brandId,
+        locationId: ids.locationId,
+        incidentNumber: `AZPO-INC-${suffix}`,
+        incidentDate: new Date("2026-07-23T02:00:00.000Z"),
+        category: "OPERATIONS",
+        severity: "CRITICAL",
+        status: "OPEN",
+        title: "Authorization incident",
+        summary: "Authorization reminder scan evidence",
+        reportedByUserId: ids.actorUserId,
+        ownerUserId: ids.actorUserId,
+      },
+    });
+    await prisma.maintenanceTicket.create({
+      data: {
+        id: ids.maintenanceTicketId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        brandId: ids.brandId,
+        locationId: ids.locationId,
+        ticketNumber: `AZPO-MT-${suffix}`,
+        requestedAt: new Date("2026-07-23T03:00:00.000Z"),
+        category: "EQUIPMENT",
+        assetName: "Authorization grill",
+        assetArea: "Kitchen",
+        priority: "CRITICAL",
+        status: "PENDING_VENDOR",
+        title: "Authorization maintenance",
+        description: "Authorization reminder scan evidence",
+        reportedByUserId: ids.actorUserId,
+        ownerUserId: ids.actorUserId,
+      },
+    });
+
+    const legacyBefore = await prisma.notification.findUniqueOrThrow({
+      where: { id: ids.legacyFoodCostNotificationId },
+    });
+    const sourceEventPrefix = `restaurant-ops-exception:${ids.tenantId}:${ids.actorUserId}:2026-07-23:`;
+    try {
+      const session = await getConfiguredContext(actorEmail);
+      const scanInput = {
+        asOf: new Date("2026-07-23T04:00:00.000Z"),
+        timeZone: "Asia/Manila",
+      };
+      const first =
+        await restaurantOpsNotifications.runRestaurantOpsExceptionReminderScan(
+          session,
+          scanInput,
+        );
+      const second =
+        await restaurantOpsNotifications.runRestaurantOpsExceptionReminderScan(
+          session,
+          scanInput,
+        );
+      expect(first.scannedExceptionCount).toBe(6);
+      expect(second.scannedExceptionCount).toBe(6);
+
+      const emitted = await prisma.notification.findMany({
+        where: {
+          tenantId: ids.tenantId,
+          recipientUserId: ids.actorUserId,
+          sourceEventKey: { startsWith: sourceEventPrefix },
+        },
+        orderBy: { notificationType: "asc" },
+        select: { notificationType: true, sourceEventKey: true },
+      });
+      expect(emitted.map(({ notificationType }) => notificationType)).toEqual([
+        "BRANCH_CHECKLIST_EXCEPTION",
+        "BRANCH_CHECKLIST_REVIEW_READY",
+        "FOOD_SAFETY_EXCEPTION",
+        "FOOD_SAFETY_REVIEW_READY",
+        "MAINTENANCE_FOLLOW_UP",
+        "OPERATIONAL_INCIDENT_OPEN",
+      ]);
+      expect(new Set(emitted.map(({ sourceEventKey }) => sourceEventKey)).size).toBe(
+        emitted.length,
+      );
+      expect(
+        emitted.some(
+          ({ notificationType }) => notificationType === "FOOD_COST_EXCEPTION",
+        ),
+      ).toBe(false);
+      expect(
+        await prisma.notification.findUniqueOrThrow({
+          where: { id: ids.legacyFoodCostNotificationId },
+        }),
+      ).toEqual(legacyBefore);
+    } finally {
+      await prisma.rolePermission.deleteMany({
+        where: {
+          roleId: ids.roleId,
+          permissionId: { in: permissionRows.map(({ id }) => id) },
+        },
+      });
+    }
   });
 
   it("AUTHZ-PROJECT-OPS-REMINDER-LIVE-PERMISSION-REVOCATION-NO-MUTATION", async () => {

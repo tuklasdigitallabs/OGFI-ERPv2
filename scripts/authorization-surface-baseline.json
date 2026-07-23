@@ -10949,15 +10949,18 @@
       "authentication cookie",
       "session validation",
       "live context resolution",
-      "notification tenantId plus recipientUserId updateMany"
+      "server/services/notifications.ts#archiveNotification"
     ],
     "boundaryCaseIds": [
       "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION"
+      "AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION",
+      "NOTIFICATION_LIVE_CONTEXT_SCOPE"
     ],
     "noMutationControls": [
       "invalid or stale session cannot authorize protected mutation",
-      "foreign recipient notification status and archivedAt unchanged"
+      "foreign recipient notification status and archivedAt unchanged",
+      "selected tenant-company-location and live assignment scope",
+      "null-company and adjacent-scope notifications unchanged"
     ]
   },
   {
@@ -10997,7 +11000,8 @@
     ],
     "boundaryCaseIds": [
       "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS"
+      "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+      "NOTIFICATION_LIVE_CONTEXT_SCOPE"
     ],
     "noMutationControls": [
       "invalid or stale session cannot authorize protected mutation",
@@ -26784,20 +26788,24 @@
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "HIGH",
     "executableTestIds": [
-      "BOUNDARY_CASE:AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION"
+      "BOUNDARY_CASE:AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION",
+      "BOUNDARY_CASE:NOTIFICATION_LIVE_CONTEXT_SCOPE"
     ],
     "permissionSource": "REVIEWED_DELEGATION",
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY"
     ],
     "authorizationAdapterIds": [
-      "notification tenantId plus recipientUserId updateMany"
+      "server/services/notifications.ts#archiveNotification"
     ],
     "boundaryCaseIds": [
-      "AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION"
+      "AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION",
+      "NOTIFICATION_LIVE_CONTEXT_SCOPE"
     ],
     "noMutationControls": [
-      "foreign recipient notification status and archivedAt unchanged"
+      "foreign recipient notification status and archivedAt unchanged",
+      "selected tenant-company-location and live assignment scope",
+      "null-company and adjacent-scope notifications unchanged"
     ]
   },
   {
@@ -26817,9 +26825,23 @@
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "REVIEWED_DELEGATION"
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:NOTIFICATION_LIVE_CONTEXT_SCOPE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "server/services/notifications.ts#getUnreadNotificationCount"
+    ],
+    "boundaryCaseIds": [
+      "NOTIFICATION_LIVE_CONTEXT_SCOPE"
+    ],
+    "noMutationControls": [
+      "read-only-notification-count"
+    ]
   },
   {
     "id": "server/services/notifications.ts#listNotifications",
@@ -26838,9 +26860,23 @@
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "REVIEWED_DELEGATION"
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:NOTIFICATION_LIVE_CONTEXT_SCOPE"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "server/services/notifications.ts#listNotifications"
+    ],
+    "boundaryCaseIds": [
+      "NOTIFICATION_LIVE_CONTEXT_SCOPE"
+    ],
+    "noMutationControls": [
+      "read-only-notification-list"
+    ]
   },
   {
     "id": "server/services/notifications.ts#markNotificationRead",
@@ -26861,7 +26897,8 @@
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "HIGH",
     "executableTestIds": [
-      "BOUNDARY_CASE:PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS"
+      "BOUNDARY_CASE:PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+      "BOUNDARY_CASE:NOTIFICATION_LIVE_CONTEXT_SCOPE"
     ],
     "permissionSource": "REVIEWED_DELEGATION",
     "boundaryClassifications": [
@@ -26871,7 +26908,8 @@
       "server/services/notifications.ts#markNotificationRead"
     ],
     "boundaryCaseIds": [
-      "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS"
+      "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+      "NOTIFICATION_LIVE_CONTEXT_SCOPE"
     ],
     "noMutationControls": [
       "other-user-notification",
@@ -29234,7 +29272,8 @@
     "riskTier": "HIGH",
     "executableTestIds": [
       "BOUNDARY_CASE:PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
-      "BOUNDARY_CASE:PROJECT_OPS_REMINDER_REVOCATION"
+      "BOUNDARY_CASE:PROJECT_OPS_REMINDER_REVOCATION",
+      "BOUNDARY_CASE:DEC_0071_RESTAURANT_OPS_SCAN"
     ],
     "permissionSource": "REVIEWED_DELEGATION",
     "boundaryClassifications": [
@@ -29247,7 +29286,8 @@
     ],
     "boundaryCaseIds": [
       "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
-      "PROJECT_OPS_REMINDER_REVOCATION"
+      "PROJECT_OPS_REMINDER_REVOCATION",
+      "DEC_0071_RESTAURANT_OPS_SCAN"
     ],
     "noMutationControls": [
       "guard-denied-notification",

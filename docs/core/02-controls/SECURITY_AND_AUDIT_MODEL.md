@@ -136,6 +136,8 @@ Every approval decision must record:
 
 Reminder and escalation jobs may create tasks/notifications, but must not auto-approve monetary, inventory, or supplier commitments unless a future policy specifically defines an authorized auto-action.
 
+Notification list, unread-count, read, and archive operations must share one live visibility boundary. The recipient must match the current user, the notification must carry the exact selected company, and a location-scoped notification must carry the exact selected location; company-wide notifications may use a null location. Notifications without company lineage fail closed. Before disclosure or presentation-state mutation, the user must still have an active, effective assignment to the selected company or selected location. A copied notification ID, previous access, or another selected company never authorizes disclosure or mutation.
+
 ---
 
 ## 6. Audit model

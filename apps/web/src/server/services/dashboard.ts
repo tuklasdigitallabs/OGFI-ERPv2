@@ -7,7 +7,6 @@ import {
   canUseApprovals,
   canUsePurchaseRequests,
   canUseReceiving,
-  canUseRecipesAndCosting,
   canUseStockAdjustments,
   canUseTransfers,
   canUseWastageReports,
@@ -20,10 +19,6 @@ import {
   type BranchOperationsDashboard,
   type BranchOperationsDashboardRead
 } from "./branchOperations";
-import {
-  getFoodCostAnalysisDashboard,
-  type FoodCostAnalysisDashboard
-} from "./recipes";
 import {
   getFoodSafetyDashboardRead,
   type FoodSafetyDashboard,
@@ -214,7 +209,6 @@ export type OperationalDashboardSource = {
   stockAdjustmentDashboard?: StockAdjustmentDashboardRead;
   inventoryBalances?: InventoryBalanceSummary[];
   reconciliation?: InventoryLedgerVarianceDashboardRead | null;
-  foodCostAnalysis?: FoodCostAnalysisDashboard;
   branchOperations?: BranchOperationsDashboard;
   foodSafety?: FoodSafetyDashboard;
   foodSafetyDashboard?: FoodSafetyDashboardRead;
@@ -463,13 +457,6 @@ function number(value: number) {
   return new Intl.NumberFormat("en-PH", {
     maximumFractionDigits: 0
   }).format(value);
-}
-
-function percent(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "Pending";
-  }
-  return `${value.toFixed(1)}%`;
 }
 
 export function buildOperationalDashboardModel(
@@ -879,126 +866,6 @@ export function buildOperationalDashboardModel(
         tone: recentlyUpdatedRows.length > 0 ? "info" : "neutral"
       }
     );
-  }
-
-  if (source.foodCostAnalysis) {
-    const varianceAmount = source.foodCostAnalysis.varianceAmount ?? 0;
-    const overTargetRows = source.foodCostAnalysis.statusCounts.ABOVE_TARGET;
-    const missingCostRows = source.foodCostAnalysis.statusCounts.MISSING_COST;
-    const awaitingActualRows = source.foodCostAnalysis.statusCounts.AWAITING_ACTUALS;
-    const foodCostExceptionRows = overTargetRows + missingCostRows;
-
-    cards.push({
-      id: "food-cost-exceptions",
-      label: "Food Cost Exceptions",
-      value: foodCostExceptionRows,
-      href: "/recipes/analysis",
-      description: "Menu rows above target or missing recipe cost",
-      tone: cardTone(foodCostExceptionRows)
-    });
-    metrics.push(
-      {
-        id: "restaurant-net-sales",
-        label: "Net sales",
-        displayValue: currency(source.foodCostAnalysis.netSalesAmount),
-        detail: `${number(source.foodCostAnalysis.quantitySold)} sold units from posted imports`,
-        href: "/recipes/analysis",
-        tone: source.foodCostAnalysis.netSalesAmount > 0 ? "success" : "neutral"
-      },
-      {
-        id: "theoretical-food-cost",
-        label: "Theoretical food cost",
-        displayValue: currency(source.foodCostAnalysis.theoreticalCost),
-        detail: `${percent(source.foodCostAnalysis.theoreticalFoodCostPercent)} of imported net sales`,
-        href: "/recipes/analysis",
-        tone: source.foodCostAnalysis.theoreticalCost > 0 ? "info" : "neutral"
-      },
-      {
-        id: "actual-food-cost",
-        label: "Actual food cost",
-        displayValue:
-          source.foodCostAnalysis.actualCost === null
-            ? "Pending"
-            : currency(source.foodCostAnalysis.actualCost),
-        detail: source.foodCostAnalysis.actualCostSource,
-        href: "/recipes/analysis",
-        tone: source.foodCostAnalysis.actualCost === null ? "warning" : "info"
-      },
-      {
-        id: "food-cost-variance",
-        label: "Food cost variance",
-        displayValue:
-          source.foodCostAnalysis.varianceAmount === null
-            ? "Pending"
-            : currency(Math.abs(varianceAmount)),
-        detail: `${percent(source.foodCostAnalysis.variancePercent)} variance from posted actual consumption`,
-        href: "/recipes/analysis",
-        tone:
-          source.foodCostAnalysis.varianceAmount === null
-            ? "warning"
-            : varianceAmount > 0
-              ? "warning"
-              : "success"
-      },
-      {
-        id: "food-cost-above-target",
-        label: "Above target",
-        displayValue: number(overTargetRows),
-        detail: "Menu rows above target food-cost percentage",
-        href: "/recipes/analysis",
-        tone: overTargetRows > 0 ? "warning" : "success"
-      },
-      {
-        id: "food-cost-missing-cost",
-        label: "Missing cost",
-        displayValue: number(missingCostRows),
-        detail: "Menu rows without complete recipe costing",
-        href: "/recipes/analysis",
-        tone: missingCostRows > 0 ? "warning" : "success"
-      },
-      {
-        id: "food-cost-awaiting-actuals",
-        label: "Awaiting actuals",
-        displayValue: number(awaitingActualRows),
-        detail: "Menu rows waiting for actual ledger evidence",
-        href: "/recipes/analysis",
-        tone: awaitingActualRows > 0 ? "warning" : "success"
-      }
-    );
-
-    if (source.foodCostAnalysis.actualCost === null) {
-      exceptionQueue.push({
-        id: "food-cost-actual-ledger-pending",
-        label: "Actual ledger pending",
-        reference: source.foodCostAnalysis.businessDate ?? "No business date",
-        detail: source.foodCostAnalysis.actualCostSource,
-        status: "AWAITING_ACTUALS",
-        href: "/recipes/analysis",
-        tone: "warning",
-        nextAction: "Review actual ledger evidence",
-        priority: "HIGH",
-        locationName: source.foodCostAnalysis.locationName
-      });
-    }
-
-    for (const row of source.foodCostAnalysis.rows
-      .filter((analysisRow) =>
-        ["ABOVE_TARGET", "MISSING_COST"].includes(analysisRow.status)
-      )
-      .slice(0, 3)) {
-      exceptionQueue.push({
-        id: `food-cost-${row.menuItemId}`,
-        label: "Food cost follow-up",
-        reference: row.menuItemName,
-        detail: `${row.status.replaceAll("_", " ").toLowerCase()} / ${currency(row.netSalesAmount)} sales`,
-        status: row.status,
-        href: "/recipes/analysis",
-        tone: "warning",
-        nextAction: "Review recipe cost and sales evidence",
-        priority: "HIGH",
-        locationName: source.foodCostAnalysis.locationName
-      });
-    }
   }
 
   if (source.branchOperations || source.branchOperationsDashboard) {
@@ -1416,16 +1283,6 @@ export function buildOperationalDashboardModel(
         ]
       : []),
     {
-      id: "sales-source",
-      label: "Sales / revenue",
-      displayValue: source.foodCostAnalysis ? "Import source live" : "Not connected",
-      detail: source.foodCostAnalysis
-        ? `${source.foodCostAnalysis.salesImportBatches} posted sales import batch${source.foodCostAnalysis.salesImportBatches === 1 ? "" : "es"} in scope`
-        : "No approved POS/accounting sales source is live for this scope",
-      ...(source.foodCostAnalysis ? { href: "/recipes/analysis" } : {}),
-      tone: source.foodCostAnalysis ? "info" : "neutral"
-    },
-    {
       id: "inventory-value-source",
       label: "Inventory value",
       displayValue: source.inventoryBalances ? "Qty source live" : "No access",
@@ -1593,14 +1450,6 @@ export async function getOperationalDashboard(
         session.permissionCodes.includes(permissions.inventoryLedgerView)
       ? getInventoryLedgerVarianceDashboardRead(session).then((reconciliation) => {
           source.reconciliation = reconciliation;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "food-cost-analysis", label: "Food cost analysis", href: "/recipes/analysis" },
-      read: canUseRecipesAndCosting(session.permissionCodes)
-      ? getFoodCostAnalysisDashboard(session).then((foodCostAnalysis) => {
-          source.foodCostAnalysis = foodCostAnalysis;
         })
       : Promise.resolve()
     },

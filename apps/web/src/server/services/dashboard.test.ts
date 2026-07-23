@@ -529,57 +529,6 @@ describe("operational dashboard model", () => {
 
   it("surfaces Phase 2 restaurant operations from source dashboards", () => {
     const dashboard = buildOperationalDashboardModel(session, {
-      foodCostAnalysis: {
-        businessDate: "2026-07-03",
-        locationName: "Selected Branch",
-        salesImportBatches: 1,
-        quantitySold: 120,
-        netSalesAmount: 54000,
-        theoreticalCost: 16200,
-        theoreticalFoodCostPercent: 30,
-        actualCost: null,
-        varianceAmount: null,
-        variancePercent: null,
-        actualMovementCount: 0,
-        actualCostSource: "No scoped actual ledger movements found",
-        statusCounts: {
-          WITHIN_TARGET: 0,
-          ABOVE_TARGET: 1,
-          MISSING_COST: 0,
-          AWAITING_ACTUALS: 1
-        },
-        actualConsumptionRows: [],
-        rows: [
-          {
-            menuItemId: "menu-1",
-            menuItemName: "Karubi Set",
-            recipeName: "Karubi Set Recipe",
-            quantitySold: 120,
-            netSalesAmount: 54000,
-            theoreticalCost: 16200,
-            theoreticalFoodCostPercent: 30,
-            targetFoodCostPercent: 28,
-            actualCost: null,
-            varianceAmount: null,
-            variancePercent: null,
-            status: "ABOVE_TARGET"
-          },
-          {
-            menuItemId: "menu-2",
-            menuItemName: "Chicken Set",
-            recipeName: "Chicken Set Recipe",
-            quantitySold: 80,
-            netSalesAmount: 32000,
-            theoreticalCost: 9000,
-            theoreticalFoodCostPercent: 28.12,
-            targetFoodCostPercent: null,
-            actualCost: null,
-            varianceAmount: null,
-            variancePercent: null,
-            status: "AWAITING_ACTUALS"
-          }
-        ]
-      },
       branchOperations: {
         locationName: "Selected Branch",
         businessDate: "2026-07-03",
@@ -768,7 +717,6 @@ describe("operational dashboard model", () => {
     expect(
       dashboard.cards.map((card) => [card.id, card.value, card.href])
     ).toEqual([
-      ["food-cost-exceptions", 1, "/recipes/analysis"],
       ["branch-checklist-exceptions", 1, "/branch-operations"],
       ["branch-checklist-reviews", 1, "/branch-operations"],
       ["food-safety-exceptions", 1, "/food-safety"],
@@ -776,14 +724,8 @@ describe("operational dashboard model", () => {
       ["open-operational-incidents", 1, "/incidents"],
       ["maintenance-follow-up", 1, "/maintenance"]
     ]);
-    expect(dashboard.metrics.map((metric) => metric.id)).toContain(
-      "restaurant-net-sales"
-    );
     expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
       expect.arrayContaining([
-        "food-cost-above-target",
-        "food-cost-missing-cost",
-        "food-cost-awaiting-actuals",
         "branch-critical-exception-count",
         "branch-manager-review-count",
         "branch-reviewed-count",
@@ -803,25 +745,8 @@ describe("operational dashboard model", () => {
       ])
     );
     expect(
-      dashboard.metrics
-        .filter((metric) =>
-          [
-            "food-cost-above-target",
-            "food-cost-missing-cost",
-            "food-cost-awaiting-actuals"
-          ].includes(metric.id)
-        )
-        .map((metric) => [metric.id, metric.displayValue])
-    ).toEqual([
-      ["food-cost-above-target", "1"],
-      ["food-cost-missing-cost", "0"],
-      ["food-cost-awaiting-actuals", "1"]
-    ]);
-    expect(
       dashboard.exceptionQueue.map((item) => [item.label, item.href])
     ).toEqual([
-      ["Actual ledger pending", "/recipes/analysis"],
-      ["Food cost follow-up", "/recipes/analysis"],
       ["Checklist review", "/branch-operations/checklist-1"],
       ["Checklist exception", "/branch-operations/checklist-1"],
       ["Food safety review", "/food-safety/safety-1"],
@@ -832,8 +757,6 @@ describe("operational dashboard model", () => {
     expect(
       dashboard.exceptionQueue.map((item) => [item.label, item.nextAction])
     ).toEqual([
-      ["Actual ledger pending", "Review actual ledger evidence"],
-      ["Food cost follow-up", "Review recipe cost and sales evidence"],
       ["Checklist review", "Review checklist"],
       ["Checklist exception", "Investigate checklist exception"],
       ["Food safety review", "Review food-safety log"],
@@ -849,11 +772,33 @@ describe("operational dashboard model", () => {
         })
       ])
     );
-    expect(dashboard.sourceHealth.find((metric) => metric.id === "sales-source")).toMatchObject({
-      id: "sales-source",
-      displayValue: "Import source live",
-      href: "/recipes/analysis"
-    });
+  });
+
+  it("does not collect or materialize the retired Food Cost dashboard source", () => {
+    const dashboardServiceSource = readFileSync(
+      path.resolve(__dirname, "dashboard.ts"),
+      "utf8"
+    );
+    const dashboard = buildOperationalDashboardModel(
+      { ...session, permissionCodes: ["restaurant.recipe.view"] },
+      {
+        foodCostAnalysis: {
+          locationName: "Selected Branch",
+          salesImportBatches: 1,
+          rows: [{ menuItemId: "menu-1", status: "ABOVE_TARGET" }]
+        }
+      } as never
+    );
+    const serializedDashboard = JSON.stringify(dashboard);
+
+    expect(dashboardServiceSource).not.toContain("getFoodCostAnalysisDashboard");
+    expect(dashboardServiceSource).not.toContain("canUseRecipesAndCosting");
+    expect(dashboardServiceSource).not.toContain("foodCostAnalysis");
+    expect(dashboardServiceSource).not.toContain("food-cost-analysis");
+    expect(serializedDashboard).not.toContain("food-cost");
+    expect(serializedDashboard).not.toContain("restaurant-net-sales");
+    expect(serializedDashboard).not.toContain("sales-source");
+    expect(serializedDashboard).not.toContain("/recipes/analysis");
   });
 
   it("keeps incident and maintenance report shortcuts routed to their own sources", () => {

@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Food Cost Overview And Notification Safe Fallback
+
+- Confirmed `DEC-0071`: while the three `DEC-0062` definitions remain open, Overview publishes no Food Cost values, exceptions, availability failures, or source-health assertions and makes no Food Cost analytical read.
+- Stopped new Food Cost exception reminder generation from Restaurant Operations scans without deleting or rewriting existing notification history. Authorized users retain neutral navigation to the independently scoped Food Cost Analysis workspace; existing reminders carry definition-under-review context.
+
 ## 2026-07-23 — Closed Ledger Variance Reconciliation Drilldown
 
 - Confirmed and implemented `DEC-0070`: Ledger Variance now opens a dedicated, read-only reconciliation profile requiring both balance-view and ledger-view authority.

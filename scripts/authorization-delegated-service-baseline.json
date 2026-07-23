@@ -86,6 +86,8 @@
   "server/services/inventory.ts#postInventoryMovement",
   "server/services/inventory.ts#postInventoryMovementInTransaction",
   "server/services/notifications.ts#archiveNotification",
+  "server/services/notifications.ts#getUnreadNotificationCount",
+  "server/services/notifications.ts#listNotifications",
   "server/services/notifications.ts#markNotificationRead",
   "server/services/notifications.ts#recordApprovalOutcomeNotification",
   "server/services/notifications.ts#recordApprovalStepReadyNotification",

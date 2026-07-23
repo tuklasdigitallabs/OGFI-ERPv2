@@ -174,11 +174,12 @@ Acceptance evidence:
 ### Dashboard, Reports, And Notifications
 
 1. Open dashboard `Overview`, `Analytics`, `Reports`, and `Notifications` tabs.
-2. Confirm Phase II cards link to their source modules: recipes, food-cost analysis, branch operations, food safety, incidents, and maintenance.
+2. Confirm Phase II cards link to their trusted source modules. While `DEC-0062` remains open, confirm Overview contains no Food Cost card, value, exception row, or source-health claim and that authorized users retain a neutral link to Food Cost Analysis.
 3. Run project, approval, and restaurant-operations notification scans from the notification center while a status/group tab is selected.
 4. Open `Reports`, select the `Restaurant Ops` tab, and verify each report opens the correct source module or CSV export.
 5. Confirm branch and food-safety review-ready cards open source modules rather than performing review from the dashboard.
 6. Confirm restaurant-operations notification scan creates source-linked review reminders for branch and food-safety review-ready records.
+7. Confirm the scan creates no new Food Cost exception reminder and recipe/cost permission alone does not authorize an otherwise empty Restaurant Operations scan. Existing Food Cost reminders remain visible as historical, definition-under-review records and may be handled manually without automatic mutation.
 
 Acceptance evidence:
 
@@ -187,6 +188,7 @@ Acceptance evidence:
 - Branch checklist and food-safety review indicators remain visibility-only and route to source records.
 - Notification scan redirects preserve current inbox tab/status.
 - Restaurant-operations notification reminders do not review branch checklists or food-safety logs automatically.
+- Food Cost values do not contribute to Overview attention, exception, clear, or source-availability states while `DEC-0062` is open.
 
 ## Exit Rule
 

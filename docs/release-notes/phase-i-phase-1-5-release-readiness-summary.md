@@ -71,6 +71,8 @@
 
 ## Important notes
 
+- Food Cost summaries are temporarily withheld from Overview, and Restaurant Operations scans create no new Food Cost exception reminders, while business-date alignment, missing movement valuation, and `AWAITING_ACTUALS` semantics remain under `DEC-0062` review. Authorized users can still open Food Cost Analysis as the source workspace. Older Food Cost notifications remain historical and must be verified against current source evidence.
+
 - This release note is a readiness summary. It is not a go-live signoff.
 - These approval-integrity changes do not by themselves complete SPF-006 or establish production readiness; the remaining audit-integrity and release gates still apply.
 - UAT execution, defect disposition, deployment rehearsal, rollback evidence, backup/restore evidence, external-security proof references, and final release approval remain required before GO.

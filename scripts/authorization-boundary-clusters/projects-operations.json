@@ -69,6 +69,33 @@
       ]
     },
     {
+      "id": "NOTIFICATION_LIVE_CONTEXT_SCOPE",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-NOTIFICATION-LIVE-CONTEXT-SCOPE-NON-ENUMERATING",
+      "kind": "REAL_POSTGRESQL_NEGATIVE",
+      "coveredControls": [
+        "live-effective-company-or-location-scope",
+        "exact-selected-company-and-location",
+        "company-wide-null-location",
+        "null-company-fail-closed",
+        "same-user-cross-company-and-cross-location-non-disclosure",
+        "non-enumerating-read-and-archive-mutations",
+        "legacy-food-cost-notification-visibility"
+      ]
+    },
+    {
+      "id": "DEC_0071_RESTAURANT_OPS_SCAN",
+      "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
+      "testName": "AUTHZ-DEC-0071-RESTAURANT-OPS-SCAN-IDEMPOTENT-NO-FOOD-COST",
+      "kind": "REAL_POSTGRESQL_POSITIVE_AND_NEGATIVE",
+      "coveredControls": [
+        "authorized-remaining-restaurant-operations-reminders",
+        "idempotent-notification-cardinality",
+        "no-new-food-cost-exception",
+        "legacy-food-cost-notification-immutable"
+      ]
+    },
+    {
       "id": "PROJECT_OPS_REMINDER_REVOCATION",
       "file": "apps/web/tests/authorizationProjectsOperations.integration.test.ts",
       "testName": "AUTHZ-PROJECT-OPS-REMINDER-LIVE-PERMISSION-REVOCATION-NO-MUTATION",
@@ -626,10 +653,29 @@
     },
 
     {
+      "surfaceId": "server/services/notifications.ts#getUnreadNotificationCount",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/notifications.ts#getUnreadNotificationCount"],
+      "caseIds": ["NOTIFICATION_LIVE_CONTEXT_SCOPE"],
+      "noMutationControls": ["read-only-notification-count"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/notifications.ts#listNotifications",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/notifications.ts#listNotifications"],
+      "caseIds": ["NOTIFICATION_LIVE_CONTEXT_SCOPE"],
+      "noMutationControls": ["read-only-notification-list"],
+      "status": "COVERED"
+    },
+    {
       "surfaceId": "server/services/notifications.ts#markNotificationRead",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": ["server/services/notifications.ts#markNotificationRead"],
-      "caseIds": ["PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS"],
+      "caseIds": [
+        "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
+        "NOTIFICATION_LIVE_CONTEXT_SCOPE"
+      ],
       "noMutationControls": ["other-user-notification", "all-protected-state"],
       "status": "COVERED"
     },
@@ -690,7 +736,8 @@
       ],
       "caseIds": [
         "PROJECT_OPS_NOTIFICATION_SCOPE_GUARDS",
-        "PROJECT_OPS_REMINDER_REVOCATION"
+        "PROJECT_OPS_REMINDER_REVOCATION",
+        "DEC_0071_RESTAURANT_OPS_SCAN"
       ],
       "noMutationControls": [
         "guard-denied-notification",

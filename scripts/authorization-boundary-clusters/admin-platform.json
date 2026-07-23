@@ -717,10 +717,15 @@
     {
       "surfaceId": "server/services/notifications.ts#archiveNotification",
       "classification": "PUBLIC_BOUNDARY",
-      "adapterIds": ["notification tenantId plus recipientUserId updateMany"],
-      "caseIds": ["AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION"],
+      "adapterIds": ["server/services/notifications.ts#archiveNotification"],
+      "caseIds": [
+        "AUTHZ-PLATFORM-NOTIFICATION-OWNER-DENIED-NO-MUTATION",
+        "NOTIFICATION_LIVE_CONTEXT_SCOPE"
+      ],
       "noMutationControls": [
-        "foreign recipient notification status and archivedAt unchanged"
+        "foreign recipient notification status and archivedAt unchanged",
+        "selected tenant-company-location and live assignment scope",
+        "null-company and adjacent-scope notifications unchanged"
       ],
       "status": "COVERED"
     },

@@ -4,7 +4,6 @@ import {
   canUseFoodSafety,
   canUseIncidents,
   canUseMaintenance,
-  canUseRecipesAndCosting,
   getGrantedPermissionCodes
 } from "./authorization";
 import {
@@ -23,10 +22,6 @@ import {
 } from "./maintenance";
 import { recordWorkflowNotifications } from "./notifications";
 import { dateOnlyInTimeZone } from "./projectDates";
-import {
-  getFoodCostAnalysisDashboard,
-  type FoodCostAnalysisDashboard
-} from "./recipes";
 
 type RestaurantOpsReminderKind =
   | "FOOD_COST_EXCEPTION"
@@ -53,16 +48,14 @@ type RestaurantOpsReminderInput = {
 };
 
 type RestaurantOpsReminderSource = {
-  foodCost?: FoodCostAnalysisDashboard;
   branchOps?: BranchOperationsDashboard;
   foodSafety?: FoodSafetyDashboard;
   incidents?: IncidentDashboard;
   maintenance?: MaintenanceDashboard;
 };
 
-function phase2NotificationAccess(permissionCodes: string[]) {
+export function canRunRestaurantOpsExceptionReminderScan(permissionCodes: string[]) {
   return (
-    canUseRecipesAndCosting(permissionCodes) ||
     canUseBranchOperations(permissionCodes) ||
     canUseFoodSafety(permissionCodes) ||
     canUseIncidents(permissionCodes) ||
@@ -78,33 +71,6 @@ export function buildRestaurantOpsReminderInputs(
   source: RestaurantOpsReminderSource
 ) {
   const reminders: RestaurantOpsReminderInput[] = [];
-
-  if (source.foodCost) {
-    const foodCost = source.foodCost;
-    for (const row of foodCost.rows.filter((analysisRow) => analysisRow.status !== "WITHIN_TARGET")) {
-      reminders.push({
-        reminderKind: "FOOD_COST_EXCEPTION",
-        priority:
-          row.status === "ABOVE_TARGET" || row.status === "MISSING_COST"
-            ? "HIGH"
-            : "NORMAL",
-        title: `Food cost follow-up: ${row.menuItemName}`,
-        body: `${row.status.replaceAll("_", " ").toLowerCase()} in ${foodCost.locationName}. Review recipe cost, sales import, and actual ledger evidence.`,
-        deepLink: "/recipes/analysis",
-        entityType: "FoodCostAnalysis",
-        entityId: row.menuItemId,
-        sourceKey: `food-cost:${row.menuItemId}:${row.status}`,
-        metadata: {
-          menuItemName: row.menuItemName,
-          status: row.status,
-          netSalesAmount: row.netSalesAmount,
-          theoreticalCost: row.theoreticalCost,
-          actualCost: row.actualCost,
-          source: "restaurant-ops-notification-scan"
-        }
-      });
-    }
-  }
 
   if (source.branchOps) {
     const branchOps = source.branchOps;
@@ -259,11 +225,6 @@ async function collectRestaurantOpsReminders(session: SessionContext) {
   const source: RestaurantOpsReminderSource = {};
 
   await Promise.all([
-    canUseRecipesAndCosting(session.permissionCodes)
-      ? getFoodCostAnalysisDashboard(session).then((foodCost) => {
-          source.foodCost = foodCost;
-        })
-      : Promise.resolve(),
     canUseBranchOperations(session.permissionCodes)
       ? getBranchOperationsDashboard(session).then((branchOps) => {
           source.branchOps = branchOps;
@@ -294,7 +255,7 @@ export async function runRestaurantOpsExceptionReminderScan(
   input: { asOf?: Date; timeZone?: string } = {}
 ) {
   const permissionCodes = await getGrantedPermissionCodes(session);
-  if (!phase2NotificationAccess(permissionCodes)) {
+  if (!canRunRestaurantOpsExceptionReminderScan(permissionCodes)) {
     throw new Error("PERMISSION_DENIED");
   }
 

@@ -540,20 +540,17 @@ export function getNavigationSections(
                     icon: Settings,
                     disabled: true,
                   },
-              canUseRecipesAndCosting || canAdminister
-                ? {
-                    label: "Food Cost Analysis",
-                    href: "/recipes?view=food-cost",
-                    activeKey: "food-cost" as const,
-                    badge: "Preview",
-                    icon: BarChart3,
-                  }
-                : {
-                    label: "Food Cost Analysis",
-                    badge: "Preview",
-                    icon: BarChart3,
-                    disabled: true,
-                  },
+              ...(canUseRecipesAndCosting
+                ? [
+                    {
+                      label: "Food Cost Analysis",
+                      href: "/recipes/analysis",
+                      activeKey: "food-cost" as const,
+                      badge: "Source",
+                      icon: BarChart3,
+                    },
+                  ]
+                : []),
             ],
           },
         ]

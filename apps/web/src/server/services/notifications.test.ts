@@ -2,11 +2,15 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { approvalReminderKind } from "./approvals";
+import { permissions } from "./authorization";
 import {
   projectTaskDeadlineReminderKind,
   readProjectReminderConfig
 } from "./projectNotifications";
-import { buildRestaurantOpsReminderInputs } from "./restaurantOpsNotifications";
+import {
+  buildRestaurantOpsReminderInputs,
+  canRunRestaurantOpsExceptionReminderScan
+} from "./restaurantOpsNotifications";
 
 describe("notification foundation wiring", () => {
   test("notification model enforces scoped idempotent in-app records", () => {
@@ -19,6 +23,33 @@ describe("notification foundation wiring", () => {
     expect(schema).toContain("@@unique([tenantId, recipientUserId, sourceEventKey])");
     expect(schema).toContain("@@index([tenantId, recipientUserId, status, generatedAt])");
     expect(schema).toMatch(/recipient\s+User\s+@relation/);
+  });
+
+  test("notification inbox operations share a live selected-context boundary", () => {
+    const source = readFileSync(path.resolve(__dirname, "notifications.ts"), "utf8");
+    const visibilitySource = source.slice(
+      source.indexOf("function notificationVisibilityWhere"),
+      source.indexOf("export async function listNotifications")
+    );
+    const inboxSource = source.slice(
+      source.indexOf("export async function listNotifications")
+    );
+
+    expect(visibilitySource).toContain("companyId: session.context.companyId");
+    expect(visibilitySource).toContain("{ locationId: null }");
+    expect(visibilitySource).toContain(
+      "{ locationId: session.context.locationId }"
+    );
+    expect(visibilitySource).toContain('scopeType: "COMPANY"');
+    expect(visibilitySource).toContain('scopeType: "LOCATION"');
+    expect(visibilitySource).toContain("startsAt: { lte: now }");
+    expect(visibilitySource).toContain("{ endsAt: { gt: now } }");
+    expect(visibilitySource).toContain('status: "ACTIVE"');
+    expect(visibilitySource).toContain("currentNotificationVisibilityWhere");
+    expect(visibilitySource).toContain("prisma.location.findFirst");
+    expect(inboxSource.match(/currentNotificationVisibilityWhere\(/g)).toHaveLength(
+      4
+    );
   });
 
   test("workflow submissions create approval notifications from source audit events", () => {
@@ -209,9 +240,14 @@ describe("notification foundation wiring", () => {
     expect(scanSource).toContain("runRestaurantOpsExceptionReminderScan");
     expect(scanSource).toContain("buildRestaurantOpsReminderInputs");
     expect(scanSource).toContain("getGrantedPermissionCodes(session)");
-    expect(scanSource).toContain("phase2NotificationAccess(permissionCodes)");
+    expect(scanSource).toContain(
+      "canRunRestaurantOpsExceptionReminderScan(permissionCodes)"
+    );
     expect(scanSource).toContain("throw new Error(\"PERMISSION_DENIED\")");
-    expect(scanSource).toContain("getFoodCostAnalysisDashboard(session)");
+    expect(scanSource).not.toContain("getFoodCostAnalysisDashboard");
+    expect(scanSource).not.toContain("canUseRecipesAndCosting");
+    expect(scanSource).not.toContain("source.foodCost");
+    expect(scanSource).not.toContain("food-cost:");
     expect(scanSource).toContain("getBranchOperationsDashboard(session)");
     expect(scanSource).toContain("getFoodSafetyDashboard(session)");
     expect(scanSource).toContain("getIncidentDashboard(session)");
@@ -223,7 +259,7 @@ describe("notification foundation wiring", () => {
     expect(scanSource).toContain("notification.restaurant_ops_exception_scan");
     expect(scanSource).toContain("scannedExceptionCount");
     expect(scanSource).toContain("reminderCount");
-    expect(scanSource).toContain("FOOD_COST_EXCEPTION");
+    expect(scanSource.match(/FOOD_COST_EXCEPTION/g)).toHaveLength(1);
     expect(scanSource).toContain("BRANCH_CHECKLIST_REVIEW_READY");
     expect(scanSource).toContain("BRANCH_CHECKLIST_EXCEPTION");
     expect(scanSource).toContain("FOOD_SAFETY_REVIEW_READY");
@@ -244,7 +280,31 @@ describe("notification foundation wiring", () => {
     expect(scanSource).not.toContain("inventoryMovement.create");
   });
 
-  test("restaurant ops reminders are built from source records without terminal follow-ups", () => {
+  test("recipe-only access cannot authorize an empty Restaurant Ops scan", () => {
+    expect(
+      canRunRestaurantOpsExceptionReminderScan([
+        permissions.recipeView,
+        permissions.recipeManage,
+        permissions.menuCostView
+      ])
+    ).toBe(false);
+    expect(
+      canRunRestaurantOpsExceptionReminderScan([
+        permissions.branchOperationsView
+      ])
+    ).toBe(true);
+    expect(
+      canRunRestaurantOpsExceptionReminderScan([permissions.foodSafetyView])
+    ).toBe(true);
+    expect(
+      canRunRestaurantOpsExceptionReminderScan([permissions.incidentView])
+    ).toBe(true);
+    expect(
+      canRunRestaurantOpsExceptionReminderScan([permissions.maintenanceView])
+    ).toBe(true);
+  });
+
+  test("restaurant ops reminder building ignores retired Food Cost source data", () => {
     const reminders = buildRestaurantOpsReminderInputs({
       foodCost: {
         locationName: "SM North Edsa",
@@ -252,21 +312,17 @@ describe("notification foundation wiring", () => {
           {
             menuItemId: "menu-1",
             menuItemName: "Karubi Set",
-            status: "ABOVE_TARGET",
-            netSalesAmount: 12000,
-            theoreticalCost: 4800,
-            actualCost: null
-          },
-          {
-            menuItemId: "menu-2",
-            menuItemName: "Chicken Set",
-            status: "WITHIN_TARGET",
-            netSalesAmount: 8000,
-            theoreticalCost: 2400,
-            actualCost: null
+            status: "ABOVE_TARGET"
           }
         ]
-      } as never,
+      }
+    } as never);
+
+    expect(reminders).toEqual([]);
+  });
+
+  test("restaurant ops reminders are built from source records without terminal follow-ups", () => {
+    const reminders = buildRestaurantOpsReminderInputs({
       branchOps: {
         checklists: [
           {
@@ -352,7 +408,6 @@ describe("notification foundation wiring", () => {
         reminder.priority
       ])
     ).toEqual([
-      ["FOOD_COST_EXCEPTION", "food-cost:menu-1:ABOVE_TARGET", "HIGH"],
       [
         "BRANCH_CHECKLIST_REVIEW_READY",
         "branch-checklist-review:checklist-1:SUBMITTED",
@@ -377,7 +432,6 @@ describe("notification foundation wiring", () => {
       source: "restaurant-ops-notification-scan"
     });
     expect(reminders.map((reminder) => reminder.deepLink)).toEqual([
-      "/recipes/analysis",
       "/branch-operations/checklist-1",
       "/branch-operations/checklist-1",
       "/food-safety/safety-1",
