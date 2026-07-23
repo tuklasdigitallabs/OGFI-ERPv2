@@ -15,8 +15,8 @@ import {
 } from "@/server/services/authorization";
 import {
   createBranchOperationChecklist,
-  filterBranchOperationChecklists,
-  getBranchOperationsDashboard
+  getBranchOperationsDashboardRead,
+  listBranchOperationChecklistPage
 } from "@/server/services/branchOperations";
 import { getSessionContext } from "@/server/services/context";
 import { canExportBranchOperations } from "@/server/services/exportAuthorization";
@@ -38,7 +38,7 @@ const statusOptions = [
 ] as const;
 const lineResultOptions = ["PASS", "EXCEPTION", "NOT_APPLICABLE"] as const;
 const lineSeverityOptions = ["NORMAL", "LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 
 async function createBranchChecklistAction(formData: FormData) {
   "use server";
@@ -113,7 +113,7 @@ export default async function BranchOperationsPage({
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
-  const dashboard = await getBranchOperationsDashboard(session);
+  const dashboardRead = await getBranchOperationsDashboardRead(session);
   const canExport = canExportBranchOperations(session);
   const canCreate = session.permissionCodes.includes(
     permissions.branchOperationsCreate
@@ -124,19 +124,25 @@ export default async function BranchOperationsPage({
   const businessDate = getSearchParam(params, "businessDate") ?? "";
   const shiftFilter = normalizeOption(getSearchParam(params, "shift"), shiftOptions);
   const statusFilter = normalizeOption(getSearchParam(params, "status"), statusOptions);
-  const visibleChecklists = filterBranchOperationChecklists(dashboard.checklists, {
+  const workspace = await listBranchOperationChecklistPage(session, {
     q: query,
     businessDate,
     shift: shiftFilter,
     status: statusFilter
-  });
-  const requestedPage = normalizePage(getSearchParam(params, "page"));
-  const totalPages = Math.max(1, Math.ceil(visibleChecklists.length / PAGE_SIZE));
-  const currentPage = Math.min(requestedPage, totalPages);
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const paginatedChecklists = visibleChecklists.slice(startIndex, startIndex + PAGE_SIZE);
-  const showingStart = visibleChecklists.length === 0 ? 0 : startIndex + 1;
-  const showingEnd = Math.min(startIndex + PAGE_SIZE, visibleChecklists.length);
+  }, { page: normalizePage(getSearchParam(params, "page")), pageSize: PAGE_SIZE });
+  const dashboard = {
+    locationName: dashboardRead.locationName,
+    businessDate: dashboardRead.businessDate,
+    totalChecklists: dashboardRead.totalChecklists,
+    completedChecklists: dashboardRead.completedChecklists,
+    openExceptions: dashboardRead.openExceptions,
+    criticalExceptions: dashboardRead.severityCounts.CRITICAL,
+    statusCounts: dashboardRead.statusCounts,
+    severityCounts: dashboardRead.severityCounts,
+    averageCompletionPercent: dashboardRead.averageCompletionPercent,
+    checklists: workspace.items
+  };
+  const paginatedChecklists = workspace.items;
   const pageHref = (page: number) =>
     buildQueryHref("/branch-operations", {
       q: getSearchParam(params, "q"),
@@ -321,7 +327,7 @@ export default async function BranchOperationsPage({
           </div>
         </form>
 
-        {dashboard.checklists.length === 0 ? (
+        {workspace.totalItems === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">No checklist records yet</p>
             <p className="mt-1 text-sm text-slate-600">
@@ -329,7 +335,7 @@ export default async function BranchOperationsPage({
               reviewing branch readiness.
             </p>
           </div>
-        ) : visibleChecklists.length === 0 ? (
+        ) : workspace.items.length === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">
               No checklists match the filters
@@ -355,7 +361,7 @@ export default async function BranchOperationsPage({
                     <div><dt className="text-xs font-semibold uppercase text-slate-500">Exceptions</dt><dd className="font-bold text-slate-950">{checklist.exceptionCount} / {checklist.lines.length}</dd></div>
                     <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Next reviewer</dt><dd className="font-semibold text-slate-700">{checklist.reviewedByName ?? "Pending review"}</dd></div>
                   </dl>
-                  <ButtonLink href={`/branch-operations/${checklist.id}`} tone="secondary" className="min-h-10 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100">View Detail</ButtonLink>
+                  <ButtonLink href={`/branch-operations/${checklist.id}`} tone="secondary" className="min-h-11 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100">View Detail</ButtonLink>
                 </article>
               ))}
             </div>
@@ -402,7 +408,7 @@ export default async function BranchOperationsPage({
                       <ButtonLink
                         href={`/branch-operations/${checklist.id}`}
                         tone="secondary"
-                        className="min-h-10 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100"
+                        className="min-h-11 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100"
                       >
                         View Detail
                       </ButtonLink>
@@ -413,28 +419,28 @@ export default async function BranchOperationsPage({
             </div>
             <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
               <p>
-                Showing {showingStart}-{showingEnd} of {visibleChecklists.length} checklists
+                Showing {workspace.items.length === 0 ? 0 : (workspace.page - 1) * workspace.pageSize + 1}-{workspace.items.length === 0 ? 0 : Math.min((workspace.page - 1) * workspace.pageSize + workspace.items.length, workspace.totalItems)} of {workspace.totalItems} checklists
               </p>
-              {totalPages > 1 ? (
+              {workspace.totalPages > 1 ? (
                 <div className="flex items-center gap-2">
-                  {currentPage > 1 ? (
-                    <ButtonLink href={pageHref(currentPage - 1)} tone="secondary">
+                  {workspace.page > 1 ? (
+                    <ButtonLink href={pageHref(workspace.page - 1)} tone="secondary" className="min-h-11">
                       Previous
                     </ButtonLink>
                   ) : (
-                    <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
+                    <span className="inline-flex min-h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
                       Previous
                     </span>
                   )}
                   <span className="font-semibold text-slate-700">
-                    Page {currentPage} of {totalPages}
+                    Page {workspace.page} of {workspace.totalPages}
                   </span>
-                  {currentPage < totalPages ? (
-                    <ButtonLink href={pageHref(currentPage + 1)} tone="secondary">
+                  {workspace.page < workspace.totalPages ? (
+                    <ButtonLink href={pageHref(workspace.page + 1)} tone="secondary" className="min-h-11">
                       Next
                     </ButtonLink>
                   ) : (
-                    <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
+                    <span className="inline-flex min-h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
                       Next
                     </span>
                   )}

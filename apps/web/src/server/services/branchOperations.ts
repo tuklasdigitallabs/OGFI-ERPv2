@@ -98,6 +98,10 @@ export type BranchOperationsDashboardCandidate = {
 };
 
 export type BranchOperationsDashboardRead = {
+  locationName: string;
+  businessDate: string | null;
+  totalChecklists: number;
+  completedChecklists: number;
   openExceptions: number;
   statusCounts: BranchChecklistStatusCounts;
   severityCounts: BranchChecklistSeverityCounts;
@@ -111,6 +115,14 @@ export type BranchOperationsExportFilters = {
   shift?: string;
   status?: string;
   businessDate?: string;
+};
+
+export type BranchOperationChecklistPage = {
+  items: BranchOperationChecklistSummary[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
 };
 
 export type BranchOperationMyTaskPage = {
@@ -398,6 +410,102 @@ export function filterBranchOperationChecklists(
   });
 }
 
+export async function listBranchOperationChecklistPage(
+  session: SessionContext,
+  filters: BranchOperationsExportFilters = {},
+  input: { page?: number; pageSize?: number } = {}
+): Promise<BranchOperationChecklistPage> {
+  assertBranchOperationsAccess(session);
+  const rawPageSize = input.pageSize ?? 25;
+  const pageSize = Number.isFinite(rawPageSize)
+    ? Math.min(Math.max(Math.floor(rawPageSize), 1), 50)
+    : 25;
+  const rawPage = input.page ?? 1;
+  const requestedPage = Number.isFinite(rawPage)
+    ? Math.max(Math.floor(rawPage), 1)
+    : 1;
+  const query = normalizedFilterText(filters.q);
+  const shift = filters.shift && filters.shift !== "ALL" ? filters.shift : null;
+  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
+  const businessDate = filters.businessDate?.trim() || null;
+  const actorMatches = query
+    ? await prisma.user.findMany({
+        where: {
+          tenantId: session.context.tenantId,
+          OR: [
+            { displayName: { contains: query, mode: "insensitive" } },
+            { email: { contains: query, mode: "insensitive" } }
+          ]
+        },
+        select: { id: true }
+      })
+    : [];
+  const date = businessDate ? parseDateOnlyUtc(businessDate) : null;
+  if (businessDate && !date) {
+    throw new Error("BRANCH_OPERATIONS_BUSINESS_DATE_INVALID");
+  }
+  const where: Prisma.BranchOperationalChecklistWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId,
+    ...(shift ? { shiftType: shift } : {}),
+    ...(status ? { status } : {}),
+    ...(date ? { businessDate: date } : {}),
+    ...(query
+      ? {
+          OR: [
+            { checklistName: { contains: query, mode: "insensitive" } },
+            { shiftType: { contains: query, mode: "insensitive" } },
+            { status: { contains: query, mode: "insensitive" } },
+            { openedByUserId: { in: actorMatches.map((row) => row.id) } },
+            { submittedByUserId: { in: actorMatches.map((row) => row.id) } },
+            { reviewedByUserId: { in: actorMatches.map((row) => row.id) } },
+            { lines: { some: { OR: [
+              { area: { contains: query, mode: "insensitive" } },
+              { checkName: { contains: query, mode: "insensitive" } },
+              { expectedResult: { contains: query, mode: "insensitive" } },
+              { notes: { contains: query, mode: "insensitive" } },
+              { evidenceReference: { contains: query, mode: "insensitive" } }
+            ] } } }
+          ]
+        }
+      : {})
+  };
+  const totalItems = await prisma.branchOperationalChecklist.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const rows = await prisma.branchOperationalChecklist.findMany({
+    where,
+    include: { location: true, lines: { orderBy: { lineNo: "asc" } } },
+    orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  }) as BranchOperationalChecklistWithLines[];
+  const actorIds = Array.from(new Set(rows.flatMap((row) => [row.openedByUserId, row.submittedByUserId, row.reviewedByUserId].filter((id): id is string => Boolean(id)))));
+  const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds }, tenantId: session.context.tenantId }, select: { id: true, displayName: true, email: true } }) : [];
+  const actorNameById = userDisplayNameById(actors);
+  const items = rows.map((checklist) => ({
+    id: checklist.id,
+    checklistName: checklist.checklistName,
+    locationName: checklist.location.name,
+    businessDate: checklist.businessDate.toISOString().slice(0, 10),
+    shiftType: checklist.shiftType,
+    status: checklist.status,
+    openedByUserId: checklist.openedByUserId,
+    submittedByUserId: checklist.submittedByUserId,
+    reviewedByUserId: checklist.reviewedByUserId,
+    openedByName: checklist.openedByUserId ? actorNameById.get(checklist.openedByUserId) ?? "Unknown user" : null,
+    submittedByName: checklist.submittedByUserId ? actorNameById.get(checklist.submittedByUserId) ?? "Unknown user" : null,
+    reviewedByName: checklist.reviewedByUserId ? actorNameById.get(checklist.reviewedByUserId) ?? "Unknown user" : null,
+    reviewedAt: dateOrNull(checklist.reviewedAt),
+    exceptionCount: checklist.exceptionCount,
+    completionPercent: Number(checklist.completionPercent),
+    lines: checklist.lines.map((line) => ({ id: line.id, lineNo: line.lineNo, area: line.area, checkName: line.checkName, expectedResult: line.expectedResult, result: line.result, severity: line.severity, evidenceReference: line.evidenceReference, notes: line.notes }))
+  }));
+  return { items, page, pageSize, totalItems, totalPages };
+}
+
 export async function getBranchOperationsDashboard(
   session: SessionContext
 ): Promise<BranchOperationsDashboard> {
@@ -541,7 +649,7 @@ export async function getBranchOperationsDashboardRead(
     ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
     locationId: session.context.locationId
   };
-  const [summary, statusRows, criticalExceptions, reviewRows, exceptionRows] =
+  const [summary, statusRows, totalChecklists, latestChecklist, criticalExceptions, reviewRows, exceptionRows] =
     await Promise.all([
       prisma.branchOperationalChecklist.aggregate({
         where,
@@ -553,6 +661,8 @@ export async function getBranchOperationsDashboardRead(
         where,
         _count: { _all: true }
       }),
+      prisma.branchOperationalChecklist.count({ where }),
+      prisma.branchOperationalChecklist.findFirst({ where, orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }], select: { businessDate: true } }),
       prisma.branchOperationalChecklistLine.count({
         where: {
           tenantId: session.context.tenantId,
@@ -617,6 +727,11 @@ export async function getBranchOperationsDashboardRead(
   });
 
   return {
+    locationName: session.context.locationName,
+    businessDate: latestChecklist?.businessDate.toISOString().slice(0, 10) ?? null,
+    totalChecklists,
+    completedChecklists:
+      statusCounts.SUBMITTED + statusCounts.REVIEWED + statusCounts.CLOSED,
     openExceptions: summary._sum.exceptionCount ?? 0,
     statusCounts,
     severityCounts: {

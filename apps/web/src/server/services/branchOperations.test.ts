@@ -836,16 +836,14 @@ describe("Phase 2 branch operations foundation", () => {
     expect(listPageSource).toContain('name="businessDate"');
     expect(listPageSource).toContain('name="shift"');
     expect(listPageSource).toContain('name="status"');
-    expect(listPageSource).toContain("visibleChecklists");
-    expect(listPageSource).toContain("PAGE_SIZE = 10");
+    expect(listPageSource).toContain("workspace");
+    expect(listPageSource).toContain("PAGE_SIZE = 25");
     expect(listPageSource).toContain("normalizePage");
     expect(listPageSource).toContain("paginatedChecklists");
     expect(listPageSource).toContain("pageHref");
-    expect(listPageSource).toContain("Showing {showingStart}-{showingEnd} of {visibleChecklists.length} checklists");
-    expect(listPageSource).toContain("Page {currentPage} of {totalPages}");
-    expect(listPageSource).toContain(
-      "filterBranchOperationChecklists(dashboard.checklists"
-    );
+    expect(listPageSource).toContain("workspace.page");
+    expect(listPageSource).toContain("Page {workspace.page} of {workspace.totalPages}");
+    expect(listPageSource).toContain("listBranchOperationChecklistPage");
     expect(listPageSource).toContain("checklist.openedByName");
     expect(listPageSource).toContain("checklist.reviewedByName");
     expect(listPageSource).toContain("buildQueryHref(\"/branch-operations/export\"");
@@ -867,7 +865,7 @@ describe("Phase 2 branch operations foundation", () => {
     expect(listPageSource).toContain('status === "MANAGER_REVIEW"');
     expect(listPageSource).toContain('status === "REVIEWED" || status === "CLOSED"');
     expect(listPageSource).toContain("No checklists match the filters");
-    expect(listPageSource).toContain("getBranchOperationsDashboard(session)");
+    expect(listPageSource).toContain("getBranchOperationsDashboardRead(session)");
     expect(listPageSource).toContain("Create Branch Checklist");
     expect(listPageSource).toContain("createBranchChecklistAction");
     expect(listPageSource).toContain("permissions.branchOperationsCreate");
