@@ -6,6 +6,7 @@
 - Added user-safe feedback for invalid Receiving status/date filters and reversed date ranges.
 - Added user-safe feedback for remaining Receiving discrepancy, stale-line, profile, follow-up, and search errors.
 - Added a regression guard preventing these Receiving errors from falling back to generic action copy.
+- Recorded the current root lint/typecheck pass and the exact disposable-database blocker for the E2E gate.
 
 ## 2026-07-24 — Branch Operations Register Pagination
 
