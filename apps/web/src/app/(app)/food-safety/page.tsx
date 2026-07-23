@@ -131,12 +131,17 @@ export default async function FoodSafetyPage({
   const businessDate = getSearchParam(params, "businessDate") ?? "";
   const logTypeFilter = normalizeOption(getSearchParam(params, "type"), logTypeOptions);
   const statusFilter = normalizeOption(getSearchParam(params, "status"), statusOptions);
-  const workspace = await listFoodSafetyLogPage(session, {
-    q: query,
-    businessDate,
-    type: logTypeFilter,
-    status: statusFilter
-  }, { page: normalizePage(getSearchParam(params, "page")), pageSize: PAGE_SIZE });
+  let workspace;
+  try {
+    workspace = await listFoodSafetyLogPage(session, {
+      q: query,
+      businessDate,
+      type: logTypeFilter,
+      status: statusFilter
+    }, { page: normalizePage(getSearchParam(params, "page")), pageSize: PAGE_SIZE });
+  } catch (error) {
+    redirect(actionErrorRedirectPath("/food-safety", error));
+  }
   const dashboard = {
     locationName: dashboardRead.locationName,
     businessDate: dashboardRead.businessDate,
