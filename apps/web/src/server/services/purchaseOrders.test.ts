@@ -31,6 +31,14 @@ import { canReadPurchaseOrders } from "./authorization";
 import { assertSupplierStatusAllowedForPurchaseOrder } from "./policySettings";
 
 describe("purchase order lifecycle rules", () => {
+  test("ordinary register uses the server page contract and preserves filter paging", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+    const page = readFileSync(path.resolve(__dirname, "../../app/(app)/purchase-orders/page.tsx"), "utf8");
+    expect(source).toContain("listPurchaseOrderPage");
+    expect(source).toContain("pagination: { page, pageSize }");
+    expect(page).toContain("workspaceOrders?.items");
+    expect(page).toContain("workspaceOrders.totalPages");
+  });
   test("My Tasks uses only explicit draft-submit and approved-issue PO actions", () => {
     const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
     const start = source.indexOf("export async function listPurchaseOrderMyTaskPage");

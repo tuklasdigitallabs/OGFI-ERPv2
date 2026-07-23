@@ -236,6 +236,7 @@ Add a dated entry whenever an approved decision changes product scope, business 
 - 2026-07-24: Added server-backed pagination to the ordinary Transfers register. All, Draft, Dispatch, Receive, and Completed tabs now use server predicates and scoped counts; the dashboard follow-up profile remains separate.
 - 2026-07-24: Added server-backed pagination to the ordinary Stock Adjustments register with scoped counts and deterministic ordering; the dashboard exception profile remains separate.
 - 2026-07-24: Added server-backed pagination to the ordinary Purchase Requests register with scoped counts and filter-preserving navigation; the Open PR dashboard profile remains separate.
+- 2026-07-24: Added server-backed pagination to the ordinary Purchase Orders register with scoped counts and filter-preserving navigation; the Open PO dashboard profile remains separate.
 
 ## 2026-06-25 — V3 subagent deliberation and decision governance
 

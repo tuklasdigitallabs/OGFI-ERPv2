@@ -18,7 +18,7 @@ import { canExportPurchaseOrders } from "@/server/services/exportAuthorization";
 import {
   createPurchaseOrderFromRecommendation,
   listApprovedRecommendationsForPo,
-  listPurchaseOrders,
+  listPurchaseOrderPage,
   listPurchaseOrdersDashboardProfilePage,
   resolvePurchaseOrderDashboardProfile,
   type PurchaseOrderListFilters
@@ -115,13 +115,13 @@ export default async function PurchaseOrdersPage({
     dashboardProfile
       ? listPurchaseOrdersDashboardProfilePage(session, dashboardProfile, requestedPage)
       : Promise.resolve(null),
-    dashboardProfile ? Promise.resolve([]) : listPurchaseOrders(session, filters),
+    dashboardProfile ? Promise.resolve(null) : listPurchaseOrderPage(session, filters, { page: requestedPage }),
     canCreatePurchaseOrders
       ? listApprovedRecommendationsForPo(session)
       : Promise.resolve([])
   ]);
-  const orders = dashboardProfilePage?.items ?? workspaceOrders;
-  const totalOrders = dashboardProfilePage?.totalCount ?? orders.length;
+  const orders = dashboardProfilePage?.items ?? workspaceOrders?.items ?? [];
+  const totalOrders = dashboardProfilePage?.totalCount ?? workspaceOrders?.totalItems ?? orders.length;
   const scopedTotal = orders.reduce((total, order) => total + order.totalAmount, 0);
   const firstRecommendation = approvedRecommendations[0];
 
@@ -467,6 +467,15 @@ export default async function PurchaseOrdersPage({
                 ) : (
                   <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Next</span>
                 )}
+              </div>
+            </div>
+          ) : null}
+          {!dashboardProfilePage && workspaceOrders && workspaceOrders.totalItems > 0 ? (
+            <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+              <p>Page {workspaceOrders.page} of {workspaceOrders.totalPages} · {workspaceOrders.totalItems} purchase orders</p>
+              <div className="flex gap-2">
+                {workspaceOrders.page > 1 ? <ButtonLink href={`/purchase-orders?${new URLSearchParams({ ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value)), page: String(workspaceOrders.page - 1) }).toString()}`} tone="secondary">Previous</ButtonLink> : null}
+                {workspaceOrders.page < workspaceOrders.totalPages ? <ButtonLink href={`/purchase-orders?${new URLSearchParams({ ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value)), page: String(workspaceOrders.page + 1) }).toString()}`} tone="secondary">Next</ButtonLink> : null}
               </div>
             </div>
           ) : null}

@@ -22,6 +22,8 @@ Use this article to understand what each available Purchase Order status means i
 
 `Purchase Orders → View Details`
 
+The ordinary Purchase Orders register is server-paginated and preserves its selected filters while moving between pages; the Open PO dashboard view is a separate read-only population.
+
 ## Statuses
 
 | Status | Meaning | Available action |

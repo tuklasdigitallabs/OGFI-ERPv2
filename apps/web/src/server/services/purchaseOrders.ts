@@ -1126,6 +1126,22 @@ export async function listPurchaseOrders(
   return listPurchaseOrdersWithOptions(session, filters);
 }
 
+export async function listPurchaseOrderPage(
+  session: SessionContext,
+  filters: PurchaseOrderListFilters = {},
+  input: { page?: number; pageSize?: number } = {},
+) {
+  await requirePurchaseOrderRead(session);
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const where = purchaseOrderListWhere(session, filters);
+  const totalItems = await prisma.purchaseOrder.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const items = await listPurchaseOrdersWithOptions(session, filters, { pagination: { page, pageSize } });
+  return { items, totalItems, page, pageSize, totalPages };
+}
+
 export type PurchaseOrderDashboardProfilePage = {
   profile: PurchaseOrderDashboardProfile;
   items: Awaited<ReturnType<typeof listPurchaseOrders>>;
