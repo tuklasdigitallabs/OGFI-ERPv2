@@ -7,6 +7,7 @@
 - Added user-safe feedback for remaining Receiving discrepancy, stale-line, profile, follow-up, and search errors.
 - Added a regression guard preventing these Receiving errors from falling back to generic action copy.
 - Recorded the current root lint/typecheck pass and the exact disposable-database blocker for the E2E gate.
+- Recorded the corrected full web regression: 1,260 passed tests across 119 files, with environment-gated suites still skipped.
 
 ## 2026-07-24 — Branch Operations Register Pagination
 
