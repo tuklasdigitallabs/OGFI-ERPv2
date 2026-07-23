@@ -233,6 +233,7 @@ Add a dated entry whenever an approved decision changes product scope, business 
 - 2026-07-24: Added server-backed pagination to the ordinary Wastage register with selected-scope counts and deterministic creation-time/ID ordering. The closed dashboard exception profile remains a separate read-only contract.
 - 2026-07-24: Bound signed My Tasks cursors to the explicit `my-tasks-registry-v2` adapter contract version. Future predicate, enrollment, ordering, or projection changes must bump the version so stale cursors fail closed.
 - 2026-07-24: Added server-backed pagination to the ordinary Stock Counts register with scoped counts, deterministic ordering, and preserved blind-count/redaction behavior. Export remains a separately authorized full report.
+- 2026-07-24: Added server-backed pagination to the ordinary Transfers register. All, Draft, Dispatch, Receive, and Completed tabs now use server predicates and scoped counts; the dashboard follow-up profile remains separate.
 
 ## 2026-06-25 — V3 subagent deliberation and decision governance
 

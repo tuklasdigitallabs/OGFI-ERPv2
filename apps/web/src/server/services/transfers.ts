@@ -628,7 +628,15 @@ export async function listInventoryTransfers(session: SessionContext) {
     orderBy: { createdAt: "desc" }
   });
 
-  return transfers.map((transfer) => ({
+  return transfers.map(mapInventoryTransfer);
+}
+
+type InventoryTransferWithRelations = Prisma.InventoryTransferGetPayload<{ include: {
+  sourceLocation: true; destinationLocation: true; requestedBy: true; lines: true;
+} }>;
+
+function mapInventoryTransfer(transfer: InventoryTransferWithRelations) {
+  return {
     id: transfer.id,
     publicReference: transfer.publicReference,
     status: transfer.status,
@@ -650,7 +658,40 @@ export async function listInventoryTransfers(session: SessionContext) {
       (total, line) => total + Number(line.requestedQty),
       0
     )
-  }));
+  };
+}
+
+export async function listInventoryTransferPage(
+  session: SessionContext,
+  input: { tab?: "all" | "draft" | "dispatch" | "receive" | "completed"; page?: number; pageSize?: number } = {}
+) {
+  await requireTransferRead(session);
+  const tab = input.tab ?? "all";
+  const statusWhere = tab === "draft" ? { status: "DRAFT" }
+    : tab === "dispatch" ? { status: "REQUESTED" }
+      : tab === "receive" ? { status: { in: ["DISPATCHED", "PARTIALLY_RECEIVED"] } }
+        : tab === "completed" ? { status: "RECEIVED" } : {};
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const where = { ...scopedTransferWhere(session), ...statusWhere } satisfies Prisma.InventoryTransferWhereInput;
+  const [totalItems, allCount, draftCount, dispatchCount, receiveCount, completedCount] = await Promise.all([
+    prisma.inventoryTransfer.count({ where }),
+    prisma.inventoryTransfer.count({ where: scopedTransferWhere(session) }),
+    prisma.inventoryTransfer.count({ where: { ...scopedTransferWhere(session), status: "DRAFT" } }),
+    prisma.inventoryTransfer.count({ where: { ...scopedTransferWhere(session), status: "REQUESTED" } }),
+    prisma.inventoryTransfer.count({ where: { ...scopedTransferWhere(session), status: { in: ["DISPATCHED", "PARTIALLY_RECEIVED"] } } }),
+    prisma.inventoryTransfer.count({ where: { ...scopedTransferWhere(session), status: "RECEIVED" } })
+  ]);
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const transfers = await prisma.inventoryTransfer.findMany({
+    where,
+    include: { sourceLocation: true, destinationLocation: true, requestedBy: true, lines: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  });
+  return { items: transfers.map(mapInventoryTransfer), totalItems, page, pageSize, totalPages, tabCounts: { all: allCount, draft: draftCount, dispatch: dispatchCount, receive: receiveCount, completed: completedCount } };
 }
 
 export type TransferFollowUpProfilePage = {

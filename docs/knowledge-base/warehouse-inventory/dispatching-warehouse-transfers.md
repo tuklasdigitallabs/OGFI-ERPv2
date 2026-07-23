@@ -25,6 +25,7 @@ Use this article when the source location is ready to send stock for a submitted
 
 1. Open `Inventory`.
 2. Select `Transfers`.
+   The ordinary register is server-paginated by the selected authorized location and tab; use the page controls to move through requests without loading the full transfer history into the browser.
 3. Open the requested transfer.
 4. Confirm the source and destination locations.
 5. Review requested item lines and quantities.

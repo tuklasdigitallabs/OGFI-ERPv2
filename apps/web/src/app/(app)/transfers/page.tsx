@@ -18,7 +18,7 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportInventoryTransfers } from "@/server/services/exportAuthorization";
 import {
   createInventoryTransfer,
-  listInventoryTransfers,
+  listInventoryTransferPage,
   listInventoryTransfersDashboardProfilePage,
   listTransferFormOptions,
   resolveTransferDashboardProfile,
@@ -142,45 +142,20 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
   const profilePage = profile
     ? await listInventoryTransfersDashboardProfilePage(session, profile, getPage(params))
     : null;
-  const [workspaceTransfers, formOptions] = profile
+  const [workspacePage, formOptions] = profile
     ? [null, null]
     : await Promise.all([
-        listInventoryTransfers(session),
+        listInventoryTransferPage(session, { tab: getTransferTab(params), page: getPage(params) }),
         canCreateTransfers ? listTransferFormOptions(session) : Promise.resolve(null)
       ]);
-  const transfers = profilePage?.transfers ?? workspaceTransfers ?? [];
+  const transfers = profilePage?.transfers ?? workspacePage?.items ?? [];
   const firstSource = formOptions?.sourceInventoryLocations[0];
   const firstItem = formOptions?.items[0];
   const actionFeedback = getActionFeedback(params);
   const activeTab = getTransferTab(params);
   const page = getPage(params);
-  const draftTransfers = transfers.filter((transfer) => transfer.status === "DRAFT");
-  const dispatchTransfers = transfers.filter(
-    (transfer) => transfer.status === "REQUESTED"
-  );
-  const receiveTransfers = transfers.filter((transfer) =>
-    ["DISPATCHED", "PARTIALLY_RECEIVED"].includes(transfer.status)
-  );
-  const completedTransfers = transfers.filter((transfer) => transfer.status === "RECEIVED");
-  const visibleTransfers =
-    profile
-      ? transfers
-      : activeTab === "draft"
-      ? draftTransfers
-      : activeTab === "dispatch"
-        ? dispatchTransfers
-        : activeTab === "receive"
-          ? receiveTransfers
-          : activeTab === "completed"
-            ? completedTransfers
-            : transfers;
-  const pageCount = profilePage
-    ? Math.max(1, Math.ceil(profilePage.totalItems / profilePage.pageSize))
-    : Math.max(1, Math.ceil(visibleTransfers.length / PAGE_SIZE));
-  const safePage = profilePage ? profilePage.page : Math.min(page, pageCount);
-  const pagedTransfers = profilePage
-    ? visibleTransfers
-    : visibleTransfers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pagedTransfers = transfers;
+  const safePage = profilePage?.page ?? workspacePage?.page ?? page;
   const emptyCopy =
     profile
       ? {
@@ -271,7 +246,7 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
               <p className="text-sm text-slate-500">
                 {profile
                   ? `${profilePage?.totalItems ?? 0} transfers requiring follow-up at the selected location`
-                  : `${transfers.length} total, ${dispatchTransfers.length} awaiting dispatch, ${receiveTransfers.length} awaiting receipt`}
+                  : `${workspacePage?.tabCounts.all ?? 0} total, ${workspacePage?.tabCounts.dispatch ?? 0} awaiting dispatch, ${workspacePage?.tabCounts.receive ?? 0} awaiting receipt`}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -303,16 +278,16 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
             <div className="border-b border-slate-100 p-4">
               <WorkspaceTabs
                 items={[
-                  { label: "All", href: transfersHref("all"), active: activeTab === "all", count: transfers.length },
-                  { label: "Draft", href: transfersHref("draft"), active: activeTab === "draft", count: draftTransfers.length },
-                  { label: "Dispatch", href: transfersHref("dispatch"), active: activeTab === "dispatch", count: dispatchTransfers.length },
-                  { label: "Receive", href: transfersHref("receive"), active: activeTab === "receive", count: receiveTransfers.length },
-                  { label: "Completed", href: transfersHref("completed"), active: activeTab === "completed", count: completedTransfers.length }
+                  { label: "All", href: transfersHref("all"), active: activeTab === "all", count: workspacePage?.tabCounts.all ?? 0 },
+                  { label: "Draft", href: transfersHref("draft"), active: activeTab === "draft", count: workspacePage?.tabCounts.draft ?? 0 },
+                  { label: "Dispatch", href: transfersHref("dispatch"), active: activeTab === "dispatch", count: workspacePage?.tabCounts.dispatch ?? 0 },
+                  { label: "Receive", href: transfersHref("receive"), active: activeTab === "receive", count: workspacePage?.tabCounts.receive ?? 0 },
+                  { label: "Completed", href: transfersHref("completed"), active: activeTab === "completed", count: workspacePage?.tabCounts.completed ?? 0 }
                 ]}
               />
             </div>
           )}
-          {visibleTransfers.length === 0 ? (
+          {pagedTransfers.length === 0 ? (
             <div className="p-5">
               <EmptyState title={emptyCopy.title} description={emptyCopy.description} />
             </div>
@@ -369,11 +344,11 @@ export default async function TransfersPage({ searchParams }: TransfersPageProps
               ))}
             </div>
           )}
-          {visibleTransfers.length > 0 ? (
+          {pagedTransfers.length > 0 ? (
             <PaginationBar
               page={safePage}
-              pageSize={profilePage?.pageSize ?? PAGE_SIZE}
-              totalItems={profilePage?.totalItems ?? visibleTransfers.length}
+              pageSize={profilePage?.pageSize ?? workspacePage?.pageSize ?? PAGE_SIZE}
+              totalItems={profilePage?.totalItems ?? workspacePage?.totalItems ?? pagedTransfers.length}
               itemLabel="transfers"
               getPageHref={(nextPage) =>
                 profile

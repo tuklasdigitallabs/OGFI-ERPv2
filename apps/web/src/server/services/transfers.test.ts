@@ -551,7 +551,7 @@ describe("inventory transfer foundation rules", () => {
       "utf8"
     );
 
-    expect(page).toContain("profile\n      ? transfers");
+    expect(page).toContain("profilePage?.transfers ?? workspacePage?.items");
     expect(page).toContain("listInventoryTransfersDashboardProfilePage(session, profile, getPage(params))");
     expect(page).toContain("This view does not grant transfer or inventory actions.");
     expect(page).toContain("!profile && canCreateTransfers");
