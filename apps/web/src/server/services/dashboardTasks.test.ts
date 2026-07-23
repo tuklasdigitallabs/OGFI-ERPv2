@@ -27,6 +27,12 @@ describe("dashboard task ordering", () => {
         { createdAt: new Date(cursor.createdAt) }
       ]
     });
+    expect(dashboardTaskAfterWhere("FOOD_SAFETY", cursor)).toEqual({
+      OR: [
+        { createdAt: { gt: new Date(cursor.createdAt) } },
+        { createdAt: new Date(cursor.createdAt) }
+      ]
+    });
   });
 
   test("orders ties by source rank and source record ID", () => {

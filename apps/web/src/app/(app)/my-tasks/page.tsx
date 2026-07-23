@@ -48,7 +48,7 @@ export default async function MyTasksPage({
             <div>
               <h2 className="text-base font-bold text-slate-950">Current action queue</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                This controlled queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, Receiving, and eligible Branch Operations controls. Some branch actions are role-pooled rather than personally assigned. Use each source workspace for other approved work.
+                This controlled queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, Receiving, Branch Operations, and eligible Food Safety controls. Some correction actions are role-pooled rather than personally assigned. Use each source workspace for other approved work.
               </p>
             </div>
           </div>

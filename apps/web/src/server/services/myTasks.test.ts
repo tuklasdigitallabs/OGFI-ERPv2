@@ -12,7 +12,8 @@ const mocks = vi.hoisted(() => ({
   adjustments: vi.fn(),
   purchaseRequests: vi.fn(),
   purchaseOrders: vi.fn(),
-  branchOperations: vi.fn()
+  branchOperations: vi.fn(),
+  foodSafety: vi.fn()
 }));
 
 vi.mock("./transfers", () => ({ listTransferMyTaskPage: mocks.transfers }));
@@ -29,6 +30,7 @@ vi.mock("./purchaseOrders", () => ({
 vi.mock("./branchOperations", () => ({
   listBranchOperationMyTaskPage: mocks.branchOperations
 }));
+vi.mock("./foodSafety", () => ({ listFoodSafetyMyTaskPage: mocks.foodSafety }));
 
 const session = {
   user: { id: "user-1", email: "user@example.test", displayName: "User", role: "Operator" },
@@ -82,6 +84,11 @@ describe("My Tasks queue", () => {
       totalCount: 1,
       nextCursor: null,
       items: [{ taskId: "branch-operation-bo1", recordId: "bo1", publicReference: "Opening Readiness", status: "SUBMITTED", actionLabel: "Review branch checklist", locationName: "Branch", businessDate: "2026-07-23", shiftType: "OPENING", createdAt: "2026-07-22T00:00:00.000Z" }]
+    });
+    mocks.foodSafety.mockResolvedValue({
+      totalCount: 1,
+      nextCursor: null,
+      items: [{ taskId: "food-safety-fs1", recordId: "fs1", publicReference: "Opening Temperature Log", status: "SUBMITTED", actionLabel: "Review food-safety log", locationName: "Branch", businessDate: "2026-07-23", logType: "TEMPERATURE", createdAt: "2026-07-22T01:00:00.000Z" }]
     });
   });
 
@@ -155,5 +162,15 @@ describe("My Tasks queue", () => {
       items: [{ taskId: "branch-operation-bo1", sourceType: "BRANCH_OPERATION" }]
     });
     expect(mocks.branchOperations).toHaveBeenCalled();
+  });
+
+  test("enrolls Food Safety only for its current review or correction controls", async () => {
+    await expect(
+      getMyTasksPage({ ...session, permissionCodes: [permissions.foodSafetyReview] } as never)
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      enrolledSources: [{ type: "FOOD_SAFETY", label: "Food safety" }],
+      items: [{ taskId: "food-safety-fs1", sourceType: "FOOD_SAFETY" }]
+    });
   });
 });

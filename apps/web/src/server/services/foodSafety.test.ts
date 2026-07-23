@@ -7,6 +7,7 @@ import {
   closeFoodSafetyLog,
   createFoodSafetyLog,
   filterFoodSafetyLogs,
+  listFoodSafetyMyTaskPage,
   reviewFoodSafetyLog,
   returnFoodSafetyLogForCorrection,
   type FoodSafetyLogSummary
@@ -15,6 +16,10 @@ import {
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
   userRoleAssignment: {
+    findMany: vi.fn()
+  },
+  foodSafetyLog: {
+    count: vi.fn(),
     findMany: vi.fn()
   }
 }));
@@ -34,6 +39,105 @@ vi.mock("./context", async () => {
     requireSessionContext: mockContext.requireSessionContext,
     assertAuthorizedLocation: mockContext.assertAuthorizedLocation
   };
+});
+
+describe("Food Safety My Tasks adapter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.foodSafetyLog.count.mockResolvedValue(2);
+    mockPrisma.foodSafetyLog.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000401",
+        title: "Opening Temperature Log",
+        status: "SUBMITTED",
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        logType: "TEMPERATURE",
+        createdAt: new Date("2026-07-23T01:00:00.000Z"),
+        location: { name: "SM North Edsa" }
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000402",
+        title: "Closing Sanitation Log",
+        status: "RETURNED",
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        logType: "SANITATION",
+        createdAt: new Date("2026-07-23T02:00:00.000Z"),
+        location: { name: "SM North Edsa" }
+      }
+    ]);
+  });
+
+  it("uses one scoped predicate for independent review and pooled correction", async () => {
+    const actor = {
+      ...session,
+      permissionCodes: [permissions.foodSafetyReview, permissions.foodSafetyCreate]
+    };
+    await expect(listFoodSafetyMyTaskPage(actor as never)).resolves.toMatchObject({
+      totalCount: 2,
+      items: [
+        { actionLabel: "Review food-safety log", status: "SUBMITTED" },
+        { actionLabel: "Correct and resubmit food-safety log", status: "RETURNED" }
+      ]
+    });
+    const countWhere = mockPrisma.foodSafetyLog.count.mock.calls[0]![0].where;
+    const pageQuery = mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0];
+    const pageWhere = pageQuery.where;
+    expect(pageWhere).toEqual(countWhere);
+    expect(countWhere).toMatchObject({
+      tenantId: actor.context.tenantId,
+      companyId: actor.context.companyId,
+      brandId: actor.context.brandId,
+      locationId: actor.context.locationId,
+      OR: [
+        {
+          status: { in: ["SUBMITTED", "EXCEPTION_REVIEW"] },
+          recordedByUserId: { not: null },
+          NOT: { recordedByUserId: actor.user.id }
+        },
+        { status: "RETURNED" }
+      ]
+    });
+    expect(pageQuery.select).toEqual({
+      id: true,
+      title: true,
+      status: true,
+      businessDate: true,
+      logType: true,
+      createdAt: true,
+      location: { select: { name: true } }
+    });
+    expect(pageQuery.select).not.toHaveProperty("readings");
+  });
+
+  it("applies the shared Food Safety cursor without changing the count predicate", async () => {
+    const actor = { ...session, permissionCodes: [permissions.foodSafetyReview] };
+    const after = {
+      createdAt: "2026-07-23T01:00:00.000Z",
+      sourceType: "FOOD_SAFETY" as const,
+      recordId: "00000000-0000-4000-8000-000000000400"
+    };
+    await listFoodSafetyMyTaskPage(actor as never, { after, take: 1 });
+    const countWhere = mockPrisma.foodSafetyLog.count.mock.calls[0]![0].where;
+    const pageQuery = mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0];
+    expect(pageQuery.where).toEqual({
+      ...countWhere,
+      AND: [{
+        OR: [
+          { createdAt: { gt: new Date(after.createdAt) } },
+          { createdAt: new Date(after.createdAt), id: { gt: after.recordId } }
+        ]
+      }]
+    });
+    expect(pageQuery.take).toBe(2);
+  });
+
+  it("does not query tasks for a view-only user", async () => {
+    await expect(
+      listFoodSafetyMyTaskPage({ ...session, permissionCodes: [permissions.foodSafetyView] } as never)
+    ).resolves.toEqual({ totalCount: 0, items: [], nextCursor: null });
+    expect(mockPrisma.foodSafetyLog.count).not.toHaveBeenCalled();
+    expect(mockPrisma.foodSafetyLog.findMany).not.toHaveBeenCalled();
+  });
 });
 
 const serviceSource = readFileSync(new URL("./foodSafety.ts", import.meta.url), "utf8");
@@ -343,6 +447,41 @@ describe("Phase 2 food safety foundation", () => {
 
     expect(tx.foodSafetyLog.updateMany).not.toHaveBeenCalled();
     expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("fails review and return closed when recorder lineage is missing", async () => {
+    const incomplete = {
+      id: "00000000-0000-4000-8000-000000000401",
+      businessDate: new Date("2026-07-03T00:00:00.000Z"),
+      status: "SUBMITTED",
+      recordedByUserId: null,
+      reviewedAt: null,
+      reviewedByUserId: null,
+      exceptionCount: 0
+    };
+    for (const [permission, action, form] of [
+      [permissions.foodSafetyReview, reviewFoodSafetyLog, foodSafetyReviewForm],
+      [permissions.foodSafetyCorrect, returnFoodSafetyLogForCorrection, foodSafetyReturnCorrectionForm]
+    ] as const) {
+      mockContext.requireSessionContext.mockResolvedValueOnce({
+        ...session,
+        permissionCodes: [permission]
+      });
+      mockPrisma.userRoleAssignment.findMany.mockResolvedValueOnce([
+        { role: { permissions: [{ permission: { tenantId: session.context.tenantId, code: permission } }] } }
+      ]);
+      const tx = {
+        foodSafetyLog: {
+          findFirst: vi.fn().mockResolvedValue(incomplete),
+          updateMany: vi.fn()
+        }
+      };
+      mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
+      await expect(action(form())).rejects.toThrow(
+        "FOOD_SAFETY_RECORDER_LINEAGE_REQUIRED"
+      );
+      expect(tx.foodSafetyLog.updateMany).not.toHaveBeenCalled();
+    }
   });
 
   it("closes reviewed food-safety logs with reason and audit history", async () => {

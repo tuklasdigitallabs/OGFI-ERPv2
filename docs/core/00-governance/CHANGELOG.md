@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Food Safety My Tasks Enrollment
+
+- Confirmed and implemented `DEC-0065`: `My Tasks` now enrolls independently reviewable Food Safety logs and role-pooled returned-log correction through a scoped, read-only, count/page-parity adapter. Final close remains deferred pending final-signoff/self-action policy.
+- Hardened direct Food Safety review and Return-for-Correction so missing recorder lineage fails closed before mutation, and aligned the visible Return control with `restaurant.food_safety.correct`.
+- Updated My Tasks copy, glossary, user guidance, and the Food Safety workflow; focused coverage now asserts the minimal projection and Food Safety cursor boundary.
+
 ## 2026-07-23 — Branch Operations My Tasks Enrollment
 
 - Confirmed and implemented `DEC-0064`: `My Tasks` now enrolls independently reviewable Branch Operations checklists and role-pooled returned-checklist correction work through one scoped, read-only, count/page-parity adapter. Final close remains deferred pending its self-action/final-signoff policy.

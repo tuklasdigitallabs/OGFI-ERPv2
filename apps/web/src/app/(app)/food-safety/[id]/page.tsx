@@ -139,6 +139,12 @@ export default async function FoodSafetyLogDetailPage({
   const canReview =
     session.permissionCodes.includes(permissions.foodSafetyReview) &&
     ["SUBMITTED", "EXCEPTION_REVIEW"].includes(log.status) &&
+    Boolean(log.recordedByUserId) &&
+    log.recordedByUserId !== session.user.id;
+  const canReturn =
+    session.permissionCodes.includes(permissions.foodSafetyCorrect) &&
+    ["SUBMITTED", "EXCEPTION_REVIEW"].includes(log.status) &&
+    Boolean(log.recordedByUserId) &&
     log.recordedByUserId !== session.user.id;
   const canClose =
     session.permissionCodes.includes(permissions.foodSafetyReview) &&
@@ -215,7 +221,7 @@ export default async function FoodSafetyLogDetailPage({
               </form>
             </EntryModal>
           ) : null}
-          {canReview ? (
+          {canReturn ? (
             <EntryModal title="Return Food-Safety Log" triggerLabel="Return for Correction">
               <form
                 action={returnFoodSafetyLogAction}

@@ -13,6 +13,10 @@ import {
 } from "./context";
 import { recordOperationalStatusTransition } from "./operationalWorkflow";
 import { parseDateOnlyUtc } from "./projectDates";
+import {
+  dashboardTaskAfterWhere,
+  type DashboardTaskCursor
+} from "./dashboardTasks";
 
 type FoodSafetyLogWithReadings = Prisma.FoodSafetyLogGetPayload<{
   include: {
@@ -106,6 +110,22 @@ export type FoodSafetyExportFilters = {
   type?: string;
   status?: string;
   businessDate?: string;
+};
+
+export type FoodSafetyMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    recordId: string;
+    publicReference: string;
+    status: string;
+    actionLabel: "Review food-safety log" | "Correct and resubmit food-safety log";
+    locationName: string;
+    businessDate: string;
+    logType: string;
+    createdAt: string;
+  }>;
+  nextCursor: DashboardTaskCursor | null;
 };
 
 const reviewableFoodSafetyStatuses = ["SUBMITTED", "EXCEPTION_REVIEW"] as const;
@@ -619,6 +639,83 @@ export async function getFoodSafetyDashboardRead(
   };
 }
 
+/**
+ * Returns only food-safety work with a currently executable focused action.
+ * Review requires known non-self recorder lineage. Returned corrections are
+ * pooled work for scoped creators. Final close remains excluded pending a
+ * confirmed final-signoff and self-action policy.
+ */
+export async function listFoodSafetyMyTaskPage(
+  session: SessionContext,
+  input: { after?: DashboardTaskCursor; take?: number } = {}
+): Promise<FoodSafetyMyTaskPage> {
+  assertFoodSafetyAccess(session);
+  const actionPredicates: Prisma.FoodSafetyLogWhereInput[] = [
+    ...(session.permissionCodes.includes(permissions.foodSafetyReview)
+      ? [{
+          status: { in: [...reviewableFoodSafetyStatuses] },
+          recordedByUserId: { not: null },
+          NOT: { recordedByUserId: session.user.id }
+        } satisfies Prisma.FoodSafetyLogWhereInput]
+      : []),
+    ...(session.permissionCodes.includes(permissions.foodSafetyCreate)
+      ? [{ status: "RETURNED" } satisfies Prisma.FoodSafetyLogWhereInput]
+      : [])
+  ];
+  if (actionPredicates.length === 0) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+
+  const take = Math.min(Math.max(input.take ?? 25, 1), 50);
+  const afterWhere = dashboardTaskAfterWhere("FOOD_SAFETY", input.after);
+  const baseWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId,
+    OR: actionPredicates
+  } satisfies Prisma.FoodSafetyLogWhereInput;
+  const [totalCount, rows] = await Promise.all([
+    prisma.foodSafetyLog.count({ where: baseWhere }),
+    prisma.foodSafetyLog.findMany({
+      where: afterWhere ? { ...baseWhere, AND: [afterWhere] } : baseWhere,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        businessDate: true,
+        logType: true,
+        createdAt: true,
+        location: { select: { name: true } }
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: take + 1
+    })
+  ]);
+  const hasMore = rows.length > take;
+  const items = rows.slice(0, take).map((row) => ({
+    taskId: `food-safety-${row.id}`,
+    recordId: row.id,
+    publicReference: row.title,
+    status: row.status,
+    actionLabel: row.status === "RETURNED"
+      ? "Correct and resubmit food-safety log" as const
+      : "Review food-safety log" as const,
+    locationName: row.location.name,
+    businessDate: row.businessDate.toISOString().slice(0, 10),
+    logType: row.logType,
+    createdAt: row.createdAt.toISOString()
+  }));
+  const last = items.at(-1);
+  return {
+    totalCount,
+    items,
+    nextCursor: hasMore && last
+      ? { createdAt: last.createdAt, sourceType: "FOOD_SAFETY", recordId: last.recordId }
+      : null
+  };
+}
+
 export async function getFoodSafetyLogSummary(
   session: SessionContext,
   logId: string
@@ -752,6 +849,9 @@ export async function reviewFoodSafetyLog(formData: FormData) {
     if (!(reviewableFoodSafetyStatuses as readonly string[]).includes(current.status)) {
       throw new Error("FOOD_SAFETY_LOG_STATUS_NOT_REVIEWABLE");
     }
+    if (!current.recordedByUserId) {
+      throw new Error("FOOD_SAFETY_RECORDER_LINEAGE_REQUIRED");
+    }
     if (reviewedAt < current.businessDate) {
       throw new Error("FOOD_SAFETY_REVIEWED_AT_BEFORE_BUSINESS_DATE");
     }
@@ -852,6 +952,9 @@ export async function returnFoodSafetyLogForCorrection(formData: FormData) {
     }
     if (!(reviewableFoodSafetyStatuses as readonly string[]).includes(current.status)) {
       throw new Error("FOOD_SAFETY_LOG_STATUS_NOT_REVIEWABLE");
+    }
+    if (!current.recordedByUserId) {
+      throw new Error("FOOD_SAFETY_RECORDER_LINEAGE_REQUIRED");
     }
     if (current.recordedByUserId === session.user.id) {
       throw new Error("FOOD_SAFETY_SELF_REVIEW_BLOCKED");

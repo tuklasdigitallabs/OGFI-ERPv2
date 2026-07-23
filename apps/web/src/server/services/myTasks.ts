@@ -26,6 +26,7 @@ import { listPurchaseOrderMyTaskPage } from "./purchaseOrders";
 import { listTransferMyTaskPage } from "./transfers";
 import { listWastageMyTaskPage } from "./wastage";
 import { listBranchOperationMyTaskPage } from "./branchOperations";
+import { listFoodSafetyMyTaskPage } from "./foodSafety";
 
 const myTasksCursorDomain = "my-tasks-v1";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
@@ -297,6 +298,31 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
             sourceLabel: "Branch checklist",
             locationLabel: `${item.locationName} · ${item.businessDate} · ${item.shiftType.toLowerCase()}`,
             href: `/branch-operations/${item.recordId}`
+          }))
+        };
+      }
+    });
+  }
+  if (
+    session.permissionCodes.includes(permissions.foodSafetyReview) ||
+    session.permissionCodes.includes(permissions.foodSafetyCreate)
+  ) {
+    sources.push({
+      type: "FOOD_SAFETY",
+      label: "Food safety",
+      read: async (after, take) => {
+        const page = await listFoodSafetyMyTaskPage(session, {
+          take,
+          ...(after ? { after } : {})
+        });
+        return {
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            sourceType: "FOOD_SAFETY" as const,
+            sourceLabel: "Food-safety log",
+            locationLabel: `${item.locationName} · ${item.businessDate} · ${item.logType.toLowerCase()}`,
+            href: `/food-safety/${item.recordId}`
           }))
         };
       }
