@@ -723,13 +723,15 @@ async function assertFreshReceivingAuthority(
   }
 }
 
-function isUniqueConstraintError(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "P2002"
-  );
+function isGoodsReceiptReferenceUniqueConstraintError(error: unknown) {
+  if (typeof error !== "object" || error === null || !("code" in error) || error.code !== "P2002") {
+    return false;
+  }
+  const meta = "meta" in error && typeof error.meta === "object" && error.meta !== null ? error.meta : null;
+  const target = meta && "target" in meta ? meta.target : null;
+  return Array.isArray(target)
+    ? target.includes("companyId") && target.includes("publicReference")
+    : typeof target === "string" && target.includes("publicReference");
 }
 
 async function getBaseQuantity(
@@ -1502,7 +1504,7 @@ export async function createGoodsReceiptFromPurchaseOrder(formData: FormData) {
         return receipt.id;
       });
     } catch (error) {
-      if (!isUniqueConstraintError(error)) {
+      if (!isGoodsReceiptReferenceUniqueConstraintError(error)) {
         throw error;
       }
       if (attempt === 5) {
