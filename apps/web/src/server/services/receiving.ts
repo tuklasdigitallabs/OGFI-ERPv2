@@ -505,16 +505,23 @@ function getLineValue(formData: FormData, lineId: string, field: string) {
 
 async function nextGoodsReceiptReference(
   client: typeof prisma | TransactionClient,
+  tenantId: string,
   companyId: string
 ) {
   const year = new Date().getUTCFullYear();
-  const count = await client.goodsReceipt.count({
-    where: {
-      companyId,
-      publicReference: { startsWith: `RR-${year}-` }
-    }
-  });
-  return `RR-${year}-${String(count + 1).padStart(5, "0")}`;
+  const rows = await client.$queryRaw<Array<{ nextValue: number }>>`
+    INSERT INTO "DocumentNumberSequence" ("tenantId", "companyId", "documentType", "year", "nextValue")
+    VALUES (${tenantId}::uuid, ${companyId}::uuid, 'GOODS_RECEIPT', ${year}, 2)
+    ON CONFLICT ("companyId", "documentType", "year")
+    DO UPDATE SET "nextValue" = "DocumentNumberSequence"."nextValue" + 1,
+                  "updatedAt" = CURRENT_TIMESTAMP
+    RETURNING "nextValue" - 1 AS "nextValue"
+  `;
+  const nextValue = Number(rows[0]?.nextValue);
+  if (!Number.isInteger(nextValue) || nextValue < 1) {
+    throw new Error("GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED");
+  }
+  return `RR-${year}-${String(nextValue).padStart(5, "0")}`;
 }
 
 async function lockScopedPurchaseOrder(
@@ -1454,6 +1461,7 @@ export async function createGoodsReceiptFromPurchaseOrder(formData: FormData) {
             companyId: session.context.companyId,
             publicReference: await nextGoodsReceiptReference(
               tx,
+              session.context.tenantId,
               session.context.companyId
             ),
             purchaseOrderId: order.id,

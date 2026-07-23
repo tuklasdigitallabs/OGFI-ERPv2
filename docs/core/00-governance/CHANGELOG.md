@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Goods Receipt Reference Allocation
+
+- Added transactional company/document-type/year sequencing for Goods Receipt public references (`DEC-0092`), replacing the concurrency-unsafe count-based allocator.
+
 ## 2026-07-24 — Branch Operations Register Pagination
 
 - Moved the ordinary Branch Operations register to server-backed 25-row pagination with exact scoped counts, filter parity, deterministic ordering, and preserved dashboard/export separation (`DEC-0088`).

@@ -7619,3 +7619,17 @@ model Notification {
   @@index([tenantId, entityType, entityId])
   @@index([tenantId, companyId, locationId])
 }
+
+model DocumentNumberSequence {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @db.Uuid
+  companyId    String   @db.Uuid
+  documentType String
+  year         Int
+  nextValue    Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([companyId, documentType, year])
+  @@index([tenantId, companyId, documentType])
+}

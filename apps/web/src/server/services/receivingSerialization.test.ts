@@ -240,6 +240,9 @@ function makeQueryRaw(input?: {
     if (sql.includes('FROM "PurchaseOrderLine" pol')) {
       return [{ id: ids.purchaseOrderLine }];
     }
+    if (sql.includes('DocumentNumberSequence')) {
+      return [{ nextValue: 1 }];
+    }
     if (sql.includes('FROM "GoodsReceipt" gr')) {
       return [{ id: ids.receipt }];
     }
@@ -294,6 +297,7 @@ function makeCreateTransaction(input?: {
 }) {
   return {
     $queryRaw: makeQueryRaw(input),
+    $executeRaw: vi.fn().mockResolvedValue(0),
     purchaseOrder: {
       findFirst: vi.fn().mockResolvedValue(input?.order ?? purchaseOrder())
     },
@@ -384,6 +388,9 @@ describe("receiving Purchase Order serialization", () => {
 
     const poLockSql = tx.$queryRaw.mock.calls[0]?.[0].join(" ");
     const lineLockSql = tx.$queryRaw.mock.calls[1]?.[0].join(" ");
+    const referenceAllocationSql = tx.$queryRaw.mock.calls
+      .map((call) => call[0].join(" "))
+      .find((sql) => sql.includes("DocumentNumberSequence"));
     expect(poLockSql).toContain('FROM "PurchaseOrder" po');
     expect(poLockSql).toContain('po."tenantId"');
     expect(poLockSql).toContain('po."companyId"');
@@ -394,6 +401,7 @@ describe("receiving Purchase Order serialization", () => {
       'ORDER BY pol."lineNumber" ASC, pol.id ASC'
     );
     expect(lineLockSql).toContain("FOR UPDATE OF pol");
+    expect(referenceAllocationSql).toContain("DocumentNumberSequence");
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.goodsReceipt.create.mock.invocationCallOrder[0] ?? 0
     );
