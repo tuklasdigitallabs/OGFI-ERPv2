@@ -50,6 +50,12 @@ type ApprovalStepReadyNotificationInput = ApprovalNotificationSourceInput & {
   approvalInstanceStepId: string;
   stepOrder: number;
   recipientUserId: string;
+  routingContext?: {
+    assignedRoleId?: string | null;
+    requiredPermissionCode?: string | null;
+    scopeType?: "COMPANY_CONTEXT" | "BRAND_CONTEXT" | "LOCATION_CONTEXT";
+    scopeId?: string | null;
+  };
 };
 
 type ScopedRecipientInput = {
@@ -213,7 +219,16 @@ export async function recordApprovalStepReadyNotification(
       approvalInstanceStepId: input.approvalInstanceStepId,
       approvalStepOrder: input.stepOrder,
       assignmentMode: "DIRECT_USER",
-      assignedUserId: input.recipientUserId
+      assignedUserId: input.recipientUserId,
+      ...(input.routingContext
+        ? {
+            assignedRoleId: input.routingContext.assignedRoleId ?? null,
+            requiredPermissionCode:
+              input.routingContext.requiredPermissionCode ?? null,
+            scopeType: input.routingContext.scopeType ?? null,
+            scopeId: input.routingContext.scopeId ?? null
+          }
+        : {})
     }
   });
 }

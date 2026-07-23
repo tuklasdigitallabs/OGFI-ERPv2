@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Shared Approval Step-Ready Notification Parity
+
+- Confirmed and implemented `DEC-0074` behind `APPROVAL_ROUTING_V1_ENABLED=false`: all seven families using the shared current-step advance now create direct-user readiness through the shared deterministic approval/step notification helper in the canonical transaction, while role-scoped activation creates zero personal fanout.
+- Preserved exact step, recipient, assigned-role, permission, and location-scope metadata through a closed non-overriding routing context. Corrected the Quotation Recommendation test mapping to its authoritative related Purchase Request entity.
+- Seven-family direct/role, retry/cardinality, representative flag-off, concurrent-winner, and runtime-permitted rollback PostgreSQL specifications are implemented but locally unexecuted; the command fails only with `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`. Focused 112-test validation, the unchanged-candidate 1,233-test web suite, 27 database-package tests, one worker test, root typecheck, web lint, and isolated-output production build pass. Architecture returns GO only for the feature-disabled commit; Security reports no introduced Critical/High but requires executable PostgreSQL before behavioral acceptance, and activation remains NO-GO.
+
 ## 2026-07-23 — Expense And Cash Advance Approval Source Integrity
 
 - Confirmed and implemented `DEC-0073` behind `APPROVAL_ROUTING_V1_ENABLED=false`: normalized Expense Request and Cash Advance Request decisions now lock and revalidate the exact source/version/linkage, use locked-source evidence, budget, scope, prohibited-actor, and audit values, and apply version-aware compare-and-swap to terminal source mutations.

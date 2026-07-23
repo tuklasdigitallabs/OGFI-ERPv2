@@ -121,10 +121,14 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
     await prisma.$disconnect();
   });
 
-  async function purchaseRequestFixture(steps: 1 | 2 = 1) {
+  async function purchaseRequestFixture(
+    steps: 1 | 2 = 1,
+    directAssignedSteps = false,
+  ) {
     return createApprovalDecisionPgFixture({
       family: "PurchaseRequest",
       steps,
+      directAssignedSteps,
       createSource: async (context) => {
         const request = await prisma.purchaseRequest.create({
           data: {
@@ -250,10 +254,14 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
   async function sharedFixture(
     family: SharedProcurementInventoryFamily,
     steps: 1 | 2 = 2,
+    directAssignedSteps = false,
+    directAssignedStepOrders?: Array<1 | 2>,
   ) {
     return createApprovalDecisionPgFixture({
       family,
       steps,
+      directAssignedSteps,
+      ...(directAssignedStepOrders ? { directAssignedStepOrders } : {}),
       createSource: (context) =>
         createSharedProcurementInventorySource(family, context),
     });
@@ -1358,6 +1366,227 @@ describe.skipIf(!runPg).sequential("canonical approval decision PostgreSQL parit
       expect(await approvalDecisionPgSnapshot(fixture)).toEqual(committed);
     },
   );
+
+  const sharedStepNotificationFamilies = [
+    "PurchaseRequest",
+    ...sharedFamilies,
+  ] as const;
+
+  async function sharedStepNotificationFixture(
+    family: (typeof sharedStepNotificationFamilies)[number],
+    directAssignedSteps: boolean,
+  ) {
+    return family === "PurchaseRequest"
+      ? purchaseRequestFixture(2, directAssignedSteps)
+      : sharedFixture(family, 2, directAssignedSteps);
+  }
+
+  async function executeSharedStepNotificationDecision(
+    family: (typeof sharedStepNotificationFamilies)[number],
+    fixture: ApprovalDecisionPgFixture,
+  ) {
+    if (family === "PurchaseRequest") {
+      contextMock.requireSessionContext.mockResolvedValue(fixture.sessionFor(1));
+      const { executeCanonicalApprovalDecision } = await import(
+        "../src/server/services/approvals"
+      );
+      return executeCanonicalApprovalDecision({
+        family,
+        decision: "APPROVE",
+        approvalInstanceId: fixture.approvalInstanceId,
+      });
+    }
+    return executeSharedDecision(fixture, family, "APPROVE", 1);
+  }
+
+  test.each(sharedStepNotificationFamilies)(
+    "FIN-AUTHZ-CANONICAL-SHARED-NEXT-STEP-001 %s direct step 2 notification is exact and retry-safe",
+    async (family) => {
+      const fixture = await sharedStepNotificationFixture(family, true);
+      await executeSharedStepNotificationDecision(family, fixture);
+      const intermediate = await approvalDecisionPgSnapshot(fixture);
+      const expectedEntity = family === "QuotationRecommendation"
+        ? {
+            entityType: "PurchaseRequest",
+            entityId: fixture.relatedEntityIds[0],
+          }
+        : { entityType: family, entityId: fixture.sourceId };
+      expect(
+        intermediate.notifications.filter(
+          ({ notificationType }) => notificationType === "APPROVAL_STEP_READY",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          recipientUserId: fixture.approverUserIds[1],
+          sourceEventKey: `approval:${fixture.approvalInstanceId}:step:2:ready`,
+          priority: "NORMAL",
+          deepLink: `/approvals/${fixture.approvalInstanceId}`,
+          ...expectedEntity,
+        }),
+      ]);
+      await expect(prisma.notification.findFirstOrThrow({
+        where: {
+          tenantId: fixture.tenantId,
+          recipientUserId: fixture.approverUserIds[1],
+          sourceEventKey: `approval:${fixture.approvalInstanceId}:step:2:ready`,
+        },
+        select: { metadata: true },
+      })).resolves.toEqual({
+        metadata: {
+          approvalInstanceId: fixture.approvalInstanceId,
+          approvalInstanceStepId: fixture.stepIds[1],
+          approvalStepOrder: 2,
+          assignmentMode: "DIRECT_USER",
+          assignedUserId: fixture.approverUserIds[1],
+          assignedRoleId: null,
+          requiredPermissionCode: expect.any(String),
+          scopeType: "LOCATION_CONTEXT",
+          scopeId: fixture.locationId,
+        },
+      });
+
+      const committed = await approvalDecisionPgSnapshot(fixture);
+      await expect(
+        executeSharedStepNotificationDecision(family, fixture),
+      ).rejects.toThrow("APPROVAL_NOT_ACTIONABLE");
+      expect(await approvalDecisionPgSnapshot(fixture)).toEqual(committed);
+    },
+  );
+
+  test.each(sharedStepNotificationFamilies)(
+    "FIN-AUTHZ-CANONICAL-SHARED-NEXT-STEP-002 %s role-scoped step 2 creates no direct notification",
+    async (family) => {
+      const fixture = await sharedStepNotificationFixture(family, false);
+      await executeSharedStepNotificationDecision(family, fixture);
+      const intermediate = await approvalDecisionPgSnapshot(fixture);
+      expect(
+        intermediate.notifications.filter(
+          ({ notificationType }) => notificationType === "APPROVAL_STEP_READY",
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  test("shared next-step notification preserves representative flag-off behavior", async () => {
+    const fixture = await sharedFixture("PurchaseOrder", 2, true);
+    process.env.APPROVAL_ROUTING_V1_ENABLED = "false";
+    try {
+      await executeSharedDecision(fixture, "PurchaseOrder", "APPROVE", 1);
+    } finally {
+      process.env.APPROVAL_ROUTING_V1_ENABLED = "true";
+    }
+    const intermediate = await approvalDecisionPgSnapshot(fixture);
+    expect(
+      intermediate.notifications.filter(
+        ({ notificationType }) => notificationType === "APPROVAL_STEP_READY",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        recipientUserId: fixture.approverUserIds[1],
+        sourceEventKey: `approval:${fixture.approvalInstanceId}:step:2:ready`,
+        deepLink: `/approvals/${fixture.approvalInstanceId}`,
+        entityId: fixture.sourceId,
+      }),
+    ]);
+  });
+
+  test("shared same-step race commits one transition and one step-ready notification", async () => {
+    const fixture = await sharedFixture(
+      "PurchaseOrder",
+      2,
+      false,
+      [2],
+    );
+    contextMock.requireSessionContext
+      .mockResolvedValueOnce(fixture.sessionFor(1))
+      .mockResolvedValueOnce(fixture.sessionFor(2));
+    const { executeCanonicalApprovalDecision } = await import(
+      "../src/server/services/approvals"
+    );
+    const command = {
+      family: "PurchaseOrder" as const,
+      decision: "APPROVE" as const,
+      approvalInstanceId: fixture.approvalInstanceId,
+    };
+    const results = await Promise.allSettled([
+      executeCanonicalApprovalDecision(command),
+      executeCanonicalApprovalDecision(command),
+    ]);
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    const committed = await approvalDecisionPgSnapshot(fixture);
+    expect(committed.instance).toEqual({ status: "PENDING", currentStepOrder: 2 });
+    expect(committed.steps.map(({ status }) => status)).toEqual([
+      "APPROVED",
+      "PENDING",
+    ]);
+    expect(
+      committed.notifications.filter(
+        ({ notificationType }) => notificationType === "APPROVAL_STEP_READY",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        recipientUserId: fixture.approverUserIds[1],
+        sourceEventKey: `approval:${fixture.approvalInstanceId}:step:2:ready`,
+      }),
+    ]);
+  });
+
+  test("shared step-ready writer failure rolls back the whole decision", async () => {
+    const fixture = await sharedFixture("PurchaseOrder", 2, true);
+    const before = await approvalDecisionPgSnapshot(fixture);
+    const sourceBefore = await readSharedSource("PurchaseOrder", fixture);
+    const blockerReady = deferred();
+    const releaseBlocker = deferred();
+    let blockerPid = 0;
+    const sourceEventKey =
+      `approval:${fixture.approvalInstanceId}:step:2:ready`;
+    const blocker = prisma.$transaction(
+      async (tx) => {
+        [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+          SELECT pg_backend_pid() AS pid
+        `;
+        await tx.notification.create({
+          data: {
+            tenantId: fixture.tenantId,
+            companyId: fixture.companyId,
+            locationId: fixture.locationId,
+            recipientUserId: fixture.approverUserIds[1],
+            notificationType: "APPROVAL_STEP_READY",
+            priority: "NORMAL",
+            channel: "IN_APP",
+            title: "Uncommitted notification-key blocker",
+            body: "This row is rolled back by the test harness.",
+            deepLink: `/approvals/${fixture.approvalInstanceId}`,
+            entityType: "PurchaseOrder",
+            entityId: fixture.sourceId,
+            sourceEventKey,
+            recipientBasis: "assigned_user",
+          },
+        });
+        blockerReady.resolve();
+        await releaseBlocker.promise;
+        throw new Error("ROLLBACK_NOTIFICATION_KEY_BLOCKER");
+      },
+      { timeout: 15_000 },
+    );
+    await blockerReady.promise;
+    const decision = executeSharedDecision(
+      fixture,
+      "PurchaseOrder",
+      "APPROVE",
+      1,
+    );
+    try {
+      await waitForBlockedPid(blockerPid);
+      await expect(decision).rejects.toThrow(/transaction|timed out|P2028/i);
+    } finally {
+      releaseBlocker.resolve();
+    }
+    await expect(blocker).rejects.toThrow("ROLLBACK_NOTIFICATION_KEY_BLOCKER");
+    expect(await approvalDecisionPgSnapshot(fixture)).toEqual(before);
+    expect(await readSharedSource("PurchaseOrder", fixture)).toEqual(sourceBefore);
+  }, 12_000);
 
   test.each(
     sharedFamilies.flatMap((family) => [

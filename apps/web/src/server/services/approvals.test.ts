@@ -444,9 +444,14 @@ describe("multi-step approval advancement", () => {
     expect(helperSource).toContain("assertLiveApprovalAuthority");
     expect(helperSource).toContain("findEligibleApprovalActor");
     expect(helperSource).toContain("if (prepared.directRecipientUserId)");
-    expect(helperSource).toContain("recordWorkflowNotifications");
-    expect(helperSource).toContain('notificationType: "APPROVAL_STEP_READY"');
-    expect(helperSource).toContain("sourceEventKey: auditEvent.id");
+    expect(helperSource).toContain("recordApprovalStepReadyNotification");
+    expect(helperSource).toContain("approvalInstanceStepId: nextStep.id");
+    expect(helperSource).toContain("recipientUserId: prepared.directRecipientUserId");
+    expect(helperSource).toContain("routingContext");
+    expect(helperSource).toContain("assignedRoleId: nextStep.assignedRoleId");
+    expect(helperSource).toContain("requiredPermissionCode: input.requiredPermissionCode");
+    expect(helperSource).toContain('scopeType: "LOCATION_CONTEXT"');
+    expect(helperSource).not.toContain('notificationType: "APPROVAL_STEP_READY"');
     expect(serviceSource).toContain(
       'throw new Error("APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE")'
     );
@@ -716,7 +721,8 @@ describe("multi-step approval advancement", () => {
     expect(prepareSource).not.toContain("preliminaryRecipientIds");
     expect(prepareSource).not.toContain("recipientUserIds");
     expect(advanceSource).toContain("if (prepared.directRecipientUserId)");
-    expect(advanceSource).toContain("recipientUserIds: [prepared.directRecipientUserId]");
+    expect(advanceSource).toContain("recordApprovalStepReadyNotification");
+    expect(advanceSource).toContain("recipientUserId: prepared.directRecipientUserId");
     expect(advanceSource).toContain('activationMode: nextStep.assignedUserId ? "DIRECT_USER" : "ROLE_SCOPED"');
     expect(advanceSource).toContain("assignedRoleId: nextStep.assignedRoleId");
   });

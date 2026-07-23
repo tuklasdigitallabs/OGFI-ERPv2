@@ -78,6 +78,7 @@ export async function createApprovalDecisionPgFixture(input: {
   extraPermissionCodes?: string[];
   firstStepStatus?: "PENDING" | "WAITING";
   directAssignedSteps?: boolean;
+  directAssignedStepOrders?: Array<1 | 2>;
 }): Promise<ApprovalDecisionPgFixture> {
   const ids = {
     tenantId: randomUUID(),
@@ -227,7 +228,7 @@ export async function createApprovalDecisionPgFixture(input: {
           {
             id: ids.stepOneId,
             stepOrder: 1,
-            ...(input.directAssignedSteps
+            ...(input.directAssignedSteps || input.directAssignedStepOrders?.includes(1)
               ? { assignedUserId: ids.approverOneId }
               : { assignedRoleId: ids.roleId }),
             status: input.firstStepStatus ?? "PENDING",
@@ -236,7 +237,7 @@ export async function createApprovalDecisionPgFixture(input: {
             ? [{
                 id: ids.stepTwoId,
                 stepOrder: 2,
-                ...(input.directAssignedSteps
+                ...(input.directAssignedSteps || input.directAssignedStepOrders?.includes(2)
                   ? { assignedUserId: ids.approverTwoId }
                   : { assignedRoleId: ids.roleId }),
                 status: "WAITING" as const,

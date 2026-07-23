@@ -1228,7 +1228,7 @@ async function approveCurrentStepAndAdvance(
       throw new Error("APPROVAL_NOT_ACTIONABLE");
     }
 
-    const auditEvent = await tx.auditEvent.create({
+    await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
@@ -1255,25 +1255,20 @@ async function approveCurrentStepAndAdvance(
     });
 
     if (prepared.directRecipientUserId) {
-      await recordWorkflowNotifications(tx, {
+      await recordApprovalStepReadyNotification(tx, {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         locationId: input.locationId,
-        recipientUserIds: [prepared.directRecipientUserId],
-        notificationType: "APPROVAL_STEP_READY",
-        priority: "NORMAL",
-        title: `Approval required: ${input.notification.publicReference}`,
-        body: `${input.notification.entityLabel} ${input.notification.publicReference} at ${input.notification.locationName} is ready for approval step ${nextStep.stepOrder}.`,
-        deepLink: `/approvals/${input.approvalId}`,
+        approvalInstanceId: input.approvalId,
+        approvalInstanceStepId: nextStep.id,
+        stepOrder: nextStep.stepOrder,
+        recipientUserId: prepared.directRecipientUserId,
+        publicReference: input.notification.publicReference,
+        locationName: input.notification.locationName,
+        entityLabel: input.notification.entityLabel,
         entityType: input.audit.entityType,
         entityId: input.audit.entityId,
-        sourceEventKey: auditEvent.id,
-        recipientBasis: "assigned_user",
-        metadata: {
-          approvalInstanceId: input.approvalId,
-          approvalStepOrder: nextStep.stepOrder,
-          assignmentMode: "DIRECT_USER",
-          assignedUserId: prepared.directRecipientUserId,
+        routingContext: {
           assignedRoleId: nextStep.assignedRoleId,
           requiredPermissionCode: input.requiredPermissionCode,
           scopeType: "LOCATION_CONTEXT",
