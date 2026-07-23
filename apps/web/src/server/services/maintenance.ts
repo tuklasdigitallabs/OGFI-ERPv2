@@ -419,6 +419,7 @@ export async function listMaintenanceTicketPage(
   const requestedAt = filters.requestedAt?.trim() || null;
   const date = requestedAt ? parseDateOnlyUtc(requestedAt) : null;
   if (requestedAt && !date) throw new Error("MAINTENANCE_REQUESTED_AT_INVALID");
+  const sourceIncidentFilter = /^[0-9a-f-]{36}$/i.test(query) ? [{ sourceIncidentId: query }] : [];
   const actorMatches = query
     ? await prisma.user.findMany({
         where: { tenantId: session.context.tenantId, OR: [
@@ -445,7 +446,7 @@ export async function listMaintenanceTicketPage(
       { assetArea: { contains: query, mode: "insensitive" } },
       { correctiveAction: { contains: query, mode: "insensitive" } },
       { evidenceReference: { contains: query, mode: "insensitive" } },
-      { sourceIncidentId: { contains: query, mode: "insensitive" } },
+      ...sourceIncidentFilter,
       { reportedByUserId: { in: actorMatches.map((row) => row.id) } },
       { ownerUserId: { in: actorMatches.map((row) => row.id) } }
     ] } : {})

@@ -397,6 +397,7 @@ export async function listIncidentPage(
   const incidentDate = filters.incidentDate?.trim() || null;
   const date = incidentDate ? parseDateOnlyUtc(incidentDate) : null;
   if (incidentDate && !date) throw new Error("INCIDENT_DATE_INVALID");
+  const sourceIdFilter = /^[0-9a-f-]{36}$/i.test(query) ? [{ sourceRecordId: query }] : [];
   const where: Prisma.OperationalIncidentWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
@@ -413,7 +414,7 @@ export async function listIncidentPage(
       { correctiveAction: { contains: query, mode: "insensitive" } },
       { evidenceReference: { contains: query, mode: "insensitive" } },
       { sourceRecordType: { contains: query, mode: "insensitive" } },
-      { sourceRecordId: { contains: query, mode: "insensitive" } }
+      ...sourceIdFilter
     ] } : {})
   };
   const totalItems = await prisma.operationalIncident.count({ where });
