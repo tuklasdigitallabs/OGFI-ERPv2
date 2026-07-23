@@ -1347,14 +1347,14 @@ describe("Phase 2 maintenance foundation", () => {
     expect(listPageSource).toContain('name="assetName"');
     expect(listPageSource).toContain('name="downtimeMinutes"');
     expect(listPageSource).toContain('name="sourceIncidentId"');
-    expect(listPageSource).toContain("visibleTickets");
-    expect(listPageSource).toContain("PAGE_SIZE = 10");
+    expect(listPageSource).toContain("workspace");
+    expect(listPageSource).toContain("PAGE_SIZE = 25");
     expect(listPageSource).toContain("normalizePage");
     expect(listPageSource).toContain("paginatedTickets");
     expect(listPageSource).toContain("pageHref");
-    expect(listPageSource).toContain("Showing {showingStart}-{showingEnd} of {visibleTickets.length} tickets");
-    expect(listPageSource).toContain("Page {currentPage} of {totalPages}");
-    expect(listPageSource).toContain("filterMaintenanceTickets(dashboard.tickets");
+    expect(listPageSource).toContain("workspace.page");
+    expect(listPageSource).toContain("Page {workspace.page} of {workspace.totalPages}");
+    expect(listPageSource).toContain("listMaintenanceTicketPage");
     expect(listPageSource).toContain("ticket.ownerName");
     expect(listPageSource).toContain("buildQueryHref(\"/maintenance/export\"");
     expect(exportRouteSource).toContain("getStrictDateSearchParam");
@@ -1372,7 +1372,7 @@ describe("Phase 2 maintenance foundation", () => {
     expect(listPageSource).toContain("/incidents/${sourceIncidentId}");
     expect(listPageSource).toContain("Source");
     expect(listPageSource).toContain("No tickets match the filters");
-    expect(listPageSource).toContain("getMaintenanceDashboard(session)");
+    expect(listPageSource).toContain("getMaintenanceDashboardRead(session)");
     expect(listPageSource).not.toContain("maintenanceTicket.update");
     expect(serviceSource).not.toContain("operationalIncident.update");
   });

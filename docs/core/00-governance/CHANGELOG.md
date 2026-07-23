@@ -15,6 +15,11 @@
 - Moved the ordinary Incidents register to server-backed 25-row pagination with exact scoped counts, validated filters, deterministic ordering, and preserved dashboard/export separation (`DEC-0090`).
 - Cancelled incidents no longer inflate overdue counts or display an unresolved follow-up in detail.
 
+## 2026-07-24 — Maintenance Register Pagination
+
+- Moved the ordinary Maintenance register to server-backed 25-row pagination with exact scoped counts, validated filters, deterministic ordering, and preserved dashboard/export separation (`DEC-0091`).
+- Maintenance actor-name search and empty-versus-no-match state handling now preserve prior register behavior.
+
 ## 2026-07-24 — Receiving Status and Date Filters
 
 - Added strict lifecycle-status filtering and inclusive operational receipt-date filtering to the ordinary Receiving register and matching full-result export. Filters remain scoped to the selected receiving location.

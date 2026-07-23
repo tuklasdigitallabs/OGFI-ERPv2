@@ -16,8 +16,8 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportMaintenance } from "@/server/services/exportAuthorization";
 import {
   createMaintenanceTicket,
-  filterMaintenanceTickets,
-  getMaintenanceDashboard
+  getMaintenanceDashboardRead,
+  listMaintenanceTicketPage
 } from "@/server/services/maintenance";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +40,7 @@ const createCategoryOptions = [
   "SAFETY",
   "OTHER"
 ] as const;
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 
 async function createMaintenanceTicketAction(formData: FormData) {
   "use server";
@@ -117,7 +117,7 @@ export default async function MaintenancePage({
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
-  const dashboard = await getMaintenanceDashboard(session);
+  const dashboardRead = await getMaintenanceDashboardRead(session);
   const canExport = canExportMaintenance(session);
   const canCreate = session.permissionCodes.includes(permissions.maintenanceCreate);
   const params = searchParams ? await searchParams : {};
@@ -129,19 +129,29 @@ export default async function MaintenancePage({
     getSearchParam(params, "priority"),
     priorityOptions
   );
-  const visibleTickets = filterMaintenanceTickets(dashboard.tickets, {
-    q: query,
-    requestedAt,
-    status: statusFilter,
-    priority: priorityFilter
-  });
-  const requestedPage = normalizePage(getSearchParam(params, "page"));
-  const totalPages = Math.max(1, Math.ceil(visibleTickets.length / PAGE_SIZE));
-  const currentPage = Math.min(requestedPage, totalPages);
-  const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const paginatedTickets = visibleTickets.slice(startIndex, startIndex + PAGE_SIZE);
-  const showingStart = visibleTickets.length === 0 ? 0 : startIndex + 1;
-  const showingEnd = Math.min(startIndex + PAGE_SIZE, visibleTickets.length);
+  let workspace;
+  try {
+    workspace = await listMaintenanceTicketPage(session, {
+      q: query,
+      requestedAt,
+      status: statusFilter,
+      priority: priorityFilter
+    }, { page: normalizePage(getSearchParam(params, "page")), pageSize: PAGE_SIZE });
+  } catch (error) {
+    redirect(actionErrorRedirectPath("/maintenance", error));
+  }
+  const dashboard = {
+    locationName: session.context.locationName,
+    totalTickets: dashboardRead.totalTickets,
+    openTickets: dashboardRead.openTickets,
+    criticalTickets: dashboardRead.criticalTickets,
+    overdueTickets: dashboardRead.overdueTickets,
+    downtimeMinutes: dashboardRead.downtimeMinutes,
+    statusCounts: dashboardRead.statusCounts,
+    priorityCounts: dashboardRead.priorityCounts,
+    tickets: workspace.items
+  };
+  const paginatedTickets = workspace.items;
   const pageHref = (page: number) =>
     buildQueryHref("/maintenance", {
       q: getSearchParam(params, "q"),
@@ -431,7 +441,7 @@ export default async function MaintenancePage({
           </div>
         </form>
 
-        {dashboard.tickets.length === 0 ? (
+        {dashboard.totalTickets === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">No maintenance tickets yet</p>
             <p className="mt-1 text-sm text-slate-600">
@@ -439,7 +449,7 @@ export default async function MaintenancePage({
               facility follow-up.
             </p>
           </div>
-        ) : visibleTickets.length === 0 ? (
+        ) : workspace.items.length === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">No tickets match the filters</p>
             <p className="mt-1 text-sm text-slate-600">
@@ -577,12 +587,12 @@ export default async function MaintenancePage({
             </div>
             <div className="flex flex-col gap-3 border-t border-slate-100 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
               <p>
-                Showing {showingStart}-{showingEnd} of {visibleTickets.length} tickets
+                Showing {workspace.items.length === 0 ? 0 : (workspace.page - 1) * workspace.pageSize + 1}-{workspace.items.length === 0 ? 0 : Math.min((workspace.page - 1) * workspace.pageSize + workspace.items.length, workspace.totalItems)} of {workspace.totalItems} tickets
               </p>
-              {totalPages > 1 ? (
+              {workspace.totalPages > 1 ? (
                 <div className="flex items-center gap-2">
-                  {currentPage > 1 ? (
-                    <ButtonLink href={pageHref(currentPage - 1)} tone="secondary">
+                  {workspace.page > 1 ? (
+                    <ButtonLink href={pageHref(workspace.page - 1)} tone="secondary" className="min-h-11">
                       Previous
                     </ButtonLink>
                   ) : (
@@ -591,10 +601,10 @@ export default async function MaintenancePage({
                     </span>
                   )}
                   <span className="font-semibold text-slate-700">
-                    Page {currentPage} of {totalPages}
+                    Page {workspace.page} of {workspace.totalPages}
                   </span>
-                  {currentPage < totalPages ? (
-                    <ButtonLink href={pageHref(currentPage + 1)} tone="secondary">
+                  {workspace.page < workspace.totalPages ? (
+                    <ButtonLink href={pageHref(workspace.page + 1)} tone="secondary" className="min-h-11">
                       Next
                     </ButtonLink>
                   ) : (
