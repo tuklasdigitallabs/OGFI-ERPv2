@@ -20,7 +20,7 @@ import {
   createStockAdjustment,
   listStockAdjustmentDashboardProfilePage,
   listStockAdjustmentFormOptions,
-  listStockAdjustments,
+  listStockAdjustmentPage,
   resolveStockAdjustmentDashboardProfile,
   stockAdjustmentDashboardProfileHref
 } from "@/server/services/stockAdjustments";
@@ -109,15 +109,15 @@ export default async function AdjustmentsPage({
   const profilePage = profile
     ? await listStockAdjustmentDashboardProfilePage(session, profile, getPage(params))
     : null;
-  const [workspaceAdjustments, formOptions] = profile
+  const [workspacePage, formOptions] = profile
     ? [null, null]
     : await Promise.all([
-        listStockAdjustments(session),
+        listStockAdjustmentPage(session, { page: getPage(params) }),
         canCreateAdjustments
           ? listStockAdjustmentFormOptions(session)
           : Promise.resolve(null)
       ]);
-  const adjustments = profilePage?.adjustments ?? workspaceAdjustments ?? [];
+  const adjustments = profilePage?.adjustments ?? workspacePage?.items ?? [];
   const firstInventoryLocation = formOptions?.inventoryLocations[0];
   const firstItem = formOptions?.items[0];
   const actionFeedback = getActionFeedback(params);
@@ -260,13 +260,13 @@ export default async function AdjustmentsPage({
               ))}
             </div>
           )}
-          {profile && adjustments.length > 0 ? (
+          {((profile && adjustments.length > 0) || (!profile && workspacePage && workspacePage.totalItems > 0)) ? (
             <PaginationBar
-              page={profilePage?.page ?? 1}
-              pageSize={profilePage?.pageSize ?? 25}
-              totalItems={profilePage?.totalItems ?? adjustments.length}
+              page={profile ? profilePage?.page ?? 1 : workspacePage?.page ?? 1}
+              pageSize={profile ? profilePage?.pageSize ?? 25 : workspacePage?.pageSize ?? 25}
+              totalItems={profile ? profilePage?.totalItems ?? adjustments.length : workspacePage?.totalItems ?? 0}
               itemLabel="adjustments"
-              getPageHref={(nextPage) => stockAdjustmentDashboardProfileHref(profile, nextPage)}
+              getPageHref={(nextPage) => profile ? stockAdjustmentDashboardProfileHref(profile, nextPage) : `/adjustments?page=${nextPage}`}
             />
           ) : null}
         </section>

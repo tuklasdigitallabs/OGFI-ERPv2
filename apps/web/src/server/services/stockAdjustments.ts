@@ -734,7 +734,15 @@ export async function listStockAdjustments(
     orderBy: { createdAt: "desc" }
   });
 
-  return adjustments.map((adjustment) => ({
+  return adjustments.map(mapStockAdjustment);
+}
+
+type StockAdjustmentWithRelations = Prisma.StockAdjustmentGetPayload<{ include: {
+  inventoryLocation: true; requestedBy: true; cancelledBy: true; postedBy: true; reversedBy: true; lines: true;
+} }>;
+
+function mapStockAdjustment(adjustment: StockAdjustmentWithRelations) {
+  return {
     id: adjustment.id,
     publicReference: adjustment.publicReference,
     status: adjustment.status,
@@ -757,7 +765,28 @@ export async function listStockAdjustments(
       (total, line) => total + Number(line.quantityDeltaBaseUom),
       0
     )
-  }));
+  };
+}
+
+export async function listStockAdjustmentPage(
+  session: SessionContext,
+  input: { page?: number; pageSize?: number } = {}
+) {
+  await requireStockAdjustmentRead(session);
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const where = scopedStockAdjustmentWhere(session);
+  const totalItems = await prisma.stockAdjustment.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const adjustments = await prisma.stockAdjustment.findMany({
+    where,
+    include: { inventoryLocation: true, requestedBy: true, cancelledBy: true, postedBy: true, reversedBy: true, lines: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
+  });
+  return { items: adjustments.map(mapStockAdjustment), totalItems, page, pageSize, totalPages };
 }
 
 export type StockAdjustmentExceptionProfilePage = {

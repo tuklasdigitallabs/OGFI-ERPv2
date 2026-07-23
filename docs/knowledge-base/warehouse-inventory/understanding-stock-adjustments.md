@@ -23,6 +23,8 @@ A Stock Adjustment is not a direct stock edit. Approval is non-posting. Inventor
 
 `Inventory -> Adjustments`
 
+The ordinary register is server-paginated for the selected authorized location; use its page controls to move through adjustment requests without loading the full history into the browser.
+
 ## When To Use It
 
 Use a Stock Adjustment for:

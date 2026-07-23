@@ -69,8 +69,10 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(source).toContain("stockAdjustmentDashboardProfileWhere(");
     expect(source).toContain('"stock-adjustment-exceptions-v1"');
     expect(source).toContain("listStockAdjustmentDashboardProfilePage");
+    expect(source).toContain("listStockAdjustmentPage");
     expect(source).toContain("take: stockAdjustmentProfilePageSize");
     expect(page).toContain("!profile && canCreateAdjustments");
+    expect(page).toContain("workspacePage?.items");
     expect(page).toContain("read-only profile does not grant adjustment or inventory actions");
     expect(route).toContain("listStockAdjustments(session, profile ?? undefined)");
     expect(route).toContain("STOCK_ADJUSTMENT_DASHBOARD_PROFILE_UNSUPPORTED");
