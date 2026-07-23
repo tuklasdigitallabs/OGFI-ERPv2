@@ -18,7 +18,7 @@ import { getSessionContext } from "@/server/services/context";
 import {
   createDraftPurchaseRequest,
   listPurchaseRequestDraftOptions,
-  listPurchaseRequests,
+  listPurchaseRequestPage,
   listPurchaseRequestsDashboardProfilePage,
   resolvePurchaseRequestDashboardProfile,
   type PurchaseRequestSlaStatus,
@@ -108,14 +108,14 @@ export default async function PurchaseRequestsPage({
     dashboardProfile
       ? listPurchaseRequestsDashboardProfilePage(session, dashboardProfile, requestedPage)
       : Promise.resolve(null),
-    dashboardProfile ? Promise.resolve([]) : listPurchaseRequests(session, {
+    dashboardProfile ? Promise.resolve(null) : listPurchaseRequestPage(session, {
       status: selectedStatus,
       search,
-    }),
+    }, { page: requestedPage }),
     listPurchaseRequestDraftOptions(session),
     getPurchasingControlPolicy(session),
   ]);
-  const requests = dashboardProfilePage?.items ?? workspaceRequests;
+  const requests = dashboardProfilePage?.items ?? workspaceRequests?.items ?? [];
   const canCreateDraft = session.permissionCodes.includes(
     permissions.purchaseRequestCreate,
   );
@@ -342,6 +342,15 @@ export default async function PurchaseRequestsPage({
                   {dashboardProfilePage.page > 1 ? <ButtonLink href={`/purchase-requests?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page - 1}`} tone="secondary">Previous</ButtonLink> : <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Previous</span>}
                   <span className="font-semibold text-slate-700">Page {dashboardProfilePage.page} of {dashboardProfilePage.totalPages}</span>
                   {dashboardProfilePage.page < dashboardProfilePage.totalPages ? <ButtonLink href={`/purchase-requests?dashboard=${dashboardProfile}&page=${dashboardProfilePage.page + 1}`} tone="secondary">Next</ButtonLink> : <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 font-semibold text-slate-400">Next</span>}
+                </div>
+              </div>
+            ) : null}
+            {!dashboardProfile && workspaceRequests && workspaceRequests.totalItems > 0 ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+                <span className="text-slate-600">Page {workspaceRequests.page} of {workspaceRequests.totalPages} · {workspaceRequests.totalItems} requests</span>
+                <div className="flex gap-2">
+                  {workspaceRequests.page > 1 ? <ButtonLink href={`/purchase-requests?${new URLSearchParams({ ...(search ? { search } : {}), ...(selectedStatus !== "ALL" ? { status: selectedStatus } : {}), page: String(workspaceRequests.page - 1) }).toString()}`} tone="secondary">Previous</ButtonLink> : null}
+                  {workspaceRequests.page < workspaceRequests.totalPages ? <ButtonLink href={`/purchase-requests?${new URLSearchParams({ ...(search ? { search } : {}), ...(selectedStatus !== "ALL" ? { status: selectedStatus } : {}), page: String(workspaceRequests.page + 1) }).toString()}`} tone="secondary">Next</ButtonLink> : null}
                 </div>
               </div>
             ) : null}

@@ -28,6 +28,7 @@ Low stock must not automatically create a PO. If warehouse stock is available, u
 ## Steps
 
 1. Open `Purchase Requests`.
+   The ordinary register is server-paginated and preserves the selected status/search filters when moving between pages.
 2. In `Create Draft PR`, enter the required date.
 3. Enter the urgency.
 4. For emergency urgency, enter the emergency reason and evidence reference.

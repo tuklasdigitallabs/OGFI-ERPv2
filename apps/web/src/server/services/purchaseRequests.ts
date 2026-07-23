@@ -1027,6 +1027,22 @@ export async function listPurchaseRequests(
   return listPurchaseRequestsWithOptions(session, filters);
 }
 
+export async function listPurchaseRequestPage(
+  session: SessionContext,
+  filters: PurchaseRequestListFilters = {},
+  input: { page?: number; pageSize?: number } = {},
+) {
+  if (!canUsePurchaseRequests(session.permissionCodes)) throw new Error("PERMISSION_DENIED");
+  const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const where = purchaseRequestListWhere(session, filters);
+  const totalItems = await prisma.purchaseRequest.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const items = await listPurchaseRequestsWithOptions(session, filters, { pagination: { page, pageSize } });
+  return { items, totalItems, page, pageSize, totalPages };
+}
+
 export type PurchaseRequestDashboardProfilePage = {
   profile: PurchaseRequestDashboardProfile;
   items: PurchaseRequest[];

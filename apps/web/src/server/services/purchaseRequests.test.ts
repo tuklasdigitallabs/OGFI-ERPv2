@@ -15,6 +15,14 @@ import {
 } from "./purchaseRequests";
 
 describe("purchase request workflow controls", () => {
+  test("ordinary register uses the server page contract and preserves filter paging", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseRequests.ts"), "utf8");
+    const page = readFileSync(path.resolve(__dirname, "../../app/(app)/purchase-requests/page.tsx"), "utf8");
+    expect(source).toContain("listPurchaseRequestPage");
+    expect(source).toContain("pagination: { page, pageSize }");
+    expect(page).toContain("workspaceRequests?.items");
+    expect(page).toContain("workspaceRequests.totalPages");
+  });
   test("keeps the dashboard open-PR contract closed and includes approved requests", () => {
     expect(resolvePurchaseRequestDashboardProfile("purchase-request-open-v1")).toBe(
       "purchase-request-open-v1",
