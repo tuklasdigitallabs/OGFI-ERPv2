@@ -592,6 +592,23 @@ export default async function MaintenanceDetailPage({
               </div>
             )}
           </section>
+
+          <section className="mt-5 border-t border-slate-100 p-5">
+            <h2 className="text-lg font-bold text-slate-950">Activity</h2>
+            <p className="mt-1 text-sm text-slate-500">Immutable audit history for this ticket.</p>
+            {ticket.auditEvents.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-600">No activity recorded.</p>
+            ) : (
+              <ol className="mt-4 space-y-3">
+                {ticket.auditEvents.map((event) => (
+                  <li key={event.id} className="rounded-lg border border-slate-200 px-3 py-2">
+                    <p className="text-sm font-semibold text-slate-900">{event.eventType}</p>
+                    <p className="text-xs text-slate-500">{new Date(event.occurredAt).toLocaleString()}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
         </section>
 
         <aside className="grid gap-4 content-start">

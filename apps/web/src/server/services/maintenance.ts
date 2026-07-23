@@ -131,6 +131,12 @@ export type MaintenanceTicketSummary = {
 
 export type MaintenanceTicketDetail = MaintenanceTicketSummary & {
   history: MaintenanceTicketSummary[];
+  auditEvents: Array<{
+    id: string;
+    eventType: string;
+    occurredAt: string;
+    metadata: unknown;
+  }>;
 };
 
 export type MaintenanceMyTaskPage = {
@@ -886,12 +892,26 @@ export async function getMaintenanceTicketDetail(
       })
     : [];
   const actorNameById = userDisplayNameById(actors);
+  const auditEvents = await prisma.auditEvent.findMany({
+    where: {
+      tenantId: current.tenantId,
+      companyId: current.companyId,
+      entityType: "MaintenanceTicket",
+      entityId: current.id
+    },
+    orderBy: { occurredAt: "asc" },
+    select: { id: true, eventType: true, occurredAt: true, metadata: true }
+  });
 
   return {
     ...summarizeMaintenanceTicket(current, actorNameById, session.user.id),
     history: history.map((ticket) =>
       summarizeMaintenanceTicket(ticket, actorNameById, session.user.id)
-    )
+    ),
+    auditEvents: auditEvents.map((event) => ({
+      ...event,
+      occurredAt: event.occurredAt.toISOString()
+    }))
   };
 }
 

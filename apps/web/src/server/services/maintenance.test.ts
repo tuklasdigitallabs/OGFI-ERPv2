@@ -28,6 +28,9 @@ const mockPrisma = vi.hoisted(() => ({
   user: {
     findMany: vi.fn()
   },
+  auditEvent: {
+    findMany: vi.fn()
+  },
   userRoleAssignment: {
     findMany: vi.fn()
   }
@@ -171,6 +174,7 @@ function correctMaintenanceForm() {
 describe("Phase 2 maintenance foundation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.auditEvent.findMany.mockResolvedValue([]);
     mockContext.requireSessionContext.mockResolvedValue(session);
     mockPrisma.userRoleAssignment.findMany.mockResolvedValue([
       {
