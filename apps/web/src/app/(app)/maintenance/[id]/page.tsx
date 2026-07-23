@@ -15,6 +15,7 @@ import {
   permissions
 } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
+import { dateOnlyInTimeZone } from "@/server/services/projectDates";
 import {
   cancelMaintenanceTicket,
   completeMaintenanceTicket,
@@ -118,7 +119,7 @@ export default async function MaintenanceDetailPage({
   const canCorrect =
     session.permissionCodes.includes(permissions.maintenanceCorrect) &&
     ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"].includes(ticket.status);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dateOnlyInTimeZone(new Date());
   const actionFeedback = getActionFeedback(searchParams ? await searchParams : {});
   const sourceHref = sourceIncidentHref(ticket.sourceIncidentId);
 

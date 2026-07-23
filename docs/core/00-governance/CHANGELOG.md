@@ -19,6 +19,7 @@
 
 - Moved the ordinary Maintenance register to server-backed 25-row pagination with exact scoped counts, validated filters, deterministic ordering, and preserved dashboard/export separation (`DEC-0091`).
 - Maintenance actor-name search and empty-versus-no-match state handling now preserve prior register behavior.
+- Maintenance completion-date defaults now honor the operational timezone and invalid requested-date filters return the existing safe validation message.
 
 ## 2026-07-24 — Receiving Status and Date Filters
 

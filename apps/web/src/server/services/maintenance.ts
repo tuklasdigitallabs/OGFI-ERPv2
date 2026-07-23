@@ -418,7 +418,7 @@ export async function listMaintenanceTicketPage(
   const priority = filters.priority && filters.priority !== "ALL" ? filters.priority : null;
   const requestedAt = filters.requestedAt?.trim() || null;
   const date = requestedAt ? parseDateOnlyUtc(requestedAt) : null;
-  if (requestedAt && !date) throw new Error("MAINTENANCE_REQUESTED_DATE_INVALID");
+  if (requestedAt && !date) throw new Error("MAINTENANCE_REQUESTED_AT_INVALID");
   const actorMatches = query
     ? await prisma.user.findMany({
         where: { tenantId: session.context.tenantId, OR: [
