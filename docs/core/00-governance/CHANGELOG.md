@@ -228,6 +228,8 @@
 
 Add a dated entry whenever an approved decision changes product scope, business workflow, data model, permissions, security controls, technical architecture, UI standards, or a release gate.
 
+- 2026-07-24: Extended the ordinary Receiving register’s server-owned query/export contract with strict status allow-list and received-date range filters. Counts, tab views, and CSV export share the active query/status/date scope; the legacy Posted tab remains non-DRAFT for compatibility. The initial operational date timezone is `Asia/Manila`; item, receiver, and value selectors remain pending.
+
 ## 2026-06-25 — V3 subagent deliberation and decision governance
 
 - Added parent-led structured deliberation protocol for material decisions.

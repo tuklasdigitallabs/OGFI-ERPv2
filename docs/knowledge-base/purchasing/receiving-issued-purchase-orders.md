@@ -25,7 +25,7 @@ Use this article to create and post a Receiving Report from an issued Purchase O
 ## Steps
 
 1. Open `Receiving`.
-   The ordinary register is server-paginated. Use the `All`, `Draft`, `Posted`, or `Discrepancies` tabs, search by GRN, Purchase Order reference, or supplier name, and optionally filter by receipt status or received-date range to narrow the current authorized location; page changes do not load the full receipt history into the browser.
+   The ordinary register is server-paginated. Use the `All`, `Draft`, `Posted`, or `Discrepancies` tabs, search by GRN, Purchase Order reference, or supplier name, and optionally filter by one of the listed receipt statuses or a received-date range to narrow the current authorized location; dates are interpreted as calendar days in OGFI’s initial operational timezone (`Asia/Manila`). Page changes do not load the full receipt history into the browser.
 2. Find the issued Purchase Order under `Create Draft Receipt`.
 3. Enter the supplier delivery receipt or reference when available.
 4. Enter delivered, accepted, rejected, and damaged quantities for each received line.

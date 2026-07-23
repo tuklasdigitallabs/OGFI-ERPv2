@@ -870,10 +870,18 @@ export async function listGoodsReceiptPage(
       : {})
   };
   const totalItems = await prisma.goodsReceipt.count({ where });
-  const baseWhere = {
+  const baseWhere: Prisma.GoodsReceiptWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    receivingLocationId: session.context.locationId
+    receivingLocationId: session.context.locationId,
+    ...(status ? { status } : {}),
+    ...(receivedFrom || receivedTo ? { receivedAt: { ...(receivedFrom ? { gte: receivedFrom } : {}), ...(receivedTo ? { lt: receivedTo } : {}) } } : {}),
+    ...(query ? { OR: [
+      { publicReference: { contains: query, mode: "insensitive" } },
+      { purchaseOrder: { publicReference: { contains: query, mode: "insensitive" } } },
+      { supplier: { legalName: { contains: query, mode: "insensitive" } } },
+      { supplier: { tradingName: { contains: query, mode: "insensitive" } } }
+    ] } : {})
   };
   const [allItems, draftItems, postedItems, discrepancyItems] = await Promise.all([
     prisma.goodsReceipt.count({ where: baseWhere }),
@@ -968,10 +976,12 @@ export async function buildReceivingReportExportRows(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       receivingLocationId: session.context.locationId,
-      ...(tab === "draft" ? { status: "DRAFT" } : {}),
-      ...(tab === "posted" ? { status: { not: "DRAFT" } } : {}),
+      ...((tab === "draft" || tab === "posted" || filters.status) ? { AND: [
+        ...(tab === "draft" ? [{ status: "DRAFT" }] : []),
+        ...(tab === "posted" ? [{ status: { not: "DRAFT" } }] : []),
+        ...(filters.status ? [{ status: filters.status }] : [])
+      ] } : {}),
       ...(tab === "discrepancies" ? { discrepancyFlag: true } : {}),
-      ...(filters.status && receivingRegisterStatuses.includes(filters.status as ReceivingRegisterStatus) ? { status: filters.status } : {}),
       ...(filters.receivedFrom || filters.receivedTo ? { receivedAt: {
         ...(filters.receivedFrom ? { gte: parseReceivingDate(filters.receivedFrom) ?? undefined } : {}),
         ...(filters.receivedTo ? { lt: parseReceivingDate(filters.receivedTo, true) ?? undefined } : {})
