@@ -53,6 +53,7 @@ export type FoodSafetyLogSummary = {
   reviewedByName: string | null;
   reviewedAt: string | null;
   exceptionCount: number;
+  readingCount?: number;
   readings: FoodSafetyReadingSummary[];
 };
 
@@ -501,7 +502,7 @@ export async function listFoodSafetyLogPage(
   const page = Math.min(requestedPage, totalPages);
   const rows = await prisma.foodSafetyLog.findMany({
     where,
-    include: { location: true, readings: { orderBy: { lineNo: "asc" } } },
+    include: { location: true, readings: { select: { id: true } } },
     orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * pageSize,
     take: pageSize
@@ -524,20 +525,8 @@ export async function listFoodSafetyLogPage(
     reviewedByName: log.reviewedByUserId ? actorNameById.get(log.reviewedByUserId) ?? "Unknown user" : null,
     reviewedAt: dateOrNull(log.reviewedAt),
     exceptionCount: log.exceptionCount,
-    readings: log.readings.map((reading) => ({
-      id: reading.id,
-      lineNo: reading.lineNo,
-      station: reading.station,
-      readingType: reading.readingType,
-      readingValue: numberOrNull(reading.readingValue),
-      readingUom: reading.readingUom,
-      expectedMinValue: numberOrNull(reading.expectedMinValue),
-      expectedMaxValue: numberOrNull(reading.expectedMaxValue),
-      result: reading.result,
-      severity: reading.severity,
-      correctiveAction: reading.correctiveAction,
-      evidenceReference: reading.evidenceReference
-    }))
+    readingCount: log.readings.length,
+    readings: []
   }));
   return { items, page, pageSize, totalItems, totalPages };
 }

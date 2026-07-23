@@ -8,6 +8,7 @@
 
 - Moved the ordinary Food Safety register to server-backed 25-row pagination with exact scoped counts, nested-reading and actor search parity, deterministic ordering, and preserved dashboard/export separation (`DEC-0089`).
 - Food Safety detail reads now use a direct scoped record lookup instead of loading the full dashboard population.
+- Food Safety list rows now carry reading counts without hydrating nested reading payloads.
 
 ## 2026-07-24 — Receiving Status and Date Filters
 

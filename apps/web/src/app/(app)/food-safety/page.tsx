@@ -359,7 +359,7 @@ export default async function FoodSafetyPage({
                     <Badge tone={badgeToneFor(log.status)} size="sm">{log.status.replaceAll("_", " ").toLowerCase()}</Badge>
                   </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <div><dt className="text-xs font-semibold uppercase text-slate-500">Readings</dt><dd className="font-bold text-slate-950">{log.readings.length}</dd></div>
+                    <div><dt className="text-xs font-semibold uppercase text-slate-500">Readings</dt><dd className="font-bold text-slate-950">{log.readingCount ?? log.readings.length}</dd></div>
                     <div><dt className="text-xs font-semibold uppercase text-slate-500">Exceptions</dt><dd className="font-bold text-slate-950">{log.exceptionCount}</dd></div>
                     <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Reviewer</dt><dd className="font-semibold text-slate-700">{log.reviewedByName ?? "Pending review"}</dd></div>
                   </dl>
@@ -388,7 +388,7 @@ export default async function FoodSafetyPage({
                       <div className="min-w-0">
                         <h3 className="font-bold text-slate-950">{log.title}</h3>
                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                          {log.readings.length} reading(s)
+                          {log.readingCount ?? log.readings.length} reading(s)
                         </p>
                       </div>
                       <p className="font-semibold text-slate-800">{log.businessDate}</p>
