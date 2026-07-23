@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardCheck } from "lucide-
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { getSessionContext } from "@/server/services/context";
-import { getMyTasksPage } from "@/server/services/myTasks";
+import { getMyTasksPage, type MyTasksPage } from "@/server/services/myTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,16 @@ export default async function MyTasksPage({
   }
   const params = searchParams ? await searchParams : {};
   const cursor = getSearchParam(params, "cursor");
-  const page = await getMyTasksPage(session, cursor ? { cursor } : {});
+  const cursorReset = getSearchParam(params, "cursorReset") === "1";
+  let page: MyTasksPage;
+  try {
+    page = await getMyTasksPage(session, cursor ? { cursor } : {});
+  } catch (error) {
+    if (cursor && error instanceof Error && error.message === "MY_TASK_CURSOR_INVALID") {
+      redirect("/my-tasks?cursorReset=1");
+    }
+    throw error;
+  }
 
   return (
     <AppShell
@@ -39,6 +48,13 @@ export default async function MyTasksPage({
       subtitle="Current controlled actions available in your selected operating scope"
       activeNav="my-tasks"
     >
+      {cursorReset ? (
+        <Panel className="mb-6 border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm leading-6 text-blue-950">
+            The previous task page expired or no longer matches your current scope. The queue restarted from the highest-priority current work.
+          </p>
+        </Panel>
+      ) : null}
       <section className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <Panel className="p-5">
           <div className="flex items-start gap-3">
@@ -48,7 +64,7 @@ export default async function MyTasksPage({
             <div>
               <h2 className="text-base font-bold text-slate-950">Current action queue</h2>
               <p className="mt-1 text-sm leading-6 text-slate-600">
-                This controlled queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, Receiving, Branch Operations, and eligible Food Safety controls. Some correction actions are role-pooled rather than personally assigned. Use each source workspace for other approved work.
+                This controlled queue includes Purchase Request, Purchase Order, Transfer, Wastage, Stock Adjustment, Receiving, Branch Operations, Food Safety, and eligible Incident resolution. Some actions are role-pooled rather than personally assigned. Use each source workspace for other approved work.
               </p>
             </div>
           </div>
@@ -77,7 +93,7 @@ export default async function MyTasksPage({
         <div className="mb-3 flex items-end justify-between gap-4">
           <div>
             <h2 id="my-tasks-list-heading" className="text-lg font-bold text-slate-950">Action queue</h2>
-            <p className="mt-1 text-sm text-slate-600">Oldest eligible action first. Open an item to complete it in its authoritative workspace.</p>
+            <p className="mt-1 text-sm text-slate-600">Highest priority first, then dated work by due date and oldest eligible undated work. Open an item in its authoritative workspace.</p>
           </div>
           {page.isComplete ? <Badge tone="success" size="sm">Available sources loaded</Badge> : <Badge tone="warning" size="sm">Partial availability</Badge>}
         </div>
@@ -99,6 +115,11 @@ export default async function MyTasksPage({
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone="info" size="sm">{task.sourceLabel}</Badge>
                       <Badge size="sm">{task.status.replaceAll("_", " ")}</Badge>
+                      {task.sourceType === "INCIDENT" ? (
+                        <Badge tone={task.priority === "CRITICAL" ? "danger" : task.priority === "HIGH" ? "warning" : "neutral"} size="sm">
+                          {task.priority.toLowerCase()} severity
+                        </Badge>
+                      ) : null}
                     </div>
                     <h3 className="mt-2 font-bold text-slate-950">{task.actionLabel}</h3>
                     <p className="mt-1 text-sm text-slate-600">{task.publicReference} · {task.locationLabel}</p>

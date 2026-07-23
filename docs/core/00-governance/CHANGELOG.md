@@ -1,5 +1,11 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-23 — Incident My Tasks And V2 Ordering
+
+- Confirmed and implemented `DEC-0066`: My Tasks now uses a v2 priority/due/age/source cursor and enrolls bounded, role-pooled Incident resolution with severity-aware independent-review controls.
+- High/critical resolve and cancel now fail closed when reporter lineage is missing; the Incident detail UI mirrors the actor rule, and direct detail reads preauthorize exact null-aware brand/location scope before returning narrative or evidence.
+- Kept cancellation and ordinary correction out of the shared queue, documented the dated-before-undated ordering tradeoff, and updated the workflow, glossary, and My Tasks user guidance.
+
 ## 2026-07-23 — Food Safety My Tasks Enrollment
 
 - Confirmed and implemented `DEC-0065`: `My Tasks` now enrolls independently reviewable Food Safety logs and role-pooled returned-log correction through a scoped, read-only, count/page-parity adapter. Final close remains deferred pending final-signoff/self-action policy.

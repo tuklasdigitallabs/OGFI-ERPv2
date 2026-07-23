@@ -18,6 +18,12 @@ import {
   requiresPhase2IndependentReview
 } from "./phase2WorkflowPolicy";
 import { dateOnlyInTimeZone, parseDateOnlyUtc } from "./projectDates";
+import {
+  compareDashboardTaskOrder,
+  dashboardTaskSources,
+  type DashboardTaskCursor,
+  type DashboardTaskPriority
+} from "./dashboardTasks";
 
 type OperationalIncidentWithLocation = Prisma.OperationalIncidentGetPayload<{
   include: {
@@ -123,6 +129,8 @@ export type OperationalIncidentSummary = {
   summary: string;
   locationName: string;
   reportedByName: string | null;
+  hasReporter?: boolean;
+  reportedByCurrentUser?: boolean;
   ownerName: string | null;
   sourceRecordType: string | null;
   sourceRecordId: string | null;
@@ -130,6 +138,21 @@ export type OperationalIncidentSummary = {
   evidenceReference: string | null;
   dueAt: string | null;
   resolvedAt: string | null;
+};
+
+export type IncidentMyTaskPage = {
+  totalCount: number;
+  items: Array<{
+    taskId: string;
+    recordId: string;
+    publicReference: string;
+    status: string;
+    severity: DashboardTaskPriority;
+    dueAt: string | null;
+    actionLabel: "Resolve incident";
+    createdAt: string;
+  }>;
+  nextCursor: DashboardTaskCursor | null;
 };
 
 export type IncidentStatusCounts = Record<
@@ -400,6 +423,8 @@ export async function getIncidentDashboard(
     reportedByName: incident.reportedByUserId
       ? actorNameById.get(incident.reportedByUserId) ?? "Unknown user"
       : null,
+    hasReporter: Boolean(incident.reportedByUserId),
+    reportedByCurrentUser: incident.reportedByUserId === session.user.id,
     ownerName: incident.ownerUserId
       ? actorNameById.get(incident.ownerUserId) ?? "Unknown user"
       : null,
@@ -556,10 +581,150 @@ export async function getIncidentDashboardRead(
   };
 }
 
+const incidentTaskPriorities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
+
+function incidentCreatedAfterWhere(cursor: DashboardTaskCursor) {
+  const cursorDate = new Date(cursor.createdAt);
+  const incidentRank = dashboardTaskSources.indexOf("INCIDENT");
+  const cursorRank = dashboardTaskSources.indexOf(cursor.sourceType);
+  return {
+    OR: [
+      { createdAt: { gt: cursorDate } },
+      ...(incidentRank > cursorRank
+        ? [{ createdAt: cursorDate }]
+        : incidentRank === cursorRank
+          ? [{ createdAt: cursorDate, id: { gt: cursor.recordId } }]
+          : [])
+    ]
+  } satisfies Prisma.OperationalIncidentWhereInput;
+}
+
+function incidentTaskAfterWhere(
+  severity: DashboardTaskPriority,
+  cursor: DashboardTaskCursor | undefined
+) {
+  if (!cursor) return null;
+  const severityRank = incidentTaskPriorities.indexOf(severity);
+  const cursorRank = incidentTaskPriorities.indexOf(cursor.priority ?? "HIGH");
+  if (severityRank < cursorRank) return false;
+  if (severityRank > cursorRank) return null;
+
+  const createdAfter = incidentCreatedAfterWhere(cursor);
+  if (!cursor.dueAt) {
+    return { dueAt: null, AND: [createdAfter] } satisfies Prisma.OperationalIncidentWhereInput;
+  }
+  const cursorDueAt = new Date(cursor.dueAt);
+  return {
+    OR: [
+      { dueAt: null },
+      { dueAt: { gt: cursorDueAt } },
+      { dueAt: cursorDueAt, AND: [createdAfter] }
+    ]
+  } satisfies Prisma.OperationalIncidentWhereInput;
+}
+
+/** Returns one role-pooled, currently executable resolution obligation per incident. */
+export async function listIncidentMyTaskPage(
+  session: SessionContext,
+  input: { after?: DashboardTaskCursor; take?: number } = {}
+): Promise<IncidentMyTaskPage> {
+  assertIncidentAccess(session);
+  if (!session.permissionCodes.includes(permissions.incidentResolve)) {
+    return { totalCount: 0, items: [], nextCursor: null };
+  }
+  const take = Math.min(Math.max(input.take ?? 25, 1), 50);
+  const baseWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    brandId: session.context.brandId ?? null,
+    locationId: session.context.locationId,
+    status: { in: [...resolvableIncidentStatuses] },
+    resolvedAt: null,
+    OR: [
+      { severity: { in: ["MEDIUM", "LOW"] } },
+      {
+        severity: { in: ["CRITICAL", "HIGH"] },
+        reportedByUserId: { not: null },
+        NOT: { reportedByUserId: session.user.id }
+      }
+    ]
+  } satisfies Prisma.OperationalIncidentWhereInput;
+  const select = {
+    id: true,
+    incidentNumber: true,
+    status: true,
+    severity: true,
+    dueAt: true,
+    createdAt: true
+  } satisfies Prisma.OperationalIncidentSelect;
+  const [totalCount, ...severityRows] = await Promise.all([
+    prisma.operationalIncident.count({ where: baseWhere }),
+    ...incidentTaskPriorities.map((severity) => {
+      const afterWhere = incidentTaskAfterWhere(severity, input.after);
+      if (afterWhere === false) return Promise.resolve([]);
+      return prisma.operationalIncident.findMany({
+        where: {
+          ...baseWhere,
+          severity,
+          ...(afterWhere ? { AND: [afterWhere] } : {})
+        },
+        select,
+        orderBy: [
+          { dueAt: { sort: "asc", nulls: "last" } },
+          { createdAt: "asc" },
+          { id: "asc" }
+        ],
+        take: take + 1
+      });
+    })
+  ]);
+  const merged = severityRows
+    .flat()
+    .map((row) => ({
+      taskId: `incident-${row.id}`,
+      recordId: row.id,
+      publicReference: row.incidentNumber,
+      status: row.status,
+      severity: row.severity as DashboardTaskPriority,
+      priority: row.severity as DashboardTaskPriority,
+      dueAt: row.dueAt?.toISOString() ?? null,
+      actionLabel: "Resolve incident" as const,
+      createdAt: row.createdAt.toISOString(),
+      sourceType: "INCIDENT" as const
+    }))
+    .sort(compareDashboardTaskOrder);
+  const items = merged.slice(0, take);
+  const last = items.at(-1);
+  return {
+    totalCount,
+    items,
+    nextCursor: merged.length > take && last
+      ? {
+          priority: last.priority,
+          dueAt: last.dueAt,
+          createdAt: last.createdAt,
+          sourceType: "INCIDENT",
+          recordId: last.recordId
+        }
+      : null
+  };
+}
+
 export async function getOperationalIncidentSummary(
   session: SessionContext,
   incidentId: string
 ) {
+  const scopedTarget = await prisma.operationalIncident.findFirst({
+    where: {
+      id: incidentId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId ?? null,
+      locationId: session.context.locationId
+    },
+    select: { id: true }
+  });
+  if (!scopedTarget) return null;
   const dashboard = await getIncidentDashboard(session);
   return dashboard.incidents.find((incident) => incident.id === incidentId) ?? null;
 }
@@ -715,7 +880,7 @@ export async function resolveOperationalIncident(formData: FormData) {
         action: "RESOLVE",
         riskLevel: current.severity
       }) &&
-      current.reportedByUserId === session.user.id
+      (!current.reportedByUserId || current.reportedByUserId === session.user.id)
     ) {
       throw new Error("INCIDENT_INDEPENDENT_REVIEW_REQUIRED");
     }
@@ -842,7 +1007,7 @@ export async function cancelOperationalIncident(formData: FormData) {
         action: "CANCEL",
         riskLevel: current.severity
       }) &&
-      current.reportedByUserId === session.user.id
+      (!current.reportedByUserId || current.reportedByUserId === session.user.id)
     ) {
       throw new Error("INCIDENT_INDEPENDENT_REVIEW_REQUIRED");
     }

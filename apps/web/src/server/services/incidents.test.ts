@@ -7,6 +7,8 @@ import {
   correctOperationalIncident,
   createOperationalIncident,
   filterIncidents,
+  getOperationalIncidentSummary,
+  listIncidentMyTaskPage,
   resolveOperationalIncident,
   type OperationalIncidentSummary
 } from "./incidents";
@@ -14,7 +16,9 @@ import {
 const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
   operationalIncident: {
-    count: vi.fn()
+    count: vi.fn(),
+    findMany: vi.fn(),
+    findFirst: vi.fn()
   },
   userRoleAssignment: {
     findMany: vi.fn()
@@ -36,6 +40,107 @@ vi.mock("./context", async () => {
     requireSessionContext: mockContext.requireSessionContext,
     assertAuthorizedLocation: mockContext.assertAuthorizedLocation
   };
+});
+
+describe("Incident My Tasks adapter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.operationalIncident.count.mockResolvedValue(1);
+    mockPrisma.operationalIncident.findMany.mockImplementation(({ where }) =>
+      where.severity === "CRITICAL"
+        ? Promise.resolve([{
+            id: "00000000-0000-4000-8000-000000000701",
+            incidentNumber: "INC-2026-0001",
+            status: "OPEN",
+            severity: "CRITICAL",
+            dueAt: new Date("2026-07-23T00:00:00.000Z"),
+            createdAt: new Date("2026-07-20T00:00:00.000Z")
+          }])
+        : Promise.resolve([])
+    );
+  });
+
+  it("returns one bounded role-pooled resolution stream with exact eligibility", async () => {
+    const actor = { ...session, permissionCodes: [permissions.incidentResolve] };
+    await expect(listIncidentMyTaskPage(actor as never, { take: 2 })).resolves.toMatchObject({
+      totalCount: 1,
+      items: [{
+        publicReference: "INC-2026-0001",
+        priority: "CRITICAL",
+        actionLabel: "Resolve incident"
+      }]
+    });
+    const baseWhere = mockPrisma.operationalIncident.count.mock.calls[0]![0].where;
+    expect(baseWhere).toMatchObject({
+      tenantId: actor.context.tenantId,
+      companyId: actor.context.companyId,
+      brandId: actor.context.brandId,
+      locationId: actor.context.locationId,
+      status: { in: ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"] },
+      resolvedAt: null,
+      OR: [
+        { severity: { in: ["MEDIUM", "LOW"] } },
+        expect.objectContaining({
+          severity: { in: ["CRITICAL", "HIGH"] },
+          reportedByUserId: { not: null },
+          NOT: { reportedByUserId: actor.user.id }
+        })
+      ]
+    });
+    expect(mockPrisma.operationalIncident.findMany).toHaveBeenCalledTimes(4);
+    for (const [query] of mockPrisma.operationalIncident.findMany.mock.calls) {
+      expect(query.where).toMatchObject(baseWhere);
+      expect(query.take).toBe(3);
+      expect(query.select).toEqual({
+        id: true,
+        incidentNumber: true,
+        status: true,
+        severity: true,
+        dueAt: true,
+        createdAt: true
+      });
+    }
+  });
+
+  it("does not query incidents without resolution authority", async () => {
+    await expect(
+      listIncidentMyTaskPage({ ...session, permissionCodes: [permissions.incidentView] } as never)
+    ).resolves.toEqual({ totalCount: 0, items: [], nextCursor: null });
+    expect(mockPrisma.operationalIncident.count).not.toHaveBeenCalled();
+    expect(mockPrisma.operationalIncident.findMany).not.toHaveBeenCalled();
+  });
+
+  it("continues the matching severity and due-date stream after a v2 anchor", async () => {
+    const actor = { ...session, permissionCodes: [permissions.incidentResolve] };
+    const after = {
+      priority: "CRITICAL" as const,
+      dueAt: "2026-07-23T00:00:00.000Z",
+      createdAt: "2026-07-20T00:00:00.000Z",
+      sourceType: "INCIDENT" as const,
+      recordId: "00000000-0000-4000-8000-000000000700"
+    };
+    await listIncidentMyTaskPage(actor as never, { after, take: 1 });
+    const criticalQuery = mockPrisma.operationalIncident.findMany.mock.calls
+      .map(([query]) => query)
+      .find((query) => query.where.severity === "CRITICAL");
+    expect(criticalQuery.where.AND).toEqual([
+      {
+        OR: [
+          { dueAt: null },
+          { dueAt: { gt: new Date(after.dueAt) } },
+          {
+            dueAt: new Date(after.dueAt),
+            AND: [{
+              OR: [
+                { createdAt: { gt: new Date(after.createdAt) } },
+                { createdAt: new Date(after.createdAt), id: { gt: after.recordId } }
+              ]
+            }]
+          }
+        ]
+      }
+    ]);
+  });
 });
 
 const serviceSource = readFileSync(new URL("./incidents.ts", import.meta.url), "utf8");
@@ -939,5 +1044,64 @@ describe("Phase 2 incident management foundation", () => {
         status: "ALL"
       }).map((incident) => incident.id)
     ).toEqual(["incident-1", "incident-2", "incident-3"]);
+  });
+});
+
+describe("Incident independent-review lineage", () => {
+  it("fails high-risk resolve and cancel closed when reporter lineage is missing", async () => {
+    for (const [action, form] of [
+      [resolveOperationalIncident, resolveIncidentForm],
+      [cancelOperationalIncident, cancelIncidentForm]
+    ] as const) {
+      vi.clearAllMocks();
+      mockContext.requireSessionContext.mockResolvedValueOnce({
+        ...session,
+        permissionCodes: [permissions.incidentResolve]
+      });
+      mockPrisma.userRoleAssignment.findMany.mockResolvedValueOnce([
+        { role: { permissions: [{ permission: { tenantId: session.context.tenantId, code: permissions.incidentResolve } }] } }
+      ]);
+      const tx = {
+        operationalIncident: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: "00000000-0000-4000-8000-000000000701",
+            incidentDate: new Date("2026-07-03T00:00:00.000Z"),
+            status: "OPEN",
+            severity: "CRITICAL",
+            reportedByUserId: null,
+            resolvedAt: null
+          }),
+          updateMany: vi.fn()
+        }
+      };
+      mockPrisma.$transaction.mockImplementationOnce(async (callback) => callback(tx));
+      await expect(action(form())).rejects.toThrow("INCIDENT_INDEPENDENT_REVIEW_REQUIRED");
+      expect(tx.operationalIncident.updateMany).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe("Incident detail scope", () => {
+  it("requires the exact null-aware brand and location before loading detail", async () => {
+    vi.clearAllMocks();
+    mockPrisma.operationalIncident.findFirst.mockResolvedValueOnce(null);
+    const nullBrandSession = {
+      ...session,
+      context: { ...session.context, brandId: null, brandName: "All Brands" }
+    };
+    await expect(
+      getOperationalIncidentSummary(nullBrandSession as never, "00000000-0000-4000-8000-000000000701")
+    ).resolves.toBeNull();
+    expect(mockPrisma.operationalIncident.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "00000000-0000-4000-8000-000000000701",
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        brandId: null,
+        locationId: session.context.locationId
+      },
+      select: { id: true }
+    });
+    expect(mockPrisma.operationalIncident.findMany).not.toHaveBeenCalled();
   });
 });

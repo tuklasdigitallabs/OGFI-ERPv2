@@ -125,7 +125,9 @@ export default async function IncidentDetailPage({
   }
   const canResolve =
     session.permissionCodes.includes(permissions.incidentResolve) &&
-    !["RESOLVED", "CANCELLED"].includes(incident.status);
+    !["RESOLVED", "CANCELLED"].includes(incident.status) &&
+    (!(["CRITICAL", "HIGH"].includes(incident.severity)) ||
+      (incident.hasReporter && !incident.reportedByCurrentUser));
   const canCorrect =
     session.permissionCodes.includes(permissions.incidentCreate) &&
     ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"].includes(incident.status);

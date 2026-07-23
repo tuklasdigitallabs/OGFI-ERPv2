@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
   purchaseRequests: vi.fn(),
   purchaseOrders: vi.fn(),
   branchOperations: vi.fn(),
-  foodSafety: vi.fn()
+  foodSafety: vi.fn(),
+  incidents: vi.fn()
 }));
 
 vi.mock("./transfers", () => ({ listTransferMyTaskPage: mocks.transfers }));
@@ -31,6 +32,7 @@ vi.mock("./branchOperations", () => ({
   listBranchOperationMyTaskPage: mocks.branchOperations
 }));
 vi.mock("./foodSafety", () => ({ listFoodSafetyMyTaskPage: mocks.foodSafety }));
+vi.mock("./incidents", () => ({ listIncidentMyTaskPage: mocks.incidents }));
 
 const session = {
   user: { id: "user-1", email: "user@example.test", displayName: "User", role: "Operator" },
@@ -90,6 +92,11 @@ describe("My Tasks queue", () => {
       nextCursor: null,
       items: [{ taskId: "food-safety-fs1", recordId: "fs1", publicReference: "Opening Temperature Log", status: "SUBMITTED", actionLabel: "Review food-safety log", locationName: "Branch", businessDate: "2026-07-23", logType: "TEMPERATURE", createdAt: "2026-07-22T01:00:00.000Z" }]
     });
+    mocks.incidents.mockResolvedValue({
+      totalCount: 1,
+      nextCursor: null,
+      items: [{ taskId: "incident-i1", recordId: "i1", publicReference: "INC-1", status: "OPEN", severity: "CRITICAL", priority: "CRITICAL", dueAt: "2026-07-23T00:00:00.000Z", actionLabel: "Resolve incident", createdAt: "2026-07-22T02:00:00.000Z" }]
+    });
   });
 
   test("merges enrolled sources in the shared stable order", async () => {
@@ -108,6 +115,8 @@ describe("My Tasks queue", () => {
 
   test("binds a cursor to its current user scope and rejects tampering", () => {
     const cursor = encodeMyTasksCursor(session as never, {
+      priority: "HIGH",
+      dueAt: null,
       createdAt: "2026-07-20T00:00:00.000Z",
       sourceType: "TRANSFER",
       recordId: "t1"
@@ -115,6 +124,12 @@ describe("My Tasks queue", () => {
     expect(decodeMyTasksCursor(session as never, cursor)).toMatchObject({ recordId: "t1" });
     expect(() => decodeMyTasksCursor(session as never, `${cursor}x`)).toThrow("MY_TASK_CURSOR_INVALID");
     expect(() => decodeMyTasksCursor({ ...session, user: { ...session.user, id: "other" } } as never, cursor)).toThrow("MY_TASK_CURSOR_INVALID");
+    const legacyCursor = encodeMyTasksCursor(session as never, {
+      createdAt: "2026-07-20T00:00:00.000Z",
+      sourceType: "TRANSFER",
+      recordId: "t1"
+    });
+    expect(() => decodeMyTasksCursor(session as never, legacyCursor)).toThrow("MY_TASK_CURSOR_INVALID");
   });
 
   test("withholds a total instead of treating a failed source as empty", async () => {
@@ -171,6 +186,16 @@ describe("My Tasks queue", () => {
       totalCount: 1,
       enrolledSources: [{ type: "FOOD_SAFETY", label: "Food safety" }],
       items: [{ taskId: "food-safety-fs1", sourceType: "FOOD_SAFETY" }]
+    });
+  });
+
+  test("enrolls and prioritizes scoped incident resolution work", async () => {
+    await expect(
+      getMyTasksPage({ ...session, permissionCodes: [permissions.incidentResolve] } as never)
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      enrolledSources: [{ type: "INCIDENT", label: "Incidents" }],
+      items: [{ taskId: "incident-i1", sourceType: "INCIDENT", priority: "CRITICAL" }]
     });
   });
 });

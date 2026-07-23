@@ -15,6 +15,7 @@ import {
 import type { SessionContext } from "./context";
 import {
   compareDashboardTaskOrder,
+  dashboardTaskPriorities,
   dashboardTaskSources,
   type DashboardTaskCursor,
   type DashboardTaskSource
@@ -27,20 +28,23 @@ import { listTransferMyTaskPage } from "./transfers";
 import { listWastageMyTaskPage } from "./wastage";
 import { listBranchOperationMyTaskPage } from "./branchOperations";
 import { listFoodSafetyMyTaskPage } from "./foodSafety";
+import { listIncidentMyTaskPage } from "./incidents";
 
-const myTasksCursorDomain = "my-tasks-v1";
+const myTasksCursorDomain = "my-tasks-v2";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
 const defaultPageSize = 20;
 const maxPageSize = 25;
 
 type MyTasksCursorPayload = {
-  version: 1;
+  version: 2;
   scopeHash: string;
   issuedAt: number;
   anchor: DashboardTaskCursor;
 };
 
 export type MyTask = DashboardTaskCursor & {
+  priority: (typeof dashboardTaskPriorities)[number];
+  dueAt: string | null;
   taskId: string;
   publicReference: string;
   status: string;
@@ -81,6 +85,9 @@ function isDashboardTaskCursor(value: unknown): value is DashboardTaskCursor {
     typeof cursor.createdAt === "string" &&
     !Number.isNaN(new Date(cursor.createdAt).getTime()) &&
     typeof cursor.recordId === "string" &&
+    dashboardTaskPriorities.includes(cursor.priority as (typeof dashboardTaskPriorities)[number]) &&
+    (cursor.dueAt === null ||
+      (typeof cursor.dueAt === "string" && !Number.isNaN(new Date(cursor.dueAt).getTime()))) &&
     dashboardTaskSources.includes(cursor.sourceType as DashboardTaskSource)
   );
 }
@@ -91,7 +98,7 @@ function invalidCursor(): never {
 
 export function encodeMyTasksCursor(session: SessionContext, anchor: DashboardTaskCursor) {
   const payload: MyTasksCursorPayload = {
-    version: 1,
+    version: 2,
     scopeHash: taskScopeHash(session),
     issuedAt: Date.now(),
     anchor
@@ -117,7 +124,7 @@ export function decodeMyTasksCursor(session: SessionContext, cursor: string) {
   }
   const now = Date.now();
   if (
-    payload.version !== 1 ||
+    payload.version !== 2 ||
     payload.scopeHash !== taskScopeHash(session) ||
     !Number.isInteger(payload.issuedAt) ||
     payload.issuedAt > now + 60_000 ||
@@ -161,6 +168,8 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
           ...page,
           items: page.items.map((item) => ({
             ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
             sourceType: "PURCHASE_REQUEST" as const,
             sourceLabel: "Purchase request",
             locationLabel: `${item.requestLocationName} · required ${item.requiredDate}`,
@@ -180,6 +189,8 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
           ...page,
           items: page.items.map((item) => ({
             ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
             sourceType: "PURCHASE_ORDER" as const,
             sourceLabel: "Purchase order",
             locationLabel: `${item.deliveryLocationName} · ${item.supplierName}`,
@@ -202,6 +213,8 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
           ...page,
           items: page.items.map((item) => ({
             ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
             sourceType: "TRANSFER" as const,
             sourceLabel: "Transfer",
             locationLabel: `${item.sourceLocationName} → ${item.destinationLocationName}`,
@@ -224,6 +237,8 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
           ...page,
           items: page.items.map((item) => ({
             ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
             sourceType: "WASTAGE" as const,
             sourceLabel: "Wastage",
             locationLabel: item.inventoryLocationName,
@@ -246,6 +261,8 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
           ...page,
           items: page.items.map((item) => ({
             ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
             sourceType: "STOCK_ADJUSTMENT" as const,
             sourceLabel: "Stock adjustment",
             status: "APPROVED",
@@ -269,6 +286,8 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
           ...page,
           items: page.items.map((item) => ({
             ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
             sourceType: "RECEIVING" as const,
             sourceLabel: "Receiving",
             locationLabel: `${item.receivingLocationName} · PO ${item.purchaseOrderReference}`,
@@ -294,6 +313,8 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
           ...page,
           items: page.items.map((item) => ({
             ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
             sourceType: "BRANCH_OPERATION" as const,
             sourceLabel: "Branch checklist",
             locationLabel: `${item.locationName} · ${item.businessDate} · ${item.shiftType.toLowerCase()}`,
@@ -319,10 +340,35 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
           ...page,
           items: page.items.map((item) => ({
             ...item,
+            priority: "HIGH" as const,
+            dueAt: null,
             sourceType: "FOOD_SAFETY" as const,
             sourceLabel: "Food-safety log",
             locationLabel: `${item.locationName} · ${item.businessDate} · ${item.logType.toLowerCase()}`,
             href: `/food-safety/${item.recordId}`
+          }))
+        };
+      }
+    });
+  }
+  if (session.permissionCodes.includes(permissions.incidentResolve)) {
+    sources.push({
+      type: "INCIDENT",
+      label: "Incidents",
+      read: async (after, take) => {
+        const page = await listIncidentMyTaskPage(session, {
+          take,
+          ...(after ? { after } : {})
+        });
+        return {
+          ...page,
+          items: page.items.map((item) => ({
+            ...item,
+            priority: item.severity,
+            sourceType: "INCIDENT" as const,
+            sourceLabel: "Incident",
+            locationLabel: `${session.context.locationName}${item.dueAt ? ` · due ${item.dueAt.slice(0, 10)}` : " · no due date"}`,
+            href: `/incidents/${item.recordId}`
           }))
         };
       }

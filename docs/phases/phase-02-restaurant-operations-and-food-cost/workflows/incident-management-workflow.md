@@ -45,6 +45,12 @@ Non-terminal detail correction keeps the current status and records correction r
 - Free-text comments do not replace structured fields, reason codes or evidence where those are required.
 - Core document and security rules override this framework if a conflict exists.
 
+The shared `My Tasks` queue may surface one role-pooled resolution obligation
+per active incident. High- and critical-severity work requires known reporter
+lineage and an independent resolver. Cancellation remains a destination
+exception and detail correction remains outside the queue; every action is
+reauthorized by the Incident source service.
+
 ## Open Decisions
 
 Use `../implementation/PHASE2_DECISION_REGISTER.md` for future expansion such as assignment workflow, terminal reopen, source-link correction after creation, escalation routes, or approval-backed incident closure.
