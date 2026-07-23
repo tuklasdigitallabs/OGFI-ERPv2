@@ -24,7 +24,7 @@ Every dashboard must answer four questions immediately:
 
 Every dashboard uses this order:
 
-1. **Context bar** — Company, Brand, Branch/Location, date range, data freshness.
+1. **Context bar** — Company, Brand, Branch/Location, date range, and truthful source-observation context.
 2. **Action queue** — approvals, overdue tasks, discrepancies, blocked records.
 3. **Critical KPI strip** — 3–6 core values appropriate to the role.
 4. **Operational detail** — trend, list, variance, or status visualization.
@@ -44,7 +44,7 @@ Required context fields:
 - Brand, where applicable
 - Branch / location, warehouse, or project
 - Period
-- Last refreshed timestamp
+- Dashboard assembly time and compact status for each authorized source attempted in the current request
 
 Rules:
 
@@ -52,6 +52,9 @@ Rules:
 - Head Office users may switch to All Branches only if their access allows it.
 - Filters must persist while drilling into a record and returning to the dashboard.
 - User scope must constrain available filters; users cannot filter into unauthorized data.
+- A source check time means the dashboard received that source response at that time. It is not the record's last-change time, a completeness guarantee, or freshness-SLA evidence.
+- Show a source-native `Data as of` time only when the source adapter defines and supplies that timestamp. Never infer it from the newest row.
+- Omit unauthorized and deliberately suppressed sources from source-status disclosure.
 
 ---
 
@@ -207,7 +210,7 @@ Use when there is genuinely no data in the selected scope. Explain whether this 
 
 ### Error state
 
-State what failed, what data may be stale, and offer retry. Do not replace the whole page with a vague error when other data is available.
+State which authorized source summary was unavailable, what dashboard areas may be partial, and offer its authoritative source workspace. Do not replace the whole page with a vague error when other data is available, expose internal failure details, or treat unavailable as zero.
 
 ### Loading state
 
@@ -221,4 +224,6 @@ Use skeletons for cards, lists, and table rows. Preserve the page layout so user
 - Defer expensive secondary analytics where necessary.
 - Avoid loading all transaction history into the browser.
 - Refresh live action queues intelligently, without disrupting a user’s current action.
-- Show last updated time for data that may lag.
+- Bound each authorized source read independently so one slow source does not block every other summary.
+- Show dashboard assembly/source-check time without describing it as fresh, stale, live, complete, or real-time.
+- Withhold complete cross-source totals when a contributing source is unavailable; visible rows may be labeled as coming from available sources.

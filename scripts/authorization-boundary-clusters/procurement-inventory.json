@@ -20,6 +20,13 @@
       "coveredControls": ["tenant", "company", "location", "item company", "no movement or balance mutation", "no audit mutation"]
     },
     {
+      "id": "AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES",
+      "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
+      "testName": "AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES",
+      "kind": "REAL_POSTGRESQL_READ_BOUNDARY",
+      "coveredControls": ["live read permission", "tenant", "company", "selected active location", "exact aggregate values", "cross-scope non-disclosure"]
+    },
+    {
       "id": "AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK",
       "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
       "testName": "AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK",
@@ -112,6 +119,8 @@
     }
   ],
   "boundaries": [
+    {"surfaceId":"server/services/dashboard.ts#getOperationalDashboard","classification":"PUBLIC_BOUNDARY","adapterIds":["permission-gated-lazy-source-enrollment","source-service-reauthorization","process-wide-admission-bound"],"caseIds":["AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"],"noMutationControls":["read-only dashboard assembly"],"status":"COVERED"},
+    {"surfaceId":"server/services/inventory.ts#getInventoryBalanceDashboardRead","classification":"PUBLIC_BOUNDARY","adapterIds":["live-read-permission","tenant-company-selected-location-aggregate"],"caseIds":["AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"],"noMutationControls":["read-only bounded aggregate"],"status":"COVERED"},
     {"surfaceId":"server/services/inventory.ts#lockInventoryLocationForPosting","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["single-location-delegation","tenant-company-location-row-lock","exact-lock-set"],"caseIds":["AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"],"noMutationControls":["InventoryLocation","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/inventory.ts#lockInventoryLocationsForPosting","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["tenant-company-location-row-lock","exact-lock-set"],"caseIds":["AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK"],"noMutationControls":["InventoryLocation","InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},
     {"surfaceId":"server/services/inventory.ts#postInventoryMovement","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["inventory-posting-scope-adapter","inventory-source-event-idempotency"],"caseIds":["AUTHZ-PI-INVENTORY-POST-SCOPE-MATRIX","AUTHZ-PI-INVENTORY-IDEMPOTENT-RETRY-POSTS-EXACTLY-ONCE"],"noMutationControls":["InventoryMovement","InventoryBalance","AuditEvent"],"status":"COVERED"},

@@ -20963,9 +20963,25 @@
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "permission-gated-lazy-source-enrollment",
+      "source-service-reauthorization",
+      "process-wide-admission-bound"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
+    ],
+    "noMutationControls": [
+      "read-only dashboard assembly"
+    ]
   },
   {
     "id": "server/services/evidenceRetention.ts#listEvidenceRetentionRegister",
@@ -25729,6 +25745,42 @@
     "noMutationControls": [
       "all-protected-state",
       "operational-status-transition"
+    ]
+  },
+  {
+    "id": "server/services/inventory.ts#getInventoryBalanceDashboardRead",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryBalanceView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-read-permission",
+      "tenant-company-selected-location-aggregate"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
+    ],
+    "noMutationControls": [
+      "read-only bounded aggregate"
     ]
   },
   {

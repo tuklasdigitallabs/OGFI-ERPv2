@@ -197,3 +197,10 @@ Add a dated entry whenever an approved decision changes product scope, business 
 - Confirmed and implemented `DEC-0067`: My Tasks now enrolls bounded, role-pooled Maintenance completion with native priority and due dates, exact nullable-brand scope, and independent high-risk completion controls.
 - Made Maintenance correction consistently require `restaurant.maintenance.correct`, and hardened high-risk completion/cancellation plus scoped dashboard, detail, history, and source-Incident reads.
 - Updated Maintenance workflow, UAT, glossary, and dashboard guidance; Workspace 1 remains open for its remaining browser, database, backlog, and hosted gates.
+
+## 2026-07-23 — Dashboard Source Observation And Deadline Contract
+
+- Confirmed and implemented `DEC-0072`: Overview now reports assembly and per-attempt source-check times without claiming business freshness, completeness, or real-time consistency.
+- Replaced eager shared source mutation with lazy authorized descriptors, immutable result patches, and a configurable 2.5-second technical deadline capped at 3 seconds.
+- Added explicit partial-result provenance and nullable cross-source totals, replaced the unbounded Inventory Balance dashboard read with a bounded aggregate, and aligned dashboard UI, environment, glossary, help, and release guidance.
+- Workspace 1 remains open for authenticated responsive-browser, staging fault-injection/performance, production-build, database, and hosted gates.

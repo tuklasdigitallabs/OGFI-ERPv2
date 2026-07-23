@@ -90,7 +90,7 @@ const surfacePolicyOverrides = [
 const highRiskActionPattern =
   /^(activate|add|apply|approve|archive|assign|attest|begin|cancel|close|complete|create|deactivate|decide|delete|dispatch|end|execute|finalize|fulfill|grant|import|initiate|issue|link|lock|log|manage|mark|notify|post|publish|reassign|receive|record|reject|release|remove|reopen|request|resolve|retry|return|review|revoke|reverse|save|send|set|submit|transition|unlink|update|upload|upsert|verify|void|waive)/i;
 const highRiskDisclosurePattern =
-  /^(build.*export|download|export|getUnreadNotificationCount|listNotifications|list.*evidence|listProjectMemberOptions|listCoreAdminAuditEvents|getCoreAdmin(?:Overview|ApprovalRuleDetail|AuditEventDetail|CompanyDetail|LocationDetail|PermissionDetail|RoleDetail|UserDetail)|getReleaseSecurityEvidence)/i;
+  /^(build.*export|download|export|getInventoryBalanceDashboardRead|getUnreadNotificationCount|listNotifications|list.*evidence|listProjectMemberOptions|listCoreAdminAuditEvents|getCoreAdmin(?:Overview|ApprovalRuleDetail|AuditEventDetail|CompanyDetail|LocationDetail|PermissionDetail|RoleDetail|UserDetail)|getReleaseSecurityEvidence)/i;
 const standardServiceEntrypointNames = new Set(["verifyPassword"]);
 const reviewedNonCallableServiceReexports = new Set([
   "server/services/expansionProjects.ts|./expansionProjectTypes|expansionProjectTypes|expansionProjectTypes",

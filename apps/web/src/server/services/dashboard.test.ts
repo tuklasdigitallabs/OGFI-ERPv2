@@ -1,10 +1,17 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildOperationalDashboardModel,
+  DashboardSourceAdmissionController,
+  dashboardRuntimeTestSupport,
   dashboardDueState,
-  dashboardOperationalDate
+  dashboardOperationalDate,
+  getDashboardSourceDeadlineMs,
+  getDashboardSourceMaxInFlight,
+  getOperationalDashboardSourceDescriptors,
+  type DashboardTelemetryEvent,
+  type DashboardSourceDescriptor
 } from "./dashboard";
 import type { SessionContext } from "./context";
 
@@ -34,7 +41,306 @@ const session: SessionContext = {
   permissionCodes: []
 };
 
+const warnTrustGate = {
+  key: "reporting.dashboard.unreconciled_mode",
+  mode: "warn_and_link" as const,
+  label: "Show warning and source link",
+  isOverridden: false,
+  sourceDecisionId: "DEC-0036"
+};
+
+const silentTelemetry = () => undefined;
+const {
+  collectDashboardSources,
+  emitDashboardAssemblyTelemetry
+} = dashboardRuntimeTestSupport;
+
 describe("operational dashboard model", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("validates the bounded deployment deadline", () => {
+    expect(getDashboardSourceDeadlineMs({})).toBe(2_500);
+    expect(getDashboardSourceDeadlineMs({ DASHBOARD_SOURCE_DEADLINE_MS: "3000" }))
+      .toBe(3_000);
+    expect(() =>
+      getDashboardSourceDeadlineMs({ DASHBOARD_SOURCE_DEADLINE_MS: "3001" })
+    ).toThrow("DASHBOARD_SOURCE_DEADLINE_MS_INVALID");
+    expect(() =>
+      getDashboardSourceDeadlineMs({ DASHBOARD_SOURCE_DEADLINE_MS: "invalid" })
+    ).toThrow("DASHBOARD_SOURCE_DEADLINE_MS_INVALID");
+    expect(getDashboardSourceMaxInFlight({})).toBe(32);
+    expect(getDashboardSourceMaxInFlight({ DASHBOARD_SOURCE_MAX_IN_FLIGHT: "64" }))
+      .toBe(64);
+    expect(() =>
+      getDashboardSourceMaxInFlight({ DASHBOARD_SOURCE_MAX_IN_FLIGHT: "65" })
+    ).toThrow("DASHBOARD_SOURCE_MAX_IN_FLIGHT_INVALID");
+  });
+
+  it("omits unauthorized source descriptors and keeps authorized reads lazy", () => {
+    const descriptors = getOperationalDashboardSourceDescriptors(session);
+
+    expect(descriptors.map((descriptor) => descriptor.id)).toEqual(["trust-gate"]);
+    expect(descriptors[0]?.read).toEqual(expect.any(Function));
+  });
+
+  it("closes a never-settling source at its deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-23T00:00:00.000Z"));
+    const read = vi.fn(() => new Promise<never>(() => undefined));
+    const descriptor: DashboardSourceDescriptor = {
+      id: "receiving",
+      label: "Receiving Follow-up",
+      href: "/receiving",
+      read
+    };
+
+    const pending = collectDashboardSources([descriptor], 2_500, {
+      admissionController: new DashboardSourceAdmissionController(1),
+      telemetry: silentTelemetry
+    });
+    expect(read).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_500);
+
+    await expect(pending).resolves.toMatchObject({
+      sourceObservations: [{
+        id: "receiving",
+        availability: "UNAVAILABLE",
+        checkedAt: "2026-07-23T00:00:02.500Z"
+      }],
+      unavailableSources: [{ id: "receiving", label: "Receiving Follow-up" }]
+    });
+    expect(read).toHaveBeenCalledOnce();
+  });
+
+  it("does not let a late fulfillment mutate the settled response", async () => {
+    vi.useFakeTimers();
+    let resolveRead: ((value: { patch: { approvalPreviewUnavailable: boolean } }) => void) |
+      undefined;
+    const read = vi.fn(() => new Promise<{ patch: { approvalPreviewUnavailable: boolean } }>(
+      (resolve) => { resolveRead = resolve; }
+    ));
+    const pending = collectDashboardSources([{
+      id: "approvals",
+      label: "Approvals",
+      href: "/approvals",
+      read
+    }], 100, {
+      admissionController: new DashboardSourceAdmissionController(1),
+      telemetry: silentTelemetry
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    const settled = await pending;
+
+    resolveRead?.({ patch: { approvalPreviewUnavailable: true } });
+    await Promise.resolve();
+
+    expect(settled.approvalPreviewUnavailable).toBeUndefined();
+    expect(settled.sourceObservations).toEqual([
+      expect.objectContaining({ id: "approvals", availability: "UNAVAILABLE" })
+    ]);
+  });
+
+  it("distinguishes successful zero data from unavailable and limits dataAsOf provenance", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-23T01:00:00.000Z"));
+    const source = await collectDashboardSources([
+      {
+        id: "inventory-balances",
+        label: "Inventory balances",
+        href: "/inventory",
+        read: async () => ({
+          patch: {
+            inventoryBalanceDashboard: {
+              totalRows: 0,
+              positiveRows: 0,
+              zeroRows: 0,
+              lotExpiryTrackedRows: 0,
+              recentlyUpdatedRows: 0
+            }
+          },
+          dataAsOf: "2026-07-22T23:00:00.000Z"
+        })
+      },
+      {
+        id: "inventory-reconciliation",
+        label: "Ledger reconciliation",
+        href: "/inventory/reconciliation",
+        read: async () => ({
+          patch: {},
+          dataAsOf: "2026-07-22T23:30:00.000Z"
+        })
+      },
+      {
+        id: "receiving",
+        label: "Receiving",
+        href: "/receiving",
+        read: async () => { throw new Error("database password must stay private"); }
+      }
+    ], 2_500, {
+      admissionController: new DashboardSourceAdmissionController(3),
+      telemetry: silentTelemetry
+    });
+
+    expect(source.sourceObservations).toEqual([
+      {
+        id: "inventory-balances",
+        label: "Inventory balances",
+        href: "/inventory",
+        availability: "AVAILABLE",
+        checkedAt: "2026-07-23T01:00:00.000Z"
+      },
+      {
+        id: "inventory-reconciliation",
+        label: "Ledger reconciliation",
+        href: "/inventory/reconciliation",
+        availability: "AVAILABLE",
+        checkedAt: "2026-07-23T01:00:00.000Z",
+        dataAsOf: "2026-07-22T23:30:00.000Z"
+      },
+      {
+        id: "receiving",
+        label: "Receiving",
+        href: "/receiving",
+        availability: "UNAVAILABLE",
+        checkedAt: "2026-07-23T01:00:00.000Z"
+      }
+    ]);
+    expect(JSON.stringify(source)).not.toContain("database password");
+    const dashboard = buildOperationalDashboardModel(session, source);
+    expect(dashboard.metrics).toContainEqual(
+      expect.objectContaining({ id: "stocked-items", displayValue: "0" })
+    );
+    expect(dashboard.sourceObservations[0]).toMatchObject({
+      id: "inventory-balances",
+      availability: "AVAILABLE"
+    });
+  });
+
+  it("bounds timed-out underlying work until it actually settles", async () => {
+    vi.useFakeTimers();
+    const admissionController = new DashboardSourceAdmissionController(2);
+    const events: DashboardTelemetryEvent[] = [];
+    const resolvers: Array<(value: { patch: Record<string, never> }) => void> = [];
+    const read = vi.fn(
+      () => new Promise<{ patch: Record<string, never> }>((resolve) => {
+        resolvers.push(resolve);
+      })
+    );
+    const descriptors: DashboardSourceDescriptor[] = [
+      { id: "receiving", label: "Receiving", href: "/receiving", read },
+      { id: "transfers", label: "Transfers", href: "/transfers", read },
+      { id: "maintenance", label: "Maintenance", href: "/maintenance", read }
+    ];
+
+    const first = collectDashboardSources(descriptors, 100, {
+      admissionController,
+      telemetry: (event) => events.push(event)
+    });
+    await Promise.resolve();
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(admissionController.inFlight).toBe(2);
+    await vi.advanceTimersByTimeAsync(100);
+    await first;
+    expect(admissionController.inFlight).toBe(2);
+    expect(events.filter((event) => event.event === "dashboard_source_read"))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ outcome: "SATURATED", sourceId: "maintenance" }),
+        expect.objectContaining({ outcome: "TIMEOUT", sourceId: "receiving" }),
+        expect.objectContaining({ outcome: "TIMEOUT", sourceId: "transfers" })
+      ]));
+
+    await collectDashboardSources([descriptors[0]!], 100, {
+      admissionController,
+      telemetry: (event) => events.push(event)
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+
+    resolvers.forEach((resolve) => resolve({ patch: {} }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(admissionController.inFlight).toBe(0);
+    expect(events.filter(
+      (event) => event.event === "dashboard_source_read" &&
+        event.outcome === "LATE_COMPLETION"
+    )).toHaveLength(2);
+
+    await collectDashboardSources([{
+      id: "maintenance",
+      label: "Maintenance",
+      href: "/maintenance",
+      read: async () => ({ patch: {} })
+    }], 100, { admissionController, telemetry: silentTelemetry });
+    expect(admissionController.inFlight).toBe(0);
+  });
+
+  it("emits closed exception and assembly telemetry without internal errors", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-23T03:00:00.000Z"));
+    const events: DashboardTelemetryEvent[] = [];
+    await collectDashboardSources([{
+      id: "receiving",
+      label: "Receiving",
+      href: "/receiving",
+      read: async () => { throw new Error("postgres://secret@internal"); }
+    }], 100, {
+      admissionController: new DashboardSourceAdmissionController(1),
+      telemetry: (event) => events.push(event)
+    });
+    const dashboard = buildOperationalDashboardModel(session, {
+      sourceObservations: [{
+        id: "receiving",
+        label: "Receiving",
+        href: "/receiving",
+        availability: "UNAVAILABLE",
+        checkedAt: "2026-07-23T03:00:00.000Z"
+      }]
+    });
+    vi.setSystemTime(new Date("2026-07-23T03:00:00.025Z"));
+    emitDashboardAssemblyTelemetry(
+      new Date("2026-07-23T03:00:00.000Z").getTime(),
+      dashboard,
+      (event) => events.push(event)
+    );
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        event: "dashboard_source_read",
+        outcome: "EXCEPTION",
+        sourceId: "receiving"
+      }),
+      expect.objectContaining({
+        event: "dashboard_assembly",
+        outcome: "PARTIAL",
+        durationMs: 25,
+        attemptedSourceCount: 1,
+        unavailableSourceCount: 1
+      })
+    ]);
+    expect(JSON.stringify(events)).not.toContain("secret");
+  });
+
+  it("reports the feature-disabled approval descriptor as unavailable", async () => {
+    const descriptor = getOperationalDashboardSourceDescriptors({
+      ...session,
+      permissionCodes: ["purchasing.purchase_request.approve"]
+    }).find((candidate) => candidate.id === "approvals");
+    expect(descriptor).toBeDefined();
+
+    const source = await collectDashboardSources([descriptor!], 100, {
+      admissionController: new DashboardSourceAdmissionController(1),
+      telemetry: silentTelemetry
+    });
+    expect(source.sourceObservations).toEqual([
+      expect.objectContaining({
+        id: "approvals",
+        availability: "UNAVAILABLE"
+      })
+    ]);
+    expect(buildOperationalDashboardModel(session, source).approvalQueueContract)
+      .toMatchObject({ availability: "UNAVAILABLE", totalCount: null });
+  });
   it("uses the Manila operating date for dashboard timing", () => {
     expect(dashboardOperationalDate("2026-07-22T17:00:00.000Z")).toBe(
       "2026-07-23"
@@ -223,6 +529,7 @@ describe("operational dashboard model", () => {
 
   it("surfaces source-linked exceptions without creating dashboard state", () => {
     const dashboard = buildOperationalDashboardModel(session, {
+      dashboardTrustGate: warnTrustGate,
       purchaseOrders: [
         {
           id: "po-1",
@@ -343,6 +650,56 @@ describe("operational dashboard model", () => {
     );
   });
 
+  it("fails closed when trust-gate policy is unavailable", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      reconciliation: {
+        varianceCount: 1,
+        generatedAt: "2026-07-23T00:00:00.000Z",
+        candidates: [{
+          key: "loc-1|item-1|none",
+          inventoryLocationName: "Branch Stock",
+          locationName: "Selected Branch",
+          itemCode: "RICE",
+          itemName: "Rice",
+          lotNumber: null,
+          expiryDate: null,
+          baseUomCode: "KG",
+          balanceQuantity: 5,
+          ledgerQuantity: 4,
+          varianceQuantity: 1,
+          status: "VARIANCE",
+          traceHref: "/inventory/ledger"
+        }]
+      },
+      sourceObservations: [{
+        id: "trust-gate",
+        label: "Dashboard trust status",
+        href: "/inventory",
+        availability: "UNAVAILABLE",
+        checkedAt: "2026-07-23T00:00:00.000Z"
+      }]
+    });
+
+    expect(dashboard.trustGate).toMatchObject({
+      availability: "UNAVAILABLE",
+      mode: "block",
+      label: expect.stringContaining("Unavailable")
+    });
+    expect(dashboard.cards.map((card) => card.id)).not.toContain(
+      "ledger-reconciliation"
+    );
+    expect(dashboard.exceptionQueue.map((item) => item.label)).not.toContain(
+      "Ledger variance"
+    );
+    expect(dashboard.sourceHealth).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "dashboard-trust-gate",
+        displayValue: "Unavailable",
+        tone: "warning"
+      })
+    ]));
+  });
+
   it("includes implemented follow-up records for PO amendments, wastage, and adjustments", () => {
     const dashboard = buildOperationalDashboardModel(session, {
       purchaseOrders: [
@@ -401,6 +758,7 @@ describe("operational dashboard model", () => {
     const dashboard = buildOperationalDashboardModel(
       { ...session, permissionCodes: ["inventory.stock_count.review"] },
       {
+      dashboardTrustGate: warnTrustGate,
       approvals: [
         {
           approvalInstanceId: "approval-1",
@@ -529,6 +887,7 @@ describe("operational dashboard model", () => {
 
   it("surfaces Phase 2 restaurant operations from source dashboards", () => {
     const dashboard = buildOperationalDashboardModel(session, {
+      dashboardTrustGate: warnTrustGate,
       branchOperations: {
         locationName: "Selected Branch",
         businessDate: "2026-07-03",
@@ -819,8 +1178,9 @@ describe("operational dashboard model", () => {
     expect(dashboard.approvalQueue).toEqual([]);
     expect(dashboard.approvalQueueContract).toMatchObject({
       availability: "UNAVAILABLE",
-      totalCount: 0,
+      totalCount: null,
       displayedCount: 0,
+      completeness: "PARTIAL",
       unavailableDetail: expect.stringContaining("Approval Inbox"),
     });
     const dashboardServiceSource = readFileSync(
@@ -889,5 +1249,48 @@ describe("operational dashboard model", () => {
     );
     expect(dashboard.sourceHealth.find((metric) => metric.id === "dashboard-source-unavailable-receiving")?.detail)
       .not.toContain("Error");
+  });
+
+  it("withholds composite totals and reports contributor provenance when a source is unavailable", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-23T02:00:00.000Z"));
+    const dashboard = buildOperationalDashboardModel(session, {
+      purchaseOrders: [{
+        id: "po-1",
+        publicReference: "PO-001",
+        supplierName: "Supplier",
+        status: "ISSUED",
+        deliveryAgingStatus: "OVERDUE",
+        daysOverdue: 1
+      }] as never,
+      sourceObservations: [
+        {
+          id: "purchase-orders",
+          label: "Purchase Orders",
+          href: "/purchase-orders",
+          availability: "AVAILABLE",
+          checkedAt: "2026-07-23T01:59:59.000Z"
+        },
+        {
+          id: "receiving",
+          label: "Receiving",
+          href: "/receiving",
+          availability: "UNAVAILABLE",
+          checkedAt: "2026-07-23T02:00:00.000Z"
+        }
+      ]
+    });
+
+    expect(dashboard.exceptionQueueContract).toMatchObject({
+      totalCount: null,
+      displayedCount: 1,
+      completeness: "PARTIAL",
+      contributors: [
+        { sourceId: "purchase-orders", availability: "AVAILABLE", itemCount: 1 },
+        { sourceId: "receiving", availability: "UNAVAILABLE", itemCount: null }
+      ]
+    });
+    expect(dashboard.assembledAt).toBe("2026-07-23T02:00:00.000Z");
+    expect(dashboard.generatedAt).toBe(dashboard.assembledAt);
   });
 });

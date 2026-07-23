@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import type { SessionContext } from "../src/server/services/context";
+import type { getOperationalDashboard as getOperationalDashboardType } from "../src/server/services/dashboard";
 import type {
+  getInventoryBalanceDashboardRead as getInventoryBalanceDashboardReadType,
   lockInventoryLocationForPosting as lockInventoryLocationForPostingType,
   lockInventoryLocationsForPosting as lockInventoryLocationsForPostingType,
   postInventoryMovement as postInventoryMovementType,
@@ -83,6 +85,8 @@ describe("procurement and inventory authorization boundaries", () => {
   };
 
   let prisma: PrismaClient;
+  let getOperationalDashboard: typeof getOperationalDashboardType;
+  let getInventoryBalanceDashboardRead: typeof getInventoryBalanceDashboardReadType;
   let lockInventoryLocationForPosting: typeof lockInventoryLocationForPostingType;
   let lockInventoryLocationsForPosting: typeof lockInventoryLocationsForPostingType;
   let postInventoryMovement: typeof postInventoryMovementType;
@@ -126,11 +130,13 @@ describe("procurement and inventory authorization boundaries", () => {
   beforeAll(async () => {
     ({ prisma } = await import("@ogfi/database"));
     ({
+      getInventoryBalanceDashboardRead,
       lockInventoryLocationForPosting,
       lockInventoryLocationsForPosting,
       postInventoryMovement,
       postInventoryMovementInTransaction,
     } = await import("../src/server/services/inventory"));
+    ({ getOperationalDashboard } = await import("../src/server/services/dashboard"));
     await prisma.$connect();
     await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
     const identity = await prisma.$queryRaw<Array<{ currentDatabase: string }>>`
@@ -957,6 +963,163 @@ describe("procurement and inventory authorization boundaries", () => {
       });
     };
   }
+
+  it("AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES", async () => {
+    await expect(getInventoryBalanceDashboardRead(session)).rejects.toThrow(
+      "PERMISSION_DENIED"
+    );
+
+    const foreignUomId = randomUUID();
+    const foreignCategoryId = randomUUID();
+    const foreignItemId = randomUUID();
+    const balanceIds = Array.from({ length: 6 }, () => randomUUID());
+    await prisma.uom.create({
+      data: {
+        id: foreignUomId,
+        tenantId: ids.foreignTenantId,
+        companyId: ids.foreignCompanyId,
+        uomCode: `EA-FOR-${suffix}`,
+        uomName: "Foreign Each",
+        uomType: "COUNT"
+      }
+    });
+    await prisma.itemCategory.create({
+      data: {
+        id: foreignCategoryId,
+        tenantId: ids.foreignTenantId,
+        companyId: ids.foreignCompanyId,
+        categoryCode: `AZI-FOR-${suffix}`,
+        categoryName: "Foreign Authorization Inventory",
+        inventoryClass: "GENERAL"
+      }
+    });
+    await prisma.item.create({
+      data: {
+        id: foreignItemId,
+        tenantId: ids.foreignTenantId,
+        companyId: ids.foreignCompanyId,
+        itemCode: `AZI-FOR-${suffix}`,
+        itemName: `Foreign Authorization Inventory Item ${suffix}`,
+        itemCategoryId: foreignCategoryId,
+        itemType: "INVENTORY",
+        baseUomId: foreignUomId
+      }
+    });
+
+    try {
+      const recent = new Date();
+      const old = new Date(Date.now() - 8 * 86_400_000);
+      await prisma.inventoryBalance.createMany({
+        data: [
+          {
+            id: balanceIds[0]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-NOLOT-${suffix}`,
+            baseUomId: ids.uomId,
+            qtyOnHand: 5,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[1]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-LOT-${suffix}`,
+            lotNumber: `LOT-${suffix}`,
+            baseUomId: ids.uomId,
+            qtyOnHand: 0,
+            updatedAt: old
+          },
+          {
+            id: balanceIds[2]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-EXP-${suffix}`,
+            expiryDate: new Date("2027-01-01T00:00:00.000Z"),
+            baseUomId: ids.uomId,
+            qtyOnHand: 2,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[3]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.adjacentInventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-ADJ-LOC-${suffix}`,
+            baseUomId: ids.uomId,
+            qtyOnHand: 99,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[4]!,
+            tenantId: ids.tenantId,
+            companyId: ids.adjacentCompanyId,
+            inventoryLocationId: ids.adjacentCompanyInventoryLocationId,
+            itemId: ids.adjacentCompanyItemId,
+            lotKey: `DASH-ADJ-COMP-${suffix}`,
+            baseUomId: ids.adjacentCompanyUomId,
+            qtyOnHand: 99,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[5]!,
+            tenantId: ids.foreignTenantId,
+            companyId: ids.foreignCompanyId,
+            inventoryLocationId: ids.foreignInventoryLocationId,
+            itemId: foreignItemId,
+            lotKey: `DASH-FOREIGN-${suffix}`,
+            baseUomId: foreignUomId,
+            qtyOnHand: 99,
+            updatedAt: recent
+          }
+        ]
+      });
+
+      await expect(getInventoryBalanceDashboardRead({
+        ...session,
+        permissionCodes: ["inventory.balance.view"]
+      })).resolves.toEqual({
+        totalRows: 3,
+        positiveRows: 2,
+        zeroRows: 1,
+        lotExpiryTrackedRows: 2,
+        recentlyUpdatedRows: 2
+      });
+
+      const dashboard = await getOperationalDashboard({
+        ...session,
+        permissionCodes: ["inventory.balance.view"]
+      });
+      expect(dashboard.sourceObservations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "inventory-balances",
+            availability: "AVAILABLE"
+          })
+        ])
+      );
+      expect(dashboard.metrics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "stocked-items", displayValue: "2" }),
+          expect.objectContaining({ id: "lot-expiry-tracked", displayValue: "2" })
+        ])
+      );
+    } finally {
+      await prisma.inventoryBalance.deleteMany({
+        where: { id: { in: balanceIds } }
+      });
+      await prisma.item.delete({ where: { id: foreignItemId } });
+      await prisma.itemCategory.delete({ where: { id: foreignCategoryId } });
+      await prisma.uom.delete({ where: { id: foreignUomId } });
+    }
+  });
 
   it("AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION", async () => {
     const [

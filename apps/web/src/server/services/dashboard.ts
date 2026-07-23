@@ -30,9 +30,10 @@ import {
   type IncidentDashboardRead
 } from "./incidents";
 import {
+  getInventoryBalanceDashboardRead,
   getInventoryLedgerVarianceDashboardRead,
   inventoryDashboardProfileHref,
-  listInventoryBalances,
+  type InventoryBalanceDashboardRead,
   type InventoryLedgerVarianceDashboardRead
 } from "./inventory";
 import {
@@ -100,10 +101,6 @@ type WastageReportSummary = Awaited<ReturnType<typeof listWastageReports>>[numbe
 type StockAdjustmentSummary = Awaited<
   ReturnType<typeof listStockAdjustments>
 >[number];
-type InventoryBalanceSummary = Awaited<
-  ReturnType<typeof listInventoryBalances>
->[number];
-
 export type DashboardCard = {
   id: string;
   label: string;
@@ -135,11 +132,48 @@ export type DashboardQueueItem = DashboardQueueItemLegacy & {
 
 export type DashboardQueueContract = {
   items: DashboardQueueItem[];
-  totalCount: number;
+  totalCount: number | null;
   displayedCount: number;
   displayLimit: number;
   availability: "AVAILABLE" | "UNAVAILABLE";
+  completeness: "COMPLETE" | "PARTIAL";
+  contributors: DashboardQueueContributor[];
   unavailableDetail?: string;
+};
+
+export const dashboardSourceIds = [
+  "approvals",
+  "purchase-requests",
+  "purchase-orders",
+  "receiving",
+  "transfers",
+  "stock-counts",
+  "wastage",
+  "stock-adjustments",
+  "inventory-balances",
+  "inventory-reconciliation",
+  "branch-operations",
+  "food-safety",
+  "incidents",
+  "maintenance",
+  "trust-gate"
+] as const;
+
+export type DashboardSourceId = (typeof dashboardSourceIds)[number];
+
+export type DashboardSourceObservation = {
+  id: DashboardSourceId;
+  label: string;
+  href: string;
+  availability: "AVAILABLE" | "UNAVAILABLE";
+  checkedAt: string;
+  dataAsOf?: string;
+};
+
+export type DashboardQueueContributor = {
+  sourceId: DashboardSourceId;
+  availability: "AVAILABLE" | "UNAVAILABLE";
+  itemCount: number | null;
 };
 
 type DashboardQueueItemDraft = Omit<
@@ -153,6 +187,7 @@ type DashboardQueueItemDraft = Omit<
   dueAt?: string | null;
   sourceAgeAt?: string | null | undefined;
   isOverdue?: boolean;
+  contributorSourceId?: DashboardSourceId;
 };
 
 export type DashboardMetric = {
@@ -165,6 +200,7 @@ export type DashboardMetric = {
 };
 
 export type OperationalDashboard = {
+  assembledAt: string;
   generatedAt: string;
   scope: {
     companyName: string;
@@ -177,6 +213,7 @@ export type OperationalDashboard = {
   stockHealth: DashboardMetric[];
   sourceHealth: DashboardMetric[];
   trustGate: {
+    availability: "AVAILABLE" | "UNAVAILABLE";
     mode: DashboardTrustGateMode;
     label: string;
     isOverridden: boolean;
@@ -186,6 +223,7 @@ export type OperationalDashboard = {
   exceptionQueue: DashboardQueueItemLegacy[];
   approvalQueueContract: DashboardQueueContract;
   exceptionQueueContract: DashboardQueueContract;
+  sourceObservations: DashboardSourceObservation[];
 };
 
 export type OperationalDashboardSource = {
@@ -207,7 +245,7 @@ export type OperationalDashboardSource = {
   wastageDashboard?: WastageDashboardRead;
   stockAdjustments?: StockAdjustmentSummary[];
   stockAdjustmentDashboard?: StockAdjustmentDashboardRead;
-  inventoryBalances?: InventoryBalanceSummary[];
+  inventoryBalanceDashboard?: InventoryBalanceDashboardRead;
   reconciliation?: InventoryLedgerVarianceDashboardRead | null;
   branchOperations?: BranchOperationsDashboard;
   foodSafety?: FoodSafetyDashboard;
@@ -218,10 +256,11 @@ export type OperationalDashboardSource = {
   maintenanceDashboard?: MaintenanceDashboardRead;
   branchOperationsDashboard?: BranchOperationsDashboardRead;
   dashboardTrustGate?: Awaited<ReturnType<typeof getDashboardTrustGatePolicy>>;
+  sourceObservations?: DashboardSourceObservation[];
 };
 
 type DashboardUnavailableSource = {
-  id: string;
+  id: DashboardSourceId;
   label: string;
   href: string;
 };
@@ -268,6 +307,19 @@ const foodSafetyReviewStatuses = new Set(["SUBMITTED", "EXCEPTION_REVIEW"]);
 const approvalQueueDisplayLimit = 5;
 const exceptionQueueDisplayLimit = 8;
 const defaultOperationalTimeZone = "Asia/Manila";
+const exceptionQueueContributorIds = new Set<DashboardSourceId>([
+  "purchase-orders",
+  "receiving",
+  "transfers",
+  "stock-counts",
+  "wastage",
+  "stock-adjustments",
+  "inventory-reconciliation",
+  "branch-operations",
+  "food-safety",
+  "incidents",
+  "maintenance"
+]);
 
 export function dashboardOperationalDate(
   value: string,
@@ -347,7 +399,8 @@ function sourceAgeRank(sourceAgeAt: string | null | undefined) {
 function buildDashboardQueueContract(
   session: SessionContext,
   drafts: DashboardQueueItemDraft[],
-  displayLimit: number
+  displayLimit: number,
+  observations: DashboardSourceObservation[] = []
 ): DashboardQueueContract {
   const orderedDrafts = [...drafts].sort((left, right) => {
       const leftPriority = left.priority ?? (left.tone === "warning" ? "HIGH" : "NORMAL");
@@ -387,13 +440,28 @@ function buildDashboardQueueContract(
     ageLabel: queueAgeLabel(draft),
     ownerLabel: draft.ownerLabel ?? draft.nextActor ?? "Not assigned"
   }));
+  const contributors = observations.map<DashboardQueueContributor>((observation) => ({
+    sourceId: observation.id,
+    availability: observation.availability,
+    itemCount:
+      observation.availability === "AVAILABLE"
+        ? drafts.filter((draft) => draft.contributorSourceId === observation.id).length
+        : null
+  }));
+  const completeness = contributors.some(
+    (contributor) => contributor.availability === "UNAVAILABLE"
+  )
+    ? "PARTIAL"
+    : "COMPLETE";
 
   return {
     items: items.slice(0, displayLimit),
-    totalCount: items.length,
+    totalCount: completeness === "COMPLETE" ? items.length : null,
     displayedCount: Math.min(items.length, displayLimit),
     displayLimit,
-    availability: "AVAILABLE"
+    availability: "AVAILABLE",
+    completeness,
+    contributors
   };
 }
 
@@ -428,7 +496,7 @@ function cardTone(value: number): BadgeTone {
 }
 
 function isDashboardTrustGateBlocking(source: OperationalDashboardSource) {
-  return source.dashboardTrustGate?.mode === "block";
+  return !source.dashboardTrustGate || source.dashboardTrustGate.mode === "block";
 }
 
 function countByStatus<T extends { status: string }>(
@@ -564,6 +632,7 @@ export function buildOperationalDashboardModel(
     for (const order of overdueOrders) {
       exceptionQueue.push({
         id: `po-${order.id}`,
+        contributorSourceId: "purchase-orders",
         label: "Overdue PO",
         reference: order.publicReference,
         detail: `${order.supplierName} / ${order.daysOverdue} day${order.daysOverdue === 1 ? "" : "s"} overdue`,
@@ -604,6 +673,7 @@ export function buildOperationalDashboardModel(
             : receivingFollowUpInclusionReason(receipt);
         exceptionQueue.push({
           id: `grn-${receipt.id}`,
+          contributorSourceId: "receiving",
           label: "Receiving follow-up",
           reference: receipt.publicReference,
           detail: `${inclusionReason} / ${receipt.supplierName} / ${receipt.purchaseOrderReference}`,
@@ -642,6 +712,7 @@ export function buildOperationalDashboardModel(
       if (["DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"].includes(transfer.status)) {
         exceptionQueue.push({
           id: `transfer-${transfer.id}`,
+          contributorSourceId: "transfers",
           label: "Transfer follow-up",
           reference: transfer.publicReference,
           detail: `${transfer.sourceLocationName} to ${transfer.destinationLocationName}`,
@@ -684,6 +755,7 @@ export function buildOperationalDashboardModel(
       if (countActionStatuses.has(count.status) && (count.varianceCount ?? 0) > 0) {
         exceptionQueue.push({
           id: `count-${count.id}`,
+          contributorSourceId: "stock-counts",
           label: "Count variance",
           reference: count.publicReference,
           detail: `${count.inventoryLocationName} / ${count.varianceCount} line${count.varianceCount === 1 ? "" : "s"}`,
@@ -726,6 +798,7 @@ export function buildOperationalDashboardModel(
       ) {
         exceptionQueue.push({
           id: `wastage-${report.id}`,
+          contributorSourceId: "wastage",
           label:
             report.evidenceRequired && !report.evidenceSatisfied
               ? "Wastage evidence"
@@ -766,6 +839,7 @@ export function buildOperationalDashboardModel(
       if (stockAdjustmentExceptionStatuses.has(adjustment.status)) {
         exceptionQueue.push({
           id: `adjustment-${adjustment.id}`,
+          contributorSourceId: "stock-adjustments",
           label: "Adjustment follow-up",
           reference: adjustment.publicReference,
           detail: `${adjustment.inventoryLocationName} / ${adjustment.adjustmentType.toLowerCase()} / ${adjustment.lineCount} line${adjustment.lineCount === 1 ? "" : "s"}`,
@@ -793,6 +867,7 @@ export function buildOperationalDashboardModel(
     for (const row of source.reconciliation.candidates) {
       exceptionQueue.push({
         id: `ledger-${row.key}`,
+        contributorSourceId: "inventory-reconciliation",
         label: "Ledger variance",
         reference: row.itemCode,
         detail: `${row.inventoryLocationName} / variance ${row.varianceQuantity} ${row.baseUomCode}`,
@@ -807,63 +882,49 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.inventoryBalances) {
-    const positiveRows = source.inventoryBalances.filter(
-      (balance) => balance.qtyOnHand > 0
-    );
-    const zeroRows = source.inventoryBalances.filter(
-      (balance) => balance.qtyOnHand === 0
-    );
-    const lotTrackedRows = source.inventoryBalances.filter(
-      (balance) => balance.lotNumber || balance.expiryDate
-    );
-    const recentlyUpdatedRows = source.inventoryBalances.filter((balance) => {
-      const updatedAt = new Date(balance.updatedAt).getTime();
-      const ageDays = (Date.now() - updatedAt) / 86_400_000;
-      return ageDays <= 7;
-    });
-
+  if (source.inventoryBalanceDashboard) {
+    const inventoryBalanceDashboard = source.inventoryBalanceDashboard;
     metrics.push({
       id: "stocked-items",
       label: "Stocked lines",
-      displayValue: number(positiveRows.length),
-      detail: `${number(source.inventoryBalances.length)} balance row${source.inventoryBalances.length === 1 ? "" : "s"} tracked`,
+      displayValue: number(inventoryBalanceDashboard.positiveRows),
+      detail: `${number(inventoryBalanceDashboard.totalRows)} balance row${inventoryBalanceDashboard.totalRows === 1 ? "" : "s"} tracked`,
       href: "/inventory",
-      tone: positiveRows.length > 0 ? "success" : "warning"
+      tone: inventoryBalanceDashboard.positiveRows > 0 ? "success" : "warning"
     });
 
     stockHealth.push(
       {
         id: "active-stock-rows",
         label: "Active stock rows",
-        displayValue: number(positiveRows.length),
+        displayValue: number(inventoryBalanceDashboard.positiveRows),
         detail: "Rows with on-hand quantity above zero",
         href: "/inventory",
-        tone: positiveRows.length > 0 ? "success" : "warning"
+        tone: inventoryBalanceDashboard.positiveRows > 0 ? "success" : "warning"
       },
       {
         id: "zero-stock-rows",
         label: "Zero stock rows",
-        displayValue: number(zeroRows.length),
+        displayValue: number(inventoryBalanceDashboard.zeroRows),
         detail: "Items configured but currently at zero",
         href: "/inventory",
-        tone: zeroRows.length > 0 ? "warning" : "success"
+        tone: inventoryBalanceDashboard.zeroRows > 0 ? "warning" : "success"
       },
       {
         id: "lot-expiry-coverage",
         label: "Lot / expiry tracked",
-        displayValue: number(lotTrackedRows.length),
+        displayValue: number(inventoryBalanceDashboard.lotExpiryTrackedRows),
         detail: "Rows carrying lot or expiry accountability",
         href: "/inventory",
-        tone: lotTrackedRows.length > 0 ? "info" : "neutral"
+        tone: inventoryBalanceDashboard.lotExpiryTrackedRows > 0 ? "info" : "neutral"
       },
       {
         id: "recent-stock-updates",
         label: "Updated this week",
-        displayValue: number(recentlyUpdatedRows.length),
+        displayValue: number(inventoryBalanceDashboard.recentlyUpdatedRows),
         detail: "Inventory balances touched in the last 7 days",
         href: "/inventory",
-        tone: recentlyUpdatedRows.length > 0 ? "info" : "neutral"
+        tone: inventoryBalanceDashboard.recentlyUpdatedRows > 0 ? "info" : "neutral"
       }
     );
   }
@@ -931,6 +992,7 @@ export function buildOperationalDashboardModel(
     for (const checklist of reviewReadyChecklists.slice(0, 3)) {
       exceptionQueue.push({
         id: `branch-review-${checklist.id}`,
+        contributorSourceId: "branch-operations",
         label: "Checklist review",
         reference: checklist.checklistName,
         detail: `${checklist.businessDate} / ${checklist.shiftType.toLowerCase()} / ${checklist.exceptionCount} exception${checklist.exceptionCount === 1 ? "" : "s"}`,
@@ -957,6 +1019,7 @@ export function buildOperationalDashboardModel(
           );
       exceptionQueue.push({
         id: `branch-ops-${checklist.id}`,
+        contributorSourceId: "branch-operations",
         label: "Checklist exception",
         reference: checklist.checklistName,
         detail: `${checklist.businessDate} / ${checklist.exceptionCount} exception${checklist.exceptionCount === 1 ? "" : "s"}`,
@@ -1031,6 +1094,7 @@ export function buildOperationalDashboardModel(
     for (const log of reviewReadyLogs.slice(0, 3)) {
       exceptionQueue.push({
         id: `food-safety-review-${log.id}`,
+        contributorSourceId: "food-safety",
         label: "Food safety review",
         reference: log.title,
         detail: `${log.businessDate} / ${log.logType.toLowerCase()} / ${log.exceptionCount} exception${log.exceptionCount === 1 ? "" : "s"}`,
@@ -1057,6 +1121,7 @@ export function buildOperationalDashboardModel(
           );
       exceptionQueue.push({
         id: `food-safety-${log.id}`,
+        contributorSourceId: "food-safety",
         label: "Food safety exception",
         reference: log.title,
         detail: `${log.businessDate} / ${log.exceptionCount} exception${log.exceptionCount === 1 ? "" : "s"}`,
@@ -1124,6 +1189,7 @@ export function buildOperationalDashboardModel(
     for (const incident of incidentCandidates) {
       exceptionQueue.push({
         id: `incident-${incident.id}`,
+        contributorSourceId: "incidents",
         label: "Incident follow-up",
         reference: incident.incidentNumber,
         detail: `${incident.title} / ${incident.severity.toLowerCase()}`,
@@ -1206,6 +1272,7 @@ export function buildOperationalDashboardModel(
     for (const ticket of maintenanceCandidates) {
       exceptionQueue.push({
         id: `maintenance-${ticket.id}`,
+        contributorSourceId: "maintenance",
         label: "Maintenance follow-up",
         reference: ticket.ticketNumber,
         detail: `${ticket.assetName} / ${ticket.priority.toLowerCase()}`,
@@ -1258,14 +1325,18 @@ export function buildOperationalDashboardModel(
     {
       id: "dashboard-trust-gate",
       label: "Reporting trust gate",
-      displayValue: source.dashboardTrustGate?.label ?? "Show warning and source link",
-      detail: source.dashboardTrustGate?.isOverridden
-        ? "Company override is active for unreconciled dashboard source data"
-        : "Recommended DEC-0036 dashboard source-data policy is active",
+      displayValue: source.dashboardTrustGate?.label ?? "Unavailable",
+      detail: !source.dashboardTrustGate
+        ? "Trust policy could not be checked. Reconciliation-dependent values are withheld."
+        : source.dashboardTrustGate.isOverridden
+          ? "Company override is active for unreconciled dashboard source data"
+          : "Recommended DEC-0036 dashboard source-data policy is active",
       tone:
-        source.dashboardTrustGate?.mode === "show_only"
+        !source.dashboardTrustGate
           ? "warning"
-          : source.dashboardTrustGate?.mode === "block"
+          : source.dashboardTrustGate.mode === "show_only"
+          ? "warning"
+          : source.dashboardTrustGate.mode === "block"
             ? "success"
             : "info"
     },
@@ -1285,11 +1356,11 @@ export function buildOperationalDashboardModel(
     {
       id: "inventory-value-source",
       label: "Inventory value",
-      displayValue: source.inventoryBalances ? "Qty source live" : "No access",
+      displayValue: source.inventoryBalanceDashboard ? "Available" : "No access",
       detail:
         "On-hand stock is visible; formal valuation needs trusted costing/accounting source",
-      ...(source.inventoryBalances ? { href: "/inventory" } : {}),
-      tone: source.inventoryBalances ? "info" : "neutral"
+      ...(source.inventoryBalanceDashboard ? { href: "/inventory" } : {}),
+      tone: source.inventoryBalanceDashboard ? "info" : "neutral"
     }
   );
 
@@ -1308,25 +1379,50 @@ export function buildOperationalDashboardModel(
     ownerLabel: session.user.displayName,
     dueAt: approval.requiredDate,
     isOverdue: isDateOverdue(approval.requiredDate),
+    contributorSourceId: "approvals" as const
   })) ?? [];
+  const approvalObservations = source.sourceObservations?.filter(
+    (observation) => observation.id === "approvals"
+  ) ?? [];
   const approvalQueueContract = buildDashboardQueueContract(
     session,
     approvalQueueDrafts,
-    approvalQueueDisplayLimit
+    approvalQueueDisplayLimit,
+    approvalObservations
   );
-  if (source.approvalPreviewUnavailable) {
+  if (
+    source.approvalPreviewUnavailable ||
+    approvalObservations.some(
+      (observation) => observation.availability === "UNAVAILABLE"
+    )
+  ) {
     approvalQueueContract.availability = "UNAVAILABLE";
+    approvalQueueContract.completeness = "PARTIAL";
+    approvalQueueContract.totalCount = null;
+    approvalQueueContract.contributors = approvalQueueContract.contributors.map(
+      (contributor) => ({
+        ...contributor,
+        availability: "UNAVAILABLE",
+        itemCount: null
+      })
+    );
     approvalQueueContract.unavailableDetail =
       "Use Approval Inbox while approval-routing transition safeguards are active.";
   }
+  const exceptionObservations = source.sourceObservations?.filter(
+    (observation) => exceptionQueueContributorIds.has(observation.id)
+  ) ?? [];
   const exceptionQueueContract = buildDashboardQueueContract(
     session,
     exceptionQueue,
-    exceptionQueueDisplayLimit
+    exceptionQueueDisplayLimit,
+    exceptionObservations
   );
+  const assembledAt = new Date().toISOString();
 
   return {
-    generatedAt: new Date().toISOString(),
+    assembledAt,
+    generatedAt: assembledAt,
     scope: {
       companyName: session.context.companyName,
       brandName: session.context.brandName,
@@ -1338,8 +1434,11 @@ export function buildOperationalDashboardModel(
     stockHealth,
     sourceHealth,
     trustGate: {
-      mode: source.dashboardTrustGate?.mode ?? "warn_and_link",
-      label: source.dashboardTrustGate?.label ?? "Show warning and source link",
+      availability: source.dashboardTrustGate ? "AVAILABLE" : "UNAVAILABLE",
+      mode: source.dashboardTrustGate?.mode ?? "block",
+      label:
+        source.dashboardTrustGate?.label ??
+        "Unavailable — reconciliation values withheld",
       isOverridden: source.dashboardTrustGate?.isOverridden ?? false,
       sourceDecisionId: source.dashboardTrustGate?.sourceDecisionId ?? "DEC-0036"
     },
@@ -1350,155 +1449,492 @@ export function buildOperationalDashboardModel(
       exceptionQueue.slice(0, exceptionQueueDisplayLimit)
     ),
     approvalQueueContract,
-    exceptionQueueContract
+    exceptionQueueContract,
+    sourceObservations: source.sourceObservations ?? []
   };
+}
+
+const defaultDashboardSourceDeadlineMs = 2_500;
+const maximumDashboardSourceDeadlineMs = 3_000;
+const defaultDashboardSourceMaxInFlight = 32;
+const maximumDashboardSourceMaxInFlight = 64;
+
+export function getDashboardSourceDeadlineMs(
+  environment: Record<string, string | undefined> = process.env
+) {
+  const raw = environment.DASHBOARD_SOURCE_DEADLINE_MS?.trim();
+  const value = raw ? Number(raw) : defaultDashboardSourceDeadlineMs;
+  if (!Number.isInteger(value) || value < 1 || value > maximumDashboardSourceDeadlineMs) {
+    throw new Error("DASHBOARD_SOURCE_DEADLINE_MS_INVALID");
+  }
+  return value;
+}
+
+export function getDashboardSourceMaxInFlight(
+  environment: Record<string, string | undefined> = process.env
+) {
+  const raw = environment.DASHBOARD_SOURCE_MAX_IN_FLIGHT?.trim();
+  const value = raw ? Number(raw) : defaultDashboardSourceMaxInFlight;
+  if (
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > maximumDashboardSourceMaxInFlight
+  ) {
+    throw new Error("DASHBOARD_SOURCE_MAX_IN_FLIGHT_INVALID");
+  }
+  return value;
+}
+
+export class DashboardSourceAdmissionController {
+  private activeReads = 0;
+
+  constructor(readonly maximumInFlight: number) {
+    if (
+      !Number.isInteger(maximumInFlight) ||
+      maximumInFlight < 1 ||
+      maximumInFlight > maximumDashboardSourceMaxInFlight
+    ) {
+      throw new Error("DASHBOARD_SOURCE_MAX_IN_FLIGHT_INVALID");
+    }
+  }
+
+  get inFlight() {
+    return this.activeReads;
+  }
+
+  tryAcquire() {
+    if (this.activeReads >= this.maximumInFlight) return null;
+    this.activeReads += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeReads -= 1;
+    };
+  }
+}
+
+export type DashboardTelemetryEvent =
+  | {
+      event: "dashboard_source_read";
+      outcome: "EXCEPTION" | "TIMEOUT" | "LATE_COMPLETION" | "SATURATED";
+      sourceId: DashboardSourceId;
+      observedAt: string;
+      durationMs: number;
+    }
+  | {
+      event: "dashboard_assembly";
+      outcome: "COMPLETE" | "PARTIAL";
+      assembledAt: string;
+      durationMs: number;
+      attemptedSourceCount: number;
+      unavailableSourceCount: number;
+    };
+
+export type DashboardTelemetryEmitter = (event: DashboardTelemetryEvent) => void;
+
+export const emitDashboardTelemetry: DashboardTelemetryEmitter = (event) => {
+  const message = JSON.stringify(event);
+  if (event.event === "dashboard_source_read") {
+    console.warn(message);
+  } else {
+    console.info(message);
+  }
+};
+
+const dashboardSourceAdmissionController = new DashboardSourceAdmissionController(
+  getDashboardSourceMaxInFlight()
+);
+
+export type DashboardSourceReadResult = {
+  patch: Readonly<OperationalDashboardSource>;
+  availability?: "AVAILABLE" | "UNAVAILABLE";
+  dataAsOf?: string;
+};
+
+export type DashboardSourceReadContext = {
+  signal: AbortSignal;
+  deadlineAt: string;
+};
+
+export type DashboardSourceDescriptor = {
+  id: DashboardSourceId;
+  label: string;
+  href: string;
+  read: (context: DashboardSourceReadContext) => Promise<DashboardSourceReadResult>;
+};
+
+type DashboardSourceSettlement = {
+  patch: Readonly<OperationalDashboardSource>;
+  observation: DashboardSourceObservation;
+};
+
+function isoUtc(value: string | undefined) {
+  if (!value) return undefined;
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? undefined : timestamp.toISOString();
+}
+
+async function settleDashboardSource(
+  descriptor: DashboardSourceDescriptor,
+  deadlineMs: number,
+  admissionController: DashboardSourceAdmissionController,
+  telemetry: DashboardTelemetryEmitter
+): Promise<DashboardSourceSettlement> {
+  const startedAt = Date.now();
+  const release = admissionController.tryAcquire();
+  if (!release) {
+    const checkedAt = new Date().toISOString();
+    telemetry({
+      event: "dashboard_source_read",
+      outcome: "SATURATED",
+      sourceId: descriptor.id,
+      observedAt: checkedAt,
+      durationMs: 0
+    });
+    return {
+      patch: {},
+      observation: {
+        id: descriptor.id,
+        label: descriptor.label,
+        href: descriptor.href,
+        availability: "UNAVAILABLE",
+        checkedAt
+      }
+    };
+  }
+  const timedOut = Symbol("dashboard-source-timeout");
+  const abortController = new AbortController();
+  let presentationClosed = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const sourceRead = Promise.resolve()
+      .then(() => descriptor.read({
+        signal: abortController.signal,
+        deadlineAt: new Date(startedAt + deadlineMs).toISOString()
+      }))
+      .then(
+        (result) => {
+          release();
+          if (presentationClosed) {
+            telemetry({
+              event: "dashboard_source_read",
+              outcome: "LATE_COMPLETION",
+              sourceId: descriptor.id,
+              observedAt: new Date().toISOString(),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            });
+          }
+          return result;
+        },
+        (error: unknown) => {
+          release();
+          if (presentationClosed) {
+            telemetry({
+              event: "dashboard_source_read",
+              outcome: "LATE_COMPLETION",
+              sourceId: descriptor.id,
+              observedAt: new Date().toISOString(),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            });
+          }
+          throw error;
+        }
+      );
+    const result = await Promise.race([
+      sourceRead,
+      new Promise<typeof timedOut>((resolve) => {
+        timeout = setTimeout(() => resolve(timedOut), deadlineMs);
+      })
+    ]);
+    const checkedAt = new Date().toISOString();
+    if (result === timedOut) {
+      presentationClosed = true;
+      abortController.abort();
+      telemetry({
+        event: "dashboard_source_read",
+        outcome: "TIMEOUT",
+        sourceId: descriptor.id,
+        observedAt: checkedAt,
+        durationMs: Math.max(0, Date.now() - startedAt)
+      });
+      return {
+        patch: {},
+        observation: {
+          id: descriptor.id,
+          label: descriptor.label,
+          href: descriptor.href,
+          availability: "UNAVAILABLE",
+          checkedAt
+        }
+      };
+    }
+    const dataAsOf =
+      descriptor.id === "inventory-reconciliation"
+        ? isoUtc(result.dataAsOf)
+        : undefined;
+    return {
+      patch: { ...result.patch },
+      observation: {
+        id: descriptor.id,
+        label: descriptor.label,
+        href: descriptor.href,
+        availability: result.availability ?? "AVAILABLE",
+        checkedAt,
+        ...(dataAsOf ? { dataAsOf } : {})
+      }
+    };
+  } catch {
+    const checkedAt = new Date().toISOString();
+    telemetry({
+      event: "dashboard_source_read",
+      outcome: "EXCEPTION",
+      sourceId: descriptor.id,
+      observedAt: checkedAt,
+      durationMs: Math.max(0, Date.now() - startedAt)
+    });
+    return {
+      patch: {},
+      observation: {
+        id: descriptor.id,
+        label: descriptor.label,
+        href: descriptor.href,
+        availability: "UNAVAILABLE",
+        checkedAt
+      }
+    };
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+async function collectDashboardSources(
+  descriptors: DashboardSourceDescriptor[],
+  deadlineMs: number,
+  options: {
+    admissionController?: DashboardSourceAdmissionController;
+    telemetry?: DashboardTelemetryEmitter;
+  } = {}
+): Promise<OperationalDashboardSource> {
+  if (!Number.isInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > maximumDashboardSourceDeadlineMs) {
+    throw new Error("DASHBOARD_SOURCE_DEADLINE_MS_INVALID");
+  }
+  const admissionController =
+    options.admissionController ?? dashboardSourceAdmissionController;
+  const telemetry = options.telemetry ?? emitDashboardTelemetry;
+  const settlements = await Promise.all(
+    descriptors.map((descriptor) =>
+      settleDashboardSource(
+        descriptor,
+        deadlineMs,
+        admissionController,
+        telemetry
+      )
+    )
+  );
+  const observations = settlements.map((settlement) => settlement.observation);
+  return {
+    ...Object.assign({}, ...settlements.map((settlement) => settlement.patch)),
+    sourceObservations: observations,
+    unavailableSources: observations
+      .filter((observation) => observation.availability === "UNAVAILABLE")
+      .map(({ id, label, href }) => ({ id, label, href }))
+  };
+}
+
+function emitDashboardAssemblyTelemetry(
+  startedAt: number,
+  dashboard: OperationalDashboard,
+  telemetry: DashboardTelemetryEmitter = emitDashboardTelemetry
+) {
+  const unavailableSourceCount = dashboard.sourceObservations.filter(
+    (observation) => observation.availability === "UNAVAILABLE"
+  ).length;
+  telemetry({
+    event: "dashboard_assembly",
+    outcome: unavailableSourceCount > 0 ? "PARTIAL" : "COMPLETE",
+    assembledAt: dashboard.assembledAt,
+    durationMs: Math.max(0, Date.now() - startedAt),
+    attemptedSourceCount: dashboard.sourceObservations.length,
+    unavailableSourceCount
+  });
+}
+
+export const dashboardRuntimeTestSupport = {
+  collectDashboardSources,
+  emitDashboardAssemblyTelemetry
+};
+
+export function getOperationalDashboardSourceDescriptors(
+  session: SessionContext
+): DashboardSourceDescriptor[] {
+  return [
+    ...(canUseApprovals(session.permissionCodes)
+      ? [{
+          id: "approvals" as const,
+          label: "Approvals",
+          href: "/approvals",
+          read: async () => ({
+            availability: "UNAVAILABLE" as const,
+            patch: { approvalPreviewUnavailable: true }
+          })
+        }]
+      : []),
+    ...(canUsePurchaseRequests(session.permissionCodes)
+      ? [{
+          id: "purchase-requests" as const,
+          label: "Purchase Requests",
+          href: "/purchase-requests",
+          read: async () => ({
+            patch: { purchaseRequestDashboard: await getPurchaseRequestDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(canReadPurchaseOrders(session.permissionCodes)
+      ? [{
+          id: "purchase-orders" as const,
+          label: "Purchase Orders",
+          href: "/purchase-orders",
+          read: async () => ({
+            patch: { purchaseOrderDashboard: await getPurchaseOrderDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(canUseReceiving(session.permissionCodes)
+      ? [{
+          id: "receiving" as const,
+          label: "Receiving Follow-up",
+          href: receivingDashboardProfileHref("receiving-follow-up-v1"),
+          read: async () => ({
+            patch: { receivingDashboard: await getReceivingDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(canUseTransfers(session.permissionCodes)
+      ? [{
+          id: "transfers" as const,
+          label: "Transfers",
+          href: "/transfers",
+          read: async () => ({
+            patch: { transferDashboard: await getTransferDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(session.permissionCodes.includes(permissions.stockCountReview)
+      ? [{
+          id: "stock-counts" as const,
+          label: "Stock Counts",
+          href: "/counts",
+          read: async () => ({
+            patch: { stockCountDashboard: await getStockCountDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(canUseWastageReports(session.permissionCodes)
+      ? [{
+          id: "wastage" as const,
+          label: "Wastage",
+          href: "/wastage",
+          read: async () => ({
+            patch: { wastageDashboard: await getWastageDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(canUseStockAdjustments(session.permissionCodes)
+      ? [{
+          id: "stock-adjustments" as const,
+          label: "Stock Adjustments",
+          href: "/adjustments",
+          read: async () => ({
+            patch: { stockAdjustmentDashboard: await getStockAdjustmentDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(session.permissionCodes.includes(permissions.inventoryBalanceView)
+      ? [{
+          id: "inventory-balances" as const,
+          label: "Inventory balances",
+          href: "/inventory",
+          read: async () => ({
+            patch: { inventoryBalanceDashboard: await getInventoryBalanceDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(session.permissionCodes.includes(permissions.inventoryBalanceView) &&
+    session.permissionCodes.includes(permissions.inventoryLedgerView)
+      ? [{
+          id: "inventory-reconciliation" as const,
+          label: "Ledger reconciliation",
+          href: inventoryDashboardProfileHref("ledger-variance-v1"),
+          read: async () => {
+            const reconciliation = await getInventoryLedgerVarianceDashboardRead(session);
+            return {
+              patch: { reconciliation },
+              dataAsOf: reconciliation.generatedAt
+            };
+          }
+        }]
+      : []),
+    ...(canUseBranchOperations(session.permissionCodes)
+      ? [{
+          id: "branch-operations" as const,
+          label: "Branch operations",
+          href: "/operations",
+          read: async () => ({
+            patch: { branchOperationsDashboard: await getBranchOperationsDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(canUseFoodSafety(session.permissionCodes)
+      ? [{
+          id: "food-safety" as const,
+          label: "Food safety",
+          href: "/food-safety",
+          read: async () => ({
+            patch: { foodSafetyDashboard: await getFoodSafetyDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(canUseIncidents(session.permissionCodes)
+      ? [{
+          id: "incidents" as const,
+          label: "Incidents",
+          href: "/incidents",
+          read: async () => ({
+            patch: { incidentDashboard: await getIncidentDashboardRead(session) }
+          })
+        }]
+      : []),
+    ...(canUseMaintenance(session.permissionCodes)
+      ? [{
+          id: "maintenance" as const,
+          label: "Maintenance",
+          href: "/maintenance",
+          read: async () => ({
+            patch: { maintenanceDashboard: await getMaintenanceDashboardRead(session) }
+          })
+        }]
+      : []),
+    {
+      id: "trust-gate",
+      label: "Dashboard trust status",
+      href: "/inventory",
+      read: async () => ({
+        patch: { dashboardTrustGate: await getDashboardTrustGatePolicy(session) }
+      })
+    }
+  ];
 }
 
 export async function getOperationalDashboard(
   session: SessionContext
 ): Promise<OperationalDashboard> {
-  const source: OperationalDashboardSource = {};
-
-  const dashboardSources: Array<{
-    unavailableSource: DashboardUnavailableSource;
-    read: Promise<void>;
-  }> = [
-    {
-      unavailableSource: { id: "approvals", label: "Approvals", href: "/approvals" },
-      read: canUseApprovals(session.permissionCodes)
-      ? Promise.resolve().then(() => {
-          source.approvalPreviewUnavailable = true;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "purchase-requests", label: "Purchase Requests", href: "/purchase-requests" },
-      read: canUsePurchaseRequests(session.permissionCodes)
-      ? getPurchaseRequestDashboardRead(session).then((purchaseRequestDashboard) => {
-          source.purchaseRequestDashboard = purchaseRequestDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "purchase-orders", label: "Purchase Orders", href: "/purchase-orders" },
-      read: canReadPurchaseOrders(session.permissionCodes)
-      ? getPurchaseOrderDashboardRead(session).then((purchaseOrderDashboard) => {
-          source.purchaseOrderDashboard = purchaseOrderDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: {
-        id: "receiving",
-        label: "Receiving Follow-up",
-        href: receivingDashboardProfileHref("receiving-follow-up-v1")
-      },
-      read: canUseReceiving(session.permissionCodes)
-      ? getReceivingDashboardRead(session).then((receivingDashboard) => {
-          source.receivingDashboard = receivingDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "transfers", label: "Transfers", href: "/transfers" },
-      read: canUseTransfers(session.permissionCodes)
-      ? getTransferDashboardRead(session).then((transferDashboard) => {
-          source.transferDashboard = transferDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "stock-counts", label: "Stock Counts", href: "/counts" },
-      read: session.permissionCodes.includes(permissions.stockCountReview)
-      ? getStockCountDashboardRead(session).then((stockCountDashboard) => {
-          source.stockCountDashboard = stockCountDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "wastage", label: "Wastage", href: "/wastage" },
-      read: canUseWastageReports(session.permissionCodes)
-      ? getWastageDashboardRead(session).then((wastageDashboard) => {
-          source.wastageDashboard = wastageDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "stock-adjustments", label: "Stock Adjustments", href: "/adjustments" },
-      read: canUseStockAdjustments(session.permissionCodes)
-      ? getStockAdjustmentDashboardRead(session).then((stockAdjustmentDashboard) => {
-          source.stockAdjustmentDashboard = stockAdjustmentDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "inventory-balances", label: "Inventory balances", href: "/inventory" },
-      read: session.permissionCodes.includes(permissions.inventoryBalanceView)
-      ? listInventoryBalances(session).then((inventoryBalances) => {
-          source.inventoryBalances = inventoryBalances;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: {
-        id: "inventory-reconciliation",
-        label: "Ledger reconciliation",
-        href: inventoryDashboardProfileHref("ledger-variance-v1")
-      },
-      read:
-        session.permissionCodes.includes(permissions.inventoryBalanceView) &&
-        session.permissionCodes.includes(permissions.inventoryLedgerView)
-      ? getInventoryLedgerVarianceDashboardRead(session).then((reconciliation) => {
-          source.reconciliation = reconciliation;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "branch-operations", label: "Branch operations", href: "/operations" },
-      read: canUseBranchOperations(session.permissionCodes)
-      ? getBranchOperationsDashboardRead(session).then((branchOperationsDashboard) => {
-          source.branchOperationsDashboard = branchOperationsDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "food-safety", label: "Food safety", href: "/food-safety" },
-      read: canUseFoodSafety(session.permissionCodes)
-      ? getFoodSafetyDashboardRead(session).then((foodSafetyDashboard) => {
-          source.foodSafetyDashboard = foodSafetyDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "incidents", label: "Incidents", href: "/incidents" },
-      read: canUseIncidents(session.permissionCodes)
-      ? getIncidentDashboardRead(session).then((incidentDashboard) => {
-          source.incidentDashboard = incidentDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "maintenance", label: "Maintenance", href: "/maintenance" },
-      read: canUseMaintenance(session.permissionCodes)
-      ? getMaintenanceDashboardRead(session).then((maintenanceDashboard) => {
-          source.maintenanceDashboard = maintenanceDashboard;
-        })
-      : Promise.resolve()
-    },
-    {
-      unavailableSource: { id: "trust-gate", label: "Dashboard trust status", href: "/inventory" },
-      read: getDashboardTrustGatePolicy(session).then((dashboardTrustGate) => {
-        source.dashboardTrustGate = dashboardTrustGate;
-      })
-    }
-  ];
-  const sourceResults = await Promise.allSettled(dashboardSources.map((sourceRead) => sourceRead.read));
-  source.unavailableSources = sourceResults.flatMap((result, index) => {
-    const dashboardSource = dashboardSources[index];
-    return result.status === "rejected" && dashboardSource
-      ? [dashboardSource.unavailableSource]
-      : [];
-  });
-
-  return buildOperationalDashboardModel(session, source);
+  const startedAt = Date.now();
+  const source = await collectDashboardSources(
+    getOperationalDashboardSourceDescriptors(session),
+    getDashboardSourceDeadlineMs()
+  );
+  const dashboard = buildOperationalDashboardModel(session, source);
+  emitDashboardAssemblyTelemetry(startedAt, dashboard);
+  return dashboard;
 }

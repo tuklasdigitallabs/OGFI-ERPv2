@@ -115,6 +115,14 @@ export type InventoryLedgerVarianceDashboardRead = {
   generatedAt: string;
 };
 
+export type InventoryBalanceDashboardRead = {
+  totalRows: number;
+  positiveRows: number;
+  zeroRows: number;
+  lotExpiryTrackedRows: number;
+  recentlyUpdatedRows: number;
+};
+
 const inventoryMovementTypes = [
   "RECEIPT_IN",
   "TRANSFER_OUT",
@@ -1040,6 +1048,51 @@ export async function listInventoryBalances(
     version: balance.version,
     updatedAt: balance.updatedAt.toISOString()
   }));
+}
+
+export async function getInventoryBalanceDashboardRead(
+  session: SessionContext
+): Promise<InventoryBalanceDashboardRead> {
+  await requirePermission(session, permissions.inventoryBalanceView);
+  const scope = inventoryBalanceDashboardScope(session);
+  const recentlyUpdatedAfter = new Date(Date.now() - 7 * 86_400_000);
+  const rows = await prisma.$queryRaw<InventoryBalanceDashboardRead[]>`
+    SELECT COUNT(*)::integer AS "totalRows",
+           COUNT(*) FILTER (WHERE balance."qtyOnHand" > 0)::integer AS "positiveRows",
+           COUNT(*) FILTER (WHERE balance."qtyOnHand" = 0)::integer AS "zeroRows",
+           COUNT(*) FILTER (
+             WHERE balance."lotNumber" IS NOT NULL OR balance."expiryDate" IS NOT NULL
+           )::integer AS "lotExpiryTrackedRows",
+           COUNT(*) FILTER (
+             WHERE balance."updatedAt" >= ${recentlyUpdatedAfter}
+           )::integer AS "recentlyUpdatedRows"
+      FROM "InventoryBalance" balance
+      JOIN "InventoryLocation" inventory_location
+        ON inventory_location."id" = balance."inventoryLocationId"
+       AND inventory_location."tenantId" = ${scope.tenantId}
+       AND inventory_location."companyId" = ${scope.companyId}
+     WHERE balance."tenantId" = ${scope.tenantId}
+       AND balance."companyId" = ${scope.companyId}
+       AND inventory_location."locationId" = ${scope.locationId}
+       AND inventory_location."status" = 'ACTIVE'`;
+
+  return rows[0] ?? {
+    totalRows: 0,
+    positiveRows: 0,
+    zeroRows: 0,
+    lotExpiryTrackedRows: 0,
+    recentlyUpdatedRows: 0
+  };
+}
+
+export function inventoryBalanceDashboardScope(
+  session: SessionContext
+): { tenantId: string; companyId: string; locationId: string } {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    locationId: session.context.locationId
+  };
 }
 
 export async function getInventoryBalanceReconciliation(

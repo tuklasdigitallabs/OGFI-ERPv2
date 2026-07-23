@@ -11,6 +11,7 @@ import {
   calculateBalanceQuantity,
   getInventoryBalanceReconciliationStatus,
   inventoryDashboardProfileHref,
+  inventoryBalanceDashboardScope,
   inventoryLedgerTraceHref,
   inventoryMovementListWhere,
   lockInventoryLocationForPosting,
@@ -25,6 +26,29 @@ import type { SessionContext } from "./context";
 import { inventoryItemLotExpiryRequirements } from "./policySettings";
 
 describe("inventory ledger foundation rules", () => {
+  test("bounds the dashboard balance aggregate to the selected tenant, company, and active location", () => {
+    const dashboardSession = {
+      context: {
+        tenantId: "tenant-1",
+        companyId: "company-1",
+        locationId: "location-1"
+      }
+    } as SessionContext;
+
+    expect(inventoryBalanceDashboardScope(dashboardSession)).toEqual({
+      tenantId: "tenant-1",
+      companyId: "company-1",
+      locationId: "location-1"
+    });
+    const source = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
+    const dashboardSource = readFileSync(path.resolve(__dirname, "dashboard.ts"), "utf8");
+    expect(source).toContain("await requirePermission(session, permissions.inventoryBalanceView)");
+    expect(source).toContain('FROM "InventoryBalance" balance');
+    expect(source).toContain('inventory_location."status" = \'ACTIVE\'');
+    expect(dashboardSource).toContain("getInventoryBalanceDashboardRead(session)");
+    expect(dashboardSource).not.toContain("listInventoryBalances(session)");
+  });
+
   test("inventory empty states match implemented posting sources", () => {
     const balancePage = readFileSync(
       path.resolve(__dirname, "../../app/(app)/inventory/page.tsx"),

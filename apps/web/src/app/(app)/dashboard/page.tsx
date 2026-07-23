@@ -11,6 +11,7 @@ import {
   FileText,
   PackageCheck,
   ShieldCheck,
+  TriangleAlert,
   Utensils,
   Wrench
 } from "lucide-react";
@@ -21,8 +22,10 @@ import { getSessionContext } from "@/server/services/context";
 import {
   getOperationalDashboard,
   type DashboardMetric,
-  type DashboardQueueItem
+  type DashboardQueueItem,
+  type DashboardSourceObservation
 } from "@/server/services/dashboard";
+import { formatDashboardCheckedAt } from "./sourceObservation";
 
 export const dynamic = "force-dynamic";
 
@@ -143,17 +146,25 @@ function EmptyDashboardState({
 function QueueList({
   emptyDetail,
   items,
+  isPartial = false,
   actionLabel = "Open record"
 }: {
   emptyDetail: string;
   items: DashboardQueueItem[];
+  isPartial?: boolean;
   actionLabel?: string;
 }) {
   if (items.length === 0) {
     return (
       <div className="p-5">
-        <p className="font-semibold text-slate-900">Nothing waiting right now</p>
-        <p className="mt-1 text-sm text-slate-600">{emptyDetail}</p>
+        <p className="font-semibold text-slate-900">
+          {isPartial ? "No items shown from available sources" : "Nothing waiting right now"}
+        </p>
+        <p className="mt-1 text-sm text-slate-600">
+          {isPartial
+            ? "One or more authorized sources were unavailable, so this is not confirmation that no work is waiting. Open the affected source workspace in Dashboard source status."
+            : emptyDetail}
+        </p>
       </div>
     );
   }
@@ -212,6 +223,142 @@ function QueueList({
         </div>
       ))}
     </div>
+  );
+}
+
+type DashboardData = Awaited<ReturnType<typeof getOperationalDashboard>>;
+
+function dashboardResponseIsPartial(dashboard: DashboardData) {
+  return (
+    dashboard.sourceObservations.length === 0 ||
+    dashboard.sourceObservations.some(
+      (source) => source.availability === "UNAVAILABLE"
+    )
+  );
+}
+
+function queueCountLabel(
+  contract: DashboardData["approvalQueueContract"],
+  noun: string
+) {
+  if (contract.totalCount === null) {
+    return `${contract.displayedCount} ${noun} shown from available sources`;
+  }
+
+  return `${contract.displayedCount}${
+    contract.totalCount > contract.displayedCount ? ` of ${contract.totalCount}` : ""
+  } ${noun} shown`;
+}
+
+function SourceObservationList({
+  sources
+}: {
+  sources: DashboardSourceObservation[];
+}) {
+  return (
+    <ul className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
+      {sources.map((source) => (
+        <li
+          key={source.id}
+          className="flex flex-col gap-2 rounded-lg border border-current/15 bg-white/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="min-w-0">
+            <p className="font-semibold">{source.label}</p>
+            <p className="text-xs">
+              <span className="font-bold">
+                {source.availability === "AVAILABLE" ? "Available" : "Unavailable"}
+              </span>
+              {" · Checked "}
+              {formatDashboardCheckedAt(source.checkedAt)}
+            </p>
+            {source.dataAsOf ? (
+              <p className="mt-1 text-xs">
+                Source data as of {formatDashboardCheckedAt(source.dataAsOf)}
+              </p>
+            ) : null}
+            {source.availability === "UNAVAILABLE" ? (
+              <p className="mt-1 text-xs">Source data was unavailable for this response.</p>
+            ) : null}
+          </div>
+          <a
+            className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-3 text-sm font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+            href={source.href}
+          >
+            Open source
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SourceObservationDisclosure({ dashboard }: { dashboard: DashboardData }) {
+  const hasNoAttemptedSources = dashboard.sourceObservations.length === 0;
+  const isPartialResponse = dashboardResponseIsPartial(dashboard);
+  const availableSources = dashboard.sourceObservations.filter(
+    (source) => source.availability === "AVAILABLE"
+  );
+  const unavailableSources = dashboard.sourceObservations.filter(
+    (source) => source.availability === "UNAVAILABLE"
+  );
+
+  return (
+    <details
+      className={
+        isPartialResponse
+          ? "border-t border-amber-200 bg-amber-50 px-5 py-2 text-amber-950"
+          : "border-t border-slate-200 bg-slate-50 px-5 py-2 text-slate-700"
+      }
+      open={isPartialResponse}
+    >
+      <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-3 rounded-lg py-2 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+        {isPartialResponse ? (
+          <TriangleAlert aria-hidden="true" className="h-5 w-5 shrink-0 text-amber-700" />
+        ) : (
+          <Database aria-hidden="true" className="h-5 w-5 shrink-0 text-emerald-700" />
+        )}
+        <span className="flex-1">
+          {isPartialResponse
+            ? hasNoAttemptedSources
+              ? "No dashboard sources were checked"
+              : "Some dashboard sources were unavailable"
+            : "Dashboard source status"}
+        </span>
+        <span className="w-full pl-8 text-xs font-bold uppercase tracking-wide sm:w-auto sm:pl-0">
+          {isPartialResponse ? "Partial response · details open" : "All attempted sources available · show details"}
+        </span>
+      </summary>
+      <div className="pb-3 pl-8">
+        <p className="max-w-4xl text-sm leading-6">
+          Checked times show when this dashboard response observed each source. They do not
+          show when records changed and do not prove completeness or an SLA.
+        </p>
+        {isPartialResponse ? (
+          <p className="mt-2 text-sm font-semibold">
+            Totals, zero values, and empty queues may omit records. Review the unavailable
+            source workspaces before deciding that no action is required.
+          </p>
+        ) : null}
+        <div className="mt-3">
+          {isPartialResponse ? (
+            <>
+              <SourceObservationList sources={unavailableSources} />
+              {availableSources.length > 0 ? (
+                <details className="mt-2">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-lg px-3 py-2 text-sm font-semibold hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 [&::-webkit-details-marker]:hidden">
+                    Show {availableSources.length} available source
+                    {availableSources.length === 1 ? "" : "s"}
+                  </summary>
+                  <SourceObservationList sources={availableSources} />
+                </details>
+              ) : null}
+            </>
+          ) : (
+            <SourceObservationList sources={availableSources} />
+          )}
+        </div>
+      </div>
+    </details>
   );
 }
 
@@ -310,10 +457,12 @@ function AnalyticsBarPanel({
 
 function AnalyticsDonutPanel({
   approvals,
-  exceptions
+  exceptions,
+  isPartial
 }: {
   approvals: number | null;
   exceptions: number;
+  isPartial: boolean;
 }) {
   const knownApprovals = approvals ?? 0;
   const total = knownApprovals + exceptions;
@@ -337,7 +486,7 @@ function AnalyticsDonutPanel({
             <div>
               <p className="text-3xl font-bold text-slate-950">{total}</p>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                known alerts
+                {isPartial ? "shown alerts" : "known alerts"}
               </p>
             </div>
           </div>
@@ -371,7 +520,13 @@ function AnalyticsDonutPanel({
   );
 }
 
-function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof getOperationalDashboard>> }) {
+function DashboardOverview({ dashboard }: { dashboard: DashboardData }) {
+  const hasUnavailableSource = dashboardResponseIsPartial(dashboard);
+  const approvalQueueIsPartial =
+    dashboard.approvalQueueContract.completeness === "PARTIAL";
+  const exceptionQueueIsPartial =
+    dashboard.exceptionQueueContract.completeness === "PARTIAL";
+
   return (
     <>
       <section className="ogfi-data-surface mb-5">
@@ -388,17 +543,11 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
               <Badge tone="neutral" size="sm">Approval preview unavailable</Badge>
             ) : (
               <Badge tone="warning" size="sm">
-                {dashboard.approvalQueueContract.displayedCount}
-                {dashboard.approvalQueueContract.totalCount > dashboard.approvalQueueContract.displayedCount
-                  ? ` of ${dashboard.approvalQueueContract.totalCount}`
-                  : ""} priority approvals shown
+                {queueCountLabel(dashboard.approvalQueueContract, "priority approvals")}
               </Badge>
             )}
-              <Badge tone="warning" size="sm">
-              {dashboard.exceptionQueueContract.displayedCount}
-              {dashboard.exceptionQueueContract.totalCount > dashboard.exceptionQueueContract.displayedCount
-                ? ` of ${dashboard.exceptionQueueContract.totalCount}`
-                : ""} priority exceptions shown
+            <Badge tone="warning" size="sm">
+              {queueCountLabel(dashboard.exceptionQueueContract, "priority exceptions")}
             </Badge>
           </div>
         </div>
@@ -427,6 +576,7 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
                 actionLabel="Review assigned approval"
                 emptyDetail="Assigned approval decisions will appear here after controlled records are submitted."
                 items={dashboard.approvalQueueContract.items}
+                isPartial={approvalQueueIsPartial}
               />
             )}
           </section>
@@ -439,6 +589,7 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
               actionLabel="Open source record"
               emptyDetail="Open exceptions are pulled from purchasing, receiving, transfers, counts, and inventory controls."
               items={dashboard.exceptionQueueContract.items}
+              isPartial={exceptionQueueIsPartial}
             />
           </section>
         </div>
@@ -453,13 +604,22 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
                 Counts and exceptions from purchasing, receiving, stock controls, and restaurant operations
               </p>
             </div>
-            <Badge tone="info" size="sm">{dashboard.cards.length} indicators</Badge>
+            <Badge tone={hasUnavailableSource ? "warning" : "info"} size="sm">
+              {dashboard.cards.length} indicators
+              {hasUnavailableSource ? " from available sources" : ""}
+            </Badge>
           </div>
           {dashboard.cards.length === 0 ? (
             <div className="p-5">
-              <p className="font-semibold text-slate-900">No operational widgets available</p>
+              <p className="font-semibold text-slate-900">
+                {hasUnavailableSource
+                  ? "No operational indicators shown from available sources"
+                  : "No operational widgets available"}
+              </p>
               <p className="mt-1 text-sm text-slate-600">
-                Widgets appear after your role receives permission to view source records.
+                {hasUnavailableSource
+                  ? "This does not confirm there are no exceptions. Open the unavailable source workspaces in Dashboard source status."
+                  : "Widgets appear after your role receives permission to view source records."}
               </p>
             </div>
           ) : (
@@ -475,7 +635,13 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
                       <p className="text-sm font-semibold text-slate-500">{card.label}</p>
                       <p className="mt-2 text-3xl font-bold text-slate-950">{card.value}</p>
                     </div>
-                    <Badge tone={card.tone} size="sm">{card.value > 0 ? "Action" : "Clear"}</Badge>
+                    <Badge tone={card.tone} size="sm">
+                      {card.value > 0
+                        ? "Action"
+                        : hasUnavailableSource
+                          ? "Zero in available sources"
+                          : "No matching records"}
+                    </Badge>
                   </div>
                   <p className="mt-2 text-sm text-slate-600">{card.description}</p>
                 </a>
@@ -488,7 +654,7 @@ function DashboardOverview({ dashboard }: { dashboard: Awaited<ReturnType<typeof
           <div className="border-b border-slate-100 p-4">
             <h2 className="text-lg font-bold text-slate-950">Data Source Coverage</h2>
             <p className="text-sm text-slate-500">
-              Shows which executive metrics are backed by trusted ERP sources
+              Source-backed metrics and their authorized drill-downs
             </p>
           </div>
           <div className="grid gap-3 p-4">
@@ -533,7 +699,7 @@ function DashboardAnalytics({
   dashboard
 }: {
   activePanel: AnalyticsPanel;
-  dashboard: Awaited<ReturnType<typeof getOperationalDashboard>>;
+  dashboard: DashboardData;
 }) {
   const analyticsMetrics = [...dashboard.metrics, ...dashboard.stockHealth];
   const stockRows = dashboard.stockHealth.map((metric) => ({
@@ -621,6 +787,7 @@ function DashboardAnalytics({
         <AnalyticsDonutPanel
           approvals={dashboard.approvalQueueContract.availability === "AVAILABLE" ? dashboard.approvalQueue.length : null}
           exceptions={dashboard.exceptionQueue.length}
+          isPartial={dashboardResponseIsPartial(dashboard)}
         />
       ) : null}
 
@@ -639,7 +806,11 @@ function DashboardAnalytics({
           <div className="p-4">
             <EmptyDashboardState
               title="No analytics available yet"
-              detail="Analytics appear after purchasing, receiving, inventory, or ledger source records are available to your role."
+              detail={
+                dashboardResponseIsPartial(dashboard)
+                  ? "No analytics are shown from the available sources. This does not confirm there are no matching records; review Dashboard source status."
+                  : "Analytics appear after purchasing, receiving, inventory, or ledger source records are available to your role."
+              }
             />
           </div>
         ) : (
@@ -660,7 +831,7 @@ function DashboardReports({
   dashboard
 }: {
   canOpenFoodCostAnalysis: boolean;
-  dashboard: Awaited<ReturnType<typeof getOperationalDashboard>>;
+  dashboard: DashboardData;
 }) {
   const reports = [
     {
@@ -788,11 +959,16 @@ function DashboardReports({
   );
 }
 
-function DashboardNotifications({ dashboard }: { dashboard: Awaited<ReturnType<typeof getOperationalDashboard>> }) {
+function DashboardNotifications({ dashboard }: { dashboard: DashboardData }) {
   const notificationItems = [
     ...dashboard.approvalQueueContract.items,
     ...dashboard.exceptionQueueContract.items
   ];
+  const isPartialResponse = dashboardResponseIsPartial(dashboard);
+  const approvalQueueIsPartial =
+    dashboard.approvalQueueContract.completeness === "PARTIAL";
+  const exceptionQueueIsPartial =
+    dashboard.exceptionQueueContract.completeness === "PARTIAL";
 
   return (
     <div className="grid gap-5">
@@ -815,8 +991,16 @@ function DashboardNotifications({ dashboard }: { dashboard: Awaited<ReturnType<t
         {notificationItems.length === 0 ? (
           <div className="p-4">
             <EmptyDashboardState
-              title="No dashboard notifications right now"
-              detail="Approval assignments, overdue POs, receiving discrepancies, transfer disputes, stock count variances, wastage exceptions, and ledger variances will appear here."
+              title={
+                isPartialResponse
+                  ? "No notifications shown from available sources"
+                  : "No dashboard notifications right now"
+              }
+              detail={
+                isPartialResponse
+                  ? "This does not confirm there are no alerts. Review Dashboard source status and open the unavailable source workspaces."
+                  : "Approval assignments, overdue POs, receiving discrepancies, transfer disputes, stock count variances, wastage exceptions, and ledger variances will appear here."
+              }
               actionHref="/notifications"
               actionLabel="View Notification Center"
             />
@@ -826,6 +1010,7 @@ function DashboardNotifications({ dashboard }: { dashboard: Awaited<ReturnType<t
             actionLabel="Open source record"
             emptyDetail="No dashboard notifications right now."
             items={notificationItems}
+            isPartial={isPartialResponse}
           />
         )}
       </section>
@@ -834,27 +1019,40 @@ function DashboardNotifications({ dashboard }: { dashboard: Awaited<ReturnType<t
         <Panel className="ogfi-detail-card">
           <div className="flex items-center gap-3">
             <Bell aria-hidden="true" className="h-5 w-5 text-blue-700" />
-            <p className="text-sm font-semibold text-slate-500">Approval alerts</p>
+            <p className="text-sm font-semibold text-slate-500">
+              {approvalQueueIsPartial
+                ? "Approval alerts from available sources"
+                : "Approval alerts"}
+            </p>
           </div>
           <p className="mt-2 text-3xl font-bold text-slate-950">
             {dashboard.approvalQueueContract.availability === "UNAVAILABLE"
               ? "Unavailable"
-              : dashboard.approvalQueue.length}
+              : `${dashboard.approvalQueue.length}${approvalQueueIsPartial ? " shown" : ""}`}
           </p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <div className="flex items-center gap-3">
             <AlertTriangle aria-hidden="true" className="h-5 w-5 text-amber-700" />
-            <p className="text-sm font-semibold text-slate-500">Exception alerts</p>
+            <p className="text-sm font-semibold text-slate-500">
+              {exceptionQueueIsPartial
+                ? "Exception alerts from available sources"
+                : "Exception alerts"}
+            </p>
           </div>
           <p className="mt-2 text-3xl font-bold text-slate-950">
             {dashboard.exceptionQueue.length}
+            {exceptionQueueIsPartial ? " shown" : ""}
           </p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <div className="flex items-center gap-3">
             <ClipboardCheck aria-hidden="true" className="h-5 w-5 text-emerald-700" />
-            <p className="text-sm font-semibold text-slate-500">Clear indicators</p>
+            <p className="text-sm font-semibold text-slate-500">
+              {isPartialResponse
+                ? "Zero-value indicators from available sources"
+                : "Indicators with no matching records"}
+            </p>
           </div>
           <p className="mt-2 text-3xl font-bold text-slate-950">
             {dashboard.cards.filter((card) => card.value === 0).length}
@@ -921,11 +1119,13 @@ export default async function DashboardPage({
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Badge tone="info" size="sm">Live source records</Badge>
-              <Badge size="sm">Updated {new Date(dashboard.generatedAt).toLocaleString()}</Badge>
+              <Badge tone="info" size="sm">
+                Dashboard assembled {formatDashboardCheckedAt(dashboard.assembledAt)}
+              </Badge>
             </div>
           </div>
         </div>
+        <SourceObservationDisclosure dashboard={dashboard} />
       </section>
 
       {activeView === "overview" ? <DashboardOverview dashboard={dashboard} /> : null}

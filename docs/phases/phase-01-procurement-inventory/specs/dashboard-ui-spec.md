@@ -21,8 +21,10 @@
 
 - Persistent sidebar and compact top header per `UI_IMPLEMENTATION_STANDARD.md`.
 - Context switcher shows company / brand / location or allowed consolidated scope.
-- Page title, freshness label, optional date range, and export/refresh actions.
-- Start with compact scope and freshness context, then an action-first `Today’s work` queue; show compact role-required KPI cards second, with analytics, reports, and other drill-down widgets secondary. The queue and every drill-down remain within the user’s authorized scope.
+- Page title, dashboard assembly time, compact attempted-source status, optional date range, and approved refresh/export actions.
+- Start with compact scope and source-observation context, then an action-first `Today’s work` queue; show compact role-required KPI cards second, with analytics, reports, and other drill-down widgets secondary. The queue and every drill-down remain within the user’s authorized scope.
+- Source check time states when Overview received the response, not when records last changed or whether data meets a freshness SLA. Unauthorized sources are omitted. A source-native `Data as of` time is shown only when its adapter provides documented semantics.
+- If an authorized attempted source is unavailable, keep unaffected sources visible, identify the view as partial, link to the authoritative workspace, and withhold complete cross-source totals rather than interpreting the source as zero.
 - Do not use sales, covers, food cost, labor cost, or recipe-derived metrics in Phase I unless a validated source integration exists.
 
 ## 3. Required KPI cards by role
