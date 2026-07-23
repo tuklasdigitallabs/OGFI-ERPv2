@@ -55,6 +55,7 @@ export type FoodSafetyLogSummary = {
   exceptionCount: number;
   readingCount?: number;
   readings: FoodSafetyReadingSummary[];
+  auditEvents?: Array<{ id: string; eventType: string; occurredAt: string }>;
 };
 
 export type FoodSafetyStatusCounts = Record<
@@ -850,6 +851,11 @@ export async function getFoodSafetyLogSummary(
     ? await prisma.user.findMany({ where: { id: { in: actorIds }, tenantId: session.context.tenantId }, select: { id: true, displayName: true, email: true } })
     : [];
   const names = userDisplayNameById(actors);
+  const auditEvents = await prisma.auditEvent.findMany({
+    where: { tenantId: log.tenantId, companyId: log.companyId, entityType: "FoodSafetyLog", entityId: log.id },
+    orderBy: { occurredAt: "asc" },
+    select: { id: true, eventType: true, occurredAt: true }
+  });
   return {
     id: log.id,
     title: log.title,
@@ -876,7 +882,8 @@ export async function getFoodSafetyLogSummary(
       severity: reading.severity,
       correctiveAction: reading.correctiveAction,
       evidenceReference: reading.evidenceReference
-    }))
+    })),
+    auditEvents: auditEvents.map((event) => ({ ...event, occurredAt: event.occurredAt.toISOString() }))
   } satisfies FoodSafetyLogSummary;
 }
 

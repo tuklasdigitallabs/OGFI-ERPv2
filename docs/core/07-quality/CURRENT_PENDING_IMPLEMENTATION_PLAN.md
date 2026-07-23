@@ -213,6 +213,7 @@ Direct web-mounted `local-private` storage remains suitable for local developmen
 - Existing source detail, review, correction, close, evidence, audit, and no-inventory-mutation controls remain unchanged. Focused Food Safety tests and web typecheck are required; responsive browser, disposable PostgreSQL, hosted, export-parity, and production-build gates remain open.
 - The Food Safety detail summary now performs one exact scoped record lookup rather than materializing the full dashboard population. Full export/report paths remain intentionally separate and still require volume and parity evidence.
 - The ordinary Food Safety page projection now returns reading counts rather than hydrating reading payloads; reading detail remains on the focused record route.
+- Food Safety detail now exposes a read-only Activity section sourced from immutable tenant/company-scoped audit events for the selected compliance log; the focused Food Safety suite passes 15/15 and web typecheck passes. Browser, disposable-PostgreSQL, export-parity, hosted, and production-build gates remain open.
 
 ### SPF-008 ordinary Incidents pagination checkpoint — July 24, 2026
 

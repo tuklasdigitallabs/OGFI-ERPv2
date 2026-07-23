@@ -164,6 +164,22 @@ export default async function FoodSafetyLogDetailPage({
       activeNav="food-safety"
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
+      <section className="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-bold text-slate-950">Activity</h2>
+        <p className="mt-1 text-sm text-slate-500">Immutable audit history for this compliance log.</p>
+        {!log.auditEvents?.length ? (
+          <p className="mt-4 text-sm text-slate-600">No activity recorded.</p>
+        ) : (
+          <ol className="mt-4 space-y-3">
+            {log.auditEvents.map((event) => (
+              <li key={event.id} className="rounded-lg border border-slate-200 px-3 py-2">
+                <p className="text-sm font-semibold text-slate-900">{event.eventType}</p>
+                <p className="text-xs text-slate-500">{new Date(event.occurredAt).toLocaleString()}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <ButtonLink href="/food-safety" tone="ghost" className="ogfi-chip">
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
