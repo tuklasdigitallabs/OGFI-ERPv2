@@ -25430,18 +25430,28 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/foodSafety.ts#listFoodSafetyLogPage",
+    "id": "server/services/foodSafety.ts#getFoodSafetyLogSummary",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.foodSafetyView",
-    "scopeDimensions": ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"],
-    "guardChain": ["session-delegated-by-caller", "service-policy-helper", "tenant-company-scope-query"],
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/foodSafety.ts#getFoodSafetyLogSummary",
+    "id": "server/services/foodSafety.ts#listFoodSafetyLogPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.foodSafetyView",
     "scopeDimensions": [
@@ -25741,20 +25751,30 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/incidents.ts#listIncidentPage",
+    "id": "server/services/incidents.ts#getOperationalIncidentSummary",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.incidentView",
-    "scopeDimensions": ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"],
-    "guardChain": ["session-delegated-by-caller", "service-policy-helper", "tenant-company-scope-query"],
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "STANDARD",
     "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+    "permissionSource": "REVIEWED_DELEGATION"
   },
   {
-    "id": "server/services/incidents.ts#getOperationalIncidentSummary",
+    "id": "server/services/incidents.ts#listIncidentMyTaskPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.incidentView",
+    "permission": "permissions.incidentResolve | permissions.incidentView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -25773,9 +25793,9 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/incidents.ts#listIncidentMyTaskPage",
+    "id": "server/services/incidents.ts#listIncidentPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.incidentResolve | permissions.incidentView",
+    "permission": "permissions.incidentView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -25930,7 +25950,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/inventory.ts#listInventoryBalances",
+    "id": "server/services/inventory.ts#listInventoryBalancePage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.inventoryBalanceView",
     "scopeDimensions": [
@@ -25951,7 +25971,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/inventory.ts#listInventoryBalancePage",
+    "id": "server/services/inventory.ts#listInventoryBalances",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.inventoryBalanceView",
     "scopeDimensions": [
@@ -26014,7 +26034,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/inventory.ts#listInventoryMovements",
+    "id": "server/services/inventory.ts#listInventoryMovementPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.inventoryLedgerView",
     "scopeDimensions": [
@@ -26035,7 +26055,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/inventory.ts#listInventoryMovementPage",
+    "id": "server/services/inventory.ts#listInventoryMovements",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.inventoryLedgerView",
     "scopeDimensions": [
@@ -26849,17 +26869,6 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/maintenance.ts#listMaintenanceTicketPage",
-    "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.maintenanceView",
-    "scopeDimensions": ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"],
-    "guardChain": ["session-delegated-by-caller", "service-policy-helper", "tenant-company-scope-query"],
-    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
-  },
-  {
     "id": "server/services/maintenance.ts#getMaintenanceTicketDetail",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.maintenanceView",
@@ -26905,6 +26914,27 @@
     "id": "server/services/maintenance.ts#listMaintenanceMyTaskPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.maintenanceComplete | permissions.maintenanceView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/maintenance.ts#listMaintenanceTicketPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.maintenanceView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -32172,7 +32202,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/purchaseOrders.ts#listPurchaseOrders",
+    "id": "server/services/purchaseOrders.ts#listPurchaseOrderPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.purchaseOrderView",
     "scopeDimensions": [
@@ -32193,7 +32223,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/purchaseOrders.ts#listPurchaseOrderPage",
+    "id": "server/services/purchaseOrders.ts#listPurchaseOrders",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.purchaseOrderView",
     "scopeDimensions": [
@@ -32644,7 +32674,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/purchaseRequests.ts#listPurchaseRequests",
+    "id": "server/services/purchaseRequests.ts#listPurchaseRequestPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
     "scopeDimensions": [
@@ -32665,7 +32695,7 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
-    "id": "server/services/purchaseRequests.ts#listPurchaseRequestPage",
+    "id": "server/services/purchaseRequests.ts#listPurchaseRequests",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
     "scopeDimensions": [
@@ -33110,7 +33140,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/receiving.ts#listGoodsReceipts",
+    "id": "server/services/receiving.ts#listGoodsReceiptPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.receivingView",
     "scopeDimensions": [
@@ -33131,7 +33161,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/receiving.ts#listGoodsReceiptPage",
+    "id": "server/services/receiving.ts#listGoodsReceipts",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.receivingView",
     "scopeDimensions": [
@@ -34458,7 +34488,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/stockAdjustments.ts#listStockAdjustments",
+    "id": "server/services/stockAdjustments.ts#listStockAdjustmentPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockAdjustmentView",
     "scopeDimensions": [
@@ -34479,7 +34509,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/stockAdjustments.ts#listStockAdjustmentPage",
+    "id": "server/services/stockAdjustments.ts#listStockAdjustments",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockAdjustmentView",
     "scopeDimensions": [
@@ -34839,7 +34869,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/stockCounts.ts#listStockCounts",
+    "id": "server/services/stockCounts.ts#listStockCountPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockCountView | permissions.stockCountReview",
     "scopeDimensions": [
@@ -34860,7 +34890,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/stockCounts.ts#listStockCountPage",
+    "id": "server/services/stockCounts.ts#listStockCounts",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.stockCountView | permissions.stockCountReview",
     "scopeDimensions": [
@@ -35516,7 +35546,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/transfers.ts#listInventoryTransfers",
+    "id": "server/services/transfers.ts#listInventoryTransferPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.transferView",
     "scopeDimensions": [
@@ -35537,7 +35567,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/transfers.ts#listInventoryTransferPage",
+    "id": "server/services/transfers.ts#listInventoryTransfers",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.transferView",
     "scopeDimensions": [
@@ -35964,7 +35994,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/wastage.ts#listWastageReports",
+    "id": "server/services/wastage.ts#listWastageReportPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.wastageView",
     "scopeDimensions": [
@@ -35985,7 +36015,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/wastage.ts#listWastageReportPage",
+    "id": "server/services/wastage.ts#listWastageReports",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.wastageView",
     "scopeDimensions": [

@@ -10,6 +10,7 @@
 - Food Safety detail reads now use a direct scoped record lookup instead of loading the full dashboard population.
 - Food Safety list rows now carry reading counts without hydrating nested reading payloads.
 - Food Safety detail now exposes read-only immutable audit activity for the selected compliance log.
+- Refreshed the generated authorization-surface baseline for the Incident detail service and verified the 20-case manifest.
 
 ## 2026-07-24 — Incidents Register Pagination
 
