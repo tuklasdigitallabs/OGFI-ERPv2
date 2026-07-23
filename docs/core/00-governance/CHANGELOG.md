@@ -14,6 +14,7 @@
 
 - Moved the ordinary Incidents register to server-backed 25-row pagination with exact scoped counts, validated filters, deterministic ordering, and preserved dashboard/export separation (`DEC-0090`).
 - Cancelled incidents no longer inflate overdue counts or display an unresolved follow-up in detail.
+- Incident detail now uses a direct scoped lookup and exposes read-only immutable audit activity.
 
 ## 2026-07-24 — Maintenance Register Pagination
 

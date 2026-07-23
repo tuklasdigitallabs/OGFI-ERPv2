@@ -463,6 +463,20 @@ export default async function IncidentDetailPage({
           </div>
         </section>
 
+        <section className="mt-5 lg:col-span-2">
+          <Panel className="ogfi-detail-card">
+            <h2 className="text-lg font-bold text-slate-950">Activity</h2>
+            <div className="mt-4 grid gap-3">
+              {incident.auditEvents?.length ? incident.auditEvents.map((event) => (
+                <div key={event.id} className="rounded-lg border border-slate-200 p-3">
+                  <p className="text-sm font-semibold text-slate-950">{event.eventType.replaceAll("_", " ")}</p>
+                  <p className="text-xs text-slate-500">{new Date(event.occurredAt).toLocaleString()}</p>
+                </div>
+              )) : <p className="text-sm text-slate-500">No activity recorded.</p>}
+            </div>
+          </Panel>
+        </section>
+
         <aside className="grid gap-4 content-start">
           <Panel className="ogfi-detail-card">
             <p className="text-sm font-semibold text-slate-500">Evidence</p>

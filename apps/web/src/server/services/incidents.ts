@@ -138,6 +138,7 @@ export type OperationalIncidentSummary = {
   evidenceReference: string | null;
   dueAt: string | null;
   resolvedAt: string | null;
+  auditEvents?: Array<{ id: string; eventType: string; occurredAt: string; metadata: unknown }>;
 };
 
 export type IncidentMyTaskPage = {
@@ -815,7 +816,7 @@ export async function getOperationalIncidentSummary(
   session: SessionContext,
   incidentId: string
 ) {
-  const scopedTarget = await prisma.operationalIncident.findFirst({
+  const incident = await prisma.operationalIncident.findFirst({
     where: {
       id: incidentId,
       tenantId: session.context.tenantId,
@@ -823,11 +824,41 @@ export async function getOperationalIncidentSummary(
       brandId: session.context.brandId ?? null,
       locationId: session.context.locationId
     },
-    select: { id: true }
+    include: { location: true }
   });
-  if (!scopedTarget) return null;
-  const dashboard = await getIncidentDashboard(session);
-  return dashboard.incidents.find((incident) => incident.id === incidentId) ?? null;
+  if (!incident) return null;
+  const actorIds = [incident.reportedByUserId, incident.ownerUserId].filter((id): id is string => Boolean(id));
+  const [actors, auditEvents] = await Promise.all([
+    actorIds.length ? prisma.user.findMany({ where: { id: { in: actorIds }, tenantId: session.context.tenantId }, select: { id: true, displayName: true, email: true } }) : Promise.resolve([]),
+    prisma.auditEvent.findMany({
+      where: { tenantId: session.context.tenantId, companyId: session.context.companyId, entityType: "OperationalIncident", entityId: incident.id },
+      orderBy: { occurredAt: "asc" },
+      select: { id: true, eventType: true, occurredAt: true, metadata: true }
+    })
+  ]);
+  const names = userDisplayNameById(actors);
+  return {
+    id: incident.id,
+    incidentNumber: incident.incidentNumber,
+    incidentDate: incident.incidentDate.toISOString().slice(0, 10),
+    category: incident.category,
+    severity: incident.severity,
+    status: incident.status,
+    title: incident.title,
+    summary: incident.summary,
+    locationName: incident.location.name,
+    reportedByName: incident.reportedByUserId ? names.get(incident.reportedByUserId) ?? "Unknown user" : null,
+    hasReporter: Boolean(incident.reportedByUserId),
+    reportedByCurrentUser: incident.reportedByUserId === session.user.id,
+    ownerName: incident.ownerUserId ? names.get(incident.ownerUserId) ?? "Unknown user" : null,
+    sourceRecordType: incident.sourceRecordType,
+    sourceRecordId: incident.sourceRecordId,
+    correctiveAction: incident.correctiveAction,
+    evidenceReference: incident.evidenceReference,
+    dueAt: dateOrNull(incident.dueAt),
+    resolvedAt: dateOrNull(incident.resolvedAt),
+    auditEvents: auditEvents.map((event) => ({ ...event, occurredAt: event.occurredAt.toISOString() }))
+  };
 }
 
 export async function createOperationalIncident(formData: FormData) {

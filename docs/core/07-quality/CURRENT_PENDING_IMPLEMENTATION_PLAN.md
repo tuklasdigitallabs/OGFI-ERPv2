@@ -219,6 +219,7 @@ Direct web-mounted `local-private` storage remains suitable for local developmen
 - The ordinary Incidents register now uses a server-owned 25-row page query with exact tenant/company/optional-brand/location counts, deterministic `incidentDate DESC, createdAt DESC, id DESC` ordering, validated incident-date/status/severity filters, and server-side text search across incident, corrective-action, evidence, and source-link fields. Page links preserve active filters; dashboard aggregates remain separate and export remains separately authorized.
 - Existing source-link scope checks, owner/resolver segregation, evidence, idempotency, cancellation, correction, audit, and source-record non-mutation controls remain unchanged. Focused Incident tests and web typecheck are required; cancellation metric/UI defects, responsive browser, PostgreSQL, export-parity, hosted, and production-build gates remain open.
 - Cancelled incidents are now excluded from overdue metrics and their detail view presents a terminal cancellation state instead of an unresolved/open follow-up.
+- Incident detail now performs a direct tenant/company/brand/location-scoped lookup instead of loading the full dashboard collection, and exposes a read-only Activity section sourced from immutable `AuditEvent` rows for the selected incident. The focused Incident suite passes 21/21; browser, disposable-PostgreSQL, export-parity, hosted, and production-build gates remain open.
 
 ### SPF-008 ordinary Maintenance pagination checkpoint — July 24, 2026
 

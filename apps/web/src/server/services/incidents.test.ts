@@ -22,6 +22,7 @@ const mockPrisma = vi.hoisted(() => ({
     findFirst: vi.fn()
   },
   user: { findMany: vi.fn() },
+  auditEvent: { findMany: vi.fn() },
   userRoleAssignment: {
     findMany: vi.fn()
   }
@@ -282,6 +283,7 @@ describe("Phase 2 incident management foundation", () => {
     mockPrisma.operationalIncident.count.mockResolvedValue(12);
     mockPrisma.operationalIncident.findMany.mockResolvedValue([]);
     mockPrisma.user.findMany.mockResolvedValue([]);
+    mockPrisma.auditEvent.findMany.mockResolvedValue([]);
   });
 
   it("keeps incident register count and page predicates aligned, including actor-name search", async () => {
@@ -1127,7 +1129,7 @@ describe("Incident detail scope", () => {
         brandId: null,
         locationId: session.context.locationId
       },
-      select: { id: true }
+      include: { location: true }
     });
     expect(mockPrisma.operationalIncident.findMany).not.toHaveBeenCalled();
   });

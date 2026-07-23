@@ -7,6 +7,8 @@ The ordinary Incidents register uses a bounded server-owned 25-row page query. C
 
 Existing source-link authorization, evidence, owner/resolver controls, cancellation/correction/idempotency, audit, and source-record non-mutation behavior are preserved. Cancellation terminal-state metrics and detail messaging remain a separate required remediation.
 
+The selected-record detail path is direct and scope-bound: it resolves the incident under the active tenant/company/brand/location context and renders a read-only Activity section from immutable audit events for that incident. The detail path does not broaden access by reusing an unbounded dashboard read.
+
 Cancellation terminal-state metrics and detail messaging now exclude cancelled incidents from overdue work and show cancellation explicitly.
 
 Cancelled list rows use neutral terminal-state styling.
