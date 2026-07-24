@@ -325,4 +325,4 @@ Add a dated entry whenever an approved decision changes product scope, business 
 ## 2026-07-24 — Goods Receipt Create Idempotency Foundation
 
 - Implemented the confirmed `DEC-0093` additive Goods Receipt idempotency contract: durable tenant/company-scoped keys, canonical request hashes, strict actor/location/PO replay binding, safe conflict behavior, and automatic UI key rotation when the selected PO changes.
-- Focused receiving tests, lint, typecheck, and disposable migration deployment pass; disposable seeded concurrency/rollback evidence remains open because the lifecycle seed client hit Prisma `P6001` before the integration test ran.
+- Focused receiving tests, lint, typecheck, and disposable migration deployment pass. After restoring the native Prisma Client, the seeded disposable lifecycle also passed seed repeatability and the receiving serialization integration, including idempotency replay/conflict and authority/closure races; hosted, browser, and final release gates remain open.

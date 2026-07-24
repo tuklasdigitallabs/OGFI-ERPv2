@@ -75,7 +75,7 @@ Goods Receipt creation performs a controlled receiving transaction and may creat
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
 | Implement and review create-route key validation, canonical hashing, and replay/conflict handling | Receiving / Inventory engineering | Before Goods Receipt idempotency release | Implemented; focused tests pass |
-| Run disposable-PostgreSQL concurrency, rollback, scope, and exact-once movement evidence | Database + QA | Before activation/UAT sign-off | Pending |
+| Run disposable-PostgreSQL concurrency, rollback, scope, and exact-once movement evidence | Database + QA | Before activation/UAT sign-off | Local disposable lifecycle passed migration, seed repeatability, receiving serialization/idempotency, and authority/closure races; hosted/UAT evidence remains pending |
 | Update Goods Receipt data dictionary and receiving/API specifications for the new fields and contract | Documentation steward + Receiving owner | With implementation merge | Implemented |
 | Assess end-user retry/conflict guidance and release-note impact | Dunong | Before user-facing release | Implemented in receiving KB, glossary, and changelog; release gate remains open |
 
