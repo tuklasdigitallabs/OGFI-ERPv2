@@ -452,6 +452,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - The Administration overview now requests a bounded selected-company Locations page rather than an unbounded location list. Filters cover name/code/brand search, status, and type; rows use explicit safe projections and deterministic `name ASC, id ASC` ordering with exact totals. Initial-location onboarding uses a separate active-only catalog capped at 100 with overflow disclosure.
 - The Organization surface labels Company, Brand, and Department registries as separate pending contracts; Locations alone is not treated as completion of the Organization workspace. Focused Core Admin coverage passes 19/19; full web regression passes 1,295 tests with 301 skipped and one TODO; authorization manifest passes 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL authorization/count parity, selector overflow, and hosted recovery gates remain open.
 
+### DEC-0115 Organization Scope Brands pagination decision — July 24, 2026
+
+- Independent Architecture and Security reviews selected Brands-first as the next registry because Brand is the direct Company → Brand → Location dependency. The slice will use selected-company server predicates, bounded name/code/status filters, deterministic ordering, exact totals, and a separate active Brand option catalog.
+- Company remains a single read-only selected-company summary. Departments remain deferred for their own finance/workforce dependency-count contract; the Organization workspace must not be called complete while Departments remain pending.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
