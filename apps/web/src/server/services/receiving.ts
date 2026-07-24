@@ -1,4 +1,5 @@
 import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { canUseReceiving, permissions, requirePermission } from "./authorization";
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
@@ -21,6 +22,12 @@ import {
 
 const createReceiptSchema = z.object({
   purchaseOrderId: z.string().uuid(),
+  idempotencyKey: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .regex(/^[A-Za-z0-9._:-]+$/, "invalid idempotency key"),
   supplierDeliveryReceiptNumber: z.string().trim().max(120).optional(),
   notes: z.string().trim().max(1000).optional()
 });
@@ -503,6 +510,82 @@ function getLineValue(formData: FormData, lineId: string, field: string) {
   return formData.get(`line.${lineId}.${field}`);
 }
 
+const receiptQuantityFields = new Set([
+  "deliveredQty",
+  "acceptedQty",
+  "rejectedQty",
+  "damagedQty"
+]);
+const receiptLineFields = [
+  "deliveredQty",
+  "acceptedQty",
+  "rejectedQty",
+  "damagedQty",
+  "lotNumber",
+  "expiryDate",
+  "discrepancyReason",
+  "evidenceReference",
+  "notes"
+] as const;
+
+function normalizeReceiptHashValue(field: string, value: string | null) {
+  const trimmed = value?.trim() ?? "";
+  if (receiptQuantityFields.has(field)) {
+    const numeric = Number(trimmed || 0);
+    return Number.isFinite(numeric) ? numeric.toFixed(6) : trimmed;
+  }
+  return trimmed || null;
+}
+
+export function goodsReceiptCreateRequestHash(input: {
+  formData: FormData;
+  tenantId: string;
+  companyId: string;
+  receivingLocationId: string;
+  actorUserId: string;
+}) {
+  const lineIds = new Set<string>();
+  for (const key of input.formData.keys()) {
+    const match = /^line\.([^\.]+)\.(.+)$/.exec(key);
+    const lineId = match?.[1];
+    const field = match?.[2];
+    if (
+      lineId &&
+      field &&
+      receiptLineFields.includes(field as (typeof receiptLineFields)[number])
+    ) {
+      lineIds.add(lineId);
+    }
+  }
+  const lines = Array.from(lineIds)
+    .sort()
+    .map((lineId) => ({
+      lineId,
+      values: Object.fromEntries(
+        receiptLineFields.map((field) => [
+          field,
+          normalizeReceiptHashValue(
+            field,
+            input.formData.get(`line.${lineId}.${field}`)?.toString() ?? null
+          )
+        ])
+      )
+    }));
+  const canonical = {
+    version: "goods-receipt-create-v1",
+    tenantId: input.tenantId,
+    companyId: input.companyId,
+    receivingLocationId: input.receivingLocationId,
+    actorUserId: input.actorUserId,
+    purchaseOrderId: String(input.formData.get("purchaseOrderId") ?? "").trim(),
+    supplierDeliveryReceiptNumber:
+      String(input.formData.get("supplierDeliveryReceiptNumber") ?? "").trim() || null,
+    notes: String(input.formData.get("notes") ?? "").trim() || null,
+    lines
+  };
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+}
+
 async function nextGoodsReceiptReference(
   client: typeof prisma | TransactionClient,
   tenantId: string,
@@ -732,6 +815,59 @@ function isGoodsReceiptReferenceUniqueConstraintError(error: unknown) {
   return Array.isArray(target)
     ? target.includes("companyId") && target.includes("publicReference")
     : typeof target === "string" && target.includes("publicReference");
+}
+
+function isGoodsReceiptIdempotencyUniqueConstraintError(error: unknown) {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("code" in error)
+  ) {
+    return false;
+  }
+  if (error.code === "P2010") {
+    const message = "message" in error && typeof error.message === "string" ? error.message : "";
+    return message.includes("23505") && message.includes("GoodsReceipt_tenantId_companyId_idempotencyKey");
+  }
+  if (error.code !== "P2002") return false;
+  const meta =
+    "meta" in error && typeof error.meta === "object" && error.meta !== null
+      ? error.meta
+      : null;
+  const target = meta && "target" in meta ? meta.target : null;
+  return Array.isArray(target)
+    ? target.includes("tenantId") &&
+        target.includes("companyId") &&
+        target.includes("idempotencyKey")
+    : typeof target === "string" && target.includes("idempotencyKey");
+}
+
+type GoodsReceiptIdempotencyRow = {
+  id: string;
+  purchaseOrderId: string;
+  receivingLocationId: string;
+  receivedByUserId: string;
+  idempotencyRequestHash: string | null;
+};
+
+async function findGoodsReceiptByIdempotencyKey(
+  client: typeof prisma | TransactionClient,
+  session: SessionContext,
+  idempotencyKey: string
+) {
+  const rows = await client.$queryRaw<GoodsReceiptIdempotencyRow[]>`
+    SELECT id,
+           "purchaseOrderId",
+           "receivingLocationId",
+           "receivedByUserId",
+           "idempotencyRequestHash"
+      FROM "GoodsReceipt"
+     WHERE "tenantId" = ${session.context.tenantId}::uuid
+       AND "companyId" = ${session.context.companyId}::uuid
+       AND "idempotencyKey" = ${idempotencyKey}
+     LIMIT 1
+  `;
+  return rows[0] ?? null;
 }
 
 async function getBaseQuantity(
@@ -1310,6 +1446,13 @@ export async function createGoodsReceiptFromPurchaseOrder(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.receivingCreate);
   const values = createReceiptSchema.parse(Object.fromEntries(formData));
+  const requestHash = goodsReceiptCreateRequestHash({
+    formData,
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    receivingLocationId: session.context.locationId,
+    actorUserId: session.user.id
+  });
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
       return await prisma.$transaction(async (tx) => {
@@ -1345,6 +1488,24 @@ export async function createGoodsReceiptFromPurchaseOrder(formData: FormData) {
           throw new Error("PURCHASE_ORDER_NOT_FOUND");
         }
         assertAuthorizedLocation(session, order.deliveryLocationId);
+
+        const existing = await findGoodsReceiptByIdempotencyKey(
+          tx,
+          session,
+          values.idempotencyKey
+        );
+        if (existing) {
+          if (
+            existing.idempotencyRequestHash !== requestHash ||
+            existing.purchaseOrderId !== order.id ||
+            existing.receivingLocationId !== order.deliveryLocationId ||
+            existing.receivedByUserId !== session.user.id
+          ) {
+            throw new Error("GOODS_RECEIPT_IDEMPOTENCY_CONFLICT");
+          }
+          return existing.id;
+        }
+
         assertPurchaseOrderCanBeReceived(order.status);
 
         const inventoryLocation = await tx.inventoryLocation.findFirst({
@@ -1485,6 +1646,13 @@ export async function createGoodsReceiptFromPurchaseOrder(formData: FormData) {
           }
         });
 
+        await tx.$executeRaw`
+          UPDATE "GoodsReceipt"
+             SET "idempotencyKey" = ${values.idempotencyKey},
+                 "idempotencyRequestHash" = ${requestHash}
+           WHERE id = ${receipt.id}::uuid
+        `;
+
         await tx.auditEvent.create({
           data: {
             tenantId: session.context.tenantId,
@@ -1506,7 +1674,24 @@ export async function createGoodsReceiptFromPurchaseOrder(formData: FormData) {
       });
     } catch (error) {
       if (!isGoodsReceiptReferenceUniqueConstraintError(error)) {
-        throw error;
+        if (!isGoodsReceiptIdempotencyUniqueConstraintError(error)) {
+          throw error;
+        }
+        const existing = await findGoodsReceiptByIdempotencyKey(
+          prisma,
+          session,
+          values.idempotencyKey
+        );
+        if (
+          existing &&
+          existing.idempotencyRequestHash === requestHash &&
+          existing.purchaseOrderId === values.purchaseOrderId &&
+          existing.receivingLocationId === session.context.locationId &&
+          existing.receivedByUserId === session.user.id
+        ) {
+          return existing.id;
+        }
+        throw new Error("GOODS_RECEIPT_IDEMPOTENCY_CONFLICT");
       }
       if (attempt === 5) {
         throw new Error("GOODS_RECEIPT_REFERENCE_ALLOCATION_FAILED");

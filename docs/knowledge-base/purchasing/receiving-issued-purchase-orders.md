@@ -34,6 +34,8 @@ Use this article to create and post a Receiving Report from an issued Purchase O
 7. Select `Create Draft Receipt`.
 8. Review the draft receipt, then select `Post Receipt`.
 
+If the browser or network retries the same draft submission, OGFI returns the original draft instead of creating a duplicate. The retry token is handled automatically and is not a business reference you need to copy. If you change the PO, quantities, delivery details, or other receipt values after a failed attempt, submit the changed receipt as a new attempt; the previous retry token cannot be reused for changed data.
+
 [Screenshot placeholder: Receiving page showing an issued PO receipt form and draft receipt post action.]
 
 ## Expected result

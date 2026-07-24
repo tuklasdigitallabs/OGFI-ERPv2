@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Goods Receipt Create Idempotency
+
+- Added confirmed `DEC-0093`: new Goods Receipt API/form callers use a bounded durable idempotency key and canonical request hash, with tenant/company uniqueness, live replay authorization, exact actor/location/PO binding, stable mismatch conflicts, indefinite key retention, and no raw-key logging.
+- Recorded the required concurrency, rollback, scope, authorization, and exact-once inventory/PO safeguards; requested Spark/GPT-5.4 reviewers were unavailable and the closest permitted GPT-5.6 fallback was used without relaxing gates.
+
 ## 2026-07-24 — Goods Receipt Reference Allocation
 
 - Added transactional company/document-type/year sequencing for Goods Receipt public references (`DEC-0092`), replacing the concurrency-unsafe count-based allocator.
@@ -316,3 +321,8 @@ Add a dated entry whenever an approved decision changes product scope, business 
 - Hardened inventory posting preflight and transfer locking against tenant/company leakage, unordered related-location results, and duplicate-retry authorization bypasses; corrected scoped dashboard UUID casting and reconciliation lot-key grouping for PostgreSQL.
 - Corrected disposable PostgreSQL Docker transport for non-default loopback ports and aligned the role-contract verifier with PostgreSQL ACL behavior.
 - Normalized empty brand context handling for maintenance dashboard reads while preserving explicit nullable-brand scope semantics. Disposable PostgreSQL authorization evidence now covers authentication, procurement/inventory, projects/operations, access-control, adapters, admin/platform, finance, workforce, and protected routes; hosted production gates remain open.
+
+## 2026-07-24 — Goods Receipt Create Idempotency Foundation
+
+- Implemented the confirmed `DEC-0093` additive Goods Receipt idempotency contract: durable tenant/company-scoped keys, canonical request hashes, strict actor/location/PO replay binding, safe conflict behavior, and automatic UI key rotation when the selected PO changes.
+- Focused receiving tests, lint, typecheck, and disposable migration deployment pass; disposable seeded concurrency/rollback evidence remains open because the lifecycle seed client hit Prisma `P6001` before the integration test ran.

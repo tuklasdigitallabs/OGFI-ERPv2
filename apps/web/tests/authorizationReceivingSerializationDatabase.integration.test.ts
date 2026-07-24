@@ -451,6 +451,7 @@ describe.skipIf(!databaseEnabled)(
 
       const createForm = new FormData();
       createForm.set("purchaseOrderId", order.id);
+      createForm.set("idempotencyKey", `receiving-serialization-${suffix}-${randomUUID()}`);
       createForm.set(
         "supplierDeliveryReceiptNumber",
         `SERIALIZATION-${process.env.AUTHORIZATION_TEST_RUN_ID}-${randomUUID()}`
@@ -592,10 +593,23 @@ describe.skipIf(!databaseEnabled)(
 
       mockContext.requireSessionContext.mockResolvedValue(session);
       const receiptId = await createGoodsReceiptFromPurchaseOrder(createForm);
+      const replayedReceiptId = await createGoodsReceiptFromPurchaseOrder(createForm);
+      expect(replayedReceiptId).toBe(receiptId);
+      expect(
+        await prisma.goodsReceipt.count({
+          where: { purchaseOrderId: order.id }
+        })
+      ).toBe(1);
+      createForm.set("notes", "Changed after the original submission");
+      await expect(createGoodsReceiptFromPurchaseOrder(createForm)).rejects.toThrow(
+        "GOODS_RECEIPT_IDEMPOTENCY_CONFLICT"
+      );
+      createForm.delete("notes");
       createForm.set(
         "supplierDeliveryReceiptNumber",
         `SERIALIZATION-SECOND-${process.env.AUTHORIZATION_TEST_RUN_ID}-${randomUUID()}`
       );
+      createForm.set("idempotencyKey", `receiving-serialization-second-${suffix}-${randomUUID()}`);
       const staleReceiptId = await createGoodsReceiptFromPurchaseOrder(createForm);
       expect(
         await prisma.auditEvent.count({

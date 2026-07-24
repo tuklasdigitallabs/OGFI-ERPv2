@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 type ReceivableLine = {
   id: string;
@@ -55,6 +55,7 @@ function makeLines(order: ReceivableOrder | undefined): DraftLine[] {
 
 export function GoodsReceiptLinesEditor({ action, orders }: Props) {
   const [orderId, setOrderId] = useState(orders[0]?.id ?? "");
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [lines, setLines] = useState<DraftLine[]>(() => makeLines(orders[0]));
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [errors, setErrors] = useState<number[]>([]);
@@ -70,8 +71,13 @@ export function GoodsReceiptLinesEditor({ action, orders }: Props) {
     return invalidQuantity || (discrepancy && (!line.discrepancyReason.trim() || !line.evidenceReference.trim())) ? [index] : [];
   }), [lines]);
 
+  useEffect(() => {
+    setIdempotencyKey(window.crypto.randomUUID());
+  }, []);
+
   function selectOrder(nextOrderId: string) {
     setOrderId(nextOrderId);
+    setIdempotencyKey(window.crypto.randomUUID());
     setLines(makeLines(orders.find((order) => order.id === nextOrderId)));
     setSelectedIndex(0);
     setErrors([]);
@@ -90,6 +96,7 @@ export function GoodsReceiptLinesEditor({ action, orders }: Props) {
 
   return <form action={action} className="flex h-full min-h-0 flex-col" onSubmit={submit}>
     <input name="purchaseOrderId" type="hidden" value={orderId} readOnly />
+    <input name="idempotencyKey" type="hidden" value={idempotencyKey} readOnly />
     {lines.map((line) => <input key={`delivered-${line.id}`} name={`line.${line.id}.deliveredQty`} type="hidden" value={line.deliveredQty} readOnly />)}
     {lines.map((line) => <input key={`accepted-${line.id}`} name={`line.${line.id}.acceptedQty`} type="hidden" value={line.acceptedQty} readOnly />)}
     {lines.map((line) => <input key={`rejected-${line.id}`} name={`line.${line.id}.rejectedQty`} type="hidden" value={line.rejectedQty} readOnly />)}

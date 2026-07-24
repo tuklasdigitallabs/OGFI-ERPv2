@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { permissions } from "./authorization";
 import {
   createGoodsReceiptFromPurchaseOrder,
@@ -270,6 +271,7 @@ function makeQueryRaw(input?: {
 function createReceiptForm(input?: { deliveredQty?: number; acceptedQty?: number }) {
   const formData = new FormData();
   formData.set("purchaseOrderId", ids.purchaseOrder);
+  formData.set("idempotencyKey", `receiving-test-${randomUUID()}`);
   formData.set(
     `line.${ids.purchaseOrderLine}.deliveredQty`,
     String(input?.deliveredQty ?? 10)
@@ -306,6 +308,7 @@ function makeCreateTransaction(input?: {
     },
     goodsReceipt: {
       count: vi.fn().mockResolvedValue(0),
+      findUnique: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: ids.receipt })
     },
     auditEvent: {

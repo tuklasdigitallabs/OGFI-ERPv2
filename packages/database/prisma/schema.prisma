@@ -4329,6 +4329,8 @@ model GoodsReceipt {
   receivingLocationId           String             @db.Uuid
   receivedByUserId              String             @db.Uuid
   receivedAt                    DateTime
+  idempotencyKey                String?            @db.VarChar(200)
+  idempotencyRequestHash        String?            @db.Char(64)
   status                        String             @default("DRAFT")
   supplierDeliveryReceiptNumber String?
   discrepancyFlag               Boolean            @default(false)
@@ -4351,6 +4353,7 @@ model GoodsReceipt {
   apInvoices                    ApInvoice[]
 
   @@unique([companyId, publicReference])
+  @@unique([tenantId, companyId, idempotencyKey], map: "GoodsReceipt_tenantId_companyId_idempotencyKey_key")
   @@index([tenantId, companyId, status])
   @@index([tenantId, companyId, status, reversedAt])
   @@index([reversedByUserId])
