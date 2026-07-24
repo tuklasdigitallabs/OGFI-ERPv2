@@ -46,7 +46,7 @@ describe("controlled evidence database authorization matrix", () => {
     tenant: id(), foreignTenant: id(), company: id(), adjacentCompany: id(), foreignCompany: id(), brand: id(), otherBrand: id(),
     location: id(), adjacentLocation: id(), adjacentCompanyLocation: id(),
     foreignLocation: id(), department: id(), otherDepartment: id(), foreignDepartment: id(), user: id(), foreignUser: id(), role: id(), supplier: id(),
-    accountClass: id(), ledgerAccount: id(), fiscalYear: id(), period: id(), authSession: id(),
+    accountClass: id(), ledgerAccount: id(), fiscalYear: id(), period: id(), authSession: id(), purchaseRequest: id(), quotationRequest: id(), supplierQuotation: id(),
     bankAccount: id(), bankStatement: id(), project: id(), restrictedProject: id(),
   };
   const authSessionToken = `evidence-authz-${randomUUID()}`;
@@ -202,6 +202,10 @@ describe("controlled evidence database authorization matrix", () => {
     });
 
     await prisma.supplier.create({ data: { id: ids.supplier, tenantId: ids.tenant, companyId: ids.company, supplierCode: `EV-S-${suffix}`, legalName: `Evidence Supplier ${suffix}` } });
+    await prisma.purchaseRequest.create({ data: { id: ids.purchaseRequest, publicReference: `EV-PR-${suffix}`, tenantId: ids.tenant, companyId: ids.company, requestLocationId: ids.location, requesterUserId: ids.user, requiredDate: fixtureDate, urgency: "NORMAL", justification: "Controlled quotation evidence matrix", status: "APPROVED" } });
+    await prisma.quotationRequest.create({ data: { id: ids.quotationRequest, tenantId: ids.tenant, companyId: ids.company, publicReference: `EV-QR-${suffix}`, purchaseRequestId: ids.purchaseRequest, status: "OPEN", requiredDate: fixtureDate, createdByUserId: ids.user } });
+    await prisma.supplierQuotation.create({ data: { id: ids.supplierQuotation, quotationRequestId: ids.quotationRequest, tenantId: ids.tenant, companyId: ids.company, supplierId: ids.supplier, quoteReference: `EV-SQ-${suffix}`, quoteDate: fixtureDate, currencyCode: "PHP", totalAmount: 1 } });
+    remember("SUPPLIER_QUOTATION", ids.supplierQuotation);
     await prisma.financeAccountClass.create({ data: { id: ids.accountClass, tenantId: ids.tenant, companyId: ids.company, code: `EV-AC-${suffix}`, name: "Evidence Assets", normalBalance: "DEBIT", statementSection: "BALANCE_SHEET" } });
     await prisma.chartOfAccount.create({ data: { id: ids.ledgerAccount, tenantId: ids.tenant, companyId: ids.company, accountClassId: ids.accountClass, code: `EV-GL-${suffix}`, name: "Evidence Bank", normalBalance: "DEBIT", postingAllowed: true } });
     await prisma.fiscalYear.create({ data: { id: ids.fiscalYear, tenantId: ids.tenant, companyId: ids.company, code: `EV-FY-${suffix}`, name: "Evidence FY", startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-12-31T23:59:59Z") } });
@@ -361,7 +365,7 @@ describe("controlled evidence database authorization matrix", () => {
   });
 
   it("denies every location-bound evidence family at an adjacent location", async () => {
-    expect(locationBoundTypes).toHaveLength(22);
+    expect(locationBoundTypes).toHaveLength(23);
     for (const sourceType of locationBoundTypes) {
       await expect(
         assertControlledEvidenceSourceAccess(session, sourceType, sourceIds.get(sourceType)!),

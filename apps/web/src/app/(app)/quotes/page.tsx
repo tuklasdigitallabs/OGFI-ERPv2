@@ -60,6 +60,7 @@ export default async function SupplierQuotesPage({ searchParams }: SupplierQuote
         (await listControlledEvidenceAttachmentPage({
           sourceType: "SUPPLIER_QUOTATION",
           sourceRecordId: quote.id,
+          requiredPermissionCode: "SERVICE_ENFORCED",
           page: 1,
           pageSize: 10,
         })).rows,
