@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Isolated Production Build Verification
+
+- The current candidate completes an isolated Next.js production build through compilation, type validation, static generation, route optimization, and build-trace collection; generated route metadata was restored after verification.
+
 ## 2026-07-24 — Full Web Regression After Baseline Reconciliation
 
 - The non-database web suite passes 1,290 tests across 120 files after authorization-baseline reconciliation; 301 environment-gated tests remain skipped and one existing TODO remains. Authorization manifest coverage passes 20/20.
