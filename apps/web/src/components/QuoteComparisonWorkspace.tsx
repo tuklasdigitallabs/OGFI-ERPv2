@@ -135,7 +135,11 @@ export function QuoteComparisonWorkspace({
                           <div className="mt-3 grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
                             <p>Supplier accreditation: <span className="font-semibold text-slate-700">{quote.supplierAccreditationStatus.replaceAll("_", " ")}</span></p>
                             <p>Payment terms: <span className="font-semibold text-slate-700">{quote.terms ?? quote.supplierPaymentTerms ?? "Not recorded"}</span></p>
-                            <p className="sm:col-span-2">Tax/discount/freight breakdown and attachments are not captured in this quote record yet.</p>
+                            <p>Subtotal: <span className="font-semibold text-slate-700">{quote.currencyCode} {quote.subtotalAmount.toFixed(2)}</span></p>
+                            <p>Tax: <span className="font-semibold text-slate-700">{quote.currencyCode} {quote.taxAmount.toFixed(2)}</span></p>
+                            <p>Discount: <span className="font-semibold text-slate-700">{quote.currencyCode} {quote.discountAmount.toFixed(2)}</span></p>
+                            <p>Freight / other: <span className="font-semibold text-slate-700">{quote.currencyCode} {(quote.freightAmount + quote.otherChargesAmount).toFixed(2)}</span></p>
+                            <p className="sm:col-span-2">Binary quote attachments are not captured in this record yet; use the approved controlled-evidence policy when that capability is enabled.</p>
                           </div>
                         </article>
                       ))}

@@ -3551,9 +3551,15 @@ model SupplierQuotation {
   quoteReference     String
   quoteDate          DateTime
   currencyCode       String
+  subtotalAmount     Decimal                   @default(0) @db.Decimal(18, 6)
+  taxAmount          Decimal                   @default(0) @db.Decimal(18, 6)
+  discountAmount     Decimal                   @default(0) @db.Decimal(18, 6)
+  freightAmount      Decimal                   @default(0) @db.Decimal(18, 6)
+  otherChargesAmount Decimal                   @default(0) @db.Decimal(18, 6)
   totalAmount        Decimal                   @db.Decimal(18, 6)
   validityDate       DateTime?
   terms              String?
+  supplierAccreditationSnapshot String?
   status             String                    @default("RECORDED")
   createdAt          DateTime                  @default(now())
   tenant             Tenant                    @relation(fields: [tenantId], references: [id])

@@ -26,7 +26,7 @@ Replace the vertically repeated Quotes register with a master-detail workspace. 
 - Recommendation creation and submission continue through the existing approval services; the workspace cannot issue a PO, mutate a PR, or create inventory movement.
 - The selected request visibly shows requester, required date, location context, quote status, recorded totals, line availability, lead time, terms, supplier accreditation, and recommendation state.
 - Pagination, empty states, no-quotes states, and mobile stacked detail are explicit. Export remains separately authorized.
-- Tax/discount/freight breakdowns and binary attachments are not invented: the UI labels them as unavailable until a controlled schema/evidence decision is implemented.
+- Binary attachments are not invented: the UI labels them as unavailable until a controlled-evidence decision is implemented. Commercial components are now persisted under `DEC-0105`.
 
 ## Required safeguards and follow-up
 

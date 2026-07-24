@@ -33,6 +33,11 @@ const optionalNonNegativeIntegerSchema = z.preprocess(
   z.coerce.number().int().nonnegative().optional()
 );
 
+const optionalNonNegativeDecimalSchema = z.preprocess(
+  (value) => (value === "" || value === null ? 0 : value),
+  z.coerce.number().finite().nonnegative().max(999999999999).transform((value) => Number(value.toFixed(6)))
+);
+
 const createSupplierQuoteHeaderSchema = z.object({
   purchaseRequestId: z.string().uuid(),
   supplierId: z.string().uuid(),
@@ -41,6 +46,10 @@ const createSupplierQuoteHeaderSchema = z.object({
   quoteDate: z.string().min(1),
   validityDate: optionalDateSchema,
   terms: optionalTextSchema,
+  taxAmount: optionalNonNegativeDecimalSchema,
+  discountAmount: optionalNonNegativeDecimalSchema,
+  freightAmount: optionalNonNegativeDecimalSchema,
+  otherChargesAmount: optionalNonNegativeDecimalSchema,
   reason: z.string().min(5).max(500)
 });
 
@@ -303,15 +312,50 @@ export async function listQuoteRequests(
     orderBy: { updatedAt: "desc" }
   });
 
+  const quoteIds = requests.flatMap((request) =>
+    request.quotationRequests.flatMap((quotationRequest) =>
+      quotationRequest.supplierQuotes.map((quote) => quote.id)
+    )
+  );
+  const commercialRows = quoteIds.length
+    ? await prisma.$queryRaw<Array<{
+        id: string;
+        subtotalAmount: string;
+        taxAmount: string;
+        discountAmount: string;
+        freightAmount: string;
+        otherChargesAmount: string;
+        supplierAccreditationSnapshot: string | null;
+      }>>(Prisma.sql`
+        SELECT "id", "subtotalAmount", "taxAmount", "discountAmount", "freightAmount", "otherChargesAmount", "supplierAccreditationSnapshot"
+        FROM "SupplierQuotation"
+        WHERE "tenantId" = ${session.context.tenantId}::uuid
+          AND "companyId" = ${session.context.companyId}::uuid
+          AND "id" IN (${Prisma.join(quoteIds.map((id) => Prisma.sql`${id}::uuid`))})
+      `)
+    : [];
+  const commercialByQuoteId = new Map(commercialRows.map((row) => [row.id, row]));
+
   return requests.map((request) => {
     const line = request.lines[0];
     const quotationRequest = request.quotationRequests[0] ?? null;
     const quotes = request.quotationRequests.flatMap((quotationRequest) =>
       quotationRequest.supplierQuotes.map((quote) => ({
+        ...(() => {
+          const commercial = commercialByQuoteId.get(quote.id);
+          return {
+            subtotalAmount: commercial ? Number(commercial.subtotalAmount) : Number(quote.totalAmount),
+            taxAmount: commercial ? Number(commercial.taxAmount) : 0,
+            discountAmount: commercial ? Number(commercial.discountAmount) : 0,
+            freightAmount: commercial ? Number(commercial.freightAmount) : 0,
+            otherChargesAmount: commercial ? Number(commercial.otherChargesAmount) : 0,
+            supplierAccreditationSnapshot: commercial?.supplierAccreditationSnapshot ?? quote.supplier.accreditationStatus
+          };
+        })(),
         id: quote.id,
         quoteReference: quote.quoteReference,
         supplierName: quote.supplier.tradingName ?? quote.supplier.legalName,
-        supplierAccreditationStatus: quote.supplier.accreditationStatus,
+        supplierAccreditationStatus: commercialByQuoteId.get(quote.id)?.supplierAccreditationSnapshot ?? quote.supplier.accreditationStatus,
         supplierPaymentTerms: quote.supplier.paymentTerms,
         totalAmount: Number(quote.totalAmount),
         currencyCode: quote.currencyCode,
@@ -524,6 +568,13 @@ export async function createSupplierQuote(formData: FormData) {
     };
   });
   const totalAmount = quoteLines.reduce((total, line) => total + line.lineTotal, 0);
+  const subtotalAmount = Number(totalAmount.toFixed(6));
+  const totalWithCharges = Number(
+    (subtotalAmount + values.taxAmount + values.freightAmount + values.otherChargesAmount - values.discountAmount).toFixed(6)
+  );
+  if (totalWithCharges < 0) {
+    throw new Error("SUPPLIER_QUOTE_TOTAL_NEGATIVE");
+  }
 
   const canonicalRequest = {
     version: "supplier-quote-v1",
@@ -537,6 +588,10 @@ export async function createSupplierQuote(formData: FormData) {
     quoteDate: values.quoteDate,
     validityDate: values.validityDate ?? null,
     terms: values.terms ?? null,
+    taxAmount: values.taxAmount.toFixed(6),
+    discountAmount: values.discountAmount.toFixed(6),
+    freightAmount: values.freightAmount.toFixed(6),
+    otherChargesAmount: values.otherChargesAmount.toFixed(6),
     lines: [...quoteLines]
       .sort((left, right) => left.sourcePrLineId.localeCompare(right.sourcePrLineId))
       .map((line) => ({
@@ -589,13 +644,16 @@ export async function createSupplierQuote(formData: FormData) {
       INSERT INTO "SupplierQuotation" (
         "id", "quotationRequestId", "tenantId", "companyId", "supplierId",
         "idempotencyKey", "idempotencyRequestHash", "quoteReference", "quoteDate",
-        "currencyCode", "totalAmount", "validityDate", "terms", "status", "createdAt"
+        "currencyCode", "subtotalAmount", "taxAmount", "discountAmount", "freightAmount",
+        "otherChargesAmount", "totalAmount", "validityDate", "terms", "supplierAccreditationSnapshot", "status", "createdAt"
       ) VALUES (
         ${quoteId}::uuid, ${quotationRequest.id}::uuid, ${session.context.tenantId}::uuid,
         ${session.context.companyId}::uuid, ${supplier.id}::uuid, ${values.idempotencyKey},
         ${idempotencyRequestHash}, ${values.quoteReference}, ${new Date(`${values.quoteDate}T00:00:00.000Z`)},
-        ${company.currencyCode}, ${totalAmount}, ${values.validityDate ? new Date(`${values.validityDate}T00:00:00.000Z`) : null},
-        ${values.terms ?? null}, 'RECORDED', NOW()
+        ${company.currencyCode}, ${subtotalAmount}, ${values.taxAmount}, ${values.discountAmount},
+        ${values.freightAmount}, ${values.otherChargesAmount}, ${totalWithCharges},
+        ${values.validityDate ? new Date(`${values.validityDate}T00:00:00.000Z`) : null},
+        ${values.terms ?? null}, ${supplier.accreditationStatus}, 'RECORDED', NOW()
       ) RETURNING "id"
     `);
     const quote = quoteRows[0];

@@ -143,7 +143,7 @@ Before a workspace is marked visually complete, verify the following:
 | 4 | FinanceSubworkspace / AP | Critical | Monolithic shared component stacks AP, GL, bank/cash queues and repeated action forms. |
 | 5 | Expense Requests | Critical | Same records appear across stacked sections with inline evidence/actions. |
 | 6 | Core pagination | High | PR, PO, inventory, counts, approvals, receiving need consistent paging. |
-| 7 | Quotes | Medium | Master-detail comparison workspace is implemented; commercial/evidence capture remains a separate controlled gap. |
+| 7 | Quotes | Medium | Master-detail comparison and commercial fields are implemented; binary evidence attachment capture remains a separate controlled gap. |
 | 8 | Items and Suppliers | High | Master data needs server-backed list/detail patterns. |
 | 9 | Projects / My Work / Work Boards | High | Cards and boards are too expanded for real task volume. |
 | 10 | Restaurant Ops entry flows | High | Branch ops, food safety, recipes rely on wide modal line grids. |

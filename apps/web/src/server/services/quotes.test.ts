@@ -45,7 +45,7 @@ describe("quotation recommendation rules", () => {
     expect(workspaceSource).toContain("quote-comparison-workspace");
     expect(workspaceSource).toContain("Selected location context");
     expect(workspaceSource).toContain("quotation-recommendation-composer");
-    expect(workspaceSource).toContain("Tax/discount/freight breakdown");
+    expect(workspaceSource).toContain("Binary quote attachments are not captured");
   });
 
   test("recommendation submission revalidates current quotation policy", () => {
@@ -71,6 +71,20 @@ describe("quotation recommendation rules", () => {
       .toContain("SupplierQuotation_tenantId_companyId_idempotencyKey_key");
     expect(readFileSync(path.resolve(__dirname, "../../components/SupplierQuoteLinesEditor.tsx"), "utf8"))
       .toContain('name="idempotencyKey"');
+  });
+
+  test("quote comparison preserves server-calculated commercial components", () => {
+    const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
+    const workspaceSource = readFileSync(
+      path.resolve(__dirname, "../../components/QuoteComparisonWorkspace.tsx"),
+      "utf8"
+    );
+    expect(source).toContain("subtotalAmount");
+    expect(source).toContain("otherChargesAmount");
+    expect(source).toContain("SUPPLIER_QUOTE_TOTAL_NEGATIVE");
+    expect(source).toContain('"supplierAccreditationSnapshot"');
+    expect(workspaceSource).toContain("Subtotal:");
+    expect(workspaceSource).toContain("Binary quote attachments are not captured");
   });
 
   test("initial recommendation approval routing is normalized and fail-closed", () => {

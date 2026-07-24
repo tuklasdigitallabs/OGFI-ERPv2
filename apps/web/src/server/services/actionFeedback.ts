@@ -919,6 +919,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "One of the selected supplier quote lines is no longer available.",
   SUPPLIER_QUOTE_IDEMPOTENCY_CONFLICT:
     "This quote submission key was already used for different quote details. Start a new quote task and try again.",
+  SUPPLIER_QUOTE_TOTAL_NEGATIVE:
+    "The quote discount cannot exceed the subtotal plus charges.",
   SELF_APPROVAL_BLOCKED:
     "You cannot approve, return, or reject your own request.",
   SELF_ROLE_MUTATION_BLOCKED:

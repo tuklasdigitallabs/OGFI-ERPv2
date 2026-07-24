@@ -1307,6 +1307,21 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "owner": "Database Engineering owns the migration; Quotations Engineering owns canonical hashing and replay behavior; Security, QA, and Release verify scope and concurrency.",
     "verification": "Prisma schema/type validation and focused quote tests pass. Disposable PostgreSQL exact retry, changed-payload, cross-scope, concurrent race, migration, redeploy, restore, and hosted evidence remain mandatory before production approval.",
     "expectedRecoveryTime": "Measure lock, forward-fix, concurrent replay, and isolated restore duration against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260724160000_supplier_quote_commercial_fields",
+    "sha256": "84786525a8be1dd2282252d62ed64033db0a10d31d525ee02bb980ed32dc54a9",
+    "risk": "The additive Decimal commercial columns must preserve existing quote totals and reject negative computed totals without changing historical quote or audit facts.",
+    "expectedDataEffect": "Add subtotal, tax, discount, freight, other-charge, and supplier-accreditation snapshot columns; backfill subtotal from the existing recorded total and default other components to zero.",
+    "recovery": "Stop on DDL, backfill, checksum, or constraint failure; restore the predecessor or apply a reviewed forward correction while preserving quote and audit history.",
+    "reviewerStatus": "PENDING",
+    "failurePoint": "Lock/DDL failure, decimal/backfill mismatch, checksum mismatch, second-deploy delta, Prisma drift, or restore non-equivalence.",
+    "transactionBehavior": "Prisma migration transaction; inspect migration journal and column/backfill state before retry after interruption.",
+    "reversibility": "The additive fields and zero defaults are backward compatible. Keep populated commercial snapshots through application rollback; use a forward correction or verified restore rather than deleting quote facts.",
+    "decisionTrigger": "Stop on any historical total delta, negative or rounded total mismatch, wrong currency interpretation, checksum mismatch, redeploy delta, drift, or restore mismatch.",
+    "owner": "Database Engineering owns migration/backfill; Quotations Engineering owns Decimal validation and comparison semantics; Security, QA, Reporting, and Release verify authorization, export parity, concurrency, and recovery.",
+    "verification": "Prisma validation and focused quote tests pass. Disposable PostgreSQL migration/backfill, Decimal arithmetic, scope, recommendation revalidation, export parity, redeploy, restore, and hosted evidence remain required before production approval.",
+    "expectedRecoveryTime": "Measure lock, backfill, forward-fix, and isolated restore duration against the approved hosted RPO/RTO."
   }
 ]
 ```
