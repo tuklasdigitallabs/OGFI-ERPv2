@@ -30,6 +30,10 @@ Implementation note (`DEC-0138`/`DEC-0140`): the Item Master tabs use URL-backed
 server filters, deterministic pagination, exact matching totals, and bounded
 server-side selector catalogs. Conversion creation remains unavailable until its
 full option catalog and focused action composer are migrated.
+
+Implementation note (`DEC-0141`): the Supplier Register is company-scoped with
+server-backed search, lifecycle/accreditation filters, deterministic pagination,
+and exact totals; supplier catalog detail remains a separate paginated surface.
 | MDM-10 | Import / Change Request Review | Controlled bulk or change management |
 
 ## 2. Master Data Home

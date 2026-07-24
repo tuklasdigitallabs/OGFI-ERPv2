@@ -48,4 +48,16 @@ describe("supplier master-data controls", () => {
       expect(source).toContain(`eventType: "${eventType}"`);
     }
   });
+
+  test("supplier register uses bounded scoped pagination", () => {
+    const service = readFileSync(path.resolve(__dirname, "suppliers.ts"), "utf8");
+    const page = readFileSync(path.resolve(__dirname, "../../app/(app)/suppliers/page.tsx"), "utf8");
+    expect(service).toContain("supplierListInputSchema");
+    expect(service).toContain("totalSuppliers");
+    expect(service).toContain('pageSize: z.number().int().min(10).max(100)');
+    expect(service).toContain("assertCanManageCompanyScope(session, session.context.companyId)");
+    expect(page).toContain("supplierData.suppliersPage");
+    expect(page).toContain("PaginationBar");
+    expect(page).toContain("Search supplier code or name");
+  });
 });

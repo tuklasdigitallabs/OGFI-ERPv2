@@ -171,6 +171,10 @@ status filters, deterministic ordering, exact totals, and pagination. Categories
 UOMs, and conversions remain pending bounded-read review, so this is not a full
 Master Data completion.
 
+The Supplier Register now supports company-scoped server search, lifecycle and
+accreditation filters, deterministic pagination, and exact matching totals. The
+selected supplier catalog remains the source for full item-link maintenance.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.

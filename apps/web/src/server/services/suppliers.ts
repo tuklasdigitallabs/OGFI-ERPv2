@@ -82,6 +82,14 @@ const deactivateSupplierItemLinkSchema = z.object({
   reason: z.string().min(5).max(500)
 });
 
+const supplierListInputSchema = z.object({
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  accreditationStatus: z.enum(supplierAccreditationStatuses).optional(),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25)
+});
+
 export function assertNoDuplicateSupplierCode(existingSupplierId?: string) {
   if (existingSupplierId) {
     throw new Error("DUPLICATE_SUPPLIER_CODE");
@@ -94,14 +102,27 @@ export function assertNoDuplicateSupplierItemLink(existingSupplierItemLinkId?: s
   }
 }
 
-export async function listSuppliers(session: SessionContext) {
+export async function listSuppliers(
+  session: SessionContext,
+  input: z.input<typeof supplierListInputSchema> = {}
+) {
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  const values = supplierListInputSchema.parse(input);
+  const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.status ? { status: values.status } : {}),
+    ...(values.accreditationStatus ? { accreditationStatus: values.accreditationStatus } : {}),
+    ...(query ? { OR: [{ supplierCode: query }, { legalName: query }, { tradingName: query }] } : {})
+  };
+  const totalSuppliers = await prisma.supplier.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalSuppliers / values.pageSize));
+  const effectivePage = Math.min(values.page, totalPages);
 
   const suppliers = await prisma.supplier.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId
-    },
+    where,
     include: {
       _count: {
         select: {
@@ -125,10 +146,13 @@ export async function listSuppliers(session: SessionContext) {
         }
       }
     },
-    orderBy: [{ status: "asc" }, { legalName: "asc" }]
+    orderBy: [{ status: "asc" }, { legalName: "asc" }, { id: "asc" }],
+    skip: (effectivePage - 1) * values.pageSize,
+    take: values.pageSize
   });
 
-  return suppliers.map((supplier) => ({
+  return {
+    suppliers: suppliers.map((supplier) => ({
     id: supplier.id,
     supplierCode: supplier.supplierCode,
     legalName: supplier.legalName,
@@ -166,7 +190,13 @@ export async function listSuppliers(session: SessionContext) {
           }
         : null
     }))
-  }));
+    })),
+    suppliersPage: {
+      page: effectivePage,
+      pageSize: values.pageSize,
+      totalSuppliers
+    }
+  };
 }
 
 export async function getSupplierCatalog(

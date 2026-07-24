@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ExternalLink, PackageSearch, Search } from "lucide-react";
-import { Badge, Panel } from "@ogfi/ui";
+import { Badge, Panel, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -133,19 +133,27 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
-  const [suppliers, linkOptions] = await Promise.all([
-    listSuppliers(session),
-    listSupplierItemLinkOptions(session)
-  ]);
-  const approvedCount = suppliers.filter(
-    (supplier) => supplier.accreditationStatus === "APPROVED"
-  ).length;
-  const activeItemLinkCount = suppliers.reduce(
-    (count, supplier) => count + supplier.itemLinkCount,
-    0
-  );
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
+  const supplierQuery = firstParam(params.query) ?? "";
+  const supplierStatus = firstParam(params.status);
+  const supplierAccreditationStatus = firstParam(params.accreditationStatus);
+  const supplierPageValue = Number(firstParam(params.page) ?? "1");
+  const [supplierData, linkOptions] = await Promise.all([
+    listSuppliers(session, {
+      query: supplierQuery,
+      status: supplierStatus === "ACTIVE" || supplierStatus === "INACTIVE" ? supplierStatus : undefined,
+      accreditationStatus: supplierAccreditationStatus && ["PENDING_REVIEW", "APPROVED", "SUSPENDED", "BLOCKED"].includes(supplierAccreditationStatus)
+        ? supplierAccreditationStatus as "PENDING_REVIEW" | "APPROVED" | "SUSPENDED" | "BLOCKED"
+        : undefined,
+      page: Number.isFinite(supplierPageValue) && supplierPageValue > 0 ? Math.min(supplierPageValue, 10_000) : 1,
+      pageSize: 25
+    }),
+    listSupplierItemLinkOptions(session)
+  ]);
+  const suppliers = supplierData.suppliers;
+  const approvedCount = suppliers.filter((supplier) => supplier.accreditationStatus === "APPROVED").length;
+  const activeItemLinkCount = suppliers.reduce((count, supplier) => count + supplier.itemLinkCount, 0);
   const selectedSupplierId = firstParam(params.supplier);
   const catalogQuery = firstParam(params.catalogQuery) ?? "";
   const catalogStatus = firstParam(params.catalogStatus);
@@ -210,7 +218,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
       <div className="mb-5 grid gap-4 md:grid-cols-4">
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Suppliers</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{suppliers.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{supplierData.suppliersPage.totalSuppliers}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Approved</p>
@@ -378,6 +386,16 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             <span>Status</span>
             <span>Control</span>
           </div>
+          <form method="get" className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 md:grid-cols-[1fr_180px_180px_auto]">
+            <input className="rounded-md border border-slate-300 px-3 py-2" name="query" defaultValue={supplierQuery} placeholder="Search supplier code or name" aria-label="Search suppliers" />
+            <select className="rounded-md border border-slate-300 px-3 py-2" name="status" defaultValue={supplierStatus ?? ""} aria-label="Filter supplier lifecycle">
+              <option value="">All lifecycle</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option>
+            </select>
+            <select className="rounded-md border border-slate-300 px-3 py-2" name="accreditationStatus" defaultValue={supplierAccreditationStatus ?? ""} aria-label="Filter accreditation">
+              <option value="">All accreditation</option><option value="PENDING_REVIEW">Pending review</option><option value="APPROVED">Approved</option><option value="SUSPENDED">Suspended</option><option value="BLOCKED">Blocked</option>
+            </select>
+            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
+          </form>
           {suppliers.length === 0 ? (
             <div className="ogfi-empty-state">
               <p className="font-semibold text-slate-900">No suppliers configured</p>
@@ -522,6 +540,21 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               ))}
             </div>
           )}
+          {supplierData.suppliersPage.totalSuppliers > 0 ? (
+            <PaginationBar
+              page={supplierData.suppliersPage.page}
+              pageSize={supplierData.suppliersPage.pageSize}
+              totalItems={supplierData.suppliersPage.totalSuppliers}
+              itemLabel="suppliers"
+              getPageHref={(nextPage) => {
+                const nextParams = new URLSearchParams({ page: String(nextPage) });
+                if (supplierQuery) nextParams.set("query", supplierQuery);
+                if (supplierStatus) nextParams.set("status", supplierStatus);
+                if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
+                return `/suppliers?${nextParams.toString()}`;
+              }}
+            />
+          ) : null}
         </section>
         {selectedSupplierCatalog && selectedSupplier ? (
           <section className="ogfi-data-surface">

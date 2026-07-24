@@ -619,6 +619,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Added a server-authorized, tenant/company-scoped option-catalog contract for category, UOM, and item selectors with bounded query/page inputs, exact totals, `hasMore`, active-option semantics, and selected-ID retention for edit context.
 - Item create/edit selectors now consume the contract and disclose/disable when the bounded catalog is insufficient. Items, Categories, UOMs, and Conversions tabs now use URL-backed server filters and pagination; selected-record drawer/composer restructuring and conversion option migration remain open. Browser, disposable PostgreSQL, query-plan/load, hosted recovery, and UAT gates remain open.
 
+### DEC-0141 Master Data supplier registry pagination — July 24, 2026
+
+- The company-scoped Supplier Register now uses validated search, lifecycle/accreditation filters, deterministic ordering, bounded pages, exact totals, and selected-company Manage authorization. Supplier catalog detail remains separately scoped and paginated.
+- Focused action composers, supplier option-catalog review, disposable PostgreSQL/query-plan evidence, responsive browser verification, hosted recovery, and UAT remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
