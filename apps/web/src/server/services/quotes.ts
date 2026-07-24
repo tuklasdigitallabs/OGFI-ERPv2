@@ -768,7 +768,11 @@ export async function submitQuotationRecommendation(formData: FormData) {
     include: {
       quotationRequest: {
         include: {
-          purchaseRequest: true,
+          purchaseRequest: {
+            include: {
+              lines: true
+            }
+          },
           supplierQuotes: true
         }
       },
@@ -794,9 +798,18 @@ export async function submitQuotationRecommendation(formData: FormData) {
   assertApprovedPurchaseRequestForQuote(
     recommendation.quotationRequest.purchaseRequest.status
   );
+  const purchasingPolicy = await getPurchasingControlPolicy(session);
+  const requestEstimatedTotal = recommendation.quotationRequest.purchaseRequest.lines.reduce(
+    (total, line) => total + Number(line.estimatedLineTotal),
+    0
+  );
+  const quotationComparisonRequired =
+    requestEstimatedTotal >= purchasingPolicy.quotationRequiredThresholdPhp;
   assertQuotationRecommendationJustification({
     quoteCount: recommendation.quoteCount,
     isLowestEvaluatedCost: recommendation.isLowestEvaluatedCost,
+    comparisonRequired: quotationComparisonRequired,
+    minimumQuotes: purchasingPolicy.minimumQuotes,
     nonLowestJustification: recommendation.nonLowestJustification ?? undefined,
     singleSourceJustification:
       recommendation.singleSourceJustification ?? undefined

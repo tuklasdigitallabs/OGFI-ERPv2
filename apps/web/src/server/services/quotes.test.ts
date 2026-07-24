@@ -40,6 +40,18 @@ describe("quotation recommendation rules", () => {
     expect(pageSource).toContain("PaginationBar");
   });
 
+  test("recommendation submission revalidates current quotation policy", () => {
+    const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
+    const start = source.indexOf("export async function submitQuotationRecommendation");
+    const submit = source.slice(start);
+
+    expect(submit).toContain("getPurchasingControlPolicy(session)");
+    expect(submit).toContain("quotationRequiredThresholdPhp");
+    expect(submit).toContain("minimumQuotes: purchasingPolicy.minimumQuotes");
+    expect(submit).toContain("comparisonRequired: quotationComparisonRequired");
+    expect(submit).toContain("purchaseRequest.lines.reduce");
+  });
+
   test("initial recommendation approval routing is normalized and fail-closed", () => {
     const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
     const start = source.indexOf("export async function submitQuotationRecommendation");

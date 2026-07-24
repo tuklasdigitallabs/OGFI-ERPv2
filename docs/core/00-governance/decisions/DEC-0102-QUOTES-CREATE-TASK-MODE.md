@@ -22,7 +22,7 @@ The existing editor is already a focused multi-line workspace, but the register 
 
 - Server authorization, approved-PR scope, supplier/UOM eligibility, validation, audit, and retry behavior remain owned by the existing service.
 - The route explicitly states quote capture does not commit a PO and handles no approved requests or missing supplier/UOM configuration truthfully.
-- Quotes workspace completion remains blocked by bounded queue pagination/search, selected-record comparison detail, per-line commercial/evidence fields, create idempotency, and recommendation-time policy revalidation.
+- Quotes workspace completion remains blocked by selected-record comparison detail, per-line commercial/evidence fields, and quote-create idempotency. The approved-request queue is now server-paginated, and recommendation-time policy revalidation is implemented but still requires executable integration evidence.
 - Required verification is focused route/service coverage, typecheck/lint, responsive browser evidence, PostgreSQL authorization/query-plan evidence, and hosted gates.
 
 ## Documentation impact
