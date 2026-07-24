@@ -45,7 +45,8 @@ describe("quotation recommendation rules", () => {
     expect(workspaceSource).toContain("quote-comparison-workspace");
     expect(workspaceSource).toContain("Selected location context");
     expect(workspaceSource).toContain("quotation-recommendation-composer");
-    expect(workspaceSource).toContain("Binary quote attachments are not captured");
+    expect(workspaceSource).toContain("ControlledEvidencePanel");
+    expect(workspaceSource).toContain('sourceType="SUPPLIER_QUOTATION"');
   });
 
   test("recommendation submission revalidates current quotation policy", () => {
@@ -84,7 +85,8 @@ describe("quotation recommendation rules", () => {
     expect(source).toContain("SUPPLIER_QUOTE_TOTAL_NEGATIVE");
     expect(source).toContain('"supplierAccreditationSnapshot"');
     expect(workspaceSource).toContain("Subtotal:");
-    expect(workspaceSource).toContain("Binary quote attachments are not captured");
+    expect(workspaceSource).toContain("ControlledEvidencePanel");
+    expect(workspaceSource).toContain('sourceType="SUPPLIER_QUOTATION"');
   });
 
   test("initial recommendation approval routing is normalized and fail-closed", () => {

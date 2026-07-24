@@ -4,6 +4,7 @@ import { ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { QuoteComparisonWorkspace } from "@/components/QuoteComparisonWorkspace";
+import { listControlledEvidenceAttachmentPage } from "@/server/services/attachments";
 import { actionErrorRedirectPath, getActionFeedback } from "@/server/services/actionFeedback";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import { getSessionContext } from "@/server/services/context";
@@ -52,6 +53,19 @@ export default async function SupplierQuotesPage({ searchParams }: SupplierQuote
     listQuoteOptions(session)
   ]);
   const requests = requestPage.items;
+  const selectedRequest = requests.find((request) => request.id === selectedRequestId) ?? requests[0];
+  const evidenceEntries = selectedRequest
+    ? await Promise.all(selectedRequest.quotes.map(async (quote) => [
+        quote.id,
+        (await listControlledEvidenceAttachmentPage({
+          sourceType: "SUPPLIER_QUOTATION",
+          sourceRecordId: quote.id,
+          page: 1,
+          pageSize: 10,
+        })).rows,
+      ] as const))
+    : [];
+  const quoteEvidence = Object.fromEntries(evidenceEntries);
   const quoteCount = requests.reduce((count, request) => count + request.quotes.length, 0);
   const actionFeedback = getActionFeedback(params);
   const canExportQuotes = canExportSupplierQuotes(session);
@@ -83,6 +97,7 @@ export default async function SupplierQuotesPage({ searchParams }: SupplierQuote
         totalItems={requestPage.totalItems}
         createRecommendationAction={createQuotationRecommendationAction}
         submitRecommendationAction={submitQuotationRecommendationAction}
+        quoteEvidence={quoteEvidence}
       />
     </AppShell>
   );

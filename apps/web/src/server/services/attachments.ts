@@ -45,6 +45,7 @@ export const evidenceAttachmentSourceTypes = [
   "PETTY_CASH_LIQUIDATION_LINE",
   "FINANCE_CLOSE_RUN",
   "FINANCE_CLOSE_ITEM",
+  "SUPPLIER_QUOTATION",
   "WORKFORCE_EMPLOYEE",
   "WORKFORCE_ASSIGNMENT",
   "WORKFORCE_LEAVE",
@@ -559,6 +560,8 @@ function requiredViewPermissionsForSourceType(
     case "FINANCE_CLOSE_RUN":
     case "FINANCE_CLOSE_ITEM":
       return [permissions.financePeriodCloseManage];
+    case "SUPPLIER_QUOTATION":
+      return [permissions.quoteManage];
     case "WORKFORCE_EMPLOYEE":
     case "WORKFORCE_ASSIGNMENT":
     case "WORKFORCE_LEAVE":
@@ -607,6 +610,8 @@ function requiredWritePermissionsForSourceType(
     case "FINANCE_CLOSE_RUN":
     case "FINANCE_CLOSE_ITEM":
       return [permissions.financePeriodCloseManage];
+    case "SUPPLIER_QUOTATION":
+      return [permissions.quoteManage];
     case "WORKFORCE_EMPLOYEE":
     case "WORKFORCE_ASSIGNMENT":
       return [permissions.workforceManage, permissions.coreAdminister];
@@ -726,6 +731,8 @@ function evidenceSourceScopeQuery(sourceType: EvidenceAttachmentSourceType) {
       return `SELECT "tenantId", "companyId", ${emptyScopeColumns} FROM "FinanceCloseRun" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
     case "FINANCE_CLOSE_ITEM":
       return `SELECT "tenantId", "companyId", ${emptyScopeColumns} FROM "FinanceCloseChecklistItem" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
+    case "SUPPLIER_QUOTATION":
+      return `SELECT q."tenantId", q."companyId", NULL::uuid AS "brandId", pr."requestLocationId" AS "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "SupplierQuotation" q JOIN "QuotationRequest" qr ON qr.id = q."quotationRequestId" JOIN "PurchaseRequest" pr ON pr.id = qr."purchaseRequestId" WHERE q.id = $1 AND q."tenantId" = $2 AND q."companyId" = $3`;
     case "WORKFORCE_EMPLOYEE":
       return `SELECT "tenantId", "companyId", NULL::uuid AS "brandId", "homeLocationId" AS "locationId", NULL::uuid AS "departmentId", NULL::uuid AS "projectId" FROM "Employee" WHERE id = $1 AND "tenantId" = $2 AND "companyId" = $3`;
     case "WORKFORCE_ASSIGNMENT":

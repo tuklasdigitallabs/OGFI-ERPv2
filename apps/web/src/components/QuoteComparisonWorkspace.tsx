@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Badge, PaginationBar } from "@ogfi/ui";
+import { ControlledEvidencePanel } from "@/components/evidence/ControlledEvidencePanel";
+import type { ControlledEvidenceDisplayRow } from "@/components/evidence/types";
 import type { listQuoteRequests } from "@/server/services/quotes";
 
 type QuoteRequest = Awaited<ReturnType<typeof listQuoteRequests>>[number];
@@ -13,6 +15,7 @@ type Props = {
   totalItems: number;
   createRecommendationAction: Action;
   submitRecommendationAction: Action;
+  quoteEvidence: Record<string, ControlledEvidenceDisplayRow[]>;
 };
 
 export function QuoteComparisonWorkspace({
@@ -22,7 +25,8 @@ export function QuoteComparisonWorkspace({
   pageSize,
   totalItems,
   createRecommendationAction,
-  submitRecommendationAction
+  submitRecommendationAction,
+  quoteEvidence
 }: Props) {
   const selected = requests.find((request) => request.id === selectedRequestId) ?? requests[0];
   const selectedHref = (id: string, nextPage = page) => `/quotes?page=${nextPage}&requestId=${id}`;
@@ -139,7 +143,18 @@ export function QuoteComparisonWorkspace({
                             <p>Tax: <span className="font-semibold text-slate-700">{quote.currencyCode} {quote.taxAmount.toFixed(2)}</span></p>
                             <p>Discount: <span className="font-semibold text-slate-700">{quote.currencyCode} {quote.discountAmount.toFixed(2)}</span></p>
                             <p>Freight / other: <span className="font-semibold text-slate-700">{quote.currencyCode} {(quote.freightAmount + quote.otherChargesAmount).toFixed(2)}</span></p>
-                            <p className="sm:col-span-2">Binary quote attachments are not captured in this record yet; use the approved controlled-evidence policy when that capability is enabled.</p>
+                            <p className="sm:col-span-2">Attach the supplier document when available. Evidence is scanned and remains unavailable until the controlled-evidence service marks it clean.</p>
+                          </div>
+                          <div className="mt-3 border-t border-slate-100 pt-3">
+                            <ControlledEvidencePanel
+                              attachments={quoteEvidence[quote.id] ?? []}
+                              canAdd={true}
+                              sourceType="SUPPLIER_QUOTATION"
+                              sourceRecordId={quote.id}
+                              purpose="REFERENCE"
+                              triggerLabel="Add quotation evidence"
+                              captionPlaceholder="What this quotation supports"
+                            />
                           </div>
                         </article>
                       ))}
