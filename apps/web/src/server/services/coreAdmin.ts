@@ -4499,6 +4499,7 @@ const auditFilterInputSchema = z.object({
   requestId: z.string().trim().max(120).optional(),
   occurredFrom: z.string().trim().max(40).optional(),
   occurredTo: z.string().trim().max(40).optional(),
+  occurredBefore: z.string().trim().max(40).optional(),
 });
 
 function auditSensitiveKey(key: string) {
@@ -4590,6 +4591,7 @@ export type CoreAdminAuditEventFilters = {
   requestId?: string | undefined;
   occurredFrom?: string | undefined;
   occurredTo?: string | undefined;
+  occurredBefore?: string | undefined;
 };
 
 export type CoreAdminAuditEventPageInput = CoreAdminAuditEventFilters &
@@ -4627,6 +4629,7 @@ function normalizeAuditFilters(filters: CoreAdminAuditEventFilters = {}) {
     requestId: filters.requestId?.trim() || undefined,
     occurredFrom: filters.occurredFrom?.trim() || undefined,
     occurredTo: filters.occurredTo?.trim() || undefined,
+    occurredBefore: filters.occurredBefore?.trim() || undefined,
   });
 }
 
@@ -4683,6 +4686,7 @@ async function resolveCoreAdminAuditWhere(
   const query = normalized.query;
   const occurredFrom = parsedDate(normalized.occurredFrom);
   const occurredTo = parsedEndOfDay(normalized.occurredTo);
+  const occurredBefore = parsedDate(normalized.occurredBefore);
   const queryConditions: AuditEventWhereInput[] = query
     ? [
         { eventType: { contains: query, mode: "insensitive" } },
@@ -4709,7 +4713,13 @@ async function resolveCoreAdminAuditWhere(
     ] } };
   }
   if (normalized.requestId) where.requestId = { contains: normalized.requestId, mode: "insensitive" };
-  if (occurredFrom || occurredTo) where.occurredAt = { ...(occurredFrom ? { gte: occurredFrom } : {}), ...(occurredTo ? { lte: occurredTo } : {}) };
+  if (occurredFrom || occurredTo || occurredBefore) {
+    where.occurredAt = {
+      ...(occurredFrom ? { gte: occurredFrom } : {}),
+      ...(occurredTo ? { lte: occurredTo } : {}),
+      ...(occurredBefore ? { lt: occurredBefore } : {}),
+    };
+  }
   if (queryConditions.length > 0) where.AND = [{ OR: queryConditions }];
   return { where, normalized, canViewTenantAudit };
 }
@@ -4741,6 +4751,7 @@ function projectAuditEvent(event: {
 export async function listCoreAdminAuditEventPage(
   session: SessionContext,
   input: CoreAdminAuditEventPageInput = {},
+  options: { includeTotal?: boolean } = {},
 ) {
   const filters = normalizeAuditFilters(input);
   const values = auditPageInputSchema.parse({ pageSize: input.pageSize, cursor: input.cursor });
@@ -4751,7 +4762,9 @@ export async function listCoreAdminAuditEventPage(
     : undefined;
   const pageWhere = cursorWhere ? { AND: [resolved.where, cursorWhere] } : resolved.where;
   const [totalItems, events] = await Promise.all([
-    prisma.auditEvent.count({ where: resolved.where }),
+    options.includeTotal === false
+      ? Promise.resolve(null)
+      : prisma.auditEvent.count({ where: resolved.where }),
     prisma.auditEvent.findMany({
       where: pageWhere,
       include: { actor: true, company: true },
@@ -4763,7 +4776,7 @@ export async function listCoreAdminAuditEventPage(
   const pageEvents = hasMore ? events.slice(0, values.pageSize) : events;
   return {
     items: pageEvents.map(projectAuditEvent),
-    totalItems,
+    totalItems: totalItems ?? 0,
     pageSize: values.pageSize,
     hasMore,
     nextCursor: hasMore ? encodeAuditCursor(filters, pageEvents[pageEvents.length - 1]!) : null,
@@ -4773,17 +4786,23 @@ export async function listCoreAdminAuditEventPage(
 export async function listCoreAdminAuditEvents(
   session: SessionContext,
   filters: CoreAdminAuditEventFilters = {},
+  options: { maxRows?: number } = {},
 ) {
   const items: Awaited<ReturnType<typeof listCoreAdminAuditEventPage>>["items"] = [];
   let cursor: string | undefined;
+  let includeTotal = true;
   do {
     const page = await listCoreAdminAuditEventPage(session, {
       ...filters,
       pageSize: 100,
       ...(cursor ? { cursor } : {}),
-    });
+    }, { includeTotal });
+    if (options.maxRows !== undefined && page.totalItems > options.maxRows) {
+      throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+    }
     items.push(...page.items);
     cursor = page.nextCursor ?? undefined;
+    includeTotal = false;
   } while (cursor);
   return items;
 }

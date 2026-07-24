@@ -92,6 +92,7 @@ Current implementation note: `/reports` is a permission-gated report catalog ove
 - Stock Count CSV appends the validated current immutable attempt number to each line-grain row. It is lineage context only; protected system quantity and variance fields remain reviewer-gated, and recount/Count Variance activation remains separately controlled.
 - Include report title, generated-by, generated-at, timezone, filters, and page/scope metadata in exports.
 - Large exports should run as a background job and notify the requester when ready.
+- Until the approved background-job and expiring-download infrastructure exists, synchronous Admin Audit CSV export requires a valid UTC From/To range and enforces the configurable `reporting.export.max_date_span_days` (default 31, safety ceiling 366) and `reporting.export.max_rows` (default 10,000, safety ceiling 100,000). Over-limit requests fail with a truthful 413 response and no partial file; asynchronous delivery remains future hardening.
 - Sensitive exports must be time-limited download links and should not be delivered through unprotected channels.
 - PDF is for formal summaries, not a replacement for transaction-level Excel analysis.
 

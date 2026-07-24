@@ -117,4 +117,7 @@ retaining pending-review context. A separately authorized historical detail path
 responsive browser proof, database evidence, and hosted recovery evidence remain
 release-readiness follow-ups.
 
+Admin Audit CSV export now requires a bounded UTC date range and rejects oversized
+requests explicitly instead of streaming an unbounded result or silently truncating.
+
 Raise UAT defects, training gaps, permission issues, or release blockers through the assigned ERP implementation owner and the Phase 1.5 project tracker.

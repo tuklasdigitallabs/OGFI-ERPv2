@@ -458,6 +458,24 @@ const dec0036CompanyPolicyDefaults = [
     valueType: "BOOLEAN",
   },
   {
+    key: "reporting.export.max_rows",
+    category: "reporting",
+    label: "Maximum export rows",
+    description:
+      "Hard maximum rows returned by a synchronous CSV export before the user must narrow the filters or use an approved asynchronous delivery path.",
+    value: 10000,
+    valueType: "NUMBER",
+  },
+  {
+    key: "reporting.export.max_date_span_days",
+    category: "reporting",
+    label: "Maximum export date span",
+    description:
+      "Maximum UTC calendar-day span permitted for synchronous CSV exports before an approved asynchronous delivery path exists.",
+    value: 31,
+    valueType: "NUMBER",
+  },
+  {
     key: "reporting.dashboard.unreconciled_mode",
     category: "reporting",
     label: "Unreconciled dashboard mode",

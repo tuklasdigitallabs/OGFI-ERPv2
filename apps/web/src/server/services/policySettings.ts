@@ -80,6 +80,8 @@ const policySettingKeys = [
   "finance.expense_request.handoff_policy",
   "finance.period_close.reopen_window_hours",
   "reporting.export.require_scope_filters",
+  "reporting.export.max_rows",
+  "reporting.export.max_date_span_days",
   "reporting.dashboard.unreconciled_mode",
   "projects.restricted_visibility_default",
   "projects.blocker_reason_required",
@@ -380,6 +382,26 @@ export const defaultPolicySettings: readonly PolicySettingDefinition[] = [
       "Report exports must preserve the company, brand, location, and date filters used on screen.",
     valueType: "BOOLEAN",
     defaultValue: true
+  },
+  {
+    key: "reporting.export.max_rows",
+    category: "reporting",
+    label: "Maximum export rows",
+    description:
+      "Hard maximum rows returned by a synchronous CSV export before the user must narrow the filters or use an approved asynchronous delivery path.",
+    valueType: "NUMBER",
+    defaultValue: 10000,
+    unit: "rows"
+  },
+  {
+    key: "reporting.export.max_date_span_days",
+    category: "reporting",
+    label: "Maximum export date span",
+    description:
+      "Maximum UTC calendar-day span permitted for synchronous CSV exports before an approved asynchronous delivery path exists.",
+    valueType: "NUMBER",
+    defaultValue: 31,
+    unit: "days"
   },
   {
     key: "reporting.dashboard.unreconciled_mode",
@@ -706,10 +728,28 @@ export async function getReportExportPolicy(session: SessionContext) {
     true
   );
   const trustGate = await getDashboardTrustGatePolicy(session);
+  const configuredMaxRows = await getNumberPolicyValue(
+    session,
+    "reporting.export.max_rows",
+    10_000
+  );
+  const maxRows = Number.isInteger(configuredMaxRows)
+    ? Math.min(Math.max(configuredMaxRows, 100), 100_000)
+    : 10_000;
+  const configuredMaxDateSpanDays = await getNumberPolicyValue(
+    session,
+    "reporting.export.max_date_span_days",
+    31
+  );
+  const maxDateSpanDays = Number.isInteger(configuredMaxDateSpanDays)
+    ? Math.min(Math.max(configuredMaxDateSpanDays, 1), 366)
+    : 31;
 
   return {
     requireScopeFilters,
-    trustGate
+    trustGate,
+    maxRows,
+    maxDateSpanDays
   };
 }
 

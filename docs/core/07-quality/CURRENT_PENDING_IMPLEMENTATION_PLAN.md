@@ -528,6 +528,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Sensitive-role approval and rejection now lock the target user, revalidate active/effective selected-company membership inside the transaction, and claim only a still-pending request before role assignment or terminal audit posting.
 - Focused Core Admin coverage passes 28/28; web typecheck and lint pass. Disposable PostgreSQL concurrency/revocation evidence, responsive browser, hosted deployment/recovery, and UAT gates remain open.
 
+### DEC-0123 Administration audit bounded synchronous export — July 24, 2026
+
+- Admin Audit CSV now requires a valid UTC date range, enforces configurable maximum date-span/row policies, applies a pre-start watermark, counts once, and returns truthful 400/413 errors without partial CSV output. Async delivery remains deferred until queue, private artifact, expiry, and recovery controls exist.
+- Focused Core Admin coverage passes 29/29; web typecheck and lint pass. Disposable PostgreSQL volume/query-plan evidence, responsive browser, hosted deployment/recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

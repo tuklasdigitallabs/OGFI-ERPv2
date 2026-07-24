@@ -1294,6 +1294,9 @@ export default async function CoreAdministrationPage({
               <p className="text-sm text-slate-500">
                 Search append-only controlled events by action, actor, entity, date, or request ID.
               </p>
+              <p className="text-xs text-slate-500">
+                Audit CSV export requires From and To dates and is limited to the configured synchronous export window.
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge tone="info">Read-only</Badge>

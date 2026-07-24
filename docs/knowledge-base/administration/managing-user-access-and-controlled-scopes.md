@@ -164,6 +164,11 @@ does not create an assignment.
 The same commit-time membership and pending-request checks apply when reviewing a
 controlled sensitive-role request.
 
+Audit CSV export is bounded for safety: choose both From and To dates within the
+configured synchronous export window. Requests that exceed the row or date limit
+are rejected without a partial file; the on-screen Audit Trail remains available
+for narrower review.
+
 - The target user, location, and access level match the actual operational need.
 - The evidence reference is traceable outside the ERP when needed.
 - Pending requests do not duplicate an existing active assignment.

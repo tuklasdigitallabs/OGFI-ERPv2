@@ -591,6 +591,22 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("tx.sensitiveRoleRequest.updateMany");
   });
 
+  test("audit export pagination counts once and fails closed over the policy row cap", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const exportRouteSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/audit/export/route.ts"),
+      "utf8",
+    );
+    const policySource = readFileSync(path.resolve(__dirname, "policySettings.ts"), "utf8");
+    expect(serviceSource).toContain("includeTotal");
+    expect(serviceSource).toContain("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+    expect(exportRouteSource).toContain("REPORT_EXPORT_DATE_RANGE_REQUIRED");
+    expect(exportRouteSource).toContain("exportErrorResponse");
+    expect(exportRouteSource).toContain("occurredBefore");
+    expect(policySource).toContain('"reporting.export.max_rows"');
+    expect(policySource).toContain('"reporting.export.max_date_span_days"');
+  });
+
   test("Core Administration exposes truthful route loading and retryable error states", () => {
     const loadingSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/loading.tsx"),

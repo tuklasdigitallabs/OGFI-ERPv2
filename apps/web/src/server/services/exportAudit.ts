@@ -36,6 +36,7 @@ export async function logOperationalExportAudit(input: {
   rowCount?: number;
   reasonCode?: string;
   metadata?: Record<string, unknown>;
+  skipScopeFilterRequirement?: boolean;
 }) {
   if (input.eventType === "report.export_denied") {
     await recordSessionDeniedDecisionSafely(input.session, {
@@ -46,7 +47,7 @@ export async function logOperationalExportAudit(input: {
     return;
   }
   const exportPolicy =
-    input.eventType === "report.export_started"
+    input.eventType === "report.export_started" && !input.skipScopeFilterRequirement
       ? await assertReportExportScopeFilters(input.session)
       : await getReportExportPolicy(input.session);
   await prisma.auditEvent.create({

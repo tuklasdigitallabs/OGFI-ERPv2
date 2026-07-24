@@ -2,6 +2,7 @@ import { getSessionContext } from "@/server/services/context";
 import { csvExportResponse } from "@/server/services/csv";
 import {
   exportAuthRequiredResponse,
+  exportErrorResponse,
   exportPermissionDeniedResponse
 } from "@/server/services/exportErrors";
 import {
@@ -15,6 +16,8 @@ import {
   assertCanManageCompanyScope,
   type CoreAdminAuditEventFilters
 } from "@/server/services/coreAdmin";
+import { getReportExportPolicy } from "@/server/services/policySettings";
+import { parseDateOnlyUtc } from "@/server/services/projectDates";
 
 export const dynamic = "force-dynamic";
 
@@ -73,12 +76,33 @@ export async function GET(request: Request) {
   }
 
   try {
+    const exportPolicy = await getReportExportPolicy(session);
+    const exportCutoff = new Date();
+    const validDate = (value: string | null) =>
+      value ? parseDateOnlyUtc(value) : null;
+    const from = validDate(occurredFrom);
+    const to = validDate(occurredTo);
+    if (!occurredFrom || !occurredTo) {
+      throw new Error("REPORT_EXPORT_DATE_RANGE_REQUIRED");
+    }
+    if (!from || !to || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) {
+      throw new Error("REPORT_EXPORT_DATE_RANGE_INVALID");
+    }
+    const spanDays = Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1;
+    if (spanDays > exportPolicy.maxDateSpanDays) {
+      throw new Error("REPORT_EXPORT_DATE_RANGE_TOO_LARGE");
+    }
+    filters.occurredBefore = exportCutoff.toISOString();
     await logOperationalExportAudit({
       session,
       reportId: "audit-trail",
-      eventType: "report.export_started"
+      eventType: "report.export_started",
+      skipScopeFilterRequirement: true,
+      metadata: { maxRows: exportPolicy.maxRows, maxDateSpanDays: exportPolicy.maxDateSpanDays }
     });
-    const events = await listCoreAdminAuditEvents(session, filters);
+    const events = await listCoreAdminAuditEvents(session, filters, {
+      maxRows: exportPolicy.maxRows,
+    });
     const rows = [
       [
         "Audit ID",
@@ -121,6 +145,10 @@ export async function GET(request: Request) {
       reportId: "audit-trail",
       error
     });
+    const response = exportErrorResponse(error);
+    if (response) {
+      return response;
+    }
     throw error;
   }
 }
