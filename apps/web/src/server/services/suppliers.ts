@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, Prisma } from "@ogfi/database";
 import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import { assertCanManageCompanyScope } from "./coreAdmin";
@@ -211,6 +211,7 @@ export async function getSupplierCatalog(
   }
 ) {
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageCompanyScope(session, session.context.companyId);
 
   const supplier = await prisma.supplier.findFirst({
     where: {
@@ -405,6 +406,8 @@ export async function getSupplierCatalog(
 
 export async function listSupplierItemLinkOptions(session: SessionContext) {
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+
 
   const [suppliers, items, uoms] = await Promise.all([
     prisma.supplier.findMany({
@@ -700,7 +703,8 @@ export async function createSupplierItemLink(formData: FormData) {
     ? new Date(`${values.effectiveFrom}T00:00:00.000Z`)
     : new Date();
 
-  return prisma.$transaction(async (tx) => {
+  try {
+    return await prisma.$transaction(async (tx) => {
     const link = await tx.supplierItemLink.create({
       data: {
         tenantId: session.context.tenantId,
@@ -753,8 +757,19 @@ export async function createSupplierItemLink(formData: FormData) {
       }
     });
 
-    return link;
-  });
+      return link;
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      Array.isArray(error.meta?.target) &&
+      error.meta.target.some((target) => String(target).includes("supplierId_itemId_purchaseUomId"))
+    ) {
+      throw new Error("DUPLICATE_SUPPLIER_ITEM_LINK");
+    }
+    throw error;
+  }
 }
 
 export async function deactivateSupplierItemLink(formData: FormData) {

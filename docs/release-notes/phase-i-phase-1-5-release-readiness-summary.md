@@ -189,6 +189,10 @@ clear guidance.
 Approval Inbox now fails closed when normalized routing is disabled: it shows an
 explicit unavailable state and no legacy unbounded queue or false zero count.
 
+Supplier-item link creation now maps concurrent unique-key races to a stable
+duplicate outcome, while the global link composer is explicitly disabled until
+bounded searchable supplier, item, and purchase-UOM lookups are available.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.

@@ -128,3 +128,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0142-SUPPLIER-SELECTED-ACTION-COMPOSER.md` — selected supplier accreditation/deactivation action composer
 - `DEC-0143-ITEM-SELECTED-ACTION-COMPOSER.md` — selected item mutation composer and transactional base-UOM guard
 - `DEC-0144-APPROVAL-INBOX-FEATURE-DISABLED-STATE.md` — truthful disabled Approval Inbox without legacy unbounded reads
+- `DEC-0145-SUPPLIER-ITEM-LINK-RACE-DUPLICATE.md` — stable duplicate outcome for concurrent supplier-item link creation

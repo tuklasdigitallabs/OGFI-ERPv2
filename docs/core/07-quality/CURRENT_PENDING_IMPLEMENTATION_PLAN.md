@@ -645,6 +645,11 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 - If the flag is enabled before runtime backfill readiness is complete, the known backfill-readiness failure renders the same unavailable state; unrelated database and authorization faults remain errors. Focused approval tests (42), typecheck, lint, and diff checks pass for this checkpoint.
 - Approval routing activation remains NO-GO pending PostgreSQL parity/isolation, live authorization revocation, all-family policy/cutover, hosted recovery, browser, and UAT gates.
 
+### DEC-0145 Supplier-item link duplicate race — July 24, 2026
+
+- Supplier-item link creation now maps the unique-key race on supplier, item, and purchase UOM to the stable `DUPLICATE_SUPPLIER_ITEM_LINK` outcome while preserving atomic price-history and audit creation.
+- The global link composer still needs a bounded, searchable, selected-ID-preserving supplier/item/UOM lookup before the Supplier workspace can pass its visible-surface and list-behavior gates.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

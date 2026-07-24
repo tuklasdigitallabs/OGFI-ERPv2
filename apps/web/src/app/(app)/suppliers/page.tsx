@@ -298,7 +298,12 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             </button>
           </form>
         </EntryModal>
-        <EntryModal title="Link Supplier Item" triggerLabel="Link Supplier Item">
+        <EntryModal
+          title="Link Supplier Item"
+          triggerLabel="Link Supplier Item"
+          disabled
+          disabledReason="Global linking is paused until the bounded searchable supplier, item, and purchase-UOM selector migration is complete. Use the selected supplier catalog for read-only review; no hidden unbounded action is available."
+        >
           <form action={createSupplierItemLinkAction} className="ogfi-form-shell mt-4 grid gap-3">
             <div className="grid gap-3 md:grid-cols-3">
               <label className="grid gap-1 text-sm font-medium text-slate-700">

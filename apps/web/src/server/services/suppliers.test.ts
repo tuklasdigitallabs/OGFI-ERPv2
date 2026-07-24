@@ -31,6 +31,10 @@ describe("supplier master-data controls", () => {
     expect(source).toContain("tenantId: session.context.tenantId");
     expect(source).toContain("companyId: session.context.companyId");
     expect(source).toContain("prisma.$transaction");
+    expect(source).toContain("Prisma.PrismaClientKnownRequestError");
+    expect(source).toContain('throw new Error("DUPLICATE_SUPPLIER_ITEM_LINK")');
+    expect(source).toContain("export async function getSupplierCatalog");
+    expect(source).toContain("export async function listSupplierItemLinkOptions");
     expect(source).toContain("tx.auditEvent.create");
     expect(source).toContain("currencyCode: company.currencyCode");
     expect(source).toContain('accreditationStatus: "PENDING_REVIEW"');
