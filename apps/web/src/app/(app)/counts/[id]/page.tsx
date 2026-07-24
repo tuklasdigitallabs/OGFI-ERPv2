@@ -199,6 +199,9 @@ export default async function CountDetailPage({
               <p className="mt-1 text-sm text-slate-600">
                 {count.inventoryLocationName} / {count.countType}
               </p>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                Current immutable attempt: {count.currentAttemptNumber ?? "Unavailable"}
+              </p>
             </div>
             <Badge tone={statusTone(count.status)}>{count.status}</Badge>
           </div>

@@ -52,11 +52,13 @@ Show:
 
 Count Variance review facts remain reviewer-gated, but Count Variance adjustment generation and dashboard/task activation are disabled during the immutable recount-recovery rollout. The count detail must explain this disabled state; no replacement adjustment action may be shown. Do not post variance directly from count entry.
 
+The count list, page, and detail projections include the validated current immutable attempt identity. Detail shows the current attempt number as lineage context; it does not expose prior-attempt protected facts or enable recount actions while recovery remains gated.
+
 ## 5. Statuses
 
 ```text
 Draft → Scheduled → In Progress → Submitted → Under Review → Approved → Posted / Closed
-                         ↘ Recount Required → In Progress
+                         ↘ Recount recovery unavailable until immutable attempt safeguards are enabled
 Rejected / Cancelled only with reason and audit history
 ```
 

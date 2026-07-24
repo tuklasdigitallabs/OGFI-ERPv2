@@ -1014,9 +1014,9 @@ const actionFeedbackMessages: Record<string, string> = {
   STOCK_COUNT_HAS_NO_VARIANCE_LINES:
     "This reviewed count has no variance lines to adjust.",
   STOCK_COUNT_NOT_OPEN_FOR_ENTRY:
-    "Count entries can only be saved while the count is in progress or recount.",
+    "Count entries can only be saved while the count is in progress. Recount recovery is currently unavailable.",
   STOCK_COUNT_NOT_OPEN_FOR_SUBMIT:
-    "Only in-progress or recount sessions can be submitted.",
+    "Only in-progress counts can be submitted. Recount recovery is currently unavailable.",
   STOCK_COUNT_NOT_SUBMITTED_FOR_REVIEW:
     "Only submitted counts can be reviewed.",
   STOCK_COUNT_QUANTITY_INVALID: "Counted quantities must be zero or greater.",

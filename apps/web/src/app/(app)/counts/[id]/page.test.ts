@@ -66,4 +66,9 @@ describe("stock count detail action eligibility", () => {
     expect(source).toContain("Request recount (temporarily unavailable)");
     expect(source).toContain("Recount recovery is disabled until immutable attempt");
   });
+
+  it("shows the validated current immutable attempt context", () => {
+    expect(source).toContain("Current immutable attempt:");
+    expect(source).toContain("count.currentAttemptNumber");
+  });
 });

@@ -897,6 +897,7 @@ export async function listStockCounts(session: SessionContext) {
       createdBy: true,
       assignedTo: true,
       reviewedBy: true,
+      currentAttempt: { select: { id: true, attemptNumber: true, status: true } },
       lines: true
     },
     orderBy: [{ createdAt: "desc" }]
@@ -910,7 +911,9 @@ export async function listStockCounts(session: SessionContext) {
 }
 
 type StockCountWithRelations = Prisma.StockCountSessionGetPayload<{ include: {
-  inventoryLocation: true; createdBy: true; assignedTo: true; reviewedBy: true; lines: true;
+  inventoryLocation: true; createdBy: true; assignedTo: true; reviewedBy: true;
+  currentAttempt: { select: { id: true; attemptNumber: true; status: true } };
+  lines: true;
 } }>;
 
 function mapStockCount(session: SessionContext, count: StockCountWithRelations, cadencePolicy: Awaited<ReturnType<typeof getStockCountCadencePolicy>>) {
@@ -920,6 +923,8 @@ function mapStockCount(session: SessionContext, count: StockCountWithRelations, 
     );
     return {
     id: count.id,
+    currentAttemptId: count.currentAttempt?.id ?? null,
+    currentAttemptNumber: count.currentAttempt?.attemptNumber ?? null,
     publicReference: count.publicReference,
     status: count.status,
     countType: count.countType,
@@ -959,7 +964,14 @@ export async function listStockCountPage(
   const page = Math.min(requestedPage, totalPages);
   const counts = await prisma.stockCountSession.findMany({
     where,
-    include: { inventoryLocation: true, createdBy: true, assignedTo: true, reviewedBy: true, lines: true },
+    include: {
+      inventoryLocation: true,
+      createdBy: true,
+      assignedTo: true,
+      reviewedBy: true,
+      currentAttempt: { select: { id: true, attemptNumber: true, status: true } },
+      lines: true
+    },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * pageSize,
     take: pageSize
@@ -1123,6 +1135,8 @@ export async function getStockCount(session: SessionContext, id: string) {
       currentAttempt: {
         select: {
           id: true,
+          attemptNumber: true,
+          status: true,
           stockAdjustments: {
             orderBy: { createdAt: "desc" },
             take: 1,
@@ -1178,6 +1192,8 @@ export async function getStockCount(session: SessionContext, id: string) {
 
   return {
     id: count.id,
+    currentAttemptId: count.currentAttempt?.id ?? null,
+    currentAttemptNumber: count.currentAttempt?.attemptNumber ?? null,
     publicReference: count.publicReference,
     status: count.status,
     countType: count.countType,
