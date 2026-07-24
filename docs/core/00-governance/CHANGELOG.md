@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Full Web Regression After Baseline Reconciliation
+
+- The non-database web suite passes 1,290 tests across 120 files after authorization-baseline reconciliation; 301 environment-gated tests remain skipped and one existing TODO remains. Authorization manifest coverage passes 20/20.
+
 ## 2026-07-24 — Authorization Baseline Drift Reconciliation
 
 - Reconciled the generated authorization baseline after the disabled Count Variance action was removed and the dashboard service permission boundary changed. The manifest now passes 20/20 with no undeclared or stale protected surfaces.
