@@ -990,10 +990,14 @@ export async function buildStockCountExportRows(session: SessionContext) {
       createdBy: { select: { displayName: true } },
       assignedTo: { select: { displayName: true } },
       reviewedBy: { select: { displayName: true } },
-      stockAdjustments: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { publicReference: true, status: true }
+      currentAttempt: {
+        select: {
+          stockAdjustments: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { publicReference: true, status: true }
+          }
+        }
       },
       lines: {
         orderBy: { lineNumber: "asc" },
@@ -1054,7 +1058,7 @@ export async function buildStockCountExportRows(session: SessionContext) {
     );
     const canShowEnteredCountFacts =
       count.assignedToUserId === session.user.id || canShowSystemQuantity;
-    const adjustment = count.stockAdjustments[0];
+    const adjustment = count.currentAttempt?.stockAdjustments[0];
     const sharedColumns: CsvRow = [
       count.publicReference,
       count.status,
@@ -1116,9 +1120,15 @@ export async function getStockCount(session: SessionContext, id: string) {
       createdBy: true,
       assignedTo: true,
       reviewedBy: true,
-      stockAdjustments: {
-        orderBy: { createdAt: "desc" },
-        take: 1
+      currentAttempt: {
+        select: {
+          id: true,
+          stockAdjustments: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { id: true, publicReference: true, status: true }
+          }
+        }
       },
       lines: {
         orderBy: { lineNumber: "asc" },
@@ -1192,14 +1202,14 @@ export async function getStockCount(session: SessionContext, id: string) {
     cancellationReason: count.cancellationReason ?? null,
     reviewNotes: canShowSystemQuantity ? count.reviewNotes ?? null : null,
     varianceAdjustmentId: canShowSystemQuantity
-      ? count.stockAdjustments[0]?.id ?? null
+      ? count.currentAttempt?.stockAdjustments[0]?.id ?? null
       : null,
     varianceAdjustmentReference:
       canShowSystemQuantity
-        ? count.stockAdjustments[0]?.publicReference ?? null
+        ? count.currentAttempt?.stockAdjustments[0]?.publicReference ?? null
         : null,
     varianceAdjustmentStatus: canShowSystemQuantity
-      ? count.stockAdjustments[0]?.status ?? null
+      ? count.currentAttempt?.stockAdjustments[0]?.status ?? null
       : null,
     assignedToCurrentUser,
     scheduledStartEligible,

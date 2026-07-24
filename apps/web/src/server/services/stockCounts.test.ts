@@ -498,6 +498,57 @@ describe("stock count foundation rules", () => {
     expect(rows[1]?.[20]).toBe(10);
   });
 
+  test("detail and export adjustment context follows the current attempt", async () => {
+    mockPrisma.stockCountSession.findFirst.mockResolvedValue({
+      id: "count-attempt-adjustment",
+      publicReference: "SC-2026-00010",
+      status: "REVIEWED",
+      countType: "FULL",
+      blindCount: false,
+      freezeMovements: false,
+      inventoryLocationId: "inventory-location-1",
+      inventoryLocation: { name: "BGC Store", location: { name: "BGC" } },
+      createdBy: { displayName: "Creator" },
+      assignedTo: null,
+      reviewedBy: { displayName: "Reviewer" },
+      scheduledDate: null,
+      cutoffAt: null,
+      startedAt: null,
+      submittedAt: null,
+      reviewedAt: new Date("2026-07-23T01:00:00.000Z"),
+      cancelledAt: null,
+      cancellationReason: null,
+      reviewNotes: null,
+      createdByUserId: "creator-1",
+      assignedToUserId: null,
+      currentAttempt: {
+        stockAdjustments: [{
+          id: "attempt-adjustment",
+          publicReference: "ADJ-CURRENT",
+          status: "DRAFT"
+        }]
+      },
+      stockAdjustments: [{
+        id: "legacy-adjustment",
+        publicReference: "ADJ-STALE",
+        status: "POSTED"
+      }],
+      lines: []
+    });
+    mockPrisma.auditEvent.findMany.mockResolvedValue([]);
+
+    const result = await getStockCount({
+      ...dashboardSession,
+      permissionCodes: [permissions.stockCountReview]
+    } as never, "count-attempt-adjustment");
+
+    expect(result).toMatchObject({
+      varianceAdjustmentId: "attempt-adjustment",
+      varianceAdjustmentReference: "ADJ-CURRENT",
+      varianceAdjustmentStatus: "DRAFT"
+    });
+  });
+
   test("export limits entered facts to the assigned actor or a segregated reviewer", async () => {
     const exportCount = {
       id: "count-export",

@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Use this article to schedule, start, enter, submit, and review a physical stock count. During the current recount-foundation rollout, those first-pass actions are recorded in both the existing count record and its immutable attempt-1 history; this is internal lineage and does not change the user steps. Reviewed count variances do not directly adjust stock balances. Count Variance adjustment generation is currently disabled while immutable recovery and adjustment-lineage gates are completed.
+Use this article to schedule, start, enter, submit, and review a physical stock count. During the current recount-foundation rollout, those first-pass actions are recorded in both the existing count record and its immutable attempt-1 history; this is internal lineage and does not change the user steps. When adjustment context is shown to an authorized reviewer, it follows the selected current attempt; an older recount adjustment is not presented as current. Reviewed count variances do not directly adjust stock balances. Count Variance adjustment generation is currently disabled while immutable recovery and adjustment-lineage gates are completed.
 
 If a count cannot be opened because its attempt history is unavailable, contact an administrator; do not retry by creating a second count or editing submitted evidence. The recovery workflow is not yet enabled.
 

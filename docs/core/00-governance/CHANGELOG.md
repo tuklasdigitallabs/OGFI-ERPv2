@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Stock Count Current-Attempt Adjustment Read Lineage
+
+- Stock Count detail and CSV adjustment context now follows the selected immutable current attempt, preventing stale prior-attempt adjustment references from being displayed as current.
+
 ## 2026-07-24 — Stock Count My Tasks Current-Attempt Authority
 
 - Stock Count Start, Enter, and Submit tasks now require the assigned counter and actionable status on the immutable current attempt; task status is projected from that attempt so stale legacy session metadata cannot create work.
