@@ -198,6 +198,8 @@ are not configured for the selected item, while preserving emergency free-text
 lines. Draft entry now uses bounded server-owned item, valid-UOM, and budget-line
 lookups with independent page controls, selected-context retention, and explicit
 loading/error/empty states. Browser/database/hosted/UAT evidence remain open.
+The create sheet also keeps Company, Brand, Location, and Requester context visible
+and provides a retry action when lookup reads fail.
 
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,

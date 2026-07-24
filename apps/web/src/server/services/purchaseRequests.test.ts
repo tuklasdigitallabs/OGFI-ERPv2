@@ -258,6 +258,10 @@ describe("purchase request workflow controls", () => {
     expect(editorSource).toContain("Next budgets");
     expect(serviceSource).toContain("const pageOptions = selected && !options.some");
     expect(editorSource).toContain("aria-busy={lookupLoading}");
+    expect(editorSource).toContain("Retry lookups");
+    expect(editorSource).toContain("min-h-11");
+    expect(pageSource).toContain("session.context.companyName");
+    expect(pageSource).toContain("session.user.displayName");
   });
 
   test("emergency purchase requests derive same-day SLA status without changing approval routing", () => {
