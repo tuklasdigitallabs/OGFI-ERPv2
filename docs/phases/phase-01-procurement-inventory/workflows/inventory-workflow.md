@@ -152,6 +152,8 @@ Optional:
 
 Audit changes to category, base UOM, tracking flags, conversions, and status. Changing base UOM after transactions exist must be blocked or handled as controlled migration, never a normal edit.
 
+Item UOM conversions are valid only when the item and both UOMs belong to the active tenant/company scope; updates also require active related master records, distinct UOMs, and a positive factor.
+
 ---
 
 ## 8. Inventory Inquiry

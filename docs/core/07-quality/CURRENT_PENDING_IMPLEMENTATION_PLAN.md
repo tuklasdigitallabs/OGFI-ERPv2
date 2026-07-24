@@ -609,6 +609,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - The company-scoped Item Master registry now uses server-side validated search, status filtering, deterministic ordering, bounded page size, exact totals, and shared pagination. Core Administration plus selected-company management scope is enforced in the service.
 - Categories, UOMs, and Conversions remain pending bounded-read and option-catalog review; the Master Data workspace is not complete. Disposable PostgreSQL query/authorization evidence, responsive browser verification, hosted recovery, and UAT gates remain open.
 
+### DEC-0139 Master Data conversion scope fence — July 24, 2026
+
+- Conversion list, duplicate detection, and update reads now scope the item and both UOM relations to the active tenant/company; updates also require active related master records. Distinct-UOM, positive-factor, audit, and non-destructive lifecycle controls remain server-authoritative.
+- Conversion option-catalog pagination and browser/database isolation evidence remain open; this does not complete Master Data.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

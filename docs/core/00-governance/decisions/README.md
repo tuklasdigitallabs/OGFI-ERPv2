@@ -122,3 +122,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0136-ADMIN-READINESS-EXPORT-BOUNDS.md` — strict UTC range, policy row limits, and selected-company export authorization
 - `DEC-0137-ADMIN-RELEASE-BOARD-WORKSPACE.md` — separate latest/blocker/composer/history Release Board workspace
 - `DEC-0138-MASTER-DATA-ITEM-REGISTRY-PAGINATION.md` — bounded company-scoped Item Master registry search, filters, and pagination
+- `DEC-0139-MASTER-DATA-CONVERSION-SCOPE-FENCE.md` — tenant/company scope and active-record fences for item UOM conversions

@@ -205,6 +205,14 @@ export async function listItemMasterData(
         item: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId
+        },
+        fromUom: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId
+        },
+        toUom: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId
         }
       },
       include: {
@@ -514,7 +522,19 @@ export async function createItemUomConversion(formData: FormData) {
       where: {
         itemId: values.itemId,
         fromUomId: values.fromUomId,
-        toUomId: values.toUomId
+        toUomId: values.toUomId,
+        item: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId
+        },
+        fromUom: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId
+        },
+        toUom: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId
+        }
       },
       select: { id: true }
     })
@@ -808,7 +828,18 @@ export async function updateItemUomConversion(formData: FormData) {
       id: values.conversionId,
       item: {
         tenantId: session.context.tenantId,
-        companyId: session.context.companyId
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
+      fromUom: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
+      toUom: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
       }
     },
     include: {
