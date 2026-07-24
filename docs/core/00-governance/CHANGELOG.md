@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Authorization Baseline Drift Reconciliation
+
+- Reconciled the generated authorization baseline after the disabled Count Variance action was removed and the dashboard service permission boundary changed. The manifest now passes 20/20 with no undeclared or stale protected surfaces.
+
 ## 2026-07-24 — Stock Count Export Attempt Context
 
 - Stock Count CSV rows now append the validated current immutable attempt number without changing existing line-grain fields or protected-fact redaction.

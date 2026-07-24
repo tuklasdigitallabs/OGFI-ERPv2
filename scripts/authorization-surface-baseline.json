@@ -4134,49 +4134,6 @@
     ]
   },
   {
-    "id": "counts/[id]/page.tsx#generateVarianceAdjustmentAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "LOCATION"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/stockCounts.ts#generateStockCountVarianceAdjustment"
-    ],
-    "callChains": [
-      "generateVarianceAdjustmentAction -> server/services/stockCounts.ts#generateStockCountVarianceAdjustment"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "live-permission",
-      "inventory-location-scope",
-      "lifecycle-transition"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION",
-      "AUTHZ-PI-STOCK-COUNT-SCOPE-AND-LIFECYCLE-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "StockAdjustment",
-      "StockAdjustmentLine",
-      "AuditEvent"
-    ]
-  },
-  {
     "id": "counts/[id]/page.tsx#page",
     "surfaceType": "PAGE",
     "permission": "inventory.stock_count.view",
@@ -21049,7 +21006,7 @@
   {
     "id": "server/services/dashboard.ts#getOperationalDashboard",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockCountReview | permissions.inventoryBalanceView | permissions.inventoryLedgerView",
+    "permission": "permissions.inventoryBalanceView | permissions.inventoryLedgerView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
