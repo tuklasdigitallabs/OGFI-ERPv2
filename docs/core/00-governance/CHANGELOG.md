@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Stock Count Dashboard Attempt-Line Parity Gate
+
+- Added confirmed `DEC-0099`: defer dashboard Stock Count attempt-line aggregate/predicate cutover until one bounded attempt-only query and reviewed PostgreSQL plan/index and volume evidence exist; per-row N+1 parity is rejected.
+- Preserved status-matrix, blind-count redaction, scope, fail-closed compatibility, and Count Variance-disabled safeguards. Requested Spark/GPT-5.4 reviewers were unavailable and the closest permitted GPT-5.6 fallback was used without relaxing hard gates.
+
 ## 2026-07-24 — Immutable Recount Attempts And Variance Recovery
 
 - Added confirmed `DEC-0098` for `DEC-0061`: use an additive immutable child Stock Count Attempt/version model while preserving the current session as attempt 1; retain a cutoff only under a continuously active movement freeze and canonical location lock, otherwise start a new cutoff.

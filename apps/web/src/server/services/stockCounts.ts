@@ -458,13 +458,13 @@ export async function assertStockCountAttemptLineParity(
                 AND l."inventoryLocationId" = sc."inventoryLocationId"
            ), '')) AS "legacyDigest",
            md5(COALESCE((
-             SELECT string_agg(concat_ws('|', al.id::text, al."itemId"::text,
+             SELECT string_agg(concat_ws('|', COALESCE(al."legacyStockCountLineId"::text, al.id::text), al."itemId"::text,
                al."uomId"::text, al."lineNumber"::text, al."lotKey",
                al."lotNumber", al."expiryDate"::text,
                al."systemQuantityBaseUom"::text, al."countedQuantityBaseUom"::text,
                al."varianceQuantityBaseUom"::text, al.notes,
                al."countedByUserId"::text, al."countedAt"::text), '||'
-               ORDER BY al."lineNumber", al.id)
+               ORDER BY al."lineNumber", COALESCE(al."legacyStockCountLineId", al.id))
                FROM "StockCountAttemptLine" al
               WHERE al."stockCountAttemptId" = sc."currentAttemptId"
                 AND al."tenantId" = sc."tenantId"
