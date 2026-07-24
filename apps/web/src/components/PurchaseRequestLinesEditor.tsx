@@ -22,7 +22,14 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
   const [itemQuery, setItemQuery] = useState("");
   const [uomQuery, setUomQuery] = useState("");
   const [budgetQuery, setBudgetQuery] = useState("");
+  const [itemPage, setItemPage] = useState(1);
+  const [uomPage, setUomPage] = useState(1);
+  const [budgetPage, setBudgetPage] = useState(1);
+  const [itemTotalPages, setItemTotalPages] = useState(1);
+  const [uomTotalPages, setUomTotalPages] = useState(1);
+  const [budgetTotalPages, setBudgetTotalPages] = useState(1);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
   const [itemOverflow, setItemOverflow] = useState(false);
   const [uomOverflow, setUomOverflow] = useState(false);
   const [budgetOverflow, setBudgetOverflow] = useState(false);
@@ -38,51 +45,57 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
     if (itemQuery.trim().length < 2) {
       setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained ? [retained, ...initialItems.filter((item) => item.id !== retained.id)] : initialItems; });
       setItemOverflow(false);
+      setItemTotalPages(1);
       return;
     }
     const controller = new AbortController();
+    setLookupLoading(true);
     setLookupMessage(null);
-    fetch(`/api/purchase-requests/draft-lookup?kind=item&query=${encodeURIComponent(itemQuery.trim())}&selectedId=${encodeURIComponent(selected.itemId)}&page=1&pageSize=25`, { signal: controller.signal })
+    fetch(`/api/purchase-requests/draft-lookup?kind=item&query=${encodeURIComponent(itemQuery.trim())}&selectedId=${encodeURIComponent(selected.itemId)}&page=${itemPage}&pageSize=25`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
         return response.json() as Promise<{ options: DraftItemOption[] }>;
       })
-      .then((result: { options: DraftItemOption[]; totalPages?: number }) => { const options = result.options.map((item) => ({ ...item, uoms: [] })); setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained && !options.some((item) => item.id === retained.id) ? [retained, ...options] : options; }); setItemOverflow((result.totalPages ?? 1) > 1); setLookupMessage(options.length ? null : "No active catalog items match this search."); })
-      .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupMessage("Item lookup is unavailable. Retry the search or contact an administrator."); });
+      .then((result: { options: DraftItemOption[]; page?: number; totalPages?: number }) => { const options = result.options.map((item) => ({ ...item, uoms: [] })); setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained && !options.some((item) => item.id === retained.id) ? [retained, ...options] : options; }); setItemPage(result.page ?? itemPage); setItemTotalPages(result.totalPages ?? 1); setItemOverflow(false); setLookupMessage(options.length ? null : "No active catalog items match this search."); setLookupLoading(false); })
+      .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setLookupMessage("Item lookup is unavailable. Retry the search or contact an administrator."); });
     return () => controller.abort();
-  }, [itemQuery, initialItems, selected.itemId]);
+  }, [itemQuery, initialItems, selected.itemId, itemPage]);
   useEffect(() => {
     if (!selected.itemId) {
       setUomOptions(initialUoms);
       setUomOverflow(false);
+      setUomTotalPages(1);
       return;
     }
     const controller = new AbortController();
-    fetch(`/api/purchase-requests/draft-lookup?kind=uom&itemId=${encodeURIComponent(selected.itemId)}&query=${encodeURIComponent(uomQuery.trim())}&selectedId=${encodeURIComponent(selected.uomId)}&page=1&pageSize=25`, { signal: controller.signal })
+    setLookupLoading(true);
+    fetch(`/api/purchase-requests/draft-lookup?kind=uom&itemId=${encodeURIComponent(selected.itemId)}&query=${encodeURIComponent(uomQuery.trim())}&selectedId=${encodeURIComponent(selected.uomId)}&page=${uomPage}&pageSize=25`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
         return response.json() as Promise<{ options: DraftUomOption[] }>;
       })
-      .then((result: { options: DraftUomOption[]; totalPages?: number }) => { setUomOptions(result.options); setUomOverflow((result.totalPages ?? 1) > 1); setLookupMessage(result.options.length ? null : "No valid UOMs are configured for this item."); })
-      .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setUomOptions([]); setLookupMessage("No valid UOMs are available for this item. Choose another item or ask an administrator."); });
+      .then((result: { options: DraftUomOption[]; page?: number; totalPages?: number }) => { setUomOptions(result.options); setUomPage(result.page ?? uomPage); setUomTotalPages(result.totalPages ?? 1); setUomOverflow(false); setLookupMessage(result.options.length ? null : "No valid UOMs are configured for this item."); setLookupLoading(false); })
+      .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setUomOptions([]); setLookupMessage("No valid UOMs are available for this item. Choose another item or ask an administrator."); });
     return () => controller.abort();
-  }, [selected.itemId, selected.uomId, uomQuery, initialUoms]);
+  }, [selected.itemId, selected.uomId, uomQuery, uomPage, initialUoms]);
   useEffect(() => {
     if (budgetQuery.trim().length < 2) {
       setBudgetOptions(initialBudgetLines);
       setBudgetOverflow(false);
+      setBudgetTotalPages(1);
       return;
     }
     const controller = new AbortController();
-    fetch(`/api/purchase-requests/draft-lookup?kind=budget&query=${encodeURIComponent(budgetQuery.trim())}&selectedId=${encodeURIComponent(selected.budgetLineId)}&page=1&pageSize=25`, { signal: controller.signal })
+    setLookupLoading(true);
+    fetch(`/api/purchase-requests/draft-lookup?kind=budget&query=${encodeURIComponent(budgetQuery.trim())}&selectedId=${encodeURIComponent(selected.budgetLineId)}&page=${budgetPage}&pageSize=25`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
-        return response.json() as Promise<{ options: Array<{ id: string; code: string; name: string; budget?: { publicReference: string; name: string } | null }>; totalPages?: number }>;
+        return response.json() as Promise<{ options: Array<{ id: string; code: string; name: string; budget?: { publicReference: string; name: string } | null }>; page?: number; totalPages?: number }>;
       })
-      .then((result) => { const options = result.options.map((option) => ({ id: option.id, label: `${option.code} / ${option.name}`, helper: option.budget ? `${option.budget.publicReference} / ${option.budget.name}` : "" })); setBudgetOptions(options); setBudgetOverflow((result.totalPages ?? 1) > 1); setLookupMessage(options.length ? null : "No active budget lines match this search."); })
-      .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupMessage("Budget lookup is unavailable. You can leave budget classification for Finance."); });
+      .then((result) => { const options = result.options.map((option) => ({ id: option.id, label: `${option.code} / ${option.name}`, helper: option.budget ? `${option.budget.publicReference} / ${option.budget.name}` : "" })); setBudgetOptions(options); setBudgetPage(result.page ?? budgetPage); setBudgetTotalPages(result.totalPages ?? 1); setBudgetOverflow(false); setLookupMessage(options.length ? null : "No active budget lines match this search."); setLookupLoading(false); })
+      .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setLookupMessage("Budget lookup is unavailable. You can leave budget classification for Finance."); });
     return () => controller.abort();
-  }, [budgetQuery, initialBudgetLines, selected.budgetLineId]);
+  }, [budgetQuery, initialBudgetLines, selected.budgetLineId, budgetPage]);
   const incomplete = useMemo(() => lines.flatMap((line, index) => {
     const catalog = Boolean(line.itemId);
     const valid = Number(line.requestedQty) > 0 && line.purpose.trim() && (isEmergency || catalog) && (catalog ? line.uomId : line.uomCode.trim()) && (!isEmergency || ((catalog || line.description.trim()) && Number(line.estimatedUnitCost) > 0));
@@ -90,17 +103,19 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
   }), [isEmergency, lines]);
   const input = "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
   function update(values: Partial<Omit<DraftLine, "key">>) { setLines((current) => current.map((line) => line.key === selected.key ? { ...line, ...values } : line)); }
-  function handleItemChange(itemId: string) { const item = itemOptions.find((option) => option.id === itemId); setUomQuery(""); update({ itemId, itemName: item?.itemName ?? "", uomId: item?.defaultUomId ?? "", uomCode: "" }); }
+  function handleItemChange(itemId: string) { const item = itemOptions.find((option) => option.id === itemId); setUomQuery(""); setUomPage(1); update({ itemId, itemName: item?.itemName ?? "", uomId: item?.defaultUomId ?? "", uomCode: "" }); }
   function addLine() { if (lines.length >= PURCHASE_REQUEST_MAX_LINES) return; const key = Math.max(...lines.map((line) => line.key)) + 1; setLines((current) => [...current, emptyLine(key)]); setSelectedKey(key); }
   function removeLine() { if (lines.length === 1) return; const next = lines.filter((line) => line.key !== selected.key); setLines(next); setSelectedKey(next[Math.min(selectedIndex, next.length - 1)]!.key); }
-  function submit(event: FormEvent<HTMLFormElement>) { if (itemOverflow || uomOverflow || budgetOverflow) { event.preventDefault(); setLookupMessage("Narrow the item, UOM, or budget search before creating the request; the current result is larger than the safe page size."); return; } if (incomplete[0] === undefined) return; event.preventDefault(); setErrors(incomplete); setSelectedKey(lines[incomplete[0]]!.key); }
+  function submit(event: FormEvent<HTMLFormElement>) { if (incomplete[0] === undefined) return; event.preventDefault(); setErrors(incomplete); setSelectedKey(lines[incomplete[0]]!.key); }
 
   return <form action={action} className="flex h-full min-h-0 flex-col" onSubmit={submit}>
-    <div className="grid shrink-0 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:grid-cols-3">
-      <label className="grid gap-1 text-sm font-medium text-slate-700">Search catalog item<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" value={itemQuery} onChange={(event) => setItemQuery(event.target.value)} placeholder="Type at least 2 characters" /></label>
-      <label className="grid gap-1 text-sm font-medium text-slate-700">Search valid UOM<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" value={uomQuery} onChange={(event) => setUomQuery(event.target.value)} placeholder="Optional code or name" /></label>
-      <label className="grid gap-1 text-sm font-medium text-slate-700">Search budget line<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" value={budgetQuery} onChange={(event) => setBudgetQuery(event.target.value)} placeholder="Optional code or name" /></label>
+    <div className="grid shrink-0 gap-3 border-b border-slate-200 bg-slate-50 p-4 md:grid-cols-3" aria-busy={lookupLoading}>
+      <label className="grid gap-1 text-sm font-medium text-slate-700">Search catalog item<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" value={itemQuery} onChange={(event) => { setItemQuery(event.target.value); setItemPage(1); }} placeholder="Type at least 2 characters" /><span className="text-xs font-normal text-slate-500">Page {itemPage} of {itemTotalPages}</span></label>
+      <label className="grid gap-1 text-sm font-medium text-slate-700">Search valid UOM<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" value={uomQuery} onChange={(event) => { setUomQuery(event.target.value); setUomPage(1); }} placeholder="Optional code or name" /><span className="text-xs font-normal text-slate-500">Page {uomPage} of {uomTotalPages}</span></label>
+      <label className="grid gap-1 text-sm font-medium text-slate-700">Search budget line<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" value={budgetQuery} onChange={(event) => { setBudgetQuery(event.target.value); setBudgetPage(1); }} placeholder="Optional code or name" /><span className="text-xs font-normal text-slate-500">Page {budgetPage} of {budgetTotalPages}</span></label>
       {lookupMessage ? <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 md:col-span-2" role="status">{lookupMessage}</p> : null}
+      {lookupLoading ? <p className="text-xs font-semibold text-slate-600 md:col-span-3" role="status">Updating lookup results…</p> : null}
+      <div className="flex flex-wrap gap-2 md:col-span-3" aria-label="Lookup pagination"><button className="min-h-11 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" type="button" disabled={itemPage <= 1} onClick={() => setItemPage((page) => page - 1)}>Previous items</button><button className="min-h-11 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" type="button" disabled={itemPage >= itemTotalPages} onClick={() => setItemPage((page) => page + 1)}>Next items</button><button className="min-h-11 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" type="button" disabled={uomPage <= 1} onClick={() => setUomPage((page) => page - 1)}>Previous UOMs</button><button className="min-h-11 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" type="button" disabled={uomPage >= uomTotalPages} onClick={() => setUomPage((page) => page + 1)}>Next UOMs</button><button className="min-h-11 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" type="button" disabled={budgetPage <= 1} onClick={() => setBudgetPage((page) => page - 1)}>Previous budgets</button><button className="min-h-11 rounded-md border border-slate-300 px-3 text-sm font-semibold disabled:text-slate-400" type="button" disabled={budgetPage >= budgetTotalPages} onClick={() => setBudgetPage((page) => page + 1)}>Next budgets</button></div>
     </div>
     {lines.map((line) => <input key={`item-${line.key}`} name="lineItemId" type="hidden" value={line.itemId} readOnly />)}
     {lines.map((line) => <input key={`budget-${line.key}`} name="lineBudgetLineId" type="hidden" value={line.budgetLineId} readOnly />)}

@@ -1283,7 +1283,9 @@ export async function searchPurchaseRequestDraftLookup(
       skip: (page - 1) * values.pageSize,
       take: values.pageSize,
     });
-    return { kind: values.kind, options: options.map((item) => ({ id: item.id, itemCode: item.itemCode, itemName: item.itemName, defaultUomId: item.purchaseUomId, uoms: [] })), page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+    const selected = values.selectedId ? await prisma.item.findFirst({ where: { ...scope, id: values.selectedId }, select: { id: true, itemCode: true, itemName: true, purchaseUomId: true } }) : null;
+    const pageOptions = selected && !options.some((item) => item.id === selected.id) ? [selected, ...options].slice(0, values.pageSize) : options;
+    return { kind: values.kind, options: pageOptions.map((item) => ({ id: item.id, itemCode: item.itemCode, itemName: item.itemName, defaultUomId: item.purchaseUomId, uoms: [] })), page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
   }
   if (values.kind === "uom") {
     const itemId = values.itemId;
@@ -1312,7 +1314,9 @@ export async function searchPurchaseRequestDraftLookup(
     const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
     const page = Math.min(values.page, totalPages);
     const options = await prisma.uom.findMany({ where, select: { id: true, uomCode: true, uomName: true }, orderBy: [{ uomCode: "asc" }, { id: "asc" }], skip: (page - 1) * values.pageSize, take: values.pageSize });
-    return { kind: values.kind, options, page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+    const selected = values.selectedId && validIds.includes(values.selectedId) ? await prisma.uom.findFirst({ where: { ...scope, id: values.selectedId }, select: { id: true, uomCode: true, uomName: true } }) : null;
+    const pageOptions = selected && !options.some((uom) => uom.id === selected.id) ? [selected, ...options].slice(0, values.pageSize) : options;
+    return { kind: values.kind, options: pageOptions, page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
   }
   const activeBudgetStatuses = ["ACTIVE", "PARTIALLY_RELEASED"] as ("ACTIVE" | "PARTIALLY_RELEASED")[];
   const budgetSearch = values.query
@@ -1332,7 +1336,9 @@ export async function searchPurchaseRequestDraftLookup(
   const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
   const page = Math.min(values.page, totalPages);
   const options = await prisma.budgetLine.findMany({ where, select: { id: true, code: true, name: true, budget: { select: { publicReference: true, name: true } } }, orderBy: [{ code: "asc" }, { name: "asc" }, { id: "asc" }], skip: (page - 1) * values.pageSize, take: values.pageSize });
-  return { kind: values.kind, options, page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+  const selected = values.selectedId ? await prisma.budgetLine.findFirst({ where: { ...scope, id: values.selectedId, budget: { is: { status: { in: activeBudgetStatuses } } } }, select: { id: true, code: true, name: true, budget: { select: { publicReference: true, name: true } } } }) : null;
+  const pageOptions = selected && !options.some((line) => line.id === selected.id) ? [selected, ...options].slice(0, values.pageSize) : options;
+  return { kind: values.kind, options: pageOptions, page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
 }
 
 export async function createDraftPurchaseRequest(formData: FormData) {

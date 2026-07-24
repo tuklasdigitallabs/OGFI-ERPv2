@@ -663,8 +663,8 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 ### DEC-0148 Purchase Request bounded draft lookups — July 24, 2026
 
 - Purchase Request draft entry now uses a server-authorized, tenant/company/location-scoped lookup endpoint for catalog items, item-valid UOMs, and active budget lines. Inputs validate query, page, page size, item context, and selected-ID retention; responses provide exact totals, deterministic ordering, and bounded pages.
-- The editor preserves selected item/UOM/budget context across searches, provides explicit lookup error and empty-result feedback, and blocks submission when a safe page overflows so users must narrow the search rather than accept silent truncation. Emergency free-text lines remain available.
-- Focused Purchase Request tests (13), web typecheck, lint, and diff checks are the checkpoint evidence. A full pager for overflow, authenticated responsive-browser evidence, disposable-PostgreSQL authorization/query evidence, hosted recovery, and UAT remain open; the Purchase Request workspace is not complete.
+- The editor preserves selected item/UOM/budget context across searches, exposes independent 44px item/UOM/budget page controls with exact page counts, shows loading/error/empty states, and merges selected IDs into visible pages when they fall outside the requested page. Emergency free-text lines remain available.
+- Focused Purchase Request tests (14), web typecheck, lint, and diff checks are the checkpoint evidence. Authenticated responsive-browser evidence, disposable-PostgreSQL authorization/query evidence, hosted recovery, and UAT remain open; the Purchase Request workspace is not complete.
 
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
