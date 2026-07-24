@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { Badge, ButtonLink, EmptyState, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
+import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
+import { getActionFeedback } from "@/server/services/actionFeedback";
 import {
   canUseApprovals,
   getDefaultAppRoute
@@ -108,6 +110,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
   const params = searchParams ? await searchParams : {};
   const activeTab = getTab(params);
   const page = getPage(params);
+  const actionFeedback = getActionFeedback(params);
   const normalizedRouting = normalizedApprovalRoutingEnabled();
   let approvals: ApprovalQueueItem[];
   let urgentApprovals: ApprovalQueueItem[];
@@ -147,8 +150,9 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
     const details = await Promise.all(
       selectedPage.items.map((item) => getApprovalDetail(session, item.approvalInstanceId))
     );
-    if (details.some((detail) => detail === null)) {
-      throw new Error("APPROVAL_AUTHORITY_STALE");
+    const staleDetail = details.some((detail) => detail === null);
+    if (staleDetail && getStringParam(params, "stale") !== "1") {
+      redirect("/approvals?error=APPROVAL_AUTHORITY_STALE&stale=1");
     }
     pagedApprovals = details.filter((detail): detail is NonNullable<typeof detail> => detail !== null);
     approvals = activeTab === "inbox" ? pagedApprovals : [];
@@ -187,6 +191,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
       subtitle="Assigned controlled record decisions"
       activeNav="approvals"
     >
+      <ActionFeedbackBanner feedback={actionFeedback} />
       <div className="ogfi-data-surface">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">

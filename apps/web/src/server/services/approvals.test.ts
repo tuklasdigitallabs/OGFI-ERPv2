@@ -752,7 +752,8 @@ describe("multi-step approval advancement", () => {
     expect(pageSource).toContain("listNormalizedApprovalInboxPage(session");
     expect(pageSource).toContain('view: "DUE_SOON"');
     expect(pageSource).toContain("getApprovalDetail(session, item.approvalInstanceId)");
-    expect(pageSource).toContain('throw new Error("APPROVAL_AUTHORITY_STALE")');
+    expect(pageSource).toContain('redirect("/approvals?error=APPROVAL_AUTHORITY_STALE&stale=1")');
+    expect(pageSource).toContain("ActionFeedbackBanner");
     expect(pageSource).not.toContain('label: "Returned"');
     expect(pageSource).not.toContain('label: "Audit"');
   });

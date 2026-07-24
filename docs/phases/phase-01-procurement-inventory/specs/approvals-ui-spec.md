@@ -68,6 +68,8 @@ For approval types without an approval-owned discussion writer, the detail surfa
 
 Reject, return, and request changes require a comment. Approval may require comment for exception states based on policy.
 
+If live eligibility changes between inbox hydration and detail rendering, the inbox must show a user-safe stale-authority message and allow refresh; it must not expose a generic server error or imply that the decision remains available.
+
 ## 4. Approval history
 
 Display timeline entries with:
