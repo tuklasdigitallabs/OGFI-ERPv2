@@ -12670,6 +12670,67 @@
     ]
   },
   {
+    "id": "quotes/new/page.tsx#createSupplierQuoteAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/quotes.ts#createSupplierQuote"
+    ],
+    "callChains": [
+      "createSupplierQuoteAction -> server/services/quotes.ts#createSupplierQuote"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "permission",
+      "purchase-request-location-scope"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "SupplierQuotation",
+      "AuditEvent"
+    ]
+  },
+  {
+    "id": "quotes/new/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "purchasing.quote.manage",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
     "id": "quotes/page.tsx#createQuotationRecommendationAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -12708,47 +12769,6 @@
     "noMutationControls": [
       "QuotationRecommendation",
       "ApprovalInstance",
-      "AuditEvent"
-    ]
-  },
-  {
-    "id": "quotes/page.tsx#createSupplierQuoteAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/quotes.ts#createSupplierQuote"
-    ],
-    "callChains": [
-      "createSupplierQuoteAction -> server/services/quotes.ts#createSupplierQuote"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "permission",
-      "purchase-request-location-scope"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-PUBLIC-BOUNDARIES-MISSING-PERMISSION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "SupplierQuotation",
       "AuditEvent"
     ]
   },
