@@ -28,6 +28,7 @@ import {
   createCoreAdminLocation,
   createCoreAdminRole,
   createCoreAdminUser,
+  assertCanManageCompanyScope,
   getCoreAdminOverview,
   listCoreAdminAuditEvents,
   type CoreAdminAuditEventFilters
@@ -161,6 +162,34 @@ export default async function CoreAdministrationPage({
         </Panel>
       </AppShell>
     );
+  }
+
+  try {
+    await assertCanManageCompanyScope(session, session.context.companyId);
+  } catch (error) {
+    if (error instanceof Error && error.message === "ADMIN_SCOPE_DENIED") {
+      return (
+        <AppShell
+          session={session}
+          title="Core Administration"
+          subtitle="Control center for users, roles, scope, approvals, and audit history"
+          activeNav="admin"
+        >
+          <Panel className="ogfi-detail-card border-amber-200 bg-amber-50">
+            <Badge tone="warning">Access restricted</Badge>
+            <h2 className="mt-3 text-lg font-bold text-slate-950">
+              Selected-company Manage scope is required
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
+              Tenant-wide role authority is present, but this account does not have
+              active Manage scope for the selected company. No users, organization,
+              role, or audit records were loaded.
+            </p>
+          </Panel>
+        </AppShell>
+      );
+    }
+    throw error;
   }
 
   const canExportAudit = canExportCoreAdminAudit(session);

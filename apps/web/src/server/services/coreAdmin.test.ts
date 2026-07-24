@@ -60,9 +60,44 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("take: values.pageSize");
     expect(adminPageSource).toContain("permissions.tenantRoleAdminister");
     expect(adminPageSource).toContain("No users, roles, scope, or audit records were loaded.");
+    expect(adminPageSource).toContain("Selected-company Manage scope is required");
     expect(adminPageSource).toContain("<PaginationBar");
     expect(adminPageSource).toContain('name="userQuery"');
     expect(adminPageSource).toContain('name="userStatus"');
+  });
+
+  test("administration reads enforce company authority and non-enumerating target checks", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const companyCreationSource = serviceSource.slice(
+      serviceSource.indexOf("export async function createCoreAdminCompany"),
+      serviceSource.indexOf("export async function createCoreAdminBrand"),
+    );
+    const overviewSource = serviceSource.slice(
+      serviceSource.indexOf("export async function getCoreAdminOverview"),
+      serviceSource.indexOf("export async function createCoreAdminUser"),
+    );
+    const userDetailSource = serviceSource.slice(
+      serviceSource.indexOf("export async function getCoreAdminUserDetail"),
+      serviceSource.indexOf("export async function createUserRoleAssignment"),
+    );
+
+    expect(companyCreationSource).toContain("assertCanAdministerTenantRoles(session)");
+    expect(overviewSource).toContain(
+      "assertCanManageCompanyScope(session, session.context.companyId)",
+    );
+    expect(overviewSource).toContain("companyId: session.context.companyId");
+    expect(overviewSource).toContain(
+      "OR: [{ companyId: session.context.companyId }, { companyId: null }]",
+    );
+    expect(userDetailSource).toContain("assertTargetUserInCurrentCompany(session, userId)");
+    expect(userDetailSource).toContain('error.message === "TARGET_USER_NOT_FOUND"');
+    expect(userDetailSource).toContain("visibleScopeAssignments");
+    expect(readFileSync(path.resolve(__dirname, "../../app/(app)/admin/page.tsx"), "utf8")).toContain(
+      "assertCanManageCompanyScope(session, session.context.companyId)",
+    );
+    expect(serviceSource).toContain(
+      "await assertCanManageCompanyScope(session, session.context.companyId);",
+    );
   });
 
   test("privilege mutation users use the same canonical order as approval user locks", () => {

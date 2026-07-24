@@ -2,7 +2,7 @@
 
 **Audience / required role:** ERP administrators with Core Administration access; role administration also requires `Administer tenant-wide roles` access
 **Applies to:** User roles, sensitive roles, location scopes, high-risk scopes, and Manage-level access
-**Last verified against:** `DEC-0043`, `DEC-0108`; implemented Core Admin user onboarding and user detail services; tenant-role authorization, selected-company target checks, server-paginated Users registry, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
+**Last verified against:** `DEC-0043`, `DEC-0108`, `DEC-0110`; implemented Core Admin user onboarding and user detail services; tenant-role and selected-company Manage authorization, selected-company target checks, server-paginated Users registry, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
 
 ## Purpose
 
@@ -17,17 +17,17 @@ Sensitive roles are also not granted through quick assignment. Admin, approver, 
 ## Before You Begin
 
 - Select the company in which the user should be managed.
-- To view or change roles, you need `Administer tenant-wide roles` access. Core Administration access or company Manage scope alone is not enough.
+- To view or change Administration records, you need both `Administer tenant-wide roles` access and active `Manage` scope for the selected company. Core Administration access or tenant-role authority without selected-company Manage scope is not enough.
 - Target-user role changes also require the existing company administration access shown for the selected company.
 - For a role grant, deactivation, request, or review, the target account must be active and must have a current active company assignment for the selected company or an active location assignment to an active location in that company. A default company alone is not an access assignment.
 - If you create a user with an initial role, also select an initial active location in the selected company. The system creates the location membership and role together; it does not create a role-only user through this path.
-- The Users registry is server-filtered by name/email and status and paginates the authorized tenant users. Search and status values remain in the URL while paging; they do not widen company or tenant scope. An empty page means no users match the current filters, not that another company has no users.
+- The Users registry is server-filtered by name/email and status and paginates the authorized tenant users. Search and status values remain in the URL while paging; they do not widen company or tenant scope. An empty page means no users match the current filters, not that another company has no users. The Administration overview shows organization records for the selected company only, with tenant-wide approval rules where applicable. User detail first verifies current selected-company membership; if the user is not authorized in that company, the page returns to the Users workspace without disclosing another company's account or scopes.
 
 ## Navigation Path
 
 `Admin` → `Core Administration` → `Users` → open a user
 
-If your account has Core Administration access but not `Administer tenant-wide roles`, Core Administration shows an explicit restricted state and loads no users, roles, scope, or audit records. Ask an independent administrator to grant the documented authority; company Manage scope alone is not a substitute.
+If your account has Core Administration access but not `Administer tenant-wide roles`, Core Administration shows an explicit restricted state and loads no users, roles, scope, or audit records. The same restricted boundary applies when tenant-role authority is present but selected-company Manage scope is absent. Ask an independent administrator to grant the documented authority and selected-company scope; neither permission alone is a substitute.
 
 ## Steps
 

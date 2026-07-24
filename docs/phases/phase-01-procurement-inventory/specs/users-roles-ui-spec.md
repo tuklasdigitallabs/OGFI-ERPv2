@@ -25,6 +25,13 @@ ordering. The page shows an explicit restricted state before loading privileged 
 and does not make roles company-bound. Role, organization, audit, and detail pagination
 remain separate follow-up slices.
 
+Implementation note (`DEC-0110`): Core Administration reads now require current-company
+Manage scope in addition to tenant-wide role authority. The overview returns only the
+selected company's organization records (plus tenant-wide approval rules), company
+creation requires tenant-role authority before any duplicate lookup or write, and user
+detail preflights active selected-company membership before loading the record. Cross-
+company scope assignments are not returned from the selected-company detail view.
+
 ## 2. User detail requirements
 
 Show:

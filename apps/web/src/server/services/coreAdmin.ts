@@ -740,6 +740,7 @@ export async function listCoreAdminUserPage(
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
   return listCoreAdminUserPageAuthorized(session, input);
 }
 
@@ -749,6 +750,7 @@ export async function getCoreAdminOverview(
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
 
   const userPage = await listCoreAdminUserPageAuthorized(session, userPageInput);
 
@@ -784,18 +786,27 @@ export async function getCoreAdminOverview(
       orderBy: { name: "asc" },
     }),
     prisma.company.findMany({
-      where: { tenantId: session.context.tenantId },
+      where: {
+        tenantId: session.context.tenantId,
+        id: session.context.companyId,
+      },
       orderBy: { legalName: "asc" },
     }),
     prisma.brand.findMany({
-      where: { tenantId: session.context.tenantId },
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+      },
       include: {
         company: true,
       },
       orderBy: { name: "asc" },
     }),
     prisma.department.findMany({
-      where: { tenantId: session.context.tenantId },
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+      },
       include: {
         company: true,
         _count: {
@@ -810,7 +821,10 @@ export async function getCoreAdminOverview(
       orderBy: [{ company: { legalName: "asc" } }, { name: "asc" }],
     }),
     prisma.location.findMany({
-      where: { tenantId: session.context.tenantId },
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+      },
       include: {
         company: true,
         brand: true,
@@ -818,7 +832,10 @@ export async function getCoreAdminOverview(
       orderBy: { name: "asc" },
     }),
     prisma.approvalRule.findMany({
-      where: { tenantId: session.context.tenantId },
+      where: {
+        tenantId: session.context.tenantId,
+        OR: [{ companyId: session.context.companyId }, { companyId: null }],
+      },
       include: {
         company: true,
         steps: {
@@ -1146,6 +1163,7 @@ export async function createCoreAdminRole(formData: FormData) {
 export async function createCoreAdminCompany(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
   const values = createCoreAdminCompanySchema.parse(
     Object.fromEntries(formData),
   );
@@ -1462,6 +1480,15 @@ export async function getCoreAdminUserDetail(
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
 
+  try {
+    await assertTargetUserInCurrentCompany(session, userId);
+  } catch (error) {
+    if (error instanceof Error && error.message === "TARGET_USER_NOT_FOUND") {
+      return null;
+    }
+    throw error;
+  }
+
   const user = await prisma.user.findFirst({
     where: {
       id: userId,
@@ -1549,7 +1576,7 @@ export async function getCoreAdminUserDetail(
         id: { in: scopeIdsByType.BRAND },
         tenantId: session.context.tenantId,
       },
-      select: { id: true, name: true, code: true },
+      select: { id: true, name: true, code: true, companyId: true },
     }),
     prisma.location.findMany({
       where: {
@@ -1619,6 +1646,38 @@ export async function getCoreAdminUserDetail(
       context: `${project.company.tradingName ?? project.company.legalName} / Project`,
       code: project.code,
     });
+  });
+  const visibleScopeIdsByType = {
+    COMPANY: new Set(
+      scopeCompanies
+      .filter((company) => company.id === session.context.companyId)
+      .map((company) => company.id),
+    ),
+    BRAND: new Set(
+      scopeBrands
+      .filter((brand) => brand.companyId === session.context.companyId)
+      .map((brand) => brand.id),
+    ),
+    LOCATION: new Set(
+      scopeLocations
+      .filter((location) => location.companyId === session.context.companyId)
+      .map((location) => location.id),
+    ),
+    DEPARTMENT: new Set(
+      scopeDepartments
+      .filter((department) => department.companyId === session.context.companyId)
+      .map((department) => department.id),
+    ),
+    PROJECT: new Set(
+      scopeProjects
+      .filter((project) => project.companyId === session.context.companyId)
+      .map((project) => project.id),
+    ),
+  };
+  const visibleScopeAssignments = user.scopeAssignments.filter((assignment) => {
+    const allowedIds =
+      visibleScopeIdsByType[assignment.scopeType as keyof typeof visibleScopeIdsByType];
+    return allowedIds?.has(assignment.scopeId) ?? false;
   });
   const assignableRoles = await prisma.role.findMany({
     where: {
@@ -1725,7 +1784,7 @@ export async function getCoreAdminUserDetail(
       canMutate: isAssignableNonSensitiveRole(assignment.role.code),
       startsAt: assignment.startsAt.toISOString(),
     })),
-    scopes: user.scopeAssignments.map((assignment) => ({
+    scopes: visibleScopeAssignments.map((assignment) => ({
       id: assignment.id,
       type: assignment.scopeType,
       scopeId: assignment.scopeId,

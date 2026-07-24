@@ -20069,7 +20069,7 @@
   {
     "id": "server/services/coreAdmin.ts#createCoreAdminCompany",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
