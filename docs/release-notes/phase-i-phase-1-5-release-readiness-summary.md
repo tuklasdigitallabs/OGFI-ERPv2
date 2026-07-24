@@ -195,6 +195,11 @@ Purchase Request reference, requester, or supplier while preserving selected
 location and pagination context. Broader quote filters and external evidence
 gates remain open.
 
+The selected quote workspace now shows a line-aligned read-only supplier matrix
+with explicit missing-line warnings, quoted quantity/UOM, unit price, line total,
+availability, and lead time. Substitution policy and external evidence gates
+remain open.
+
 Approval Inbox now fails closed when normalized routing is disabled: it shows an
 explicit unavailable state and no legacy unbounded queue or false zero count.
 

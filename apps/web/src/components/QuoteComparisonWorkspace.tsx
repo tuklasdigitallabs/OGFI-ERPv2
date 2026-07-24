@@ -104,6 +104,31 @@ export function QuoteComparisonWorkspace({
                   </div>
                 </section>
 
+                {selected.quotes.length > 0 ? (
+                  <section aria-label="Line-aligned supplier comparison" data-testid="quote-line-comparison-matrix">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-sm font-bold text-slate-950">Line-aligned comparison</h4>
+                      <span className="text-xs text-slate-500">Read-only comparison; missing lines are explicit</span>
+                    </div>
+                    <div className="overflow-x-auto rounded-md border border-slate-200">
+                      <table className="min-w-[42rem] w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-600"><tr><th className="px-3 py-2 font-bold">Requested line</th>{selected.quotes.map((quote) => <th className="px-3 py-2 font-bold" key={quote.id}>{quote.supplierName}<span className="block font-normal">{quote.quoteReference}</span></th>)}</tr></thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {selected.lines.map((requestLine) => (
+                            <tr key={requestLine.id}>
+                              <th className="px-3 py-3 align-top font-semibold text-slate-900">{requestLine.itemName ?? requestLine.description}<span className="block font-normal text-slate-500">{requestLine.requestedQty} {requestLine.uomCode}</span></th>
+                              {selected.quotes.map((quote) => {
+                                const quoteLine = quote.lines.find((line) => line.sourcePrLineId === requestLine.id);
+                                return <td className="px-3 py-3 align-top text-slate-700" key={`${quote.id}-${requestLine.id}`}>{quoteLine ? <><span className="font-semibold">{quoteLine.quantity} {quoteLine.uomCode} @ {quote.currencyCode} {quoteLine.unitPrice.toFixed(2)}</span><span className="block">Line total {quote.currencyCode} {quoteLine.lineTotal.toFixed(2)}</span><span className="block">{quoteLine.availabilityStatus}{quoteLine.leadTimeDays != null ? ` · ${quoteLine.leadTimeDays} lead days` : ""}</span></> : <span className="font-semibold text-amber-700">Missing quoted line</span>}</td>;
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                ) : null}
+
                 <section>
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <h4 className="text-sm font-bold text-slate-950">Supplier comparison</h4>

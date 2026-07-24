@@ -52,6 +52,8 @@ describe("quotation recommendation rules", () => {
     expect(workspaceSource).toContain("ControlledEvidencePanel");
     expect(workspaceSource).toContain('sourceType="SUPPLIER_QUOTATION"');
     expect(workspaceSource).toContain("No approved request or supplier matches this search.");
+    expect(workspaceSource).toContain("quote-line-comparison-matrix");
+    expect(workspaceSource).toContain("Missing quoted line");
   });
 
   test("recommendation submission revalidates current quotation policy", () => {
