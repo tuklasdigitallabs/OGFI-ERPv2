@@ -18,6 +18,13 @@
 | IAM-06 | Scope Assignment | Assign company, brand, location, department, project scope with dates |
 | IAM-07 | Access Review | Periodic review, expired access, inactive users, risky conflicts |
 
+Implementation note (`DEC-0108`): the Users registry uses server-owned name/email and
+status filters with bounded URL-backed pagination and deterministic display-name/ID
+ordering. The page shows an explicit restricted state before loading privileged data when
+`core.tenant_role_administer` is absent; this preserves the service authorization boundary
+and does not make roles company-bound. Role, organization, audit, and detail pagination
+remain separate follow-up slices.
+
 ## 2. User detail requirements
 
 Show:

@@ -19,6 +19,7 @@
 - Phase 1.5 Projects & Implementation Tracker supports scoped projects, templates, members, tasks, checklists, comments, blockers, risks, milestones, project reports, notifications, calendar visibility, and safe links to ERP records.
 - Tracker links remain references only; project tasks do not approve, receive, post, close, or mutate operational source records.
 - Knowledge-base and quick-start training content is now available for Phase I operational users and administrators.
+- Core Administration Users & Access now uses server-owned name/email and status filters with bounded URL-backed pagination. Accounts with Core Administration but without `Administer tenant-wide roles` receive an explicit restricted state before privileged records load; this preserves the existing authorization boundary.
 - Acceptance traceability now maps each Phase I and Phase 1.5 UAT workflow to current automated evidence, manual proof still required, and remaining release gates.
 - Pilot deployment hardening now keeps Redis/worker out of the default no-queueing runtime, localhost-binds internal development service ports, runs app containers as non-root in the Docker examples, and provides repeatable PostgreSQL backup/restore-check helper commands for release evidence.
 - A manual staging release rehearsal workflow now runs the release gates, uploads release evidence artifacts, and provides guarded staging deploy/rollback scripts for environments with approved SSH secrets.

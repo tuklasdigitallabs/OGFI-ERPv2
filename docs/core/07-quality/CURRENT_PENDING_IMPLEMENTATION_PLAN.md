@@ -410,6 +410,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 | 14 | Reports, exports, notifications, and audit | Scope-safe filters, source links, trust notices, export metadata/audit, in-app notification behavior, and pagination | Pending production-readiness review |
 | 15 | Projects & Implementation Tracker | Visibility, membership, tasks, blockers, evidence, requirements, milestones, risks, linked-record redaction, activity, and mobile completion | Pending production-readiness review |
 
+### Workspace 2 Administration implementation checkpoint — July 24, 2026
+
+- `DEC-0108` selects a bounded Users-registry pilot as the first Administration slice. Core Administration now applies server-owned name/email and status predicates, exact count/page parity, deterministic `displayName ASC, id ASC` ordering, bounded URL-backed pagination, and an explicit pre-query restricted state when `core.tenant_role_administer` is absent. The existing service guard and DEC-0043 target-company rules are unchanged; roles, organization, audit, request, permission, and detail pagination remain separate follow-up slices.
+- Focused Core Administration coverage passes 15/15 after the pilot source/visible-surface assertions; web typecheck and lint pass. The full web regression passes 1,291 tests across 120 files (301 skipped, 1 todo), the authorization manifest passes 20/20 after recording the new protected service surface, and the isolated production build passes. Responsive browser, disposable PostgreSQL boundary/count parity, and hosted gates remain open. Glossary, Users/Roles UI specification, administrator guide, release note, formal decision record, and decision index are aligned.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

@@ -47,6 +47,24 @@ const systemRole = {
 };
 
 describe("core administration audit search wiring", () => {
+  test("users registry uses a bounded server-owned page contract and explicit denial boundary", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const adminPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/page.tsx"),
+      "utf8"
+    );
+    expect(serviceSource).toContain("coreAdminUserPageInputSchema");
+    expect(serviceSource).toContain("listCoreAdminUserPageAuthorized");
+    expect(serviceSource).toContain('orderBy: [{ displayName: "asc" }, { id: "asc" }]');
+    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("take: values.pageSize");
+    expect(adminPageSource).toContain("permissions.tenantRoleAdminister");
+    expect(adminPageSource).toContain("No users, roles, scope, or audit records were loaded.");
+    expect(adminPageSource).toContain("<PaginationBar");
+    expect(adminPageSource).toContain('name="userQuery"');
+    expect(adminPageSource).toContain('name="userStatus"');
+  });
+
   test("privilege mutation users use the same canonical order as approval user locks", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     const lockSource = serviceSource.slice(

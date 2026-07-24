@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   Users
 } from "lucide-react";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -139,10 +139,42 @@ export default async function CoreAdministrationPage({
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
+  if (!session.permissionCodes.includes(permissions.tenantRoleAdminister)) {
+    return (
+      <AppShell
+        session={session}
+        title="Core Administration"
+        subtitle="Control center for users, roles, scope, approvals, and audit history"
+        activeNav="admin"
+      >
+        <Panel className="ogfi-detail-card border-amber-200 bg-amber-50">
+          <Badge tone="warning">Access restricted</Badge>
+          <h2 className="mt-3 text-lg font-bold text-slate-950">
+            Tenant-wide role administration is required
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
+            Your account can access core administration, but this control center
+            includes tenant-wide roles and access records. An independent administrator
+            with <code>core.tenant_role_administer</code> must grant that authority for
+            this workspace. No users, roles, scope, or audit records were loaded.
+          </p>
+        </Panel>
+      </AppShell>
+    );
+  }
+
   const canExportAudit = canExportCoreAdminAudit(session);
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
   const activeTab = normalizeAdminTab(getSearchParam(params, "tab"));
+  const userQuery = getSearchParam(params, "userQuery")?.trim() ?? "";
+  const userStatus = getSearchParam(params, "userStatus");
+  const userPage = Number.parseInt(getSearchParam(params, "userPage") ?? "1", 10);
+  const userPageSize = Number.parseInt(getSearchParam(params, "userPageSize") ?? "25", 10);
+  const normalizedUserPage = Number.isFinite(userPage) ? Math.min(Math.max(userPage, 1), 10_000) : 1;
+  const normalizedUserPageSize = Number.isFinite(userPageSize)
+    ? Math.min(Math.max(userPageSize, 10), 100)
+    : 25;
   const auditFilters: CoreAdminAuditEventFilters = {};
   const auditQuery = getSearchParam(params, "q");
   const auditEventType = getSearchParam(params, "eventType");
@@ -184,10 +216,17 @@ export default async function CoreAdministrationPage({
   }`;
 
   const [overview, auditEvents] = await Promise.all([
-    getCoreAdminOverview(session),
+    getCoreAdminOverview(session, {
+      page: normalizedUserPage,
+      pageSize: normalizedUserPageSize,
+      query: userQuery,
+      ...(userStatus && ["ACTIVE", "INACTIVE", "ARCHIVED"].includes(userStatus)
+        ? { status: userStatus as "ACTIVE" | "INACTIVE" | "ARCHIVED" }
+        : {}),
+    }),
     listCoreAdminAuditEvents(session, auditFilters)
   ]);
-  const activeUsers = overview.users.filter((user) => user.status === "ACTIVE").length;
+  const activeUsers = overview.userPage.activeItems;
   const activeRoles = overview.roles.filter((role) => role.status === "ACTIVE").length;
   const activeRules = overview.approvalRules.filter((rule) => rule.isActive).length;
   const companyLocations = overview.locations.filter(
@@ -215,7 +254,7 @@ export default async function CoreAdministrationPage({
       id: "users",
       title: "Users & Access",
       detail: "Assign roles and operating scope to people.",
-      metric: `${activeUsers}/${overview.users.length}`,
+      metric: `${activeUsers}/${overview.userPage.totalItems}`,
       metricLabel: "active users",
       icon: Users,
       href: "/admin?tab=users",
@@ -421,6 +460,35 @@ export default async function CoreAdministrationPage({
               </EntryModal>
             </div>
           </div>
+          <form method="get" className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_12rem_auto] md:items-end">
+            <input type="hidden" name="tab" value="users" />
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              Search users
+              <input
+                name="userQuery"
+                defaultValue={userQuery}
+                maxLength={120}
+                placeholder="Name or email"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              Status
+              <select
+                name="userStatus"
+                defaultValue={userStatus ?? ""}
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2"
+              >
+                <option value="">All statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+                <option value="ARCHIVED">Archived</option>
+              </select>
+            </label>
+            <button type="submit" className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">
+              Apply filters
+            </button>
+          </form>
           <div className="overflow-hidden rounded-xl border border-slate-200">
             <div className="ogfi-table-head hidden grid-cols-[1.2fr_1fr_1.4fr_1fr_auto] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-500 md:grid">
               <span>User</span>
@@ -430,7 +498,9 @@ export default async function CoreAdministrationPage({
               <span className="text-right">Action</span>
             </div>
             <div className="divide-y divide-slate-100">
-              {overview.users.map((user) => (
+              {overview.users.length === 0 ? (
+                <p className="p-6 text-sm text-slate-600">No users match the current filters.</p>
+              ) : overview.users.map((user) => (
                 <div
                   key={user.id}
                   data-testid="admin-user-row"
@@ -470,6 +540,22 @@ export default async function CoreAdministrationPage({
               ))}
             </div>
           </div>
+          {overview.userPage.totalItems > 0 ? (
+            <PaginationBar
+              page={overview.userPage.page}
+              pageSize={overview.userPage.pageSize}
+              totalItems={overview.userPage.totalItems}
+              itemLabel="users"
+              className="mt-3 rounded-xl border border-slate-200"
+              controlClassName="min-h-11"
+              getPageHref={(nextPage) => {
+                const next = new URLSearchParams({ tab: "users", userPage: String(nextPage), userPageSize: String(overview.userPage.pageSize) });
+                if (userQuery) next.set("userQuery", userQuery);
+                if (userStatus) next.set("userStatus", userStatus);
+                return `/admin?${next.toString()}`;
+              }}
+            />
+          ) : null}
         </Panel>
         ) : null}
 

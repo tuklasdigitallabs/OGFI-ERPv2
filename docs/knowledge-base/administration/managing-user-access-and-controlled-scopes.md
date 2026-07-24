@@ -2,7 +2,7 @@
 
 **Audience / required role:** ERP administrators with Core Administration access; role administration also requires `Administer tenant-wide roles` access
 **Applies to:** User roles, sensitive roles, location scopes, high-risk scopes, and Manage-level access
-**Last verified against:** `DEC-0043`; implemented Core Admin user onboarding and user detail services; tenant-role authorization, selected-company target checks, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
+**Last verified against:** `DEC-0043`, `DEC-0108`; implemented Core Admin user onboarding and user detail services; tenant-role authorization, selected-company target checks, server-paginated Users registry, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
 
 ## Purpose
 
@@ -21,10 +21,13 @@ Sensitive roles are also not granted through quick assignment. Admin, approver, 
 - Target-user role changes also require the existing company administration access shown for the selected company.
 - For a role grant, deactivation, request, or review, the target account must be active and must have a current active company assignment for the selected company or an active location assignment to an active location in that company. A default company alone is not an access assignment.
 - If you create a user with an initial role, also select an initial active location in the selected company. The system creates the location membership and role together; it does not create a role-only user through this path.
+- The Users registry is server-filtered by name/email and status and paginates the authorized tenant users. Search and status values remain in the URL while paging; they do not widen company or tenant scope. An empty page means no users match the current filters, not that another company has no users.
 
 ## Navigation Path
 
 `Admin` → `Core Administration` → `Users` → open a user
+
+If your account has Core Administration access but not `Administer tenant-wide roles`, Core Administration shows an explicit restricted state and loads no users, roles, scope, or audit records. Ask an independent administrator to grant the documented authority; company Manage scope alone is not a substitute.
 
 ## Steps
 

@@ -1,4 +1,4 @@
-import { prisma, type TransactionClient } from "@ogfi/database";
+import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import {
   getGrantedPermissionCodes,
@@ -149,6 +149,13 @@ const createCoreAdminLocationSchema = z.object({
   address: optionalTextSchema,
   timezone: z.string().trim().min(3).max(80).default("Asia/Manila"),
   reason: scopeReasonSchema,
+});
+
+const coreAdminUserPageInputSchema = z.object({
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
 const updateRolePermissionsSchema = z.object({
@@ -652,13 +659,101 @@ async function assertRoleNotUsedInActiveApprovalRules(
   }
 }
 
-export async function getCoreAdminOverview(session: SessionContext) {
+export type CoreAdminUserPage = {
+  items: Array<{
+    id: string;
+    displayName: string;
+    email: string;
+    status: string;
+    roles: string[];
+    scopes: Array<{ type: string; id: string; accessLevel: string }>;
+  }>;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  activeItems: number;
+};
+
+async function listCoreAdminUserPageAuthorized(
+  session: SessionContext,
+  input: z.input<typeof coreAdminUserPageInputSchema> = {},
+): Promise<CoreAdminUserPage> {
+  const values = coreAdminUserPageInputSchema.parse(input);
+  const query = values.query.toLowerCase();
+  const where: Prisma.UserWhereInput = {
+    tenantId: session.context.tenantId,
+    ...(values.status
+      ? { status: values.status as NonNullable<Prisma.UserWhereInput["status"]> }
+      : {}),
+    ...(query
+      ? {
+          OR: [
+            { email: { contains: query, mode: "insensitive" as const } },
+            { displayName: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+  const [totalItems, activeItems, users] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.count({ where: { ...where, status: "ACTIVE" as NonNullable<Prisma.UserWhereInput["status"]> } }),
+    prisma.user.findMany({
+      where,
+      include: {
+        roleAssignments: {
+          where: { status: "ACTIVE" },
+          include: { role: true },
+        },
+        scopeAssignments: {
+          where: { status: "ACTIVE" },
+          orderBy: { startsAt: "asc" },
+        },
+      },
+      orderBy: [{ displayName: "asc" }, { id: "asc" }],
+      skip: (values.page - 1) * values.pageSize,
+      take: values.pageSize,
+    }),
+  ]);
+  return {
+    items: users.map((user) => ({
+      id: user.id,
+      displayName: user.displayName,
+      email: user.email,
+      status: user.status,
+      roles: user.roleAssignments.map((assignment) => assignment.role.name),
+      scopes: user.scopeAssignments.map((assignment) => ({
+        type: assignment.scopeType,
+        id: assignment.scopeId,
+        accessLevel: assignment.accessLevel,
+      })),
+    })),
+    page: values.page,
+    pageSize: values.pageSize,
+    totalItems,
+    activeItems,
+  };
+}
+
+export async function listCoreAdminUserPage(
+  session: SessionContext,
+  input: z.input<typeof coreAdminUserPageInputSchema> = {},
+) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  return listCoreAdminUserPageAuthorized(session, input);
+}
+
+export async function getCoreAdminOverview(
+  session: SessionContext,
+  userPageInput: z.input<typeof coreAdminUserPageInputSchema> = {},
+) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
 
+  const userPage = await listCoreAdminUserPageAuthorized(session, userPageInput);
+
   const [
     tenant,
-    users,
     roles,
     companies,
     brands,
@@ -674,22 +769,6 @@ export async function getCoreAdminOverview(session: SessionContext) {
         defaultTimezone: true,
         status: true,
       },
-    }),
-    prisma.user.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-      },
-      include: {
-        roleAssignments: {
-          where: { status: "ACTIVE" },
-          include: { role: true },
-        },
-        scopeAssignments: {
-          where: { status: "ACTIVE" },
-          orderBy: { startsAt: "asc" },
-        },
-      },
-      orderBy: { displayName: "asc" },
     }),
     prisma.role.findMany({
       where: {
@@ -763,18 +842,8 @@ export async function getCoreAdminOverview(session: SessionContext) {
 
   return {
     tenant,
-    users: users.map((user) => ({
-      id: user.id,
-      displayName: user.displayName,
-      email: user.email,
-      status: user.status,
-      roles: user.roleAssignments.map((assignment) => assignment.role.name),
-      scopes: user.scopeAssignments.map((assignment) => ({
-        type: assignment.scopeType,
-        id: assignment.scopeId,
-        accessLevel: assignment.accessLevel,
-      })),
-    })),
+    users: userPage.items,
+    userPage,
     roles: roles.map((role) => ({
       id: role.id,
       name: role.name,
