@@ -8,6 +8,12 @@
 
 Open **Admin > Admin Settings** to review the recommended F&B pilot defaults and any company overrides. These settings make DEC-0036 visible and auditable without hardcoding business policy into each workflow.
 
+Use the category tabs and **Search policies** field to narrow the register. Results
+are server-paginated and show an exact matching total; page links preserve the
+selected category and search text. Configure or Use Recommended remains available
+only to authorized administrators with company Manage scope, and every change still
+requires a reason and audit history.
+
 ## Recommended Defaults Versus Overrides
 
 - **Recommended** means the company is still using the DEC-0036 baseline value.

@@ -7,7 +7,7 @@ import {
   ShieldCheck,
   SlidersHorizontal
 } from "lucide-react";
-import { Badge, Panel } from "@ogfi/ui";
+import { Badge, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -19,6 +19,7 @@ import { getDefaultAppRoute, permissions } from "@/server/services/authorization
 import { getSessionContext } from "@/server/services/context";
 import {
   listCompanyPolicySettings,
+  listCompanyPolicySettingPage,
   policySettingCategories,
   resetCompanyPolicySetting,
   updateCompanyPolicySetting
@@ -30,9 +31,7 @@ type AdminSettingsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-type PolicySetting = Awaited<
-  ReturnType<typeof listCompanyPolicySettings>
->[number];
+type PolicySetting = Awaited<ReturnType<typeof listCompanyPolicySettings>>[number];
 type PolicyOption = PolicySetting["options"][number];
 
 function getSearchParam(
@@ -350,13 +349,20 @@ export default async function AdminSettingsPage({
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
   const selectedCategory = normalizeCategory(getSearchParam(params, "category"));
-  const settings = await listCompanyPolicySettings(session);
+  const query = getSearchParam(params, "q") ?? "";
+  const pageValue = Number.parseInt(getSearchParam(params, "page") ?? "1", 10);
+  const pageSizeValue = Number.parseInt(getSearchParam(params, "pageSize") ?? "25", 10);
+  const settingsPage = await listCompanyPolicySettingPage(session, {
+    category: selectedCategory,
+    query,
+    page: Number.isFinite(pageValue) ? Math.min(Math.max(pageValue, 1), 10_000) : 1,
+    pageSize: Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 25,
+  });
+  const settings = settingsPage.items;
   const category = policySettingCategories.find((item) => item.id === selectedCategory)!;
-  const visibleSettings = settings.filter(
-    (setting) => setting.category === selectedCategory
-  );
-  const overriddenCount = settings.filter((setting) => setting.isOverridden).length;
-  const defaultCount = settings.length - overriddenCount;
+  const visibleSettings = settings;
+  const overriddenCount = settingsPage.totalOverrides;
+  const defaultCount = settingsPage.totalDefaults;
 
   return (
     <AppShell
@@ -398,7 +404,7 @@ export default async function AdminSettingsPage({
       <section className="mb-5 grid gap-4 md:grid-cols-3">
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Configured policies</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{settings.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{settingsPage.totalConfigured}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Using recommendations</p>
@@ -414,9 +420,7 @@ export default async function AdminSettingsPage({
         <div className="grid gap-2 lg:grid-cols-6">
           {policySettingCategories.map((item) => {
             const isActive = item.id === selectedCategory;
-            const itemCount = settings.filter(
-              (setting) => setting.category === item.id
-            ).length;
+            const itemCount = settingsPage.categoryCounts[item.id] ?? 0;
 
             return (
               <a
@@ -427,7 +431,7 @@ export default async function AdminSettingsPage({
                     ? "rounded-xl bg-blue-50 px-4 py-3 text-blue-700 ring-1 ring-blue-100"
                     : "rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                 }
-                href={`/admin/settings?category=${item.id}`}
+                href={`/admin/settings?category=${item.id}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
               >
                 <span className="block text-sm font-bold">{item.label}</span>
                 <span className="mt-1 block text-xs text-slate-500">
@@ -438,6 +442,16 @@ export default async function AdminSettingsPage({
           })}
         </div>
       </section>
+
+      <form className="ogfi-data-surface mb-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-end" method="get">
+        <input type="hidden" name="category" value={selectedCategory} />
+        <label className="grid flex-1 gap-1 text-sm font-medium text-slate-700">
+          Search policies
+          <input className="h-10 rounded-lg border border-slate-300 px-3" name="q" defaultValue={query} placeholder="Key, label, description, value" />
+        </label>
+        <button className="inline-flex h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-bold text-white">Apply</button>
+        <a className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700" href={`/admin/settings?category=${selectedCategory}`}>Reset</a>
+      </form>
 
       <Panel className="ogfi-detail-card">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -553,6 +567,18 @@ export default async function AdminSettingsPage({
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <span>Showing {visibleSettings.length} of {settingsPage.totalItems} policies</span>
+          <PaginationBar
+            page={settingsPage.page}
+            pageSize={settingsPage.pageSize}
+            totalItems={settingsPage.totalItems}
+            itemLabel="policies"
+            controlClassName="min-h-10"
+            getPageHref={(nextPage) => `/admin/settings?category=${selectedCategory}&page=${nextPage}&pageSize=${settingsPage.pageSize}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
+          />
         </div>
 
         <div className="mt-5 rounded-xl border border-amber-100 bg-amber-50/80 p-4 text-sm text-amber-950">

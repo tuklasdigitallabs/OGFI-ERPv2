@@ -108,3 +108,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0122-ADMIN-SENSITIVE-ROLE-REVIEW-MEMBERSHIP-CAS.md` — sensitive-role review target locking and membership revalidation
 - `DEC-0123-ADMIN-AUDIT-BOUNDED-SYNCHRONOUS-EXPORT.md` — strict date/row bounds, watermark, and truthful over-limit responses
 - `DEC-0124-ADMIN-REASON-CODE-REGISTRY-PAGINATION.md` — selected-company bounded Reason Codes registry and detail surface
+- `DEC-0125-ADMIN-POLICY-SETTINGS-PAGINATION.md` — bounded Admin Settings catalog search and pagination

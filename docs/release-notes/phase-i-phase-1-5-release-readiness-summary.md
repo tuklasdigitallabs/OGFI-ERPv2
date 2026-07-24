@@ -124,4 +124,7 @@ Reason Codes administration now uses bounded server pagination, selected-company
 filters, exact counts, and a selected-code detail summary while preserving the
 existing create/deactivate lifecycle.
 
+Admin Settings now uses bounded server-side category/search pagination with exact
+matching totals while preserving audited policy override/reset behavior.
+
 Raise UAT defects, training gaps, permission issues, or release blockers through the assigned ERP implementation owner and the Phase 1.5 project tracker.

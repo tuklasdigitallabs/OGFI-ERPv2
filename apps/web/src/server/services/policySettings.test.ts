@@ -396,4 +396,22 @@ describe("DEC-0036 policy setting registry", () => {
     expect(adminTrainingSource).toContain("Admin > Admin Settings");
     expect(adminTrainingSource).toContain("readable retention and backup/restore summaries");
   });
+
+  test("Admin Settings exposes bounded server pagination and search", () => {
+    const serviceSource = readFileSync(
+      fileURLToPath(new URL("./policySettings.ts", import.meta.url)),
+      "utf8",
+    );
+    const pageSource = readFileSync(
+      fileURLToPath(new URL("../../app/(app)/admin/settings/page.tsx", import.meta.url)),
+      "utf8",
+    );
+    expect(serviceSource).toContain("listCompanyPolicySettingPage");
+    expect(serviceSource).toContain("assertCanManagePolicySettings(session)");
+    expect(serviceSource).toContain('status: "ACTIVE"');
+    expect(serviceSource).toContain("pageSize");
+    expect(pageSource).toContain("PaginationBar");
+    expect(pageSource).toContain('name="q"');
+    expect(pageSource).not.toContain("settings.filter(");
+  });
 });

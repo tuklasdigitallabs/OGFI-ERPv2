@@ -1282,15 +1282,35 @@ async function assertCanManagePolicySettings(session: SessionContext) {
   await assertCanManageCompanyScope(session, session.context.companyId);
 }
 
+const policySettingPageInputSchema = z.object({
+  category: z.string().trim().max(40).optional(),
+  query: z.string().trim().max(120).default(""),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+});
+
+export type CompanyPolicySettingPageInput = z.input<typeof policySettingPageInputSchema>;
+
 export async function listCompanyPolicySettings(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManagePolicySettings(session);
 
   const savedSettings = await prisma.companyPolicySetting.findMany({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
-      status: "ACTIVE"
-    }
+      status: "ACTIVE",
+      key: { in: defaultPolicySettings.map((definition) => definition.key) },
+    },
+    select: {
+      id: true,
+      key: true,
+      value: true,
+      defaultValue: true,
+      sourceDecisionId: true,
+      isDefault: true,
+      updatedAt: true,
+    },
+    take: defaultPolicySettings.length,
   });
   const savedByKey = new Map(savedSettings.map((setting) => [setting.key, setting]));
 
@@ -1319,6 +1339,43 @@ export async function listCompanyPolicySettings(session: SessionContext) {
       updatedAt: saved?.updatedAt.toISOString() ?? null
     };
   });
+}
+
+export async function listCompanyPolicySettingPage(
+  session: SessionContext,
+  input: CompanyPolicySettingPageInput = {},
+) {
+  await assertCanManagePolicySettings(session);
+  const values = policySettingPageInputSchema.parse(input);
+  const all = await listCompanyPolicySettings(session);
+  const query = values.query.trim().toLowerCase();
+  const filtered = all.filter((setting) => {
+    if (values.category && setting.category !== values.category) return false;
+    if (!query) return true;
+    return [setting.key, setting.label, setting.description, setting.valueText]
+      .some((value) => value.toLowerCase().includes(query));
+  });
+  const categoryCounts = Object.fromEntries(
+    policySettingCategories.map((category) => [
+      category.id,
+      all.filter((setting) => {
+        if (!query) return setting.category === category.id;
+        return setting.category === category.id && [setting.key, setting.label, setting.description, setting.valueText]
+          .some((value) => value.toLowerCase().includes(query));
+      }).length,
+    ]),
+  ) as Record<string, number>;
+  const start = (values.page - 1) * values.pageSize;
+  return {
+    items: filtered.slice(start, start + values.pageSize),
+    page: values.page,
+    pageSize: values.pageSize,
+    totalItems: filtered.length,
+    totalConfigured: all.length,
+    totalOverrides: all.filter((setting) => setting.isOverridden).length,
+    totalDefaults: all.filter((setting) => !setting.isOverridden).length,
+    categoryCounts,
+  };
 }
 
 export async function updateCompanyPolicySetting(formData: FormData) {
