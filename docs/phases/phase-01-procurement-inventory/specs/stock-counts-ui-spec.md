@@ -50,7 +50,7 @@ Show:
 - Required evidence or recount indicator
 - Approval route and status
 
-Do not post variance directly from count entry unless role/policy explicitly permits and approval state is satisfied.
+Count Variance review facts remain reviewer-gated, but Count Variance adjustment generation and dashboard/task activation are disabled during the immutable recount-recovery rollout. The count detail must explain this disabled state; no replacement adjustment action may be shown. Do not post variance directly from count entry.
 
 ## 5. Statuses
 
@@ -70,7 +70,7 @@ Rejected / Cancelled only with reason and audit history
 
 - Count scope is locked to authorized location.
 - Variance is calculated consistently from ledger/system balance snapshot.
-- Approved variance posting writes controlled inventory movement and audit event.
-- Count report reconciles to item-level record and posted adjustment where applicable.
+- Count Variance posting is not enabled in the current release; the eventual path must write controlled inventory movement and audit event only after the recovery and approval gates pass.
+- Count report reconciles to item-level evidence; posted-adjustment reconciliation is deferred until Count Variance activation.
 - Count start and inventory posting use the same canonically ordered inventory-location serialization boundary, so a racing movement is either included before cutoff or blocked by an active freeze.
 - My Tasks exposes at most one assigned first-pass Start, Enter, or Submit action and does not expose recount, review, cancellation, or variance work.

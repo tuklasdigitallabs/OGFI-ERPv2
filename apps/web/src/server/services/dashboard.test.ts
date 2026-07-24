@@ -391,7 +391,7 @@ describe("operational dashboard model", () => {
           createdAt: "2026-07-20T00:00:00.000Z"
         }]
       }
-    });
+    } as never);
 
     expect(dashboard.cards.some((card) => card.id === "count-variance")).toBe(false);
     expect(dashboard.exceptionQueue.some((item) => item.id === "count-count-1")).toBe(false);
@@ -805,15 +805,6 @@ describe("operational dashboard model", () => {
           destinationLocationName: "Selected Branch"
         }
       ] as never,
-      stockCounts: [
-        {
-          id: "count-1",
-          publicReference: "SC-001",
-          status: "REVIEWED",
-          inventoryLocationName: "Branch Stock",
-          varianceCount: 2
-        }
-      ] as never,
       wastageReports: [
         {
           id: "waste-1",
@@ -865,7 +856,6 @@ describe("operational dashboard model", () => {
       "open-purchase-orders",
       "receiving-follow-up",
       "transfer-follow-up",
-      "count-variance",
       "wastage-exceptions",
       "adjustment-exceptions",
       "ledger-reconciliation"
@@ -875,7 +865,6 @@ describe("operational dashboard model", () => {
     ).toEqual([
       ["Receiving follow-up", "/receiving/grn-1"],
       ["Transfer follow-up", "/transfers/transfer-1"],
-      ["Count variance", "/counts/count-1"],
       ["Wastage follow-up", "/wastage/waste-1"],
       ["Adjustment follow-up", "/adjustments/adjustment-1"],
       [

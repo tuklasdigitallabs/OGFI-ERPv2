@@ -89,10 +89,16 @@ describe("stock count foundation rules", () => {
       path.resolve(__dirname, "../../app/(app)/counts/page.tsx"),
       "utf8"
     );
+    const detailSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/counts/[id]/page.tsx"),
+      "utf8"
+    );
 
     expect(source).toContain("canUseStockCounts(session.permissionCodes)");
     expect(source).toContain("PaginationBar");
     expect(source).toContain("countPage.totalItems");
+    expect(detailSource).toContain("Count Variance recovery is currently disabled");
+    expect(detailSource).not.toContain("Generate Variance Adjustment");
   });
 
   test("service read gate allows every stock-count action permission", () => {
@@ -100,6 +106,8 @@ describe("stock count foundation rules", () => {
 
     expect(source).toContain("canUseStockCounts(session.permissionCodes)");
     expect(source).toContain("listStockCountPage");
+    expect(source).toContain("tx.stockCountAttempt.create");
+    expect(source).toContain("currentAttemptId: null");
   });
 
   test("dashboard read requires stock-count review permission and returns bounded header-only candidates", async () => {

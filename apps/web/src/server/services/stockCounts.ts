@@ -1188,21 +1188,70 @@ export async function scheduleStockCount(formData: FormData) {
   let countId: string | null = null;
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      const count = await prisma.stockCountSession.create({
-        data: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          inventoryLocationId: inventoryLocation.id,
-          publicReference: await nextStockCountReference(session.context.companyId),
-          countType: values.countType,
-          scheduledDate: values.scheduledDate ?? null,
-          blindCount: values.blindCount,
-          freezeMovements: values.freezeMovements,
-          createdByUserId: session.user.id,
-          assignedToUserId: session.user.id
+      const publicReference = await nextStockCountReference(session.context.companyId);
+      countId = await prisma.$transaction(async (tx) => {
+        const count = await tx.stockCountSession.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            inventoryLocationId: inventoryLocation.id,
+            publicReference,
+            countType: values.countType,
+            scheduledDate: values.scheduledDate ?? null,
+            blindCount: values.blindCount,
+            freezeMovements: values.freezeMovements,
+            createdByUserId: session.user.id,
+            assignedToUserId: session.user.id
+          }
+        });
+        const attempt = await tx.stockCountAttempt.create({
+          data: {
+            stockCountSessionId: count.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            inventoryLocationId: inventoryLocation.id,
+            attemptNumber: 1,
+            status: "DRAFT",
+            blindCount: values.blindCount,
+            freezeMovements: values.freezeMovements,
+            createdByUserId: session.user.id,
+            assignedToUserId: session.user.id
+          },
+          select: { id: true }
+        });
+        const linked = await tx.stockCountSession.updateMany({
+          where: {
+            id: count.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            inventoryLocationId: inventoryLocation.id,
+            currentAttemptId: null
+          },
+          data: { currentAttemptId: attempt.id }
+        });
+        if (linked.count !== 1) {
+          throw new Error("STOCK_COUNT_ATTEMPT_LINK_FAILED");
         }
+        await tx.auditEvent.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            actorUserId: session.user.id,
+            eventType: "stock_count.scheduled",
+            entityType: "StockCountSession",
+            entityId: count.id,
+            afterData: { status: "DRAFT" },
+            metadata: {
+              inventoryLocationId: inventoryLocation.id,
+              countType: values.countType,
+              attemptId: attempt.id,
+              recommendedCadenceDays,
+              cadencePolicy
+            }
+          }
+        });
+        return count.id;
       });
-      countId = count.id;
       break;
     } catch (error) {
       if (!isUniqueConstraintError(error) || attempt === 5) {
@@ -1214,24 +1263,6 @@ export async function scheduleStockCount(formData: FormData) {
   if (!countId) {
     throw new Error("STOCK_COUNT_REFERENCE_ALLOCATION_FAILED");
   }
-
-  await prisma.auditEvent.create({
-    data: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      actorUserId: session.user.id,
-      eventType: "stock_count.scheduled",
-      entityType: "StockCountSession",
-      entityId: countId,
-      afterData: { status: "DRAFT" },
-      metadata: {
-        inventoryLocationId: inventoryLocation.id,
-        countType: values.countType,
-        recommendedCadenceDays,
-        cadencePolicy
-      }
-    }
-  });
 
   return countId;
 }
@@ -1731,6 +1762,26 @@ export async function cancelStockCount(formData: FormData) {
     if (cancelled.count !== 1) {
       throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
     }
+    const attemptId = count.currentAttemptId;
+    if (!attemptId) {
+      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+    }
+    const attemptCancelled = await tx.$executeRaw(Prisma.sql`
+      UPDATE "StockCountAttempt"
+         SET status = 'CANCELLED',
+             "cancelledAt" = ${count.databaseNow},
+             "cancellationReason" = ${values.cancellationReason},
+             "updatedAt" = ${count.databaseNow}
+       WHERE id = ${attemptId}::uuid
+         AND "stockCountSessionId" = ${count.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "inventoryLocationId" = ${count.inventoryLocationId}::uuid
+         AND status = ${count.status}
+    `);
+    if (attemptCancelled !== 1) {
+      throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
+    }
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1750,6 +1801,9 @@ export async function cancelStockCount(formData: FormData) {
 export async function generateStockCountVarianceAdjustment(formData: FormData) {
   const session = await requireSessionContext();
   await requirePermission(session, permissions.stockAdjustmentCreate);
+  // DEC-0098/DEC-0060 keep Count Variance generation disabled until immutable
+  // recount recovery, adjustment lineage, and production evidence are complete.
+  throw new Error("STOCK_COUNT_VARIANCE_DISABLED");
   const values = stockCountActionSchema.parse(Object.fromEntries(formData));
   const target = await findScopedStockCountLocation(session, values.id);
 

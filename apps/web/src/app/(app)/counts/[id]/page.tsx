@@ -18,7 +18,6 @@ import {
 import { getSessionContext } from "@/server/services/context";
 import {
   cancelStockCount,
-  generateStockCountVarianceAdjustment,
   getStockCount,
   reviewStockCount,
   saveStockCountEntries,
@@ -109,22 +108,6 @@ async function cancelCountAction(formData: FormData) {
   revalidatePath("/counts");
 }
 
-async function generateVarianceAdjustmentAction(formData: FormData) {
-  "use server";
-
-  const id = String(formData.get("id"));
-  let adjustmentId: string;
-  try {
-    adjustmentId = await generateStockCountVarianceAdjustment(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(`/counts/${id}`, error));
-  }
-  revalidatePath(`/counts/${id}`);
-  revalidatePath("/counts");
-  revalidatePath("/adjustments");
-  redirect(`/adjustments/${adjustmentId}`);
-}
-
 function statusTone(status: string) {
   if (status === "DRAFT") {
     return "neutral" as const;
@@ -170,9 +153,6 @@ export default async function CountDetailPage({
   const canSubmit = session.permissionCodes.includes(permissions.stockCountSubmit);
   const canReview = session.permissionCodes.includes(permissions.stockCountReview);
   const canCancel = session.permissionCodes.includes(permissions.stockCountCancel);
-  const canGenerateVarianceAdjustment = session.permissionCodes.includes(
-    permissions.stockAdjustmentCreate
-  );
   const isAssignedEntryActor = count.assignedToCurrentUser;
   const canStartCount =
     canStartOrEnter &&
@@ -224,8 +204,9 @@ export default async function CountDetailPage({
           </div>
 
           <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Reviewed count variances generate a linked Stock Adjustment for approval
-            and posting. No inventory movement is posted directly from this count page.
+            Count Variance recovery is currently disabled while immutable recount,
+            adjustment-lineage, and recovery evidence gates are completed. No
+            inventory movement is posted from this count page.
           </div>
 
           {count.freezeMovements ? (
@@ -319,17 +300,6 @@ export default async function CountDetailPage({
                 <input name="id" type="hidden" value={count.id} />
                 <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-auto">
                   Submit for Review
-                </button>
-              </form>
-            ) : null}
-            {count.status === "REVIEWED" &&
-            canGenerateVarianceAdjustment &&
-            count.canShowSystemQuantity &&
-            !count.varianceAdjustmentId ? (
-              <form action={generateVarianceAdjustmentAction}>
-                <input name="id" type="hidden" value={count.id} />
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-auto">
-                  Generate Variance Adjustment
                 </button>
               </form>
             ) : null}

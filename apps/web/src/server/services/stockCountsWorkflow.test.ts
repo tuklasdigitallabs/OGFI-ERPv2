@@ -363,23 +363,50 @@ describe("Stock Count workflow integrity", () => {
     expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
-  test("serializes variance-adjustment lookup and returns the idempotent existing result", async () => {
+  test("mirrors cancellation to the current immutable attempt before audit", async () => {
     mocks.tx.$queryRaw.mockResolvedValueOnce([
-      lockedCount({ status: "REVIEWED" })
+      lockedCount({ status: "IN_PROGRESS" })
     ]);
-    mocks.tx.stockAdjustment.findFirst.mockResolvedValueOnce({
-      id: "existing-adjustment"
-    });
 
+    await expect(cancelStockCount(actionForm({
+      cancellationReason: "Count cancelled after scope correction"
+    }))).resolves.toBeUndefined();
+
+    const attemptMutation = mocks.tx.$executeRaw.mock.calls.at(-1)?.[0] as {
+      strings: readonly string[];
+    };
+    expect(String(attemptMutation.strings.join(""))).toContain(
+      'UPDATE "StockCountAttempt"'
+    );
+    expect(String(attemptMutation.strings.join(""))).toContain(
+      "status = 'CANCELLED'"
+    );
+    expect(mocks.tx.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ eventType: "stock_count.cancelled" })
+      })
+    );
+  });
+
+  test("withholds cancellation audit when the immutable attempt CAS loses", async () => {
+    mocks.tx.$queryRaw.mockResolvedValueOnce([
+      lockedCount({ status: "IN_PROGRESS" })
+    ]);
+    mocks.tx.$executeRaw.mockResolvedValueOnce(0);
+
+    await expect(cancelStockCount(actionForm({
+      cancellationReason: "Count cancelled after scope correction"
+    }))).rejects.toThrow("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
+    expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  test("keeps Count Variance generation disabled before any database mutation", async () => {
     await expect(
       generateStockCountVarianceAdjustment(actionForm())
-    ).resolves.toBe("existing-adjustment");
-    expect(
-      mocks.lockInventoryLocationForPosting.mock.invocationCallOrder[0]
-    ).toBeLessThan(mocks.tx.$queryRaw.mock.invocationCallOrder[0]!);
-    expect(mocks.requirePermission).toHaveBeenCalledTimes(2);
+    ).rejects.toThrow("STOCK_COUNT_VARIANCE_DISABLED");
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.tx.stockAdjustment.findFirst).not.toHaveBeenCalled();
     expect(mocks.tx.stockAdjustment.create).not.toHaveBeenCalled();
     expect(mocks.tx.stockAdjustmentLine.createMany).not.toHaveBeenCalled();
-    expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 });

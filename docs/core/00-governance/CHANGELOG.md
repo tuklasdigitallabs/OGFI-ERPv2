@@ -1,5 +1,13 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Count Variance Safety Gate and Scheduled Attempt Link
+
+- Scheduled Stock Counts now create immutable attempt 1 transactionally with the session, preventing current-attempt reads from hiding scheduled work. Count Variance dashboard/task surfaces and generation are disabled until immutable recovery and adjustment-lineage gates are complete.
+
+## 2026-07-24 — Stock Count Cancellation Attempt Mirror
+
+- Stock Count cancellation now updates the selected immutable attempt and compatibility session in one canonical location-locked transaction. A failed attempt CAS rolls back both state changes and the audit event; Count Variance and recount recovery remain inactive.
+
 ## 2026-07-24 — Stock Count Attempt Lineage Guard
 
 - Stock Count scoped reads and location-locked command paths now fail closed when the current immutable attempt is missing or does not match the session's tenant, company, and inventory location. Legacy line projections remain active during reversible cutover; Count Variance and recount recovery remain disabled pending database and recovery evidence.

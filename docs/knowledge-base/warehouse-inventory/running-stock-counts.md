@@ -7,13 +7,13 @@
 
 ## Purpose
 
-Use this article to schedule, start, enter, submit, and review a physical stock count. During the current recount-foundation rollout, those first-pass actions are recorded in both the existing count record and its immutable attempt-1 history; this is internal lineage and does not change the user steps. Reviewed count variances do not directly adjust stock balances. When a count-generated adjustment is available, it still requires Stock Adjustment approval and a separate post action before inventory changes.
+Use this article to schedule, start, enter, submit, and review a physical stock count. During the current recount-foundation rollout, those first-pass actions are recorded in both the existing count record and its immutable attempt-1 history; this is internal lineage and does not change the user steps. Reviewed count variances do not directly adjust stock balances. Count Variance adjustment generation is currently disabled while immutable recovery and adjustment-lineage gates are completed.
 
 If a count cannot be opened because its attempt history is unavailable, contact an administrator; do not retry by creating a second count or editing submitted evidence. The recovery workflow is not yet enabled.
 
 If a detail or export action reports that count history is unavailable or inconsistent, stop and contact an administrator. The system intentionally does not export a potentially divergent count until its immutable attempt and legacy line history reconcile.
 
-The review-only dashboard variance summary now reads the current immutable attempt history through a bounded server query. It is a work queue aid, not an approval or stock-correction result; if attempt history is missing or database readiness evidence is unavailable, the summary may be withheld. Count Variance remains inactive until the documented recovery and production-readiness gates are complete.
+The dashboard does not currently publish a Count Variance card or exception task. Count Variance remains inactive until the documented recovery and production-readiness gates are complete.
 
 ## Before you begin
 
@@ -42,13 +42,13 @@ The review-only dashboard variance summary now reads the current immutable attem
 - The count keeps a stable cutoff snapshot of system quantity by item, UOM, lot, and expiry.
 - Blind counters enter actual quantities without access to system quantities, calculated variance, reviewer notes, or variance-disclosing audit details.
 - Only an authorized count reviewer within the current assigned scope can view variance information for review.
-- Reviewed counts remain evidence records and may support a linked Stock Adjustment where the workflow allows it.
+- Reviewed counts remain evidence records. They do not generate a linked Stock Adjustment in the current release.
 - No balance update is posted directly from count review. Inventory changes only after the linked Stock Adjustment is approved and posted.
 
 ## Important controls and warnings
 
 - Do not treat reviewed variance as corrected stock.
-- Count variance correction must pass through the controlled Stock Adjustment workflow before it affects inventory.
+- Count Variance correction is not enabled. Do not attempt to create a replacement adjustment outside the documented recovery release.
 - Cancelled counts remain visible with cancellation reason and audit history.
 - Submitted counts cannot be edited through normal entry; request a recount instead.
 - Access to a count or dashboard does not authorize review, approval, adjustment posting, or inventory movement. The source workflow checks that authority again.

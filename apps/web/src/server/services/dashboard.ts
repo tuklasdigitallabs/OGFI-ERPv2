@@ -68,11 +68,6 @@ import {
   type StockAdjustmentDashboardRead
 } from "./stockAdjustments";
 import {
-  getStockCountDashboardRead,
-  listStockCounts,
-  type StockCountDashboardRead
-} from "./stockCounts";
-import {
   getTransferDashboardRead,
   listInventoryTransfers,
   transferDashboardProfileHref,
@@ -96,7 +91,6 @@ type GoodsReceiptSummary = Awaited<ReturnType<typeof listGoodsReceipts>>[number]
 type InventoryTransferSummary = Awaited<
   ReturnType<typeof listInventoryTransfers>
 >[number];
-type StockCountSummary = Awaited<ReturnType<typeof listStockCounts>>[number];
 type WastageReportSummary = Awaited<ReturnType<typeof listWastageReports>>[number];
 type StockAdjustmentSummary = Awaited<
   ReturnType<typeof listStockAdjustments>
@@ -239,8 +233,6 @@ export type OperationalDashboardSource = {
   receivingDashboard?: ReceivingDashboardRead;
   transfers?: InventoryTransferSummary[];
   transferDashboard?: TransferDashboardRead;
-  stockCounts?: StockCountSummary[];
-  stockCountDashboard?: StockCountDashboardRead;
   wastageReports?: WastageReportSummary[];
   wastageDashboard?: WastageDashboardRead;
   stockAdjustments?: StockAdjustmentSummary[];
@@ -284,11 +276,6 @@ const transferExceptionStatuses = new Set([
   "DISPATCHED",
   "PARTIALLY_RECEIVED",
   "DISPUTED"
-]);
-const countActionStatuses = new Set([
-  "SUBMITTED",
-  "REVIEWED",
-  "RECOUNT_REQUESTED"
 ]);
 const wastageExceptionStatuses = new Set([
   "PENDING_APPROVAL",
@@ -727,48 +714,10 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (
-    session.permissionCodes.includes(permissions.stockCountReview) &&
-    (source.stockCounts || source.stockCountDashboard)
-  ) {
-    const value = source.stockCountDashboard
-      ? source.stockCountDashboard.varianceCount
-      : source.stockCounts?.filter(
-          (count) => countActionStatuses.has(count.status) && (count.varianceCount ?? 0) > 0
-        ).length ?? 0;
-    cards.push({
-      id: "count-variance",
-      label: "Count Variance",
-      value,
-      href: "/counts",
-      description: "Reviewed or submitted counts with variance",
-      tone: cardTone(value)
-    });
-
-    const stockCountCandidates = source.stockCountDashboard
-      ? source.stockCountDashboard.taskCandidates.map((count) => ({
-          ...count,
-          varianceCount: count.varianceLineCount
-        }))
-      : source.stockCounts ?? [];
-    for (const count of stockCountCandidates) {
-      if (countActionStatuses.has(count.status) && (count.varianceCount ?? 0) > 0) {
-        exceptionQueue.push({
-          id: `count-${count.id}`,
-          contributorSourceId: "stock-counts",
-          label: "Count variance",
-          reference: count.publicReference,
-          detail: `${count.inventoryLocationName} / ${count.varianceCount} line${count.varianceCount === 1 ? "" : "s"}`,
-          status: count.status,
-          href: `/counts/${count.id}`,
-          tone: "warning",
-          priority: "HIGH",
-          locationName: count.inventoryLocationName,
-          sourceAgeAt: "createdAt" in count ? count.createdAt : undefined
-        });
-      }
-    }
-  }
+  // Count Variance remains feature-disabled under DEC-0098 until immutable
+  // recovery, adjustment lineage, and production evidence gates are closed.
+  // Stock Count operational reads remain available in the authoritative Counts
+  // workspace, but no dashboard card or exception task may imply activation.
 
   if (source.wastageReports || source.wastageDashboard) {
     const value = source.wastageDashboard
@@ -1817,16 +1766,6 @@ export function getOperationalDashboardSourceDescriptors(
           href: "/transfers",
           read: async () => ({
             patch: { transferDashboard: await getTransferDashboardRead(session) }
-          })
-        }]
-      : []),
-    ...(session.permissionCodes.includes(permissions.stockCountReview)
-      ? [{
-          id: "stock-counts" as const,
-          label: "Stock Counts",
-          href: "/counts",
-          read: async () => ({
-            patch: { stockCountDashboard: await getStockCountDashboardRead(session) }
           })
         }]
       : []),

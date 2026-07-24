@@ -32,7 +32,7 @@ Use a Stock Adjustment for:
 - Verified missing stock that should increase the balance.
 - Verified overstated stock that should decrease the balance.
 - A controlled correction backed by reason, evidence, and review.
-- A count-generated variance adjustment when a reviewed count creates a linked adjustment record.
+- A count-generated variance adjustment is not currently enabled; keep reviewed count evidence in the Stock Counts workflow until the immutable recovery release is approved.
 
 Do not use it to hide wastage, supplier shortage, transfer loss, unapproved backdating, opening balance setup, or finance/accounting corrections.
 
@@ -63,7 +63,7 @@ Do not use it to hide wastage, supplier shortage, transfer loss, unapproved back
 
 - `INCREASE` and `DECREASE` are the active manual adjustment types in this release.
 - Opening balance, backdating, reclassification, and partial reversal are not released Stock Adjustment actions.
-- Count-generated variance adjustments still require Stock Adjustment approval and a separate post action before inventory changes.
+- Count Variance adjustment generation is disabled in this release. Do not infer that a reviewed count created an adjustment; immutable recount recovery and adjustment-lineage gates must close first.
 - Posted adjustments cannot be edited.
 - Reversal creates linked `REVERSAL` inventory movements and preserves the original adjustment history.
 - Users cannot rely on page visibility alone for authority; scope and permission checks are enforced by the service layer.

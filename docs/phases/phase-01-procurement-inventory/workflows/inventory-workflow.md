@@ -226,7 +226,7 @@ First-pass count execution is assigned work. Only the recorded counter may start
 
 Recount is required where policy calls for it, for example high-value variance, missing lot detail, counter / verifier mismatch, or audit request. Recount creates a separate record or version and never overwrites original evidence.
 
-During the additive `DEC-0098` cutover, first-pass start, entry-save, submission, and review actions transactionally mirror the legacy session/line records into the linked immutable attempt-1 records. The legacy tables remain the read compatibility path until the full recount recovery and Count Variance activation gates pass; no recount, void-for-recount, or variance-posting behavior is enabled by this mirror.
+During the additive `DEC-0098` cutover, first-pass start, entry-save, submission, review, and cancellation actions transactionally mirror the legacy session/line records into the linked immutable attempt-1 records. The legacy tables remain the read compatibility path until the full recount recovery and Count Variance activation gates pass; no recount, void-for-recount, or variance-posting behavior is enabled by this mirror. A cancellation that cannot update the selected attempt atomically rolls back the session mutation and audit event.
 
 Scoped count reads and locks require a populated current-attempt pointer. A session without that lineage is denied rather than silently treated as a complete first-pass record; attempt-line projection parity remains a release gate before switching read authority.
 
