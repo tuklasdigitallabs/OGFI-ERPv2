@@ -823,3 +823,8 @@ Update this register only when implementation state, release scope, a confirmed 
 - Role detail no longer hydrates every active assignment and every user scope. It now uses server-owned name/email search, exact-count deterministic 25-row paging, and at most eight active scope previews per returned user.
 - Core Administration and selected-company Manage authorization remains before all reads and role mutation paths are unchanged.
 - Evidence: Core Admin tests 30/30 and web typecheck passed. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT gates remain open; Administration is not complete.
+
+### DEC-0156 Administration User Access assigned-role paging — July 25, 2026
+- User Access detail now uses distinct URL-backed assigned-role search/page state, exact totals, deterministic active-assignment ordering, safe tenant/system-role projections, role context, and pagination. Effective permissions are projected separately from the complete active-role graph, so paging cannot alter authority.
+- Existing tenant-role, selected-company Manage, target-user, self-protection, mutation CAS, and audit controls remain authoritative. Scope assignments and request/audit subworkspaces remain separate follow-up contracts.
+- Evidence: Core Admin tests 31/31 and web typecheck passed. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT gates remain open; Administration is not complete.

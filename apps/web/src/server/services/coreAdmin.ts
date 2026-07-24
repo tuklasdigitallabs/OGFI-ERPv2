@@ -748,7 +748,7 @@ async function listCoreAdminUserPageAuthorized(
     prisma.user.findMany({
       where,
       include: {
-        roleAssignments: {
+    roleAssignments: {
           where: { status: "ACTIVE" },
           include: { role: true },
         },
@@ -1962,20 +1962,7 @@ export async function getCoreAdminUserDetail(
       tenantId: session.context.tenantId,
     },
     include: {
-      roleAssignments: {
-        where: { status: "ACTIVE" },
-        include: {
-          role: {
-            include: {
-              permissions: {
-                include: {
-                  permission: true,
-                },
-              },
-            },
-          },
-        },
-      },
+      roleAssignments: false,
       scopeAssignments: {
         where: { status: "ACTIVE" },
         orderBy: { startsAt: "asc" },
@@ -1994,17 +1981,41 @@ export async function getCoreAdminUserDetail(
     return null;
   }
 
+  const activeRoleAssignmentIds = await prisma.userRoleAssignment.findMany({
+    where: { userId: user.id, status: "ACTIVE", role: { tenantId: { in: [session.context.tenantId, null] } } },
+    select: { roleId: true },
+  });
+  const rolePageSize = Math.min(25, Math.max(10, Math.floor(options.rolePageSize ?? 25)));
+  const assignedRoleQuery = options.roleQuery?.trim() ?? "";
+  const roleAssignmentWhere: Prisma.UserRoleAssignmentWhereInput = {
+    userId: user.id,
+    status: "ACTIVE",
+    role: { tenantId: { in: [session.context.tenantId, null] }, ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
+  };
+  const [activeRoleCount, effectivePermissions] = await Promise.all([
+    prisma.userRoleAssignment.count({ where: roleAssignmentWhere }),
+    prisma.permission.findMany({
+      where: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }], roles: { some: { role: { assignments: { some: { userId: user.id, status: "ACTIVE" } } } } } },
+      select: { code: true },
+    }),
+  ]);
+  const rolePageCount = Math.max(1, Math.ceil(activeRoleCount / rolePageSize));
+  const rolePage = Math.min(Math.max(1, Math.floor(options.rolePage ?? 1)), rolePageCount);
+  const roleAssignments = await prisma.userRoleAssignment.findMany({
+    where: roleAssignmentWhere,
+    select: { id: true, startsAt: true, role: { select: { id: true, name: true, code: true, status: true } } },
+    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+    skip: (rolePage - 1) * rolePageSize,
+    take: rolePageSize,
+  });
+
   const permissionCodes = Array.from(
     new Set(
-      user.roleAssignments.flatMap((assignment) =>
-        assignment.role.permissions.map(
-          (rolePermission) => rolePermission.permission.code,
-        ),
-      ),
+      effectivePermissions.map((permission) => permission.code),
     ),
   );
   const assignedRoleIds = new Set(
-    user.roleAssignments.map((assignment) => assignment.role.id),
+    activeRoleAssignmentIds.map((assignment) => assignment.roleId),
   );
   const scopeIdsByType = user.scopeAssignments.reduce(
     (groups, assignment) => {
@@ -2312,14 +2323,23 @@ export async function getCoreAdminUserDetail(
     email: user.email,
     status: user.status,
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
-    roles: user.roleAssignments.map((assignment) => ({
+    roles: roleAssignments.map((assignment) => ({
       id: assignment.role.id,
+      roleId: assignment.role.id,
       assignmentId: assignment.id,
       name: assignment.role.name,
       code: assignment.role.code,
+      status: assignment.role.status,
       canMutate: isAssignableNonSensitiveRole(assignment.role.code),
       startsAt: assignment.startsAt.toISOString(),
     })),
+    rolesPage: {
+      page: rolePage,
+      pageSize: rolePageSize,
+      totalItems: activeRoleCount,
+      totalPages: rolePageCount,
+      query: assignedRoleQuery,
+    },
     scopes: visibleScopeAssignments.map((assignment) => ({
       id: assignment.id,
       type: assignment.scopeType,

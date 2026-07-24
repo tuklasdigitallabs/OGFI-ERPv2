@@ -687,4 +687,17 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("PaginationBar");
     expect(pageSource).toContain("Current-company effective users only");
   });
+
+  test("user access detail uses a bounded assigned-role contract", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("assignedRoleQuery");
+    expect(serviceSource).toContain("rolesPage");
+    expect(serviceSource).toContain("orderBy: [{ startsAt: \"asc\" }, { id: \"asc\" }]");
+    expect(serviceSource).toContain("effectivePermissions");
+    expect(pageSource).toContain("assignedRoleQuery");
+    expect(pageSource).toContain("assignedRolePage");
+    expect(pageSource).toContain("Search assigned roles");
+    expect(pageSource).toContain('itemLabel="assigned roles"');
+  });
 });

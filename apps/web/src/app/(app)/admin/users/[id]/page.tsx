@@ -214,6 +214,10 @@ export default async function CoreAdminUserDetailPage({
   const roleQuery = Array.isArray(resolvedSearchParams.roleQuery)
     ? resolvedSearchParams.roleQuery[0]
     : resolvedSearchParams.roleQuery;
+  const assignedRoleQuery = Array.isArray(resolvedSearchParams.assignedRoleQuery)
+    ? resolvedSearchParams.assignedRoleQuery[0]
+    : resolvedSearchParams.assignedRoleQuery;
+  const assignedRolePageValue = Number.parseInt(String(resolvedSearchParams.assignedRolePage ?? "1"), 10);
   const scopeRequestStatusValue = Array.isArray(resolvedSearchParams.scopeRequestStatus)
     ? resolvedSearchParams.scopeRequestStatus[0]
     : resolvedSearchParams.scopeRequestStatus;
@@ -227,6 +231,9 @@ export default async function CoreAdminUserDetailPage({
   const user = await getCoreAdminUserDetail(session, id, {
     ...(locationQuery ? { locationQuery } : {}),
     ...(roleQuery ? { roleQuery } : {}),
+    assignedRoleQuery,
+    assignedRolePage: Number.isFinite(assignedRolePageValue) ? assignedRolePageValue : 1,
+    assignedRolePageSize: 25,
     scopeRequestPage: Number.isFinite(scopeRequestPageValue) ? scopeRequestPageValue : 1,
     scopeRequestPageSize: Number.isFinite(scopeRequestPageSizeValue) ? scopeRequestPageSizeValue : 25,
     roleRequestPage: Number.isFinite(roleRequestPageValue) ? roleRequestPageValue : 1,
@@ -319,6 +326,13 @@ export default async function CoreAdminUserDetailPage({
             </div>
             {user.canMutateRoles ? <Badge tone="warning">Mutable</Badge> : <Badge>Self protected</Badge>}
           </div>
+          <form className="mt-4 flex flex-wrap gap-2" method="get">
+            <label className="grid min-w-56 flex-1 gap-1 text-sm font-medium text-slate-700">
+              Search assigned roles
+              <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="assignedRoleQuery" defaultValue={user.rolesPage.query} placeholder="Role name or code" />
+            </label>
+            <button className="mt-auto min-h-11 rounded-md bg-slate-800 px-4 text-sm font-semibold text-white" type="submit">Search</button>
+          </form>
           <div className="mt-4 divide-y divide-slate-100">
             {user.roles.length === 0 ? (
               <p className="py-4 text-sm text-slate-600">No active roles are assigned.</p>
@@ -331,7 +345,9 @@ export default async function CoreAdminUserDetailPage({
                 >
                   <div>
                     <p className="font-semibold text-slate-950">{role.name}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{role.code} · {role.status}</p>
                     <p className="mt-2 text-sm text-slate-600">Assigned {role.startsAt}</p>
+                    <ButtonLink href={`/admin/roles/${role.roleId}`} tone="ghost" className="mt-2 min-h-11 px-0 text-sm text-blue-700">View role detail</ButtonLink>
                   </div>
                   {user.canMutateRoles && role.canMutate ? (
                     <EntryModal title="Deactivate Role" triggerLabel="Deactivate Role">
@@ -356,6 +372,7 @@ export default async function CoreAdminUserDetailPage({
               ))
             )}
           </div>
+          {user.rolesPage.totalItems > 0 ? <PaginationBar page={user.rolesPage.page} pageSize={user.rolesPage.pageSize} totalItems={user.rolesPage.totalItems} itemLabel="assigned roles" getPageHref={(nextPage) => `/admin/users/${user.id}?assignedRolePage=${nextPage}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`} /> : null}
         </Panel>
 
         <Panel className="ogfi-detail-card">
