@@ -431,6 +431,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Administration detail services and direct pages now require both `core.tenant_role_administer` and selected-company `MANAGE` before loading company, location, permission, audit-event, or user-detail data. Missing authority redirects to the explicit restricted Administration state; user-detail denial remains non-enumerating. Core Admin audit export authorization now requires the same tenant-role boundary.
 - Focused Core Administration coverage remains 17/17 after the correction; web typecheck and lint pass. Full regression, production build, responsive browser, disposable PostgreSQL no-query authorization, audit redaction/pagination, and hosted gates remain open. Audit and organization registries remain pending independently reviewed bounded contracts; no phase or workspace completion is claimed.
 
+### DEC-0113 Audit Trail redaction and bounded pagination decision — July 24, 2026
+
+- Parent-led deliberation with independent Architecture and Security review selected Audit Trail redaction plus deterministic keyset pagination as the next Administration slice. The current raw audit detail projection and silent `take: 500` list/export cap are treated as confidentiality and evidence-integrity blockers; Organization Scope pagination is deferred until this contract is implemented and gated.
+- The implementation must use one server-owned tenant/company/filter resolver for list, count, detail, and export; require tenant-role authority plus selected-company `MANAGE` before queries or export-start writes; use `occurredAt DESC, id DESC` cursor ordering; bound filters/page size; recursively redact policy-sensitive values without mutating immutable rows; and prove export parity. No audit or workspace completion is claimed until these controls and responsive visible-surface tests pass.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
