@@ -1011,7 +1011,7 @@ async function assertEnablementGateReadyEvidence(
 }
 
 export async function listUatEvidenceRecords(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
 
   return prisma.uatEvidenceRecord.findMany({
     where: {
@@ -1055,9 +1055,10 @@ export async function listUatEvidencePage(
     ...(values.environment ? { environment: { contains: values.environment, mode: "insensitive" as const } } : {}),
     ...(query ? { OR: [{ title: query }, { evidenceReference: query }, { testerName: query }] } : {}),
   };
-  const [totalItems, records] = await Promise.all([
-    prisma.uatEvidenceRecord.count({ where }),
-    prisma.uatEvidenceRecord.findMany({
+  const totalItems = await prisma.uatEvidenceRecord.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  const records = await prisma.uatEvidenceRecord.findMany({
       where,
       include: {
         createdByUser: { select: { displayName: true, email: true } },
@@ -1065,16 +1066,29 @@ export async function listUatEvidencePage(
         rejectedByUser: { select: { displayName: true, email: true } },
       },
       orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-      skip: (values.page - 1) * values.pageSize,
+      skip: (page - 1) * values.pageSize,
       take: values.pageSize,
-    }),
-  ]);
-  const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
-  const page = Math.min(values.page, totalPages);
-  if (page !== values.page) {
-    return listUatEvidencePage(session, { ...values, page });
-  }
+    });
   return { items: records, page, pageSize: values.pageSize, totalItems };
+}
+
+export async function getUatEvidenceRecord(session: SessionContext, evidenceId: string) {
+  await assertCanManageReleaseReadiness(session);
+  const parsed = z.string().uuid().safeParse(evidenceId);
+  if (!parsed.success) return null;
+  const id = parsed.data;
+  return prisma.uatEvidenceRecord.findFirst({
+    where: {
+      id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+    },
+    include: {
+      createdByUser: { select: { displayName: true, email: true } },
+      verifiedByUser: { select: { displayName: true, email: true } },
+      rejectedByUser: { select: { displayName: true, email: true } },
+    },
+  });
 }
 
 export function summarizeUatEvidence(

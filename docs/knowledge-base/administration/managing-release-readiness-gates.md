@@ -45,6 +45,8 @@ The gate register supports server-side search, status filtering, category tabs, 
 
 The UAT evidence register is also paginated and shows an exact matching total for the current search. UAT evidence filters are a viewing aid; readiness summaries and exports remain authoritative until selected evidence detail and bounded aggregate work is complete.
 
+Selecting a UAT evidence title opens a scoped detail panel with its type, workflow area, environment, result, tester, execution time, and evidence reference. If the record is outside the selected company or no longer available, the panel reports that it is unavailable without revealing whether another company has a matching ID.
+
 ## UAT Evidence Rules
 
 UAT gates require both evidence and a decision note before they are marked ready, conditional, or waived. The decision note should name one or more of:

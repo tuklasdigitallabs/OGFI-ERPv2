@@ -113,6 +113,8 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("buildReleaseReadinessExportRows");
     expect(serviceSource).toContain("listReleaseReadinessGatePage");
     expect(serviceSource).toContain("listUatEvidencePage");
+    expect(serviceSource).toContain("getUatEvidenceRecord");
+    expect(serviceSource).toContain("safeParse(evidenceId)");
     expect(serviceSource).toContain('orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("uatEvidencePageInputSchema");
     expect(serviceSource).toContain("pageSize");

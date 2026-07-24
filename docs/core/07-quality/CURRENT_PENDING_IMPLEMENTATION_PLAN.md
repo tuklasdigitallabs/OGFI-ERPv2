@@ -552,6 +552,7 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 
 - The UAT evidence register now has a selected-company, server-owned bounded page contract with search, evidence type/result/status/workflow/environment filters, exact totals, deterministic ordering, and stale-page clamping. The visible UAT list uses this contract while preserving existing audited evidence mutations.
 - The legacy full-register summary/export paths, selected-record detail drawer, deployment/enablement evidence bounds, security aggregate bounds, GO/NO-GO surface, responsive browser, disposable PostgreSQL, hosted recovery, and UAT execution gates remain open.
+- The UAT list now supports a scoped selected-record read-only detail panel with generic unavailable behavior for malformed or foreign IDs. Verify/Reject actions remain on the existing audited controls; a dedicated action drawer and bounded aggregate summary are still required.
 
 ### Workspace 1 implementation checkpoint — July 23, 2026
 

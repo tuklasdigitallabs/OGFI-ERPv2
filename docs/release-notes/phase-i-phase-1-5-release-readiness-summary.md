@@ -131,6 +131,10 @@ The UAT evidence register now uses a bounded selected-company page contract with
 search, deterministic ordering, and exact totals. Full summary/export reads and
 selected-evidence detail remain follow-up work; this does not make Readiness ready.
 
+UAT evidence titles now open a selected, company-scoped read-only detail panel with
+safe unavailable handling for malformed or foreign identifiers. Verification and
+rejection remain governed by the existing audited controls.
+
 Release Readiness gate status now has bounded server-side category, status, search,
 and pagination controls with exact matching totals. This checkpoint does not close
 the separate evidence, security aggregate, GO/NO-GO, browser, database, hosted, or

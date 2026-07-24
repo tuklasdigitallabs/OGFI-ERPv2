@@ -27,6 +27,7 @@ import {
   deploymentEvidenceTypes,
   enablementEvidenceTypes,
   getReleaseSecurityEvidenceSummary,
+  getUatEvidenceRecord,
   listDeploymentEvidenceRecords,
   listEnablementEvidenceRecords,
   listReleaseBoardDecisions,
@@ -250,6 +251,9 @@ export default async function AdminReadinessPage({
         pageSize: Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 10,
       })
     : { items: [], page: 1, pageSize: 10, totalItems: 0 };
+  const selectedUatEvidence = selectedCategory === "uat" && getSearchParam(params, "evidenceId")
+    ? await getUatEvidenceRecord(session, getSearchParam(params, "evidenceId") as string)
+    : null;
   const uatEvidenceSummary =
     selectedCategory === "uat" ? summarizeUatEvidence(uatEvidenceRecords) : null;
   const securityEvidenceSummary =
@@ -933,6 +937,28 @@ export default async function AdminReadinessPage({
           </div>
         </div>
 
+        {selectedCategory === "uat" && getSearchParam(params, "evidenceId") ? (
+          <Panel className="mb-5 border-blue-100 bg-blue-50/40">
+            {selectedUatEvidence ? (
+              <div className="grid gap-3 text-sm text-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected UAT evidence</p>
+                    <h3 className="text-lg font-bold text-slate-950">{selectedUatEvidence.title}</h3>
+                  </div>
+                  <Badge tone={selectedUatEvidence.verificationStatus === "VERIFIED" ? "success" : selectedUatEvidence.verificationStatus === "REJECTED" ? "destructive" : "warning"}>{selectedUatEvidence.verificationStatus}</Badge>
+                </div>
+                <p>{uatEvidenceTypeLabel(selectedUatEvidence.evidenceType)} · {selectedUatEvidence.workflowArea} · {selectedUatEvidence.environment}</p>
+                <p>Result: {selectedUatEvidence.result}; executed {new Date(selectedUatEvidence.executedAt).toLocaleString()}; tester {selectedUatEvidence.testerName}</p>
+                <p>Reference: {selectedUatEvidence.evidenceReference}</p>
+                <a className="text-sm font-semibold text-blue-700 hover:underline" href="/admin/readiness?category=uat">Close selected evidence</a>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-700">The selected UAT evidence is unavailable in the current company scope.</p>
+            )}
+          </Panel>
+        ) : null}
+
         {uatEvidenceSummary ? (
           <div className="mb-5 grid gap-3 lg:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -1253,7 +1279,7 @@ export default async function AdminReadinessPage({
                       </p>
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-950">{record.title}</p>
+                      <a className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?category=uat&evidenceId=${record.id}`}>{record.title}</a>
                       <p className="mt-1 text-xs text-slate-600">
                         {record.evidenceReference}
                       </p>
