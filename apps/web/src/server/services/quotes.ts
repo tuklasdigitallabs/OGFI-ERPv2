@@ -235,16 +235,28 @@ export async function listQuoteOptions(session: SessionContext) {
   };
 }
 
-export async function listQuoteRequests(session: SessionContext) {
+type QuoteRequestPageOptions = { page?: number; pageSize?: number };
+
+const quoteRequestPageWhere = (session: SessionContext) => ({
+  tenantId: session.context.tenantId,
+  companyId: session.context.companyId,
+  requestLocationId: session.context.locationId,
+  status: "APPROVED" as const
+});
+
+export async function listQuoteRequests(
+  session: SessionContext,
+  options: QuoteRequestPageOptions = {}
+) {
   await requirePermission(session, permissions.quoteManage);
 
+  const hasPaging = options.page !== undefined;
+  const pageSize = Math.min(Math.max(options.pageSize ?? 25, 1), 100);
+  const page = Math.max(options.page ?? 1, 1);
+
   const requests = await prisma.purchaseRequest.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      requestLocationId: session.context.locationId,
-      status: "APPROVED"
-    },
+    where: quoteRequestPageWhere(session),
+    ...(hasPaging ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
     include: {
       lines: {
         orderBy: { lineNumber: "asc" },
@@ -386,6 +398,22 @@ export async function listQuoteRequests(session: SessionContext) {
         : null
     };
   });
+}
+
+export async function listQuoteRequestsPage(
+  session: SessionContext,
+  options: { page?: number; pageSize?: number } = {}
+) {
+  await requirePermission(session, permissions.quoteManage);
+  const pageSize = Math.min(Math.max(options.pageSize ?? 25, 1), 100);
+  const requestedPage = Math.max(options.page ?? 1, 1);
+  const totalItems = await prisma.purchaseRequest.count({
+    where: quoteRequestPageWhere(session)
+  });
+  const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const items = await listQuoteRequests(session, { page, pageSize });
+  return { items, totalItems, page, pageSize, pageCount };
 }
 
 export async function createSupplierQuote(formData: FormData) {

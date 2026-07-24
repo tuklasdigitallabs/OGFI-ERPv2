@@ -25,6 +25,21 @@ describe("quotation recommendation rules", () => {
     expect(createSource).toContain("permissions.quoteManage");
   });
 
+  test("approved quote queue uses server pagination", () => {
+    const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
+    const pageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/quotes/page.tsx"),
+      "utf8"
+    );
+
+    expect(source).toContain("export async function listQuoteRequestsPage");
+    expect(source).toContain("purchaseRequest.count");
+    expect(source).toContain("skip: (page - 1) * pageSize");
+    expect(source).toContain("take: pageSize");
+    expect(pageSource).toContain("listQuoteRequestsPage(session");
+    expect(pageSource).toContain("PaginationBar");
+  });
+
   test("initial recommendation approval routing is normalized and fail-closed", () => {
     const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
     const start = source.indexOf("export async function submitQuotationRecommendation");

@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, Panel, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import {
@@ -12,7 +12,7 @@ import { getSessionContext } from "@/server/services/context";
 import {
   createQuotationRecommendation,
   listQuoteOptions,
-  listQuoteRequests,
+  listQuoteRequestsPage,
   submitQuotationRecommendation
 } from "@/server/services/quotes";
 import { canExportSupplierQuotes } from "@/server/services/exportAuthorization";
@@ -59,12 +59,15 @@ export default async function SupplierQuotesPage({
   }
   const canExportQuotes = canExportSupplierQuotes(session);
 
-  const [requests, options] = await Promise.all([
-    listQuoteRequests(session),
+  const params = searchParams ? await searchParams : {};
+  const rawPage = Number.parseInt(Array.isArray(params.page) ? params.page[0] ?? "1" : params.page ?? "1", 10);
+  const requestedPage = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const [requestPage, options] = await Promise.all([
+    listQuoteRequestsPage(session, { page: requestedPage, pageSize: 25 }),
     listQuoteOptions(session)
   ]);
+  const requests = requestPage.items;
   const quoteCount = requests.reduce((count, request) => count + request.quotes.length, 0);
-  const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
 
   return (
@@ -365,6 +368,15 @@ export default async function SupplierQuotesPage({
               ))}
             </div>
           )}
+          {requestPage.totalItems > 0 ? (
+            <PaginationBar
+              page={requestPage.page}
+              pageSize={requestPage.pageSize}
+              totalItems={requestPage.totalItems}
+              itemLabel="approved requests"
+              getPageHref={(nextPage) => `/quotes?page=${nextPage}`}
+            />
+          ) : null}
         </section>
 
       </div>

@@ -4,6 +4,7 @@
 
 - Added confirmed `DEC-0102`: supplier quote capture now has a dedicated `/quotes/new` task route with explicit quote-only/no-PO-commitment context while preserving the existing server-authorized quote service.
 - The Quotes workspace remains incomplete pending paginated comparison, commercial/evidence fields, idempotency, and recommendation policy parity.
+- The approved-request queue now uses server-side 25-row pagination and exact scoped counts; comparison and recommendation details remain a separate follow-up.
 
 ## 2026-07-24 — Receiving Create Task Mode
 
