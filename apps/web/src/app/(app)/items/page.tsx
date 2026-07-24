@@ -5,6 +5,7 @@ import { Badge, Panel, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { ConversionCreateComposer } from "@/components/ConversionCreateComposer";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -288,16 +289,13 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const selectedConversion = selectedConversionId ? await getItemUomConversionRecord(session, selectedConversionId).catch(() => null) : null;
   const selectedCategoryIds = [...masterData.items.map((item) => item.itemCategoryId), ...(selectedItem ? [selectedItem.itemCategoryId] : [])];
   const selectedUomIds = [...masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id))), ...(selectedItem ? [selectedItem.baseUomId, selectedItem.purchaseUomId, selectedItem.issueUomId].filter((id): id is string => Boolean(id)) : [])];
-  const selectedConversionItemIds = masterData.conversions.map((conversion) => conversion.itemId);
-  const [categoryOptionCatalog, uomOptionCatalog, itemOptionCatalog] = await Promise.all([
+  const [categoryOptionCatalog, uomOptionCatalog] = await Promise.all([
     listItemMasterOptionCatalog(session, { kind: "category", selectedIds: selectedCategoryIds, page: 1, pageSize: 100 }),
-    listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 }),
-    listItemMasterOptionCatalog(session, { kind: "item", selectedIds: selectedConversionItemIds, page: 1, pageSize: 100 })
+    listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 })
   ]);
   const activeItems = masterData.itemsPage.activeItems;
   const activeCategories = categoryOptionCatalog.options.filter((category) => category.status === "ACTIVE");
   const activeUoms = uomOptionCatalog.options.filter((uom) => uom.status === "ACTIVE");
-  const activeMasterItems = itemOptionCatalog.options.filter((item) => item.status === "ACTIVE");
   const actionFeedback = getActionFeedback(params);
   const itemActionHref = (itemId?: string) => {
     const query = new URLSearchParams({ tab: "items", itemPage: String(masterData.itemsPage.page) });
@@ -551,47 +549,8 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
         <EntryModal
           title="Create Conversion"
           triggerLabel="Create Conversion"
-          disabled={itemOptionCatalog.hasMore || uomOptionCatalog.hasMore}
-          disabledReason="Conversion selectors exceed the current bounded option catalog; narrow the catalog or complete the selector migration before creating a conversion."
         >
-          <form action={createConversionAction} className="ogfi-form-shell mt-4 grid gap-3">
-            <select className="rounded-md border border-slate-300 px-3 py-2" name="itemId" required>
-              {activeMasterItems.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <div className="grid gap-3 md:grid-cols-2">
-              <select className="rounded-md border border-slate-300 px-3 py-2" name="fromUomId" required>
-                {activeUoms.map((uom) => (
-                  <option key={uom.id} value={uom.id}>
-                    From {uom.code}
-                  </option>
-                ))}
-              </select>
-              <select className="rounded-md border border-slate-300 px-3 py-2" name="toUomId" required>
-                {activeUoms.map((uom) => (
-                  <option key={uom.id} value={uom.id}>
-                    To {uom.code}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <input aria-label="Conversion factor" className="rounded-md border border-slate-300 px-3 py-2" name="conversionFactor" min="0.000001" step="0.000001" type="number" placeholder="Conversion factor" required />
-              <select className="rounded-md border border-slate-300 px-3 py-2" name="roundingRule" defaultValue="none" required>
-                <option value="none">none</option>
-                <option value="up">up</option>
-                <option value="down">down</option>
-                <option value="nearest">nearest</option>
-              </select>
-            </div>
-            <input aria-label="Conversion creation reason" className="rounded-md border border-slate-300 px-3 py-2" name="reason" placeholder="Creation reason" required />
-            <button className="inline-flex ogfi-mobile-action items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Create Conversion
-            </button>
-          </form>
+          <ConversionCreateComposer action={createConversionAction} returnQuery={conversionQuery} returnPage={masterData.conversionsPage.page} returnId={selectedConversionId} />
         </EntryModal>
         ) : null}
       </div>

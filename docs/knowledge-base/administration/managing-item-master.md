@@ -10,7 +10,7 @@ Conversion records are company-scoped through their item and both UOM relationsh
 
 All four tabs use server-backed filters and pagination. Item create/edit selectors use a bounded server-side lookup and creation is disabled when valid choices exceed the catalog bound. Conversion creation may remain unavailable while its full option migration and focused action composer are completed.
 
-Select an item and choose Open controls to edit or deactivate it. The selected-item composer preserves the current search and page context. If an item has posted inventory history, its base UOM cannot be changed through normal editing; a controlled migration is required. Conversion creation uses bounded active item/UOM selectors and is disabled only when those catalogs overflow.
+Select an item and choose Open controls to edit or deactivate it. The selected-item composer preserves the current search and page context. If an item has posted inventory history, its base UOM cannot be changed through normal editing; a controlled migration is required. Conversion creation uses bounded searchable Item, From UOM, and To UOM selectors with independent paging and retry; selected values remain visible while searching. The server still rechecks scope, active records, distinct UOMs, positive factor, duplicate rules, reason, and audit requirements when saving.
 
 Categories and UOMs use the same selected-record controls. Row-level legacy controls explain that Open controls is the authoritative action location.
 

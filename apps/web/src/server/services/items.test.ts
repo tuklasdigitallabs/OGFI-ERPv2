@@ -105,7 +105,8 @@ describe("item master-data controls", () => {
     expect(page).toContain('name="uomType"');
     expect(page).toContain("listItemMasterOptionCatalog");
     expect(page).toContain("categoryOptionCatalog.hasMore || uomOptionCatalog.hasMore");
-    expect(page).toContain("itemOptionCatalog.hasMore || uomOptionCatalog.hasMore");
+    expect(page).toContain("ConversionCreateComposer");
+    expect(page).not.toContain("itemOptionCatalog.hasMore || uomOptionCatalog.hasMore");
     expect(page).toContain("masterData.categoriesPage");
     expect(page).toContain("masterData.uomsPage");
     expect(page).toContain("masterData.conversionsPage");

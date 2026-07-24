@@ -88,4 +88,5 @@
 | Base-UOM migration                  | A controlled process required to change an item’s base unit after posted inventory history; normal Item Master editing cannot rewrite that transaction basis. |
 | Catalog UOM validity                | The rule that a Purchase Request catalog item may use only its configured base, purchase, issue, or conversion UOM; the server rechecks this relationship when creating the draft. |
 | Bounded draft lookup                | A server-authorized, paginated search used during Purchase Request entry; it returns a safe page with exact totals and requires a narrower search when the result set overflows. |
+| Option catalog                      | A server-authorized, bounded list of active master-data choices with deterministic paging and selected-value retention; it never grants mutation authority. |
 | Approval Inbox unavailable           | A truthful feature-disabled state shown when normalized approval routing is not enabled. It does not mean there are zero pending approvals and does not grant an alternate approval path. |

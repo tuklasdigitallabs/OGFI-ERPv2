@@ -667,6 +667,12 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 - The create sheet now keeps Company, Brand, Location, and Requester context visible, uses 44px primary controls, groups lookup paging to active searches, and offers an explicit retry action after lookup failure. Department and cost-center values are not present in the session context and are not invented by the editor.
 - Focused Purchase Request tests (13), web typecheck, lint, and diff checks are the checkpoint evidence. Authenticated responsive-browser evidence, disposable-PostgreSQL authorization/query evidence, hosted recovery, and UAT remain open; the Purchase Request workspace is not complete.
 
+### DEC-0149 Master Data conversion-create composer — July 25, 2026
+
+- Conversion creation now uses a focused bounded composer backed by the shared server-authorized Item Master option catalog. Item, source-UOM, and target-UOM selectors each provide search, selected-ID retention, exact page counts, independent paging, loading/error/empty feedback, retry, and mobile-safe 44px controls.
+- The previous capped 100-option arrays and disabled-when-overflow behavior were removed. Conversion creation still delegates all active tenant/company, distinct-UOM, positive-factor, duplicate, reason, audit, and no-inventory-mutation rules to the server mutation.
+- Focused Item Master tests (8), web typecheck, lint, and diff checks pass. Disposable PostgreSQL isolation/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Master Data is not complete.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

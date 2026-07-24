@@ -186,6 +186,10 @@ Category, UOM, and conversion edits now use selected-record composers with
 context-preserving redirects; repeated row mutation controls are disabled with
 clear guidance.
 
+Conversion creation now uses bounded searchable Item, From UOM, and To UOM
+selectors with independent paging, selected-value retention, loading/error/
+empty states, and retry. Browser/database/hosted/UAT evidence remains open.
+
 Approval Inbox now fails closed when normalized routing is disabled: it shows an
 explicit unavailable state and no legacy unbounded queue or false zero count.
 
