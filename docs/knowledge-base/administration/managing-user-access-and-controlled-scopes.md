@@ -40,6 +40,12 @@ only a capped first-three-step preview in the list. Open View Rule for the full
 authorized routing definition; the list does not grant mutation or approval
 authority.
 
+User-detail assignment pickers are bounded searchable catalogs. Location choices
+are active records in the selected company; role choices are active tenant-global
+roles. When more than 100 options match, refine the server-side search rather
+than assuming the first page is complete. Existing assigned or requested scope
+records remain visible in history even when they are no longer selectable.
+
 `Admin` → `Core Administration` → `Users` → open a user
 
 If your account has Core Administration access but not `Administer tenant-wide roles`, Core Administration shows an explicit restricted state and loads no users, roles, scope, or audit records. The same restricted boundary applies when tenant-role authority is present but selected-company Manage scope is absent. Ask an independent administrator to grant the documented authority and selected-company scope; neither permission alone is a substitute.

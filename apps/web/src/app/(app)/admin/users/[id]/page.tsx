@@ -207,7 +207,17 @@ export default async function CoreAdminUserDetailPage({
   }
 
   const { id } = await params;
-  const user = await getCoreAdminUserDetail(session, id);
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const locationQuery = Array.isArray(resolvedSearchParams.locationQuery)
+    ? resolvedSearchParams.locationQuery[0]
+    : resolvedSearchParams.locationQuery;
+  const roleQuery = Array.isArray(resolvedSearchParams.roleQuery)
+    ? resolvedSearchParams.roleQuery[0]
+    : resolvedSearchParams.roleQuery;
+  const user = await getCoreAdminUserDetail(session, id, {
+    ...(locationQuery ? { locationQuery } : {}),
+    ...(roleQuery ? { roleQuery } : {}),
+  });
   if (!user) {
     redirect("/admin");
   }
@@ -230,7 +240,6 @@ export default async function CoreAdminUserDetailPage({
       !assignedLocationScopeIds.has(location.id) &&
       !pendingHighRiskLocationIds.has(location.id)
   );
-  const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(resolvedSearchParams);
 
   return (
@@ -438,6 +447,22 @@ export default async function CoreAdminUserDetailPage({
               </div>
               <Badge tone="info">Role unchanged</Badge>
             </div>
+            <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input
+                className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                name="locationQuery"
+                defaultValue={locationQuery ?? ""}
+                placeholder="Find an active location by name or code"
+              />
+              <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">
+                Find locations
+              </button>
+            </form>
+            {user.assignableLocationCatalogHasMore ? (
+              <p className="mt-2 text-xs text-amber-700">
+                More active locations exist. Refine the search to find a location outside this first 100-result catalog.
+              </p>
+            ) : null}
             {availableLocations.length === 0 ? (
               <p className="mt-4 text-sm text-slate-600">
                 No low-risk unassigned active locations are available for this user.
@@ -679,6 +704,22 @@ export default async function CoreAdminUserDetailPage({
               </div>
               <Badge tone="warning">Admin controlled</Badge>
             </div>
+            <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input
+                className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
+                name="roleQuery"
+                defaultValue={roleQuery ?? ""}
+                placeholder="Find an active role by name or code"
+              />
+              <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">
+                Find roles
+              </button>
+            </form>
+            {user.assignableRoleCatalogHasMore ? (
+              <p className="mt-2 text-xs text-amber-700">
+                More active roles exist. Refine the search to find a role outside this first 100-result catalog.
+              </p>
+            ) : null}
             {user.assignableRoles.length === 0 ? (
               <p className="mt-4 text-sm text-slate-600">
                 No unassigned roles are available for this user.

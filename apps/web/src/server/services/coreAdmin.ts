@@ -1931,6 +1931,7 @@ export async function createCoreAdminLocation(formData: FormData) {
 export async function getCoreAdminUserDetail(
   session: SessionContext,
   userId: string,
+  options: { locationQuery?: string; roleQuery?: string } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
@@ -2135,22 +2136,39 @@ export async function getCoreAdminUserDetail(
       visibleScopeIdsByType[assignment.scopeType as keyof typeof visibleScopeIdsByType];
     return allowedIds?.has(assignment.scopeId) ?? false;
   });
-  const assignableRoles = await prisma.role.findMany({
-    where: {
+  const roleQuery = options.roleQuery?.trim().toLowerCase() ?? "";
+  const locationQuery = options.locationQuery?.trim().toLowerCase() ?? "";
+  const assignableRoleWhere: Prisma.RoleWhereInput = {
       tenantId: session.context.tenantId,
       status: "ACTIVE",
       id: { notIn: Array.from(assignedRoleIds) },
-    },
-    include: {
+      ...(roleQuery
+        ? {
+            OR: [
+              { name: { contains: roleQuery, mode: "insensitive" as const } },
+              { code: { contains: roleQuery, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+  };
+  const [assignableRoleTotal, assignableRoles] = await Promise.all([
+    prisma.role.count({ where: assignableRoleWhere }),
+    prisma.role.findMany({
+      where: assignableRoleWhere,
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        systemRole: true,
       permissions: {
-        include: {
-          permission: true,
+          select: { permission: { select: { code: true } } },
         },
       },
-    },
-    orderBy: { name: "asc" },
-  });
-  const [highRiskScopeRequests, sensitiveRoleRequests, allActiveLocations] =
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: 100,
+    }),
+  ]);
+  const [highRiskScopeRequests, sensitiveRoleRequests] =
     await Promise.all([
       prisma.highRiskScopeRequest.findMany({
         where: {
@@ -2181,14 +2199,52 @@ export async function getCoreAdminUserDetail(
         orderBy: { createdAt: "desc" },
         take: 20,
       }),
+    ]);
+  const referencedLocationIds = Array.from(
+    new Set([
+      ...user.scopeAssignments
+        .filter((assignment) => assignment.scopeType === "LOCATION")
+        .map((assignment) => assignment.scopeId),
+      ...highRiskScopeRequests.map((request) => request.locationId),
+    ]),
+  );
+  const locationWhere: Prisma.LocationWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    status: "ACTIVE",
+    ...(locationQuery
+      ? {
+          OR: [
+            { name: { contains: locationQuery, mode: "insensitive" as const } },
+            { code: { contains: locationQuery, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+  const [activeLocationTotal, activeLocationCatalog, referencedLocations] =
+    await Promise.all([
+      prisma.location.count({ where: locationWhere }),
       prisma.location.findMany({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          status: "ACTIVE",
+        where: locationWhere,
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          locationType: true,
         },
-        orderBy: { name: "asc" },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        take: 100,
       }),
+      referencedLocationIds.length
+        ? prisma.location.findMany({
+            where: {
+              id: { in: referencedLocationIds },
+              tenantId: session.context.tenantId,
+              companyId: session.context.companyId,
+            },
+            select: { id: true, name: true, code: true, locationType: true },
+          })
+        : Promise.resolve([]),
     ]);
   const highRiskRequestUserIds = Array.from(
     new Set([
@@ -2218,7 +2274,7 @@ export async function getCoreAdminUserDetail(
     ]),
   );
   const allActiveLocationDisplay = new Map(
-    allActiveLocations.map((location) => [location.id, location]),
+    [...referencedLocations, ...activeLocationCatalog].map((location) => [location.id, location]),
   );
   const pendingSensitiveRoleIds = new Set(
     sensitiveRoleRequests
@@ -2273,7 +2329,7 @@ export async function getCoreAdminUserDetail(
           : "Broad scope requires controlled approval",
       startsAt: assignment.startsAt.toISOString(),
     })),
-    assignableLocations: allActiveLocations.map((location) => ({
+    assignableLocations: activeLocationCatalog.map((location) => ({
       id: location.id,
       name: location.name,
       code: location.code,
@@ -2321,9 +2377,6 @@ export async function getCoreAdminUserDetail(
         name: role.name,
         code: role.code,
         assignmentEligibility: roleAssignmentRiskLabel(role),
-        permissionCodes: role.permissions.map(
-          (rolePermission) => rolePermission.permission.code,
-        ),
       })),
     requestableSensitiveRoles: assignableRoles
       .filter((role) => !isDirectlyAssignableRole(role))
@@ -2333,10 +2386,9 @@ export async function getCoreAdminUserDetail(
         name: role.name,
         code: role.code,
         assignmentEligibility: sensitiveRoleRiskLabel(role),
-        permissionCodes: role.permissions.map(
-          (rolePermission) => rolePermission.permission.code,
-        ),
       })),
+    assignableLocationCatalogHasMore: activeLocationTotal > activeLocationCatalog.length,
+    assignableRoleCatalogHasMore: assignableRoleTotal > assignableRoles.length,
     sensitiveRoleRequests: sensitiveRoleRequests.map((request) => ({
       id: request.id,
       status: request.status,

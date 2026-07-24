@@ -486,6 +486,17 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - The visible registry retains exact step counts and only the first three ordered step/approver-type labels, disclosing additional steps and routing users to the independently authorized detail route. Full step payloads and mutation authority remain excluded from the registry.
 - Core Admin focused coverage passes 22/22; full web regression passes 1,298 tests with 301 skipped and one TODO; authorization-manifest tests pass 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL scope/query-plan evidence, and hosted deployment/recovery gates remain open. Administration and Phase I remain in progress.
 
+### DEC-0118 Administration user-detail option-catalog decision — July 24, 2026
+
+- Accepted separate capped catalogs for active selected-company locations and active unassigned tenant roles on user-detail assignment forms. Catalogs are capped at 100 with deterministic name/ID order and `hasMore` disclosure; referenced locations used by current assignments and controlled requests remain separately loaded for display.
+- Existing service guards and mutation-time scope/role revalidation remain authoritative. No selector row, overflow flag, or client-supplied ID grants authority. Decision record: `docs/core/00-governance/decisions/DEC-0118-ADMIN-USER-DETAIL-OPTION-CATALOGS.md`.
+
+### DEC-0118 Administration user-detail option-catalog implementation checkpoint — July 24, 2026
+
+- User-detail reads now use bounded, searchable active-location and active-role catalogs (`take: 100`, deterministic name/ID ordering) with exact `hasMore` indicators. Locations are fixed to the selected company; roles retain tenant-global semantics and no longer serialize permission-code payloads into selector options. Existing scope/request references are loaded separately for history and display.
+- The assignment UI provides server-side location/role refinement controls and explains when the first 100 results are not complete. Existing assignment and controlled-request mutation services continue to revalidate live target membership, scope, sensitive-role eligibility, MFA, segregation, and audit requirements.
+- Core Admin focused coverage passes 23/23; full web regression passes 1,299 tests with 301 skipped and one TODO; authorization-manifest tests pass 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL selector-scope/no-query evidence, and hosted deployment/recovery gates remain open. Administration and Phase I remain in progress.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

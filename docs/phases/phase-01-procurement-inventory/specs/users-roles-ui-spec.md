@@ -70,6 +70,12 @@ pagination. Rows show active state, priority, exact step count, and at most the
 first three step/approver-type labels; full routing remains on the authorized
 rule detail route.
 
+Implementation note (`DEC-0118`): User-detail role and location assignment
+pickers are bounded, searchable option catalogs. Locations are active and
+selected-company scoped; roles are active tenant-global options. Overflow is
+disclosed and requires refinement, while existing referenced scopes remain
+visible as history even when they are not selectable.
+
 Implementation note (`DEC-0116`): Departments use a selected-company server
 registry with bounded filters and paging. Rows retain read-only budget,
 budget-line, and cost-center related-record counts; employee-assignment volume

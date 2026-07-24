@@ -523,6 +523,26 @@ describe("core administration audit search wiring", () => {
     }
   });
 
+  test("user detail assignment catalogs are bounded, searchable, and do not serialize role permissions", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const detailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),
+      "utf8"
+    );
+    expect(serviceSource).toContain("assignableRoleTotal");
+    expect(serviceSource).toContain("activeLocationTotal");
+    expect(serviceSource).toContain("take: 100");
+    expect(serviceSource).toContain("assignableRoleCatalogHasMore");
+    expect(serviceSource).toContain("assignableLocationCatalogHasMore");
+    expect(serviceSource).toContain("roleQuery");
+    expect(serviceSource).toContain("locationQuery");
+    expect(detailPageSource).toContain('name="locationQuery"');
+    expect(detailPageSource).toContain('name="roleQuery"');
+    expect(detailPageSource).toContain("More active locations exist");
+    expect(detailPageSource).toContain("More active roles exist");
+    expect(serviceSource).not.toContain("permissionCodes: role.permissions.map");
+  });
+
   test("role permission configuration uses human labels, toggles, recommendations, and audit diff service", () => {
     const rolePageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"),
