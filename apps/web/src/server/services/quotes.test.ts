@@ -31,13 +31,21 @@ describe("quotation recommendation rules", () => {
       path.resolve(__dirname, "../../app/(app)/quotes/page.tsx"),
       "utf8"
     );
+    const workspaceSource = readFileSync(
+      path.resolve(__dirname, "../../components/QuoteComparisonWorkspace.tsx"),
+      "utf8"
+    );
 
     expect(source).toContain("export async function listQuoteRequestsPage");
     expect(source).toContain("purchaseRequest.count");
     expect(source).toContain("skip: (page - 1) * pageSize");
     expect(source).toContain("take: pageSize");
     expect(pageSource).toContain("listQuoteRequestsPage(session");
-    expect(pageSource).toContain("PaginationBar");
+    expect(workspaceSource).toContain("PaginationBar");
+    expect(workspaceSource).toContain("quote-comparison-workspace");
+    expect(workspaceSource).toContain("Selected location context");
+    expect(workspaceSource).toContain("quotation-recommendation-composer");
+    expect(workspaceSource).toContain("Tax/discount/freight breakdown");
   });
 
   test("recommendation submission revalidates current quotation policy", () => {

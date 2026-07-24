@@ -223,6 +223,8 @@ Once approved, available actions depend on policy:
 
 ## 7. PUR-05 and PUR-06 Quotation Comparison
 
+Current implementation uses a master-detail Quotes workspace: the approved-request queue is server-paginated, and one selected request owns the supplier comparison and recommendation composer. The surface truthfully labels recorded totals and currently unavailable commercial/attachment fields; it does not imply PO commitment. Tax, discount, freight, landed-cost calculation, and binary quote attachment controls remain deferred until their policy, schema, export, and evidence contracts are confirmed.
+
 ### Purpose
 
 Provide a controlled comparison when multiple supplier quotations are required.

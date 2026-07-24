@@ -266,6 +266,9 @@ export async function listQuoteRequests(
           uom: true
         }
       },
+      requester: {
+        select: { displayName: true }
+      },
       quotationRequests: {
         include: {
           recommendations: {
@@ -308,9 +311,13 @@ export async function listQuoteRequests(
         id: quote.id,
         quoteReference: quote.quoteReference,
         supplierName: quote.supplier.tradingName ?? quote.supplier.legalName,
+        supplierAccreditationStatus: quote.supplier.accreditationStatus,
+        supplierPaymentTerms: quote.supplier.paymentTerms,
         totalAmount: Number(quote.totalAmount),
         currencyCode: quote.currencyCode,
         quoteDate: quote.quoteDate.toISOString().slice(0, 10),
+        validityDate: quote.validityDate?.toISOString().slice(0, 10) ?? null,
+        terms: quote.terms,
         status: quote.status,
         line: quote.lines[0]
           ? {
@@ -347,6 +354,7 @@ export async function listQuoteRequests(
       publicReference: request.publicReference,
       quotationRequestId: quotationRequest?.id ?? null,
       requiredDate: request.requiredDate.toISOString().slice(0, 10),
+      requesterName: request.requester.displayName,
       line: {
         id: line?.id ?? "",
         uomId: line?.uomId ?? null,

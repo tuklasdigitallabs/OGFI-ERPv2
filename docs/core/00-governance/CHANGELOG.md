@@ -6,6 +6,11 @@
 - The Quotes workspace remains incomplete pending paginated comparison, commercial/evidence fields, idempotency, and recommendation policy parity.
 - The approved-request queue now uses server-side 25-row pagination and exact scoped counts; comparison and recommendation details remain a separate follow-up.
 
+## 2026-07-24 — Supplier Quote Comparison Workspace
+
+- Added confirmed `DEC-0104`: the Quotes register now uses a server-paginated master queue, selected-request comparison detail, and one recommendation composer instead of repeating full quote/recommendation forms for every request.
+- The comparison surface truthfully shows recorded totals, line details, availability, lead time, terms, supplier accreditation, and recommendation state. Tax/discount/freight breakdowns and binary quote attachments remain explicit controlled gaps and do not block current quote capture from being a sourcing record.
+
 ## 2026-07-24 — Receiving Create Task Mode
 
 - Added confirmed `DEC-0101`: replace the Receiving register create TaskSheet with a dedicated responsive `/receiving/new` full-page task mode while preserving the existing server action, validation, idempotency, scope authorization, audit, and draft-only semantics.
