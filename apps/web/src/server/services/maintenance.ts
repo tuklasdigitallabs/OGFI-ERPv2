@@ -16,7 +16,8 @@ import {
   compareDashboardTaskOrder,
   dashboardTaskSources,
   type DashboardTaskCursor,
-  type DashboardTaskPriority
+  type DashboardTaskPriority,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 import { recordOperationalStatusTransition } from "./operationalWorkflow";
 import {
@@ -741,19 +742,20 @@ function maintenanceTaskAfterWhere(
 /** Returns one role-pooled, currently executable completion obligation per ticket. */
 export async function listMaintenanceMyTaskPage(
   session: SessionContext,
-  input: { after?: DashboardTaskCursor; take?: number } = {}
+  input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
 ): Promise<MaintenanceMyTaskPage> {
   assertMaintenanceAccess(session);
   if (!session.permissionCodes.includes(permissions.maintenanceComplete)) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
+  if (input.filter?.status && !["OPEN", "IN_PROGRESS", "PENDING_VENDOR"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
   const take = Math.min(Math.max(input.take ?? 25, 1), 50);
   const baseWhere = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     brandId: session.context.brandId || null,
     locationId: session.context.locationId,
-    status: { in: [...completableMaintenanceStatuses] },
+    status: input.filter?.status ? input.filter.status : { in: [...completableMaintenanceStatuses] },
     completedAt: null,
     OR: [
       { priority: { in: ["MEDIUM", "LOW"] } },
@@ -774,7 +776,7 @@ export async function listMaintenanceMyTaskPage(
   } satisfies Prisma.MaintenanceTicketSelect;
   const [totalCount, ...priorityRows] = await Promise.all([
     prisma.maintenanceTicket.count({ where: baseWhere }),
-    ...maintenanceTaskPriorities.map((priority) => {
+    ...(input.filter?.priority ? [input.filter.priority] : maintenanceTaskPriorities).map((priority) => {
       const afterWhere = maintenanceTaskAfterWhere(priority, input.after);
       if (afterWhere === false) return Promise.resolve([]);
       return prisma.maintenanceTicket.findMany({

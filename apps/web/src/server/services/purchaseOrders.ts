@@ -26,7 +26,8 @@ import {
 import { reverseBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
 import {
   dashboardTaskAfterWhere,
-  type DashboardTaskCursor
+  type DashboardTaskCursor,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 
 const createPurchaseOrderSchema = z.object({
@@ -772,19 +773,24 @@ const purchaseOrderMyTaskPageSize = 25;
 /** Returns only PO actions whose existing detail controls are available to the current role. */
 export async function listPurchaseOrderMyTaskPage(
   session: SessionContext,
-  input: { after?: DashboardTaskCursor; take?: number } = {}
+  input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
 ): Promise<PurchaseOrderMyTaskPage> {
   await requirePurchaseOrderRead(session);
   const actionStatuses = [
     ...(session.permissionCodes.includes(permissions.purchaseOrderSubmit) ? ["DRAFT" as const] : []),
     ...(session.permissionCodes.includes(permissions.purchaseOrderIssue) ? ["APPROVED" as const] : [])
   ];
-  if (actionStatuses.length === 0) return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.status && !["DRAFT", "APPROVED"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
+  const filteredActionStatuses = input.filter?.status
+    ? actionStatuses.filter((status) => status === input.filter?.status)
+    : actionStatuses;
+  if (filteredActionStatuses.length === 0) return { totalCount: 0, items: [], nextCursor: null };
   const take = Math.min(Math.max(input.take ?? purchaseOrderMyTaskPageSize, 1), 50);
   const afterWhere = dashboardTaskAfterWhere("PURCHASE_ORDER", input.after);
   const scope = {
     ...purchaseOrderScope(session),
-    status: { in: actionStatuses }
+    status: { in: filteredActionStatuses }
   } satisfies Prisma.PurchaseOrderWhereInput;
   const [totalCount, rows] = await Promise.all([
     prisma.purchaseOrder.count({ where: scope }),

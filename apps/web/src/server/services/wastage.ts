@@ -31,7 +31,8 @@ import {
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import {
   dashboardTaskAfterWhere,
-  type DashboardTaskCursor
+  type DashboardTaskCursor,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 
 const wastageTypes = [
@@ -491,9 +492,11 @@ export async function listWastageMyTaskPage(
   input: {
     after?: DashboardTaskCursor;
     take?: number;
+    filter?: DashboardTaskFilter;
   } = {}
 ): Promise<WastageMyTaskPage> {
   await requireWastageRead(session);
+  if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
 
   const actionStatuses = [
     ...(session.permissionCodes.includes(permissions.wastageReview)
@@ -503,7 +506,10 @@ export async function listWastageMyTaskPage(
       ? ["APPROVED" as const]
       : [])
   ];
-  if (actionStatuses.length === 0) {
+  const filteredActionStatuses = input.filter?.status
+    ? actionStatuses.filter((status) => status === input.filter?.status)
+    : actionStatuses;
+  if (filteredActionStatuses.length === 0) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
 
@@ -512,7 +518,7 @@ export async function listWastageMyTaskPage(
 
   const where = {
     ...scopedWastageWhere(session),
-    status: { in: actionStatuses },
+    status: { in: filteredActionStatuses },
     ...(afterWhere ? { AND: [afterWhere] } : {})
   } satisfies Prisma.WastageReportWhereInput;
   const select = {
@@ -526,7 +532,7 @@ export async function listWastageMyTaskPage(
     prisma.wastageReport.count({
       where: {
         ...scopedWastageWhere(session),
-        status: { in: actionStatuses }
+        status: { in: filteredActionStatuses }
       }
     }),
     prisma.wastageReport.findMany({

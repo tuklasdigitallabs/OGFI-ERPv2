@@ -32,7 +32,8 @@ describe("My Tasks Stock Count presentation", () => {
 describe("My Tasks module filter presentation", () => {
   it("renders a working enrolled-module filter and discloses deferred filters", () => {
     expect(source).toContain('name="module"');
-    expect(source).toContain("Apply module filter");
-    expect(source).toContain("Location, status, priority, due date, and assignment filters remain server-contract work in progress");
+    expect(source).toContain("Apply filters");
+    expect(source).toContain("Module and priority filtering narrow the already authorized enrolled sources");
+    expect(source).toContain("Location, due date, and assignment filters remain server-contract work in progress");
   });
 });

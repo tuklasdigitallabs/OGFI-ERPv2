@@ -37,7 +37,8 @@ import {
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import {
   dashboardTaskAfterWhere,
-  type DashboardTaskCursor
+  type DashboardTaskCursor,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 
 const manualAdjustmentTypes = ["INCREASE", "DECREASE", "OPENING_BALANCE"] as const;
@@ -298,12 +299,15 @@ export async function listStockAdjustmentMyTaskPage(
   input: {
     after?: DashboardTaskCursor;
     take?: number;
+    filter?: DashboardTaskFilter;
   } = {}
 ): Promise<StockAdjustmentMyTaskPage> {
   await requireStockAdjustmentRead(session);
   if (!session.permissionCodes.includes(permissions.stockAdjustmentPost)) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
+  if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.status && input.filter.status !== "APPROVED") return { totalCount: 0, items: [], nextCursor: null };
 
   const take = Math.min(
     Math.max(input.take ?? stockAdjustmentMyTaskPageSize, 1),

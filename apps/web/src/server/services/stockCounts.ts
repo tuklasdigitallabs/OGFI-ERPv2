@@ -17,7 +17,8 @@ import { dateOnlyInTimeZone } from "./projectDates";
 import {
   compareDashboardTaskOrder,
   dashboardTaskAfterWhere,
-  type DashboardTaskCursor
+  type DashboardTaskCursor,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 
 const countTypes = ["FULL", "CYCLE", "SPOT", "HIGH_VALUE", "OPENING"] as const;
@@ -563,11 +564,15 @@ function stockCountTaskPredicates(
 /** Returns one assigned, first-pass Stock Count obligation per session. */
 export async function listStockCountMyTaskPage(
   session: SessionContext,
-  input: { after?: DashboardTaskCursor; take?: number } = {}
+  input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
 ): Promise<StockCountMyTaskPage> {
+  if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.status && !["DRAFT", "IN_PROGRESS"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
   const today = new Date(`${dateOnlyInTimeZone(new Date())}T00:00:00.000Z`);
   const eligibleBefore = new Date(today.getTime() + 86_400_000);
-  const predicates = stockCountTaskPredicates(session, eligibleBefore);
+  const predicates = stockCountTaskPredicates(session, eligibleBefore).filter(({ where }) =>
+    !input.filter?.status || where.status === input.filter.status
+  );
   if (predicates.length === 0) {
     return { totalCount: 0, items: [], nextCursor: null };
   }

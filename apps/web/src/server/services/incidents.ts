@@ -22,7 +22,8 @@ import {
   compareDashboardTaskOrder,
   dashboardTaskSources,
   type DashboardTaskCursor,
-  type DashboardTaskPriority
+  type DashboardTaskPriority,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 
 type OperationalIncidentWithLocation = Prisma.OperationalIncidentGetPayload<{
@@ -728,19 +729,20 @@ function incidentTaskAfterWhere(
 /** Returns one role-pooled, currently executable resolution obligation per incident. */
 export async function listIncidentMyTaskPage(
   session: SessionContext,
-  input: { after?: DashboardTaskCursor; take?: number } = {}
+  input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
 ): Promise<IncidentMyTaskPage> {
   assertIncidentAccess(session);
   if (!session.permissionCodes.includes(permissions.incidentResolve)) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
+  if (input.filter?.status && !["OPEN", "IN_PROGRESS", "PENDING_REVIEW"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
   const take = Math.min(Math.max(input.take ?? 25, 1), 50);
   const baseWhere = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     brandId: session.context.brandId || null,
     locationId: session.context.locationId,
-    status: { in: [...resolvableIncidentStatuses] },
+    status: input.filter?.status ? input.filter.status : { in: [...resolvableIncidentStatuses] },
     resolvedAt: null,
     OR: [
       { severity: { in: ["MEDIUM", "LOW"] } },
@@ -761,7 +763,7 @@ export async function listIncidentMyTaskPage(
   } satisfies Prisma.OperationalIncidentSelect;
   const [totalCount, ...severityRows] = await Promise.all([
     prisma.operationalIncident.count({ where: baseWhere }),
-    ...incidentTaskPriorities.map((severity) => {
+    ...(input.filter?.priority ? [input.filter.priority] : incidentTaskPriorities).map((severity) => {
       const afterWhere = incidentTaskAfterWhere(severity, input.after);
       if (afterWhere === false) return Promise.resolve([]);
       return prisma.operationalIncident.findMany({

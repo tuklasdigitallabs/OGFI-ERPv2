@@ -11,7 +11,8 @@ import {
 import { classifyPurchaseOrderDeliveryAging } from "./purchaseOrders";
 import {
   dashboardTaskAfterWhere,
-  type DashboardTaskCursor
+  type DashboardTaskCursor,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import {
@@ -274,13 +275,15 @@ export type ReceivingMyTaskPage = {
  */
 export async function listReceivingMyTaskPage(
   session: SessionContext,
-  input: { after?: DashboardTaskCursor; take?: number } = {}
+  input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
 ): Promise<ReceivingMyTaskPage> {
   await requireReceivingRead(session);
 
   if (!session.permissionCodes.includes(permissions.receivingPost)) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
+  if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.status && input.filter.status !== "DRAFT") return { totalCount: 0, items: [], nextCursor: null };
 
   const take = Math.min(Math.max(input.take ?? receivingMyTaskPageSize, 1), 50);
   const afterWhere = dashboardTaskAfterWhere("RECEIVING", input.after);

@@ -23,6 +23,30 @@ export type DashboardTaskSource = (typeof dashboardTaskSources)[number];
 export const dashboardTaskPriorities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 export type DashboardTaskPriority = (typeof dashboardTaskPriorities)[number];
 
+/**
+ * Source-qualified status catalog for the currently enrolled actionable
+ * obligations. These are not a cross-module lifecycle; each source retains
+ * its own status semantics and action predicate.
+ */
+export const dashboardTaskStatusCatalog: Record<DashboardTaskSource, readonly string[]> = {
+  PURCHASE_REQUEST: ["DRAFT"],
+  PURCHASE_ORDER: ["DRAFT", "APPROVED"],
+  TRANSFER: ["REQUESTED", "DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"],
+  WASTAGE: ["SUBMITTED", "APPROVED"],
+  STOCK_ADJUSTMENT: ["APPROVED"],
+  RECEIVING: ["DRAFT"],
+  BRANCH_OPERATION: ["SUBMITTED", "MANAGER_REVIEW", "RETURNED"],
+  FOOD_SAFETY: ["SUBMITTED", "EXCEPTION_REVIEW", "RETURNED"],
+  INCIDENT: ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"],
+  MAINTENANCE: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"],
+  STOCK_COUNT: ["DRAFT", "IN_PROGRESS"]
+};
+
+export type DashboardTaskFilter = {
+  priority?: DashboardTaskPriority;
+  status?: string;
+};
+
 export type DashboardTaskCursor = {
   priority?: DashboardTaskPriority;
   dueAt?: string | null;

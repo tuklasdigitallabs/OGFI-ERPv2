@@ -13,7 +13,7 @@
 
 ## Decision
 
-My Tasks filters may be implemented only as server-owned, source-predicate filters: enrolled module, canonical priority, source-native status, the already-selected location, and native `dueAt` where a source supplies it. `Assigned by` and arbitrary multi-location filtering are deferred until their authority and data semantics are explicitly defined.
+My Tasks filters may be implemented only as server-owned, source-predicate filters: enrolled module, canonical priority, source-native status, the already-selected location, and native `dueAt` where a source supplies it. Enrolled module, canonical priority, and source-qualified status are now implemented across all enrolled adapters with count/page predicate parity. `Assigned by`, arbitrary multi-location filtering, and native due-date filtering remain deferred until their authority and data semantics are explicitly defined.
 
 The current queue remains unfiltered until every selected adapter accepts the same filter contract for count and page predicates. UI-only or post-merge filtering is prohibited.
 
@@ -62,10 +62,10 @@ The dashboard specification requires priority, module, location, due-date, assig
 
 ## Implementation and documentation impact
 
-- Code / architecture: The first safe slice exposes only an enrolled-module filter, which omits unselected adapters before any reads. Future priority/status/native-due adapter changes must accept the full contract above and bump `myTasksRegistryVersion`.
+- Code / architecture: The current slice exposes enrolled-module, canonical priority, and source-qualified status filters. Each enrolled adapter intersects the filter with its existing action predicate for both count and page reads; future native due-date changes must accept the contract above and bump `myTasksRegistryVersion`.
 - Data / schema: No schema change; no actor identity is added for deferred `assignedBy`.
 - Workflow / permissions: Role-pooled and personal obligations retain their existing semantics.
-- UI / mobile: The My Tasks workspace exposes a working enrolled-module filter and clearly labels priority, status, due-date, assignment, and location filtering as pending server contracts.
+- UI / mobile: The My Tasks workspace exposes working module, priority, and source-qualified status filters and clearly labels due-date, assignment, and arbitrary-location filtering as pending server contracts.
 - Knowledge base / training: Explain that the current queue is paginated but not yet a filtered enterprise task list.
 - Tests / UAT: Use the matrix above before exposing filters.
 

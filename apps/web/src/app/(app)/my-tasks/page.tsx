@@ -4,6 +4,7 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { getSessionContext } from "@/server/services/context";
 import { getMyTasksPage, type MyTasksPage } from "@/server/services/myTasks";
+import { dashboardTaskPriorities, dashboardTaskStatusCatalog } from "@/server/services/dashboardTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,11 @@ function getSearchParam(
   return Array.isArray(value) ? value[0] : value;
 }
 
-function taskHref(cursor: string, module?: string) {
+function taskHref(cursor: string, module?: string, priority?: string, status?: string) {
   const params = new URLSearchParams({ cursor });
   if (module) params.set("module", module);
+  if (priority) params.set("priority", priority);
+  if (status) params.set("status", status);
   return `/my-tasks?${params.toString()}`;
 }
 
@@ -33,12 +36,16 @@ export default async function MyTasksPage({
   const params = searchParams ? await searchParams : {};
   const cursor = getSearchParam(params, "cursor");
   const module = getSearchParam(params, "module");
+  const priority = getSearchParam(params, "priority");
+  const status = getSearchParam(params, "status");
   const cursorReset = getSearchParam(params, "cursorReset") === "1";
   let page: MyTasksPage;
   try {
     page = await getMyTasksPage(session, {
       ...(cursor ? { cursor } : {}),
-      ...(module ? { module } : {})
+      ...(module ? { module } : {}),
+      ...(priority ? { priority } : {}),
+      ...(status ? { status } : {})
     });
   } catch (error) {
     if (error instanceof Error && error.message === "MY_TASK_CURSOR_INVALID") {
@@ -125,13 +132,27 @@ export default async function MyTasksPage({
                 ))}
               </select>
             </div>
-            <ButtonLink href="/my-tasks" tone="secondary">Clear module filter</ButtonLink>
-            <button type="submit" className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-bold text-white hover:bg-blue-800">
-              Apply module filter
-            </button>
+            <div className="min-w-0">
+              <label htmlFor="my-tasks-priority" className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priority</label>
+              <select id="my-tasks-priority" name="priority" defaultValue={priority ?? ""} className="mt-1 block min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 sm:w-48">
+                <option value="">All priorities</option>
+                {dashboardTaskPriorities.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </div>
+            <div className="min-w-0">
+              <label htmlFor="my-tasks-status" className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</label>
+              <select id="my-tasks-status" name="status" defaultValue={status ?? ""} disabled={!module} className="mt-1 block min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 sm:w-52">
+                <option value="">{module ? "All source statuses" : "Select a module first"}</option>
+                {module && dashboardTaskStatusCatalog[module as keyof typeof dashboardTaskStatusCatalog]?.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <ButtonLink href="/my-tasks" tone="secondary">Clear filters</ButtonLink>
+              <button type="submit" className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-bold text-white hover:bg-blue-800">Apply filters</button>
+            </div>
           </form>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            Module filtering narrows the already authorized enrolled sources. Location, status, priority, due date, and assignment filters remain server-contract work in progress.
+            Module and priority filtering narrow the already authorized enrolled sources. Status values are source-qualified and require a selected module. Location, due date, and assignment filters remain server-contract work in progress.
           </p>
         </Panel>
 
@@ -173,7 +194,7 @@ export default async function MyTasksPage({
 
       {page.nextCursor ? (
         <div className="mt-6 flex justify-end">
-          <ButtonLink href={taskHref(page.nextCursor, module)} tone="secondary">Load next actions</ButtonLink>
+          <ButtonLink href={taskHref(page.nextCursor, module, priority, status)} tone="secondary">Load next actions</ButtonLink>
         </div>
       ) : null}
     </AppShell>

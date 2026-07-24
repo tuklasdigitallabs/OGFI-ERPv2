@@ -15,8 +15,10 @@ import {
 import type { SessionContext } from "./context";
 import {
   compareDashboardTaskOrder,
+  dashboardTaskStatusCatalog,
   dashboardTaskPriorities,
   dashboardTaskSources,
+  type DashboardTaskFilter,
   type DashboardTaskCursor,
   type DashboardTaskSource
 } from "./dashboardTasks";
@@ -35,7 +37,7 @@ import { listStockCountMyTaskPage } from "./stockCounts";
 const myTasksCursorDomain = "my-tasks-v2";
 // Bump whenever an enrolled source predicate, ordering contract, or adapter
 // projection changes. Signed cursors must never outlive that contract.
-export const myTasksRegistryVersion = "my-tasks-registry-v3";
+export const myTasksRegistryVersion = "my-tasks-registry-v4";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
 const defaultPageSize = 20;
 const maxPageSize = 25;
@@ -68,7 +70,7 @@ export type MyTasksPage = {
   unavailableSources: Array<{ type: DashboardTaskSource; label: string }>;
 };
 
-function taskScopeHash(session: SessionContext, module?: DashboardTaskSource) {
+function taskScopeHash(session: SessionContext, module?: DashboardTaskSource, filter?: DashboardTaskFilter) {
   const values = [
     myTasksRegistryVersion,
     session.user.id,
@@ -78,7 +80,9 @@ function taskScopeHash(session: SessionContext, module?: DashboardTaskSource) {
     session.context.locationId,
     ...[...session.permissionCodes].sort(),
     ...dashboardTaskSources,
-    module ?? ""
+    module ?? "",
+    filter?.priority ?? "",
+    filter?.status ?? ""
   ];
   return createHash("sha256").update(values.join("\u0000")).digest("base64url");
 }
@@ -106,11 +110,12 @@ function invalidCursor(): never {
 export function encodeMyTasksCursor(
   session: SessionContext,
   anchor: DashboardTaskCursor,
-  module?: DashboardTaskSource
+  module?: DashboardTaskSource,
+  filter?: DashboardTaskFilter
 ) {
   const payload: MyTasksCursorPayload = {
     version: 2,
-    scopeHash: taskScopeHash(session, module),
+    scopeHash: taskScopeHash(session, module, filter),
     issuedAt: Date.now(),
     anchor
   };
@@ -121,7 +126,8 @@ export function encodeMyTasksCursor(
 export function decodeMyTasksCursor(
   session: SessionContext,
   cursor: string,
-  module?: DashboardTaskSource
+  module?: DashboardTaskSource,
+  filter?: DashboardTaskFilter
 ) {
   const [value, signature, ...extra] = cursor.split(".");
   if (!value || !signature || extra.length > 0) {
@@ -140,7 +146,7 @@ export function decodeMyTasksCursor(
   const now = Date.now();
   if (
     payload.version !== 2 ||
-    payload.scopeHash !== taskScopeHash(session, module) ||
+    payload.scopeHash !== taskScopeHash(session, module, filter) ||
     !Number.isInteger(payload.issuedAt) ||
     payload.issuedAt > now + 60_000 ||
     now - payload.issuedAt > myTasksCursorTtlMs ||
@@ -161,7 +167,7 @@ function normalizedPageSize(pageSize: number | undefined) {
 type EnrolledSource = {
   type: DashboardTaskSource;
   label: string;
-  read: (after: DashboardTaskCursor | undefined, take: number) => Promise<{
+  read: (after: DashboardTaskCursor | undefined, take: number, filter: DashboardTaskFilter) => Promise<{
     totalCount: number;
     nextCursor: DashboardTaskCursor | null;
     items: MyTask[];
@@ -174,9 +180,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "PURCHASE_REQUEST",
       label: "Purchase requests",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listPurchaseRequestMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -198,8 +205,8 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "PURCHASE_ORDER",
       label: "Purchase orders",
-      read: async (after, take) => {
-        const page = await listPurchaseOrderMyTaskPage(session, { take, ...(after ? { after } : {}) });
+      read: async (after, take, filter) => {
+        const page = await listPurchaseOrderMyTaskPage(session, { take, filter, ...(after ? { after } : {}) });
         return {
           ...page,
           items: page.items.map((item) => ({
@@ -219,9 +226,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "TRANSFER",
       label: "Transfers",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listTransferMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -243,9 +251,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "WASTAGE",
       label: "Wastage",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listWastageMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -267,9 +276,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "STOCK_ADJUSTMENT",
       label: "Stock adjustments",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listStockAdjustmentMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -292,9 +302,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "RECEIVING",
       label: "Receiving",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listReceivingMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -319,9 +330,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "BRANCH_OPERATION",
       label: "Branch operations",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listBranchOperationMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -346,9 +358,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "FOOD_SAFETY",
       label: "Food safety",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listFoodSafetyMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -370,9 +383,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "INCIDENT",
       label: "Incidents",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listIncidentMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -393,9 +407,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "MAINTENANCE",
       label: "Maintenance",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listMaintenanceMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -418,9 +433,10 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
     sources.push({
       type: "STOCK_COUNT",
       label: "Stock counts",
-      read: async (after, take) => {
+      read: async (after, take, filter) => {
         const page = await listStockCountMyTaskPage(session, {
           take,
+          filter,
           ...(after ? { after } : {})
         });
         return {
@@ -448,21 +464,37 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
  */
 export async function getMyTasksPage(
   session: SessionContext,
-  input: { cursor?: string; pageSize?: number; module?: string } = {}
+  input: { cursor?: string; pageSize?: number; module?: string; priority?: string; status?: string } = {}
 ): Promise<MyTasksPage> {
   const module = input.module
     ? dashboardTaskSources.includes(input.module as DashboardTaskSource)
       ? (input.module as DashboardTaskSource)
       : (() => { throw new Error("MY_TASK_FILTER_INVALID"); })()
     : undefined;
-  const after = input.cursor ? decodeMyTasksCursor(session, input.cursor, module) : undefined;
+  const priority = input.priority
+    ? dashboardTaskPriorities.includes(input.priority as (typeof dashboardTaskPriorities)[number])
+      ? (input.priority as (typeof dashboardTaskPriorities)[number])
+      : (() => { throw new Error("MY_TASK_FILTER_INVALID"); })()
+    : undefined;
+  const status = input.status?.trim() || undefined;
+  if (status && !module) {
+    throw new Error("MY_TASK_FILTER_INVALID");
+  }
+  if (status && module && !dashboardTaskStatusCatalog[module].includes(status)) {
+    throw new Error("MY_TASK_FILTER_INVALID");
+  }
+  const filter: DashboardTaskFilter = {
+    ...(priority ? { priority } : {}),
+    ...(status ? { status } : {})
+  };
+  const after = input.cursor ? decodeMyTasksCursor(session, input.cursor, module, filter) : undefined;
   const take = normalizedPageSize(input.pageSize);
   const sources = enrolledSources(session).filter((source) => !module || source.type === module);
   if (module && sources.length === 0) {
     throw new Error("MY_TASK_FILTER_INVALID");
   }
   const reads = await Promise.allSettled(
-    sources.map(async (source) => ({ source, page: await source.read(after, take) }))
+    sources.map(async (source) => ({ source, page: await source.read(after, take, filter) }))
   );
   const successful = reads.filter(
     (result): result is PromiseFulfilledResult<{ source: EnrolledSource; page: Awaited<ReturnType<EnrolledSource["read"]>> }> =>
@@ -488,7 +520,7 @@ export async function getMyTasksPage(
     // page one after availability is restored instead.
     nextCursor:
       unavailableSources.length === 0 && last && hasMore
-        ? encodeMyTasksCursor(session, last, module)
+        ? encodeMyTasksCursor(session, last, module, filter)
         : null,
     totalCount:
       unavailableSources.length === 0

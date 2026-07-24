@@ -133,7 +133,7 @@ describe("My Tasks queue", () => {
   });
 
   test("binds a cursor to its current user scope and rejects tampering", () => {
-    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v3");
+    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v4");
     const cursor = encodeMyTasksCursor(session as never, {
       priority: "HIGH",
       dueAt: null,
@@ -182,6 +182,21 @@ describe("My Tasks queue", () => {
         module: "TRANSFER"
       })
     ).rejects.toThrow("MY_TASK_FILTER_INVALID");
+  });
+
+  test("propagates canonical priority and source-qualified status to the selected adapter", async () => {
+    await getMyTasksPage(
+      { ...session, permissionCodes: [permissions.wastageReview] } as never,
+      { module: "WASTAGE", priority: "HIGH", status: "SUBMITTED" }
+    );
+    expect(mocks.wastage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ filter: { priority: "HIGH", status: "SUBMITTED" } })
+    );
+  });
+
+  test("rejects status without a selected module", async () => {
+    await expect(getMyTasksPage(session as never, { status: "DRAFT" })).rejects.toThrow("MY_TASK_FILTER_INVALID");
   });
 
   test("withholds a total instead of treating a failed source as empty", async () => {

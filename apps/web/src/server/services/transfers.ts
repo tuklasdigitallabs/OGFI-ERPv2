@@ -11,7 +11,8 @@ import {
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import {
   dashboardTaskAfterWhere,
-  type DashboardTaskCursor
+  type DashboardTaskCursor,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 
 const optionalDateSchema = z
@@ -400,9 +401,12 @@ export async function listTransferMyTaskPage(
   input: {
     after?: DashboardTaskCursor;
     take?: number;
+    filter?: DashboardTaskFilter;
   } = {}
 ): Promise<TransferMyTaskPage> {
   await requireTransferRead(session);
+  if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.status && !["REQUESTED", "DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
 
   const actionPredicates: Prisma.InventoryTransferWhereInput[] = [
     ...(session.permissionCodes.includes(permissions.transferDispatch)
@@ -423,7 +427,14 @@ export async function listTransferMyTaskPage(
         ]
       : [])
   ];
-  if (actionPredicates.length === 0) {
+  const filteredActionPredicates = input.filter?.status
+    ? actionPredicates.filter((predicate) =>
+        input.filter?.status === "REQUESTED"
+          ? "sourceLocationId" in predicate
+          : "destinationLocationId" in predicate
+      )
+    : actionPredicates;
+  if (filteredActionPredicates.length === 0) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
 
@@ -432,8 +443,9 @@ export async function listTransferMyTaskPage(
   const where = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
+    ...(input.filter?.status ? { status: input.filter.status } : {}),
     AND: [
-      { OR: actionPredicates },
+      { OR: filteredActionPredicates },
       ...(afterWhere ? [afterWhere] : [])
     ]
   } satisfies Prisma.InventoryTransferWhereInput;
@@ -450,7 +462,8 @@ export async function listTransferMyTaskPage(
   const countWhere = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    OR: actionPredicates
+    ...(input.filter?.status ? { status: input.filter.status } : {}),
+    OR: filteredActionPredicates
   } satisfies Prisma.InventoryTransferWhereInput;
   const [totalCount, rows] = await Promise.all([
     prisma.inventoryTransfer.count({ where: countWhere }),

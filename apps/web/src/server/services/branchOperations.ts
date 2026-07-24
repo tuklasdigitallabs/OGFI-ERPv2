@@ -15,7 +15,8 @@ import { recordOperationalStatusTransition } from "./operationalWorkflow";
 import { parseDateOnlyUtc } from "./projectDates";
 import {
   dashboardTaskAfterWhere,
-  type DashboardTaskCursor
+  type DashboardTaskCursor,
+  type DashboardTaskFilter
 } from "./dashboardTasks";
 
 type BranchOperationalChecklistWithLines =
@@ -753,7 +754,7 @@ export async function getBranchOperationsDashboardRead(
  */
 export async function listBranchOperationMyTaskPage(
   session: SessionContext,
-  input: { after?: DashboardTaskCursor; take?: number } = {}
+  input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
 ): Promise<BranchOperationMyTaskPage> {
   assertBranchOperationsAccess(session);
 
@@ -773,7 +774,12 @@ export async function listBranchOperationMyTaskPage(
       ? [{ status: "RETURNED" } satisfies Prisma.BranchOperationalChecklistWhereInput]
       : [])
   ];
-  if (actionPredicates.length === 0) {
+  if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.status && !["SUBMITTED", "MANAGER_REVIEW", "RETURNED"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
+  const filteredActionPredicates = input.filter?.status
+    ? actionPredicates.filter((_predicate, index) => input.filter?.status === "RETURNED" ? index === 1 : index === 0)
+    : actionPredicates;
+  if (filteredActionPredicates.length === 0) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
 
@@ -784,7 +790,8 @@ export async function listBranchOperationMyTaskPage(
     companyId: session.context.companyId,
     ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
     locationId: session.context.locationId,
-    OR: actionPredicates
+    ...(input.filter?.status ? { status: input.filter.status } : {}),
+    OR: filteredActionPredicates
   } satisfies Prisma.BranchOperationalChecklistWhereInput;
   const [totalCount, rows] = await Promise.all([
     prisma.branchOperationalChecklist.count({ where: baseWhere }),
