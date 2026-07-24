@@ -764,6 +764,10 @@ export async function listStockCounts(session: SessionContext) {
     orderBy: [{ createdAt: "desc" }]
   });
 
+  for (const count of counts) {
+    await assertStockCountAttemptLineParity(session, count.id);
+  }
+
   return counts.map((count) => mapStockCount(session, count, cadencePolicy));
 }
 
@@ -822,6 +826,9 @@ export async function listStockCountPage(
     skip: (page - 1) * pageSize,
     take: pageSize
   });
+  for (const count of counts) {
+    await assertStockCountAttemptLineParity(session, count.id);
+  }
   return { items: counts.map((count) => mapStockCount(session, count, cadencePolicy)), totalItems, page, pageSize, totalPages };
 }
 
