@@ -19,6 +19,12 @@
 | MDM-07 | Units & Conversions | Central UOM definitions and item conversions |
 | MDM-08 | Par Levels / Reorder Settings | Location-item settings |
 | MDM-09 | Reason Codes | Wastage, adjustment, discrepancy, cancellation, emergency reasons |
+
+Implementation note (`DEC-0124`): the Administration Reason Codes register is
+server-paginated and selected-company scoped, with URL-backed query/workflow/status
+filters, exact totals, deterministic ordering, and a selected-code read-only detail
+surface. Existing create and ACTIVE-to-INACTIVE deactivation are retained; inactive
+codes remain for history and are not offered in new-entry dropdowns.
 | MDM-10 | Import / Change Request Review | Controlled bulk or change management |
 
 ## 2. Master Data Home

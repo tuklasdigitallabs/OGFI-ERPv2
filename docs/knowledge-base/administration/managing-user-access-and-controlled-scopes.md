@@ -169,6 +169,11 @@ configured synchronous export window. Requests that exceed the row or date limit
 are rejected without a partial file; the on-screen Audit Trail remains available
 for narrower review.
 
+Reason Codes maintenance is also company-scoped and paginated. Use the workflow,
+status, and search filters to find a code, open its detail summary, and deactivate
+an active code with a reason. Deactivation preserves historical references; there
+is no reactivation or hard-delete action in this workflow.
+
 - The target user, location, and access level match the actual operational need.
 - The evidence reference is traceable outside the ERP when needed.
 - Pending requests do not duplicate an existing active assignment.

@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AlertTriangle, FileCheck2, Search, SlidersHorizontal } from "lucide-react";
-import { Badge, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -14,7 +14,8 @@ import { getSessionContext } from "@/server/services/context";
 import {
   createOperationalReasonCode,
   deactivateOperationalReasonCode,
-  listOperationalReasonCodes,
+  getOperationalReasonCodeDetail,
+  listOperationalReasonCodePage,
   operationalReasonWorkflows
 } from "@/server/services/operationalReasonCodes";
 
@@ -89,34 +90,51 @@ export default async function AdminReasonCodesPage({
 
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
-  const reasonCodes = await listOperationalReasonCodes(session);
-  const activeCount = reasonCodes.filter((reason) => reason.status === "ACTIVE").length;
-  const evidenceCount = reasonCodes.filter((reason) => reason.requiresEvidence).length;
   const selectedWorkflow = normalizeReasonWorkflow(getSearchParam(params, "workflow"));
-  const selectedStatus = getSearchParam(params, "status") ?? "all";
-  const query = (getSearchParam(params, "q") ?? "").trim().toLowerCase();
-  const filteredReasonCodes = reasonCodes.filter((reason) => {
-    const workflowMatches =
-      selectedWorkflow === "all" || reason.workflow === selectedWorkflow;
-    const statusMatches = selectedStatus === "all" || reason.status === selectedStatus;
-    const queryMatches =
-      !query ||
-      [reason.code, reason.label, reason.appliesTo, reason.notes, reason.workflow]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(query));
-
-    return workflowMatches && statusMatches && queryMatches;
+  const selectedStatusValue = getSearchParam(params, "status");
+  const selectedStatus = selectedStatusValue === "ACTIVE" || selectedStatusValue === "INACTIVE"
+    ? selectedStatusValue
+    : undefined;
+  const pageValue = Number.parseInt(getSearchParam(params, "page") ?? "1", 10);
+  const pageSizeValue = Number.parseInt(getSearchParam(params, "pageSize") ?? "25", 10);
+  const boundedPage = Number.isFinite(pageValue) ? Math.min(Math.max(pageValue, 1), 10_000) : 1;
+  const boundedPageSize = Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 25;
+  const reasonCodePage = await listOperationalReasonCodePage(session, {
+    page: boundedPage,
+    pageSize: boundedPageSize,
+    query: getSearchParam(params, "q") ?? "",
+    ...(selectedWorkflow !== "all" ? { workflow: selectedWorkflow } : {}),
+    ...(selectedStatus ? { status: selectedStatus } : {}),
   });
+  const selectedReasonCodeId = getSearchParam(params, "reasonCodeId");
+  const selectedReasonCodeIdIsValid = Boolean(
+    selectedReasonCodeId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(selectedReasonCodeId),
+  );
+  const reasonCodeContext = new URLSearchParams({
+    workflow: selectedWorkflow,
+    page: String(reasonCodePage.page),
+    pageSize: String(reasonCodePage.pageSize),
+  });
+  const currentQuery = getSearchParam(params, "q");
+  if (currentQuery) reasonCodeContext.set("q", currentQuery);
+  if (selectedStatus) reasonCodeContext.set("status", selectedStatus);
+  const selectedReasonCode = selectedReasonCodeIdIsValid
+    ? await getOperationalReasonCodeDetail(session, selectedReasonCodeId!)
+    : null;
+  const reasonCodes = reasonCodePage.items;
+  const activeCount = reasonCodePage.activeItems;
+  const evidenceCount = reasonCodePage.evidenceItems;
+  const totalConfigured = Object.values(reasonCodePage.workflowCounts).reduce((sum, count) => sum + count, 0);
   const workflowTabs = [
     {
       id: "all",
       label: "All workflows",
-      count: reasonCodes.length
+      count: totalConfigured
     },
     ...operationalReasonWorkflows.map((workflow) => ({
       id: workflow,
       label: workflowLabels[workflow],
-      count: reasonCodes.filter((reason) => reason.workflow === workflow).length
+      count: reasonCodePage.workflowCounts[workflow] ?? 0
     }))
   ];
 
@@ -167,24 +185,22 @@ export default async function AdminReasonCodesPage({
 
       <div className="mb-5 grid gap-4 md:grid-cols-4">
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Total codes</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{reasonCodes.length}</p>
+          <p className="text-sm font-semibold text-slate-500">Matching codes</p>
+            <p className="mt-2 text-3xl font-bold text-slate-950">{reasonCodePage.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Active options</p>
+          <p className="text-sm font-semibold text-slate-500">Active matches</p>
           <p className="mt-2 text-3xl font-bold text-emerald-700">{activeCount}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Evidence required</p>
+          <p className="text-sm font-semibold text-slate-500">Evidence-required matches</p>
           <p className="mt-2 text-3xl font-bold text-amber-700">{evidenceCount}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Workflows covered</p>
           <p className="mt-2 text-3xl font-bold text-slate-950">
             {
-              operationalReasonWorkflows.filter((workflow) =>
-                reasonCodes.some((reason) => reason.workflow === workflow)
-              ).length
+              operationalReasonWorkflows.filter((workflow) => (reasonCodePage.workflowCounts[workflow] ?? 0) > 0).length
             }
           </p>
         </Panel>
@@ -306,6 +322,37 @@ export default async function AdminReasonCodesPage({
         </div>
       </section>
 
+      {selectedReasonCode ? (
+        <section className="ogfi-detail-card mb-5 rounded-2xl border border-blue-200 bg-blue-50/40 p-5" aria-label="Selected reason code detail">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <Badge tone={selectedReasonCode.status === "ACTIVE" ? "success" : "neutral"}>{selectedReasonCode.status}</Badge>
+              <h2 className="mt-2 text-xl font-bold text-slate-950">{selectedReasonCode.label}</h2>
+              <p className="text-sm text-slate-600">{workflowLabels[selectedReasonCode.workflow]} / {selectedReasonCode.code}</p>
+            </div>
+            <ButtonLink href={`/admin/reason-codes?${reasonCodeContext.toString()}`} tone="ghost" className="min-h-10">Close detail</ButtonLink>
+          </div>
+          <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div><p className="text-xs font-semibold uppercase text-slate-500">Applies to</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.appliesTo ?? "All types"}</p></div>
+            <div><p className="text-xs font-semibold uppercase text-slate-500">Evidence</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.requiresEvidence ? "Required" : "Optional"}</p></div>
+            <div><p className="text-xs font-semibold uppercase text-slate-500">Sort order</p><p className="mt-1 font-semibold text-slate-900">{selectedReasonCode.sortOrder}</p></div>
+            <div><p className="text-xs font-semibold uppercase text-slate-500">History</p><p className="mt-1 font-semibold text-slate-900">Inactive codes remain for historical records.</p></div>
+          </div>
+          {selectedReasonCode.notes ? <p className="mt-4 text-sm text-slate-700">{selectedReasonCode.notes}</p> : null}
+          {selectedReasonCode.status === "ACTIVE" ? (
+            <EntryModal title={`Deactivate ${selectedReasonCode.code}`} triggerLabel="Deactivate" triggerClassName="mt-4 bg-rose-600 hover:bg-rose-700">
+              <form action={deactivateReasonCodeAction} className="ogfi-form-shell mt-4 grid gap-4">
+                <input name="id" type="hidden" value={selectedReasonCode.id} />
+                <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reason" required /></label>
+                <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-rose-600 px-4 text-sm font-semibold text-white">Deactivate Reason Code</button>
+              </form>
+            </EntryModal>
+          ) : null}
+        </section>
+      ) : selectedReasonCodeId ? (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">That reason code is not available in the selected company.</div>
+      ) : null}
+
       <form className="ogfi-data-surface mb-5 grid gap-3 p-4 lg:grid-cols-[1fr_14rem_auto_auto] lg:items-end">
         <input name="workflow" type="hidden" value={selectedWorkflow} />
         <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -324,7 +371,7 @@ export default async function AdminReasonCodesPage({
           Status
           <select
             className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
-            defaultValue={selectedStatus}
+            defaultValue={selectedStatus ?? "all"}
             name="status"
           >
             <option value="all">All statuses</option>
@@ -349,14 +396,14 @@ export default async function AdminReasonCodesPage({
           <div>
             <h2 className="text-lg font-bold text-slate-950">Reason Code Register</h2>
             <p className="text-sm text-slate-500">
-              Showing {filteredReasonCodes.length} of {reasonCodes.length} reason codes.
+              Showing {reasonCodes.length} of {reasonCodePage.totalItems} reason codes.
             </p>
           </div>
           <p className="text-sm text-slate-500">
             Active codes appear as dropdown options in controlled workflows.
           </p>
         </div>
-        {filteredReasonCodes.length === 0 ? (
+        {reasonCodes.length === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">No reason codes found</p>
             <p className="mt-1 text-sm text-slate-600">
@@ -374,7 +421,7 @@ export default async function AdminReasonCodesPage({
               <span className="text-right">Action</span>
             </div>
             <div className="divide-y divide-slate-100">
-            {filteredReasonCodes.map((reason) => (
+            {reasonCodes.map((reason) => (
               <div
                 className="ogfi-table-row grid gap-4 px-5 py-4 lg:grid-cols-[12rem_1.1fr_0.75fr_8rem_8rem_auto] lg:items-center"
                 key={reason.id}
@@ -393,6 +440,13 @@ export default async function AdminReasonCodesPage({
                     {reason.code}
                     {reason.notes ? ` / ${reason.notes}` : ""}
                   </p>
+                  <ButtonLink
+                    href={`/admin/reason-codes?${reasonCodeContext.toString()}&reasonCodeId=${reason.id}`}
+                    tone="ghost"
+                    className="mt-2 min-h-9 text-xs"
+                  >
+                    View details
+                  </ButtonLink>
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">
@@ -452,6 +506,27 @@ export default async function AdminReasonCodesPage({
             </div>
           </div>
         )}
+        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+          <span>Showing {reasonCodes.length} of {reasonCodePage.totalItems} reason codes</span>
+          <PaginationBar
+            page={reasonCodePage.page}
+            pageSize={reasonCodePage.pageSize}
+            totalItems={reasonCodePage.totalItems}
+            itemLabel="reason codes"
+            controlClassName="min-h-10"
+            getPageHref={(nextPage) => {
+              const next = new URLSearchParams({
+                workflow: selectedWorkflow,
+                page: String(nextPage),
+                pageSize: String(reasonCodePage.pageSize),
+              });
+              const queryValue = getSearchParam(params, "q");
+              if (queryValue) next.set("q", queryValue);
+              if (selectedStatus) next.set("status", selectedStatus);
+              return `/admin/reason-codes?${next.toString()}`;
+            }}
+          />
+        </div>
       </section>
     </AppShell>
   );

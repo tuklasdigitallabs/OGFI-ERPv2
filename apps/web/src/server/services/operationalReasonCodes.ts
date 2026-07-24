@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { prisma, type Prisma } from "@ogfi/database";
 import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import { assertCanManageCompanyScope } from "./coreAdmin";
@@ -59,8 +59,143 @@ async function assertCanManageReasonCodes(session: SessionContext) {
   await assertCanManageCompanyScope(session, session.context.companyId);
 }
 
+const reasonCodePageInputSchema = z.object({
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+  query: z.string().trim().max(120).default(""),
+  workflow: reasonWorkflowSchema.optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+});
+
+export type OperationalReasonCodePageInput = z.input<
+  typeof reasonCodePageInputSchema
+>;
+
+function projectReasonCode(code: {
+  id: string;
+  workflow: string;
+  code: string;
+  label: string;
+  appliesTo: string | null;
+  requiresEvidence: boolean;
+  status: string;
+  sortOrder: number;
+  notes: string | null;
+}) {
+  return {
+    id: code.id,
+    workflow: code.workflow as OperationalReasonWorkflow,
+    code: code.code,
+    label: code.label,
+    appliesTo: code.appliesTo,
+    requiresEvidence: code.requiresEvidence,
+    status: code.status,
+    sortOrder: code.sortOrder,
+    notes: code.notes,
+  };
+}
+
+export async function listOperationalReasonCodePage(
+  session: SessionContext,
+  input: OperationalReasonCodePageInput = {},
+) {
+  await assertCanManageReasonCodes(session);
+  const values = reasonCodePageInputSchema.parse(input);
+  const query = values.query.trim();
+  const baseWhere: Prisma.OperationalReasonCodeWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.status ? { status: values.status } : {}),
+    ...(query
+      ? {
+          OR: [
+            { code: { contains: query, mode: "insensitive" } },
+            { label: { contains: query, mode: "insensitive" } },
+            { appliesTo: { contains: query, mode: "insensitive" } },
+            { notes: { contains: query, mode: "insensitive" } },
+            { workflow: { contains: query, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+  const where: Prisma.OperationalReasonCodeWhereInput = {
+    ...baseWhere,
+    ...(values.workflow ? { workflow: values.workflow } : {}),
+  };
+  const workflowCounts = await Promise.all(
+    operationalReasonWorkflows.map(async (workflow) => [
+      workflow,
+      await prisma.operationalReasonCode.count({
+        where: { ...baseWhere, workflow },
+      }),
+    ] as const),
+  );
+  const [totalItems, activeItems, evidenceItems, items] = await Promise.all([
+    prisma.operationalReasonCode.count({ where }),
+    prisma.operationalReasonCode.count({
+      where: { ...where, status: "ACTIVE" },
+    }),
+    prisma.operationalReasonCode.count({
+      where: { ...where, requiresEvidence: true },
+    }),
+    prisma.operationalReasonCode.findMany({
+      where,
+      orderBy: [
+        { workflow: "asc" },
+        { status: "asc" },
+        { sortOrder: "asc" },
+        { code: "asc" },
+        { id: "asc" },
+      ],
+      skip: (values.page - 1) * values.pageSize,
+      take: values.pageSize,
+    }),
+  ]);
+  return {
+    items: items.map(projectReasonCode),
+    page: values.page,
+    pageSize: values.pageSize,
+    totalItems,
+    activeItems,
+    evidenceItems,
+    workflowCounts: Object.fromEntries(workflowCounts) as Record<
+      OperationalReasonWorkflow,
+      number
+    >,
+  };
+}
+
+export async function getOperationalReasonCodeDetail(
+  session: SessionContext,
+  reasonCodeId: string,
+) {
+  await assertCanManageReasonCodes(session);
+  const id = z.string().uuid().parse(reasonCodeId);
+  const code = await prisma.operationalReasonCode.findFirst({
+    where: {
+      id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+    },
+    select: {
+      id: true,
+      workflow: true,
+      code: true,
+      label: true,
+      appliesTo: true,
+      requiresEvidence: true,
+      status: true,
+      sortOrder: true,
+      notes: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  return code ? { ...projectReasonCode(code), createdAt: code.createdAt.toISOString(), updatedAt: code.updatedAt.toISOString() } : null;
+}
+
 export async function listOperationalReasonCodes(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReasonCodes(session);
 
   const codes = await prisma.operationalReasonCode.findMany({
     where: {
@@ -71,21 +206,12 @@ export async function listOperationalReasonCodes(session: SessionContext) {
       { workflow: "asc" },
       { status: "asc" },
       { sortOrder: "asc" },
-      { code: "asc" }
+      { code: "asc" },
+      { id: "asc" }
     ]
   });
 
-  return codes.map((code) => ({
-    id: code.id,
-    workflow: code.workflow as OperationalReasonWorkflow,
-    code: code.code,
-    label: code.label,
-    appliesTo: code.appliesTo,
-    requiresEvidence: code.requiresEvidence,
-    status: code.status,
-    sortOrder: code.sortOrder,
-    notes: code.notes
-  }));
+  return codes.map(projectReasonCode);
 }
 
 export async function listActiveOperationalReasonCodes(
