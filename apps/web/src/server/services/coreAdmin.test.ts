@@ -562,6 +562,19 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain("Showing {user.sensitiveRoleRequests.length} of");
   });
 
+  test("request history redacts historical narrative and permission detail", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const detailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),
+      "utf8",
+    );
+    expect(serviceSource).toContain('const reviewContextVisible = request.status === "PENDING"');
+    expect(serviceSource).toContain("reasonRecorded");
+    expect(serviceSource).toContain("evidenceRecorded");
+    expect(detailPageSource).toContain("historical summary");
+    expect(detailPageSource).toContain("Permission detail is available during pending review only.");
+  });
+
   test("Core Administration exposes truthful route loading and retryable error states", () => {
     const loadingSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/loading.tsx"),

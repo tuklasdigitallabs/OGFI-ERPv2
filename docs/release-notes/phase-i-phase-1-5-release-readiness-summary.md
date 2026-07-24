@@ -112,4 +112,9 @@
 
 ## Support
 
+Administration request histories now use a redacted historical summary while
+retaining pending-review context. A separately authorized historical detail path,
+responsive browser proof, database evidence, and hosted recovery evidence remain
+release-readiness follow-ups.
+
 Raise UAT defects, training gaps, permission issues, or release blockers through the assigned ERP implementation owner and the Phase 1.5 project tracker.

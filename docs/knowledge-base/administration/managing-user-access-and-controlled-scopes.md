@@ -151,6 +151,11 @@ An authorized administrator may select `Deactivate Role`, enter the required dea
 
 ## What To Check
 
+Historical approved and rejected requests show a safe summary and indicate whether
+reason or evidence was recorded. Detailed narrative and sensitive permission labels
+remain visible only while a request is pending review; the authoritative audit
+record retains the complete history.
+
 - The target user, location, and access level match the actual operational need.
 - The evidence reference is traceable outside the ERP when needed.
 - Pending requests do not duplicate an existing active assignment.

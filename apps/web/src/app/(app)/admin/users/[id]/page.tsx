@@ -649,11 +649,15 @@ export default async function CoreAdminUserDetailPage({
                           {humanizeEnum(request.locationType)} /{" "}
                           {request.riskLabel}
                         </p>
-                        <p className="mt-2 text-sm text-slate-700">
-                          {request.reason}
-                        </p>
+                        {request.reason ? (
+                          <p className="mt-2 text-sm text-slate-700">{request.reason}</p>
+                        ) : (
+                          <p className="mt-2 text-sm text-slate-500">
+                            Review narrative is retained in the audit record; it is not shown in this historical summary.
+                          </p>
+                        )}
                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                          Evidence: {request.evidenceReference} / Requested by{" "}
+                          {request.evidenceRecorded ? "Evidence recorded" : "No evidence reference recorded"} / Requested by{" "}
                           {request.requestedByName} on{" "}
                           {request.createdAt.slice(0, 10)}
                         </p>
@@ -663,9 +667,7 @@ export default async function CoreAdminUserDetailPage({
                             {request.reviewedAt
                               ? ` on ${request.reviewedAt.slice(0, 10)}`
                               : ""}
-                            {request.reviewReason
-                              ? ` / ${request.reviewReason}`
-                              : ""}
+                            {request.reviewReason ? ` / ${request.reviewReason}` : ""}
                           </p>
                         ) : null}
                       </div>
@@ -916,12 +918,19 @@ export default async function CoreAdminUserDetailPage({
                               +{request.permissionLabels.length - 6} more
                             </Badge>
                           ) : null}
+                          {request.status !== "PENDING" ? (
+                            <span className="text-xs text-slate-500">Permission detail is available during pending review only.</span>
+                          ) : null}
                         </div>
-                        <p className="mt-2 text-sm text-slate-700">
-                          {request.reason}
-                        </p>
+                        {request.reason ? (
+                          <p className="mt-2 text-sm text-slate-700">{request.reason}</p>
+                        ) : (
+                          <p className="mt-2 text-sm text-slate-500">
+                            Review narrative is retained in the audit record; it is not shown in this historical summary.
+                          </p>
+                        )}
                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                          Evidence: {request.evidenceReference} / Requested by{" "}
+                          {request.evidenceRecorded ? "Evidence recorded" : "No evidence reference recorded"} / Requested by{" "}
                           {request.requestedByName} on{" "}
                           {request.createdAt.slice(0, 10)}
                         </p>

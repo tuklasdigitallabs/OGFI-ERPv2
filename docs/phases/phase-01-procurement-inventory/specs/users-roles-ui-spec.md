@@ -84,6 +84,12 @@ Requests on User Detail are separate URL-backed paginated histories with
 allowlisted lifecycle filters, exact totals, and newest-first deterministic
 ordering. Review actions remain contextual and server-authorized.
 
+Implementation note (`DEC-0120`): historical approved and rejected request rows
+are summary-only. They show lifecycle, target/risk, actors, timestamps, and
+whether reason/evidence was recorded. Pending rows retain the narrative and
+permission context required for review; a separately authorized detail path is
+still required for historical narrative access.
+
 Implementation note (`DEC-0116`): Departments use a selected-company server
 registry with bounded filters and paging. Rows retain read-only budget,
 budget-line, and cost-center related-record counts; employee-assignment volume

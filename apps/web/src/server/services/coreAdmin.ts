@@ -2365,13 +2365,16 @@ export async function getCoreAdminUserDetail(
     })),
     highRiskScopeRequests: highRiskScopeRequests.map((request) => {
       const location = allActiveLocationDisplay.get(request.locationId);
+      const reviewContextVisible = request.status === "PENDING";
       return {
         id: request.id,
         status: request.status,
         accessLevel: request.accessLevel,
-        reason: request.reason,
-        evidenceReference: request.evidenceReference,
-        reviewReason: request.reviewReason,
+        reason: reviewContextVisible ? request.reason : null,
+        evidenceReference: reviewContextVisible ? request.evidenceReference : null,
+        reviewReason: reviewContextVisible ? request.reviewReason : null,
+        reasonRecorded: Boolean(request.reason),
+        evidenceRecorded: Boolean(request.evidenceReference),
         createdAt: request.createdAt.toISOString(),
         reviewedAt: request.reviewedAt?.toISOString() ?? null,
         requestedByUserId: request.requestedByUserId,
@@ -2418,11 +2421,23 @@ export async function getCoreAdminUserDetail(
     assignableLocationCatalogHasMore: activeLocationTotal > activeLocationCatalog.length,
     assignableRoleCatalogHasMore: assignableRoleTotal > assignableRoles.length,
     sensitiveRoleRequests: sensitiveRoleRequests.map((request) => ({
+      ...(() => {
+        const reviewContextVisible = request.status === "PENDING";
+        return {
+          reason: reviewContextVisible ? request.reason : null,
+          evidenceReference: reviewContextVisible ? request.evidenceReference : null,
+          reviewReason: reviewContextVisible ? request.reviewReason : null,
+          reasonRecorded: Boolean(request.reason),
+          evidenceRecorded: Boolean(request.evidenceReference),
+          permissionLabels: reviewContextVisible
+            ? request.role.permissions.map((rolePermission) =>
+                getPermissionPresentation(rolePermission.permission.code),
+              )
+            : [],
+        };
+      })(),
       id: request.id,
       status: request.status,
-      reason: request.reason,
-      evidenceReference: request.evidenceReference,
-      reviewReason: request.reviewReason,
       createdAt: request.createdAt.toISOString(),
       reviewedAt: request.reviewedAt?.toISOString() ?? null,
       requestedByUserId: request.requestedByUserId,
@@ -2437,9 +2452,6 @@ export async function getCoreAdminUserDetail(
       roleName: request.role.name,
       roleCode: request.role.code,
       riskLabel: sensitiveRoleRiskLabel(request.role),
-      permissionLabels: request.role.permissions.map((rolePermission) =>
-        getPermissionPresentation(rolePermission.permission.code),
-      ),
     })),
     sensitiveRoleRequestPage: {
       page: roleRequestPage,
