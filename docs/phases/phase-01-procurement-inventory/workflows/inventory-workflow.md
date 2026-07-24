@@ -228,6 +228,8 @@ Recount is required where policy calls for it, for example high-value variance, 
 
 During the additive `DEC-0098` cutover, first-pass start, entry-save, submission, and review actions transactionally mirror the legacy session/line records into the linked immutable attempt-1 records. The legacy tables remain the read compatibility path until the full recount recovery and Count Variance activation gates pass; no recount, void-for-recount, or variance-posting behavior is enabled by this mirror.
 
+Scoped count reads and locks require a populated current-attempt pointer. A session without that lineage is denied rather than silently treated as a complete first-pass record; attempt-line projection parity remains a release gate before switching read authority.
+
 ---
 
 ## 10. Low Stock and Negative Stock

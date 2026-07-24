@@ -9,6 +9,8 @@
 
 Use this article to schedule, start, enter, submit, and review a physical stock count. During the current recount-foundation rollout, those first-pass actions are recorded in both the existing count record and its immutable attempt-1 history; this is internal lineage and does not change the user steps. Reviewed count variances do not directly adjust stock balances. When a count-generated adjustment is available, it still requires Stock Adjustment approval and a separate post action before inventory changes.
 
+If a count cannot be opened because its attempt history is unavailable, contact an administrator; do not retry by creating a second count or editing submitted evidence. The recovery workflow is not yet enabled.
+
 ## Before you begin
 
 - Your role must include the needed stock count permission, such as `inventory.stock_count.create`, `inventory.stock_count.enter`, or `inventory.stock_count.review`.

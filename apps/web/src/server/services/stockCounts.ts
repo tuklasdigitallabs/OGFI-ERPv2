@@ -261,6 +261,7 @@ function scopedStockCountWhere(session: SessionContext, id?: string) {
     ...(id ? { id } : {}),
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
+    currentAttemptId: { not: null },
     inventoryLocation: {
       locationId: session.context.locationId
     }
@@ -320,6 +321,7 @@ async function lockScopedStockCount(
        AND sc."tenantId" = ${session.context.tenantId}::uuid
        AND sc."companyId" = ${session.context.companyId}::uuid
        AND sc."inventoryLocationId" = ${inventoryLocationId}::uuid
+       AND sc."currentAttemptId" IS NOT NULL
        AND il."locationId" = ${session.context.locationId}::uuid
      FOR UPDATE OF sc
   `);
