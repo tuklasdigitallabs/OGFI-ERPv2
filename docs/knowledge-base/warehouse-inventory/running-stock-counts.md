@@ -11,6 +11,8 @@ Use this article to schedule, start, enter, submit, and review a physical stock 
 
 If a count cannot be opened because its attempt history is unavailable, contact an administrator; do not retry by creating a second count or editing submitted evidence. The recovery workflow is not yet enabled.
 
+If a detail or export action reports that count history is unavailable or inconsistent, stop and contact an administrator. The system intentionally does not export a potentially divergent count until its immutable attempt and legacy line history reconcile.
+
 ## Before you begin
 
 - Your role must include the needed stock count permission, such as `inventory.stock_count.create`, `inventory.stock_count.enter`, or `inventory.stock_count.review`.

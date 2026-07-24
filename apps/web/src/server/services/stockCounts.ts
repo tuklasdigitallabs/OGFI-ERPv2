@@ -408,6 +408,92 @@ async function syncStockCountAttempt1Lines(
   `);
 }
 
+type StockCountAttemptParityRow = {
+  currentAttemptId: string | null;
+  legacyLineCount: number;
+  attemptLineCount: number;
+  legacyDigest: string;
+  attemptDigest: string;
+};
+
+/**
+ * Compares the compatibility line projection with the current immutable
+ * attempt without exposing line facts. A mismatch fails closed; reads never
+ * silently fall back to divergent mutable evidence.
+ */
+export async function assertStockCountAttemptLineParity(
+  session: SessionContext,
+  stockCountSessionId: string
+) {
+  const rows = await prisma.$queryRaw<StockCountAttemptParityRow[]>(Prisma.sql`
+    SELECT sc."currentAttemptId",
+           (
+             SELECT COUNT(*)::int
+               FROM "StockCountLine" l
+              WHERE l."stockCountSessionId" = sc.id
+                AND l."tenantId" = sc."tenantId"
+                AND l."companyId" = sc."companyId"
+                AND l."inventoryLocationId" = sc."inventoryLocationId"
+           ) AS "legacyLineCount",
+           (
+             SELECT COUNT(*)::int
+               FROM "StockCountAttemptLine" al
+              WHERE al."stockCountAttemptId" = sc."currentAttemptId"
+                AND al."tenantId" = sc."tenantId"
+                AND al."companyId" = sc."companyId"
+                AND al."inventoryLocationId" = sc."inventoryLocationId"
+           ) AS "attemptLineCount",
+           md5(COALESCE((
+             SELECT string_agg(concat_ws('|', l.id::text, l."itemId"::text,
+               l."uomId"::text, l."lineNumber"::text, l."lotKey",
+               l."lotNumber", l."expiryDate"::text,
+               l."systemQuantityBaseUom"::text, l."countedQuantityBaseUom"::text,
+               l."varianceQuantityBaseUom"::text, l.notes,
+               l."countedByUserId"::text, l."countedAt"::text), '||'
+               ORDER BY l."lineNumber", l.id)
+               FROM "StockCountLine" l
+              WHERE l."stockCountSessionId" = sc.id
+                AND l."tenantId" = sc."tenantId"
+                AND l."companyId" = sc."companyId"
+                AND l."inventoryLocationId" = sc."inventoryLocationId"
+           ), '')) AS "legacyDigest",
+           md5(COALESCE((
+             SELECT string_agg(concat_ws('|', al.id::text, al."itemId"::text,
+               al."uomId"::text, al."lineNumber"::text, al."lotKey",
+               al."lotNumber", al."expiryDate"::text,
+               al."systemQuantityBaseUom"::text, al."countedQuantityBaseUom"::text,
+               al."varianceQuantityBaseUom"::text, al.notes,
+               al."countedByUserId"::text, al."countedAt"::text), '||'
+               ORDER BY al."lineNumber", al.id)
+               FROM "StockCountAttemptLine" al
+              WHERE al."stockCountAttemptId" = sc."currentAttemptId"
+                AND al."tenantId" = sc."tenantId"
+                AND al."companyId" = sc."companyId"
+                AND al."inventoryLocationId" = sc."inventoryLocationId"
+           ), '')) AS "attemptDigest"
+      FROM "StockCountSession" sc
+     WHERE sc.id = ${stockCountSessionId}::uuid
+       AND sc."tenantId" = ${session.context.tenantId}::uuid
+       AND sc."companyId" = ${session.context.companyId}::uuid
+       AND sc."inventoryLocationId" IN (
+         SELECT il.id FROM "InventoryLocation" il
+          WHERE il.id = sc."inventoryLocationId"
+            AND il."tenantId" = ${session.context.tenantId}::uuid
+            AND il."companyId" = ${session.context.companyId}::uuid
+            AND il."locationId" = ${session.context.locationId}::uuid
+       )
+  `);
+  const parity = rows[0];
+  if (
+    !parity ||
+    !parity.currentAttemptId ||
+    Number(parity.legacyLineCount) !== Number(parity.attemptLineCount) ||
+    parity.legacyDigest !== parity.attemptDigest
+  ) {
+    throw new Error("STOCK_COUNT_ATTEMPT_LINE_PARITY_FAILED");
+  }
+}
+
 type StockCountMyTaskItem = {
   taskId: string;
   recordId: string;
@@ -744,6 +830,7 @@ export async function buildStockCountExportRows(session: SessionContext) {
   const counts = await prisma.stockCountSession.findMany({
     where: scopedStockCountWhere(session),
     select: {
+      id: true,
       publicReference: true,
       status: true,
       countType: true,
@@ -815,6 +902,7 @@ export async function buildStockCountExportRows(session: SessionContext) {
   ];
 
   for (const count of counts) {
+    await assertStockCountAttemptLineParity(session, count.id);
     const canShowSystemQuantity = canExposeStockCountProtectedFacts(
       session,
       count
@@ -901,6 +989,8 @@ export async function getStockCount(session: SessionContext, id: string) {
   if (!count) {
     return null;
   }
+
+  await assertStockCountAttemptLineParity(session, count.id);
 
   const auditEvents = await prisma.auditEvent.findMany({
     where: {

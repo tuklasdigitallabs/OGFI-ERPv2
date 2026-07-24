@@ -11,6 +11,7 @@ import {
   assertStockCountCanSubmit,
   assertStockCountAssignedActor,
   assertStockCountReviewerSegregation,
+  assertStockCountAttemptLineParity,
   buildStockCountExportRows,
   calculateCountVariance,
   canExposeStockCountProtectedFacts,
@@ -24,12 +25,16 @@ import {
 } from "./stockCounts";
 
 const mockPrisma = vi.hoisted(() => ({
+  $queryRaw: vi.fn(),
   stockCountSession: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
   auditEvent: { findMany: vi.fn() },
   userRoleAssignment: { findMany: vi.fn() }
 }));
 
-vi.mock("@ogfi/database", () => ({ prisma: mockPrisma }));
+vi.mock("@ogfi/database", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@ogfi/database")>()),
+  prisma: mockPrisma
+}));
 
 const dashboardSession = {
   user: {
@@ -56,6 +61,27 @@ describe("stock count foundation rules", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPrisma.userRoleAssignment.findMany.mockResolvedValue([]);
+    mockPrisma.$queryRaw.mockResolvedValue([{
+      currentAttemptId: "00000000-0000-4000-8000-000000000005",
+      legacyLineCount: 0,
+      attemptLineCount: 0,
+      legacyDigest: "d41d8cd98f00b204e9800998ecf8427e",
+      attemptDigest: "d41d8cd98f00b204e9800998ecf8427e"
+    }]);
+  });
+
+  test("attempt-line parity fails closed on missing or divergent evidence", async () => {
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{
+      currentAttemptId: "00000000-0000-4000-8000-000000000005",
+      legacyLineCount: 2,
+      attemptLineCount: 1,
+      legacyDigest: "legacy",
+      attemptDigest: "attempt"
+    }]);
+
+    await expect(
+      assertStockCountAttemptLineParity(dashboardSession as never, "count-1")
+    ).rejects.toThrow("STOCK_COUNT_ATTEMPT_LINE_PARITY_FAILED");
   });
 
   test("list page gate allows every stock-count action permission", () => {
