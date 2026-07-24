@@ -152,6 +152,10 @@ Enablement evidence now has a bounded selected-company register and aggregate
 training/KB dependency checks. Only verified evidence with the required
 acknowledgement and support-route semantics clears those dependencies.
 
+Enablement dependency counters now use scoped count/group queries and preserve
+the training-signoff acknowledgement truth table without hydrating the full
+verified register. Query-plan, hosted, and UAT gates remain open.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.

@@ -139,6 +139,8 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("listEnablementEvidencePage");
     expect(serviceSource).toContain("getEnablementEvidenceRecord");
     expect(serviceSource).toContain("getEnablementEvidenceSummary");
+    expect(serviceSource).toContain('groupBy({\n      by: ["evidenceType"]');
+    expect(serviceSource).toContain('knownLimitAcknowledged: true');
     expect(serviceSource).toContain('orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
     expect(pageSource).toContain("enablementPageSize");
     expect(pageSource).toContain("enablementType");

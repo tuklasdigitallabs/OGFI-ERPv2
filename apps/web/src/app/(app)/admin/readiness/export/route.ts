@@ -10,7 +10,10 @@ import {
   logOperationalExportFailure
 } from "@/server/services/exportAudit";
 import { canExportReleaseReadiness } from "@/server/services/exportAuthorization";
-import { buildReleaseReadinessExportRows } from "@/server/services/releaseReadiness";
+import {
+  assertCanManageReleaseReadiness,
+  buildReleaseReadinessExportRows
+} from "@/server/services/releaseReadiness";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +31,17 @@ export async function GET(request: Request) {
       reportId: "release-readiness",
       eventType: "report.export_denied",
       reasonCode: "PERMISSION_DENIED"
+    });
+    return exportPermissionDeniedResponse();
+  }
+  try {
+    await assertCanManageReleaseReadiness(session);
+  } catch {
+    await logOperationalExportAudit({
+      session,
+      reportId: "release-readiness",
+      eventType: "report.export_denied",
+      reasonCode: "SCOPE_DENIED"
     });
     return exportPermissionDeniedResponse();
   }

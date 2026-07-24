@@ -435,13 +435,13 @@ function requiresDecisionNoteForStatus(
   );
 }
 
-async function assertCanManageReleaseReadiness(session: SessionContext) {
+export async function assertCanManageReleaseReadiness(session: SessionContext) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
 }
 
 export async function listReleaseReadinessGates(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
 
   const [policyFlags, savedGates] = await Promise.all([
     getReleaseReadinessPolicyFlags(session),
@@ -1165,17 +1165,27 @@ export function summarizeEnablementEvidence(
 export async function getEnablementEvidenceSummary(session: SessionContext) {
   await assertCanManageReleaseReadiness(session);
   const baseWhere = { tenantId: session.context.tenantId, companyId: session.context.companyId };
-  const [total, statusGroups, verifiedRows] = await Promise.all([
+  const [total, statusGroups, verifiedTypeGroups, trainingAcknowledgedCount] = await Promise.all([
     prisma.enablementEvidenceRecord.count({ where: baseWhere }),
     prisma.enablementEvidenceRecord.groupBy({ by: ["verificationStatus"], where: baseWhere, _count: { _all: true } }),
-    prisma.enablementEvidenceRecord.findMany({
+    prisma.enablementEvidenceRecord.groupBy({
+      by: ["evidenceType"],
       where: { ...baseWhere, verificationStatus: "VERIFIED" },
-      select: { evidenceType: true, knownLimitAcknowledged: true, supportRouteConfirmed: true },
+      _count: { _all: true },
+    }),
+    prisma.enablementEvidenceRecord.count({
+      where: {
+        ...baseWhere,
+        verificationStatus: "VERIFIED",
+        evidenceType: "TRAINING_SIGNOFF",
+        knownLimitAcknowledged: true,
+        supportRouteConfirmed: true,
+      },
     }),
   ]);
   const statusCount = (status: string) => statusGroups.find((row) => row.verificationStatus === status)?._count._all ?? 0;
-  const verifiedTypes = new Set(verifiedRows.map((row) => row.evidenceType));
-  const hasTrainingAcknowledgement = verifiedRows.some((row) => row.evidenceType === "TRAINING_SIGNOFF" && row.knownLimitAcknowledged && row.supportRouteConfirmed);
+  const verifiedTypes = new Set(verifiedTypeGroups.map((row) => row.evidenceType));
+  const hasTrainingAcknowledgement = trainingAcknowledgedCount > 0;
   const missingTrainingGateTypes: EnablementEvidenceType[] = [];
   if (!verifiedTypes.has("TRAINING_SIGNOFF")) missingTrainingGateTypes.push("TRAINING_SIGNOFF");
   if (!hasTrainingAcknowledgement && !verifiedTypes.has("KNOWN_LIMIT_ACKNOWLEDGEMENT")) missingTrainingGateTypes.push("KNOWN_LIMIT_ACKNOWLEDGEMENT");

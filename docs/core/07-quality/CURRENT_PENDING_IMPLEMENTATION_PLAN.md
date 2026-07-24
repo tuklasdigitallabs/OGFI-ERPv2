@@ -589,6 +589,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Security Readiness counters now use one parameterized, materialized PostgreSQL snapshot with exact tenant/company scope, active assignment windows, sensitive-role membership, deterministic latest MFA state, bounded three-user attention sample, explicit `LIVE_SNAPSHOT` source status, and UTC `asOf` metadata. The selected attention identity is a separate scoped, read-only detail query that exposes no secrets or mutation authority and returns generic unavailable behavior for malformed, foreign, inactive, or non-privileged users.
 - This closes the unbounded application-memory projection gap but not the Security gate. Disposable PostgreSQL isolation/latest-status/concurrency execution, representative `EXPLAIN (ANALYZE, BUFFERS)`, external provider/vault evidence, responsive browser proof, hosted deployment/recovery, and UAT remain open. Authoritative User Detail and session-control workflows remain the mutation surfaces.
 
+### DEC-0135 Administration enablement aggregate semantics — July 24, 2026
+
+- Enablement readiness summaries now use bounded tenant/company-scoped counts and evidence-type grouping plus a targeted acknowledged-training count. The documented rule is preserved: a verified training signoff with both known-limit and support-route flags can satisfy those two requirements; otherwise standalone verified evidence remains required. The prior unbounded verified-row hydration is removed.
+- Query-plan/volume, responsive browser, hosted recovery, and UAT gates remain open; this does not complete Enablement or Phase I.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

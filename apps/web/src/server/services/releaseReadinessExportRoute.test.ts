@@ -6,6 +6,7 @@ const mockServices = vi.hoisted(() => ({
   getSessionContext: vi.fn(),
   canExportReleaseReadiness: vi.fn(),
   buildReleaseReadinessExportRows: vi.fn(),
+  assertCanManageReleaseReadiness: vi.fn(),
   buildReportCsvMetadata: vi.fn(),
   logOperationalExportAudit: vi.fn(),
   logOperationalExportFailure: vi.fn()
@@ -30,7 +31,8 @@ vi.mock("@/server/services/exportAudit", () => ({
 }));
 
 vi.mock("@/server/services/releaseReadiness", () => ({
-  buildReleaseReadinessExportRows: mockServices.buildReleaseReadinessExportRows
+  buildReleaseReadinessExportRows: mockServices.buildReleaseReadinessExportRows,
+  assertCanManageReleaseReadiness: mockServices.assertCanManageReleaseReadiness
 }));
 
 import { GET as readinessExportGET } from "../../app/(app)/admin/readiness/export/route";
@@ -65,6 +67,7 @@ describe("release readiness export route", () => {
     vi.clearAllMocks();
     mockServices.getSessionContext.mockResolvedValue(session);
     mockServices.canExportReleaseReadiness.mockReturnValue(true);
+    mockServices.assertCanManageReleaseReadiness.mockResolvedValue(undefined);
     mockServices.buildReportCsvMetadata.mockResolvedValue([
       ["Report ID", "release-readiness"],
       ["Scope", "Company release readiness"]
