@@ -810,7 +810,7 @@ export async function getReleaseSecurityEvidenceSummary(
 }
 
 export async function listDeploymentEvidenceRecords(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
 
   return prisma.deploymentEvidenceRecord.findMany({
     where: {
@@ -823,6 +823,61 @@ export async function listDeploymentEvidenceRecords(session: SessionContext) {
       rejectedByUser: { select: { displayName: true, email: true } },
     },
     orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }],
+  });
+}
+
+const deploymentEvidencePageInputSchema = z.object({
+  query: z.string().trim().max(120).default(""),
+  evidenceType: z.enum(deploymentEvidenceTypes).optional(),
+  verificationStatus: z.enum(["RECORDED", "VERIFIED", "REJECTED"]).optional(),
+  environment: z.string().trim().max(80).default(""),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(10),
+});
+
+export async function listDeploymentEvidencePage(
+  session: SessionContext,
+  input: z.input<typeof deploymentEvidencePageInputSchema> = {},
+) {
+  await assertCanManageReleaseReadiness(session);
+  const values = deploymentEvidencePageInputSchema.parse(input);
+  const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.evidenceType ? { evidenceType: values.evidenceType } : {}),
+    ...(values.verificationStatus ? { verificationStatus: values.verificationStatus } : {}),
+    ...(values.environment ? { environment: { contains: values.environment, mode: "insensitive" as const } } : {}),
+    ...(query ? { OR: [{ title: query }, { evidenceReference: query }, { performedBy: query }, { environment: query }] } : {}),
+  };
+  const totalItems = await prisma.deploymentEvidenceRecord.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  const items = await prisma.deploymentEvidenceRecord.findMany({
+    where,
+    include: {
+      createdByUser: { select: { displayName: true, email: true } },
+      verifiedByUser: { select: { displayName: true, email: true } },
+      rejectedByUser: { select: { displayName: true, email: true } },
+    },
+    orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
+  return { items, page, pageSize: values.pageSize, totalItems };
+}
+
+export async function getDeploymentEvidenceRecord(session: SessionContext, evidenceId: string) {
+  await assertCanManageReleaseReadiness(session);
+  const parsed = z.string().uuid().safeParse(evidenceId);
+  if (!parsed.success) return null;
+  return prisma.deploymentEvidenceRecord.findFirst({
+    where: { id: parsed.data, tenantId: session.context.tenantId, companyId: session.context.companyId },
+    include: {
+      createdByUser: { select: { displayName: true, email: true } },
+      verifiedByUser: { select: { displayName: true, email: true } },
+      rejectedByUser: { select: { displayName: true, email: true } },
+    },
   });
 }
 
@@ -870,6 +925,35 @@ export function summarizeDeploymentEvidence(
   };
 }
 
+export async function getDeploymentEvidenceSummary(session: SessionContext) {
+  await assertCanManageReleaseReadiness(session);
+  const baseWhere = { tenantId: session.context.tenantId, companyId: session.context.companyId };
+  const verified = await prisma.deploymentEvidenceRecord.groupBy({
+    by: ["evidenceType"],
+    where: { ...baseWhere, verificationStatus: "VERIFIED" },
+  });
+  const verifiedTypes = new Set(verified.map((row) => row.evidenceType));
+  const requiredMigration: DeploymentEvidenceType[] = ["MIGRATION", "BACKUP", "RESTORE_REHEARSAL", "ROLLBACK_PLAN", "SMOKE_TEST"];
+  const requiredMonitoring: DeploymentEvidenceType[] = ["MONITORING_HYPERCARE"];
+  const [total, statusGroups] = await Promise.all([
+    prisma.deploymentEvidenceRecord.count({ where: baseWhere }),
+    prisma.deploymentEvidenceRecord.groupBy({ by: ["verificationStatus"], where: baseWhere, _count: { _all: true } }),
+  ]);
+  const statusCount = (status: string) => statusGroups.find((row) => row.verificationStatus === status)?._count._all ?? 0;
+  const missingMigrationGateTypes = requiredMigration.filter((type) => !verifiedTypes.has(type));
+  const missingMonitoringGateTypes = requiredMonitoring.filter((type) => !verifiedTypes.has(type));
+  return {
+    total,
+    verified: statusCount("VERIFIED"),
+    recorded: statusCount("RECORDED"),
+    rejected: statusCount("REJECTED"),
+    missingMigrationGateTypes,
+    missingMonitoringGateTypes,
+    migrationGateReady: missingMigrationGateTypes.length === 0,
+    monitoringGateReady: missingMonitoringGateTypes.length === 0,
+  };
+}
+
 async function assertDeploymentGateReadyEvidence(
   session: SessionContext,
   definition: ReleaseReadinessGateDefinition,
@@ -879,8 +963,7 @@ async function assertDeploymentGateReadyEvidence(
     return;
   }
 
-  const records = await listDeploymentEvidenceRecords(session);
-  const summary = summarizeDeploymentEvidence(records);
+  const summary = await getDeploymentEvidenceSummary(session);
   const unresolvedByGate: Record<string, boolean> = {
     "deployment.migration_backup_restore": !summary.migrationGateReady,
     "deployment.monitoring_hypercare": !summary.monitoringGateReady,
@@ -1638,8 +1721,13 @@ export async function updateDeploymentEvidenceStatus(formData: FormData) {
     }
 
     const now = new Date();
-    const saved = await tx.deploymentEvidenceRecord.update({
-      where: { id: existing.id },
+    const claimed = await tx.deploymentEvidenceRecord.updateMany({
+      where: {
+        id: existing.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        verificationStatus: "RECORDED",
+      },
       data:
         values.status === "VERIFIED"
           ? {
@@ -1656,6 +1744,10 @@ export async function updateDeploymentEvidenceStatus(formData: FormData) {
               verifiedAt: null,
               verifiedByUserId: null,
             },
+    });
+    if (claimed.count !== 1) throw new Error("DEPLOYMENT_EVIDENCE_NOT_RECORDED");
+    const saved = await tx.deploymentEvidenceRecord.findFirstOrThrow({
+      where: { id: existing.id, tenantId: session.context.tenantId, companyId: session.context.companyId },
     });
 
     await tx.auditEvent.create({

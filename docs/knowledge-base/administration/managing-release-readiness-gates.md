@@ -51,6 +51,8 @@ The UAT summary counters are calculated from scoped aggregate checks across the 
 
 UAT rows do not perform review actions inline. Open a record to review it. Only a recorded item can be verified or rejected, and the person who recorded it cannot perform that review. Rejection requires a reason; verified and rejected records are retained as read-only history.
 
+Deployment evidence follows the same selected-record review pattern. The migration/backup/restore readiness counter only clears when each required evidence type is verified; monitoring/hypercare is tracked separately. A recorded or rejected item does not clear a deployment gate.
+
 ## UAT Evidence Rules
 
 UAT gates require both evidence and a decision note before they are marked ready, conditional, or waived. The decision note should name one or more of:

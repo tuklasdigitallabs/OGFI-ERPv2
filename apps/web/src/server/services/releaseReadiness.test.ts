@@ -115,6 +115,14 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("listUatEvidencePage");
     expect(serviceSource).toContain("getUatEvidenceRecord");
     expect(serviceSource).toContain("getUatEvidenceSummary");
+    expect(serviceSource).toContain("listDeploymentEvidencePage");
+    expect(serviceSource).toContain("getDeploymentEvidenceRecord");
+    expect(serviceSource).toContain("getDeploymentEvidenceSummary");
+    expect(serviceSource).toContain("DEPLOYMENT_EVIDENCE_NOT_RECORDED");
+    expect(serviceSource).toContain("verificationStatus: \"RECORDED\"");
+    expect(serviceSource).toContain('orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
+    expect(pageSource).toContain("deploymentEvidenceType");
+    expect(pageSource).toContain("deploymentPageSize");
     expect(serviceSource).toContain("groupBy({ by: [\"verificationStatus\"]");
     expect(serviceSource).toContain("unresolvedResultCount");
     expect(serviceSource).toContain("safeParse(evidenceId)");

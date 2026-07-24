@@ -143,6 +143,11 @@ UAT evidence review actions now live on the selected record, while list rows rem
 read-only. The page separates UAT filter/pagination state from gate pagination and
 preserves creator self-review and recorded-state controls.
 
+Deployment evidence now has a bounded selected-company register and aggregate
+dependency checks for migration/restore and monitoring/hypercare gates. Only
+verified required evidence clears those dependencies; this does not close final
+deployment or hosted recovery gates.
+
 Release Readiness gate status now has bounded server-side category, status, search,
 and pagination controls with exact matching totals. This checkpoint does not close
 the separate evidence, security aggregate, GO/NO-GO, browser, database, hosted, or

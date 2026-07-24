@@ -564,6 +564,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - UAT rows are now read-only list records with distinct UAT filter/page URL state. Verify and Reject are selected-record actions with creator self-review disclosure, minimum rejection reason, server-side management authorization, `RECORDED` compare-and-set, and audit-preserving retries.
 - The selected detail remains a compact panel rather than a completed evidence drawer/activity workspace. Deployment/enablement/security/GO-NO-GO surfaces, export bounds, responsive browser, disposable PostgreSQL, hosted recovery, and UAT execution gates remain open.
 
+### DEC-0130 Administration deployment evidence pagination — July 24, 2026
+
+- Deployment evidence now uses selected-company bounded search/type/status/environment pagination with exact totals, deterministic ordering, selected-record detail, read-only rows, and server-authorized review actions. Deployment gate readiness uses scoped aggregate verified-type checks for the five migration/restore types and monitoring/hypercare.
+- Deployment export/date-range bounds, activity detail, enablement/security/GO-NO-GO surfaces, responsive browser, disposable PostgreSQL, hosted recovery, and UAT execution gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

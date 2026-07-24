@@ -28,8 +28,10 @@ import {
   enablementEvidenceTypes,
   getReleaseSecurityEvidenceSummary,
   getUatEvidenceSummary,
+  getDeploymentEvidenceRecord,
+  getDeploymentEvidenceSummary,
   getUatEvidenceRecord,
-  listDeploymentEvidenceRecords,
+  listDeploymentEvidencePage,
   listEnablementEvidenceRecords,
   listReleaseBoardDecisions,
   listReleaseReadinessGates,
@@ -38,7 +40,6 @@ import {
   releaseBoardDecisions,
   releaseReadinessCategories,
   releaseReadinessStatuses,
-  summarizeDeploymentEvidence,
   summarizeEnablementEvidence,
   summarizeReleaseReadiness,
   uatEvidenceResults,
@@ -136,14 +137,20 @@ async function createDeploymentEvidenceAction(formData: FormData) {
 
 async function updateDeploymentEvidenceAction(formData: FormData) {
   "use server";
+  const context = new URLSearchParams({ category: "deployment" });
+  for (const key of ["deploymentQ", "deploymentType", "deploymentStatus", "deploymentEnvironment", "deploymentPage", "deploymentPageSize", "deploymentEvidenceId"]) {
+    const value = formData.get(key);
+    if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key, value);
+  }
+  const returnPath = `/admin/readiness?${context.toString()}`;
 
   try {
     await updateDeploymentEvidenceStatus(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/readiness?category=deployment", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/readiness");
-  redirect("/admin/readiness?category=deployment");
+  redirect(returnPath);
 }
 
 async function createUatEvidenceAction(formData: FormData) {
@@ -295,14 +302,32 @@ export default async function AdminReadinessPage({
     selectedCategory === "security"
       ? await getReleaseSecurityEvidenceSummary(session)
       : null;
-  const deploymentEvidenceRecords =
-    selectedCategory === "deployment"
-      ? await listDeploymentEvidenceRecords(session)
-      : [];
-  const deploymentEvidenceSummary =
-    selectedCategory === "deployment"
-      ? summarizeDeploymentEvidence(deploymentEvidenceRecords)
-      : null;
+  const deploymentQ = (getSearchParam(params, "deploymentQ") ?? "").slice(0, 120);
+  const deploymentTypeValue = getSearchParam(params, "deploymentType");
+  const deploymentEvidenceType = deploymentEvidenceTypes.includes(deploymentTypeValue as (typeof deploymentEvidenceTypes)[number]) ? (deploymentTypeValue as (typeof deploymentEvidenceTypes)[number]) : undefined;
+  const deploymentStatusValue = getSearchParam(params, "deploymentStatus");
+  const deploymentVerificationStatus = ["RECORDED", "VERIFIED", "REJECTED"].includes(deploymentStatusValue ?? "") ? (deploymentStatusValue as "RECORDED" | "VERIFIED" | "REJECTED") : undefined;
+  const deploymentEnvironment = (getSearchParam(params, "deploymentEnvironment") ?? "").slice(0, 80);
+  const deploymentPageValue = Number.parseInt(getSearchParam(params, "deploymentPage") ?? "1", 10);
+  const deploymentPageSizeValue = Number.parseInt(getSearchParam(params, "deploymentPageSize") ?? "10", 10);
+  const deploymentEvidencePage = selectedCategory === "deployment" ? await listDeploymentEvidencePage(session, {
+    query: deploymentQ,
+    evidenceType: deploymentEvidenceType,
+    verificationStatus: deploymentVerificationStatus,
+    environment: deploymentEnvironment,
+    page: Number.isFinite(deploymentPageValue) ? Math.min(Math.max(deploymentPageValue, 1), 10_000) : 1,
+    pageSize: Number.isFinite(deploymentPageSizeValue) ? Math.min(Math.max(deploymentPageSizeValue, 10), 100) : 10,
+  }) : { items: [], page: 1, pageSize: 10, totalItems: 0 };
+  const deploymentContextParams = new URLSearchParams({ category: "deployment", deploymentPage: String(deploymentEvidencePage.page), deploymentPageSize: String(deploymentEvidencePage.pageSize) });
+  if (deploymentQ) deploymentContextParams.set("deploymentQ", deploymentQ);
+  if (deploymentEvidenceType) deploymentContextParams.set("deploymentType", deploymentEvidenceType);
+  if (deploymentVerificationStatus) deploymentContextParams.set("deploymentStatus", deploymentVerificationStatus);
+  if (deploymentEnvironment) deploymentContextParams.set("deploymentEnvironment", deploymentEnvironment);
+  const deploymentContextHref = `/admin/readiness?${deploymentContextParams.toString()}`;
+  const selectedDeploymentEvidence = selectedCategory === "deployment" && getSearchParam(params, "deploymentEvidenceId")
+    ? await getDeploymentEvidenceRecord(session, getSearchParam(params, "deploymentEvidenceId") as string)
+    : null;
+  const deploymentEvidenceSummary = selectedCategory === "deployment" ? await getDeploymentEvidenceSummary(session) : null;
   const enablementEvidenceRecords =
     selectedCategory === "enablement"
       ? await listEnablementEvidenceRecords(session)
@@ -1423,8 +1448,23 @@ export default async function AdminReadinessPage({
           </div>
         ) : null}
 
+        {selectedCategory === "deployment" && getSearchParam(params, "deploymentEvidenceId") ? (
+          <Panel className="mb-5 border-blue-100 bg-blue-50/40">
+            {selectedDeploymentEvidence ? (
+              <div className="grid gap-3 text-sm text-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected deployment evidence</p><h3 className="text-lg font-bold text-slate-950">{selectedDeploymentEvidence.title}</h3></div><Badge tone={selectedDeploymentEvidence.verificationStatus === "VERIFIED" ? "success" : selectedDeploymentEvidence.verificationStatus === "REJECTED" ? "destructive" : "warning"}>{selectedDeploymentEvidence.verificationStatus}</Badge></div>
+                <p>{evidenceTypeLabel(selectedDeploymentEvidence.evidenceType)} · {selectedDeploymentEvidence.environment} · performed by {selectedDeploymentEvidence.performedBy}</p>
+                <p>Performed {new Date(selectedDeploymentEvidence.performedAt).toLocaleString()}; reference {selectedDeploymentEvidence.evidenceReference}</p>
+                {selectedDeploymentEvidence.verificationStatus === "RECORDED" ? (selectedDeploymentEvidence.createdByUserId === session.user.id ? <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-900">Another authorized reviewer must review evidence recorded by you.</p> : <div className="grid gap-2 sm:grid-cols-2"><form action={updateDeploymentEvidenceAction}><input name="evidenceId" type="hidden" value={selectedDeploymentEvidence.id} /><input name="status" type="hidden" value="VERIFIED" /><input name="reason" type="hidden" value="Verified deployment evidence from the selected evidence review panel." /><input name="deploymentQ" type="hidden" value={deploymentQ} /><input name="deploymentType" type="hidden" value={deploymentEvidenceType ?? ""} /><input name="deploymentStatus" type="hidden" value={deploymentVerificationStatus ?? ""} /><input name="deploymentEnvironment" type="hidden" value={deploymentEnvironment} /><input name="deploymentPage" type="hidden" value={String(deploymentEvidencePage.page)} /><input name="deploymentPageSize" type="hidden" value={String(deploymentEvidencePage.pageSize)} /><input name="deploymentEvidenceId" type="hidden" value={selectedDeploymentEvidence.id} /><button className="min-h-11 w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800">Verify evidence</button></form><form action={updateDeploymentEvidenceAction} className="grid gap-2"><input name="evidenceId" type="hidden" value={selectedDeploymentEvidence.id} /><input name="status" type="hidden" value="REJECTED" /><input name="reason" className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Rejection reason (required)" minLength={5} required /><input name="deploymentQ" type="hidden" value={deploymentQ} /><input name="deploymentType" type="hidden" value={deploymentEvidenceType ?? ""} /><input name="deploymentStatus" type="hidden" value={deploymentVerificationStatus ?? ""} /><input name="deploymentEnvironment" type="hidden" value={deploymentEnvironment} /><input name="deploymentPage" type="hidden" value={String(deploymentEvidencePage.page)} /><input name="deploymentPageSize" type="hidden" value={String(deploymentEvidencePage.pageSize)} /><input name="deploymentEvidenceId" type="hidden" value={selectedDeploymentEvidence.id} /><button className="min-h-11 rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800">Reject evidence</button></form></div>) : null}
+                <a className="font-semibold text-blue-700 hover:underline" href={deploymentContextHref}>Close selected evidence</a>
+              </div>
+            ) : <p className="text-sm text-slate-700">The selected deployment evidence is unavailable in the current company scope.</p>}
+          </Panel>
+        ) : null}
+
         {deploymentEvidenceSummary ? (
           <div className="mb-5 overflow-hidden rounded-xl border border-slate-200">
+            <form className="grid gap-3 border-b border-slate-100 bg-slate-50 p-4 md:grid-cols-[1fr_12rem_12rem_auto] md:items-end" method="get"><input name="category" type="hidden" value="deployment" /><label className="grid gap-1 text-sm font-medium text-slate-700">Search<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="deploymentQ" defaultValue={deploymentQ} placeholder="Title, reference, or performer" /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Evidence type<select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="deploymentType" defaultValue={deploymentEvidenceType ?? ""}><option value="">All types</option>{deploymentEvidenceTypes.map((type) => <option key={type} value={type}>{evidenceTypeLabel(type)}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Review status<select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="deploymentStatus" defaultValue={deploymentVerificationStatus ?? ""}><option value="">All statuses</option>{["RECORDED", "VERIFIED", "REJECTED"].map((status) => <option key={status} value={status}>{status}</option>)}</select></label><button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white" type="submit">Apply</button></form>
             <div className="grid gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[10rem_1fr_9rem_9rem_12rem]">
               <span>Type</span>
               <span>Evidence</span>
@@ -1432,9 +1472,9 @@ export default async function AdminReadinessPage({
               <span>Status</span>
               <span>Control</span>
             </div>
-            {deploymentEvidenceRecords.length > 0 ? (
+            {deploymentEvidencePage.items.length > 0 ? (
               <div className="divide-y divide-slate-100">
-                {deploymentEvidenceRecords.map((record) => (
+                {deploymentEvidencePage.items.map((record) => (
                   <div
                     key={record.id}
                     className="grid gap-3 px-4 py-4 text-sm md:grid-cols-[10rem_1fr_9rem_9rem_12rem] md:items-center"
@@ -1470,60 +1510,7 @@ export default async function AdminReadinessPage({
                     >
                       {record.verificationStatus.replaceAll("_", " ")}
                     </Badge>
-                    {record.verificationStatus === "RECORDED" ? (
-                      <div className="grid gap-2">
-                        <form action={updateDeploymentEvidenceAction}>
-                          <input name="evidenceId" type="hidden" value={record.id} />
-                          <input name="status" type="hidden" value="VERIFIED" />
-                          <input
-                            name="reason"
-                            type="hidden"
-                            value="Verified deployment evidence for DEC-0036 release readiness."
-                          />
-                          <button className="min-h-9 w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">
-                            Verify
-                          </button>
-                        </form>
-                        <EntryModal
-                          title={`Reject ${record.title}`}
-                          triggerLabel="Reject"
-                          triggerClassName="w-full border border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
-                        >
-                          <form
-                            action={updateDeploymentEvidenceAction}
-                            className="ogfi-form-shell mt-4 grid gap-4"
-                          >
-                            <input name="evidenceId" type="hidden" value={record.id} />
-                            <input name="status" type="hidden" value="REJECTED" />
-                            <label className="grid gap-1 text-sm font-medium text-slate-700">
-                              Rejection reason
-                              <textarea
-                                className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                                name="reason"
-                                required
-                              />
-                            </label>
-                            <button className="min-h-10 rounded-md bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700">
-                              Reject Evidence
-                            </button>
-                          </form>
-                        </EntryModal>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500">
-                        {record.verifiedByUser
-                          ? `Verified by ${
-                              record.verifiedByUser.displayName ||
-                              record.verifiedByUser.email
-                            }`
-                          : record.rejectedByUser
-                            ? `Rejected by ${
-                                record.rejectedByUser.displayName ||
-                                record.rejectedByUser.email
-                              }`
-                            : "No action available"}
-                      </p>
-                    )}
+                    <a className="min-h-11 inline-flex items-center justify-center rounded-md border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50" href={`/admin/readiness?${new URLSearchParams(`${deploymentContextParams.toString()}&deploymentEvidenceId=${record.id}`).toString()}`}>Open evidence</a>
                   </div>
                 ))}
               </div>
@@ -1532,6 +1519,21 @@ export default async function AdminReadinessPage({
                 No deployment evidence recorded yet.
               </div>
             )}
+            <PaginationBar
+              className="border-t border-slate-100 px-4 py-3"
+              page={deploymentEvidencePage.page}
+              pageSize={deploymentEvidencePage.pageSize}
+              totalItems={deploymentEvidencePage.totalItems}
+              itemLabel="deployment evidence records"
+              getPageHref={(nextPage) => {
+                const next = new URLSearchParams({ category: "deployment", deploymentPage: String(nextPage), deploymentPageSize: String(deploymentEvidencePage.pageSize) });
+                if (deploymentQ) next.set("deploymentQ", deploymentQ);
+                if (deploymentEvidenceType) next.set("deploymentType", deploymentEvidenceType);
+                if (deploymentVerificationStatus) next.set("deploymentStatus", deploymentVerificationStatus);
+                if (deploymentEnvironment) next.set("deploymentEnvironment", deploymentEnvironment);
+                return `/admin/readiness?${next.toString()}`;
+              }}
+            />
           </div>
         ) : null}
 
