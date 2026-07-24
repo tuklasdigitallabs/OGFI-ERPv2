@@ -166,6 +166,24 @@ const coreAdminRolePageInputSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
+const coreAdminLocationPageInputSchema = z.object({
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
+  locationType: z
+    .enum([
+      "BRANCH",
+      "WAREHOUSE",
+      "COMMISSARY",
+      "CENTRAL_KITCHEN",
+      "HEAD_OFFICE",
+      "PROJECT_SITE",
+      "TEMPORARY_SITE",
+    ])
+    .optional(),
+});
+
 const updateRolePermissionsSchema = z.object({
   roleId: z.string().uuid(),
   reason: scopeReasonSchema,
@@ -862,6 +880,99 @@ async function listCoreAdminRoleOptionsAuthorized(session: SessionContext) {
   };
 }
 
+export type CoreAdminLocationPage = {
+  items: Array<{
+    id: string;
+    companyId: string;
+    companyName: string;
+    brandId: string | null;
+    brandName: string;
+    code: string;
+    name: string;
+    type: string;
+    timezone: string;
+    status: string;
+  }>;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  activeItems: number;
+};
+
+async function listCoreAdminLocationPageAuthorized(
+  session: SessionContext,
+  input: z.input<typeof coreAdminLocationPageInputSchema> = {},
+): Promise<CoreAdminLocationPage> {
+  const values = coreAdminLocationPageInputSchema.parse(input);
+  const query = values.query.toLowerCase();
+  const where: Prisma.LocationWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.status ? { status: values.status } : {}),
+    ...(values.locationType ? { locationType: values.locationType } : {}),
+    ...(query
+      ? {
+          OR: [
+            { name: { contains: query, mode: "insensitive" as const } },
+            { code: { contains: query, mode: "insensitive" as const } },
+            { brand: { name: { contains: query, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
+  };
+  const [totalItems, activeItems, locations] = await Promise.all([
+    prisma.location.count({ where }),
+    prisma.location.count({ where: { ...where, status: "ACTIVE" } }),
+    prisma.location.findMany({
+      where,
+      include: { company: true, brand: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      skip: (values.page - 1) * values.pageSize,
+      take: values.pageSize,
+    }),
+  ]);
+  return {
+    items: locations.map((location) => ({
+      id: location.id,
+      companyId: location.companyId,
+      companyName: location.company.tradingName ?? location.company.legalName,
+      brandId: location.brandId,
+      brandName: location.brand?.name ?? "Company-wide",
+      code: location.code,
+      name: location.name,
+      type: location.locationType,
+      timezone: location.timezone,
+      status: location.status,
+    })),
+    page: values.page,
+    pageSize: values.pageSize,
+    totalItems,
+    activeItems,
+  };
+}
+
+async function listCoreAdminLocationOptionsAuthorized(session: SessionContext) {
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    status: "ACTIVE" as const,
+  };
+  const [totalItems, options] = await Promise.all([
+    prisma.location.count({ where }),
+    prisma.location.findMany({
+      where,
+      select: { id: true, name: true, code: true, locationType: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: 100,
+    }),
+  ]);
+  return {
+    items: options,
+    totalItems,
+    hasMore: totalItems > options.length,
+  };
+}
+
 export async function listCoreAdminRolePage(
   session: SessionContext,
   input: z.input<typeof coreAdminRolePageInputSchema> = {},
@@ -882,19 +993,38 @@ export async function listCoreAdminUserPage(
   return listCoreAdminUserPageAuthorized(session, input);
 }
 
+export async function listCoreAdminLocationPage(
+  session: SessionContext,
+  input: z.input<typeof coreAdminLocationPageInputSchema> = {},
+) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  return listCoreAdminLocationPageAuthorized(session, input);
+}
+
+export async function listCoreAdminLocationOptions(session: SessionContext) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  return listCoreAdminLocationOptionsAuthorized(session);
+}
+
 export async function getCoreAdminOverview(
   session: SessionContext,
   userPageInput: z.input<typeof coreAdminUserPageInputSchema> = {},
   rolePageInput: z.input<typeof coreAdminRolePageInputSchema> = {},
+  locationPageInput: z.input<typeof coreAdminLocationPageInputSchema> = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const [userPage, rolePage, roleOptions] = await Promise.all([
+  const [userPage, rolePage, roleOptions, locationPage] = await Promise.all([
     listCoreAdminUserPageAuthorized(session, userPageInput),
     listCoreAdminRolePageAuthorized(session, rolePageInput),
     listCoreAdminRoleOptionsAuthorized(session),
+    listCoreAdminLocationPageAuthorized(session, locationPageInput),
   ]);
 
   const [
@@ -902,7 +1032,6 @@ export async function getCoreAdminOverview(
     companies,
     brands,
     departments,
-    locations,
     approvalRules,
     recentAuditEvents,
   ] = await Promise.all([
@@ -948,17 +1077,6 @@ export async function getCoreAdminOverview(
         },
       },
       orderBy: [{ company: { legalName: "asc" } }, { name: "asc" }],
-    }),
-    prisma.location.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-      },
-      include: {
-        company: true,
-        brand: true,
-      },
-      orderBy: { name: "asc" },
     }),
     prisma.approvalRule.findMany({
       where: {
@@ -1026,16 +1144,8 @@ export async function getCoreAdminOverview(
       costCenterCount: department._count.costCenters,
       employeeAssignmentCount: department._count.employeeAssignments,
     })),
-    locations: locations.map((location) => ({
-      id: location.id,
-      companyName: location.company.tradingName ?? location.company.legalName,
-      brandName: location.brand?.name ?? "Company-wide",
-      code: location.code,
-      name: location.name,
-      type: location.locationType,
-      timezone: location.timezone,
-      status: location.status,
-    })),
+    locations: locationPage.items,
+    locationPage,
     approvalRules: approvalRules.map((rule) => ({
       id: rule.id,
       transactionType: rule.transactionType,

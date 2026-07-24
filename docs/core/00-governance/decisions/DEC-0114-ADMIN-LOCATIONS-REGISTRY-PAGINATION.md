@@ -46,3 +46,12 @@ GPT-5.6 fallback reviewers were used without relaxing hard gates.
 This is a read/query and UI contract with no schema migration or historical mutation.
 Revert the registry and option-catalog changes independently of later Company, Brand, or
 Department slices.
+
+## Implementation evidence
+
+The overview now delegates Locations to the bounded selected-company page contract and
+uses a separate active option catalog for onboarding. Focused Core Admin tests pass 19/19,
+the full web regression passes 1,295 tests with 301 skipped and one TODO, authorization
+manifest coverage passes 20/20, and typecheck, lint, and isolated production build pass.
+Responsive browser, disposable PostgreSQL count/authorization, selector overflow, and
+hosted recovery gates remain open. Company, Brand, and Department surfaces remain pending.

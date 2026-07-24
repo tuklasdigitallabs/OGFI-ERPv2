@@ -31,6 +31,7 @@ import {
   assertCanManageCompanyScope,
   getCoreAdminOverview,
   listCoreAdminAuditEventPage,
+  listCoreAdminLocationOptions,
   type CoreAdminAuditEventFilters
 } from "@/server/services/coreAdmin";
 import { getSessionContext } from "@/server/services/context";
@@ -212,6 +213,17 @@ export default async function CoreAdministrationPage({
   const normalizedRolePageSize = Number.isFinite(rolePageSize)
     ? Math.min(Math.max(rolePageSize, 10), 100)
     : 25;
+  const locationQuery = getSearchParam(params, "locationQuery")?.trim() ?? "";
+  const locationStatus = getSearchParam(params, "locationStatus");
+  const locationType = getSearchParam(params, "locationType");
+  const locationPage = Number.parseInt(getSearchParam(params, "locationPage") ?? "1", 10);
+  const locationPageSize = Number.parseInt(getSearchParam(params, "locationPageSize") ?? "25", 10);
+  const normalizedLocationPage = Number.isFinite(locationPage)
+    ? Math.min(Math.max(locationPage, 1), 10_000)
+    : 1;
+  const normalizedLocationPageSize = Number.isFinite(locationPageSize)
+    ? Math.min(Math.max(locationPageSize, 10), 100)
+    : 25;
   const auditFilters: CoreAdminAuditEventFilters = {};
   const auditQuery = getSearchParam(params, "q");
   const auditEventType = getSearchParam(params, "eventType");
@@ -260,7 +272,7 @@ export default async function CoreAdministrationPage({
   auditPageParams.set("tab", "audit");
   auditPageParams.set("auditPageSize", String(auditPageSize));
 
-  const [overview, auditPage] = await Promise.all([
+  const [overview, locationOptions, auditPage] = await Promise.all([
     getCoreAdminOverview(session, {
       page: normalizedUserPage,
       pageSize: normalizedUserPageSize,
@@ -275,7 +287,18 @@ export default async function CoreAdministrationPage({
       ...(roleStatus && ["ACTIVE", "INACTIVE", "ARCHIVED"].includes(roleStatus)
         ? { status: roleStatus as "ACTIVE" | "INACTIVE" | "ARCHIVED" }
         : {}),
+    }, {
+      page: normalizedLocationPage,
+      pageSize: normalizedLocationPageSize,
+      query: locationQuery,
+      ...(locationStatus && ["ACTIVE", "INACTIVE", "ARCHIVED"].includes(locationStatus)
+        ? { status: locationStatus as "ACTIVE" | "INACTIVE" | "ARCHIVED" }
+        : {}),
+      ...(locationType && ["BRANCH", "WAREHOUSE", "COMMISSARY", "CENTRAL_KITCHEN", "HEAD_OFFICE", "PROJECT_SITE", "TEMPORARY_SITE"].includes(locationType)
+        ? { locationType: locationType as "BRANCH" | "WAREHOUSE" | "COMMISSARY" | "CENTRAL_KITCHEN" | "HEAD_OFFICE" | "PROJECT_SITE" | "TEMPORARY_SITE" }
+        : {})
     }),
+    listCoreAdminLocationOptions(session),
     listCoreAdminAuditEventPage(session, {
       ...auditFilters,
       pageSize: auditPageSize,
@@ -292,9 +315,7 @@ export default async function CoreAdministrationPage({
   const activeUsers = overview.userPage.activeItems;
   const activeRoles = overview.rolePage.activeItems;
   const activeRules = overview.approvalRules.filter((rule) => rule.isActive).length;
-  const companyLocations = overview.locations.filter(
-    (location) => location.companyName === session.context.companyName
-  );
+  const companyLocations = overview.locationPage;
   const highAccessRoleCount = overview.rolePage.highAccessItems;
 
   const workspaces = [
@@ -322,7 +343,7 @@ export default async function CoreAdministrationPage({
       id: "organization",
       title: "Organization Scope",
       detail: "Review companies, branches, warehouses, and location context.",
-      metric: `${companyLocations.length}`,
+      metric: `${companyLocations.activeItems}/${companyLocations.totalItems}`,
       metricLabel: "locations in context",
       icon: Building2,
       href: "/admin?tab=organization",
@@ -475,14 +496,17 @@ export default async function CoreAdministrationPage({
                     Initial location scope
                     <select className="rounded-md border border-slate-300 px-3 py-2" name="initialLocationId">
                       <option value="">No location yet</option>
-                      {overview.locations
-                        .filter((location) => location.status === "ACTIVE")
-                        .map((location) => (
-                          <option key={location.id} value={location.id}>
-                            {location.name} / {location.brandName}
-                          </option>
-                        ))}
+                      {locationOptions.items.map((location) => (
+                        <option key={location.id} value={location.id}>
+                          {location.name} / {location.code}
+                        </option>
+                      ))}
                     </select>
+                    {locationOptions.hasMore ? (
+                      <span className="text-xs font-normal text-slate-500">
+                        Showing the first 100 active locations. Use Organization Scope to review the full registry.
+                      </span>
+                    ) : null}
                   </label>
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Location access
@@ -735,6 +759,9 @@ export default async function CoreAdministrationPage({
               <h2 className="text-lg font-bold text-slate-950">Organization Scope</h2>
               <p className="text-sm text-slate-500">
                 Company, brand, and location records that define where users operate.
+              </p>
+              <p className="mt-2 text-xs font-medium text-amber-700">
+                Locations are paginated in this checkpoint. Company, Brand, and Department registries remain separate pending contracts.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1012,8 +1039,30 @@ export default async function CoreAdministrationPage({
             <section className="space-y-3">
               <div>
                 <h3 className="font-bold text-slate-950">Locations</h3>
-                <p className="text-sm text-slate-500">Branches, warehouses, and sites</p>
+                <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
               </div>
+              <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+                <input type="hidden" name="tab" value="organization" />
+                <input className="rounded-md border border-slate-300 px-3 py-2" name="locationQuery" defaultValue={locationQuery} placeholder="Search name, code, or brand" />
+                <select className="rounded-md border border-slate-300 px-3 py-2" name="locationStatus" defaultValue={locationStatus ?? ""}>
+                  <option value="">All statuses</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                  <option value="ARCHIVED">Archived</option>
+                </select>
+                <select className="rounded-md border border-slate-300 px-3 py-2" name="locationType" defaultValue={locationType ?? ""}>
+                  <option value="">All types</option>
+                  {['BRANCH','WAREHOUSE','COMMISSARY','CENTRAL_KITCHEN','HEAD_OFFICE','PROJECT_SITE','TEMPORARY_SITE'].map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}
+                </select>
+                <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white md:w-fit">Apply filters</button>
+                <ButtonLink href="/admin?tab=organization" tone="ghost" className="min-h-10 md:w-fit">Clear</ButtonLink>
+              </form>
+              {overview.locations.length === 0 ? (
+                <div className="ogfi-record-summary p-4">
+                  <p className="font-semibold text-slate-950">No locations match</p>
+                  <p className="mt-1 text-sm text-slate-600">Adjust the filters or create a location for the selected company.</p>
+                </div>
+              ) : null}
               {overview.locations.map((location) => (
                 <div key={location.id} data-testid="admin-location-row" className="ogfi-record-summary p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -1034,6 +1083,23 @@ export default async function CoreAdministrationPage({
                   </ButtonLink>
                 </div>
               ))}
+              <div className="flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                <span>Showing {overview.locations.length} of {overview.locationPage.totalItems} locations</span>
+                <PaginationBar
+                  page={overview.locationPage.page}
+                  pageSize={overview.locationPage.pageSize}
+                  totalItems={overview.locationPage.totalItems}
+                  itemLabel="locations"
+                  controlClassName="min-h-10"
+                  getPageHref={(nextPage) => {
+                    const next = new URLSearchParams({ tab: "organization", locationPage: String(nextPage), locationPageSize: String(overview.locationPage.pageSize) });
+                    if (locationQuery) next.set("locationQuery", locationQuery);
+                    if (locationStatus) next.set("locationStatus", locationStatus);
+                    if (locationType) next.set("locationType", locationType);
+                    return `/admin?${next.toString()}`;
+                  }}
+                />
+              </div>
             </section>
           </div>
         </Panel>

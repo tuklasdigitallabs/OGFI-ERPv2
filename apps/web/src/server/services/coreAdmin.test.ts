@@ -441,6 +441,21 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain('ipAddress: ""');
   });
 
+  test("organization locations use a selected-company page contract and bounded active options", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    expect(serviceSource).toContain("coreAdminLocationPageInputSchema");
+    expect(serviceSource).toContain("listCoreAdminLocationPageAuthorized");
+    expect(serviceSource).toContain("listCoreAdminLocationOptionsAuthorized");
+    expect(serviceSource).toContain("companyId: session.context.companyId");
+    expect(serviceSource).toContain('orderBy: [{ name: "asc" }, { id: "asc" }]');
+    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("take: values.pageSize");
+    expect(serviceSource).toContain("take: 100");
+    expect(serviceSource).toContain("hasMore: totalItems > options.length");
+    expect(serviceSource).toContain('name: { contains: query, mode: "insensitive" as const }');
+    expect(serviceSource).toContain("brandId: location.brandId");
+  });
+
   test("admin user access lifecycle forms use modal entry surfaces", () => {
     const detailPageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),

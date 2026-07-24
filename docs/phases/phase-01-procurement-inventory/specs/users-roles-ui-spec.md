@@ -51,6 +51,12 @@ tenant/company and bounded filter contract. The list uses deterministic keyset p
 projections suppress actor contact/IP fields and recursively redact credential, token,
 email, storage-key, and signed-URL fields without changing immutable audit rows.
 
+Implementation note (`DEC-0114`): Organization Scope now presents a server-owned
+selected-company Locations registry with URL-backed search, status/type filters, exact
+totals, deterministic name/ID ordering, and pagination. The initial-location selector
+uses a separate bounded active catalog and discloses overflow. Company, Brand, and
+Department lists remain explicitly pending separate contracts.
+
 ## 2. User detail requirements
 
 Show:
