@@ -483,6 +483,7 @@ The following remain pending implementation or require a separate confirmed rele
 - time-limited attachment links where direct signed URLs are adopted;
 - formal PDF summaries where required;
 - broader task dependency enforcement, drag/drop concurrency, and automation beyond the approved Phase 1.5 boundary.
+- Phase 1.5 Project Board still has implementation blockers before its workspace gate: the visible board needs the documented project context header, linked-record/assignee indicators, complete status controls, mobile filtered-list mode, and server pagination; task-key allocation must replace the concurrent `count + 1` pattern; project/task dates must render in the company or user timezone; and the enabled task-transition policy needs an explicit lifecycle matrix. These are recorded for the later Projects & Implementation Tracker workspace and must not be hidden behind the current Phase I stabilization work.
 
 ## 7. Later-Phase Boundaries
 
