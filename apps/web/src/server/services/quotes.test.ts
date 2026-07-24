@@ -45,6 +45,8 @@ describe("quotation recommendation rules", () => {
     expect(source).toContain("quotationRequests: { some: { supplierQuotes: { some");
     expect(pageSource).toContain("listQuoteRequestsPage(session");
     expect(pageSource).toContain('aria-label="Search approved quote requests"');
+    expect(pageSource).toContain('name="fromDate"');
+    expect(pageSource).toContain('name="toDate"');
     expect(workspaceSource).toContain("PaginationBar");
     expect(workspaceSource).toContain("quote-comparison-workspace");
     expect(workspaceSource).toContain("Selected location context");

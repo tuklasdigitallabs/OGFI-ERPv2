@@ -675,13 +675,19 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 
 ### DEC-0150 Supplier Quote queue search — July 25, 2026
 
-- The approved Purchase Request quote queue now supports a server-side search across PR reference, requester, and supplier code/name. The search is composed within the existing tenant/company/selected-location/APPROVED predicate, preserves request selection and pagination context, and has a truthful no-match state.
-- Focused Quotes tests (15), web typecheck, lint, and diff checks pass. Status/date/amount filter expansion, responsive browser, disposable PostgreSQL, hosted recovery, and UAT evidence remain open; Quotations are not complete.
+- The approved Purchase Request quote queue now supports server-side search across PR reference, requester, and supplier code/name plus required-date From/To filters. Predicates remain within the existing tenant/company/selected-location/APPROVED boundary, preserve request selection and pagination context, and provide truthful no-match states.
+- Focused Quotes tests (15), web typecheck, lint, and diff checks pass. Amount filtering remains open pending commercial-field/export policy; responsive browser, disposable PostgreSQL, hosted recovery, and UAT evidence remain open; Quotations are not complete.
 
 ### DEC-0151 Supplier quote line comparison matrix — July 25, 2026
 
 - The selected approved request now shows a read-only line-aligned matrix across recorded suppliers. It displays requested quantity/UOM beside each quote's quantity/UOM, unit price, line total, availability, and lead time, and explicitly marks missing quoted lines. Existing commercial cards, controlled evidence, recommendation policy, and approval actions remain authoritative.
 - Focused Quotes tests (15), web typecheck, lint, and diff checks pass. Substitution semantics, mandatory evidence policy, responsive browser, disposable PostgreSQL, hosted recovery, and UAT remain open; Quotations are not complete.
+
+### DEC-0152 Administration Permission Access bounded detail — July 25, 2026
+
+- Permission Access detail no longer hydrates every tenant role, assignment, and user scope in one nested read. It now uses a server-owned role page with search, exact totals, deterministic ordering, selected-company active/effective-date scope predicates, and at most five safe current-company user previews per role.
+- Existing Core Administration, tenant-role administration, and selected-company Manage guards remain before all reads. The page explicitly states tenant-global role semantics, read-only purpose, selected-company context, and preview limits.
+- Focused Core Admin tests (30), web typecheck, lint, and diff checks pass. Disposable PostgreSQL authorization/count/query-plan evidence, responsive browser, hosted recovery, and UAT remain open; Administration is not complete.
 
 ### Workspace 1 implementation checkpoint — July 23, 2026
 

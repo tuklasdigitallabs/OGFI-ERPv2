@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, Panel, PaginationBar } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import { assertCanManageCompanyScope, getCoreAdminPermissionDetail } from "@/server/services/coreAdmin";
@@ -8,9 +8,10 @@ import { getSessionContext } from "@/server/services/context";
 export const dynamic = "force-dynamic";
 
 export default async function CoreAdminPermissionDetailPage({
-  params
+  params, searchParams
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await getSessionContext();
   if (!session) {
@@ -32,7 +33,11 @@ export default async function CoreAdminPermissionDetailPage({
   }
 
   const { id } = await params;
-  const permission = await getCoreAdminPermissionDetail(session, id);
+  const paramsValue = searchParams ? await searchParams : {};
+  const rawPage = Number.parseInt(String(Array.isArray(paramsValue.page) ? paramsValue.page[0] ?? "1" : paramsValue.page ?? "1"), 10);
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const query = (Array.isArray(paramsValue.query) ? paramsValue.query[0] : paramsValue.query)?.trim() ?? "";
+  const permission = await getCoreAdminPermissionDetail(session, id, { page, pageSize: 25, query });
   if (!permission) {
     redirect("/admin");
   }
@@ -63,6 +68,7 @@ export default async function CoreAdminPermissionDetailPage({
             <p className="mt-2 text-sm text-slate-500">
               You are inspecting one permission. Return to Roles & Permissions to configure access.
             </p>
+            <p className="mt-2 text-xs font-semibold text-slate-600">Company: {session.context.companyName} · Read-only tenant-global role visibility through selected-company Manage scope.</p>
           </div>
           <ButtonLink href="/admin?tab=roles" tone="secondary">
             Back to Roles & Permissions
@@ -117,6 +123,11 @@ export default async function CoreAdminPermissionDetailPage({
 
         <Panel className="ogfi-detail-card">
           <h2 className="text-lg font-bold text-slate-950">Roles Granting This Permission</h2>
+          <p className="mt-1 text-sm text-slate-500">Current-company effective users only; scope identifiers outside this company are not shown.</p>
+          <form method="get" className="mt-4 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[1fr_auto]">
+            <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm" name="query" defaultValue={query} placeholder="Search role name or code" aria-label="Search granting roles" />
+            <button className="min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white">Search roles</button>
+          </form>
           <div className="mt-4 divide-y divide-slate-100">
             {permission.roles.length === 0 ? (
               <p className="py-4 text-sm text-slate-600">No active roles grant this permission.</p>
@@ -132,7 +143,7 @@ export default async function CoreAdminPermissionDetailPage({
                   </div>
                   <div className="mt-3 grid gap-2">
                     {role.assignedUsers.length === 0 ? (
-                      <p className="text-sm text-slate-600">No active users currently receive this role.</p>
+                    <p className="text-sm text-slate-600">No current-company users currently receive this role.</p>
                     ) : (
                       role.assignedUsers.map((user) => (
                         <div
@@ -153,10 +164,12 @@ export default async function CoreAdminPermissionDetailPage({
                       ))
                     )}
                   </div>
+                  <p className="mt-2 text-xs text-slate-500">{role.assignedUserCount} current-company active user{role.assignedUserCount === 1 ? "" : "s"}; showing {role.assignedUsers.length} preview{role.assignedUsers.length === 1 ? "" : "s"}.</p>
                 </div>
               ))
             )}
           </div>
+          {permission.rolesPage.totalRoles > 0 ? <PaginationBar page={permission.rolesPage.page} pageSize={permission.rolesPage.pageSize} totalItems={permission.rolesPage.totalRoles} itemLabel="granting roles" getPageHref={(nextPage) => `/admin/permissions/${permission.id}?page=${nextPage}${query ? `&query=${encodeURIComponent(query)}` : ""}`} /> : null}
         </Panel>
       </div>
 

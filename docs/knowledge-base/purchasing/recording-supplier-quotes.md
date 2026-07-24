@@ -2,7 +2,7 @@
 
 Use `Quotes` → `Record Supplier Quote` to open the focused quote-capture task for an approved Purchase Request in your selected location.
 
-The approved-request queue is paginated and searchable by Purchase Request reference, requester, or supplier code/name. Search does not change the selected company/location or the approved-only workflow boundary.
+The approved-request queue is paginated and searchable by Purchase Request reference, requester, or supplier code/name. You can also filter the required-date range. These filters do not change the selected company/location or the approved-only workflow boundary.
 
 The form uses a retry-safety key automatically. Re-submitting the same quote details after a network retry returns the original recorded quote; changing the details under the same retry key is rejected, so start a new quote task instead.
 

@@ -200,6 +200,10 @@ with explicit missing-line warnings, quoted quantity/UOM, unit price, line total
 availability, and lead time. Substitution policy and external evidence gates
 remain open.
 
+Permission Access detail now uses bounded searchable granting-role pages and
+current-company effective-user previews, with tenant-global/read-only semantics
+made explicit. Database, browser, hosted recovery, and UAT gates remain open.
+
 Approval Inbox now fails closed when normalized routing is disabled: it shows an
 explicit unavailable state and no legacy unbounded queue or false zero count.
 

@@ -14,6 +14,8 @@ type Props = {
   pageSize: number;
   totalItems: number;
   query?: string;
+  fromDate?: string;
+  toDate?: string;
   createRecommendationAction: Action;
   submitRecommendationAction: Action;
   quoteEvidence: Record<string, ControlledEvidenceDisplayRow[]>;
@@ -26,12 +28,15 @@ export function QuoteComparisonWorkspace({
   pageSize,
   totalItems,
   query = "",
+  fromDate = "",
+  toDate = "",
   createRecommendationAction,
   submitRecommendationAction,
   quoteEvidence
 }: Props) {
   const selected = requests.find((request) => request.id === selectedRequestId) ?? requests[0];
-  const selectedHref = (id: string, nextPage = page) => `/quotes?page=${nextPage}&requestId=${id}${query ? `&query=${encodeURIComponent(query)}` : ""}`;
+  const filterSuffix = `${query ? `&query=${encodeURIComponent(query)}` : ""}${fromDate ? `&fromDate=${fromDate}` : ""}${toDate ? `&toDate=${toDate}` : ""}`;
+  const selectedHref = (id: string, nextPage = page) => `/quotes?page=${nextPage}&requestId=${id}${filterSuffix}`;
 
   return (
     <section className="ogfi-data-surface overflow-hidden" data-testid="quote-comparison-workspace">
@@ -226,7 +231,7 @@ export function QuoteComparisonWorkspace({
           ) : null}
         </div>
       )}
-      {totalItems > 0 ? <PaginationBar page={page} pageSize={pageSize} totalItems={totalItems} itemLabel="approved requests" getPageHref={(nextPage) => `/quotes?page=${nextPage}${selected ? `&requestId=${selected.id}` : ""}${query ? `&query=${encodeURIComponent(query)}` : ""}`} /> : null}
+      {totalItems > 0 ? <PaginationBar page={page} pageSize={pageSize} totalItems={totalItems} itemLabel="approved requests" getPageHref={(nextPage) => `/quotes?page=${nextPage}${selected ? `&requestId=${selected.id}` : ""}${filterSuffix}`} /> : null}
     </section>
   );
 }

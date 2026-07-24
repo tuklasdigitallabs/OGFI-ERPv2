@@ -672,4 +672,19 @@ describe("core administration audit search wiring", () => {
     expect(feedbackSource).toContain("ADMIN_ROLE_CORE_PERMISSION_REQUIRED");
     expect(feedbackSource).toContain("ROLE_RECOMMENDATION_NOT_CONFIGURED");
   });
+
+  test("permission access detail uses bounded current-company role previews", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/permissions/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("rolesPage");
+    expect(serviceSource).toContain("rolePermission.findMany");
+    expect(serviceSource).toContain("assignedUserCount");
+    expect(serviceSource).toContain("take: 5");
+    expect(serviceSource).toContain("companyLocationIds");
+    expect(serviceSource).toContain("startsAt: { lte: now }");
+    expect(serviceSource).not.toContain("assignments: {\n                where: {\n                  status: \"ACTIVE\"");
+    expect(pageSource).toContain("Search granting roles");
+    expect(pageSource).toContain("PaginationBar");
+    expect(pageSource).toContain("Current-company effective users only");
+  });
 });

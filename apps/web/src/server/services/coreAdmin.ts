@@ -4810,79 +4810,94 @@ export async function listCoreAdminAuditEvents(
 export async function getCoreAdminPermissionDetail(
   session: SessionContext,
   permissionId: string,
+  input: { page?: number; pageSize?: number; query?: string } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
+  const pageSize = Math.min(Math.max(input.pageSize ?? 25, 10), 100);
+  const requestedPage = Math.min(Math.max(input.page ?? 1, 1), 10_000);
+  const query = input.query?.trim() ?? "";
+  const now = new Date();
+  const companyLocations = await prisma.location.findMany({
+    where: { tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" },
+    select: { id: true },
+  });
+  const companyLocationIds = companyLocations.map((location) => location.id);
   const permission = await prisma.permission.findFirst({
     where: {
       id: permissionId,
       OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
     },
-    include: {
-      roles: {
-        where: {
-          role: {
-            tenantId: session.context.tenantId,
-          },
-        },
-        include: {
-          role: {
-            include: {
-              assignments: {
-                where: {
-                  status: "ACTIVE",
-                  user: {
-                    tenantId: session.context.tenantId,
-                  },
-                },
-                include: {
-                  user: {
-                    include: {
-                      scopeAssignments: {
-                        where: { status: "ACTIVE" },
-                        orderBy: { startsAt: "asc" },
-                      },
-                    },
-                  },
-                },
-                orderBy: { startsAt: "asc" },
-              },
-            },
-          },
-        },
-      },
-    },
+    select: { id: true, code: true, module: true, action: true, description: true },
   });
 
   if (!permission) {
     return null;
   }
 
+  const roleWhere = {
+    permissionId: permission.id,
+    role: {
+      tenantId: session.context.tenantId,
+      ...(query ? { OR: [{ name: { contains: query, mode: "insensitive" as const } }, { code: { contains: query, mode: "insensitive" as const } }] } : {}),
+    },
+  };
+  const totalRoles = await prisma.rolePermission.count({ where: roleWhere });
+  const pageCount = Math.max(1, Math.ceil(totalRoles / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const roleRows = await prisma.rolePermission.findMany({
+    where: roleWhere,
+    select: { id: true, role: { select: { id: true, name: true, code: true, status: true } } },
+    orderBy: [{ role: { name: "asc" } }, { id: "asc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+  const roles = await Promise.all(roleRows.map(async (rolePermission) => {
+    const assignmentWhere = {
+      roleId: rolePermission.role.id,
+      status: "ACTIVE" as const,
+      startsAt: { lte: now },
+      AND: [{ OR: [{ endsAt: null }, { endsAt: { gt: now } }] }],
+      user: {
+        tenantId: session.context.tenantId,
+        status: "ACTIVE" as const,
+        scopeAssignments: {
+          some: {
+            status: "ACTIVE" as const,
+            startsAt: { lte: now },
+            AND: [{ OR: [{ endsAt: null }, { endsAt: { gt: now } }] }, { OR: [{ scopeType: "COMPANY" as const, scopeId: session.context.companyId }, { scopeType: "LOCATION" as const, scopeId: { in: companyLocationIds } }] }],
+          },
+        },
+      },
+    };
+    const [assignedUserCount, assignments] = await Promise.all([
+      prisma.userRoleAssignment.count({ where: assignmentWhere }),
+      prisma.userRoleAssignment.findMany({
+        where: assignmentWhere,
+        select: { id: true, userId: true, user: { select: { displayName: true, email: true, scopeAssignments: { where: { status: "ACTIVE", startsAt: { lte: now }, AND: [{ OR: [{ endsAt: null }, { endsAt: { gt: now } }] }, { OR: [{ scopeType: "COMPANY" as const, scopeId: session.context.companyId }, { scopeType: "LOCATION" as const, scopeId: { in: companyLocationIds } }] }] }, select: { id: true, scopeType: true, accessLevel: true }, orderBy: { startsAt: "asc" }, take: 5 } } } },
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        take: 5,
+      }),
+    ]);
+    return {
+      id: rolePermission.role.id,
+      name: rolePermission.role.name,
+      code: rolePermission.role.code,
+      status: rolePermission.role.status,
+      assignedUserCount,
+      assignedUsers: assignments.map((assignment) => ({ id: assignment.id, userId: assignment.userId, displayName: assignment.user.displayName, email: assignment.user.email, scopes: assignment.user.scopeAssignments.map((scope) => ({ id: scope.id, type: scope.scopeType, accessLevel: scope.accessLevel })) })),
+    };
+  }));
   return {
     id: permission.id,
     code: permission.code,
     module: permission.module,
     action: permission.action,
     description: permission.description,
-    roles: permission.roles.map((rolePermission) => ({
-      id: rolePermission.role.id,
-      name: rolePermission.role.name,
-      code: rolePermission.role.code,
-      status: rolePermission.role.status,
-      assignedUsers: rolePermission.role.assignments.map((assignment) => ({
-        id: assignment.id,
-        userId: assignment.userId,
-        displayName: assignment.user.displayName,
-        email: assignment.user.email,
-        scopes: assignment.user.scopeAssignments.map((scope) => ({
-          id: scope.id,
-          type: scope.scopeType,
-          accessLevel: scope.accessLevel,
-        })),
-      })),
-    })),
+    roles,
+    rolesPage: { page, pageSize, totalRoles, pageCount, query },
   };
 }
 

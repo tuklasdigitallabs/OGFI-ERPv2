@@ -245,20 +245,21 @@ export async function listQuoteOptions(session: SessionContext) {
   };
 }
 
-type QuoteRequestPageOptions = { page?: number; pageSize?: number; query?: string };
+type QuoteRequestPageOptions = { page?: number; pageSize?: number; query?: string; fromDate?: string; toDate?: string };
 
-const quoteRequestPageWhere = (session: SessionContext, query = "") => ({
+const quoteRequestPageWhere = (session: SessionContext, options: Pick<QuoteRequestPageOptions, "query" | "fromDate" | "toDate"> = {}) => ({
   tenantId: session.context.tenantId,
   companyId: session.context.companyId,
   requestLocationId: session.context.locationId,
   status: "APPROVED" as const,
-  ...(query.trim() ? {
+  ...(options.query?.trim() ? {
     OR: [
-      { publicReference: { contains: query.trim(), mode: "insensitive" as const } },
-      { requester: { displayName: { contains: query.trim(), mode: "insensitive" as const } } },
-      { quotationRequests: { some: { supplierQuotes: { some: { supplier: { OR: [{ legalName: { contains: query.trim(), mode: "insensitive" as const } }, { tradingName: { contains: query.trim(), mode: "insensitive" as const } }, { supplierCode: { contains: query.trim(), mode: "insensitive" as const } }] } } } } } }
+      { publicReference: { contains: options.query!.trim(), mode: "insensitive" as const } },
+      { requester: { displayName: { contains: options.query!.trim(), mode: "insensitive" as const } } },
+      { quotationRequests: { some: { supplierQuotes: { some: { supplier: { OR: [{ legalName: { contains: options.query!.trim(), mode: "insensitive" as const } }, { tradingName: { contains: options.query!.trim(), mode: "insensitive" as const } }, { supplierCode: { contains: options.query!.trim(), mode: "insensitive" as const } }] } } } } } }
     ]
-  } : {})
+  } : {}),
+  ...(options.fromDate || options.toDate ? { requiredDate: { ...(options.fromDate ? { gte: new Date(`${options.fromDate}T00:00:00.000Z`) } : {}), ...(options.toDate ? { lte: new Date(`${options.toDate}T23:59:59.999Z`) } : {}) } } : {})
 });
 
 export async function listQuoteRequests(
@@ -272,7 +273,7 @@ export async function listQuoteRequests(
   const page = Math.max(options.page ?? 1, 1);
 
   const requests = await prisma.purchaseRequest.findMany({
-    where: quoteRequestPageWhere(session, options.query),
+    where: quoteRequestPageWhere(session, options),
     ...(hasPaging ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
     include: {
       lines: {
@@ -467,11 +468,11 @@ export async function listQuoteRequestsPage(
   await requirePermission(session, permissions.quoteManage);
   const pageSize = Math.min(Math.max(options.pageSize ?? 25, 1), 100);
   const requestedPage = Math.max(options.page ?? 1, 1);
-  const totalItems = await prisma.purchaseRequest.count({ where: quoteRequestPageWhere(session, options.query) });
+  const totalItems = await prisma.purchaseRequest.count({ where: quoteRequestPageWhere(session, options) });
   const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, pageCount);
-  const items = await listQuoteRequests(session, { page, pageSize, query: options.query });
-  return { items, totalItems, page, pageSize, pageCount, query: options.query?.trim() ?? "" };
+  const items = await listQuoteRequests(session, { page, pageSize, query: options.query, fromDate: options.fromDate, toDate: options.toDate });
+  return { items, totalItems, page, pageSize, pageCount, query: options.query?.trim() ?? "", fromDate: options.fromDate ?? "", toDate: options.toDate ?? "" };
 }
 
 export async function createSupplierQuote(formData: FormData) {
