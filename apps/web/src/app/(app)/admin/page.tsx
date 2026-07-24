@@ -231,6 +231,14 @@ export default async function CoreAdministrationPage({
   const brandPageSize = Number.parseInt(getSearchParam(params, "brandPageSize") ?? "25", 10);
   const normalizedBrandPage = Number.isFinite(brandPage) ? Math.min(Math.max(brandPage, 1), 10_000) : 1;
   const normalizedBrandPageSize = Number.isFinite(brandPageSize) ? Math.min(Math.max(brandPageSize, 10), 100) : 25;
+  const departmentQuery = getSearchParam(params, "departmentQuery")?.trim() ?? "";
+  const departmentStatus = getSearchParam(params, "departmentStatus");
+  const departmentPage = Number.parseInt(getSearchParam(params, "departmentPage") ?? "1", 10);
+  const departmentPageSize = Number.parseInt(getSearchParam(params, "departmentPageSize") ?? "25", 10);
+  const normalizedDepartmentPage = Number.isFinite(departmentPage) ? Math.min(Math.max(departmentPage, 1), 10_000) : 1;
+  const normalizedDepartmentPageSize = Number.isFinite(departmentPageSize)
+    ? Math.min(Math.max(departmentPageSize, 10), 100)
+    : 25;
   const auditFilters: CoreAdminAuditEventFilters = {};
   const auditQuery = getSearchParam(params, "q");
   const auditEventType = getSearchParam(params, "eventType");
@@ -310,6 +318,13 @@ export default async function CoreAdministrationPage({
         : {}),
       ...(locationType && ["BRANCH", "WAREHOUSE", "COMMISSARY", "CENTRAL_KITCHEN", "HEAD_OFFICE", "PROJECT_SITE", "TEMPORARY_SITE"].includes(locationType)
         ? { locationType: locationType as "BRANCH" | "WAREHOUSE" | "COMMISSARY" | "CENTRAL_KITCHEN" | "HEAD_OFFICE" | "PROJECT_SITE" | "TEMPORARY_SITE" }
+        : {})
+    }, {
+      page: normalizedDepartmentPage,
+      pageSize: normalizedDepartmentPageSize,
+      query: departmentQuery,
+      ...(departmentStatus && ["ACTIVE", "INACTIVE", "ARCHIVED"].includes(departmentStatus)
+        ? { status: departmentStatus as "ACTIVE" | "INACTIVE" | "ARCHIVED" }
         : {})
     }),
     listCoreAdminBrandOptions(session),
@@ -776,7 +791,7 @@ export default async function CoreAdministrationPage({
                 Company, brand, and location records that define where users operate.
               </p>
               <p className="mt-2 text-xs font-medium text-amber-700">
-                Locations are paginated in this checkpoint. Company, Brand, and Department registries remain separate pending contracts.
+                Company remains a selected-company summary; Brand, Department, and Location registries use bounded server pagination.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1045,8 +1060,19 @@ export default async function CoreAdministrationPage({
             <section className="space-y-3">
               <div>
                 <h3 className="font-bold text-slate-950">Departments</h3>
-                <p className="text-sm text-slate-500">Budget and responsibility owners (separate contract pending)</p>
+                <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
               </div>
+              <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+                <input type="hidden" name="tab" value="organization" />
+                <input className="rounded-md border border-slate-300 px-3 py-2" name="departmentQuery" defaultValue={departmentQuery} placeholder="Search name or code" />
+                <select className="rounded-md border border-slate-300 px-3 py-2" name="departmentStatus" defaultValue={departmentStatus ?? ""}>
+                  <option value="">All statuses</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
+                  <option value="ARCHIVED">Archived</option>
+                </select>
+                <button type="submit" className="rounded-md bg-blue-600 px-3 py-2 font-semibold text-white">Apply filters</button>
+              </form>
               {overview.departments.length === 0 ? (
                 <div className="ogfi-record-summary p-4">
                   <p className="font-semibold text-slate-950">No departments yet</p>
@@ -1082,6 +1108,22 @@ export default async function CoreAdministrationPage({
                   </div>
                 ))
               )}
+              <div className="flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                <span>Showing {overview.departments.length} of {overview.departmentPage.totalItems} departments</span>
+                <PaginationBar
+                  page={overview.departmentPage.page}
+                  pageSize={overview.departmentPage.pageSize}
+                  totalItems={overview.departmentPage.totalItems}
+                  itemLabel="departments"
+                  controlClassName="min-h-10"
+                  getPageHref={(nextPage) => {
+                    const next = new URLSearchParams({ tab: "organization", departmentPage: String(nextPage), departmentPageSize: String(overview.departmentPage.pageSize) });
+                    if (departmentQuery) next.set("departmentQuery", departmentQuery);
+                    if (departmentStatus) next.set("departmentStatus", departmentStatus);
+                    return `/admin?${next.toString()}`;
+                  }}
+                />
+              </div>
             </section>
 
             <section className="space-y-3">

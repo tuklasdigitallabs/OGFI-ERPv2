@@ -20,8 +20,8 @@ Sensitive roles are also not granted through quick assignment. Admin, approver, 
 - To view or change Administration records, you need both `Administer tenant-wide roles` access and active `Manage` scope for the selected company. Core Administration access or tenant-role authority without selected-company Manage scope is not enough.
 - Direct links to company, location, permission, audit-event, and user-detail pages enforce the same two checks before loading the record. If either check fails, Administration shows its restricted state and does not disclose whether the requested record exists. Audit export also requires tenant-role authority.
 - Audit Trail review is read-only and server-paginated. It shows only the selected-company events plus authorized tenant-wide events, with a deterministic next-page control. Detail and CSV output redact actor contact/IP fields and sensitive nested values; immutable audit history is never rewritten. Export uses the same filters and redacted projection as the visible registry.
-- Organization Scope Locations is a selected-company, server-filtered registry. Search, status, and location type filters stay in the URL and use deterministic paging; direct location links recheck authorization. Initial-location onboarding uses a separate bounded active catalog and tells you when more locations exist. Company, Brand, and Department registries are still separate pending surfaces.
-- Organization Scope Brands is also a selected-company, server-filtered registry. Name/code and status filters stay in the URL and use deterministic paging; the location form uses a separate bounded active-brand catalog. Departments remain a separate pending surface because their budget, cost-center, and workforce counts require additional review.
+- Organization Scope Locations is a selected-company, server-filtered registry. Search, status, and location type filters stay in the URL and use deterministic paging; direct location links recheck authorization. Initial-location onboarding uses a separate bounded active catalog and tells you when more locations exist. Company remains a summary; Brand, Department, and Location registries use bounded server pages.
+- Organization Scope Brands is also a selected-company, server-filtered registry. Name/code and status filters stay in the URL and use deterministic paging; the location form uses a separate bounded active-brand catalog. Departments use the same pattern, with read-only budget, budget-line, and cost-center summaries; employee-assignment impact remains deferred.
 - Target-user role changes also require the existing company administration access shown for the selected company.
 - For a role grant, deactivation, request, or review, the target account must be active and must have a current active company assignment for the selected company or an active location assignment to an active location in that company. A default company alone is not an access assignment.
 - If you create a user with an initial role, also select an initial active location in the selected company. The system creates the location membership and role together; it does not create a role-only user through this path.
@@ -29,6 +29,10 @@ Sensitive roles are also not granted through quick assignment. Admin, approver, 
 - The Roles & Permissions registry is server-filtered by role name/code and status and paginates the tenant-global role catalog. Each row shows a permission count and a short preview only; open the role detail to review or change its controlled permission set. Viewing a role never grants its permissions. The initial-role onboarding selector is a separate bounded convenience list; when it reports more roles, use the Roles workspace to find the complete catalog.
 
 ## Navigation Path
+
+Department registry rows are selected-company scoped and paginated. Their
+budget, budget-line, and cost-center counts are read-only related-record
+summaries; employee-assignment impact is deferred.
 
 `Admin` → `Core Administration` → `Users` → open a user
 

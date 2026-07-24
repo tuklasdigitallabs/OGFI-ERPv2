@@ -55,14 +55,19 @@ Implementation note (`DEC-0114`): Organization Scope now presents a server-owned
 selected-company Locations registry with URL-backed search, status/type filters, exact
 totals, deterministic name/ID ordering, and pagination. The initial-location selector
 uses a separate bounded active catalog and discloses overflow. Company, Brand, and
-Department lists remain explicitly pending separate contracts.
+Department lists use their own bounded selected-company registry contract.
 
 Implementation note (`DEC-0115`): Brands now use a selected-company server registry with
 bounded name/code and status filters, exact totals, deterministic name/ID ordering, and
 pagination. Location creation uses a separate bounded active-brand catalog with overflow
-disclosure. Departments remain pending their own dependency-count contract.
+disclosure. Departments use a bounded registry and retain read-only dependency summaries.
 
 ## 2. User detail requirements
+
+Implementation note (`DEC-0116`): Departments use a selected-company server
+registry with bounded filters and paging. Rows retain read-only budget,
+budget-line, and cost-center related-record counts; employee-assignment volume
+remains deferred.
 
 Show:
 

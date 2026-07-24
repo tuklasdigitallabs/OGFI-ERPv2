@@ -99,3 +99,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0113-ADMIN-AUDIT-REDACTION-PAGINATION.md` — shared Audit Trail authorization, redacted projections, deterministic cursor pagination, and export parity
 - `DEC-0114-ADMIN-LOCATIONS-REGISTRY-PAGINATION.md` — selected-company Locations registry, bounded options, and Organization Scope sequencing
 - `DEC-0115-ADMIN-BRANDS-REGISTRY-PAGINATION.md` — selected-company Brands registry, bounded options, and Department deferral
+- `DEC-0116-ADMIN-DEPARTMENTS-REGISTRY-PAGINATION.md` — selected-company Departments pagination with approved dependency-summary counts

@@ -191,6 +191,13 @@ const coreAdminBrandPageInputSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
+const coreAdminDepartmentPageInputSchema = z.object({
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
+});
+
 const updateRolePermissionsSchema = z.object({
   roleId: z.string().uuid(),
   reason: scopeReasonSchema,
@@ -1063,6 +1070,81 @@ async function listCoreAdminBrandOptionsAuthorized(session: SessionContext) {
   };
 }
 
+export type CoreAdminDepartmentPage = {
+  items: Array<{
+    id: string;
+    companyId: string;
+    companyName: string;
+    code: string;
+    name: string;
+    status: string;
+    budgetCount: number;
+    budgetLineCount: number;
+    costCenterCount: number;
+  }>;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  activeItems: number;
+};
+
+async function listCoreAdminDepartmentPageAuthorized(
+  session: SessionContext,
+  input: z.input<typeof coreAdminDepartmentPageInputSchema> = {},
+): Promise<CoreAdminDepartmentPage> {
+  const values = coreAdminDepartmentPageInputSchema.parse(input);
+  const query = values.query.toLowerCase();
+  const where: Prisma.DepartmentWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.status ? { status: values.status } : {}),
+    ...(query
+      ? {
+          OR: [
+            { name: { contains: query, mode: "insensitive" as const } },
+            { code: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+  const [totalItems, activeItems, departments] = await Promise.all([
+    prisma.department.count({ where }),
+    prisma.department.count({ where: { ...where, status: "ACTIVE" } }),
+    prisma.department.findMany({
+      where,
+      select: {
+        id: true,
+        companyId: true,
+        name: true,
+        code: true,
+        status: true,
+        company: { select: { legalName: true, tradingName: true } },
+        _count: { select: { budgets: true, budgetLines: true, costCenters: true } },
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      skip: (values.page - 1) * values.pageSize,
+      take: values.pageSize,
+    }),
+  ]);
+  return {
+    items: departments.map((department) => ({
+      id: department.id,
+      companyId: department.companyId,
+      companyName: department.company.tradingName ?? department.company.legalName,
+      name: department.name,
+      code: department.code,
+      status: department.status,
+      budgetCount: department._count.budgets,
+      budgetLineCount: department._count.budgetLines,
+      costCenterCount: department._count.costCenters,
+    })),
+    page: values.page,
+    pageSize: values.pageSize,
+    totalItems,
+    activeItems,
+  };
+}
+
 export async function listCoreAdminRolePage(
   session: SessionContext,
   input: z.input<typeof coreAdminRolePageInputSchema> = {},
@@ -1117,29 +1199,40 @@ export async function listCoreAdminBrandOptions(session: SessionContext) {
   return listCoreAdminBrandOptionsAuthorized(session);
 }
 
+export async function listCoreAdminDepartmentPage(
+  session: SessionContext,
+  input: z.input<typeof coreAdminDepartmentPageInputSchema> = {},
+) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  return listCoreAdminDepartmentPageAuthorized(session, input);
+}
+
 export async function getCoreAdminOverview(
   session: SessionContext,
   userPageInput: z.input<typeof coreAdminUserPageInputSchema> = {},
   rolePageInput: z.input<typeof coreAdminRolePageInputSchema> = {},
   brandPageInput: z.input<typeof coreAdminBrandPageInputSchema> = {},
   locationPageInput: z.input<typeof coreAdminLocationPageInputSchema> = {},
+  departmentPageInput: z.input<typeof coreAdminDepartmentPageInputSchema> = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const [userPage, rolePage, roleOptions, brandPage, locationPage] = await Promise.all([
+  const [userPage, rolePage, roleOptions, brandPage, locationPage, departmentPage] = await Promise.all([
     listCoreAdminUserPageAuthorized(session, userPageInput),
     listCoreAdminRolePageAuthorized(session, rolePageInput),
     listCoreAdminRoleOptionsAuthorized(session),
     listCoreAdminBrandPageAuthorized(session, brandPageInput),
     listCoreAdminLocationPageAuthorized(session, locationPageInput),
+    listCoreAdminDepartmentPageAuthorized(session, departmentPageInput),
   ]);
 
   const [
     tenant,
     companies,
-    departments,
     approvalRules,
     recentAuditEvents,
   ] = await Promise.all([
@@ -1157,24 +1250,6 @@ export async function getCoreAdminOverview(
         id: session.context.companyId,
       },
       orderBy: { legalName: "asc" },
-    }),
-    prisma.department.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-      },
-      include: {
-        company: true,
-        _count: {
-          select: {
-            budgets: true,
-            budgetLines: true,
-            costCenters: true,
-            employeeAssignments: true,
-          },
-        },
-      },
-      orderBy: [{ company: { legalName: "asc" } }, { name: "asc" }],
     }),
     prisma.approvalRule.findMany({
       where: {
@@ -1223,19 +1298,8 @@ export async function getCoreAdminOverview(
     })),
     brands: brandPage.items,
     brandPage,
-    departments: departments.map((department) => ({
-      id: department.id,
-      companyId: department.companyId,
-      companyName:
-        department.company.tradingName ?? department.company.legalName,
-      name: department.name,
-      code: department.code,
-      status: department.status,
-      budgetCount: department._count.budgets,
-      budgetLineCount: department._count.budgetLines,
-      costCenterCount: department._count.costCenters,
-      employeeAssignmentCount: department._count.employeeAssignments,
-    })),
+    departments: departmentPage.items,
+    departmentPage,
     locations: locationPage.items,
     locationPage,
     approvalRules: approvalRules.map((rule) => ({

@@ -462,6 +462,18 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - The overview now delegates Brands to a bounded selected-company page contract instead of an unbounded brand list. Name/code and status filters, exact totals, deterministic `name ASC, id ASC` ordering, and a separate active-brand option catalog capped at 100 are implemented. Location creation no longer treats paginated rows as selector authority.
 - Focused Core Admin coverage passes 20/20; web typecheck and lint pass. Full regression, authorization manifest, isolated production build, responsive browser, disposable PostgreSQL count/authorization, selector overflow, and hosted recovery gates remain open for this checkpoint. Departments remain pending and Organization Scope is not complete.
 
+### DEC-0116 Organization Scope Departments pagination decision — July 24, 2026
+
+- Accepted selected-company, server-paginated Departments registry with bounded name/code search, status filter, exact totals, deterministic `name ASC, id ASC`, and pre-query Core Admin + tenant-role + selected-company `MANAGE` authorization.
+- Retain the three dependency counts already promised by the visible Department cards (budgets, budget lines, cost centers) as selected-company-scoped read-only summaries; defer employee-assignment count until a visible consumer and disclosure contract exist. No Department option catalog is needed yet.
+- Decision record: `docs/core/00-governance/decisions/DEC-0116-ADMIN-DEPARTMENTS-REGISTRY-PAGINATION.md`. Implementation is the next in-scope slice; Organization Scope remains incomplete until Department surfaces and applicable production gates pass.
+
+### DEC-0116 Organization Scope Departments implementation checkpoint — July 24, 2026
+
+- Replaced the unbounded Department overview query with a selected-company, server-paginated registry. Search/status inputs are bounded; totals and active counts share the tenant/company predicate; rows sort by `name ASC, id ASC` and expose only identity/scope/status plus the approved budget, budget-line, and cost-center related-record counts. Employee-assignment count remains deferred.
+- Organization UI now provides Department search, status filtering, empty-state copy, responsive record summaries, and pagination while Company remains a single selected-company summary. The visible Organization Scope header no longer describes Brand/Department registries as pending contracts.
+- Core Admin focused coverage passes 21/21; full web regression passes 1,297 tests with 301 skipped and one TODO; authorization-manifest tests pass 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL authorization/count/query-plan evidence, and hosted recovery/deployment gates remain open. Organization Scope and Phase I remain in progress.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

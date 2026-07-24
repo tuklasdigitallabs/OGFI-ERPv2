@@ -471,6 +471,20 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("code: brand.code");
   });
 
+  test("organization departments use bounded selected-company pagination and approved summaries", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    expect(serviceSource).toContain("coreAdminDepartmentPageInputSchema");
+    expect(serviceSource).toContain("listCoreAdminDepartmentPageAuthorized");
+    expect(serviceSource).toContain("listCoreAdminDepartmentPage");
+    expect(serviceSource).toContain("companyId: session.context.companyId");
+    expect(serviceSource).toContain('orderBy: [{ name: "asc" }, { id: "asc" }]');
+    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("take: values.pageSize");
+    expect(serviceSource).toContain("budgetLines: true");
+    expect(serviceSource).toContain("costCenters: true");
+    expect(serviceSource).not.toContain("employeeAssignments: true");
+  });
+
   test("admin user access lifecycle forms use modal entry surfaces", () => {
     const detailPageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),
