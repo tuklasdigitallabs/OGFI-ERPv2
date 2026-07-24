@@ -63,6 +63,32 @@ describe("stock count foundation rules", () => {
     mockPrisma.userRoleAssignment.findMany.mockResolvedValue([]);
     mockPrisma.$queryRaw.mockResolvedValue([{
       currentAttemptId: "00000000-0000-4000-8000-000000000005",
+      sessionStatus: "DRAFT",
+      attemptStatus: "DRAFT",
+      sessionBlindCount: true,
+      attemptBlindCount: true,
+      sessionFreezeMovements: false,
+      attemptFreezeMovements: false,
+      sessionCreatedByUserId: "00000000-0000-4000-8000-000000000009",
+      attemptCreatedByUserId: "00000000-0000-4000-8000-000000000009",
+      sessionAssignedToUserId: null,
+      attemptAssignedToUserId: null,
+      sessionReviewedByUserId: null,
+      attemptReviewedByUserId: null,
+      sessionCutoffAt: null,
+      attemptCutoffAt: null,
+      sessionStartedAt: null,
+      attemptStartedAt: null,
+      sessionSubmittedAt: null,
+      attemptSubmittedAt: null,
+      sessionReviewedAt: null,
+      attemptReviewedAt: null,
+      sessionCancelledAt: null,
+      attemptCancelledAt: null,
+      sessionCancellationReason: null,
+      attemptCancellationReason: null,
+      sessionReviewNotes: null,
+      attemptReviewNotes: null,
       legacyLineCount: 0,
       attemptLineCount: 0,
       legacyDigest: "d41d8cd98f00b204e9800998ecf8427e",
@@ -73,6 +99,32 @@ describe("stock count foundation rules", () => {
   test("attempt-line parity fails closed on missing or divergent evidence", async () => {
     mockPrisma.$queryRaw.mockResolvedValueOnce([{
       currentAttemptId: "00000000-0000-4000-8000-000000000005",
+      sessionStatus: "DRAFT",
+      attemptStatus: "DRAFT",
+      sessionBlindCount: true,
+      attemptBlindCount: true,
+      sessionFreezeMovements: false,
+      attemptFreezeMovements: false,
+      sessionCreatedByUserId: "00000000-0000-4000-8000-000000000009",
+      attemptCreatedByUserId: "00000000-0000-4000-8000-000000000009",
+      sessionAssignedToUserId: null,
+      attemptAssignedToUserId: null,
+      sessionReviewedByUserId: null,
+      attemptReviewedByUserId: null,
+      sessionCutoffAt: null,
+      attemptCutoffAt: null,
+      sessionStartedAt: null,
+      attemptStartedAt: null,
+      sessionSubmittedAt: null,
+      attemptSubmittedAt: null,
+      sessionReviewedAt: null,
+      attemptReviewedAt: null,
+      sessionCancelledAt: null,
+      attemptCancelledAt: null,
+      sessionCancellationReason: null,
+      attemptCancellationReason: null,
+      sessionReviewNotes: null,
+      attemptReviewNotes: null,
       legacyLineCount: 2,
       attemptLineCount: 1,
       legacyDigest: "legacy",
@@ -82,6 +134,46 @@ describe("stock count foundation rules", () => {
     await expect(
       assertStockCountAttemptLineParity(dashboardSession as never, "count-1")
     ).rejects.toThrow("STOCK_COUNT_ATTEMPT_LINE_PARITY_FAILED");
+  });
+
+  test("attempt header parity fails closed when lifecycle state diverges", async () => {
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{
+      currentAttemptId: "00000000-0000-4000-8000-000000000005",
+      sessionStatus: "CANCELLED",
+      attemptStatus: "IN_PROGRESS",
+      sessionBlindCount: true,
+      attemptBlindCount: true,
+      sessionFreezeMovements: false,
+      attemptFreezeMovements: false,
+      sessionCreatedByUserId: "00000000-0000-4000-8000-000000000009",
+      attemptCreatedByUserId: "00000000-0000-4000-8000-000000000009",
+      sessionAssignedToUserId: null,
+      attemptAssignedToUserId: null,
+      sessionReviewedByUserId: null,
+      attemptReviewedByUserId: null,
+      sessionCutoffAt: null,
+      attemptCutoffAt: null,
+      sessionStartedAt: null,
+      attemptStartedAt: null,
+      sessionSubmittedAt: null,
+      attemptSubmittedAt: null,
+      sessionReviewedAt: null,
+      attemptReviewedAt: null,
+      sessionCancelledAt: null,
+      attemptCancelledAt: null,
+      sessionCancellationReason: null,
+      attemptCancellationReason: null,
+      sessionReviewNotes: null,
+      attemptReviewNotes: null,
+      legacyLineCount: 0,
+      attemptLineCount: 0,
+      legacyDigest: "same",
+      attemptDigest: "same"
+    }]);
+
+    await expect(
+      assertStockCountAttemptLineParity(dashboardSession as never, "count-1")
+    ).rejects.toThrow("STOCK_COUNT_ATTEMPT_HEADER_PARITY_FAILED");
   });
 
   test("list page gate allows every stock-count action permission", () => {

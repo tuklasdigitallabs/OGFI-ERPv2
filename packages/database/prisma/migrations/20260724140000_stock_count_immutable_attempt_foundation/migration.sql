@@ -166,6 +166,7 @@ BEGIN
      AND NEW."assignedToUserId" IS NOT DISTINCT FROM OLD."assignedToUserId"
      AND NEW."createdAt" IS NOT DISTINCT FROM OLD."createdAt"
      THEN RETURN NEW;
+  END IF;
   IF OLD."status" IN ('SUBMITTED', 'RECOUNT_REQUESTED', 'REVIEWED', 'CANCELLED', 'VOIDED_FOR_RECOUNT')
      AND (NEW.* IS DISTINCT FROM OLD.*) THEN
     RAISE EXCEPTION 'Terminal stock count attempt evidence is immutable' USING ERRCODE = '55000';

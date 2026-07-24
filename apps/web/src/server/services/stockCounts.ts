@@ -427,6 +427,32 @@ async function syncStockCountAttempt1Lines(
 
 type StockCountAttemptParityRow = {
   currentAttemptId: string | null;
+  sessionStatus: string;
+  attemptStatus: string;
+  sessionBlindCount: boolean;
+  attemptBlindCount: boolean;
+  sessionFreezeMovements: boolean;
+  attemptFreezeMovements: boolean;
+  sessionCreatedByUserId: string;
+  attemptCreatedByUserId: string;
+  sessionAssignedToUserId: string | null;
+  attemptAssignedToUserId: string | null;
+  sessionReviewedByUserId: string | null;
+  attemptReviewedByUserId: string | null;
+  sessionCutoffAt: Date | null;
+  attemptCutoffAt: Date | null;
+  sessionStartedAt: Date | null;
+  attemptStartedAt: Date | null;
+  sessionSubmittedAt: Date | null;
+  attemptSubmittedAt: Date | null;
+  sessionReviewedAt: Date | null;
+  attemptReviewedAt: Date | null;
+  sessionCancelledAt: Date | null;
+  attemptCancelledAt: Date | null;
+  sessionCancellationReason: string | null;
+  attemptCancellationReason: string | null;
+  sessionReviewNotes: string | null;
+  attemptReviewNotes: string | null;
   legacyLineCount: number;
   attemptLineCount: number;
   legacyDigest: string;
@@ -444,6 +470,32 @@ export async function assertStockCountAttemptLineParity(
 ) {
   const rows = await prisma.$queryRaw<StockCountAttemptParityRow[]>(Prisma.sql`
     SELECT sc."currentAttemptId",
+           sc.status AS "sessionStatus",
+           a.status AS "attemptStatus",
+           sc."blindCount" AS "sessionBlindCount",
+           a."blindCount" AS "attemptBlindCount",
+           sc."freezeMovements" AS "sessionFreezeMovements",
+           a."freezeMovements" AS "attemptFreezeMovements",
+           sc."createdByUserId" AS "sessionCreatedByUserId",
+           a."createdByUserId" AS "attemptCreatedByUserId",
+           sc."assignedToUserId" AS "sessionAssignedToUserId",
+           a."assignedToUserId" AS "attemptAssignedToUserId",
+           sc."reviewedByUserId" AS "sessionReviewedByUserId",
+           a."reviewedByUserId" AS "attemptReviewedByUserId",
+           sc."cutoffAt" AS "sessionCutoffAt",
+           a."cutoffAt" AS "attemptCutoffAt",
+           sc."startedAt" AS "sessionStartedAt",
+           a."startedAt" AS "attemptStartedAt",
+           sc."submittedAt" AS "sessionSubmittedAt",
+           a."submittedAt" AS "attemptSubmittedAt",
+           sc."reviewedAt" AS "sessionReviewedAt",
+           a."reviewedAt" AS "attemptReviewedAt",
+           sc."cancelledAt" AS "sessionCancelledAt",
+           a."cancelledAt" AS "attemptCancelledAt",
+           sc."cancellationReason" AS "sessionCancellationReason",
+           a."cancellationReason" AS "attemptCancellationReason",
+           sc."reviewNotes" AS "sessionReviewNotes",
+           a."reviewNotes" AS "attemptReviewNotes",
            (
              SELECT COUNT(*)::int
                FROM "StockCountLine" l
@@ -489,6 +541,12 @@ export async function assertStockCountAttemptLineParity(
                 AND al."inventoryLocationId" = sc."inventoryLocationId"
            ), '')) AS "attemptDigest"
       FROM "StockCountSession" sc
+      JOIN "StockCountAttempt" a
+        ON a.id = sc."currentAttemptId"
+       AND a."stockCountSessionId" = sc.id
+       AND a."tenantId" = sc."tenantId"
+       AND a."companyId" = sc."companyId"
+       AND a."inventoryLocationId" = sc."inventoryLocationId"
      WHERE sc.id = ${stockCountSessionId}::uuid
        AND sc."tenantId" = ${session.context.tenantId}::uuid
        AND sc."companyId" = ${session.context.companyId}::uuid
@@ -501,9 +559,29 @@ export async function assertStockCountAttemptLineParity(
        )
   `);
   const parity = rows[0];
+  const sameDate = (left: Date | null, right: Date | null) =>
+    left?.getTime() === right?.getTime();
+  if (!parity || !parity.currentAttemptId) {
+    throw new Error("STOCK_COUNT_ATTEMPT_LINE_PARITY_FAILED");
+  }
+  const headerMismatch =
+    parity.sessionStatus !== parity.attemptStatus ||
+    parity.sessionBlindCount !== parity.attemptBlindCount ||
+    parity.sessionFreezeMovements !== parity.attemptFreezeMovements ||
+    parity.sessionCreatedByUserId !== parity.attemptCreatedByUserId ||
+    parity.sessionAssignedToUserId !== parity.attemptAssignedToUserId ||
+    parity.sessionReviewedByUserId !== parity.attemptReviewedByUserId ||
+    !sameDate(parity.sessionCutoffAt, parity.attemptCutoffAt) ||
+    !sameDate(parity.sessionStartedAt, parity.attemptStartedAt) ||
+    !sameDate(parity.sessionSubmittedAt, parity.attemptSubmittedAt) ||
+    !sameDate(parity.sessionReviewedAt, parity.attemptReviewedAt) ||
+    !sameDate(parity.sessionCancelledAt, parity.attemptCancelledAt) ||
+    parity.sessionCancellationReason !== parity.attemptCancellationReason ||
+    parity.sessionReviewNotes !== parity.attemptReviewNotes;
+  if (headerMismatch) {
+    throw new Error("STOCK_COUNT_ATTEMPT_HEADER_PARITY_FAILED");
+  }
   if (
-    !parity ||
-    !parity.currentAttemptId ||
     Number(parity.legacyLineCount) !== Number(parity.attemptLineCount) ||
     parity.legacyDigest !== parity.attemptDigest
   ) {
@@ -1849,6 +1927,7 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
             id: true,
             publicReference: true,
             inventoryLocationId: true,
+            currentAttemptId: true,
             lines: {
               orderBy: { lineNumber: "asc" },
               select: {
@@ -1861,7 +1940,10 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
                 countedQuantityBaseUom: true,
                 varianceQuantityBaseUom: true,
                 notes: true,
-                uom: { select: { uomCode: true } }
+                uom: { select: { uomCode: true } },
+                attemptLineMigration: {
+                  select: { id: true, stockCountAttemptId: true }
+                }
               }
             }
           }
@@ -1872,6 +1954,15 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
         const varianceLines = filterCountVarianceLines(count.lines);
         if (varianceLines.length === 0) {
           throw new Error("STOCK_COUNT_HAS_NO_VARIANCE_LINES");
+        }
+        if (!count.currentAttemptId) {
+          throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+        }
+        if (varianceLines.some(
+          (line) =>
+            line.attemptLineMigration?.stockCountAttemptId !== count.currentAttemptId
+        )) {
+          throw new Error("STOCK_COUNT_ATTEMPT_LINE_PARITY_FAILED");
         }
 
         const created = await tx.stockAdjustment.create({
@@ -1889,6 +1980,7 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
             sourceDocumentType: "StockCountSession",
             sourceDocumentId: count.id,
             sourceStockCountSessionId: count.id,
+            sourceStockCountAttemptId: count.currentAttemptId,
             totalEstimatedValueImpact: 0
           }
         });
@@ -1920,7 +2012,8 @@ export async function generateStockCountVarianceAdjustment(formData: FormData) {
               notes:
                 line.notes ??
                 `Counted ${Number(line.countedQuantityBaseUom)} ${line.uom.uomCode}`,
-              sourceStockCountLineId: line.id
+              sourceStockCountLineId: line.id,
+              sourceStockCountAttemptLineId: line.attemptLineMigration?.id ?? null
             };
           })
         });

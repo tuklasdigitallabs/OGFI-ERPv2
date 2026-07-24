@@ -1,5 +1,13 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Stock Count Attempt Migration Guard Fix
+
+- Corrected the missing PL/pgSQL `END IF` in the authored immutable-attempt migration and refreshed its safety-register hash. The migration remains unexecuted pending disposable PostgreSQL and rollback evidence.
+
+## 2026-07-24 — Stock Count Header and Adjustment Lineage Parity
+
+- Stock Count compatibility reads now fail closed when current-attempt lifecycle/header fields diverge, not only when line digests diverge. The dormant variance bridge records current-attempt and attempt-line lineage, while Count Variance generation remains disabled pending recovery and database evidence.
+
 ## 2026-07-24 — Count Variance Safety Gate and Scheduled Attempt Link
 
 - Scheduled Stock Counts now create immutable attempt 1 transactionally with the session, preventing current-attempt reads from hiding scheduled work. Count Variance dashboard/task surfaces and generation are disabled until immutable recovery and adjustment-lineage gates are complete.

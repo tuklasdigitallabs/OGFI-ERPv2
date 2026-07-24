@@ -1280,7 +1280,7 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
   },
   {
     "migration": "20260724140000_stock_count_immutable_attempt_foundation",
-    "sha256": "68b492fe94f23ef4fcce7ff7b5b8419ba914569612603fdbe78c78a60ee091ac",
+    "sha256": "66fbe4e2f2d72dc32883743a51263797345d78d6dc2d8eccb775930422ef34e6",
     "risk": "The additive attempt tables backfill every existing Stock Count session/line and add foreign keys, unique indexes, and immutable history guards. A scope mismatch, duplicate legacy key, or trigger defect must fail closed without rewriting count evidence.",
     "expectedDataEffect": "Backfill one immutable attempt and attempt-line row for each existing session/line using the legacy IDs as deterministic lineage; populate current-attempt and adjustment source links; add no inventory movement or balance effects.",
     "recovery": "The migration must run as one transaction. On failure, restore the predecessor backup or use a reviewed forward correction; once attempt history exists, preserve it and keep Count Variance disabled rather than deleting evidence.",
@@ -1290,7 +1290,7 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "reversibility": "Application rollback retains the additive attempt tables and guards. Destructive rollback is permitted only before activation after proving the new tables empty; otherwise use an evidence-preserving forward correction or verified restore.",
     "decisionTrigger": "Stop on any legacy row/content delta, missing attempt-1 lineage, mutable terminal evidence, cross-scope acceptance, duplicate attempt/line identity, redeploy delta, drift, or restore mismatch.",
     "owner": "Database Engineering owns migration/backfill/guards; Stock Count Engineering owns cutover; Security, QA, Operations, and Release verify lineage, cutoff, concurrency, blind-count, and recovery behavior.",
-    "verification": "Prisma schema validation passes. Disposable PostgreSQL migration/backfill, append-only guard, cutoff/concurrency, source-link, redeploy, drift, restore, and hosted evidence remain mandatory before Count Variance activation or production approval.",
+    "verification": "Prisma schema validation passes and the authored PL/pgSQL history guard was corrected with the missing END IF before execution. Disposable PostgreSQL migration/backfill, append-only guard, cutoff/concurrency, source-link, redeploy, drift, restore, and hosted evidence remain mandatory before Count Variance activation or production approval.",
     "expectedRecoveryTime": "Measure populated backfill, lock/statement timeouts, forward-fix, and isolated restore against the approved hosted RPO/RTO."
   },
   {
