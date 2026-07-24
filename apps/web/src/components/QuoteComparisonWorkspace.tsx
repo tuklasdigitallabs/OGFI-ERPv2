@@ -13,6 +13,7 @@ type Props = {
   page: number;
   pageSize: number;
   totalItems: number;
+  query?: string;
   createRecommendationAction: Action;
   submitRecommendationAction: Action;
   quoteEvidence: Record<string, ControlledEvidenceDisplayRow[]>;
@@ -24,12 +25,13 @@ export function QuoteComparisonWorkspace({
   page,
   pageSize,
   totalItems,
+  query = "",
   createRecommendationAction,
   submitRecommendationAction,
   quoteEvidence
 }: Props) {
   const selected = requests.find((request) => request.id === selectedRequestId) ?? requests[0];
-  const selectedHref = (id: string, nextPage = page) => `/quotes?page=${nextPage}&requestId=${id}`;
+  const selectedHref = (id: string, nextPage = page) => `/quotes?page=${nextPage}&requestId=${id}${query ? `&query=${encodeURIComponent(query)}` : ""}`;
 
   return (
     <section className="ogfi-data-surface overflow-hidden" data-testid="quote-comparison-workspace">
@@ -43,7 +45,7 @@ export function QuoteComparisonWorkspace({
       {requests.length === 0 ? (
         <div className="ogfi-empty-state">
           <p className="font-semibold text-slate-900">No approved requests ready for quotes</p>
-          <p className="mt-1 text-sm text-slate-600">Approve a Purchase Request before recording supplier quotations.</p>
+          <p className="mt-1 text-sm text-slate-600">{query ? "No approved request or supplier matches this search." : "Approve a Purchase Request before recording supplier quotations."}</p>
         </div>
       ) : (
         <div className="grid min-h-[34rem] lg:grid-cols-[minmax(16rem,0.7fr)_minmax(0,1.3fr)]">
@@ -199,7 +201,7 @@ export function QuoteComparisonWorkspace({
           ) : null}
         </div>
       )}
-      {totalItems > 0 ? <PaginationBar page={page} pageSize={pageSize} totalItems={totalItems} itemLabel="approved requests" getPageHref={(nextPage) => `/quotes?page=${nextPage}${selected ? `&requestId=${selected.id}` : ""}`} /> : null}
+      {totalItems > 0 ? <PaginationBar page={page} pageSize={pageSize} totalItems={totalItems} itemLabel="approved requests" getPageHref={(nextPage) => `/quotes?page=${nextPage}${selected ? `&requestId=${selected.id}` : ""}${query ? `&query=${encodeURIComponent(query)}` : ""}`} /> : null}
     </section>
   );
 }

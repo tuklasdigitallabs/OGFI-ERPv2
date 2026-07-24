@@ -673,6 +673,11 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 - The previous capped 100-option arrays and disabled-when-overflow behavior were removed. Conversion creation still delegates all active tenant/company, distinct-UOM, positive-factor, duplicate, reason, audit, and no-inventory-mutation rules to the server mutation.
 - Focused Item Master tests (8), web typecheck, lint, and diff checks pass. Disposable PostgreSQL isolation/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Master Data is not complete.
 
+### DEC-0150 Supplier Quote queue search — July 25, 2026
+
+- The approved Purchase Request quote queue now supports a server-side search across PR reference, requester, and supplier code/name. The search is composed within the existing tenant/company/selected-location/APPROVED predicate, preserves request selection and pagination context, and has a truthful no-match state.
+- Focused Quotes tests (15), web typecheck, lint, and diff checks pass. Status/date/amount filter expansion, responsive browser, disposable PostgreSQL, hosted recovery, and UAT evidence remain open; Quotations are not complete.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

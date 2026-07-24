@@ -133,3 +133,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0147-PR-CATALOG-UOM-RELATION-GUARD.md` — server validation that catalog UOMs are valid for selected Purchase Request items
 - `DEC-0148-PR-BOUNDED-DRAFT-LOOKUPS.md` — bounded server-owned item, valid-UOM, and budget-line lookups during Purchase Request draft entry
 - `DEC-0149-MASTER-DATA-CONVERSION-CREATE-COMPOSER.md` — bounded scoped conversion-create composer using the shared Item Master option catalog
+- `DEC-0150-QUOTE-QUEUE-SEARCH.md` — server-side approved-quote queue search with preserved selected-request context

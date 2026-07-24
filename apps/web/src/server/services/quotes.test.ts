@@ -42,13 +42,16 @@ describe("quotation recommendation rules", () => {
     expect(source).toContain("purchaseRequest.count");
     expect(source).toContain("skip: (page - 1) * pageSize");
     expect(source).toContain("take: pageSize");
+    expect(source).toContain("quotationRequests: { some: { supplierQuotes: { some");
     expect(pageSource).toContain("listQuoteRequestsPage(session");
+    expect(pageSource).toContain('aria-label="Search approved quote requests"');
     expect(workspaceSource).toContain("PaginationBar");
     expect(workspaceSource).toContain("quote-comparison-workspace");
     expect(workspaceSource).toContain("Selected location context");
     expect(workspaceSource).toContain("quotation-recommendation-composer");
     expect(workspaceSource).toContain("ControlledEvidencePanel");
     expect(workspaceSource).toContain('sourceType="SUPPLIER_QUOTATION"');
+    expect(workspaceSource).toContain("No approved request or supplier matches this search.");
   });
 
   test("recommendation submission revalidates current quotation policy", () => {

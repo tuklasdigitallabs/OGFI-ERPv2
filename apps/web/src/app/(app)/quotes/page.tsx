@@ -47,9 +47,10 @@ export default async function SupplierQuotesPage({ searchParams }: SupplierQuote
   const params = searchParams ? await searchParams : {};
   const rawPage = Number.parseInt(Array.isArray(params.page) ? params.page[0] ?? "1" : params.page ?? "1", 10);
   const requestedPage = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const query = (Array.isArray(params.query) ? params.query[0] : params.query)?.trim() ?? "";
   const selectedRequestId = Array.isArray(params.requestId) ? params.requestId[0] : params.requestId;
   const [requestPage, options] = await Promise.all([
-    listQuoteRequestsPage(session, { page: requestedPage, pageSize: 25 }),
+    listQuoteRequestsPage(session, { page: requestedPage, pageSize: 25, query }),
     listQuoteOptions(session)
   ]);
   const requests = requestPage.items;
@@ -90,12 +91,17 @@ export default async function SupplierQuotesPage({ searchParams }: SupplierQuote
           <a className="inline-flex min-h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 hover:bg-slate-50" href="/quotes/export">Export CSV</a>
         ) : null}
       </div>
+      <form method="get" className="mb-4 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_auto]">
+        <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm" name="query" defaultValue={query} placeholder="Search PR reference, requester, or supplier" aria-label="Search approved quote requests" />
+        <button className="min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-700">Search queue</button>
+      </form>
       <QuoteComparisonWorkspace
         requests={requests}
         selectedRequestId={selectedRequestId}
         page={requestPage.page}
         pageSize={requestPage.pageSize}
         totalItems={requestPage.totalItems}
+        query={query}
         createRecommendationAction={createQuotationRecommendationAction}
         submitRecommendationAction={submitQuotationRecommendationAction}
         quoteEvidence={quoteEvidence}

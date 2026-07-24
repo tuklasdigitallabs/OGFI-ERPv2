@@ -190,6 +190,11 @@ Conversion creation now uses bounded searchable Item, From UOM, and To UOM
 selectors with independent paging, selected-value retention, loading/error/
 empty states, and retry. Browser/database/hosted/UAT evidence remains open.
 
+The Supplier Quotes approved-request queue now supports server-side search by
+Purchase Request reference, requester, or supplier while preserving selected
+location and pagination context. Broader quote filters and external evidence
+gates remain open.
+
 Approval Inbox now fails closed when normalized routing is disabled: it shows an
 explicit unavailable state and no legacy unbounded queue or false zero count.
 
