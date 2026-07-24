@@ -1,10 +1,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Badge, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { TaskSheet } from "@/components/TaskSheet";
-import { SupplierQuoteLinesEditor } from "@/components/SupplierQuoteLinesEditor";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -13,7 +11,6 @@ import { getDefaultAppRoute, permissions } from "@/server/services/authorization
 import { getSessionContext } from "@/server/services/context";
 import {
   createQuotationRecommendation,
-  createSupplierQuote,
   listQuoteOptions,
   listQuoteRequests,
   submitQuotationRecommendation
@@ -21,18 +18,6 @@ import {
 import { canExportSupplierQuotes } from "@/server/services/exportAuthorization";
 
 export const dynamic = "force-dynamic";
-
-async function createSupplierQuoteAction(formData: FormData) {
-  "use server";
-
-  try {
-    await createSupplierQuote(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/quotes", error));
-  }
-  revalidatePath("/quotes");
-  redirect("/quotes");
-}
 
 async function createQuotationRecommendationAction(formData: FormData) {
   "use server";
@@ -124,14 +109,9 @@ export default async function SupplierQuotesPage({
 
       <div className="space-y-4">
         <div className="flex justify-end">
-          <TaskSheet title="Record Supplier Quote" description="Price each approved request line for one supplier." trigger={<span>Record Supplier Quote</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
-            <SupplierQuoteLinesEditor
-              action={createSupplierQuoteAction}
-              requests={requests}
-              suppliers={options.suppliers}
-              uoms={options.uoms}
-            />
-          </TaskSheet>
+          <ButtonLink href="/quotes/new" className="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+            Record Supplier Quote
+          </ButtonLink>
         </div>
 
         <section className="ogfi-data-surface">

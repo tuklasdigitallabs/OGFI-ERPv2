@@ -8,6 +8,23 @@ import {
 } from "./quotes";
 
 describe("quotation recommendation rules", () => {
+  test("quote capture uses a dedicated task route instead of a repeated inline modal", () => {
+    const listSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/quotes/page.tsx"),
+      "utf8"
+    );
+    const createSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/quotes/new/page.tsx"),
+      "utf8"
+    );
+
+    expect(listSource).toContain('href="/quotes/new"');
+    expect(listSource).not.toContain("<TaskSheet");
+    expect(createSource).toContain("SupplierQuoteLinesEditor");
+    expect(createSource).toContain("No PO commitment");
+    expect(createSource).toContain("permissions.quoteManage");
+  });
+
   test("initial recommendation approval routing is normalized and fail-closed", () => {
     const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
     const start = source.indexOf("export async function submitQuotationRecommendation");

@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Supplier Quote Create Task Mode
+
+- Added confirmed `DEC-0102`: supplier quote capture now has a dedicated `/quotes/new` task route with explicit quote-only/no-PO-commitment context while preserving the existing server-authorized quote service.
+- The Quotes workspace remains incomplete pending paginated comparison, commercial/evidence fields, idempotency, and recommendation policy parity.
+
 ## 2026-07-24 — Receiving Create Task Mode
 
 - Added confirmed `DEC-0101`: replace the Receiving register create TaskSheet with a dedicated responsive `/receiving/new` full-page task mode while preserving the existing server action, validation, idempotency, scope authorization, audit, and draft-only semantics.
