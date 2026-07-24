@@ -111,6 +111,13 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("vault-or-artifact-storage-index.*");
     expect(pageSource).toContain("break-glass-review-and-revocation-proof.*");
     expect(serviceSource).toContain("buildReleaseReadinessExportRows");
+    expect(serviceSource).toContain("listReleaseReadinessGatePage");
+    expect(serviceSource).toContain("pageSize");
+    expect(serviceSource).toContain("max(100)");
+    expect(serviceSource).toContain("tenantId: session.context.tenantId");
+    expect(pageSource).toContain("Showing {visibleGates.length} of {gatePage.totalItems} gates");
+    expect(pageSource).toContain("Search gates");
+    expect(pageSource).toContain("<PaginationBar");
     expect(serviceSource).toContain("Security proof target");
     expect(serviceSource).toContain(
       "external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension>"

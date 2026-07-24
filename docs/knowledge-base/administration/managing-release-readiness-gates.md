@@ -41,6 +41,8 @@ For final release evidence, use the CLI export with `DATABASE_URL=<pilot-or-stag
 8. Enter the reason for update.
 9. Save the gate.
 
+The gate register supports server-side search, status filtering, category tabs, and pagination. The page shows the number of matching gates; changing filters or pages does not change the underlying evidence or Release Board records. Evidence and GO / NO-GO actions remain governed by their existing controls and are not implied by the gate list alone.
+
 ## UAT Evidence Rules
 
 UAT gates require both evidence and a decision note before they are marked ready, conditional, or waived. The decision note should name one or more of:

@@ -109,3 +109,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0123-ADMIN-AUDIT-BOUNDED-SYNCHRONOUS-EXPORT.md` — strict date/row bounds, watermark, and truthful over-limit responses
 - `DEC-0124-ADMIN-REASON-CODE-REGISTRY-PAGINATION.md` — selected-company bounded Reason Codes registry and detail surface
 - `DEC-0125-ADMIN-POLICY-SETTINGS-PAGINATION.md` — bounded Admin Settings catalog search and pagination
+- `DEC-0126-ADMIN-READINESS-GATE-PAGINATION.md` — bounded Release Readiness gate register search and pagination

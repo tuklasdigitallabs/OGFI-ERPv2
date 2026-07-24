@@ -543,6 +543,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Admin Settings now provides server-owned category/search/page inputs, bounded visible policy rows, exact matching totals/category counts, and global override/default summaries. Existing Configure and Use Recommended actions remain audited and server-authorized.
 - Focused policy-settings coverage passes 6/6; web typecheck and lint pass. Responsive browser, disposable PostgreSQL authorization/query-plan evidence, selected-record drawer hardening, hosted deployment/recovery, and UAT gates remain open.
 
+### DEC-0126 Administration Readiness gate pagination — July 24, 2026
+
+- Release Readiness now uses a server-authorized, URL-backed category/status/search/page contract with exact matching totals for its gate register. Gate updates re-read the target by tenant, company, and gate key inside the transaction; existing evidence and release-board controls remain unchanged.
+- This is a bounded gate-register checkpoint, not Readiness completion. Evidence registers, security aggregate reads, GO/NO-GO history, selected-gate detail/drawer behavior, responsive browser proof, disposable PostgreSQL authorization/count/query-plan evidence, hosted deployment/recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

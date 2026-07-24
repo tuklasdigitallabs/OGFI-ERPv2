@@ -479,6 +479,53 @@ export async function listReleaseReadinessGates(session: SessionContext) {
   });
 }
 
+const releaseReadinessCategoryIds = releaseReadinessCategories.map((item) => item.id) as [ReleaseReadinessCategory, ...ReleaseReadinessCategory[]];
+const releaseReadinessGatePageInputSchema = z.object({
+  category: z.enum(releaseReadinessCategoryIds).optional(),
+  status: readinessStatusSchema.optional(),
+  query: z.string().trim().max(120).default(""),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(10),
+});
+
+export async function listReleaseReadinessGatePage(
+  session: SessionContext,
+  input: z.input<typeof releaseReadinessGatePageInputSchema> = {},
+) {
+  await requirePermission(session, permissions.coreAdminister);
+  const values = releaseReadinessGatePageInputSchema.parse(input);
+  const all = await listReleaseReadinessGates(session);
+  const query = values.query.toLowerCase();
+  const filtered = all.filter((gate) => {
+    if (values.category && gate.category !== values.category) return false;
+    if (values.status && gate.status !== values.status) return false;
+    if (!query) return true;
+    return [gate.gateKey, gate.title, gate.description, gate.ownerRole]
+      .some((value) => value.toLowerCase().includes(query));
+  });
+  const categoryCounts = Object.fromEntries(
+    releaseReadinessCategories.map((category) => [
+      category.id,
+      all.filter((gate) => {
+        if (values.status && gate.status !== values.status) return false;
+        if (!query) return gate.category === category.id;
+        return gate.category === category.id && [gate.gateKey, gate.title, gate.description, gate.ownerRole]
+          .some((value) => value.toLowerCase().includes(query));
+      }).length,
+    ]),
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  const start = (page - 1) * values.pageSize;
+  return {
+    items: filtered.slice(start, start + values.pageSize),
+    page,
+    pageSize: values.pageSize,
+    totalItems: filtered.length,
+    categoryCounts,
+  };
+}
+
 export function summarizeReleaseReadiness(
   gates: Awaited<ReturnType<typeof listReleaseReadinessGates>>,
 ) {
@@ -1922,12 +1969,11 @@ export async function updateReleaseReadinessGate(formData: FormData) {
   await assertGoNoGoGateDecision(session, definition, values.status);
 
   await prisma.$transaction(async (tx) => {
-    const existing = await tx.releaseReadinessGate.findUnique({
+    const existing = await tx.releaseReadinessGate.findFirst({
       where: {
-        companyId_gateKey: {
-          companyId: session.context.companyId,
-          gateKey: definition.gateKey,
-        },
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        gateKey: definition.gateKey,
       },
     });
 

@@ -8,7 +8,7 @@ import {
   FileCheck2,
   ShieldCheck
 } from "lucide-react";
-import { Badge, Panel } from "@ogfi/ui";
+import { Badge, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -31,6 +31,7 @@ import {
   listEnablementEvidenceRecords,
   listReleaseBoardDecisions,
   listReleaseReadinessGates,
+  listReleaseReadinessGatePage,
   listUatEvidenceRecords,
   releaseBoardDecisions,
   releaseReadinessCategories,
@@ -217,14 +218,28 @@ export default async function AdminReadinessPage({
 
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
-  const selectedCategory = normalizeCategory(getSearchParam(params, "category"));
+  const selectedCategory = normalizeCategory(getSearchParam(params, "category")) as (typeof releaseReadinessCategories)[number]["id"];
   const gates = await listReleaseReadinessGates(session);
   const summary = summarizeReleaseReadiness(gates);
   const canExportReadiness = canExportReleaseReadiness(session);
   const category = releaseReadinessCategories.find(
     (item) => item.id === selectedCategory
   )!;
-  const visibleGates = gates.filter((gate) => gate.category === selectedCategory);
+  const query = getSearchParam(params, "q") ?? "";
+  const statusValue = getSearchParam(params, "status");
+  const selectedStatus = releaseReadinessStatuses.includes(statusValue as (typeof releaseReadinessStatuses)[number])
+    ? (statusValue as (typeof releaseReadinessStatuses)[number])
+    : undefined;
+  const pageValue = Number.parseInt(getSearchParam(params, "page") ?? "1", 10);
+  const pageSizeValue = Number.parseInt(getSearchParam(params, "pageSize") ?? "10", 10);
+  const gatePage = await listReleaseReadinessGatePage(session, {
+    category: selectedCategory,
+    query,
+    ...(selectedStatus ? { status: selectedStatus } : {}),
+    page: Number.isFinite(pageValue) ? Math.min(Math.max(pageValue, 1), 10_000) : 1,
+    pageSize: Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 10,
+  });
+  const visibleGates = gatePage.items;
   const uatEvidenceRecords =
     selectedCategory === "uat" ? await listUatEvidenceRecords(session) : [];
   const uatEvidenceSummary =
@@ -388,7 +403,7 @@ export default async function AdminReadinessPage({
         <div className="grid gap-2 lg:grid-cols-5">
           {releaseReadinessCategories.map((item) => {
             const isActive = item.id === selectedCategory;
-            const count = gates.filter((gate) => gate.category === item.id).length;
+            const count = gatePage.categoryCounts[item.id] ?? 0;
             return (
               <a
                 key={item.id}
@@ -398,7 +413,11 @@ export default async function AdminReadinessPage({
                     ? "rounded-xl bg-blue-50 px-4 py-3 text-blue-700 ring-1 ring-blue-100"
                     : "rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                 }
-                href={`/admin/readiness?category=${item.id}`}
+                href={`/admin/readiness?${new URLSearchParams({
+                  category: item.id,
+                  ...(query ? { q: query } : {}),
+                  ...(selectedStatus ? { status: selectedStatus } : {}),
+                }).toString()}`}
               >
                 <span className="block text-sm font-bold">{item.label}</span>
                 <span className="mt-1 block text-xs text-slate-500">
@@ -410,6 +429,28 @@ export default async function AdminReadinessPage({
         </div>
       </section>
 
+      <form className="mb-5 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_12rem_auto_auto] md:items-end" method="get">
+        <input name="category" type="hidden" value={selectedCategory} />
+        <label className="grid gap-1 text-sm font-medium text-slate-700">
+          Search gates
+          <input
+            className="min-h-10 rounded-md border border-slate-300 px-3 py-2"
+            defaultValue={query}
+            name="q"
+            placeholder="Gate, owner, or description"
+          />
+        </label>
+        <label className="grid gap-1 text-sm font-medium text-slate-700">
+          Status
+          <select className="min-h-10 rounded-md border border-slate-300 px-3 py-2" defaultValue={selectedStatus ?? ""} name="status">
+            <option value="">All statuses</option>
+            {releaseReadinessStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+          </select>
+        </label>
+        <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" type="submit">Apply</button>
+        <a className="inline-flex min-h-10 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50" href={`/admin/readiness?category=${selectedCategory}`}>Reset</a>
+      </form>
+
       <Panel className="ogfi-detail-card">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -418,6 +459,7 @@ export default async function AdminReadinessPage({
               <h2 className="text-lg font-bold text-slate-950">{category.label}</h2>
             </div>
             <p className="mt-1 text-sm text-slate-500">{category.description}</p>
+            <p className="mt-2 text-xs font-semibold text-slate-500">Showing {visibleGates.length} of {gatePage.totalItems} gates</p>
             {selectedCategory === "uat" ? (
               <p className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
                 UAT gates require evidence plus a decision note naming owner
@@ -1740,6 +1782,20 @@ export default async function AdminReadinessPage({
             </div>
           ))}
         </div>
+
+        <PaginationBar
+          className="mt-4 border-t border-slate-100 pt-3"
+          page={gatePage.page}
+          pageSize={gatePage.pageSize}
+          totalItems={gatePage.totalItems}
+          itemLabel="gates"
+          getPageHref={(nextPage) => {
+            const next = new URLSearchParams({ category: selectedCategory, page: String(nextPage), pageSize: String(gatePage.pageSize) });
+            if (query) next.set("q", query);
+            if (selectedStatus) next.set("status", selectedStatus);
+            return `/admin/readiness?${next.toString()}`;
+          }}
+        />
 
         <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
           <div className="flex items-start gap-3">
