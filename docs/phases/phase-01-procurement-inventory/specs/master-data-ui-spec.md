@@ -25,6 +25,11 @@ server-paginated and selected-company scoped, with URL-backed query/workflow/sta
 filters, exact totals, deterministic ordering, and a selected-code read-only detail
 surface. Existing create and ACTIVE-to-INACTIVE deactivation are retained; inactive
 codes remain for history and are not offered in new-entry dropdowns.
+
+Implementation note (`DEC-0138`/`DEC-0140`): the Item Master tabs use URL-backed
+server filters, deterministic pagination, exact matching totals, and bounded
+server-side selector catalogs. Conversion creation remains unavailable until its
+full option catalog and focused action composer are migrated.
 | MDM-10 | Import / Change Request Review | Controlled bulk or change management |
 
 ## 2. Master Data Home

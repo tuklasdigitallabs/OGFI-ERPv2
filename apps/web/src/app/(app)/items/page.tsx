@@ -28,7 +28,6 @@ import {
   updateUom,
   uomTypes
 } from "@/server/services/items";
-import { ItemMasterSearch } from "@/components/ItemMasterSearch";
 
 export const dynamic = "force-dynamic";
 
@@ -208,7 +207,33 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const itemStatus = itemStatusRaw === "ACTIVE" || itemStatusRaw === "INACTIVE" || itemStatusRaw === "ARCHIVED" ? itemStatusRaw : undefined;
   const requestedPage = Number(Array.isArray(params.itemPage) ? params.itemPage[0] : params.itemPage);
   const itemPage = Number.isInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, 10_000) : 1;
-  const masterData = await listItemMasterData(session, { query: itemQuery, status: itemStatus, page: itemPage, pageSize: 25 });
+  const categoryQuery = (Array.isArray(params.categoryQuery) ? params.categoryQuery[0] : params.categoryQuery)?.trim() ?? "";
+  const categoryStatusRaw = Array.isArray(params.categoryStatus) ? params.categoryStatus[0] : params.categoryStatus;
+  const categoryStatus = categoryStatusRaw === "ACTIVE" || categoryStatusRaw === "INACTIVE" || categoryStatusRaw === "ARCHIVED" ? categoryStatusRaw : undefined;
+  const categoryPageValue = Number(Array.isArray(params.categoryPage) ? params.categoryPage[0] : params.categoryPage);
+  const categoryPage = Number.isInteger(categoryPageValue) && categoryPageValue > 0 ? Math.min(categoryPageValue, 10_000) : 1;
+  const uomQuery = (Array.isArray(params.uomQuery) ? params.uomQuery[0] : params.uomQuery)?.trim() ?? "";
+  const uomStatusRaw = Array.isArray(params.uomStatus) ? params.uomStatus[0] : params.uomStatus;
+  const uomStatus = uomStatusRaw === "ACTIVE" || uomStatusRaw === "INACTIVE" || uomStatusRaw === "ARCHIVED" ? uomStatusRaw : undefined;
+  const uomPageValue = Number(Array.isArray(params.uomPage) ? params.uomPage[0] : params.uomPage);
+  const uomPage = Number.isInteger(uomPageValue) && uomPageValue > 0 ? Math.min(uomPageValue, 10_000) : 1;
+  const conversionQuery = (Array.isArray(params.conversionQuery) ? params.conversionQuery[0] : params.conversionQuery)?.trim() ?? "";
+  const conversionPageValue = Number(Array.isArray(params.conversionPage) ? params.conversionPage[0] : params.conversionPage);
+  const conversionPage = Number.isInteger(conversionPageValue) && conversionPageValue > 0 ? Math.min(conversionPageValue, 10_000) : 1;
+  const masterData = await listItemMasterData(session, {
+    query: itemQuery,
+    status: itemStatus,
+    page: itemPage,
+    pageSize: 25,
+    categoryQuery,
+    categoryStatus,
+    categoryPage,
+    uomQuery,
+    uomStatus,
+    uomPage,
+    conversionQuery,
+    conversionPage
+  });
   const selectedCategoryIds = masterData.items.map((item) => item.itemCategoryId);
   const selectedUomIds = masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id)));
   const [categoryOptionCatalog, uomOptionCatalog] = await Promise.all([
@@ -256,11 +281,11 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Categories</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.categories.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.categoriesPage.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">UOMs</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.uoms.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.uomsPage.totalItems}</p>
         </Panel>
       </div>
 
@@ -699,7 +724,14 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
         <Panel className="ogfi-detail-card">
           <h2 className="text-lg font-bold text-slate-950">Categories</h2>
           <p className="text-sm text-slate-500">Grouping rules and default inventory controls</p>
-          <ItemMasterSearch scopeId="categories" />
+          <form method="get" className="mt-4 grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-[1fr_180px_auto]">
+            <input type="hidden" name="tab" value="categories" />
+            <input className={inputClass} name="categoryQuery" defaultValue={categoryQuery} placeholder="Search code or name" aria-label="Search categories" />
+            <select className={inputClass} name="categoryStatus" defaultValue={categoryStatus ?? ""} aria-label="Filter category status">
+              <option value="">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="ARCHIVED">Archived</option>
+            </select>
+            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
+          </form>
           <div className="mt-4 divide-y divide-slate-100">
             {masterData.categories.map((category) => (
               <details
@@ -801,6 +833,21 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               </details>
             ))}
           </div>
+          {masterData.categoriesPage.totalItems === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{categoryQuery || categoryStatus ? "No categories match the selected filters." : "No categories yet."}</p> : null}
+          {masterData.categoriesPage.totalItems > 0 ? (
+            <PaginationBar
+              page={masterData.categoriesPage.page}
+              pageSize={masterData.categoriesPage.pageSize}
+              totalItems={masterData.categoriesPage.totalItems}
+              itemLabel="categories"
+              getPageHref={(nextPage) => {
+                const query = new URLSearchParams({ tab: "categories", categoryPage: String(nextPage) });
+                if (categoryQuery) query.set("categoryQuery", categoryQuery);
+                if (categoryStatus) query.set("categoryStatus", categoryStatus);
+                return `/items?${query.toString()}`;
+              }}
+            />
+          ) : null}
         </Panel>
         ) : null}
 
@@ -810,7 +857,14 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
           <p className="text-sm text-slate-500">
             Units used for purchasing, receiving, stocking, and issuing
           </p>
-          <ItemMasterSearch scopeId="uoms" />
+          <form method="get" className="mt-4 grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-[1fr_180px_auto]">
+            <input type="hidden" name="tab" value="uoms" />
+            <input className={inputClass} name="uomQuery" defaultValue={uomQuery} placeholder="Search code or name" aria-label="Search UOMs" />
+            <select className={inputClass} name="uomStatus" defaultValue={uomStatus ?? ""} aria-label="Filter UOM status">
+              <option value="">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option><option value="ARCHIVED">Archived</option>
+            </select>
+            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
+          </form>
           <div className="ogfi-form-shell mt-4 grid gap-3">
             {masterData.uoms.map((uom) => (
               <details
@@ -900,6 +954,21 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               </details>
             ))}
           </div>
+          {masterData.uomsPage.totalItems === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{uomQuery || uomStatus ? "No UOMs match the selected filters." : "No UOMs yet."}</p> : null}
+          {masterData.uomsPage.totalItems > 0 ? (
+            <PaginationBar
+              page={masterData.uomsPage.page}
+              pageSize={masterData.uomsPage.pageSize}
+              totalItems={masterData.uomsPage.totalItems}
+              itemLabel="UOMs"
+              getPageHref={(nextPage) => {
+                const query = new URLSearchParams({ tab: "uoms", uomPage: String(nextPage) });
+                if (uomQuery) query.set("uomQuery", uomQuery);
+                if (uomStatus) query.set("uomStatus", uomStatus);
+                return `/items?${query.toString()}`;
+              }}
+            />
+          ) : null}
         </Panel>
         ) : null}
 
@@ -909,7 +978,11 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
           <p className="text-sm text-slate-500">
             Item-specific unit conversion rules used by purchasing and stock controls
           </p>
-          <ItemMasterSearch scopeId="conversions" />
+          <form method="get" className="mt-4 grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-[1fr_auto]">
+            <input type="hidden" name="tab" value="conversions" />
+            <input className={inputClass} name="conversionQuery" defaultValue={conversionQuery} placeholder="Search item or UOM" aria-label="Search conversions" />
+            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
+          </form>
           <div className="mt-4 divide-y divide-slate-100 border-t border-slate-100 pt-4">
             {masterData.conversions.map((conversion) => (
               <details
@@ -981,6 +1054,20 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               </details>
             ))}
           </div>
+          {masterData.conversionsPage.totalItems === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{conversionQuery ? "No conversions match the selected filters." : "No conversions yet."}</p> : null}
+          {masterData.conversionsPage.totalItems > 0 ? (
+            <PaginationBar
+              page={masterData.conversionsPage.page}
+              pageSize={masterData.conversionsPage.pageSize}
+              totalItems={masterData.conversionsPage.totalItems}
+              itemLabel="conversions"
+              getPageHref={(nextPage) => {
+                const query = new URLSearchParams({ tab: "conversions", conversionPage: String(nextPage) });
+                if (conversionQuery) query.set("conversionQuery", conversionQuery);
+                return `/items?${query.toString()}`;
+              }}
+            />
+          ) : null}
         </Panel>
         ) : null}
       </div>

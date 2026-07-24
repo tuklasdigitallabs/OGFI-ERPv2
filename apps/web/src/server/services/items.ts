@@ -153,6 +153,14 @@ const itemMasterPageInputSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
   page: z.number().int().min(1).max(10_000).default(1),
   pageSize: z.number().int().min(10).max(100).default(25),
+  categoryQuery: z.string().trim().max(120).default(""),
+  categoryStatus: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
+  categoryPage: z.number().int().min(1).max(10_000).default(1),
+  uomQuery: z.string().trim().max(120).default(""),
+  uomStatus: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
+  uomPage: z.number().int().min(1).max(10_000).default(1),
+  conversionQuery: z.string().trim().max(120).default(""),
+  conversionPage: z.number().int().min(1).max(10_000).default(1)
 });
 
 const itemMasterOptionCatalogInputSchema = z.object({
@@ -242,20 +250,55 @@ export async function listItemMasterData(
   const itemTotal = await prisma.item.count({ where: itemWhere });
   const totalPages = Math.max(1, Math.ceil(itemTotal / values.pageSize));
   const effectivePage = Math.min(values.page, totalPages);
-  const [categories, uoms, items, activeItemCount, conversions] = await Promise.all([
+  const categoryQuery = values.categoryQuery ? { contains: values.categoryQuery, mode: "insensitive" as const } : undefined;
+  const categoryWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.categoryStatus ? { status: values.categoryStatus } : {}),
+    ...(categoryQuery ? { OR: [{ categoryCode: categoryQuery }, { categoryName: categoryQuery }] } : {})
+  };
+  const uomQuery = values.uomQuery ? { contains: values.uomQuery, mode: "insensitive" as const } : undefined;
+  const uomWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.uomStatus ? { status: values.uomStatus } : {}),
+    ...(uomQuery ? { OR: [{ uomCode: uomQuery }, { uomName: uomQuery }] } : {})
+  };
+  const conversionQuery = values.conversionQuery ? { contains: values.conversionQuery, mode: "insensitive" as const } : undefined;
+  const conversionWhere = {
+    item: { tenantId: session.context.tenantId, companyId: session.context.companyId },
+    fromUom: { tenantId: session.context.tenantId, companyId: session.context.companyId },
+    toUom: { tenantId: session.context.tenantId, companyId: session.context.companyId },
+    ...(conversionQuery ? { OR: [
+      { item: { itemCode: conversionQuery } },
+      { item: { itemName: conversionQuery } },
+      { fromUom: { uomCode: conversionQuery } },
+      { toUom: { uomCode: conversionQuery } }
+    ] } : {})
+  };
+  const [categoryTotal, uomTotal, conversionTotal] = await Promise.all([
+    prisma.itemCategory.count({ where: categoryWhere }),
+    prisma.uom.count({ where: uomWhere }),
+    prisma.itemUomConversion.count({ where: conversionWhere })
+  ]);
+  const categoryPages = Math.max(1, Math.ceil(categoryTotal / values.pageSize));
+  const uomPages = Math.max(1, Math.ceil(uomTotal / values.pageSize));
+  const conversionPages = Math.max(1, Math.ceil(conversionTotal / values.pageSize));
+  const effectiveCategoryPage = Math.min(values.categoryPage, categoryPages);
+  const effectiveUomPage = Math.min(values.uomPage, uomPages);
+  const effectiveConversionPage = Math.min(values.conversionPage, conversionPages);
+  const [categories, uoms, items, activeItemCount, activeCategoryCount, activeUomCount, conversions] = await Promise.all([
     prisma.itemCategory.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId
-      },
-      orderBy: [{ status: "asc" }, { categoryName: "asc" }]
+      where: categoryWhere,
+      orderBy: [{ status: "asc" }, { categoryName: "asc" }, { id: "asc" }],
+      skip: (effectiveCategoryPage - 1) * values.pageSize,
+      take: values.pageSize
     }),
     prisma.uom.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId
-      },
-      orderBy: [{ status: "asc" }, { uomCode: "asc" }]
+      where: uomWhere,
+      orderBy: [{ status: "asc" }, { uomCode: "asc" }, { id: "asc" }],
+      skip: (effectiveUomPage - 1) * values.pageSize,
+      take: values.pageSize
     }),
     prisma.item.findMany({
       where: itemWhere,
@@ -270,27 +313,18 @@ export async function listItemMasterData(
       take: values.pageSize,
     }),
     prisma.item.count({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" } }),
+    prisma.itemCategory.count({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" } }),
+    prisma.uom.count({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" } }),
     prisma.itemUomConversion.findMany({
-      where: {
-        item: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId
-        },
-        fromUom: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId
-        },
-        toUom: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId
-        }
-      },
+      where: conversionWhere,
       include: {
         item: true,
         fromUom: true,
         toUom: true
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (effectiveConversionPage - 1) * values.pageSize,
+      take: values.pageSize
     })
   ]);
 
@@ -348,6 +382,23 @@ export async function listItemMasterData(
       pageSize: values.pageSize,
       totalItems: itemTotal,
       activeItems: activeItemCount,
+    },
+    categoriesPage: {
+      page: effectiveCategoryPage,
+      pageSize: values.pageSize,
+      totalItems: categoryTotal,
+      activeItems: activeCategoryCount
+    },
+    uomsPage: {
+      page: effectiveUomPage,
+      pageSize: values.pageSize,
+      totalItems: uomTotal,
+      activeItems: activeUomCount
+    },
+    conversionsPage: {
+      page: effectiveConversionPage,
+      pageSize: values.pageSize,
+      totalItems: conversionTotal
     }
   };
 }

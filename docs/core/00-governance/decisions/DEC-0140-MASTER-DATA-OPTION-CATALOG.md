@@ -9,7 +9,7 @@
 
 Add a shared server-side option-catalog contract for Item Master categories, UOMs, and items. Each request is Core Administration plus selected-company Manage authorized, validates the catalog kind/query/page/selected IDs, returns active scoped options with exact totals and `hasMore`, and includes explicitly selected IDs so edit forms do not lose their current value.
 
-The Item create/edit selectors now consume the catalog contract and disable creation when the bounded catalog cannot represent all valid choices. The `/items` page has not yet migrated every tab and composer; conversion creation remains disabled until that migration is complete. No workspace completion claim is made.
+The Item create/edit selectors now consume the catalog contract and disable creation when the bounded catalog cannot represent all valid choices. The Items, Categories, UOMs, and Conversions tabs now use URL-backed server filters and pagination; selected-record drawer/composer restructuring and conversion option migration remain open. No workspace completion claim is made.
 
 ## Required safeguards
 

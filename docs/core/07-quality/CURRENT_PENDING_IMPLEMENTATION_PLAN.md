@@ -617,7 +617,7 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 ### DEC-0140 Master Data option-catalog foundation — July 24, 2026
 
 - Added a server-authorized, tenant/company-scoped option-catalog contract for category, UOM, and item selectors with bounded query/page inputs, exact totals, `hasMore`, active-option semantics, and selected-ID retention for edit context.
-- Item create/edit selectors now consume the contract and disclose/disable when the bounded catalog is insufficient. Categories/UOM/Conversions tabs and action composers still need migration; browser, disposable PostgreSQL, query-plan/load, hosted recovery, and UAT gates remain open.
+- Item create/edit selectors now consume the contract and disclose/disable when the bounded catalog is insufficient. Items, Categories, UOMs, and Conversions tabs now use URL-backed server filters and pagination; selected-record drawer/composer restructuring and conversion option migration remain open. Browser, disposable PostgreSQL, query-plan/load, hosted recovery, and UAT gates remain open.
 
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
