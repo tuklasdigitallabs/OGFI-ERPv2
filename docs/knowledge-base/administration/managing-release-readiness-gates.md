@@ -197,6 +197,13 @@ A `GO` decision requires all required readiness gates to be ready, conditionally
 
 Record the signed decision reference, participants, decision basis, chair, date/time, conditions, mitigation, rollback trigger, expiry, or forward-fix plan as applicable.
 
+The GO / NO-GO register is searchable and paginated for the selected company.
+Open a decision reference to view its read-only detail. The register is
+append-only: corrections are recorded as a new decision, and malformed or
+out-of-scope links show an unavailable message without revealing another
+company's record. The separate full Release Board workspace and bounded export
+remain follow-up work.
+
 ## Status Guide
 
 | Status | Meaning |

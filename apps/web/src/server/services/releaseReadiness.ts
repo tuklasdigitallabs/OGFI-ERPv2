@@ -1870,7 +1870,7 @@ export async function updateDeploymentEvidenceStatus(formData: FormData) {
 }
 
 export async function listReleaseBoardDecisions(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
 
   return prisma.releaseBoardDecision.findMany({
     where: {
@@ -1884,8 +1884,48 @@ export async function listReleaseBoardDecisions(session: SessionContext) {
   });
 }
 
+const releaseBoardDecisionPageInputSchema = z.object({
+  query: z.string().trim().max(120).default(""),
+  decision: z.enum(releaseBoardDecisions).optional(),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(10),
+});
+
+export async function listReleaseBoardDecisionPage(session: SessionContext, input: z.input<typeof releaseBoardDecisionPageInputSchema> = {}) {
+  await assertCanManageReleaseReadiness(session);
+  const values = releaseBoardDecisionPageInputSchema.parse(input);
+  const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.decision ? { decision: values.decision } : {}),
+    ...(query ? { OR: [{ evidenceReference: query }, { decisionNote: query }] } : {}),
+  };
+  const totalItems = await prisma.releaseBoardDecision.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  const items = await prisma.releaseBoardDecision.findMany({
+    where,
+    include: { chairUser: { select: { displayName: true, email: true } } },
+    orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
+  return { items, page, pageSize: values.pageSize, totalItems };
+}
+
+export async function getReleaseBoardDecision(session: SessionContext, decisionId: string) {
+  await assertCanManageReleaseReadiness(session);
+  const parsed = z.string().uuid().safeParse(decisionId);
+  if (!parsed.success) return null;
+  return prisma.releaseBoardDecision.findFirst({
+    where: { id: parsed.data, tenantId: session.context.tenantId, companyId: session.context.companyId },
+    include: { chairUser: { select: { displayName: true, email: true } } },
+  });
+}
+
 async function getLatestReleaseBoardDecision(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
 
   return prisma.releaseBoardDecision.findFirst({
     where: {

@@ -86,6 +86,9 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("createUatEvidenceRecord");
     expect(serviceSource).toContain("assertUatGateReadyEvidence");
     expect(serviceSource).toContain("listReleaseBoardDecisions");
+    expect(serviceSource).toContain("listReleaseBoardDecisionPage");
+    expect(serviceSource).toContain("getReleaseBoardDecision");
+    expect(serviceSource).toContain('orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("createReleaseBoardDecision");
     expect(serviceSource).toContain("assertGoNoGoGateDecision");
     expect(pageSource).toContain("securityEvidenceSummary");
@@ -96,6 +99,8 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("Record Enablement Evidence");
     expect(pageSource).toContain("Record UAT Evidence");
     expect(pageSource).toContain("Record Release Board Decision");
+    expect(pageSource).toContain("boardDecisionPageSize");
+    expect(pageSource).toContain("Selected Release Board decision");
     expect(pageSource).toContain("Export Readiness Register");
     expect(pageSource).toContain("X-OGFI-CSV-SHA256");
     expect(pageSource).toContain("Download SHA-256");

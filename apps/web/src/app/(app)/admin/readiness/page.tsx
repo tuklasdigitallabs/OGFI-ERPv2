@@ -32,10 +32,11 @@ import {
   getDeploymentEvidenceSummary,
   getEnablementEvidenceRecord,
   getEnablementEvidenceSummary,
+  getReleaseBoardDecision,
   getUatEvidenceRecord,
   listDeploymentEvidencePage,
   listEnablementEvidencePage,
-  listReleaseBoardDecisions,
+  listReleaseBoardDecisionPage,
   listReleaseReadinessGates,
   listReleaseReadinessGatePage,
   listUatEvidencePage,
@@ -361,8 +362,20 @@ export default async function AdminReadinessPage({
     ? await getEnablementEvidenceRecord(session, getSearchParam(params, "enablementEvidenceId") as string)
     : null;
   const enablementEvidenceSummary = selectedCategory === "enablement" ? await getEnablementEvidenceSummary(session) : null;
-  const releaseBoardDecisionRecords =
-    selectedCategory === "go_no_go" ? await listReleaseBoardDecisions(session) : [];
+  const boardDecisionQ = (getSearchParam(params, "boardDecisionQ") ?? "").slice(0, 120);
+  const boardDecisionValue = getSearchParam(params, "boardDecision");
+  const boardDecision = releaseBoardDecisions.includes(boardDecisionValue as (typeof releaseBoardDecisions)[number]) ? (boardDecisionValue as (typeof releaseBoardDecisions)[number]) : undefined;
+  const boardDecisionPageValue = Number.parseInt(getSearchParam(params, "boardDecisionPage") ?? "1", 10);
+  const boardDecisionPageSizeValue = Number.parseInt(getSearchParam(params, "boardDecisionPageSize") ?? "10", 10);
+  const releaseBoardDecisionPage = selectedCategory === "go_no_go" ? await listReleaseBoardDecisionPage(session, {
+    query: boardDecisionQ,
+    decision: boardDecision,
+    page: Number.isFinite(boardDecisionPageValue) ? Math.min(Math.max(boardDecisionPageValue, 1), 10_000) : 1,
+    pageSize: Number.isFinite(boardDecisionPageSizeValue) ? Math.min(Math.max(boardDecisionPageSizeValue, 10), 100) : 10,
+  }) : { items: [], page: 1, pageSize: 10, totalItems: 0 };
+  const selectedReleaseBoardDecision = selectedCategory === "go_no_go" && getSearchParam(params, "boardDecisionId")
+    ? await getReleaseBoardDecision(session, getSearchParam(params, "boardDecisionId") as string)
+    : null;
   const exportGeneratedAt = new Date().toISOString();
   const exportGeneratedAtParam = encodeURIComponent(exportGeneratedAt);
   const exportHref = `/admin/readiness/export?generatedAt=${exportGeneratedAtParam}`;
@@ -1660,16 +1673,25 @@ export default async function AdminReadinessPage({
         ) : null}
 
         {selectedCategory === "go_no_go" ? (
+          <>
+          {getSearchParam(params, "boardDecisionId") ? (
+            <Panel className="mb-5 border-blue-100 bg-blue-50/40">
+              {selectedReleaseBoardDecision ? (
+                <div className="grid gap-3 text-sm text-slate-700"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected Release Board decision</p><h3 className="text-lg font-bold text-slate-950">{boardDecisionLabel(selectedReleaseBoardDecision.decision)}</h3></div><Badge tone={selectedReleaseBoardDecision.decision === "GO" ? "success" : selectedReleaseBoardDecision.decision === "HOLD" || selectedReleaseBoardDecision.decision === "ROLLBACK" ? "destructive" : "warning"}>{boardDecisionLabel(selectedReleaseBoardDecision.decision)}</Badge></div><p>Decided {new Date(selectedReleaseBoardDecision.decidedAt).toLocaleString()} by {selectedReleaseBoardDecision.chairUser.displayName || selectedReleaseBoardDecision.chairUser.email}</p><p>Evidence: {selectedReleaseBoardDecision.evidenceReference}</p><p>{selectedReleaseBoardDecision.decisionNote}</p><p>Participants: {Array.isArray(selectedReleaseBoardDecision.participants) ? selectedReleaseBoardDecision.participants.join(", ") : "Recorded participant list unavailable"}</p><a className="font-semibold text-blue-700 hover:underline" href="/admin/readiness?category=go_no_go">Close selected decision</a></div>
+              ) : <p className="text-sm text-slate-700">The selected Release Board decision is unavailable in the current company scope.</p>}
+            </Panel>
+          ) : null}
           <div className="mb-5 overflow-hidden rounded-xl border border-slate-200">
+            <form className="grid gap-3 border-b border-slate-100 bg-slate-50 p-4 md:grid-cols-[1fr_12rem_auto] md:items-end" method="get"><input name="category" type="hidden" value="go_no_go" /><label className="grid gap-1 text-sm font-medium text-slate-700">Search basis/reference<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="boardDecisionQ" defaultValue={boardDecisionQ} placeholder="Decision note or evidence reference" /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Decision<select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="boardDecision" defaultValue={boardDecision ?? ""}><option value="">All decisions</option>{releaseBoardDecisions.map((decision) => <option key={decision} value={decision}>{boardDecisionLabel(decision)}</option>)}</select></label><button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white" type="submit">Apply</button></form>
             <div className="grid gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[10rem_10rem_1fr_12rem]">
               <span>Decision</span>
               <span>Decided</span>
               <span>Basis</span>
               <span>Chair</span>
             </div>
-            {releaseBoardDecisionRecords.length > 0 ? (
+            {releaseBoardDecisionPage.items.length > 0 ? (
               <div className="divide-y divide-slate-100">
-                {releaseBoardDecisionRecords.map((decision) => (
+                {releaseBoardDecisionPage.items.map((decision) => (
                   <div
                     key={decision.id}
                     className="grid gap-3 px-4 py-4 text-sm md:grid-cols-[10rem_10rem_1fr_12rem] md:items-start"
@@ -1691,7 +1713,7 @@ export default async function AdminReadinessPage({
                     </p>
                     <div>
                       <p className="font-semibold text-slate-950">
-                        {decision.evidenceReference}
+                      <a className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?category=go_no_go&boardDecisionId=${decision.id}`}>{decision.evidenceReference}</a>
                       </p>
                       <p className="mt-1 text-sm leading-5 text-slate-600">
                         {decision.decisionNote}
@@ -1713,7 +1735,21 @@ export default async function AdminReadinessPage({
                 No Release Board decision recorded yet.
               </div>
             )}
+            <PaginationBar
+              className="border-t border-slate-100 px-4 py-3"
+              page={releaseBoardDecisionPage.page}
+              pageSize={releaseBoardDecisionPage.pageSize}
+              totalItems={releaseBoardDecisionPage.totalItems}
+              itemLabel="Release Board decisions"
+              getPageHref={(nextPage) => {
+                const next = new URLSearchParams({ category: "go_no_go", boardDecisionPage: String(nextPage), boardDecisionPageSize: String(releaseBoardDecisionPage.pageSize) });
+                if (boardDecisionQ) next.set("boardDecisionQ", boardDecisionQ);
+                if (boardDecision) next.set("boardDecision", boardDecision);
+                return `/admin/readiness?${next.toString()}`;
+              }}
+            />
           </div>
+          </>
         ) : null}
 
         <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">

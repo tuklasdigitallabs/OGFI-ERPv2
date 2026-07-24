@@ -156,6 +156,11 @@ Security Readiness now narrows privileged access and MFA projections and require
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.
 
+The GO / NO-GO category now provides a selected-company, searchable, paginated,
+append-only Release Board decision register with deterministic ordering and a
+read-only selected decision detail. Full Release Board workspace/composer,
+bounded export, and external release evidence remain open.
+
 Release Readiness gate status now has bounded server-side category, status, search,
 and pagination controls with exact matching totals. This checkpoint does not close
 the separate evidence, security aggregate, GO/NO-GO, browser, database, hosted, or

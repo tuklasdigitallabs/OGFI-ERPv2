@@ -579,6 +579,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Security Readiness now requires selected-company management scope before reads and narrows user, role-permission, MFA, authenticator, and break-glass projections to the fields required for its counters and attention sample. Local/provider MFA semantics and server-side gate blocking remain unchanged.
 - This is an intermediate projection hardening checkpoint, not Security completion. SQL aggregate/EXPLAIN evidence, paginated attention detail, freshness/source status, authoritative workspace links, responsive browser, disposable PostgreSQL, hosted recovery, and UAT gates remain open.
 
+### DEC-0133 Administration Release Board decision register — July 24, 2026
+
+- The GO / NO-GO category now uses a selected-company, management-authorized bounded decision register with search, outcome filtering, exact totals, deterministic ordering, stale-page clamping, and a selected read-only decision detail panel. Malformed or foreign IDs return a generic unavailable state; decisions remain append-only and cannot be edited or hard-deleted.
+- Existing audited decision creation and gate-transition controls remain authoritative: GO still requires the readiness summary to allow proceeding, and READY/CONDITIONAL_GO/WAIVED gate statuses still require the latest matching board outcome. This slice does not complete the separate Release Board workspace, composer, date filters, bounded export, audit/activity detail, responsive browser proof, disposable PostgreSQL evidence, hosted recovery, or UAT execution.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
