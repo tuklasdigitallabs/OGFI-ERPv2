@@ -28,3 +28,11 @@ describe("My Tasks Stock Count presentation", () => {
     );
   });
 });
+
+describe("My Tasks module filter presentation", () => {
+  it("renders a working enrolled-module filter and discloses deferred filters", () => {
+    expect(source).toContain('name="module"');
+    expect(source).toContain("Apply module filter");
+    expect(source).toContain("Location, status, priority, due date, and assignment filters remain server-contract work in progress");
+  });
+});

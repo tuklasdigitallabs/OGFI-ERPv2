@@ -15,8 +15,10 @@ function getSearchParam(
   return Array.isArray(value) ? value[0] : value;
 }
 
-function taskHref(cursor: string) {
-  return `/my-tasks?cursor=${encodeURIComponent(cursor)}`;
+function taskHref(cursor: string, module?: string) {
+  const params = new URLSearchParams({ cursor });
+  if (module) params.set("module", module);
+  return `/my-tasks?${params.toString()}`;
 }
 
 export default async function MyTasksPage({
@@ -30,12 +32,19 @@ export default async function MyTasksPage({
   }
   const params = searchParams ? await searchParams : {};
   const cursor = getSearchParam(params, "cursor");
+  const module = getSearchParam(params, "module");
   const cursorReset = getSearchParam(params, "cursorReset") === "1";
   let page: MyTasksPage;
   try {
-    page = await getMyTasksPage(session, cursor ? { cursor } : {});
+    page = await getMyTasksPage(session, {
+      ...(cursor ? { cursor } : {}),
+      ...(module ? { module } : {})
+    });
   } catch (error) {
-    if (cursor && error instanceof Error && error.message === "MY_TASK_CURSOR_INVALID") {
+    if (error instanceof Error && error.message === "MY_TASK_CURSOR_INVALID") {
+      redirect(module ? `/my-tasks?cursorReset=1&module=${encodeURIComponent(module)}` : "/my-tasks?cursorReset=1");
+    }
+    if (error instanceof Error && error.message === "MY_TASK_FILTER_INVALID") {
       redirect("/my-tasks?cursorReset=1");
     }
     throw error;
@@ -98,6 +107,34 @@ export default async function MyTasksPage({
           {page.isComplete ? <Badge tone="success" size="sm">Available sources loaded</Badge> : <Badge tone="warning" size="sm">Partial availability</Badge>}
         </div>
 
+        <Panel className="mb-4 p-4">
+          <form method="get" className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <label htmlFor="my-tasks-module" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Module
+              </label>
+              <select
+                id="my-tasks-module"
+                name="module"
+                defaultValue={module ?? ""}
+                className="mt-1 block min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 sm:w-72"
+              >
+                <option value="">All enrolled modules</option>
+                {page.enrolledSources.map((source) => (
+                  <option key={source.type} value={source.type}>{source.label}</option>
+                ))}
+              </select>
+            </div>
+            <ButtonLink href="/my-tasks" tone="secondary">Clear module filter</ButtonLink>
+            <button type="submit" className="min-h-11 rounded-md bg-blue-700 px-4 text-sm font-bold text-white hover:bg-blue-800">
+              Apply module filter
+            </button>
+          </form>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Module filtering narrows the already authorized enrolled sources. Location, status, priority, due date, and assignment filters remain server-contract work in progress.
+          </p>
+        </Panel>
+
         {page.items.length === 0 ? (
           <Panel className="p-8 text-center">
             <CheckCircle2 aria-hidden="true" className="mx-auto h-8 w-8 text-emerald-600" />
@@ -136,7 +173,7 @@ export default async function MyTasksPage({
 
       {page.nextCursor ? (
         <div className="mt-6 flex justify-end">
-          <ButtonLink href={taskHref(page.nextCursor)} tone="secondary">Load next actions</ButtonLink>
+          <ButtonLink href={taskHref(page.nextCursor, module)} tone="secondary">Load next actions</ButtonLink>
         </div>
       ) : null}
     </AppShell>

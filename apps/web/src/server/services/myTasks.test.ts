@@ -133,7 +133,7 @@ describe("My Tasks queue", () => {
   });
 
   test("binds a cursor to its current user scope and rejects tampering", () => {
-    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v2");
+    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v3");
     const cursor = encodeMyTasksCursor(session as never, {
       priority: "HIGH",
       dueAt: null,
@@ -150,6 +150,38 @@ describe("My Tasks queue", () => {
       recordId: "t1"
     });
     expect(() => decodeMyTasksCursor(session as never, legacyCursor)).toThrow("MY_TASK_CURSOR_INVALID");
+  });
+
+  test("filters by an enrolled module server-side and binds the module to the cursor", async () => {
+    const page = await getMyTasksPage(session as never, {
+      module: "TRANSFER",
+      pageSize: 1
+    });
+    expect(page.enrolledSources).toEqual([{ type: "TRANSFER", label: "Transfers" }]);
+    expect(page.items).toEqual([
+      expect.objectContaining({ sourceType: "TRANSFER", taskId: "transfer-t1" })
+    ]);
+    expect(mocks.wastage).not.toHaveBeenCalled();
+    expect(page.nextCursor).toBeNull();
+
+    const cursor = encodeMyTasksCursor(session as never, {
+      priority: "HIGH",
+      dueAt: null,
+      createdAt: "2026-07-20T00:00:00.000Z",
+      sourceType: "TRANSFER",
+      recordId: "t1"
+    }, "TRANSFER");
+    expect(() => decodeMyTasksCursor(session as never, cursor, "WASTAGE" as never)).toThrow(
+      "MY_TASK_CURSOR_INVALID"
+    );
+  });
+
+  test("rejects a module that is not enrolled by the current permission set", async () => {
+    await expect(
+      getMyTasksPage({ ...session, permissionCodes: [permissions.purchaseRequestSubmit] } as never, {
+        module: "TRANSFER"
+      })
+    ).rejects.toThrow("MY_TASK_FILTER_INVALID");
   });
 
   test("withholds a total instead of treating a failed source as empty", async () => {

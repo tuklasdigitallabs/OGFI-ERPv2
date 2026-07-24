@@ -35,7 +35,7 @@ import { listStockCountMyTaskPage } from "./stockCounts";
 const myTasksCursorDomain = "my-tasks-v2";
 // Bump whenever an enrolled source predicate, ordering contract, or adapter
 // projection changes. Signed cursors must never outlive that contract.
-export const myTasksRegistryVersion = "my-tasks-registry-v2";
+export const myTasksRegistryVersion = "my-tasks-registry-v3";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
 const defaultPageSize = 20;
 const maxPageSize = 25;
@@ -68,7 +68,7 @@ export type MyTasksPage = {
   unavailableSources: Array<{ type: DashboardTaskSource; label: string }>;
 };
 
-function taskScopeHash(session: SessionContext) {
+function taskScopeHash(session: SessionContext, module?: DashboardTaskSource) {
   const values = [
     myTasksRegistryVersion,
     session.user.id,
@@ -77,7 +77,8 @@ function taskScopeHash(session: SessionContext) {
     session.context.brandId,
     session.context.locationId,
     ...[...session.permissionCodes].sort(),
-    ...dashboardTaskSources
+    ...dashboardTaskSources,
+    module ?? ""
   ];
   return createHash("sha256").update(values.join("\u0000")).digest("base64url");
 }
@@ -102,10 +103,14 @@ function invalidCursor(): never {
   throw new Error("MY_TASK_CURSOR_INVALID");
 }
 
-export function encodeMyTasksCursor(session: SessionContext, anchor: DashboardTaskCursor) {
+export function encodeMyTasksCursor(
+  session: SessionContext,
+  anchor: DashboardTaskCursor,
+  module?: DashboardTaskSource
+) {
   const payload: MyTasksCursorPayload = {
     version: 2,
-    scopeHash: taskScopeHash(session),
+    scopeHash: taskScopeHash(session, module),
     issuedAt: Date.now(),
     anchor
   };
@@ -113,7 +118,11 @@ export function encodeMyTasksCursor(session: SessionContext, anchor: DashboardTa
   return `${value}.${signInternalServerValue(myTasksCursorDomain, value)}`;
 }
 
-export function decodeMyTasksCursor(session: SessionContext, cursor: string) {
+export function decodeMyTasksCursor(
+  session: SessionContext,
+  cursor: string,
+  module?: DashboardTaskSource
+) {
   const [value, signature, ...extra] = cursor.split(".");
   if (!value || !signature || extra.length > 0) {
     return invalidCursor();
@@ -131,7 +140,7 @@ export function decodeMyTasksCursor(session: SessionContext, cursor: string) {
   const now = Date.now();
   if (
     payload.version !== 2 ||
-    payload.scopeHash !== taskScopeHash(session) ||
+    payload.scopeHash !== taskScopeHash(session, module) ||
     !Number.isInteger(payload.issuedAt) ||
     payload.issuedAt > now + 60_000 ||
     now - payload.issuedAt > myTasksCursorTtlMs ||
@@ -439,11 +448,19 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
  */
 export async function getMyTasksPage(
   session: SessionContext,
-  input: { cursor?: string; pageSize?: number } = {}
+  input: { cursor?: string; pageSize?: number; module?: string } = {}
 ): Promise<MyTasksPage> {
-  const after = input.cursor ? decodeMyTasksCursor(session, input.cursor) : undefined;
+  const module = input.module
+    ? dashboardTaskSources.includes(input.module as DashboardTaskSource)
+      ? (input.module as DashboardTaskSource)
+      : (() => { throw new Error("MY_TASK_FILTER_INVALID"); })()
+    : undefined;
+  const after = input.cursor ? decodeMyTasksCursor(session, input.cursor, module) : undefined;
   const take = normalizedPageSize(input.pageSize);
-  const sources = enrolledSources(session);
+  const sources = enrolledSources(session).filter((source) => !module || source.type === module);
+  if (module && sources.length === 0) {
+    throw new Error("MY_TASK_FILTER_INVALID");
+  }
   const reads = await Promise.allSettled(
     sources.map(async (source) => ({ source, page: await source.read(after, take) }))
   );
@@ -471,7 +488,7 @@ export async function getMyTasksPage(
     // page one after availability is restored instead.
     nextCursor:
       unavailableSources.length === 0 && last && hasMore
-        ? encodeMyTasksCursor(session, last)
+        ? encodeMyTasksCursor(session, last, module)
         : null,
     totalCount:
       unavailableSources.length === 0

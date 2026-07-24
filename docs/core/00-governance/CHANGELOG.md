@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — My Tasks Module Filter Slice
+
+- Added the first safe My Tasks filter slice: enrolled-module filtering is server-owned, source-selective, cursor-bound, and rejects modules not enrolled for the current permission set. Broader priority/status/due-date/assignment/location filters remain pending the adapter contract.
+
 ## 2026-07-24 — Supplier Quote Create Task Mode
 
 - Added confirmed `DEC-0102`: supplier quote capture now has a dedicated `/quotes/new` task route with explicit quote-only/no-PO-commitment context while preserving the existing server-authorized quote service.

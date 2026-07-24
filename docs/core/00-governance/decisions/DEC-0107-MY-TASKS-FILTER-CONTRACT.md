@@ -62,10 +62,10 @@ The dashboard specification requires priority, module, location, due-date, assig
 
 ## Implementation and documentation impact
 
-- Code / architecture: No filter controls are released by this record. Future adapter changes must accept the contract above and bump `myTasksRegistryVersion`.
+- Code / architecture: The first safe slice exposes only an enrolled-module filter, which omits unselected adapters before any reads. Future priority/status/native-due adapter changes must accept the full contract above and bump `myTasksRegistryVersion`.
 - Data / schema: No schema change; no actor identity is added for deferred `assignedBy`.
 - Workflow / permissions: Role-pooled and personal obligations retain their existing semantics.
-- UI / mobile: The current queue remains truthful about its enrolled source coverage; do not render inert filter controls.
+- UI / mobile: The My Tasks workspace exposes a working enrolled-module filter and clearly labels priority, status, due-date, assignment, and location filtering as pending server contracts.
 - Knowledge base / training: Explain that the current queue is paginated but not yet a filtered enterprise task list.
 - Tests / UAT: Use the matrix above before exposing filters.
 
@@ -85,4 +85,3 @@ The dashboard specification requires priority, module, location, due-date, assig
 - `apps/web/src/server/services/dashboardTasks.ts`
 - `DEC-0063`, `DEC-0064`, `DEC-0065`, `DEC-0066`, `DEC-0067`, `DEC-0068`
 - Independent first-round workflow and data/security reviews on 2026-07-24; requested Code Spark/GPT-5.4 models were unavailable and the closest active GPT-5.6 fallback was used.
-

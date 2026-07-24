@@ -249,14 +249,14 @@ Direct web-mounted `local-private` storage remains suitable for local developmen
 
 ### DEC-0063/0066 My Tasks cursor contract checkpoint — July 24, 2026
 
-- Signed My Tasks cursors now include an explicit registered-source contract version (`my-tasks-registry-v2`) in their scope hash. Any future adapter predicate, ordering, enrollment, or projection change must bump this version so old cursors fail closed instead of traversing a changed queue contract.
+- Signed My Tasks cursors now include an explicit registered-source contract version (`my-tasks-registry-v3`) and the selected enrolled-module filter in their scope hash. Any future adapter predicate, ordering, enrollment, projection, or queue-filter change must bump this version so old cursors fail closed instead of traversing a changed queue contract.
 - Focused My Tasks coverage, full web lint/typecheck/test, and the authorization-manifest gate remain required evidence; browser, PostgreSQL, and hosted production gates remain open.
 
 ### DEC-0107 My Tasks filter contract checkpoint — July 24, 2026
 
 - Independent workflow and data/security reviews confirmed that the dashboard's required My Tasks filters cannot be shipped as client-side or post-merge filtering. The current adapters expose heterogeneous projections, source-native statuses, fixed `HIGH`/no-due semantics for most sources, no common assigned-by field, and only the already-selected location scope.
 - The confirmed implementation contract is server-owned module, canonical priority, source-qualified status, selected-location context, and native `dueAt` only. Every filter must be applied inside each adapter's count and page predicate and bound into the signed cursor; `assignedBy` and arbitrary multi-location selectors remain deferred. The existing partial-source continuation risk must be resolved before filtered pagination is called complete.
-- No filter controls were added because inert or incomplete controls would violate the visible-surface gate. The current queue remains explicitly paginated and source-enrolled, not a complete filtered enterprise task list. See `docs/core/00-governance/decisions/DEC-0107-MY-TASKS-FILTER-CONTRACT.md`.
+- The first safe filter slice is now live: an enrolled-module selector omits unselected adapters before any source read, binds the canonical module into the signed cursor scope, rejects modules not enrolled for the current permissions, and preserves the selected module across pagination. Priority, status, native due-date, assignment, and arbitrary-location filters remain absent rather than inert; they require the full adapter predicate contract. See `docs/core/00-governance/decisions/DEC-0107-MY-TASKS-FILTER-CONTRACT.md`.
 - Partial-source pagination now fails closed: when any selected enrolled source is unavailable, the page withholds both the total and `nextCursor`. This prevents a recovered source from being permanently skipped after a partial-page anchor; users must reload page one after source availability returns. Focused regression coverage passes for this behavior. Filtered pagination remains pending until every adapter accepts the source-owned predicate contract.
 
 ### SPF-008 ordinary Stock Counts pagination checkpoint — July 24, 2026
