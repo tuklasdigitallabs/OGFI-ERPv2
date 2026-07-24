@@ -633,7 +633,7 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 
 - Item edit/deactivation now use a selected item URL state, scoped detail read, focused composer, and context-preserving success/error redirects. Repeated row mutation forms were removed.
 - Base-UOM changes are blocked after posted InventoryMovement history with a transactional row lock and stable user-safe feedback; unchanged base-UOM edits remain valid. Disposable PostgreSQL race/isolation, browser/mobile, hosted recovery, and UAT gates remain open.
-- Conversion creation now uses the bounded active item/UOM option catalogs and remains disabled only when the catalog reports overflow; conversion edit composer migration remains open.
+- Conversion creation uses the bounded active item/UOM option catalogs and remains disabled only when the catalog reports overflow; conversion edit now uses the selected conversion composer with scoped detail and preserved context.
 
 Categories and UOMs now expose selected URL-backed detail/action composers with context-preserving redirects; legacy repeated row forms are disabled with explicit guidance. Conversion edit actions and external readiness gates remain open.
 
@@ -648,7 +648,7 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 ### DEC-0145 Supplier-item link duplicate race — July 24, 2026
 
 - Supplier-item link creation now maps the unique-key race on supplier, item, and purchase UOM to the stable `DUPLICATE_SUPPLIER_ITEM_LINK` outcome while preserving atomic price-history and audit creation.
-- The global link composer still needs a bounded, searchable, selected-ID-preserving supplier/item/UOM lookup before the Supplier workspace can pass its visible-surface and list-behavior gates.
+- The global link composer gap was superseded by DEC-0146; supplier-item creation now uses the selected-supplier bounded lookup composer. Browser/database/recovery/UAT evidence remains open.
 
 ### DEC-0146 Supplier-item bounded lookup composer — July 24, 2026
 
