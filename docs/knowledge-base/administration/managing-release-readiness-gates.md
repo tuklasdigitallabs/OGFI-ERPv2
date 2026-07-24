@@ -55,6 +55,8 @@ Deployment evidence follows the same selected-record review pattern. The migrati
 
 Enablement evidence is reviewed from a selected record. Training readiness requires verified training signoff and the required known-limit/support-route confirmations (or their standalone verified evidence); KB and release-note readiness requires each of its three verified review types. Page filters do not change these aggregate checks.
 
+Security controls are derived from the selected company’s live access and authentication state. The MFA attention names are an explicitly labeled sample, not a complete user list; use the linked authoritative MFA, session invalidation, break-glass, or access-request workspace for action. A security counter cannot override a server-side unresolved gate.
+
 ## UAT Evidence Rules
 
 UAT gates require both evidence and a decision note before they are marked ready, conditional, or waived. The decision note should name one or more of:

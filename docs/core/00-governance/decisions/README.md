@@ -115,3 +115,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0129-ADMIN-UAT-SELECTED-REVIEW-ACTIONS.md` — selected-record UAT review actions and independent URL state
 - `DEC-0130-ADMIN-DEPLOYMENT-EVIDENCE-PAGINATION.md` — bounded deployment evidence register and aggregate dependency checks
 - `DEC-0131-ADMIN-ENABLEMENT-EVIDENCE-PAGINATION.md` — bounded enablement evidence register and aggregate dependency checks
+- `DEC-0132-ADMIN-SECURITY-READINESS-PROJECTION.md` — selected-company security projection hardening and remaining aggregate gates

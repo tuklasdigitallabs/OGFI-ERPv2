@@ -118,6 +118,9 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("listDeploymentEvidencePage");
     expect(serviceSource).toContain("getDeploymentEvidenceRecord");
     expect(serviceSource).toContain("getDeploymentEvidenceSummary");
+    expect(serviceSource).toContain("assertCanManageReleaseReadiness(session)");
+    expect(serviceSource).toContain("scopeAssignments");
+    expect(serviceSource).toContain("latestRuntimeAuthenticatorByUser");
     expect(serviceSource).toContain("listEnablementEvidencePage");
     expect(serviceSource).toContain("getEnablementEvidenceRecord");
     expect(serviceSource).toContain("getEnablementEvidenceSummary");

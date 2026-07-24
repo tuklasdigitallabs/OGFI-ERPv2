@@ -583,7 +583,7 @@ function activeAssignmentWindowFilter(now = new Date()) {
 export async function getReleaseSecurityEvidenceSummary(
   session: SessionContext,
 ) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
   const now = new Date();
   const activeAssignmentFilter = activeAssignmentWindowFilter(now);
 
@@ -614,17 +614,21 @@ export async function getReleaseSecurityEvidenceSummary(
         tenantId: session.context.tenantId,
         status: "ACTIVE",
       },
-      include: {
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
         scopeAssignments: {
           where: activeAssignmentFilter,
+          select: { scopeType: true, scopeId: true },
         },
         roleAssignments: {
           where: activeAssignmentFilter,
-          include: {
+          select: {
             role: {
-              include: {
+              select: {
                 permissions: {
-                  include: { permission: true },
+                  select: { permission: { select: { code: true } } },
                 },
               },
             },
@@ -642,14 +646,16 @@ export async function getReleaseSecurityEvidenceSummary(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
       },
-      orderBy: { createdAt: "desc" },
+      select: { id: true, targetUserId: true, status: true, createdAt: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     }),
     prisma.mfaAuthenticator.findMany({
       where: {
         tenantId: session.context.tenantId,
         status: { in: ["PENDING", "ACTIVE", "REVOKED"] },
       },
-      orderBy: { createdAt: "desc" },
+      select: { id: true, userId: true, status: true, createdAt: true },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     }),
     prisma.authSessionInvalidation.count({
       where: {
@@ -666,10 +672,7 @@ export async function getReleaseSecurityEvidenceSummary(
           in: ["PENDING_REVIEW", "ACTIVE", "REVOKED", "EXPIRED", "REJECTED"],
         },
       },
-      select: {
-        id: true,
-        status: true,
-      },
+      select: { id: true, status: true },
     }),
     prisma.authRecoveryRequest.count({
       where: {

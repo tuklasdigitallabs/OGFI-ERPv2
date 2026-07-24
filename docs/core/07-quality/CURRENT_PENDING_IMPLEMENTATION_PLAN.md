@@ -574,6 +574,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Enablement evidence now uses selected-company bounded search/type/status/audience pagination with exact totals, deterministic ordering, selected-record detail, read-only rows, and server-authorized review actions. Training and KB/release-note dependencies use aggregate verified evidence checks with the documented acknowledgement/support semantics.
 - Enablement export/activity bounds, security/GO-NO-GO surfaces, responsive browser, disposable PostgreSQL, hosted recovery, and UAT execution gates remain open.
 
+### DEC-0132 Administration security readiness projection — July 24, 2026
+
+- Security Readiness now requires selected-company management scope before reads and narrows user, role-permission, MFA, authenticator, and break-glass projections to the fields required for its counters and attention sample. Local/provider MFA semantics and server-side gate blocking remain unchanged.
+- This is an intermediate projection hardening checkpoint, not Security completion. SQL aggregate/EXPLAIN evidence, paginated attention detail, freshness/source status, authoritative workspace links, responsive browser, disposable PostgreSQL, hosted recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
