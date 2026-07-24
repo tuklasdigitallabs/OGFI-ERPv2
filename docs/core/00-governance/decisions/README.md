@@ -126,3 +126,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0140-MASTER-DATA-OPTION-CATALOG.md` — bounded scoped option-catalog foundation for category, UOM, and item selectors
 - `DEC-0141-MASTER-DATA-SUPPLIER-REGISTRY-PAGINATION.md` — bounded company-scoped Supplier Register search, filters, and pagination
 - `DEC-0142-SUPPLIER-SELECTED-ACTION-COMPOSER.md` — selected supplier accreditation/deactivation action composer
+- `DEC-0143-ITEM-SELECTED-ACTION-COMPOSER.md` — selected item mutation composer and transactional base-UOM guard

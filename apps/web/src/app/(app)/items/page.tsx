@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Badge, Panel, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
@@ -20,6 +21,7 @@ import {
   deactivateUom,
   itemInventoryClasses,
   itemTypes,
+  getItemMasterRecord,
   listItemMasterData,
   listItemMasterOptionCatalog,
   updateItem,
@@ -30,6 +32,19 @@ import {
 } from "@/server/services/items";
 
 export const dynamic = "force-dynamic";
+
+function itemReturnPath(formData: FormData) {
+  const query = new URLSearchParams({ tab: "items" });
+  const itemQuery = String(formData.get("returnItemQuery") ?? "").trim().slice(0, 120);
+  const itemStatus = String(formData.get("returnItemStatus") ?? "");
+  const itemPage = Number(formData.get("returnItemPage") ?? "1");
+  const itemId = String(formData.get("returnItemId") ?? "");
+  if (itemQuery) query.set("itemQuery", itemQuery);
+  if (["ACTIVE", "INACTIVE", "ARCHIVED"].includes(itemStatus)) query.set("itemStatus", itemStatus);
+  if (Number.isInteger(itemPage) && itemPage > 0 && itemPage <= 10_000) query.set("itemPage", String(itemPage));
+  if (/^[0-9a-f-]{36}$/i.test(itemId)) query.set("itemId", itemId);
+  return `/items?${query.toString()}`;
+}
 
 async function createCategoryAction(formData: FormData) {
   "use server";
@@ -85,10 +100,10 @@ async function deactivateItemAction(formData: FormData) {
   try {
     await deactivateItem(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/items?tab=items", error));
+    redirect(actionErrorRedirectPath(itemReturnPath(formData), error));
   }
   revalidatePath("/items");
-  redirect("/items?tab=items");
+  redirect(itemReturnPath(formData));
 }
 
 async function deactivateCategoryAction(formData: FormData) {
@@ -145,10 +160,10 @@ async function updateItemAction(formData: FormData) {
   try {
     await updateItem(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/items?tab=items", error));
+    redirect(actionErrorRedirectPath(itemReturnPath(formData), error));
   }
   revalidatePath("/items");
-  redirect("/items?tab=items");
+  redirect(itemReturnPath(formData));
 }
 
 async function updateConversionAction(formData: FormData) {
@@ -203,6 +218,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const params = searchParams ? await searchParams : {};
   const activeTab = normalizeItemMasterTab(params.tab);
   const itemQuery = (Array.isArray(params.itemQuery) ? params.itemQuery[0] : params.itemQuery)?.trim() ?? "";
+  const selectedItemId = Array.isArray(params.itemId) ? params.itemId[0] : params.itemId;
   const itemStatusRaw = Array.isArray(params.itemStatus) ? params.itemStatus[0] : params.itemStatus;
   const itemStatus = itemStatusRaw === "ACTIVE" || itemStatusRaw === "INACTIVE" || itemStatusRaw === "ARCHIVED" ? itemStatusRaw : undefined;
   const requestedPage = Number(Array.isArray(params.itemPage) ? params.itemPage[0] : params.itemPage);
@@ -234,8 +250,9 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
     conversionQuery,
     conversionPage
   });
-  const selectedCategoryIds = masterData.items.map((item) => item.itemCategoryId);
-  const selectedUomIds = masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id)));
+  const selectedItem = selectedItemId ? await getItemMasterRecord(session, selectedItemId).catch(() => null) : null;
+  const selectedCategoryIds = [...masterData.items.map((item) => item.itemCategoryId), ...(selectedItem ? [selectedItem.itemCategoryId] : [])];
+  const selectedUomIds = [...masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id))), ...(selectedItem ? [selectedItem.baseUomId, selectedItem.purchaseUomId, selectedItem.issueUomId].filter((id): id is string => Boolean(id)) : [])];
   const [categoryOptionCatalog, uomOptionCatalog] = await Promise.all([
     listItemMasterOptionCatalog(session, { kind: "category", selectedIds: selectedCategoryIds, page: 1, pageSize: 100 }),
     listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 })
@@ -245,6 +262,13 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const activeUoms = uomOptionCatalog.options.filter((uom) => uom.status === "ACTIVE");
   const activeMasterItems = masterData.items.filter((item) => item.status === "ACTIVE");
   const actionFeedback = getActionFeedback(params);
+  const itemActionHref = (itemId?: string) => {
+    const query = new URLSearchParams({ tab: "items", itemPage: String(masterData.itemsPage.page) });
+    if (itemQuery) query.set("itemQuery", itemQuery);
+    if (itemStatus) query.set("itemStatus", itemStatus);
+    if (itemId) query.set("itemId", itemId);
+    return `/items?${query.toString()}`;
+  };
 
   return (
     <AppShell
@@ -581,125 +605,90 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                     <p>Issue UOM: {item.issueUomCode ?? "None"}</p>
                   </div>
                   <div className="flex flex-wrap gap-2 sm:justify-end">
-                    <EntryModal
-                      title={`Edit ${item.itemName}`}
-                      triggerClassName={secondaryEditTrigger}
-                      triggerLabel="Edit"
+                    <Link
+                      className="inline-flex min-h-10 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50"
+                      href={itemActionHref(item.id)}
                     >
-                      <form action={updateItemAction} className="ogfi-form-shell mt-4 grid gap-3">
-                        <input name="itemId" type="hidden" value={item.id} />
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                            Item code
-                            <input className={`${inputClass} bg-slate-50 text-slate-500`} value={item.itemCode} disabled />
-                          </label>
-                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                            Item name
-                            <input className={inputClass} name="itemName" defaultValue={item.itemName} required />
-                          </label>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                            Category
-                            <select className={inputClass} name="itemCategoryId" defaultValue={item.itemCategoryId} required>
-                              {categoryOptionCatalog.options.map((category) => (
-                                <option key={category.id} value={category.id}>
-                                  {category.label} ({category.status})
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                            Item type
-                            <select className={inputClass} name="itemType" defaultValue={item.itemType} required>
-                              {itemTypes.map((type) => (
-                                <option key={type} value={type}>
-                                  {type.replaceAll("_", " ")}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-3">
-                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                            Base UOM
-                            <select className={inputClass} name="baseUomId" defaultValue={item.baseUomId} required>
-                              {uomOptionCatalog.options.map((uom) => (
-                                <option key={uom.id} value={uom.id}>
-                                  {uom.code} ({uom.status})
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                            Purchase UOM
-                            <select className={inputClass} name="purchaseUomId" defaultValue={item.purchaseUomId ?? ""}>
-                              <option value="">None</option>
-                              {uomOptionCatalog.options.map((uom) => (
-                                <option key={uom.id} value={uom.id}>
-                                  {uom.code} ({uom.status})
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                            Issue UOM
-                            <select className={inputClass} name="issueUomId" defaultValue={item.issueUomId ?? ""}>
-                              <option value="">None</option>
-                              {uomOptionCatalog.options.map((uom) => (
-                                <option key={uom.id} value={uom.id}>
-                                  {uom.code} ({uom.status})
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        <div className="grid gap-2 text-sm font-medium text-slate-700 md:grid-cols-2">
-                          <label className="flex items-center gap-2">
-                            <input name="trackInventory" type="checkbox" defaultChecked={item.trackInventory} /> Track inventory
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input name="trackExpiry" type="checkbox" defaultChecked={item.trackExpiry} /> Track expiry
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input name="trackLot" type="checkbox" defaultChecked={item.trackLot} /> Track lot
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input name="requiresReceivingInspection" type="checkbox" defaultChecked={item.requiresReceivingInspection} /> Receiving inspection
-                          </label>
-                        </div>
-                        <label className="grid gap-1 text-sm font-medium text-slate-700">
-                          Update reason
-                          <input className={inputClass} name="reason" minLength={5} required />
-                        </label>
-                        <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
-                          Save Item
-                        </button>
-                      </form>
-                    </EntryModal>
-                    {item.status === "ACTIVE" ? (
-                      <EntryModal
-                        title="Deactivate Item"
-                        triggerClassName={secondaryDangerTrigger}
-                        triggerLabel="Deactivate"
-                      >
-                        <form action={deactivateItemAction} className="ogfi-form-shell mt-4 grid gap-3">
-                          <input name="itemId" type="hidden" value={item.id} />
-                          <label className="grid gap-1 text-sm font-medium text-slate-700">
-                            Item deactivation reason
-                            <input className={`${inputClass} text-sm`} name="reason" minLength={5} required />
-                          </label>
-                          <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
-                            Deactivate Item
-                          </button>
-                        </form>
-                      </EntryModal>
-                    ) : null}
+                      Open controls
+                    </Link>
                   </div>
                 </div>
               </details>
             ))}
           </div>
+          {selectedItem ? (
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-950">Selected item: {selectedItem.itemName}</h3>
+                  <p className="text-sm text-slate-600">Edit and lifecycle actions apply only to this selected record.</p>
+                </div>
+                <Link className="text-sm font-semibold text-blue-700 hover:underline" href={itemActionHref()}>Close controls</Link>
+              </div>
+              <form action={updateItemAction} className="grid gap-3">
+                <input name="itemId" type="hidden" value={selectedItem.id} />
+                <input name="returnItemQuery" type="hidden" value={itemQuery} />
+                <input name="returnItemStatus" type="hidden" value={itemStatus ?? ""} />
+                <input name="returnItemPage" type="hidden" value={String(masterData.itemsPage.page)} />
+                <input name="returnItemId" type="hidden" value={selectedItem.id} />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Item code
+                    <input className={`${inputClass} bg-slate-50 text-slate-500`} value={selectedItem.itemCode} disabled />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Item name
+                    <input className={inputClass} name="itemName" defaultValue={selectedItem.itemName} required />
+                  </label>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Category
+                    <select className={inputClass} name="itemCategoryId" defaultValue={selectedItem.itemCategoryId} required>
+                      {categoryOptionCatalog.options.map((category) => <option key={category.id} value={category.id}>{category.label} ({category.status})</option>)}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Item type
+                    <select className={inputClass} name="itemType" defaultValue={selectedItem.itemType} required>
+                      {itemTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {(["baseUomId", "purchaseUomId", "issueUomId"] as const).map((name) => (
+                    <label key={name} className="grid gap-1 text-sm font-medium text-slate-700">{name === "baseUomId" ? "Base UOM" : name === "purchaseUomId" ? "Purchase UOM" : "Issue UOM"}
+                      <select className={inputClass} name={name} defaultValue={selectedItem[name] ?? ""} required={name === "baseUomId"}>
+                        {name !== "baseUomId" ? <option value="">None</option> : null}
+                        {uomOptionCatalog.options.map((uom) => <option key={uom.id} value={uom.id}>{uom.code} ({uom.status})</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+                <div className="grid gap-2 text-sm font-medium text-slate-700 md:grid-cols-2">
+                  <label className="flex items-center gap-2"><input name="trackInventory" type="checkbox" defaultChecked={selectedItem.trackInventory} /> Track inventory</label>
+                  <label className="flex items-center gap-2"><input name="trackExpiry" type="checkbox" defaultChecked={selectedItem.trackExpiry} /> Track expiry</label>
+                  <label className="flex items-center gap-2"><input name="trackLot" type="checkbox" defaultChecked={selectedItem.trackLot} /> Track lot</label>
+                  <label className="flex items-center gap-2"><input name="requiresReceivingInspection" type="checkbox" defaultChecked={selectedItem.requiresReceivingInspection} /> Receiving inspection</label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <input className={`${inputClass} min-w-64`} name="reason" minLength={5} placeholder="Update reason" required />
+                  <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">Save Item</button>
+                </div>
+              </form>
+              {selectedItem.status === "ACTIVE" ? (
+                <form action={deactivateItemAction} className="mt-4 grid gap-2 border-t border-blue-100 pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                  <input name="itemId" type="hidden" value={selectedItem.id} />
+                  <input name="returnItemQuery" type="hidden" value={itemQuery} />
+                  <input name="returnItemStatus" type="hidden" value={itemStatus ?? ""} />
+                  <input name="returnItemPage" type="hidden" value={String(masterData.itemsPage.page)} />
+                  <input name="returnItemId" type="hidden" value={selectedItem.id} />
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason
+                    <input className={inputClass} name="reason" minLength={5} required />
+                  </label>
+                  <button className="min-h-10 rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800">Deactivate Item</button>
+                </form>
+              ) : <p className="mt-4 border-t border-blue-100 pt-4 text-sm text-slate-600">Inactive item: retained history; no lifecycle mutation is available.</p>}
+            </div>
+          ) : selectedItemId ? (
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">The selected item is not available in the current company scope or filtered page.</p>
+          ) : null}
           {masterData.itemsPage.totalItems === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-slate-500">{itemQuery || itemStatus ? "No items match the selected filters." : "No item master records yet."}</p>
           ) : null}

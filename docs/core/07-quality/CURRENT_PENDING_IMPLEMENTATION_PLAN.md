@@ -629,6 +629,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Supplier accreditation and deactivation now use a selected supplier URL state and focused action composer in the supplier catalog workspace. Repeated registry-row forms were removed; item-link deactivation remains in selected catalog detail.
 - Item/category/UOM/conversion composers, cross-company browser/deep-link evidence, disposable PostgreSQL, hosted recovery, and UAT remain open.
 
+### DEC-0143 Item selected action composer and base-UOM guard — July 24, 2026
+
+- Item edit/deactivation now use a selected item URL state, scoped detail read, focused composer, and context-preserving success/error redirects. Repeated row mutation forms were removed.
+- Base-UOM changes are blocked after posted InventoryMovement history with a transactional row lock and stable user-safe feedback; unchanged base-UOM edits remain valid. Disposable PostgreSQL race/isolation, browser/mobile, hosted recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

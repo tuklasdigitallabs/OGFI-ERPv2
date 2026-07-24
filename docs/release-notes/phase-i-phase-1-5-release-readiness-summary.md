@@ -178,6 +178,10 @@ selected supplier catalog remains the source for full item-link maintenance.
 Supplier accreditation and deactivation now use a selected supplier action
 composer in the catalog workspace rather than repeating full forms in every row.
 
+Item edit and deactivation now use a selected item action composer with preserved
+filter/page context. Base-UOM changes are blocked after posted inventory history
+and require a controlled migration.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.

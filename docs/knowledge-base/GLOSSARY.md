@@ -85,3 +85,4 @@
 | Item Master registry                | The company-scoped catalog of inventory and purchasing items. Its visible registry is server-filtered and paginated; the total count is authoritative for the applied filters. |
 | Supplier Register                   | The company-scoped supplier catalog with server-backed search, lifecycle/accreditation filters, and paginated matching results. Its item-link preview is not the full supplier catalog. |
 | Selected action composer            | A focused, URL-selected record area where a controlled mutation is performed, preserving the list filters and record context instead of repeating a full form in every row. |
+| Base-UOM migration                  | A controlled process required to change an item’s base unit after posted inventory history; normal Item Master editing cannot rewrite that transaction basis. |

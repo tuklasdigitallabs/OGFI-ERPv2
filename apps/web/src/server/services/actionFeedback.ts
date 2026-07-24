@@ -425,6 +425,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "The configured admin role must retain core administration permission.",
   COMPANY_NOT_FOUND: "The selected company scope is no longer available.",
   BASE_UOM_NOT_FOUND: "The selected base UOM is no longer available.",
+  BASE_UOM_CHANGE_REQUIRES_MIGRATION:
+    "This item has posted inventory history. Changing its base UOM requires a controlled migration.",
   DUPLICATE_ITEM_CATEGORY_CODE:
     "An item category with this code already exists.",
   DUPLICATE_ITEM_CODE: "An item with this code already exists.",

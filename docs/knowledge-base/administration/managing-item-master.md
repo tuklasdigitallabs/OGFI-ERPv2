@@ -9,3 +9,5 @@ Categories, UOMs, and conversion setup are separate tabs. Their bounded-read and
 Conversion records are company-scoped through their item and both UOM relationships. The system rejects cross-company or inactive master-data relationships and requires distinct UOMs with a positive factor.
 
 All four tabs use server-backed filters and pagination. Item create/edit selectors use a bounded server-side lookup and creation is disabled when valid choices exceed the catalog bound. Conversion creation may remain unavailable while its full option migration and focused action composer are completed.
+
+Select an item and choose Open controls to edit or deactivate it. The selected-item composer preserves the current search and page context. If an item has posted inventory history, its base UOM cannot be changed through normal editing; a controlled migration is required.

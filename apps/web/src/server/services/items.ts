@@ -134,6 +134,16 @@ export function assertDistinctConversionUoms(fromUomId: string, toUomId: string)
   }
 }
 
+export function assertBaseUomChangeAllowed(
+  currentBaseUomId: string,
+  requestedBaseUomId: string,
+  postedMovementCount: number
+) {
+  if (currentBaseUomId !== requestedBaseUomId && postedMovementCount > 0) {
+    throw new Error("BASE_UOM_CHANGE_REQUIRES_MIGRATION");
+  }
+}
+
 export function assertNoActiveMasterDataDependents(
   activeDependentCount: number,
   errorCode: string
@@ -171,6 +181,37 @@ const itemMasterOptionCatalogInputSchema = z.object({
   pageSize: z.number().int().min(10).max(100).default(25)
 });
 
+const itemMasterRecordIdSchema = z.string().uuid();
+
+export async function getItemMasterRecord(session: SessionContext, itemId: string) {
+  await assertAdminCanManageMasterData(session);
+  const id = itemMasterRecordIdSchema.parse(itemId);
+  const item = await prisma.item.findFirst({
+    where: { id, tenantId: session.context.tenantId, companyId: session.context.companyId },
+    include: { category: true, baseUom: true, purchaseUom: true, issueUom: true }
+  });
+  if (!item) return null;
+  return {
+    id: item.id,
+    itemCode: item.itemCode,
+    itemName: item.itemName,
+    itemType: item.itemType,
+    itemCategoryId: item.itemCategoryId,
+    baseUomId: item.baseUomId,
+    purchaseUomId: item.purchaseUomId,
+    issueUomId: item.issueUomId,
+    categoryName: item.category.categoryName,
+    baseUomCode: item.baseUom.uomCode,
+    purchaseUomCode: item.purchaseUom?.uomCode ?? null,
+    issueUomCode: item.issueUom?.uomCode ?? null,
+    trackInventory: item.trackInventory,
+    trackExpiry: item.trackExpiry,
+    trackLot: item.trackLot,
+    requiresReceivingInspection: item.requiresReceivingInspection,
+    status: item.status
+  };
+}
+
 export async function listItemMasterOptionCatalog(
   session: SessionContext,
   input: z.input<typeof itemMasterOptionCatalogInputSchema>
@@ -183,10 +224,9 @@ export async function listItemMasterOptionCatalog(
   if (values.kind === "category") {
     const where = {
       ...scope,
-      OR: [
-        ...(query ? [{ categoryCode: query }, { categoryName: query }] : []),
-        { id: { in: values.selectedIds } }
-      ],
+      ...(query
+        ? { OR: [{ categoryCode: query }, { categoryName: query }, ...(values.selectedIds.length ? [{ id: { in: values.selectedIds } }] : [])] }
+        : values.selectedIds.length ? { id: { in: values.selectedIds } } : {}),
       AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
     };
     const total = await prisma.itemCategory.count({ where });
@@ -201,10 +241,9 @@ export async function listItemMasterOptionCatalog(
   if (values.kind === "uom") {
     const where = {
       ...scope,
-      OR: [
-        ...(query ? [{ uomCode: query }, { uomName: query }] : []),
-        { id: { in: values.selectedIds } }
-      ],
+      ...(query
+        ? { OR: [{ uomCode: query }, { uomName: query }, ...(values.selectedIds.length ? [{ id: { in: values.selectedIds } }] : [])] }
+        : values.selectedIds.length ? { id: { in: values.selectedIds } } : {}),
       AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
     };
     const total = await prisma.uom.count({ where });
@@ -218,10 +257,9 @@ export async function listItemMasterOptionCatalog(
 
   const where = {
     ...scope,
-    OR: [
-      ...(query ? [{ itemCode: query }, { itemName: query }] : []),
-      { id: { in: values.selectedIds } }
-    ],
+    ...(query
+      ? { OR: [{ itemCode: query }, { itemName: query }, ...(values.selectedIds.length ? [{ id: { in: values.selectedIds } }] : [])] }
+      : values.selectedIds.length ? { id: { in: values.selectedIds } } : {}),
     AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
   };
   const total = await prisma.item.count({ where });
@@ -883,6 +921,17 @@ export async function updateItem(formData: FormData) {
   }
 
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Item" WHERE id = ${item.id} FOR UPDATE`;
+    const postedMovementCount = item.baseUomId === baseUom.id
+      ? 0
+      : await tx.inventoryMovement.count({
+          where: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            itemId: item.id
+          }
+        });
+    assertBaseUomChangeAllowed(item.baseUomId, baseUom.id, postedMovementCount);
     const updated = await tx.item.update({
       where: { id: item.id },
       data: {

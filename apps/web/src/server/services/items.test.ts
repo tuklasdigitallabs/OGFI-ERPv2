@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   assertDistinctConversionUoms,
+  assertBaseUomChangeAllowed,
   assertNoActiveMasterDataDependents,
   assertNoDuplicateMasterCode,
   itemInventoryClasses,
@@ -27,6 +28,14 @@ describe("item master-data controls", () => {
     expect(() => assertDistinctConversionUoms("uom-1", "uom-2")).not.toThrow();
   });
 
+  test("base UOM changes are blocked after posted movement history", () => {
+    expect(() => assertBaseUomChangeAllowed("uom-1", "uom-1", 4)).not.toThrow();
+    expect(() => assertBaseUomChangeAllowed("uom-1", "uom-2", 0)).not.toThrow();
+    expect(() => assertBaseUomChangeAllowed("uom-1", "uom-2", 1)).toThrow(
+      "BASE_UOM_CHANGE_REQUIRES_MIGRATION"
+    );
+  });
+
   test("master-data deactivation blocks active dependents", () => {
     expect(() =>
       assertNoActiveMasterDataDependents(1, "ITEM_CATEGORY_HAS_ACTIVE_ITEMS")
@@ -46,6 +55,8 @@ describe("item master-data controls", () => {
     expect(source).toContain("tenantId: session.context.tenantId");
     expect(source).toContain("companyId: session.context.companyId");
     expect(source).toContain("prisma.$transaction");
+    expect(source).toContain("assertBaseUomChangeAllowed");
+    expect(source).toContain("FOR UPDATE");
     expect(source).toContain("tx.auditEvent.create");
     for (const eventType of [
       "item_category.created",
@@ -67,6 +78,7 @@ describe("item master-data controls", () => {
     expect(source).toContain("selectedIds: z.array(z.string().uuid()).max(20)");
     expect(source).toContain("hasMore: total > options.length");
     expect(source).toContain('status: \"ACTIVE\" as const');
+    expect(source).toContain("values.selectedIds.length ? { id: { in: values.selectedIds } } : {}");
   });
 
   test("conversion reads fence all three related records to company scope", () => {
@@ -98,5 +110,9 @@ describe("item master-data controls", () => {
     expect(page).toContain("masterData.uomsPage");
     expect(page).toContain("masterData.conversionsPage");
     expect(page).not.toContain("ItemMasterSearch");
+    expect(page).toContain("selectedItemId");
+    expect(page).toContain("Selected item:");
+    expect(page).toContain("returnItemPage");
+    expect(page).toContain("Open controls");
   });
 });

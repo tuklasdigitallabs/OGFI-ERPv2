@@ -38,6 +38,10 @@ and exact totals; supplier catalog detail remains a separate paginated surface.
 Implementation note (`DEC-0142`): supplier accreditation and deactivation use a
 selected supplier action composer in the catalog workspace; registry rows do not
 repeat the full mutation forms.
+
+Implementation note (`DEC-0143`): item edit and deactivation use a selected item
+action composer with context-preserving redirects. Base UOM changes after posted
+inventory movements require controlled migration and are rejected server-side.
 | MDM-10 | Import / Change Request Review | Controlled bulk or change management |
 
 ## 2. Master Data Home
