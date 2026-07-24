@@ -46,6 +46,8 @@ export async function GET(request: Request) {
   const status = profile ? undefined : searchParams.get("status") ?? undefined;
   const receivedFrom = profile ? undefined : searchParams.get("receivedFrom") ?? undefined;
   const receivedTo = profile ? undefined : searchParams.get("receivedTo") ?? undefined;
+  const supplierId = profile ? undefined : searchParams.get("supplierId") ?? undefined;
+  const purchaseOrderId = profile ? undefined : searchParams.get("purchaseOrderId") ?? undefined;
   const tabParam = searchParams.get("tab") ?? "all";
   const tab = ["all", "draft", "posted", "discrepancies"].includes(tabParam)
     ? (tabParam as "all" | "draft" | "posted" | "discrepancies")
@@ -57,7 +59,7 @@ export async function GET(request: Request) {
   }
   const auditMetadata = profile
     ? { dashboardProfile: profile, searchQuery: query?.trim() || null }
-    : { tab, searchQuery: ordinaryQuery?.trim() || null, status: status ?? null, receivedFrom: receivedFrom ?? null, receivedTo: receivedTo ?? null };
+    : { tab, searchQuery: ordinaryQuery?.trim() || null, status: status ?? null, receivedFrom: receivedFrom ?? null, supplierId: supplierId ?? null, purchaseOrderId: purchaseOrderId ?? null, receivedTo: receivedTo ?? null };
 
   try {
     await logOperationalExportAudit({
@@ -71,7 +73,7 @@ export async function GET(request: Request) {
       profile ?? undefined,
       profile ? query : ordinaryQuery,
       profile ? "all" : tab,
-      profile ? {} : { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }
+      profile ? {} : { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) }
     );
     await logOperationalExportAudit({
       session,

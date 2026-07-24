@@ -20,6 +20,7 @@ import { canExportReceivingReports } from "@/server/services/exportAuthorization
 import {
   createGoodsReceiptFromPurchaseOrder,
   listGoodsReceiptPage,
+  listReceivingRegisterFilterOptions,
   listReceivingDashboardProfilePage,
   listReceivablePurchaseOrders,
   postGoodsReceipt,
@@ -64,7 +65,7 @@ function getQuery(searchParams: Record<string, string | string[] | undefined>) {
   return (getStringParam(searchParams, "q") ?? "").trim();
 }
 
-function receivingHref(tab: ReceivingTab, page = 1, query?: string, filters: { status?: string; receivedFrom?: string; receivedTo?: string } = {}) {
+function receivingHref(tab: ReceivingTab, page = 1, query?: string, filters: { status?: string; receivedFrom?: string; receivedTo?: string; supplierId?: string; purchaseOrderId?: string } = {}) {
   const params = new URLSearchParams();
   if (tab !== "all") {
     params.set("tab", tab);
@@ -78,6 +79,8 @@ function receivingHref(tab: ReceivingTab, page = 1, query?: string, filters: { s
   if (filters.status) params.set("status", filters.status);
   if (filters.receivedFrom) params.set("receivedFrom", filters.receivedFrom);
   if (filters.receivedTo) params.set("receivedTo", filters.receivedTo);
+  if (filters.supplierId) params.set("supplierId", filters.supplierId);
+  if (filters.purchaseOrderId) params.set("purchaseOrderId", filters.purchaseOrderId);
   const serialized = params.toString();
   return serialized ? `/receiving?${serialized}` : "/receiving";
 }
@@ -159,6 +162,8 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
   const status = getStringParam(params, "status") ?? undefined;
   const receivedFrom = getStringParam(params, "receivedFrom") ?? undefined;
   const receivedTo = getStringParam(params, "receivedTo") ?? undefined;
+  const supplierId = getStringParam(params, "supplierId") ?? undefined;
+  const purchaseOrderId = getStringParam(params, "purchaseOrderId") ?? undefined;
   if (profile && query.length > 120) {
     return (
       <AppShell
@@ -189,11 +194,12 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
     : null;
   const activeTab = getReceivingTab(params);
   const page = getPage(params);
-  const [registerPage, receivableOrders] = profile
-    ? [null, []]
+  const [registerPage, receivableOrders, filterOptions] = profile
+    ? [null, [], null]
     : await Promise.all([
-        listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE, ...(query ? { query } : {}), ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
-        canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([])
+        listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE, ...(query ? { query } : {}), ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) }),
+        canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([]),
+        listReceivingRegisterFilterOptions(session, { ...(query ? { query } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) })
       ]);
   const receipts = registerPage?.items ?? [];
   const actionFeedback = getActionFeedback(params);
@@ -275,7 +281,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
                 <ButtonLink
                   href={profile
                     ? `/receiving/export?dashboard=${profile}${profilePage?.query ? `&q=${encodeURIComponent(profilePage.query)}` : ""}`
-                    : `/receiving/export?tab=${activeTab}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${receivedFrom ? `&receivedFrom=${receivedFrom}` : ""}${receivedTo ? `&receivedTo=${receivedTo}` : ""}`}
+                    : `/receiving/export?tab=${activeTab}${query ? `&q=${encodeURIComponent(query)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}${receivedFrom ? `&receivedFrom=${receivedFrom}` : ""}${receivedTo ? `&receivedTo=${receivedTo}` : ""}${supplierId ? `&supplierId=${encodeURIComponent(supplierId)}` : ""}${purchaseOrderId ? `&purchaseOrderId=${encodeURIComponent(purchaseOrderId)}` : ""}`}
                   className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
                 >
                   Export CSV
@@ -317,10 +323,10 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
             </form>
           ) : (
           <>
-            <form className="border-b border-slate-100 p-4 flex gap-2" method="get">
+            <form className="flex flex-wrap items-end gap-2 border-b border-slate-100 p-4" method="get">
               <input type="hidden" name="tab" value={activeTab} />
               <input
-                className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 text-sm"
+                className="min-h-10 min-w-56 flex-1 rounded-md border border-slate-300 px-3 text-sm"
                 name="q"
                 defaultValue={query}
                 maxLength={120}
@@ -332,33 +338,50 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               </select>
               <input name="receivedFrom" type="date" defaultValue={receivedFrom} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm" />
               <input name="receivedTo" type="date" defaultValue={receivedTo} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm" />
+              <label className="flex min-w-44 flex-col gap-1 text-xs font-semibold text-slate-600">
+                Supplier
+                <select name="supplierId" defaultValue={supplierId ?? ""} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm font-normal">
+                  <option value="">All suppliers</option>
+                  {filterOptions?.suppliers.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              </label>
+              <label className="flex min-w-40 flex-col gap-1 text-xs font-semibold text-slate-600">
+                Purchase Order
+                <select name="purchaseOrderId" defaultValue={purchaseOrderId ?? ""} className="min-h-10 rounded-md border border-slate-300 px-2 text-sm font-normal">
+                  <option value="">All Purchase Orders</option>
+                  {filterOptions?.purchaseOrders.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              </label>
               <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white">Search</button>
-              {query ? <ButtonLink href={receivingHref(activeTab)} tone="secondary">Clear</ButtonLink> : null}
+              {query || status || receivedFrom || receivedTo || supplierId || purchaseOrderId ? <ButtonLink href={receivingHref(activeTab)} tone="secondary">Clear filters</ButtonLink> : null}
             </form>
+            <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+              Supplier and Purchase Order filters are available from the selected location’s recent receipt population{filterOptions?.hasMore ? " (the option list is capped; use the search field to narrow the receipt population)" : ""}. Item, receiver, and accepted-value filters remain under query-plan and policy review and are not presented as active controls.
+            </p>
           <div className="border-b border-slate-100 p-4">
             <WorkspaceTabs
               items={[
                 {
                   label: "All receipts",
-                  href: receivingHref("all", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
+                  href: receivingHref("all", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) }),
                   active: activeTab === "all",
                   count: registerPage?.tabCounts.all ?? 0
                 },
                 {
                   label: "Draft",
-                  href: receivingHref("draft", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
+                  href: receivingHref("draft", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) }),
                   active: activeTab === "draft",
                   count: registerPage?.tabCounts.draft ?? 0
                 },
                 {
                   label: "Posted",
-                  href: receivingHref("posted", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
+                  href: receivingHref("posted", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) }),
                   active: activeTab === "posted",
                   count: registerPage?.tabCounts.posted ?? 0
                 },
                 {
                   label: "Discrepancies",
-                  href: receivingHref("discrepancies", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) }),
+                  href: receivingHref("discrepancies", 1, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) }),
                   active: activeTab === "discrepancies",
                   count: registerPage?.tabCounts.discrepancies ?? 0
                 }
@@ -484,7 +507,7 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
               pageSize={registerPage?.pageSize ?? PAGE_SIZE}
               totalItems={registerPage?.totalItems ?? 0}
               itemLabel="receipts"
-              getPageHref={(nextPage) => receivingHref(activeTab, nextPage, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}) })}
+              getPageHref={(nextPage) => receivingHref(activeTab, nextPage, query, { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) })}
             />
           ) : null}
         </section>

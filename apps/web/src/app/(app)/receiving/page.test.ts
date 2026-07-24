@@ -41,4 +41,13 @@ describe("Receiving Follow-up dashboard profile", () => {
     expect(source).toContain("Search is too long");
     expect(source).toContain("from=${profile}&page=${profilePage.page}");
   });
+
+  it("renders only the implemented supplier/Purchase Order filters and preserves them across navigation", () => {
+    expect(source).toContain('name="supplierId"');
+    expect(source).toContain('name="purchaseOrderId"');
+    expect(source).toContain("Item, receiver, and accepted-value filters remain under query-plan and policy review");
+    expect(source).toContain("supplierId ? { supplierId } : {}");
+    expect(source).toContain("purchaseOrderId ? { purchaseOrderId } : {}");
+    expect(source).toContain("supplierId=${encodeURIComponent(supplierId)}");
+  });
 });

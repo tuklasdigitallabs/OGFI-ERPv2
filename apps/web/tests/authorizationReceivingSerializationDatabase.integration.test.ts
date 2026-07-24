@@ -489,6 +489,8 @@ describe.skipIf(!databaseEnabled)(
 
       const {
         createGoodsReceiptFromPurchaseOrder,
+        listGoodsReceiptPage,
+        listReceivingRegisterFilterOptions,
         postGoodsReceipt,
         reverseGoodsReceipt
       } = await import("../src/server/services/receiving");
@@ -593,6 +595,18 @@ describe.skipIf(!databaseEnabled)(
 
       mockContext.requireSessionContext.mockResolvedValue(session);
       const receiptId = await createGoodsReceiptFromPurchaseOrder(createForm);
+      const filteredRegister = await listGoodsReceiptPage(session, {
+        supplierId: order.supplierId,
+        purchaseOrderId: order.id
+      });
+      expect(filteredRegister.totalItems).toBe(1);
+      expect(filteredRegister.items[0]?.id).toBe(receiptId);
+      const filterOptions = await listReceivingRegisterFilterOptions(session, {
+        supplierId: order.supplierId,
+        purchaseOrderId: order.id
+      });
+      expect(filterOptions.suppliers.some((option) => option.id === order.supplierId)).toBe(true);
+      expect(filterOptions.purchaseOrders.some((option) => option.id === order.id)).toBe(true);
       const replayedReceiptId = await createGoodsReceiptFromPurchaseOrder(createForm);
       expect(replayedReceiptId).toBe(receiptId);
       expect(

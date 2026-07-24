@@ -12,6 +12,7 @@ import {
   isReceivingFollowUp,
   listReceivingDashboardProfilePage,
   listGoodsReceiptPage,
+  listReceivingRegisterFilterOptions,
   listReceivingMyTaskPage,
   receivingDashboardProfileHref,
   receivingDashboardProfileWhere,
@@ -108,6 +109,76 @@ describe("receiving foundation rules", () => {
             expect.objectContaining({ purchaseOrder: expect.any(Object) }),
             expect.objectContaining({ supplier: expect.any(Object) })
           ])
+        })
+      })
+    );
+  });
+
+  test("ordinary register applies exact supplier and Purchase Order filters inside the selected scope", async () => {
+    mockPrisma.goodsReceipt.count.mockResolvedValue(0);
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([]);
+    await listGoodsReceiptPage(dashboardSession as never, {
+      supplierId: "00000000-0000-4000-8000-000000000111",
+      purchaseOrderId: "00000000-0000-4000-8000-000000000113"
+    });
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: dashboardSession.context.tenantId,
+          companyId: dashboardSession.context.companyId,
+          receivingLocationId: dashboardSession.context.locationId,
+          supplierId: "00000000-0000-4000-8000-000000000111",
+          purchaseOrderId: "00000000-0000-4000-8000-000000000113"
+        })
+      })
+    );
+  });
+
+  test("rejects malformed exact filter IDs and keeps option loading bounded", async () => {
+    await expect(
+      listGoodsReceiptPage(dashboardSession as never, { supplierId: "not-a-uuid" })
+    ).rejects.toThrow("RECEIVING_SUPPLIER_FILTER_INVALID");
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([
+      {
+        supplier: { id: "00000000-0000-4000-8000-000000000111", legalName: "Fresh Foods Inc.", tradingName: "Fresh Foods" },
+        purchaseOrder: { id: "00000000-0000-4000-8000-000000000113", publicReference: "PO-2026-00001" }
+      }
+    ]);
+    await expect(listReceivingRegisterFilterOptions(dashboardSession as never)).resolves.toEqual({
+      suppliers: [{ id: "00000000-0000-4000-8000-000000000111", label: "Fresh Foods" }],
+      purchaseOrders: [{ id: "00000000-0000-4000-8000-000000000113", label: "PO-2026-00001" }],
+      hasMore: false
+    });
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 100, where: expect.objectContaining({
+        tenantId: dashboardSession.context.tenantId,
+        companyId: dashboardSession.context.companyId,
+        receivingLocationId: dashboardSession.context.locationId
+      }) })
+    );
+  });
+
+  test("ordinary CSV export reuses the exact supplier and Purchase Order predicates", async () => {
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([]);
+    await buildReceivingReportExportRows(
+      dashboardSession as never,
+      undefined,
+      "Fresh",
+      "all",
+      {
+        supplierId: "00000000-0000-4000-8000-000000000111",
+        purchaseOrderId: "00000000-0000-4000-8000-000000000113"
+      }
+    );
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: dashboardSession.context.tenantId,
+          companyId: dashboardSession.context.companyId,
+          receivingLocationId: dashboardSession.context.locationId,
+          supplierId: "00000000-0000-4000-8000-000000000111",
+          purchaseOrderId: "00000000-0000-4000-8000-000000000113",
+          OR: expect.any(Array)
         })
       })
     );

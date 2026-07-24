@@ -275,6 +275,8 @@
 
 Add a dated entry whenever an approved decision changes product scope, business workflow, data model, permissions, security controls, technical architecture, UI standards, or a release gate.
 
+- 2026-07-24: Confirmed `DEC-0094` for phased Receiving register refinements. Phase A adds server-owned supplier and Purchase Order filters with one normalized predicate shared by rows, counts, pagination, and ordinary CSV export; item, receiver, and accepted-value controls remain deferred pending relation, option-loading, currency/null-cost, and query-plan evidence.
+
 - 2026-07-24: Extended the ordinary Receiving register’s server-owned query/export contract with strict status allow-list and received-date range filters. Counts, tab views, and CSV export share the active query/status/date scope; the legacy Posted tab remains non-DRAFT for compatibility. The initial operational date timezone is `Asia/Manila`; item, receiver, and value selectors remain pending.
 - 2026-07-24: Added server-backed pagination to the ordinary Inventory Ledger with scoped counts, deterministic occurred-time/ID ordering, and filter-preserving page links. Exact reconciliation traces and full filtered CSV export remain separate controlled paths.
 - 2026-07-24: Added server-backed pagination to the ordinary Wastage register with selected-scope counts and deterministic creation-time/ID ordering. The closed dashboard exception profile remains a separate read-only contract.
@@ -326,3 +328,8 @@ Add a dated entry whenever an approved decision changes product scope, business 
 
 - Implemented the confirmed `DEC-0093` additive Goods Receipt idempotency contract: durable tenant/company-scoped keys, canonical request hashes, strict actor/location/PO replay binding, safe conflict behavior, and automatic UI key rotation when the selected PO changes.
 - Focused receiving tests, lint, typecheck, and disposable migration deployment pass. After restoring the native Prisma Client, the seeded disposable lifecycle also passed seed repeatability and the receiving serialization integration, including idempotency replay/conflict and authority/closure races; hosted, browser, and final release gates remain open.
+
+## 2026-07-24 — Receiving Register Filter Phase A
+
+- Implemented `DEC-0094` Supplier and Purchase Order filters through one scoped server predicate shared by page rows, tab counts, pagination, and ordinary CSV export; bounded receipt-derived options and responsive filter controls are documented.
+- Item, receiver, and accepted-value filters remain deferred pending relation/query-plan, historical-option, cost-visibility, currency, and null-cost decisions. Focused tests pass; disposable filter execution, browser, production-build, and hosted gates remain open.

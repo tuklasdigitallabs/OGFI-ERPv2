@@ -907,6 +907,61 @@ const receivingRegisterStatuses = [
 ] as const;
 type ReceivingRegisterStatus = (typeof receivingRegisterStatuses)[number];
 
+export type ReceivingRegisterFilters = {
+  tab?: ReceivingRegisterTab;
+  query?: string;
+  status?: string;
+  receivedFrom?: string;
+  receivedTo?: string;
+  supplierId?: string;
+  purchaseOrderId?: string;
+};
+
+function parseReceivingFilterId(value: string | undefined, errorCode: string) {
+  if (!value) return undefined;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    throw new Error(errorCode);
+  }
+  return value;
+}
+
+function buildReceivingRegisterSharedWhere(
+  session: SessionContext,
+  input: {
+    query?: string | undefined;
+    receivedFrom?: Date | null | undefined;
+    receivedTo?: Date | null | undefined;
+    supplierId?: string | undefined;
+    purchaseOrderId?: string | undefined;
+  }
+): Prisma.GoodsReceiptWhereInput {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    receivingLocationId: session.context.locationId,
+    ...(input.supplierId ? { supplierId: input.supplierId } : {}),
+    ...(input.purchaseOrderId ? { purchaseOrderId: input.purchaseOrderId } : {}),
+    ...(input.receivedFrom || input.receivedTo
+      ? {
+          receivedAt: {
+            ...(input.receivedFrom ? { gte: input.receivedFrom } : {}),
+            ...(input.receivedTo ? { lt: input.receivedTo } : {})
+          }
+        }
+      : {}),
+    ...(input.query
+      ? {
+          OR: [
+            { publicReference: { contains: input.query, mode: "insensitive" } },
+            { purchaseOrder: { publicReference: { contains: input.query, mode: "insensitive" } } },
+            { supplier: { legalName: { contains: input.query, mode: "insensitive" } } },
+            { supplier: { tradingName: { contains: input.query, mode: "insensitive" } } }
+          ]
+        }
+      : {})
+  };
+}
+
 function parseReceivingDate(value: string | undefined, endExclusive = false) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const [year = 0, month = 0, day = 0] = value.split("-").map(Number);
@@ -971,9 +1026,81 @@ export async function listGoodsReceipts(session: SessionContext) {
   return receipts.map(mapGoodsReceipt);
 }
 
+export async function listReceivingRegisterFilterOptions(
+  session: SessionContext,
+  input: Pick<ReceivingRegisterFilters, "supplierId" | "purchaseOrderId" | "query"> = {}
+) {
+  await requireReceivingRead(session);
+  const supplierId = parseReceivingFilterId(input.supplierId, "RECEIVING_SUPPLIER_FILTER_INVALID");
+  const purchaseOrderId = parseReceivingFilterId(input.purchaseOrderId, "RECEIVING_PURCHASE_ORDER_FILTER_INVALID");
+  const scope = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    receivingLocationId: session.context.locationId
+  };
+  const query = input.query?.trim() || undefined;
+  const optionWhere: Prisma.GoodsReceiptWhereInput = {
+    ...scope,
+    ...(query
+      ? {
+          OR: [
+            { publicReference: { contains: query, mode: "insensitive" } },
+            { purchaseOrder: { publicReference: { contains: query, mode: "insensitive" } } },
+            { supplier: { legalName: { contains: query, mode: "insensitive" } } },
+            { supplier: { tradingName: { contains: query, mode: "insensitive" } } }
+          ]
+        }
+      : {})
+  };
+  const [recent, selected] = await Promise.all([
+    prisma.goodsReceipt.findMany({
+      where: optionWhere,
+      select: {
+        supplier: { select: { id: true, legalName: true, tradingName: true } },
+        purchaseOrder: { select: { id: true, publicReference: true } }
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100
+    }),
+    supplierId || purchaseOrderId
+      ? prisma.goodsReceipt.findMany({
+          where: {
+            ...scope,
+            OR: [
+              ...(supplierId ? [{ supplierId }] : []),
+              ...(purchaseOrderId ? [{ purchaseOrderId }] : [])
+            ]
+          },
+          select: {
+            supplier: { select: { id: true, legalName: true, tradingName: true } },
+            purchaseOrder: { select: { id: true, publicReference: true } }
+          },
+          take: 10
+        })
+      : Promise.resolve([])
+  ]);
+  const suppliers = new Map<string, { id: string; label: string }>();
+  const purchaseOrders = new Map<string, { id: string; label: string }>();
+  for (const row of [...recent, ...selected]) {
+    suppliers.set(row.supplier.id, {
+      id: row.supplier.id,
+      label: row.supplier.tradingName ?? row.supplier.legalName
+    });
+    purchaseOrders.set(row.purchaseOrder.id, {
+      id: row.purchaseOrder.id,
+      label: row.purchaseOrder.publicReference
+    });
+  }
+  return {
+    suppliers: [...suppliers.values()],
+    purchaseOrders: [...purchaseOrders.values()],
+    hasMore: recent.length >= 100
+  };
+}
+
 export async function listGoodsReceiptPage(
   session: SessionContext,
-  input: { tab?: ReceivingRegisterTab; page?: number; pageSize?: number; query?: string; status?: string; receivedFrom?: string; receivedTo?: string } = {}
+  input: ReceivingRegisterFilters & { page?: number; pageSize?: number } = {}
 ) {
   await requireReceivingRead(session);
   const tab = input.tab ?? "all";
@@ -991,10 +1118,17 @@ export async function listGoodsReceiptPage(
   const receivedTo = input.receivedTo ? parseReceivingDate(input.receivedTo, true) : null;
   if ((input.receivedFrom && !receivedFrom) || (input.receivedTo && !receivedTo)) throw new Error("RECEIVING_DATE_FILTER_INVALID");
   if (receivedFrom && receivedTo && receivedFrom >= receivedTo) throw new Error("RECEIVING_DATE_FILTER_RANGE_INVALID");
+  const supplierId = parseReceivingFilterId(input.supplierId, "RECEIVING_SUPPLIER_FILTER_INVALID");
+  const purchaseOrderId = parseReceivingFilterId(input.purchaseOrderId, "RECEIVING_PURCHASE_ORDER_FILTER_INVALID");
+  const sharedFilters = buildReceivingRegisterSharedWhere(session, {
+    query,
+    receivedFrom,
+    receivedTo,
+    supplierId,
+    purchaseOrderId
+  });
   const where: Prisma.GoodsReceiptWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    receivingLocationId: session.context.locationId,
+    ...sharedFilters,
     ...(tab === "discrepancies" ? { discrepancyFlag: true } : {}),
     ...((tab === "draft" || tab === "posted" || status)
       ? { AND: [
@@ -1003,31 +1137,11 @@ export async function listGoodsReceiptPage(
           ...(status ? [{ status }] : [])
         ] }
       : {}),
-    ...(receivedFrom || receivedTo ? { receivedAt: { ...(receivedFrom ? { gte: receivedFrom } : {}), ...(receivedTo ? { lt: receivedTo } : {}) } } : {}),
-    ...(query
-      ? {
-          OR: [
-            { publicReference: { contains: query, mode: "insensitive" } },
-            { purchaseOrder: { publicReference: { contains: query, mode: "insensitive" } } },
-            { supplier: { legalName: { contains: query, mode: "insensitive" } } },
-            { supplier: { tradingName: { contains: query, mode: "insensitive" } } }
-          ]
-        }
-      : {})
   };
   const totalItems = await prisma.goodsReceipt.count({ where });
   const baseWhere: Prisma.GoodsReceiptWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    receivingLocationId: session.context.locationId,
+    ...sharedFilters,
     ...(status ? { status } : {}),
-    ...(receivedFrom || receivedTo ? { receivedAt: { ...(receivedFrom ? { gte: receivedFrom } : {}), ...(receivedTo ? { lt: receivedTo } : {}) } } : {}),
-    ...(query ? { OR: [
-      { publicReference: { contains: query, mode: "insensitive" } },
-      { purchaseOrder: { publicReference: { contains: query, mode: "insensitive" } } },
-      { supplier: { legalName: { contains: query, mode: "insensitive" } } },
-      { supplier: { tradingName: { contains: query, mode: "insensitive" } } }
-    ] } : {})
   };
   const [allItems, draftItems, postedItems, discrepancyItems] = await Promise.all([
     prisma.goodsReceipt.count({ where: baseWhere }),
@@ -1066,11 +1180,13 @@ export async function buildReceivingReportExportRows(
   profile?: ReceivingDashboardProfile,
   query?: string,
   tab: ReceivingRegisterTab = "all",
-  filters: { status?: string; receivedFrom?: string; receivedTo?: string } = {}
+  filters: { status?: string; receivedFrom?: string; receivedTo?: string; supplierId?: string; purchaseOrderId?: string } = {}
 ) {
   await requireReceivingRead(session);
 
   if (filters.status && !receivingRegisterStatuses.includes(filters.status as ReceivingRegisterStatus)) throw new Error("RECEIVING_STATUS_FILTER_INVALID");
+  const supplierId = parseReceivingFilterId(filters.supplierId, "RECEIVING_SUPPLIER_FILTER_INVALID");
+  const purchaseOrderId = parseReceivingFilterId(filters.purchaseOrderId, "RECEIVING_PURCHASE_ORDER_FILTER_INVALID");
   const exportFrom = filters.receivedFrom ? parseReceivingDate(filters.receivedFrom) : null;
   const exportTo = filters.receivedTo ? parseReceivingDate(filters.receivedTo, true) : null;
   if ((filters.receivedFrom && !exportFrom) || (filters.receivedTo && !exportTo)) throw new Error("RECEIVING_DATE_FILTER_INVALID");
@@ -1119,29 +1235,19 @@ export async function buildReceivingReportExportRows(
 
   const receipts = await prisma.goodsReceipt.findMany({
     where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      receivingLocationId: session.context.locationId,
+      ...buildReceivingRegisterSharedWhere(session, {
+        query: query?.trim() || undefined,
+        receivedFrom: exportFrom,
+        receivedTo: exportTo,
+        supplierId,
+        purchaseOrderId
+      }),
       ...((tab === "draft" || tab === "posted" || filters.status) ? { AND: [
         ...(tab === "draft" ? [{ status: "DRAFT" }] : []),
         ...(tab === "posted" ? [{ status: { not: "DRAFT" } }] : []),
         ...(filters.status ? [{ status: filters.status }] : [])
       ] } : {}),
       ...(tab === "discrepancies" ? { discrepancyFlag: true } : {}),
-      ...(filters.receivedFrom || filters.receivedTo ? { receivedAt: {
-        ...(filters.receivedFrom ? { gte: parseReceivingDate(filters.receivedFrom) ?? undefined } : {}),
-        ...(filters.receivedTo ? { lt: parseReceivingDate(filters.receivedTo, true) ?? undefined } : {})
-      } } : {}),
-      ...(query?.trim()
-        ? {
-            OR: [
-              { publicReference: { contains: query.trim(), mode: "insensitive" } },
-              { purchaseOrder: { publicReference: { contains: query.trim(), mode: "insensitive" } } },
-              { supplier: { legalName: { contains: query.trim(), mode: "insensitive" } } },
-              { supplier: { tradingName: { contains: query.trim(), mode: "insensitive" } } }
-            ]
-          }
-        : {})
     } as Prisma.GoodsReceiptWhereInput,
     include: {
       purchaseOrder: true,

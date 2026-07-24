@@ -885,6 +885,10 @@ const actionFeedbackMessages: Record<string, string> = {
     "Receiving quantities must be zero or greater, with at least one quantity entered.",
   RECEIVING_STATUS_FILTER_INVALID:
     "The receiving status filter is not valid. Choose a listed status and try again.",
+  RECEIVING_SUPPLIER_FILTER_INVALID:
+    "The selected supplier filter is not valid for this workspace.",
+  RECEIVING_PURCHASE_ORDER_FILTER_INVALID:
+    "The selected Purchase Order filter is not valid for this workspace.",
   RECEIVING_DATE_FILTER_INVALID:
     "Enter valid receiving dates using YYYY-MM-DD.",
   RECEIVING_DATE_FILTER_RANGE_INVALID:
