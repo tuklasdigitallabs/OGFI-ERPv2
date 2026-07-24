@@ -4005,12 +4005,23 @@ export async function getCoreAdminLocationDetail(
 export async function getCoreAdminRoleDetail(
   session: SessionContext,
   roleId: string,
+  input: { page?: number; pageSize?: number; query?: string } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const [role, allPermissions] = await Promise.all([
+  const pageSize = Math.min(25, Math.max(10, Math.floor(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.floor(input.page ?? 1));
+  const query = input.query?.trim() ?? "";
+  const assignmentWhere = {
+    status: "ACTIVE" as const,
+    ...(query ? { user: { OR: [
+      { displayName: { contains: query, mode: "insensitive" as const } },
+      { email: { contains: query, mode: "insensitive" as const } },
+    ] } } : {}),
+  };
+  const [role, allPermissions, assignmentCount] = await Promise.all([
     prisma.role.findFirst({
       where: {
         id: roleId,
@@ -4022,22 +4033,9 @@ export async function getCoreAdminRoleDetail(
             permission: true,
           },
         },
-        assignments: {
-          where: { status: "ACTIVE" },
-          include: {
-            user: {
-              include: {
-                scopeAssignments: {
-                  where: { status: "ACTIVE" },
-                  orderBy: { startsAt: "asc" },
-                },
-              },
-            },
-          },
-          orderBy: { startsAt: "asc" },
-        },
       },
     }),
+    prisma.userRoleAssignment.count({ where: { roleId, ...assignmentWhere } }),
     prisma.permission.findMany({
       where: {
         OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
@@ -4049,6 +4047,16 @@ export async function getCoreAdminRoleDetail(
   if (!role) {
     return null;
   }
+
+  const pageCount = Math.max(1, Math.ceil(assignmentCount / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const assignments = await prisma.userRoleAssignment.findMany({
+    where: { roleId, ...assignmentWhere },
+    select: { id: true, userId: true, startsAt: true, user: { select: { displayName: true, email: true, scopeAssignments: { where: { status: "ACTIVE" }, orderBy: { startsAt: "asc" }, take: 8, select: { id: true, scopeType: true, scopeId: true, accessLevel: true } } } } },
+    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
 
   const currentPermissionCodes = new Set(
     role.permissions.map((rolePermission) => rolePermission.permission.code),
@@ -4134,7 +4142,7 @@ export async function getCoreAdminRoleDetail(
         getPermissionPresentation(rolePermission.permission.code).description,
       sensitive: isSensitivePermissionCode(rolePermission.permission.code),
     })),
-    assignedUsers: role.assignments.map((assignment) => ({
+    assignedUsers: assignments.map((assignment) => ({
       id: assignment.id,
       userId: assignment.userId,
       displayName: assignment.user.displayName,
@@ -4147,6 +4155,7 @@ export async function getCoreAdminRoleDetail(
         accessLevel: scope.accessLevel,
       })),
     })),
+    assignedUsersPage: { page, pageSize, totalItems: assignmentCount, totalPages: pageCount, query },
   };
 }
 

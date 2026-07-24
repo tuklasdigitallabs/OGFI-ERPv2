@@ -818,3 +818,8 @@ Update this register only when implementation state, release scope, a confirmed 
 ### DEC-0154 Purchase Order amendment TaskSheet — July 25, 2026
 - Moved the multi-line amendment request from `EntryModal` to the shared workspace `TaskSheet`, adding visible PO/company/location/supplier and approval/audit context while retaining the existing server action, eligibility guards, line ordering, and audit controls.
 - Evidence: web TypeScript check passed. Responsive browser, database query-plan, hosted deployment, and UAT evidence remain open; denied/unavailable explanatory state and interactive unsaved-error coverage remain follow-up work.
+
+### DEC-0155 Administration role assignment paging — July 25, 2026
+- Role detail no longer hydrates every active assignment and every user scope. It now uses server-owned name/email search, exact-count deterministic 25-row paging, and at most eight active scope previews per returned user.
+- Core Administration and selected-company Manage authorization remains before all reads and role mutation paths are unchanged.
+- Evidence: Core Admin tests 30/30 and web typecheck passed. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT gates remain open; Administration is not complete.

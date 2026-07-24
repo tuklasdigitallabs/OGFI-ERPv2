@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AlertTriangle, ArrowLeft, RotateCcw, ShieldCheck } from "lucide-react";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, Panel, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -92,7 +92,9 @@ export default async function CoreAdminRoleDetailPage({
   const { id } = await params;
   const queryParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(queryParams);
-  const role = await getCoreAdminRoleDetail(session, id);
+  const assignmentQuery = Array.isArray(queryParams.assignmentQuery) ? queryParams.assignmentQuery[0] : queryParams.assignmentQuery;
+  const assignmentPageValue = Number.parseInt(String(Array.isArray(queryParams.assignmentPage) ? queryParams.assignmentPage[0] : queryParams.assignmentPage ?? "1"), 10);
+  const role = await getCoreAdminRoleDetail(session, id, { query: assignmentQuery, page: Number.isFinite(assignmentPageValue) ? assignmentPageValue : 1, pageSize: 25 });
   if (!role) {
     redirect("/admin");
   }
@@ -320,6 +322,13 @@ export default async function CoreAdminRoleDetailPage({
               </p>
             </div>
           </div>
+          <form className="mt-4 flex flex-wrap gap-2" method="get">
+            <label className="grid min-w-56 flex-1 gap-1 text-sm font-medium text-slate-700">
+              Search assigned users
+              <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="assignmentQuery" defaultValue={role.assignedUsersPage.query} placeholder="Name or email" />
+            </label>
+            <button className="mt-auto min-h-11 rounded-md bg-slate-800 px-4 text-sm font-semibold text-white" type="submit">Search</button>
+          </form>
           <div className="mt-4 divide-y divide-slate-100">
             {role.assignedUsers.length === 0 ? (
               <p className="py-4 text-sm text-slate-600">No active users are assigned to this role.</p>
@@ -345,6 +354,7 @@ export default async function CoreAdminRoleDetailPage({
               ))
             )}
           </div>
+          {role.assignedUsersPage.totalItems > 0 ? <PaginationBar page={role.assignedUsersPage.page} pageSize={role.assignedUsersPage.pageSize} totalItems={role.assignedUsersPage.totalItems} itemLabel="assigned users" getPageHref={(nextPage) => `/admin/roles/${role.id}?assignmentPage=${nextPage}${role.assignedUsersPage.query ? `&assignmentQuery=${encodeURIComponent(role.assignedUsersPage.query)}` : ""}`} /> : null}
         </Panel>
       </div>
 
