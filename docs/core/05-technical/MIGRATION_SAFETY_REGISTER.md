@@ -1294,6 +1294,21 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "expectedRecoveryTime": "Measure populated backfill, lock/statement timeouts, forward-fix, and isolated restore against the approved hosted RPO/RTO."
   },
   {
+    "migration": "20260724170000_stock_count_attempt_scope_lineage_guards",
+    "sha256": "6fcc3d63b6ec8b8ad3d34c8c5de3435bd1d3793cc99b03db1b570f6e835d007b",
+    "risk": "Replaces session-only Count Variance uniqueness with current-attempt and attempt-line uniqueness and adds always-enabled scope/lineage triggers. Existing incompatible source links must fail the migration before any index replacement.",
+    "expectedDataEffect": "No business rows are rewritten. The migration validates existing attempt source duplicates, replaces the legacy partial uniqueness boundary, and rejects future cross-session, cross-scope, item/UOM/lot, or header/line lineage mismatches.",
+    "recovery": "The migration is transactional. On any preflight, DDL, trigger, or checksum failure, restore the predecessor or use a reviewed forward correction while leaving Count Variance generation disabled; never delete immutable attempt history.",
+    "reviewerStatus": "PENDING",
+    "failurePoint": "Duplicate attempt source, mismatched historical scope/lineage, DDL or trigger failure, checksum mismatch, redeploy delta, schema drift, or restore non-equivalence.",
+    "transactionBehavior": "Prisma migration transaction; preflight duplicate checks and index/trigger creation must commit atomically.",
+    "reversibility": "Application rollback retains the additive lineage columns and guards. Do not restore session-only uniqueness or remove guards after populated attempt evidence exists; disable Count Variance generation and use a reviewed forward correction or restore.",
+    "decisionTrigger": "Stop on any historical duplicate/mismatch, rejected valid attempt link, unexpected trigger firing, redeploy delta, drift, or restore mismatch.",
+    "owner": "Database Engineering owns the migration and trigger integrity; Stock Count Engineering owns lineage usage; Security, QA, Operations, and Release verify recovery, scope, and concurrency.",
+    "verification": "Prisma validation and migration inventory are required. Disposable PostgreSQL preflight, migration, cross-scope/lineage negatives, idempotent redeploy, drift, restore, concurrency, and query-plan evidence remain mandatory before Count Variance activation or production approval.",
+    "expectedRecoveryTime": "Measure preflight, DDL/trigger installation, forward correction, and isolated restore against the approved hosted RPO/RTO."
+  },
+  {
     "migration": "20260724150000_supplier_quote_create_idempotency",
     "sha256": "269e139e5388f6fb9dcf253953dd520ca579abdac29a93c3539fe59a2b2d88e2",
     "risk": "The nullable tenant/company/idempotency-key unique index can fail if a predecessor contains duplicate non-null keys; quote rows and audit history must not be rewritten.",

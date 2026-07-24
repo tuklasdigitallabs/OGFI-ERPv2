@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Stock Count Scope and Lineage Guard Migration
+
+- Authored `20260724170000_stock_count_attempt_scope_lineage_guards` with preflight duplicate checks, attempt-scoped uniqueness, and always-enabled session/attempt/adjustment lineage triggers. It remains unexecuted pending disposable PostgreSQL and recovery evidence.
+
 ## 2026-07-24 — Stock Count Attempt Migration Guard Fix
 
 - Corrected the missing PL/pgSQL `END IF` in the authored immutable-attempt migration and refreshed its safety-register hash. The migration remains unexecuted pending disposable PostgreSQL and rollback evidence.
