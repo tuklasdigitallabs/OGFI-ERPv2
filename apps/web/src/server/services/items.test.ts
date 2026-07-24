@@ -114,5 +114,9 @@ describe("item master-data controls", () => {
     expect(page).toContain("Selected item:");
     expect(page).toContain("returnItemPage");
     expect(page).toContain("Open controls");
+    expect(page).toContain("Selected category:");
+    expect(page).toContain("Selected UOM:");
+    expect(page).toContain("returnCategoryPage");
+    expect(page).toContain("returnUomPage");
   });
 });

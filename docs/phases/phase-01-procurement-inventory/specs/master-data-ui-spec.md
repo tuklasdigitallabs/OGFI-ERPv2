@@ -42,6 +42,9 @@ repeat the full mutation forms.
 Implementation note (`DEC-0143`): item edit and deactivation use a selected item
 action composer with context-preserving redirects. Base UOM changes after posted
 inventory movements require controlled migration and are rejected server-side.
+
+Categories and UOMs use the same selected-record action pattern; repeated row
+controls are disabled with guidance to open the selected composer.
 | MDM-10 | Import / Change Request Review | Controlled bulk or change management |
 
 ## 2. Master Data Home

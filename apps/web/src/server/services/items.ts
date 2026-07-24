@@ -187,7 +187,25 @@ export async function getItemMasterRecord(session: SessionContext, itemId: strin
   await assertAdminCanManageMasterData(session);
   const id = itemMasterRecordIdSchema.parse(itemId);
   const item = await prisma.item.findFirst({
-    where: { id, tenantId: session.context.tenantId, companyId: session.context.companyId },
+    where: {
+      id,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      category: { tenantId: session.context.tenantId, companyId: session.context.companyId },
+      baseUom: { tenantId: session.context.tenantId, companyId: session.context.companyId },
+      OR: [
+        { purchaseUomId: null },
+        { purchaseUom: { tenantId: session.context.tenantId, companyId: session.context.companyId } }
+      ],
+      AND: [
+        {
+          OR: [
+            { issueUomId: null },
+            { issueUom: { tenantId: session.context.tenantId, companyId: session.context.companyId } }
+          ]
+        }
+      ]
+    },
     include: { category: true, baseUom: true, purchaseUom: true, issueUom: true }
   });
   if (!item) return null;
@@ -210,6 +228,22 @@ export async function getItemMasterRecord(session: SessionContext, itemId: strin
     requiresReceivingInspection: item.requiresReceivingInspection,
     status: item.status
   };
+}
+
+export async function getItemCategoryRecord(session: SessionContext, categoryId: string) {
+  await assertAdminCanManageMasterData(session);
+  const id = itemMasterRecordIdSchema.parse(categoryId);
+  return prisma.itemCategory.findFirst({
+    where: { id, tenantId: session.context.tenantId, companyId: session.context.companyId }
+  });
+}
+
+export async function getUomRecord(session: SessionContext, uomId: string) {
+  await assertAdminCanManageMasterData(session);
+  const id = itemMasterRecordIdSchema.parse(uomId);
+  return prisma.uom.findFirst({
+    where: { id, tenantId: session.context.tenantId, companyId: session.context.companyId }
+  });
 }
 
 export async function listItemMasterOptionCatalog(

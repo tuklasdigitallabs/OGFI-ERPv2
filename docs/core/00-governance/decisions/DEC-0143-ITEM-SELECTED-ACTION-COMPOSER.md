@@ -18,3 +18,4 @@ The service blocks base-UOM changes once the item has posted inventory movement 
 - Conversion creation now uses the bounded active item/UOM catalogs and disables only when the catalog reports overflow.
 - Focused item tests (8), typecheck, lint, and diff checks pass.
 - Disposable PostgreSQL race/isolation, browser deep-link/mobile, hosted recovery, and UAT evidence remain open.
+- Category and UOM rows now expose the same selected-control pattern; their legacy row forms are disabled with an explanation while the selected composer is authoritative.

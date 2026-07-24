@@ -635,6 +635,8 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Base-UOM changes are blocked after posted InventoryMovement history with a transactional row lock and stable user-safe feedback; unchanged base-UOM edits remain valid. Disposable PostgreSQL race/isolation, browser/mobile, hosted recovery, and UAT gates remain open.
 - Conversion creation now uses the bounded active item/UOM option catalogs and remains disabled only when the catalog reports overflow; conversion edit composer migration remains open.
 
+Categories and UOMs now expose selected URL-backed detail/action composers with context-preserving redirects; legacy repeated row forms are disabled with explicit guidance. Conversion edit actions and external readiness gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
