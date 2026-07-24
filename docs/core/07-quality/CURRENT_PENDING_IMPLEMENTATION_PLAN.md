@@ -814,3 +814,7 @@ Update this register only when implementation state, release scope, a confirmed 
 - Replaced the eager all-record recommendation selector with a server-authorized lookup API and responsive composer. Search covers PR reference, supplier, and quote; results are deterministic, exact-count, 25-row pages with selected-option retention.
 - Mutation remains protected by the existing transactional `createPurchaseOrderFromRecommendation` revalidation for tenant/company/location, approved status, approved PR, supplier status, and duplicate PO prevention.
 - Evidence: `purchaseOrders.test.ts` 36/36 passed; web TypeScript check passed. Browser responsive, database query-plan, hosted deployment, and UAT evidence remain open. PO amendment TaskSheet and remaining visible/detail history gates are still pending.
+
+### DEC-0154 Purchase Order amendment TaskSheet — July 25, 2026
+- Moved the multi-line amendment request from `EntryModal` to the shared workspace `TaskSheet`, adding visible PO/company/location/supplier and approval/audit context while retaining the existing server action, eligibility guards, line ordering, and audit controls.
+- Evidence: web TypeScript check passed. Responsive browser, database query-plan, hosted deployment, and UAT evidence remain open; denied/unavailable explanatory state and interactive unsaved-error coverage remain follow-up work.

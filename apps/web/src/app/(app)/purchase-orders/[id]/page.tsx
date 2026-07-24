@@ -4,6 +4,7 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -458,7 +459,7 @@ export default async function PurchaseOrderDetailPage({
               </EntryModal>
             ) : null}
             {canRequestAmendment ? (
-              <EntryModal title="Request PO Amendment" triggerLabel="Request Amendment">
+              <TaskSheet title="Request PO Amendment" trigger={<span>Request Amendment</span>} triggerClassName="bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800" size="workspace" bodyScroll="contained" bodyClassName="p-0" header={<div className="rounded-lg border border-violet-100 bg-violet-50 p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{order.publicReference} · {order.status}</p><p>{session.context.companyName} · {session.context.locationName} · {order.supplierName}</p><p className="mt-1">Changes require approval and remain in the PO audit history.</p></div>}>
                 <form action={requestAmendment} className="mt-4 grid gap-4">
               <input name="id" type="hidden" value={order.id} />
               <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
@@ -474,7 +475,7 @@ export default async function PurchaseOrderDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Expected delivery
                   <input
-                    className="rounded-md border border-slate-300 px-3 py-2"
+                    className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                     defaultValue={order.expectedDeliveryDate}
                     name="expectedDeliveryDate"
                     type="date"
@@ -484,7 +485,7 @@ export default async function PurchaseOrderDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Supplier notice reference
                   <input
-                    className="rounded-md border border-slate-300 px-3 py-2"
+                    className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                     name="supplierNoticeReference"
                     placeholder="Email, ticket, or reference"
                   />
@@ -492,7 +493,7 @@ export default async function PurchaseOrderDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">
                   If notice is unavailable, explain
                   <input
-                    className="rounded-md border border-slate-300 px-3 py-2"
+                    className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                     name="supplierNoticeUnavailableReason"
                     placeholder="Why supplier notice is not available"
                   />
@@ -520,7 +521,7 @@ export default async function PurchaseOrderDetailPage({
                         </td>
                         <td className="px-3 py-2">
                           <input
-                            className="w-28 rounded-md border border-slate-300 px-3 py-2"
+                            className="min-h-11 w-28 rounded-md border border-slate-300 px-3 py-2"
                             defaultValue={line.orderedQty}
                             min="0.000001"
                             name="orderedQty"
@@ -531,7 +532,7 @@ export default async function PurchaseOrderDetailPage({
                         </td>
                         <td className="px-3 py-2">
                           <input
-                            className="w-32 rounded-md border border-slate-300 px-3 py-2"
+                            className="min-h-11 w-32 rounded-md border border-slate-300 px-3 py-2"
                             defaultValue={line.unitPrice}
                             min="0"
                             name="unitPrice"
@@ -542,7 +543,7 @@ export default async function PurchaseOrderDetailPage({
                         </td>
                         <td className="px-3 py-2">
                           <input
-                            className="min-w-48 rounded-md border border-slate-300 px-3 py-2"
+                            className="min-h-11 min-w-48 rounded-md border border-slate-300 px-3 py-2"
                             defaultValue={line.notes ?? ""}
                             name="notes"
                             placeholder="Optional line note"
@@ -554,12 +555,12 @@ export default async function PurchaseOrderDetailPage({
                 </table>
               </div>
               <div className="flex justify-end">
-                <button className="inline-flex min-h-10 w-full items-center justify-center rounded-md bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800 sm:w-auto">
+                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800 sm:w-auto">
                   Request Amendment
                 </button>
               </div>
                 </form>
-              </EntryModal>
+              </TaskSheet>
             ) : null}
             {["DRAFT", "APPROVED", "ISSUED"].includes(order.status) &&
             canCancelPurchaseOrders ? (
