@@ -609,7 +609,12 @@ function stockCountTaskPredicates(
   session: SessionContext,
   eligibleBefore: Date
 ) {
-  const actor = { assignedToUserId: session.user.id };
+  const currentAttemptFor = (status: string) => ({
+    is: {
+      status,
+      assignedToUserId: session.user.id
+    }
+  });
   const predicates: Array<{
     actionLabel: StockCountMyTaskItem["actionLabel"];
     where: Prisma.StockCountSessionWhereInput;
@@ -619,7 +624,7 @@ function stockCountTaskPredicates(
       {
         actionLabel: "Start stock count",
         where: {
-          ...actor,
+          currentAttempt: currentAttemptFor("DRAFT"),
           status: "DRAFT",
           OR: [
             { scheduledDate: null },
@@ -630,7 +635,7 @@ function stockCountTaskPredicates(
       {
         actionLabel: "Enter stock count",
         where: {
-          ...actor,
+          currentAttempt: currentAttemptFor("IN_PROGRESS"),
           status: "IN_PROGRESS",
           lines: {
             some: { countedQuantityBaseUom: null }
@@ -643,7 +648,7 @@ function stockCountTaskPredicates(
     predicates.push({
       actionLabel: "Submit stock count",
       where: {
-        ...actor,
+        currentAttempt: currentAttemptFor("IN_PROGRESS"),
         status: "IN_PROGRESS",
         lines: {
           some: {},
@@ -678,7 +683,8 @@ export async function listStockCountMyTaskPage(
     id: true,
     publicReference: true,
     status: true,
-    createdAt: true
+    createdAt: true,
+    currentAttempt: { select: { status: true } }
   } satisfies Prisma.StockCountSessionSelect;
   const [totalCount, ...taskRows] = await Promise.all([
     prisma.stockCountSession.count({
@@ -703,7 +709,7 @@ export async function listStockCountMyTaskPage(
         taskId: `stock-count-${row.id}`,
         recordId: row.id,
         publicReference: row.publicReference,
-        status: row.status,
+        status: row.currentAttempt?.status ?? row.status,
         actionLabel,
         createdAt: row.createdAt.toISOString(),
         sourceType: "STOCK_COUNT" as const,

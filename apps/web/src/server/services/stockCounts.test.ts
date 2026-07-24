@@ -289,19 +289,22 @@ describe("stock count foundation rules", () => {
         id: "count-draft",
         publicReference: "SC-2026-00001",
         status: "DRAFT",
-        createdAt: new Date("2026-07-20T00:00:00.000Z")
+        createdAt: new Date("2026-07-20T00:00:00.000Z"),
+        currentAttempt: { status: "DRAFT" }
       }])
       .mockResolvedValueOnce([{
         id: "count-entry",
         publicReference: "SC-2026-00002",
         status: "IN_PROGRESS",
-        createdAt: new Date("2026-07-21T00:00:00.000Z")
+        createdAt: new Date("2026-07-21T00:00:00.000Z"),
+        currentAttempt: { status: "IN_PROGRESS" }
       }])
       .mockResolvedValueOnce([{
         id: "count-submit",
         publicReference: "SC-2026-00003",
         status: "IN_PROGRESS",
-        createdAt: new Date("2026-07-22T00:00:00.000Z")
+        createdAt: new Date("2026-07-22T00:00:00.000Z"),
+        currentAttempt: { status: "IN_PROGRESS" }
       }]);
 
     const page = await listStockCountMyTaskPage({
@@ -332,11 +335,21 @@ describe("stock count foundation rules", () => {
         inventoryLocation: { locationId: dashboardSession.context.locationId },
         OR: expect.arrayContaining([
           expect.objectContaining({
-            assignedToUserId: dashboardSession.user.id,
+            currentAttempt: {
+              is: {
+                assignedToUserId: dashboardSession.user.id,
+                status: "DRAFT"
+              }
+            },
             status: "DRAFT"
           }),
           expect.objectContaining({
-            assignedToUserId: dashboardSession.user.id,
+            currentAttempt: {
+              is: {
+                assignedToUserId: dashboardSession.user.id,
+                status: "IN_PROGRESS"
+              }
+            },
             status: "IN_PROGRESS"
           })
         ])
@@ -349,7 +362,8 @@ describe("stock count foundation rules", () => {
           id: true,
           publicReference: true,
           status: true,
-          createdAt: true
+          createdAt: true,
+          currentAttempt: { select: { status: true } }
         },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         take: 3

@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Stock Count My Tasks Current-Attempt Authority
+
+- Stock Count Start, Enter, and Submit tasks now require the assigned counter and actionable status on the immutable current attempt; task status is projected from that attempt so stale legacy session metadata cannot create work.
+
 ## 2026-07-24 — Stock Count Scope and Lineage Guard Migration
 
 - Authored `20260724170000_stock_count_attempt_scope_lineage_guards` with preflight duplicate checks, attempt-scoped uniqueness, and always-enabled session/attempt/adjustment lineage triggers. It remains unexecuted pending disposable PostgreSQL and recovery evidence.
