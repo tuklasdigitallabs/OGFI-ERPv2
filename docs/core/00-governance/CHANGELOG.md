@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Receiving Item-Filter Contract Deferral
+
+- Added confirmed `DEC-0100`: Receiving item filtering remains non-operative until product/reporting confirms receipt-level versus matching-line grain and CSV context, the scoped GoodsReceiptLine relation/options are documented, and representative PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)`/volume evidence is reviewed.
+- Kept all rows/counts/tabs/pages/CSV parity, scope, authorization, and bounded-query safeguards explicit; accepted-value filtering remains under `DEC-0097`. Requested Spark/GPT-5.4 reviewers were unavailable and the closest permitted GPT-5.6 fallback was used without relaxing hard gates.
+
 ## 2026-07-24 — Stock Count Dashboard Attempt-Line Parity Gate
 
 - Added confirmed `DEC-0099`: defer dashboard Stock Count attempt-line aggregate/predicate cutover until one bounded attempt-only query and reviewed PostgreSQL plan/index and volume evidence exist; per-row N+1 parity is rejected.
