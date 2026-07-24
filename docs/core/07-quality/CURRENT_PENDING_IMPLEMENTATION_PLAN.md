@@ -518,6 +518,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Historical approved/rejected request rows now expose safe lifecycle summaries plus reason/evidence-recorded indicators; pending rows retain review context required for active decisions. A separately authorized detail path remains required before historical narrative is re-exposed.
 - Focused Core Admin coverage passes 26/26 and web typecheck passes. Responsive browser, disposable PostgreSQL, hosted deployment/recovery, and UAT gates remain open.
 
+### DEC-0121 Administration high-risk scope review CAS — July 24, 2026
+
+- High-risk scope approval/rejection now locks the target user, revalidates active/effective selected-company membership inside the transaction, and claims only a still-`PENDING` request before creating an assignment or terminal audit event.
+- Focused Core Admin coverage passes 27/27; web typecheck and lint pass. Disposable PostgreSQL concurrency/revocation evidence, responsive browser, hosted deployment/recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

@@ -68,6 +68,10 @@ Role catalog and `UserRoleAssignment` administration use a dedicated tenant-leve
 - a pending sensitive-role request freezes permission changes for that role; approval reloads the active role and permission set while holding the role lock before it claims the request, creates the assignment, and records permission audit metadata;
 - sensitive-role approval governs granting access, not revocation; an authorized administrator may deactivate the active assignment with reason, audit, privilege-epoch update, and session invalidation while self-mutation and active approval-route safeguards remain enforced;
 - target-user actions additionally require the target to be active in the same tenant and to have an active, currently effective `COMPANY` scope for the operator's selected company or `LOCATION` scope to an active location in that company;
+
+Implementation note (`DEC-0121`): high-risk scope review rechecks this target
+membership under a target-user row lock and claims the pending request by status
+compare-and-swap inside the same transaction as assignment/rejection posting.
 - this membership check constrains the eligible target and does not turn the tenant-global assignment into a company-scoped grant; and
 - all checks are server-enforced, with non-enumerating denial and no business mutation on failure.
 

@@ -104,3 +104,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0118-ADMIN-USER-DETAIL-OPTION-CATALOGS.md` — bounded user-detail role/location option catalogs with overflow disclosure
 - `DEC-0119-ADMIN-USER-REQUEST-HISTORY-PAGINATION.md` — bounded Controlled Scope and Role Request history pages with lifecycle filters
 - `DEC-0120-ADMIN-REQUEST-HISTORY-REDACTED-REGISTRY.md` — pending-only review context and historical request-summary redaction
+- `DEC-0121-ADMIN-HIGH-RISK-SCOPE-REVIEW-CAS.md` — mutation-time target membership revalidation and pending-request CAS

@@ -575,6 +575,15 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain("Permission detail is available during pending review only.");
   });
 
+  test("high-risk scope review revalidates target membership and claims pending CAS", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    expect(serviceSource).toContain('SELECT "id"');
+    expect(serviceSource).toContain("await assertTargetUserInCurrentCompany(session, targetUser.id, tx)");
+    expect(serviceSource).toContain("await assertTargetUserInCurrentCompany(session, request.targetUserId, tx)");
+    expect(serviceSource).toContain("tx.highRiskScopeRequest.updateMany");
+    expect(serviceSource).toContain('where: { id: request.id, status: "PENDING" }');
+  });
+
   test("Core Administration exposes truthful route loading and retryable error states", () => {
     const loadingSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/loading.tsx"),

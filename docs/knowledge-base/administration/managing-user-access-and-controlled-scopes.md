@@ -156,6 +156,11 @@ reason or evidence was recorded. Detailed narrative and sensitive permission lab
 remain visible only while a request is pending review; the authoritative audit
 record retains the complete history.
 
+When approving or rejecting a high-risk location request, OGFI rechecks the target
+user's current company/location membership at commit time. A request already handled
+by another reviewer, or whose target membership is no longer valid, fails safely and
+does not create an assignment.
+
 - The target user, location, and access level match the actual operational need.
 - The evidence reference is traceable outside the ERP when needed.
 - Pending requests do not duplicate an existing active assignment.

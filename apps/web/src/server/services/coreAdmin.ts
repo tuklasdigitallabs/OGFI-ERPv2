@@ -650,9 +650,10 @@ async function assertCanAdministerTenantRoles(session: SessionContext) {
 async function assertTargetUserInCurrentCompany(
   session: SessionContext,
   targetUserId: string,
+  client: typeof prisma | TransactionClient = prisma,
 ) {
   const now = new Date();
-  const locations = await prisma.location.findMany({
+  const locations = await client.location.findMany({
     where: {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -660,7 +661,7 @@ async function assertTargetUserInCurrentCompany(
     },
     select: { id: true },
   });
-  const assignment = await prisma.userScopeAssignment.findFirst({
+  const assignment = await client.userScopeAssignment.findFirst({
     where: {
       userId: targetUserId,
       status: "ACTIVE",
@@ -3482,8 +3483,15 @@ export async function approveHighRiskUserLocationScopeRequest(
   const reviewedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
-    await tx.highRiskScopeRequest.update({
-      where: { id: request.id },
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "User"
+      WHERE "id" = ${targetUser.id}::uuid
+      FOR UPDATE
+    `;
+    await assertTargetUserInCurrentCompany(session, targetUser.id, tx);
+    const claimed = await tx.highRiskScopeRequest.updateMany({
+      where: { id: request.id, status: "PENDING" },
       data: {
         status: "APPROVED",
         reviewedByUserId: session.user.id,
@@ -3491,6 +3499,9 @@ export async function approveHighRiskUserLocationScopeRequest(
         reviewedAt,
       },
     });
+    if (claimed.count !== 1) {
+      throw new Error("HIGH_RISK_SCOPE_REQUEST_NOT_FOUND");
+    }
 
     const assignment = await tx.userScopeAssignment.create({
       data: {
@@ -3613,8 +3624,15 @@ export async function rejectHighRiskUserLocationScopeRequest(
   const reviewedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
-    await tx.highRiskScopeRequest.update({
-      where: { id: request.id },
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "User"
+      WHERE "id" = ${request.targetUserId}::uuid
+      FOR UPDATE
+    `;
+    await assertTargetUserInCurrentCompany(session, request.targetUserId, tx);
+    const claimed = await tx.highRiskScopeRequest.updateMany({
+      where: { id: request.id, status: "PENDING" },
       data: {
         status: "REJECTED",
         reviewedByUserId: session.user.id,
@@ -3622,6 +3640,9 @@ export async function rejectHighRiskUserLocationScopeRequest(
         reviewedAt,
       },
     });
+    if (claimed.count !== 1) {
+      throw new Error("HIGH_RISK_SCOPE_REQUEST_NOT_FOUND");
+    }
 
     await tx.auditEvent.create({
       data: {
