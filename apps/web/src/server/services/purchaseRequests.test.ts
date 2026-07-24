@@ -200,6 +200,8 @@ describe("purchase request workflow controls", () => {
     expect(serviceSource).toContain("lineCount: resolvedLines.length");
     expect(serviceSource).toContain("lineItemCodes: resolvedLines.map");
     expect(serviceSource).toContain("lineUomCodes: resolvedLines.map");
+    expect(serviceSource).toContain("PR_LINE_UOM_INVALID_FOR_ITEM");
+    expect(serviceSource).toContain("conversionUomIdsByItem");
   });
 
   test("purchase request workspace consumes DEC-0036 purchasing policy context", () => {

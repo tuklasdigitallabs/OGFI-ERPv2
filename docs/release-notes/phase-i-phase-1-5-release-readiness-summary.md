@@ -193,6 +193,10 @@ Supplier-item creation now uses a selected-supplier composer with bounded,
 searchable, paginated item and purchase-UOM lookups. Concurrent unique-key races
 map to a stable duplicate outcome; browser, database, hosted, and UAT gates remain open.
 
+Purchase Request draft creation now rejects catalog item/UOM combinations that
+are not configured for the selected item, while preserving emergency free-text
+lines. Bounded draft-entry lookup migration remains open.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.

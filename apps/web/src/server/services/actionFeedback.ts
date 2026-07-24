@@ -480,6 +480,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "The selected Purchase Request item is no longer available.",
   PR_LINE_UOM_NOT_FOUND:
     "The selected Purchase Request unit is no longer available.",
+  PR_LINE_UOM_INVALID_FOR_ITEM:
+    "The selected unit is not valid for this Purchase Request item.",
   PR_LINE_UOM_REQUIRED: "Select a catalog unit or enter a free-text UOM.",
   PURCHASE_ORDER_ALREADY_EXISTS_FOR_RECOMMENDATION:
     "A Purchase Order already exists for this approved supplier recommendation.",

@@ -18,6 +18,7 @@ Low stock must not automatically create a PO. If warehouse stock is available, u
 - Know the required date, urgency, justification, requested quantity, UOM, estimated unit cost, purpose, and item or line description.
 - If the urgency is emergency, prepare the emergency reason, evidence reference such as an incident number/photo/approval note, and estimated amount. Emergency requests must have a positive estimate and must stay within the configured emergency cap.
 - Use an active catalog item when one exists. Free-text lines require a UOM code.
+- When using a catalog item, select a UOM that is configured for that item. The server checks the item/UOM relationship again when creating the draft; an invalid or stale pair is rejected without creating the request.
 - An approval rule must be configured before a draft can be submitted.
 - Current recommended approval bands are shown in the workspace from Admin Settings: standard approval from PHP 10,000, high-value review from PHP 50,000, executive review from PHP 200,000, and 3 quotes from PHP 50,000 when quotation comparison is required. These values are policy context; assigned approval rules and scope still control the actual approval route.
 

@@ -655,6 +655,11 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 - Supplier-item creation now uses the selected-supplier catalog with server-owned active item and purchase-UOM lookup pages, bounded search, deterministic ordering, exact totals, selected-option context, out-of-range page clamping, empty-state handling, and independent pager links. Global unbounded selectors and their render-time full-catalog query were removed.
 - Register/catalog/lookup URL context and validated create error/success return paths are preserved. Focused supplier tests (4), web typecheck, lint, and diff checks pass; responsive browser, disposable PostgreSQL isolation/query-plan, hosted recovery, and UAT gates remain open.
 
+### DEC-0147 Purchase Request catalog-UOM relationship guard — July 24, 2026
+
+- Purchase Request draft creation now validates each catalog item/UOM pair against the item's base, purchase, issue, and configured conversion endpoints. Emergency free-text lines remain allowed; invalid catalog pairs fail with stable user-safe feedback before any draft side effects.
+- Focused Purchase Request tests (12), web typecheck, and lint pass. The visible draft editor still needs bounded searchable item/UOM lookups and an explicit budget-line overflow/lookup contract before the PR workspace can pass its list and visible-surface gates.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

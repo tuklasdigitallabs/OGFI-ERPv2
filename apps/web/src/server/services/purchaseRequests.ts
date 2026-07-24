@@ -1278,6 +1278,14 @@ export async function createDraftPurchaseRequest(formData: FormData) {
             companyId: session.context.companyId,
             status: "ACTIVE",
           },
+          select: {
+            id: true,
+            itemCode: true,
+            itemName: true,
+            baseUomId: true,
+            purchaseUomId: true,
+            issueUomId: true,
+          },
         })
       : [],
     uomIds.length
@@ -1328,6 +1336,18 @@ export async function createDraftPurchaseRequest(formData: FormData) {
         })
       : [],
   ]);
+  const conversions = itemIds.length
+    ? await prisma.itemUomConversion.findMany({
+        where: { itemId: { in: itemIds } },
+        select: { itemId: true, fromUomId: true, toUomId: true },
+      })
+    : [];
+  const conversionUomIdsByItem = new Map<string, string[]>();
+  for (const conversion of conversions) {
+    const ids = conversionUomIdsByItem.get(conversion.itemId) ?? [];
+    ids.push(conversion.fromUomId, conversion.toUomId);
+    conversionUomIdsByItem.set(conversion.itemId, ids);
+  }
   const itemById = new Map(items.map((item) => [item.id, item]));
   const uomById = new Map(catalogUoms.map((uom) => [uom.id, uom]));
   const budgetLineById = new Map(
@@ -1344,6 +1364,17 @@ export async function createDraftPurchaseRequest(formData: FormData) {
     }
     if (line.uomId && !catalogUom) {
       throw new Error("PR_LINE_UOM_NOT_FOUND");
+    }
+    if (line.itemId && line.uomId && item) {
+      const validUomIds = new Set([
+        item.baseUomId,
+        item.purchaseUomId,
+        item.issueUomId,
+        ...(item.id ? conversionUomIdsByItem.get(item.id) ?? [] : []),
+      ].filter((id): id is string => Boolean(id)));
+      if (!validUomIds.has(line.uomId)) {
+        throw new Error("PR_LINE_UOM_INVALID_FOR_ITEM");
+      }
     }
     if (line.budgetLineId && !budgetLine) {
       throw new Error("PR_LINE_BUDGET_LINE_NOT_FOUND");
