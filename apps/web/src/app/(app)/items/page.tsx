@@ -253,14 +253,16 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const selectedItem = selectedItemId ? await getItemMasterRecord(session, selectedItemId).catch(() => null) : null;
   const selectedCategoryIds = [...masterData.items.map((item) => item.itemCategoryId), ...(selectedItem ? [selectedItem.itemCategoryId] : [])];
   const selectedUomIds = [...masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id))), ...(selectedItem ? [selectedItem.baseUomId, selectedItem.purchaseUomId, selectedItem.issueUomId].filter((id): id is string => Boolean(id)) : [])];
-  const [categoryOptionCatalog, uomOptionCatalog] = await Promise.all([
+  const selectedConversionItemIds = masterData.conversions.map((conversion) => conversion.itemId);
+  const [categoryOptionCatalog, uomOptionCatalog, itemOptionCatalog] = await Promise.all([
     listItemMasterOptionCatalog(session, { kind: "category", selectedIds: selectedCategoryIds, page: 1, pageSize: 100 }),
-    listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 })
+    listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 }),
+    listItemMasterOptionCatalog(session, { kind: "item", selectedIds: selectedConversionItemIds, page: 1, pageSize: 100 })
   ]);
   const activeItems = masterData.itemsPage.activeItems;
   const activeCategories = categoryOptionCatalog.options.filter((category) => category.status === "ACTIVE");
   const activeUoms = uomOptionCatalog.options.filter((uom) => uom.status === "ACTIVE");
-  const activeMasterItems = masterData.items.filter((item) => item.status === "ACTIVE");
+  const activeMasterItems = itemOptionCatalog.options.filter((item) => item.status === "ACTIVE");
   const actionFeedback = getActionFeedback(params);
   const itemActionHref = (itemId?: string) => {
     const query = new URLSearchParams({ tab: "items", itemPage: String(masterData.itemsPage.page) });
@@ -494,14 +496,14 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
         <EntryModal
           title="Create Conversion"
           triggerLabel="Create Conversion"
-          disabled
-          disabledReason="Conversion item options are being moved to a bounded catalog; creation is temporarily unavailable."
+          disabled={itemOptionCatalog.hasMore || uomOptionCatalog.hasMore}
+          disabledReason="Conversion selectors exceed the current bounded option catalog; narrow the catalog or complete the selector migration before creating a conversion."
         >
           <form action={createConversionAction} className="ogfi-form-shell mt-4 grid gap-3">
             <select className="rounded-md border border-slate-300 px-3 py-2" name="itemId" required>
               {activeMasterItems.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.itemName}
+                  {item.label}
                 </option>
               ))}
             </select>

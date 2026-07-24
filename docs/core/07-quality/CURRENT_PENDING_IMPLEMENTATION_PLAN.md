@@ -633,6 +633,7 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 
 - Item edit/deactivation now use a selected item URL state, scoped detail read, focused composer, and context-preserving success/error redirects. Repeated row mutation forms were removed.
 - Base-UOM changes are blocked after posted InventoryMovement history with a transactional row lock and stable user-safe feedback; unchanged base-UOM edits remain valid. Disposable PostgreSQL race/isolation, browser/mobile, hosted recovery, and UAT gates remain open.
+- Conversion creation now uses the bounded active item/UOM option catalogs and remains disabled only when the catalog reports overflow; conversion edit composer migration remains open.
 
 ### Workspace 1 implementation checkpoint — July 23, 2026
 

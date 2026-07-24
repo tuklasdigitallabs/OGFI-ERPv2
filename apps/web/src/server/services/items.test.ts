@@ -105,7 +105,7 @@ describe("item master-data controls", () => {
     expect(page).toContain('name="uomType"');
     expect(page).toContain("listItemMasterOptionCatalog");
     expect(page).toContain("categoryOptionCatalog.hasMore || uomOptionCatalog.hasMore");
-    expect(page).toContain("Conversion item options are being moved to a bounded catalog");
+    expect(page).toContain("itemOptionCatalog.hasMore || uomOptionCatalog.hasMore");
     expect(page).toContain("masterData.categoriesPage");
     expect(page).toContain("masterData.uomsPage");
     expect(page).toContain("masterData.conversionsPage");

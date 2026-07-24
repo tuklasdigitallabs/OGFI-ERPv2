@@ -15,5 +15,6 @@ The service blocks base-UOM changes once the item has posted inventory movement 
 
 - Selected item, category, and UOM reads remain tenant/company scoped and active-validated.
 - Option catalogs include selected values and return active rows for empty searches; selected inactive values remain visible only for edit context.
+- Conversion creation now uses the bounded active item/UOM catalogs and disables only when the catalog reports overflow.
 - Focused item tests (8), typecheck, lint, and diff checks pass.
 - Disposable PostgreSQL race/isolation, browser deep-link/mobile, hosted recovery, and UAT evidence remain open.
