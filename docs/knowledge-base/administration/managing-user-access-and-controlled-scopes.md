@@ -2,7 +2,7 @@
 
 **Audience / required role:** ERP administrators with Core Administration access; role administration also requires `Administer tenant-wide roles` access
 **Applies to:** User roles, sensitive roles, location scopes, high-risk scopes, and Manage-level access
-**Last verified against:** `DEC-0043`, `DEC-0108`, `DEC-0110`; implemented Core Admin user onboarding and user detail services; tenant-role and selected-company Manage authorization, selected-company target checks, server-paginated Users registry, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
+**Last verified against:** `DEC-0043`, `DEC-0108`, `DEC-0110`, `DEC-0111`; implemented Core Admin user onboarding and user detail services; tenant-role and selected-company Manage authorization, server-paginated Users and Roles registries, selected-company target checks, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
 
 ## Purpose
 
@@ -22,6 +22,7 @@ Sensitive roles are also not granted through quick assignment. Admin, approver, 
 - For a role grant, deactivation, request, or review, the target account must be active and must have a current active company assignment for the selected company or an active location assignment to an active location in that company. A default company alone is not an access assignment.
 - If you create a user with an initial role, also select an initial active location in the selected company. The system creates the location membership and role together; it does not create a role-only user through this path.
 - The Users registry is server-filtered by name/email and status and paginates the authorized tenant users. Search and status values remain in the URL while paging; they do not widen company or tenant scope. An empty page means no users match the current filters, not that another company has no users. The Administration overview shows organization records for the selected company only, with tenant-wide approval rules where applicable. User detail first verifies current selected-company membership; if the user is not authorized in that company, the page returns to the Users workspace without disclosing another company's account or scopes.
+- The Roles & Permissions registry is server-filtered by role name/code and status and paginates the tenant-global role catalog. Each row shows a permission count and a short preview only; open the role detail to review or change its controlled permission set. Viewing a role never grants its permissions. The initial-role onboarding selector is a separate bounded convenience list; when it reports more roles, use the Roles workspace to find the complete catalog.
 
 ## Navigation Path
 
@@ -105,6 +106,7 @@ An authorized administrator may select `Deactivate Role`, enter the required dea
 - Direct quick assignment remains blocked for high-risk and `MANAGE` scope changes even if someone tries to bypass the UI.
 - Direct quick assignment remains blocked for sensitive/admin/approver/system roles even if someone tries to bypass the UI.
 - A role code that was previously eligible for quick assignment does not remain eligible after it gains a sensitive permission, and direct assignment cannot race with a sensitive permission change.
+- Role-library search and pagination do not change role authority or company scope. The server rechecks tenant-role authority and selected-company Manage scope for the registry and role detail, including direct URLs.
 - Every request, approval, rejection, and resulting scope or role assignment writes audit history with reason, evidence, actor, target user, selected access or role, and DEC-0036 reference.
 - Controlled scope and controlled role approval change the target user's privilege epoch, requiring stale demo sessions to sign in again before protected access continues.
 - Changing a role's permission set refreshes the privilege epoch of every active, effective assignee of that role. Their existing sessions must revalidate before protected access continues; expired assignments are not refreshed.

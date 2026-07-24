@@ -12,6 +12,7 @@ import {
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import {
   applyRecommendedRolePermissions,
+  assertCanManageCompanyScope,
   getCoreAdminRoleDetail,
   updateRolePermissions
 } from "@/server/services/coreAdmin";
@@ -58,6 +59,34 @@ export default async function CoreAdminRoleDetailPage({
   }
   if (!session.permissionCodes.includes(permissions.coreAdminister)) {
     redirect(getDefaultAppRoute(session.permissionCodes));
+  }
+
+  try {
+    await assertCanManageCompanyScope(session, session.context.companyId);
+  } catch (error) {
+    if (error instanceof Error && error.message === "ADMIN_SCOPE_DENIED") {
+      return (
+        <AppShell
+          session={session}
+          title="Role Access"
+          subtitle="Core Administration role details"
+          activeNav="admin"
+        >
+          <Panel className="ogfi-detail-card border-amber-200 bg-amber-50">
+            <Badge tone="warning">Access restricted</Badge>
+            <h2 className="mt-3 text-lg font-bold text-slate-950">
+              Selected-company Manage scope is required
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
+              This role catalog is tenant-wide, but role detail access still requires
+              active Manage scope for the selected company. No role or permission data
+              was loaded.
+            </p>
+          </Panel>
+        </AppShell>
+      );
+    }
+    throw error;
   }
 
   const { id } = await params;

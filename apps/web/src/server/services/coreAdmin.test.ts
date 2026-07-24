@@ -100,6 +100,32 @@ describe("core administration audit search wiring", () => {
     );
   });
 
+  test("role library uses a bounded server-owned page and role-detail company guard", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const adminPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/page.tsx"),
+      "utf8",
+    );
+    const roleDetailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"),
+      "utf8",
+    );
+    expect(serviceSource).toContain("coreAdminRolePageInputSchema");
+    expect(serviceSource).toContain("listCoreAdminRolePageAuthorized");
+    expect(serviceSource).toContain('orderBy: [{ name: "asc" }, { id: "asc" }]');
+    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("permissionPreview");
+    expect(serviceSource).toContain("listCoreAdminRoleOptionsAuthorized");
+    expect(adminPageSource).toContain('name="roleQuery"');
+    expect(adminPageSource).toContain('name="roleStatus"');
+    expect(adminPageSource).toContain("overview.rolePage");
+    expect(adminPageSource).toContain("<PaginationBar");
+    expect(roleDetailPageSource).toContain(
+      "assertCanManageCompanyScope(session, session.context.companyId)",
+    );
+    expect(roleDetailPageSource).toContain("No role or permission data");
+  });
+
   test("privilege mutation users use the same canonical order as approval user locks", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     const lockSource = serviceSource.slice(

@@ -204,6 +204,14 @@ export default async function CoreAdministrationPage({
   const normalizedUserPageSize = Number.isFinite(userPageSize)
     ? Math.min(Math.max(userPageSize, 10), 100)
     : 25;
+  const roleQuery = getSearchParam(params, "roleQuery")?.trim() ?? "";
+  const roleStatus = getSearchParam(params, "roleStatus");
+  const rolePage = Number.parseInt(getSearchParam(params, "rolePage") ?? "1", 10);
+  const rolePageSize = Number.parseInt(getSearchParam(params, "rolePageSize") ?? "25", 10);
+  const normalizedRolePage = Number.isFinite(rolePage) ? Math.min(Math.max(rolePage, 1), 10_000) : 1;
+  const normalizedRolePageSize = Number.isFinite(rolePageSize)
+    ? Math.min(Math.max(rolePageSize, 10), 100)
+    : 25;
   const auditFilters: CoreAdminAuditEventFilters = {};
   const auditQuery = getSearchParam(params, "q");
   const auditEventType = getSearchParam(params, "eventType");
@@ -252,31 +260,23 @@ export default async function CoreAdministrationPage({
       ...(userStatus && ["ACTIVE", "INACTIVE", "ARCHIVED"].includes(userStatus)
         ? { status: userStatus as "ACTIVE" | "INACTIVE" | "ARCHIVED" }
         : {}),
+    }, {
+      page: normalizedRolePage,
+      pageSize: normalizedRolePageSize,
+      query: roleQuery,
+      ...(roleStatus && ["ACTIVE", "INACTIVE", "ARCHIVED"].includes(roleStatus)
+        ? { status: roleStatus as "ACTIVE" | "INACTIVE" | "ARCHIVED" }
+        : {}),
     }),
     listCoreAdminAuditEvents(session, auditFilters)
   ]);
   const activeUsers = overview.userPage.activeItems;
-  const activeRoles = overview.roles.filter((role) => role.status === "ACTIVE").length;
+  const activeRoles = overview.rolePage.activeItems;
   const activeRules = overview.approvalRules.filter((rule) => rule.isActive).length;
   const companyLocations = overview.locations.filter(
     (location) => location.companyName === session.context.companyName
   );
-  const highAccessRoles = overview.roles.filter((role) =>
-    role.permissions.some((permission) => {
-      const highAccessPermissionCodes: string[] = [
-        permissions.coreAdminister,
-        permissions.purchaseRequestApprove,
-        permissions.purchaseOrderApprove,
-        permissions.receivingPost,
-        permissions.receivingReverse,
-        permissions.stockAdjustmentPost,
-        permissions.stockAdjustmentReverse,
-        permissions.wastagePost,
-        permissions.wastageReverse
-      ];
-      return highAccessPermissionCodes.includes(permission.code);
-    })
-  );
+  const highAccessRoleCount = overview.rolePage.highAccessItems;
 
   const workspaces = [
     {
@@ -293,7 +293,7 @@ export default async function CoreAdministrationPage({
       id: "roles",
       title: "Roles & Permissions",
       detail: "Apply recommended role sets or override toggles with audit.",
-      metric: `${activeRoles}/${overview.roles.length}`,
+      metric: `${activeRoles}/${overview.rolePage.totalItems}`,
       metricLabel: "active roles",
       icon: KeyRound,
       href: "/admin?tab=roles",
@@ -439,14 +439,18 @@ export default async function CoreAdministrationPage({
                     Initial role
                     <select className="rounded-md border border-slate-300 px-3 py-2" name="initialRoleId">
                       <option value="">No role yet</option>
-                      {overview.roles
-                        .filter((role) => role.status === "ACTIVE")
+                      {overview.roleOptions.items
                         .map((role) => (
                           <option key={role.id} value={role.id}>
-                            {role.name} - {role.assignmentEligibility}
+                            {role.name} - {role.systemRole ? "system role" : "custom role"}
                           </option>
                         ))}
                     </select>
+                    {overview.roleOptions.hasMore ? (
+                      <span className="text-xs font-normal text-slate-500">
+                        Showing the first 100 active roles. Use Roles &amp; Permissions to review the full library.
+                      </span>
+                    ) : null}
                   </label>
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Initial location scope
@@ -598,7 +602,7 @@ export default async function CoreAdministrationPage({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="warning">{highAccessRoles.length} high access</Badge>
+              <Badge tone="warning">{highAccessRoleCount} high access</Badge>
               <EntryModal title="Create Role" triggerLabel="Create Role">
                 <form action={createRoleAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -623,8 +627,41 @@ export default async function CoreAdministrationPage({
               </EntryModal>
             </div>
           </div>
+          <form method="get" className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_12rem_auto] md:items-end">
+            <input type="hidden" name="tab" value="roles" />
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              Search roles
+              <input
+                name="roleQuery"
+                defaultValue={roleQuery}
+                maxLength={120}
+                placeholder="Role name or code"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              Status
+              <select
+                name="roleStatus"
+                defaultValue={roleStatus ?? ""}
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2"
+              >
+                <option value="">All statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+                <option value="ARCHIVED">Archived</option>
+              </select>
+            </label>
+            <button type="submit" className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">
+              Apply filters
+            </button>
+          </form>
           <div className="space-y-3">
-            {overview.roles.map((role) => (
+            {overview.roles.length === 0 ? (
+              <p className="rounded-xl border border-slate-200 p-6 text-sm text-slate-600">
+                No roles match the current filters.
+              </p>
+            ) : overview.roles.map((role) => (
               <div key={role.id} data-testid="admin-role-row" className="ogfi-record-summary p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -636,8 +673,8 @@ export default async function CoreAdministrationPage({
                   </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge tone="info">{role.permissions.length} permissions</Badge>
-                  {role.permissions.slice(0, 3).map((permission) => (
+                  <Badge tone="info">{role.permissionCount} permissions</Badge>
+                  {role.permissionPreview.map((permission) => (
                     <Badge key={permission.id} tone="neutral" size="sm">
                       {permission.label}
                     </Badge>
@@ -653,6 +690,22 @@ export default async function CoreAdministrationPage({
               </div>
             ))}
           </div>
+          {overview.rolePage.totalItems > 0 ? (
+            <PaginationBar
+              page={overview.rolePage.page}
+              pageSize={overview.rolePage.pageSize}
+              totalItems={overview.rolePage.totalItems}
+              itemLabel="roles"
+              className="mt-3 rounded-xl border border-slate-200"
+              controlClassName="min-h-11"
+              getPageHref={(nextPage) => {
+                const next = new URLSearchParams({ tab: "roles", rolePage: String(nextPage), rolePageSize: String(overview.rolePage.pageSize) });
+                if (roleQuery) next.set("roleQuery", roleQuery);
+                if (roleStatus) next.set("roleStatus", roleStatus);
+                return `/admin?${next.toString()}`;
+              }}
+            />
+          ) : null}
         </Panel>
         ) : null}
 

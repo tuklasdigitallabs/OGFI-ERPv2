@@ -158,6 +158,13 @@ const coreAdminUserPageInputSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
+const coreAdminRolePageInputSchema = z.object({
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
+});
+
 const updateRolePermissionsSchema = z.object({
   roleId: z.string().uuid(),
   reason: scopeReasonSchema,
@@ -734,6 +741,136 @@ async function listCoreAdminUserPageAuthorized(
   };
 }
 
+const coreAdminHighAccessPermissionCodes = [
+  permissions.coreAdminister,
+  permissions.purchaseRequestApprove,
+  permissions.purchaseOrderApprove,
+  permissions.receivingPost,
+  permissions.receivingReverse,
+  permissions.stockAdjustmentPost,
+  permissions.stockAdjustmentReverse,
+  permissions.wastagePost,
+  permissions.wastageReverse,
+];
+
+export type CoreAdminRolePage = {
+  items: Array<{
+    id: string;
+    name: string;
+    code: string;
+    systemRole: boolean;
+    status: string;
+    canAssignDirectly: boolean;
+    assignmentEligibility: string;
+    permissionCount: number;
+    permissionPreview: Array<{ id: string; code: string; label: string }>;
+  }>;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  activeItems: number;
+  highAccessItems: number;
+};
+
+async function listCoreAdminRolePageAuthorized(
+  session: SessionContext,
+  input: z.input<typeof coreAdminRolePageInputSchema> = {},
+): Promise<CoreAdminRolePage> {
+  const values = coreAdminRolePageInputSchema.parse(input);
+  const query = values.query.toLowerCase();
+  const where: Prisma.RoleWhereInput = {
+    tenantId: session.context.tenantId,
+    ...(values.status
+      ? { status: values.status as NonNullable<Prisma.RoleWhereInput["status"]> }
+      : {}),
+    ...(query
+      ? {
+          OR: [
+            { name: { contains: query, mode: "insensitive" as const } },
+            { code: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+  const highAccessPredicate: Prisma.RoleWhereInput = {
+    permissions: {
+      some: {
+        permission: { code: { in: coreAdminHighAccessPermissionCodes } },
+      },
+    },
+  };
+  const [totalItems, activeItems, highAccessItems, roles] = await Promise.all([
+    prisma.role.count({ where }),
+    prisma.role.count({ where: { ...where, status: "ACTIVE" } }),
+    prisma.role.count({ where: { ...where, ...highAccessPredicate } }),
+    prisma.role.findMany({
+      where,
+      include: {
+        permissions: {
+          take: 3,
+          orderBy: { permission: { code: "asc" } },
+          include: { permission: true },
+        },
+        _count: { select: { permissions: true } },
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      skip: (values.page - 1) * values.pageSize,
+      take: values.pageSize,
+    }),
+  ]);
+  return {
+    items: roles.map((role) => ({
+      id: role.id,
+      name: role.name,
+      code: role.code,
+      systemRole: role.systemRole,
+      status: role.status,
+      canAssignDirectly: isDirectlyAssignableRole(role),
+      assignmentEligibility: roleAssignmentRiskLabel(role),
+      permissionCount: role._count.permissions,
+      permissionPreview: role.permissions.map((rolePermission) => ({
+        id: rolePermission.permission.id,
+        code: rolePermission.permission.code,
+        label: getPermissionPresentation(rolePermission.permission.code).label,
+      })),
+    })),
+    page: values.page,
+    pageSize: values.pageSize,
+    totalItems,
+    activeItems,
+    highAccessItems,
+  };
+}
+
+async function listCoreAdminRoleOptionsAuthorized(session: SessionContext) {
+  const [activeItems, options] = await Promise.all([
+    prisma.role.count({
+      where: { tenantId: session.context.tenantId, status: "ACTIVE" },
+    }),
+    prisma.role.findMany({
+      where: { tenantId: session.context.tenantId, status: "ACTIVE" },
+      select: { id: true, name: true, code: true, systemRole: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: 100,
+    }),
+  ]);
+  return {
+    items: options,
+    totalItems: activeItems,
+    hasMore: activeItems > options.length,
+  };
+}
+
+export async function listCoreAdminRolePage(
+  session: SessionContext,
+  input: z.input<typeof coreAdminRolePageInputSchema> = {},
+) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  return listCoreAdminRolePageAuthorized(session, input);
+}
+
 export async function listCoreAdminUserPage(
   session: SessionContext,
   input: z.input<typeof coreAdminUserPageInputSchema> = {},
@@ -747,16 +884,20 @@ export async function listCoreAdminUserPage(
 export async function getCoreAdminOverview(
   session: SessionContext,
   userPageInput: z.input<typeof coreAdminUserPageInputSchema> = {},
+  rolePageInput: z.input<typeof coreAdminRolePageInputSchema> = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const userPage = await listCoreAdminUserPageAuthorized(session, userPageInput);
+  const [userPage, rolePage, roleOptions] = await Promise.all([
+    listCoreAdminUserPageAuthorized(session, userPageInput),
+    listCoreAdminRolePageAuthorized(session, rolePageInput),
+    listCoreAdminRoleOptionsAuthorized(session),
+  ]);
 
   const [
     tenant,
-    roles,
     companies,
     brands,
     departments,
@@ -771,19 +912,6 @@ export async function getCoreAdminOverview(
         defaultTimezone: true,
         status: true,
       },
-    }),
-    prisma.role.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-      },
-      include: {
-        permissions: {
-          include: {
-            permission: true,
-          },
-        },
-      },
-      orderBy: { name: "asc" },
     }),
     prisma.company.findMany({
       where: {
@@ -861,20 +989,12 @@ export async function getCoreAdminOverview(
     tenant,
     users: userPage.items,
     userPage,
-    roles: roles.map((role) => ({
-      id: role.id,
-      name: role.name,
-      code: role.code,
-      systemRole: role.systemRole,
-      status: role.status,
-      canAssignDirectly: isDirectlyAssignableRole(role),
-      assignmentEligibility: roleAssignmentRiskLabel(role),
-      permissions: role.permissions.map((rolePermission) => ({
-        id: rolePermission.permission.id,
-        code: rolePermission.permission.code,
-        label: getPermissionPresentation(rolePermission.permission.code).label,
-      })),
+    roles: rolePage.items.map((role) => ({
+      ...role,
+      permissions: role.permissionPreview,
     })),
+    rolePage,
+    roleOptions,
     companies: companies.map((company) => ({
       id: company.id,
       code: company.code,
@@ -3419,6 +3539,7 @@ export async function getCoreAdminRoleDetail(
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
 
   const [role, allPermissions] = await Promise.all([
     prisma.role.findFirst({

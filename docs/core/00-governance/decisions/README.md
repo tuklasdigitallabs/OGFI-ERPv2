@@ -95,3 +95,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0107-MY-TASKS-FILTER-CONTRACT.md` — Server-owned My Tasks filters, deferred assignment semantics, and pagination safeguards
 - `DEC-0108-USERS-REGISTRY-PAGINATION-PILOT.md` — Users-registry bounded pagination pilot and explicit pre-query administration denial
 - `DEC-0110-ADMINISTRATION-AUTHORIZATION-READ-BOUNDARY-HARDENING.md` — authorization/read-boundary hardening before role or organization pagination; Role Library review findings and safeguards
+- `DEC-0111-ROLE-LIBRARY-PAGINATION.md` — bounded Role Library pagination, permission previews, onboarding option catalog, and retained authorization controls

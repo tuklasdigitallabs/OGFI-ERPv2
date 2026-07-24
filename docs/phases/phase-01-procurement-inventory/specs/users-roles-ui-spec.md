@@ -32,6 +32,14 @@ creation requires tenant-role authority before any duplicate lookup or write, an
 detail preflights active selected-company membership before loading the record. Cross-
 company scope assignments are not returned from the selected-company detail view.
 
+Implementation note (`DEC-0111`): the Role Library is now a server-owned, URL-backed
+registry with bounded name/code and status filters, exact count/page parity, deterministic
+`name ASC, id ASC` ordering, permission counts, and a three-permission preview. Role
+detail retains the same tenant-role and selected-company Manage guard. User onboarding
+uses a separate bounded active-role option catalog (first 100, with an explicit notice
+when more roles exist); the full library remains available through the paginated Roles
+workspace. Role permissions remain tenant-global and viewing a role never grants access.
+
 ## 2. User detail requirements
 
 Show:
