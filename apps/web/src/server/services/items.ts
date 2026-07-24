@@ -148,10 +148,31 @@ async function assertAdminCanManageMasterData(session: SessionContext) {
   await assertCanManageCompanyScope(session, session.context.companyId);
 }
 
-export async function listItemMasterData(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+const itemMasterPageInputSchema = z.object({
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+});
 
-  const [categories, uoms, items, conversions] = await Promise.all([
+export async function listItemMasterData(
+  session: SessionContext,
+  input: z.input<typeof itemMasterPageInputSchema> = {},
+) {
+  await assertAdminCanManageMasterData(session);
+  const values = itemMasterPageInputSchema.parse(input);
+  const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+  const itemWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.status ? { status: values.status } : {}),
+    ...(query ? { OR: [{ itemCode: query }, { itemName: query }, { category: { categoryName: query } }] } : {}),
+  };
+
+  const itemTotal = await prisma.item.count({ where: itemWhere });
+  const totalPages = Math.max(1, Math.ceil(itemTotal / values.pageSize));
+  const effectivePage = Math.min(values.page, totalPages);
+  const [categories, uoms, items, activeItemCount, conversions] = await Promise.all([
     prisma.itemCategory.findMany({
       where: {
         tenantId: session.context.tenantId,
@@ -167,18 +188,18 @@ export async function listItemMasterData(session: SessionContext) {
       orderBy: [{ status: "asc" }, { uomCode: "asc" }]
     }),
     prisma.item.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId
-      },
+      where: itemWhere,
       include: {
         category: true,
         baseUom: true,
         purchaseUom: true,
         issueUom: true
       },
-      orderBy: [{ status: "asc" }, { itemName: "asc" }]
+      orderBy: [{ status: "asc" }, { itemName: "asc" }, { id: "asc" }],
+      skip: (effectivePage - 1) * values.pageSize,
+      take: values.pageSize,
     }),
+    prisma.item.count({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" } }),
     prisma.itemUomConversion.findMany({
       where: {
         item: {
@@ -243,7 +264,13 @@ export async function listItemMasterData(session: SessionContext) {
       toUomCode: conversion.toUom.uomCode,
       conversionFactor: Number(conversion.conversionFactor),
       roundingRule: conversion.roundingRule
-    }))
+    })),
+    itemsPage: {
+      page: effectivePage,
+      pageSize: values.pageSize,
+      totalItems: itemTotal,
+      activeItems: activeItemCount,
+    }
   };
 }
 

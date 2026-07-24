@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Badge, Panel } from "@ogfi/ui";
+import { Badge, Panel, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -200,15 +200,20 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
-  const masterData = await listItemMasterData(session);
-  const activeItems = masterData.items.filter((item) => item.status === "ACTIVE").length;
+  const params = searchParams ? await searchParams : {};
+  const activeTab = normalizeItemMasterTab(params.tab);
+  const itemQuery = (Array.isArray(params.itemQuery) ? params.itemQuery[0] : params.itemQuery)?.trim() ?? "";
+  const itemStatusRaw = Array.isArray(params.itemStatus) ? params.itemStatus[0] : params.itemStatus;
+  const itemStatus = itemStatusRaw === "ACTIVE" || itemStatusRaw === "INACTIVE" || itemStatusRaw === "ARCHIVED" ? itemStatusRaw : undefined;
+  const requestedPage = Number(Array.isArray(params.itemPage) ? params.itemPage[0] : params.itemPage);
+  const itemPage = Number.isInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, 10_000) : 1;
+  const masterData = await listItemMasterData(session, { query: itemQuery, status: itemStatus, page: itemPage, pageSize: 25 });
+  const activeItems = masterData.itemsPage.activeItems;
   const activeCategories = masterData.categories.filter(
     (category) => category.status === "ACTIVE"
   );
   const activeUoms = masterData.uoms.filter((uom) => uom.status === "ACTIVE");
   const activeMasterItems = masterData.items.filter((item) => item.status === "ACTIVE");
-  const params = searchParams ? await searchParams : {};
-  const activeTab = normalizeItemMasterTab(params.tab);
   const actionFeedback = getActionFeedback(params);
 
   return (
@@ -238,7 +243,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
       <div className="mb-5 grid gap-4 md:grid-cols-4">
         <Panel className="ogfi-detail-card min-w-0 overflow-hidden [&_*]:min-w-0 [&_button]:max-w-full [&_input]:w-full [&_select]:w-full [&_textarea]:w-full">
           <p className="text-sm font-semibold text-slate-500">Items</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.items.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.itemsPage.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card min-w-0 overflow-hidden [&_*]:min-w-0 [&_button]:max-w-full [&_input]:w-full [&_select]:w-full [&_textarea]:w-full">
           <p className="text-sm font-semibold text-slate-500">Active items</p>
@@ -427,7 +432,12 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
         </EntryModal>
         ) : null}
         {activeTab === "conversions" ? (
-        <EntryModal title="Create Conversion" triggerLabel="Create Conversion">
+        <EntryModal
+          title="Create Conversion"
+          triggerLabel="Create Conversion"
+          disabled
+          disabledReason="Conversion item options are being moved to a bounded catalog; creation is temporarily unavailable."
+        >
           <form action={createConversionAction} className="ogfi-form-shell mt-4 grid gap-3">
             <select className="rounded-md border border-slate-300 px-3 py-2" name="itemId" required>
               {activeMasterItems.map((item) => (
@@ -480,7 +490,17 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
             </div>
             <Badge tone="info">Not yet transactional</Badge>
           </div>
-          <ItemMasterSearch scopeId="items" />
+          <form method="get" className="mb-4 grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-[1fr_180px_auto]">
+            <input type="hidden" name="tab" value="items" />
+            <input className={inputClass} name="itemQuery" defaultValue={itemQuery} placeholder="Search code, name, or category" aria-label="Search items" />
+            <select className={inputClass} name="itemStatus" defaultValue={itemStatus ?? ""} aria-label="Filter item status">
+              <option value="">All statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+              <option value="ARCHIVED">Archived</option>
+            </select>
+            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
+          </form>
           <div className="hidden grid-cols-[1fr_1.1fr_1fr_1fr_1.1fr] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase text-slate-400 md:grid">
             <span>Code</span>
             <span>Item</span>
@@ -645,6 +665,23 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               </details>
             ))}
           </div>
+          {masterData.itemsPage.totalItems === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-slate-500">{itemQuery || itemStatus ? "No items match the selected filters." : "No item master records yet."}</p>
+          ) : null}
+          {masterData.itemsPage.totalItems > 0 ? (
+            <PaginationBar
+              page={masterData.itemsPage.page}
+              pageSize={masterData.itemsPage.pageSize}
+              totalItems={masterData.itemsPage.totalItems}
+              itemLabel="items"
+              getPageHref={(nextPage) => {
+                const query = new URLSearchParams({ tab: "items", itemPage: String(nextPage) });
+                if (itemQuery) query.set("itemQuery", itemQuery);
+                if (itemStatus) query.set("itemStatus", itemStatus);
+                return `/items?${query.toString()}`;
+              }}
+            />
+          ) : null}
         </Panel>
         ) : null}
 

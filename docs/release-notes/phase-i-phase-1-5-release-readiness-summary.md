@@ -166,6 +166,11 @@ decision and blocker summaries, an audited append-only composer, selected
 decision detail, and paginated history. This does not complete external release
 evidence, browser, database, hosted recovery, or UAT gates.
 
+The Item Master registry now supports company-scoped server search, lifecycle
+status filters, deterministic ordering, exact totals, and pagination. Categories,
+UOMs, and conversions remain pending bounded-read review, so this is not a full
+Master Data completion.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.
