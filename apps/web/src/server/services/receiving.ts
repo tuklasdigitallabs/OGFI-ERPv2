@@ -915,6 +915,7 @@ export type ReceivingRegisterFilters = {
   receivedTo?: string;
   supplierId?: string;
   purchaseOrderId?: string;
+  receivedByUserId?: string;
 };
 
 function parseReceivingFilterId(value: string | undefined, errorCode: string) {
@@ -933,6 +934,7 @@ function buildReceivingRegisterSharedWhere(
     receivedTo?: Date | null | undefined;
     supplierId?: string | undefined;
     purchaseOrderId?: string | undefined;
+    receivedByUserId?: string | undefined;
   }
 ): Prisma.GoodsReceiptWhereInput {
   return {
@@ -941,6 +943,7 @@ function buildReceivingRegisterSharedWhere(
     receivingLocationId: session.context.locationId,
     ...(input.supplierId ? { supplierId: input.supplierId } : {}),
     ...(input.purchaseOrderId ? { purchaseOrderId: input.purchaseOrderId } : {}),
+    ...(input.receivedByUserId ? { receivedByUserId: input.receivedByUserId } : {}),
     ...(input.receivedFrom || input.receivedTo
       ? {
           receivedAt: {
@@ -1028,11 +1031,12 @@ export async function listGoodsReceipts(session: SessionContext) {
 
 export async function listReceivingRegisterFilterOptions(
   session: SessionContext,
-  input: Pick<ReceivingRegisterFilters, "supplierId" | "purchaseOrderId" | "query"> = {}
+  input: Pick<ReceivingRegisterFilters, "supplierId" | "purchaseOrderId" | "receivedByUserId" | "query"> = {}
 ) {
   await requireReceivingRead(session);
   const supplierId = parseReceivingFilterId(input.supplierId, "RECEIVING_SUPPLIER_FILTER_INVALID");
   const purchaseOrderId = parseReceivingFilterId(input.purchaseOrderId, "RECEIVING_PURCHASE_ORDER_FILTER_INVALID");
+  const receivedByUserId = parseReceivingFilterId(input.receivedByUserId, "RECEIVING_RECEIVER_FILTER_INVALID");
   const scope = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
@@ -1057,23 +1061,26 @@ export async function listReceivingRegisterFilterOptions(
       where: optionWhere,
       select: {
         supplier: { select: { id: true, legalName: true, tradingName: true } },
-        purchaseOrder: { select: { id: true, publicReference: true } }
+        purchaseOrder: { select: { id: true, publicReference: true } },
+        receivedBy: { select: { id: true, displayName: true, status: true } }
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 100
     }),
-    supplierId || purchaseOrderId
+    supplierId || purchaseOrderId || receivedByUserId
       ? prisma.goodsReceipt.findMany({
           where: {
             ...scope,
             OR: [
               ...(supplierId ? [{ supplierId }] : []),
-              ...(purchaseOrderId ? [{ purchaseOrderId }] : [])
+              ...(purchaseOrderId ? [{ purchaseOrderId }] : []),
+              ...(receivedByUserId ? [{ receivedByUserId }] : [])
             ]
           },
           select: {
             supplier: { select: { id: true, legalName: true, tradingName: true } },
-            purchaseOrder: { select: { id: true, publicReference: true } }
+            purchaseOrder: { select: { id: true, publicReference: true } },
+            receivedBy: { select: { id: true, displayName: true, status: true } }
           },
           take: 10
         })
@@ -1081,6 +1088,7 @@ export async function listReceivingRegisterFilterOptions(
   ]);
   const suppliers = new Map<string, { id: string; label: string }>();
   const purchaseOrders = new Map<string, { id: string; label: string }>();
+  const receivers = new Map<string, { id: string; label: string }>();
   for (const row of [...recent, ...selected]) {
     suppliers.set(row.supplier.id, {
       id: row.supplier.id,
@@ -1090,10 +1098,17 @@ export async function listReceivingRegisterFilterOptions(
       id: row.purchaseOrder.id,
       label: row.purchaseOrder.publicReference
     });
+    if (row.receivedBy) {
+      receivers.set(row.receivedBy.id, {
+        id: row.receivedBy.id,
+        label: `${row.receivedBy.displayName}${row.receivedBy.status !== "ACTIVE" ? " (inactive)" : ""}`
+      });
+    }
   }
   return {
     suppliers: [...suppliers.values()],
     purchaseOrders: [...purchaseOrders.values()],
+    receivers: [...receivers.values()],
     hasMore: recent.length >= 100
   };
 }
@@ -1120,12 +1135,14 @@ export async function listGoodsReceiptPage(
   if (receivedFrom && receivedTo && receivedFrom >= receivedTo) throw new Error("RECEIVING_DATE_FILTER_RANGE_INVALID");
   const supplierId = parseReceivingFilterId(input.supplierId, "RECEIVING_SUPPLIER_FILTER_INVALID");
   const purchaseOrderId = parseReceivingFilterId(input.purchaseOrderId, "RECEIVING_PURCHASE_ORDER_FILTER_INVALID");
+  const receivedByUserId = parseReceivingFilterId(input.receivedByUserId, "RECEIVING_RECEIVER_FILTER_INVALID");
   const sharedFilters = buildReceivingRegisterSharedWhere(session, {
     query,
     receivedFrom,
     receivedTo,
     supplierId,
-    purchaseOrderId
+    purchaseOrderId,
+    receivedByUserId
   });
   const where: Prisma.GoodsReceiptWhereInput = {
     ...sharedFilters,
@@ -1180,13 +1197,14 @@ export async function buildReceivingReportExportRows(
   profile?: ReceivingDashboardProfile,
   query?: string,
   tab: ReceivingRegisterTab = "all",
-  filters: { status?: string; receivedFrom?: string; receivedTo?: string; supplierId?: string; purchaseOrderId?: string } = {}
+  filters: { status?: string; receivedFrom?: string; receivedTo?: string; supplierId?: string; purchaseOrderId?: string; receivedByUserId?: string } = {}
 ) {
   await requireReceivingRead(session);
 
   if (filters.status && !receivingRegisterStatuses.includes(filters.status as ReceivingRegisterStatus)) throw new Error("RECEIVING_STATUS_FILTER_INVALID");
   const supplierId = parseReceivingFilterId(filters.supplierId, "RECEIVING_SUPPLIER_FILTER_INVALID");
   const purchaseOrderId = parseReceivingFilterId(filters.purchaseOrderId, "RECEIVING_PURCHASE_ORDER_FILTER_INVALID");
+  const receivedByUserId = parseReceivingFilterId(filters.receivedByUserId, "RECEIVING_RECEIVER_FILTER_INVALID");
   const exportFrom = filters.receivedFrom ? parseReceivingDate(filters.receivedFrom) : null;
   const exportTo = filters.receivedTo ? parseReceivingDate(filters.receivedTo, true) : null;
   if ((filters.receivedFrom && !exportFrom) || (filters.receivedTo && !exportTo)) throw new Error("RECEIVING_DATE_FILTER_INVALID");
@@ -1240,7 +1258,8 @@ export async function buildReceivingReportExportRows(
         receivedFrom: exportFrom,
         receivedTo: exportTo,
         supplierId,
-        purchaseOrderId
+        purchaseOrderId,
+        receivedByUserId
       }),
       ...((tab === "draft" || tab === "posted" || filters.status) ? { AND: [
         ...(tab === "draft" ? [{ status: "DRAFT" }] : []),

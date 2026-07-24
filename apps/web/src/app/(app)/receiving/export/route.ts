@@ -48,6 +48,7 @@ export async function GET(request: Request) {
   const receivedTo = profile ? undefined : searchParams.get("receivedTo") ?? undefined;
   const supplierId = profile ? undefined : searchParams.get("supplierId") ?? undefined;
   const purchaseOrderId = profile ? undefined : searchParams.get("purchaseOrderId") ?? undefined;
+  const receivedByUserId = profile ? undefined : searchParams.get("receivedByUserId") ?? undefined;
   const tabParam = searchParams.get("tab") ?? "all";
   const tab = ["all", "draft", "posted", "discrepancies"].includes(tabParam)
     ? (tabParam as "all" | "draft" | "posted" | "discrepancies")
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
   }
   const auditMetadata = profile
     ? { dashboardProfile: profile, searchQuery: query?.trim() || null }
-    : { tab, searchQuery: ordinaryQuery?.trim() || null, status: status ?? null, receivedFrom: receivedFrom ?? null, supplierId: supplierId ?? null, purchaseOrderId: purchaseOrderId ?? null, receivedTo: receivedTo ?? null };
+    : { tab, searchQuery: ordinaryQuery?.trim() || null, status: status ?? null, receivedFrom: receivedFrom ?? null, supplierId: supplierId ?? null, purchaseOrderId: purchaseOrderId ?? null, receivedByUserId: receivedByUserId ?? null, receivedTo: receivedTo ?? null };
 
   try {
     await logOperationalExportAudit({
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
       profile ?? undefined,
       profile ? query : ordinaryQuery,
       profile ? "all" : tab,
-      profile ? {} : { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}) }
+      profile ? {} : { ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}), ...(receivedByUserId ? { receivedByUserId } : {}) }
     );
     await logOperationalExportAudit({
       session,

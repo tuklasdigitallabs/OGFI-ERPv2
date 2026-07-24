@@ -74,6 +74,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0092-GOODS-RECEIPT-REFERENCE-SEQUENCE.md`
 - `DEC-0093-GOODS-RECEIPT-CREATE-IDEMPOTENCY.md`
 - `DEC-0094-RECEIVING-REGISTER-FILTER-CONTRACT.md`
+- `DEC-0095-RECEIVING-REGISTER-RECEIVER-FILTER.md`
 
 ## Suggested future decision records
 

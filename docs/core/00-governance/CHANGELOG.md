@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Receiving Register Receiver Filter
+
+- Added confirmed `DEC-0095`: Phase B will use an exact server-owned `receivedByUserId` filter with receipt-derived options, including inactive historical receivers, and one shared predicate across rows, counts, tabs, pagination, and ordinary CSV.
+- Kept item filtering deferred until the reporting/product owner confirms matching-line versus full-receipt CSV context and separate relation/query-plan evidence; accepted-value filtering remains deferred to Phase C. Requested Spark/GPT-5.4 reviewers were unavailable and the closest permitted GPT-5.6 fallback was used without relaxing hard gates.
+
 ## 2026-07-24 — Goods Receipt Create Idempotency
 
 - Added confirmed `DEC-0093`: new Goods Receipt API/form callers use a bounded durable idempotency key and canonical request hash, with tenant/company uniqueness, live replay authorization, exact actor/location/PO binding, stable mismatch conflicts, indefinite key retention, and no raw-key logging.

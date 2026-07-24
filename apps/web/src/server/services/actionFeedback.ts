@@ -889,6 +889,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "The selected supplier filter is not valid for this workspace.",
   RECEIVING_PURCHASE_ORDER_FILTER_INVALID:
     "The selected Purchase Order filter is not valid for this workspace.",
+  RECEIVING_RECEIVER_FILTER_INVALID:
+    "The selected receiver filter is not valid for this workspace.",
   RECEIVING_DATE_FILTER_INVALID:
     "Enter valid receiving dates using YYYY-MM-DD.",
   RECEIVING_DATE_FILTER_RANGE_INVALID:

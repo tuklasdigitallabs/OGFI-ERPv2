@@ -147,6 +147,7 @@ describe("receiving foundation rules", () => {
     await expect(listReceivingRegisterFilterOptions(dashboardSession as never)).resolves.toEqual({
       suppliers: [{ id: "00000000-0000-4000-8000-000000000111", label: "Fresh Foods" }],
       purchaseOrders: [{ id: "00000000-0000-4000-8000-000000000113", label: "PO-2026-00001" }],
+      receivers: [],
       hasMore: false
     });
     expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
@@ -182,6 +183,43 @@ describe("receiving foundation rules", () => {
         })
       })
     );
+  });
+
+  test("ordinary register applies exact historical receiver filters and exposes bounded receiver options", async () => {
+    mockPrisma.goodsReceipt.count.mockResolvedValue(0);
+    mockPrisma.goodsReceipt.findMany.mockResolvedValue([
+      {
+        id: "receipt-receiver-1",
+        publicReference: "RR-2026-00002",
+        status: "DRAFT",
+        discrepancyFlag: false,
+        receivedAt: new Date("2026-07-20T00:00:00.000Z"),
+        reversedAt: null,
+        reversedBy: null,
+        supplier: { id: "00000000-0000-4000-8000-000000000111", legalName: "Fresh Foods Inc.", tradingName: "Fresh Foods" },
+        purchaseOrder: { id: "00000000-0000-4000-8000-000000000113", publicReference: "PO-2026-00001", status: "APPROVED", expectedDeliveryDate: new Date("2026-07-20T00:00:00.000Z") },
+        _count: { lines: 1 },
+        receivedBy: { id: dashboardSession.user.id, displayName: "Former Receiver", status: "INACTIVE" }
+      }
+    ]);
+    await listGoodsReceiptPage(dashboardSession as never, {
+      receivedByUserId: dashboardSession.user.id
+    });
+    expect(mockPrisma.goodsReceipt.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: dashboardSession.context.tenantId,
+          companyId: dashboardSession.context.companyId,
+          receivingLocationId: dashboardSession.context.locationId,
+          receivedByUserId: dashboardSession.user.id
+        })
+      })
+    );
+    await expect(listReceivingRegisterFilterOptions(dashboardSession as never, {
+      receivedByUserId: dashboardSession.user.id
+    })).resolves.toEqual(expect.objectContaining({
+      receivers: [{ id: dashboardSession.user.id, label: "Former Receiver (inactive)" }]
+    }));
   });
 
   test("dashboard read authorizes and queries only scoped, bounded receipt candidates", async () => {
