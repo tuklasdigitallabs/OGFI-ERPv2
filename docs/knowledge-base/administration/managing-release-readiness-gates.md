@@ -53,6 +53,8 @@ UAT rows do not perform review actions inline. Open a record to review it. Only 
 
 Deployment evidence follows the same selected-record review pattern. The migration/backup/restore readiness counter only clears when each required evidence type is verified; monitoring/hypercare is tracked separately. A recorded or rejected item does not clear a deployment gate.
 
+Enablement evidence is reviewed from a selected record. Training readiness requires verified training signoff and the required known-limit/support-route confirmations (or their standalone verified evidence); KB and release-note readiness requires each of its three verified review types. Page filters do not change these aggregate checks.
+
 ## UAT Evidence Rules
 
 UAT gates require both evidence and a decision note before they are marked ready, conditional, or waived. The decision note should name one or more of:

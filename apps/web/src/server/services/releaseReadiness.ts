@@ -1002,7 +1002,7 @@ async function assertSecurityGateReadyEvidence(
 }
 
 export async function listEnablementEvidenceRecords(session: SessionContext) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
 
   return prisma.enablementEvidenceRecord.findMany({
     where: {
@@ -1015,6 +1015,58 @@ export async function listEnablementEvidenceRecords(session: SessionContext) {
       rejectedByUser: { select: { displayName: true, email: true } },
     },
     orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }],
+  });
+}
+
+const enablementEvidencePageInputSchema = z.object({
+  query: z.string().trim().max(120).default(""),
+  evidenceType: z.enum(enablementEvidenceTypes).optional(),
+  verificationStatus: z.enum(["RECORDED", "VERIFIED", "REJECTED"]).optional(),
+  audienceRole: z.string().trim().max(120).default(""),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(10),
+});
+
+export async function listEnablementEvidencePage(session: SessionContext, input: z.input<typeof enablementEvidencePageInputSchema> = {}) {
+  await assertCanManageReleaseReadiness(session);
+  const values = enablementEvidencePageInputSchema.parse(input);
+  const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.evidenceType ? { evidenceType: values.evidenceType } : {}),
+    ...(values.verificationStatus ? { verificationStatus: values.verificationStatus } : {}),
+    ...(values.audienceRole ? { audienceRole: { contains: values.audienceRole, mode: "insensitive" as const } } : {}),
+    ...(query ? { OR: [{ title: query }, { evidenceReference: query }, { ownerName: query }, { audienceRole: query }] } : {}),
+  };
+  const totalItems = await prisma.enablementEvidenceRecord.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  const items = await prisma.enablementEvidenceRecord.findMany({
+    where,
+    include: {
+      createdByUser: { select: { displayName: true, email: true } },
+      verifiedByUser: { select: { displayName: true, email: true } },
+      rejectedByUser: { select: { displayName: true, email: true } },
+    },
+    orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
+  return { items, page, pageSize: values.pageSize, totalItems };
+}
+
+export async function getEnablementEvidenceRecord(session: SessionContext, evidenceId: string) {
+  await assertCanManageReleaseReadiness(session);
+  const parsed = z.string().uuid().safeParse(evidenceId);
+  if (!parsed.success) return null;
+  return prisma.enablementEvidenceRecord.findFirst({
+    where: { id: parsed.data, tenantId: session.context.tenantId, companyId: session.context.companyId },
+    include: {
+      createdByUser: { select: { displayName: true, email: true } },
+      verifiedByUser: { select: { displayName: true, email: true } },
+      rejectedByUser: { select: { displayName: true, email: true } },
+    },
   });
 }
 
@@ -1072,6 +1124,38 @@ export function summarizeEnablementEvidence(
   };
 }
 
+export async function getEnablementEvidenceSummary(session: SessionContext) {
+  await assertCanManageReleaseReadiness(session);
+  const baseWhere = { tenantId: session.context.tenantId, companyId: session.context.companyId };
+  const [total, statusGroups, verifiedRows] = await Promise.all([
+    prisma.enablementEvidenceRecord.count({ where: baseWhere }),
+    prisma.enablementEvidenceRecord.groupBy({ by: ["verificationStatus"], where: baseWhere, _count: { _all: true } }),
+    prisma.enablementEvidenceRecord.findMany({
+      where: { ...baseWhere, verificationStatus: "VERIFIED" },
+      select: { evidenceType: true, knownLimitAcknowledged: true, supportRouteConfirmed: true },
+    }),
+  ]);
+  const statusCount = (status: string) => statusGroups.find((row) => row.verificationStatus === status)?._count._all ?? 0;
+  const verifiedTypes = new Set(verifiedRows.map((row) => row.evidenceType));
+  const hasTrainingAcknowledgement = verifiedRows.some((row) => row.evidenceType === "TRAINING_SIGNOFF" && row.knownLimitAcknowledged && row.supportRouteConfirmed);
+  const missingTrainingGateTypes: EnablementEvidenceType[] = [];
+  if (!verifiedTypes.has("TRAINING_SIGNOFF")) missingTrainingGateTypes.push("TRAINING_SIGNOFF");
+  if (!hasTrainingAcknowledgement && !verifiedTypes.has("KNOWN_LIMIT_ACKNOWLEDGEMENT")) missingTrainingGateTypes.push("KNOWN_LIMIT_ACKNOWLEDGEMENT");
+  if (!hasTrainingAcknowledgement && !verifiedTypes.has("SUPPORT_ROUTE_CONFIRMATION")) missingTrainingGateTypes.push("SUPPORT_ROUTE_CONFIRMATION");
+  const requiredKb: EnablementEvidenceType[] = ["KB_REVIEW", "RELEASE_NOTES_REVIEW", "TRAINING_IMPACT_ASSESSMENT"];
+  const missingKbGateTypes = requiredKb.filter((type) => !verifiedTypes.has(type));
+  return {
+    total,
+    verified: statusCount("VERIFIED"),
+    recorded: statusCount("RECORDED"),
+    rejected: statusCount("REJECTED"),
+    missingTrainingGateTypes,
+    missingKbGateTypes,
+    trainingGateReady: missingTrainingGateTypes.length === 0,
+    kbGateReady: missingKbGateTypes.length === 0,
+  };
+}
+
 async function assertEnablementGateReadyEvidence(
   session: SessionContext,
   definition: ReleaseReadinessGateDefinition,
@@ -1081,8 +1165,7 @@ async function assertEnablementGateReadyEvidence(
     return;
   }
 
-  const records = await listEnablementEvidenceRecords(session);
-  const summary = summarizeEnablementEvidence(records);
+  const summary = await getEnablementEvidenceSummary(session);
   const unresolvedByGate: Record<string, boolean> = {
     "enablement.training_signoff": !summary.trainingGateReady,
     "enablement.kb_release_notes": !summary.kbGateReady,
@@ -1645,8 +1728,8 @@ export async function updateEnablementEvidenceStatus(formData: FormData) {
     }
 
     const now = new Date();
-    const saved = await tx.enablementEvidenceRecord.update({
-      where: { id: existing.id },
+    const claimed = await tx.enablementEvidenceRecord.updateMany({
+      where: { id: existing.id, tenantId: session.context.tenantId, companyId: session.context.companyId, verificationStatus: "RECORDED" },
       data:
         values.status === "VERIFIED"
           ? {
@@ -1663,6 +1746,10 @@ export async function updateEnablementEvidenceStatus(formData: FormData) {
               verifiedAt: null,
               verifiedByUserId: null,
             },
+    });
+    if (claimed.count !== 1) throw new Error("ENABLEMENT_EVIDENCE_NOT_RECORDED");
+    const saved = await tx.enablementEvidenceRecord.findFirstOrThrow({
+      where: { id: existing.id, tenantId: session.context.tenantId, companyId: session.context.companyId },
     });
 
     await tx.auditEvent.create({

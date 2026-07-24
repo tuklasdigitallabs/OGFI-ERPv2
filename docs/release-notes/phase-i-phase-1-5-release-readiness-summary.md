@@ -148,6 +148,10 @@ dependency checks for migration/restore and monitoring/hypercare gates. Only
 verified required evidence clears those dependencies; this does not close final
 deployment or hosted recovery gates.
 
+Enablement evidence now has a bounded selected-company register and aggregate
+training/KB dependency checks. Only verified evidence with the required
+acknowledgement and support-route semantics clears those dependencies.
+
 Release Readiness gate status now has bounded server-side category, status, search,
 and pagination controls with exact matching totals. This checkpoint does not close
 the separate evidence, security aggregate, GO/NO-GO, browser, database, hosted, or

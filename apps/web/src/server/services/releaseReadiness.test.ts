@@ -118,6 +118,12 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("listDeploymentEvidencePage");
     expect(serviceSource).toContain("getDeploymentEvidenceRecord");
     expect(serviceSource).toContain("getDeploymentEvidenceSummary");
+    expect(serviceSource).toContain("listEnablementEvidencePage");
+    expect(serviceSource).toContain("getEnablementEvidenceRecord");
+    expect(serviceSource).toContain("getEnablementEvidenceSummary");
+    expect(serviceSource).toContain('orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
+    expect(pageSource).toContain("enablementPageSize");
+    expect(pageSource).toContain("enablementType");
     expect(serviceSource).toContain("DEPLOYMENT_EVIDENCE_NOT_RECORDED");
     expect(serviceSource).toContain("verificationStatus: \"RECORDED\"");
     expect(serviceSource).toContain('orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');

@@ -30,9 +30,11 @@ import {
   getUatEvidenceSummary,
   getDeploymentEvidenceRecord,
   getDeploymentEvidenceSummary,
+  getEnablementEvidenceRecord,
+  getEnablementEvidenceSummary,
   getUatEvidenceRecord,
   listDeploymentEvidencePage,
-  listEnablementEvidenceRecords,
+  listEnablementEvidencePage,
   listReleaseBoardDecisions,
   listReleaseReadinessGates,
   listReleaseReadinessGatePage,
@@ -40,7 +42,6 @@ import {
   releaseBoardDecisions,
   releaseReadinessCategories,
   releaseReadinessStatuses,
-  summarizeEnablementEvidence,
   summarizeReleaseReadiness,
   uatEvidenceResults,
   uatEvidenceTypes,
@@ -198,14 +199,20 @@ async function createEnablementEvidenceAction(formData: FormData) {
 
 async function updateEnablementEvidenceAction(formData: FormData) {
   "use server";
+  const context = new URLSearchParams({ category: "enablement" });
+  for (const key of ["enablementQ", "enablementType", "enablementStatus", "enablementAudienceRole", "enablementPage", "enablementPageSize", "enablementEvidenceId"]) {
+    const value = formData.get(key);
+    if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key, value);
+  }
+  const returnPath = `/admin/readiness?${context.toString()}`;
 
   try {
     await updateEnablementEvidenceStatus(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/readiness?category=enablement", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/readiness");
-  redirect("/admin/readiness?category=enablement");
+  redirect(returnPath);
 }
 
 async function createReleaseBoardDecisionAction(formData: FormData) {
@@ -328,14 +335,32 @@ export default async function AdminReadinessPage({
     ? await getDeploymentEvidenceRecord(session, getSearchParam(params, "deploymentEvidenceId") as string)
     : null;
   const deploymentEvidenceSummary = selectedCategory === "deployment" ? await getDeploymentEvidenceSummary(session) : null;
-  const enablementEvidenceRecords =
-    selectedCategory === "enablement"
-      ? await listEnablementEvidenceRecords(session)
-      : [];
-  const enablementEvidenceSummary =
-    selectedCategory === "enablement"
-      ? summarizeEnablementEvidence(enablementEvidenceRecords)
-      : null;
+  const enablementQ = (getSearchParam(params, "enablementQ") ?? "").slice(0, 120);
+  const enablementTypeValue = getSearchParam(params, "enablementType");
+  const enablementEvidenceType = enablementEvidenceTypes.includes(enablementTypeValue as (typeof enablementEvidenceTypes)[number]) ? (enablementTypeValue as (typeof enablementEvidenceTypes)[number]) : undefined;
+  const enablementStatusValue = getSearchParam(params, "enablementStatus");
+  const enablementVerificationStatus = ["RECORDED", "VERIFIED", "REJECTED"].includes(enablementStatusValue ?? "") ? (enablementStatusValue as "RECORDED" | "VERIFIED" | "REJECTED") : undefined;
+  const enablementAudienceRole = (getSearchParam(params, "enablementAudienceRole") ?? "").slice(0, 120);
+  const enablementPageValue = Number.parseInt(getSearchParam(params, "enablementPage") ?? "1", 10);
+  const enablementPageSizeValue = Number.parseInt(getSearchParam(params, "enablementPageSize") ?? "10", 10);
+  const enablementEvidencePage = selectedCategory === "enablement" ? await listEnablementEvidencePage(session, {
+    query: enablementQ,
+    evidenceType: enablementEvidenceType,
+    verificationStatus: enablementVerificationStatus,
+    audienceRole: enablementAudienceRole,
+    page: Number.isFinite(enablementPageValue) ? Math.min(Math.max(enablementPageValue, 1), 10_000) : 1,
+    pageSize: Number.isFinite(enablementPageSizeValue) ? Math.min(Math.max(enablementPageSizeValue, 10), 100) : 10,
+  }) : { items: [], page: 1, pageSize: 10, totalItems: 0 };
+  const enablementContextParams = new URLSearchParams({ category: "enablement", enablementPage: String(enablementEvidencePage.page), enablementPageSize: String(enablementEvidencePage.pageSize) });
+  if (enablementQ) enablementContextParams.set("enablementQ", enablementQ);
+  if (enablementEvidenceType) enablementContextParams.set("enablementType", enablementEvidenceType);
+  if (enablementVerificationStatus) enablementContextParams.set("enablementStatus", enablementVerificationStatus);
+  if (enablementAudienceRole) enablementContextParams.set("enablementAudienceRole", enablementAudienceRole);
+  const enablementContextHref = `/admin/readiness?${enablementContextParams.toString()}`;
+  const selectedEnablementEvidence = selectedCategory === "enablement" && getSearchParam(params, "enablementEvidenceId")
+    ? await getEnablementEvidenceRecord(session, getSearchParam(params, "enablementEvidenceId") as string)
+    : null;
+  const enablementEvidenceSummary = selectedCategory === "enablement" ? await getEnablementEvidenceSummary(session) : null;
   const releaseBoardDecisionRecords =
     selectedCategory === "go_no_go" ? await listReleaseBoardDecisions(session) : [];
   const exportGeneratedAt = new Date().toISOString();
@@ -1537,8 +1562,23 @@ export default async function AdminReadinessPage({
           </div>
         ) : null}
 
+        {selectedCategory === "enablement" && getSearchParam(params, "enablementEvidenceId") ? (
+          <Panel className="mb-5 border-blue-100 bg-blue-50/40">
+            {selectedEnablementEvidence ? (
+              <div className="grid gap-3 text-sm text-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected enablement evidence</p><h3 className="text-lg font-bold text-slate-950">{selectedEnablementEvidence.title}</h3></div><Badge tone={selectedEnablementEvidence.verificationStatus === "VERIFIED" ? "success" : selectedEnablementEvidence.verificationStatus === "REJECTED" ? "destructive" : "warning"}>{selectedEnablementEvidence.verificationStatus}</Badge></div>
+                <p>{enablementEvidenceTypeLabel(selectedEnablementEvidence.evidenceType)} · {selectedEnablementEvidence.audienceRole} · owner {selectedEnablementEvidence.ownerName}</p>
+                <p>Completed {new Date(selectedEnablementEvidence.completedAt).toLocaleString()}; reference {selectedEnablementEvidence.evidenceReference}</p>
+                {selectedEnablementEvidence.verificationStatus === "RECORDED" ? (selectedEnablementEvidence.createdByUserId === session.user.id ? <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-900">Another authorized reviewer must review evidence recorded by you.</p> : <div className="grid gap-2 sm:grid-cols-2"><form action={updateEnablementEvidenceAction}><input name="evidenceId" type="hidden" value={selectedEnablementEvidence.id} /><input name="status" type="hidden" value="VERIFIED" /><input name="reason" type="hidden" value="Verified enablement evidence from the selected evidence review panel." /><input name="enablementQ" type="hidden" value={enablementQ} /><input name="enablementType" type="hidden" value={enablementEvidenceType ?? ""} /><input name="enablementStatus" type="hidden" value={enablementVerificationStatus ?? ""} /><input name="enablementAudienceRole" type="hidden" value={enablementAudienceRole} /><input name="enablementPage" type="hidden" value={String(enablementEvidencePage.page)} /><input name="enablementPageSize" type="hidden" value={String(enablementEvidencePage.pageSize)} /><input name="enablementEvidenceId" type="hidden" value={selectedEnablementEvidence.id} /><button className="min-h-11 w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800">Verify evidence</button></form><form action={updateEnablementEvidenceAction} className="grid gap-2"><input name="evidenceId" type="hidden" value={selectedEnablementEvidence.id} /><input name="status" type="hidden" value="REJECTED" /><input name="reason" className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Rejection reason (required)" minLength={5} required /><button className="min-h-11 rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800">Reject evidence</button></form></div>) : null}
+                <a className="font-semibold text-blue-700 hover:underline" href={enablementContextHref}>Close selected evidence</a>
+              </div>
+            ) : <p className="text-sm text-slate-700">The selected enablement evidence is unavailable in the current company scope.</p>}
+          </Panel>
+        ) : null}
+
         {enablementEvidenceSummary ? (
           <div className="mb-5 overflow-hidden rounded-xl border border-slate-200">
+            <form className="grid gap-3 border-b border-slate-100 bg-slate-50 p-4 md:grid-cols-[1fr_12rem_12rem_auto] md:items-end" method="get"><input name="category" type="hidden" value="enablement" /><label className="grid gap-1 text-sm font-medium text-slate-700">Search<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="enablementQ" defaultValue={enablementQ} placeholder="Title, reference, owner, or audience" /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Evidence type<select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="enablementType" defaultValue={enablementEvidenceType ?? ""}><option value="">All types</option>{enablementEvidenceTypes.map((type) => <option key={type} value={type}>{enablementEvidenceTypeLabel(type)}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Review status<select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="enablementStatus" defaultValue={enablementVerificationStatus ?? ""}><option value="">All statuses</option>{["RECORDED", "VERIFIED", "REJECTED"].map((status) => <option key={status} value={status}>{status}</option>)}</select></label><button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white" type="submit">Apply</button></form>
             <div className="grid gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[12rem_1fr_10rem_9rem_12rem]">
               <span>Type</span>
               <span>Evidence</span>
@@ -1546,9 +1586,9 @@ export default async function AdminReadinessPage({
               <span>Status</span>
               <span>Control</span>
             </div>
-            {enablementEvidenceRecords.length > 0 ? (
+            {enablementEvidencePage.items.length > 0 ? (
               <div className="divide-y divide-slate-100">
-                {enablementEvidenceRecords.map((record) => (
+                {enablementEvidencePage.items.map((record) => (
                   <div
                     key={record.id}
                     className="grid gap-3 px-4 py-4 text-sm md:grid-cols-[12rem_1fr_10rem_9rem_12rem] md:items-center"
@@ -1592,60 +1632,7 @@ export default async function AdminReadinessPage({
                     >
                       {record.verificationStatus.replaceAll("_", " ")}
                     </Badge>
-                    {record.verificationStatus === "RECORDED" ? (
-                      <div className="grid gap-2">
-                        <form action={updateEnablementEvidenceAction}>
-                          <input name="evidenceId" type="hidden" value={record.id} />
-                          <input name="status" type="hidden" value="VERIFIED" />
-                          <input
-                            name="reason"
-                            type="hidden"
-                            value="Verified enablement evidence for DEC-0036 release readiness."
-                          />
-                          <button className="min-h-9 w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">
-                            Verify
-                          </button>
-                        </form>
-                        <EntryModal
-                          title={`Reject ${record.title}`}
-                          triggerLabel="Reject"
-                          triggerClassName="w-full border border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
-                        >
-                          <form
-                            action={updateEnablementEvidenceAction}
-                            className="ogfi-form-shell mt-4 grid gap-4"
-                          >
-                            <input name="evidenceId" type="hidden" value={record.id} />
-                            <input name="status" type="hidden" value="REJECTED" />
-                            <label className="grid gap-1 text-sm font-medium text-slate-700">
-                              Rejection reason
-                              <textarea
-                                className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                                name="reason"
-                                required
-                              />
-                            </label>
-                            <button className="min-h-10 rounded-md bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700">
-                              Reject Evidence
-                            </button>
-                          </form>
-                        </EntryModal>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500">
-                        {record.verifiedByUser
-                          ? `Verified by ${
-                              record.verifiedByUser.displayName ||
-                              record.verifiedByUser.email
-                            }`
-                          : record.rejectedByUser
-                            ? `Rejected by ${
-                                record.rejectedByUser.displayName ||
-                                record.rejectedByUser.email
-                              }`
-                            : "No action available"}
-                      </p>
-                    )}
+                    <a className="min-h-11 inline-flex items-center justify-center rounded-md border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50" href={`/admin/readiness?category=enablement&enablementEvidenceId=${record.id}`}>Open evidence</a>
                   </div>
                 ))}
               </div>
@@ -1654,6 +1641,21 @@ export default async function AdminReadinessPage({
                 No enablement evidence recorded yet.
               </div>
             )}
+            <PaginationBar
+              className="border-t border-slate-100 px-4 py-3"
+              page={enablementEvidencePage.page}
+              pageSize={enablementEvidencePage.pageSize}
+              totalItems={enablementEvidencePage.totalItems}
+              itemLabel="enablement evidence records"
+              getPageHref={(nextPage) => {
+                const next = new URLSearchParams({ category: "enablement", enablementPage: String(nextPage), enablementPageSize: String(enablementEvidencePage.pageSize) });
+                if (enablementQ) next.set("enablementQ", enablementQ);
+                if (enablementEvidenceType) next.set("enablementType", enablementEvidenceType);
+                if (enablementVerificationStatus) next.set("enablementStatus", enablementVerificationStatus);
+                if (enablementAudienceRole) next.set("enablementAudienceRole", enablementAudienceRole);
+                return `/admin/readiness?${next.toString()}`;
+              }}
+            />
           </div>
         ) : null}
 
