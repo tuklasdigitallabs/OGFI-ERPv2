@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Receiving Register Item Filter Deferral
+
+- Added confirmed `DEC-0096`: item filtering remains non-operative until the reporting/product owner confirms full-receipt-context versus matching-line CSV semantics, the scoped `GoodsReceiptLine` relation and bounded option strategy are documented, and representative PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` evidence is available.
+- No code or visible item selector was added; accepted-value filtering remains independently deferred under its Phase C gate. Requested Spark/GPT-5.4 reviewers were unavailable and the closest permitted GPT-5.6 fallback was used without relaxing hard gates.
+
 ## 2026-07-24 — Receiving Register Receiver Filter
 
 - Added confirmed `DEC-0095`: Phase B will use an exact server-owned `receivedByUserId` filter with receipt-derived options, including inactive historical receivers, and one shared predicate across rows, counts, tabs, pagination, and ordinary CSV.
@@ -338,3 +343,9 @@ Add a dated entry whenever an approved decision changes product scope, business 
 
 - Implemented `DEC-0094` Supplier and Purchase Order filters through one scoped server predicate shared by page rows, tab counts, pagination, and ordinary CSV export; bounded receipt-derived options and responsive filter controls are documented.
 - Item, receiver, and accepted-value filters remain deferred pending relation/query-plan, historical-option, cost-visibility, currency, and null-cost decisions. Focused tests pass; disposable filter execution, browser, production-build, and hosted gates remain open.
+
+## 2026-07-24 — Receiving Register Receiver And Item Filter Decisions
+
+- Implemented `DEC-0095` receiver filtering with bounded receipt-derived options, historical inactive labels, shared page/count/tab/pagination/CSV predicates, and focused validation.
+- Confirmed `DEC-0096` item-filter deferral: product/reporting must first choose matching-line versus full-receipt CSV semantics, then data engineering must provide scoped relation, bounded-option, isolation, and PostgreSQL query-plan evidence. No item control or operative parameter is exposed while those gates remain open.
+- The authorization surface baseline now explicitly registers the server-owned receiver option reader; the authorization manifest passes 20/20. Database-backed authorization, browser, production-build, and hosted release gates remain open.
