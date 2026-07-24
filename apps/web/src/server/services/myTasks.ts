@@ -33,11 +33,12 @@ import { listFoodSafetyMyTaskPage } from "./foodSafety";
 import { listIncidentMyTaskPage } from "./incidents";
 import { listMaintenanceMyTaskPage } from "./maintenance";
 import { listStockCountMyTaskPage } from "./stockCounts";
+import { dateOnlyInTimeZone } from "./projectDates";
 
 const myTasksCursorDomain = "my-tasks-v2";
 // Bump whenever an enrolled source predicate, ordering contract, or adapter
 // projection changes. Signed cursors must never outlive that contract.
-export const myTasksRegistryVersion = "my-tasks-registry-v4";
+export const myTasksRegistryVersion = "my-tasks-registry-v5";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
 const defaultPageSize = 20;
 const maxPageSize = 25;
@@ -82,9 +83,42 @@ function taskScopeHash(session: SessionContext, module?: DashboardTaskSource, fi
     ...dashboardTaskSources,
     module ?? "",
     filter?.priority ?? "",
-    filter?.status ?? ""
+    filter?.status ?? "",
+    filter?.due?.kind ?? "",
+    filter?.due?.from ?? "",
+    filter?.due?.to ?? ""
   ];
   return createHash("sha256").update(values.join("\u0000")).digest("base64url");
+}
+
+function operationalDayStart(value: Date) {
+  const date = dateOnlyInTimeZone(value);
+  const [year = 0, month = 1, day = 1] = date.split("-").map(Number);
+  const wallClockUtc = Date.UTC(year, month - 1, day);
+  const offsetParts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Manila",
+    timeZoneName: "longOffset"
+  }).formatToParts(value);
+  const offsetText = offsetParts.find((part) => part.type === "timeZoneName")?.value ?? "GMT+08:00";
+  const match = offsetText.match(/GMT([+-])(\d{2}):?(\d{2})?/);
+  const offsetMinutes = match
+    ? (Number(match[2]) * 60 + Number(match[3] ?? 0)) * (match[1] === "-" ? -1 : 1)
+    : 480;
+  return new Date(wallClockUtc - offsetMinutes * 60_000);
+}
+
+function normalizeDueFilter(value: string | undefined): DashboardTaskFilter["due"] {
+  if (!value) return undefined;
+  if (!["OVERDUE", "TODAY", "UPCOMING", "NO_DUE"].includes(value)) {
+    throw new Error("MY_TASK_FILTER_INVALID");
+  }
+  const kind = value as NonNullable<DashboardTaskFilter["due"]>["kind"];
+  if (kind === "NO_DUE") return { kind };
+  const from = operationalDayStart(new Date());
+  const to = new Date(from.getTime() + 86_400_000);
+  if (kind === "OVERDUE") return { kind, to: from.toISOString() };
+  if (kind === "TODAY") return { kind, from: from.toISOString(), to: to.toISOString() };
+  return { kind, from: to.toISOString() };
 }
 
 function isDashboardTaskCursor(value: unknown): value is DashboardTaskCursor {
@@ -464,7 +498,7 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
  */
 export async function getMyTasksPage(
   session: SessionContext,
-  input: { cursor?: string; pageSize?: number; module?: string; priority?: string; status?: string } = {}
+  input: { cursor?: string; pageSize?: number; module?: string; priority?: string; status?: string; due?: string } = {}
 ): Promise<MyTasksPage> {
   const module = input.module
     ? dashboardTaskSources.includes(input.module as DashboardTaskSource)
@@ -477,6 +511,7 @@ export async function getMyTasksPage(
       : (() => { throw new Error("MY_TASK_FILTER_INVALID"); })()
     : undefined;
   const status = input.status?.trim() || undefined;
+  const due = normalizeDueFilter(input.due?.trim());
   if (status && !module) {
     throw new Error("MY_TASK_FILTER_INVALID");
   }
@@ -485,14 +520,19 @@ export async function getMyTasksPage(
   }
   const filter: DashboardTaskFilter = {
     ...(priority ? { priority } : {}),
-    ...(status ? { status } : {})
+    ...(status ? { status } : {}),
+    ...(due ? { due } : {})
   };
   const after = input.cursor ? decodeMyTasksCursor(session, input.cursor, module, filter) : undefined;
   const take = normalizedPageSize(input.pageSize);
-  const sources = enrolledSources(session).filter((source) => !module || source.type === module);
-  if (module && sources.length === 0) {
+  const enrolled = enrolledSources(session);
+  if (module && !enrolled.some((source) => source.type === module)) {
     throw new Error("MY_TASK_FILTER_INVALID");
   }
+  const sources = enrolled.filter((source) =>
+    (!module || source.type === module) &&
+    (!filter.due || filter.due.kind === "NO_DUE" || source.type === "INCIDENT" || source.type === "MAINTENANCE")
+  );
   const reads = await Promise.allSettled(
     sources.map(async (source) => ({ source, page: await source.read(after, take, filter) }))
   );

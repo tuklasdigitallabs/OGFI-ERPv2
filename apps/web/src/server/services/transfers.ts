@@ -406,6 +406,7 @@ export async function listTransferMyTaskPage(
 ): Promise<TransferMyTaskPage> {
   await requireTransferRead(session);
   if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.due && input.filter.due.kind !== "NO_DUE") return { totalCount: 0, items: [], nextCursor: null };
   if (input.filter?.status && !["REQUESTED", "DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
 
   const actionPredicates: Prisma.InventoryTransferWhereInput[] = [

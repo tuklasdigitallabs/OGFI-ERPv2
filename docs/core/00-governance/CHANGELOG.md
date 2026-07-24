@@ -2,7 +2,7 @@
 
 ## 2026-07-24 — My Tasks Server-Owned Filter Slice
 
-- Added server-owned enrolled-module, canonical priority, and source-qualified status filters across every enrolled My Tasks adapter. Count/page predicates remain aligned, signed cursors bind the filters, and due-date/assignment/arbitrary-location semantics remain deferred.
+- Added server-owned enrolled-module, canonical priority, source-qualified status, and native due-bucket filters across every enrolled My Tasks adapter. Count/page predicates remain aligned, signed cursors bind normalized Asia/Manila bounds, and assignment/arbitrary-location semantics remain deferred.
 
 ## 2026-07-24 — Supplier Quote Create Task Mode
 

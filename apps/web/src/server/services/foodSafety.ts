@@ -784,6 +784,7 @@ export async function listFoodSafetyMyTaskPage(
     return { totalCount: 0, items: [], nextCursor: null };
   }
   if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.due && input.filter.due.kind !== "NO_DUE") return { totalCount: 0, items: [], nextCursor: null };
   if (input.filter?.status && !["SUBMITTED", "EXCEPTION_REVIEW", "RETURNED"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
 
   const take = Math.min(Math.max(input.take ?? 25, 1), 50);

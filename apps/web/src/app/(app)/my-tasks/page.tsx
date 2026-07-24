@@ -16,11 +16,12 @@ function getSearchParam(
   return Array.isArray(value) ? value[0] : value;
 }
 
-function taskHref(cursor: string, module?: string, priority?: string, status?: string) {
+function taskHref(cursor: string, module?: string, priority?: string, status?: string, due?: string) {
   const params = new URLSearchParams({ cursor });
   if (module) params.set("module", module);
   if (priority) params.set("priority", priority);
   if (status) params.set("status", status);
+  if (due) params.set("due", due);
   return `/my-tasks?${params.toString()}`;
 }
 
@@ -38,6 +39,7 @@ export default async function MyTasksPage({
   const module = getSearchParam(params, "module");
   const priority = getSearchParam(params, "priority");
   const status = getSearchParam(params, "status");
+  const due = getSearchParam(params, "due");
   const cursorReset = getSearchParam(params, "cursorReset") === "1";
   let page: MyTasksPage;
   try {
@@ -45,7 +47,8 @@ export default async function MyTasksPage({
       ...(cursor ? { cursor } : {}),
       ...(module ? { module } : {}),
       ...(priority ? { priority } : {}),
-      ...(status ? { status } : {})
+      ...(status ? { status } : {}),
+      ...(due ? { due } : {})
     });
   } catch (error) {
     if (error instanceof Error && error.message === "MY_TASK_CURSOR_INVALID") {
@@ -133,6 +136,16 @@ export default async function MyTasksPage({
               </select>
             </div>
             <div className="min-w-0">
+              <label htmlFor="my-tasks-due" className="text-xs font-semibold uppercase tracking-wide text-slate-500">Due date</label>
+              <select id="my-tasks-due" name="due" defaultValue={due ?? ""} className="mt-1 block min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 sm:w-48">
+                <option value="">Any native due date</option>
+                <option value="OVERDUE">Overdue</option>
+                <option value="TODAY">Due today</option>
+                <option value="UPCOMING">Upcoming</option>
+                <option value="NO_DUE">No due date</option>
+              </select>
+            </div>
+            <div className="min-w-0">
               <label htmlFor="my-tasks-priority" className="text-xs font-semibold uppercase tracking-wide text-slate-500">Priority</label>
               <select id="my-tasks-priority" name="priority" defaultValue={priority ?? ""} className="mt-1 block min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 sm:w-48">
                 <option value="">All priorities</option>
@@ -152,7 +165,7 @@ export default async function MyTasksPage({
             </div>
           </form>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            Module and priority filtering narrow the already authorized enrolled sources. Status values are source-qualified and require a selected module. Location, due date, and assignment filters remain server-contract work in progress.
+            Module, priority, and source-qualified status filtering narrow the already authorized enrolled sources. Due-date filtering uses only native Incident and Maintenance due fields; other sources intentionally return no rows for date buckets. Location and assignment filters remain server-contract work in progress.
           </p>
         </Panel>
 
@@ -194,7 +207,7 @@ export default async function MyTasksPage({
 
       {page.nextCursor ? (
         <div className="mt-6 flex justify-end">
-          <ButtonLink href={taskHref(page.nextCursor, module, priority, status)} tone="secondary">Load next actions</ButtonLink>
+          <ButtonLink href={taskHref(page.nextCursor, module, priority, status, due)} tone="secondary">Load next actions</ButtonLink>
         </div>
       ) : null}
     </AppShell>

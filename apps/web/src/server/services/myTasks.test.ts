@@ -133,7 +133,7 @@ describe("My Tasks queue", () => {
   });
 
   test("binds a cursor to its current user scope and rejects tampering", () => {
-    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v4");
+    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v5");
     const cursor = encodeMyTasksCursor(session as never, {
       priority: "HIGH",
       dueAt: null,
@@ -197,6 +197,24 @@ describe("My Tasks queue", () => {
 
   test("rejects status without a selected module", async () => {
     await expect(getMyTasksPage(session as never, { status: "DRAFT" })).rejects.toThrow("MY_TASK_FILTER_INVALID");
+  });
+
+  test("normalizes native due buckets and excludes fixed no-due sources", async () => {
+    const empty = await getMyTasksPage(session as never, {
+      module: "TRANSFER",
+      due: "OVERDUE"
+    });
+    expect(empty).toMatchObject({ items: [], totalCount: 0, isComplete: true });
+    expect(mocks.transfers).not.toHaveBeenCalled();
+
+    await getMyTasksPage(
+      { ...session, permissionCodes: [permissions.incidentResolve] } as never,
+      { module: "INCIDENT", due: "TODAY" }
+    );
+    expect(mocks.incidents).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ filter: expect.objectContaining({ due: { kind: "TODAY", from: expect.any(String), to: expect.any(String) } }) })
+    );
   });
 
   test("withholds a total instead of treating a failed source as empty", async () => {

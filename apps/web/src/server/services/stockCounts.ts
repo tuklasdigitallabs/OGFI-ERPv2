@@ -567,6 +567,7 @@ export async function listStockCountMyTaskPage(
   input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
 ): Promise<StockCountMyTaskPage> {
   if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.due && input.filter.due.kind !== "NO_DUE") return { totalCount: 0, items: [], nextCursor: null };
   if (input.filter?.status && !["DRAFT", "IN_PROGRESS"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
   const today = new Date(`${dateOnlyInTimeZone(new Date())}T00:00:00.000Z`);
   const eligibleBefore = new Date(today.getTime() + 86_400_000);

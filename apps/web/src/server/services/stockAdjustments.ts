@@ -307,6 +307,7 @@ export async function listStockAdjustmentMyTaskPage(
     return { totalCount: 0, items: [], nextCursor: null };
   }
   if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.due && input.filter.due.kind !== "NO_DUE") return { totalCount: 0, items: [], nextCursor: null };
   if (input.filter?.status && input.filter.status !== "APPROVED") return { totalCount: 0, items: [], nextCursor: null };
 
   const take = Math.min(

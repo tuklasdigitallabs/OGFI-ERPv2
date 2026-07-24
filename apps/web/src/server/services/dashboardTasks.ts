@@ -45,6 +45,11 @@ export const dashboardTaskStatusCatalog: Record<DashboardTaskSource, readonly st
 export type DashboardTaskFilter = {
   priority?: DashboardTaskPriority;
   status?: string;
+  due?: {
+    kind: "OVERDUE" | "TODAY" | "UPCOMING" | "NO_DUE";
+    from?: string;
+    to?: string;
+  };
 };
 
 export type DashboardTaskCursor = {

@@ -13,7 +13,7 @@
 
 ## Decision
 
-My Tasks filters may be implemented only as server-owned, source-predicate filters: enrolled module, canonical priority, source-native status, the already-selected location, and native `dueAt` where a source supplies it. Enrolled module, canonical priority, and source-qualified status are now implemented across all enrolled adapters with count/page predicate parity. `Assigned by`, arbitrary multi-location filtering, and native due-date filtering remain deferred until their authority and data semantics are explicitly defined.
+My Tasks filters may be implemented only as server-owned, source-predicate filters: enrolled module, canonical priority, source-native status, the already-selected location, and native `dueAt` where a source supplies it. Enrolled module, canonical priority, source-qualified status, and native due buckets are now implemented with count/page predicate parity. Due buckets query only Incident and Maintenance native due fields; fixed/no-due sources are excluded from date-bucket reads. `Assigned by` and arbitrary multi-location filtering remain deferred until their authority and data semantics are explicitly defined.
 
 The current queue remains unfiltered until every selected adapter accepts the same filter contract for count and page predicates. UI-only or post-merge filtering is prohibited.
 
@@ -58,14 +58,15 @@ The dashboard specification requires priority, module, location, due-date, assig
 - Use only native `dueAt`; do not reinterpret required dates, business dates, or creation dates as task due dates.
 - Do not expose `assignedBy` until a source-agnostic meaning and projection are approved.
 - Resolve the existing partial-source continuation risk before declaring filtered pagination complete; a partial page must not issue a continuation cursor unless its snapshot semantics are proven.
+- Before UAT at representative volume, run PostgreSQL query-plan/volume evidence for native due predicates and assess a scoped due-date index; no index is claimed by this slice.
 - Test invalid filters, unauthorized modules/locations, cursor binding, date rollover, count/page parity, mixed-source ordering, partial availability, and destination reauthorization.
 
 ## Implementation and documentation impact
 
-- Code / architecture: The current slice exposes enrolled-module, canonical priority, and source-qualified status filters. Each enrolled adapter intersects the filter with its existing action predicate for both count and page reads; future native due-date changes must accept the contract above and bump `myTasksRegistryVersion`.
+- Code / architecture: The current slice exposes enrolled-module, canonical priority, source-qualified status, and native due buckets. Each enrolled adapter intersects the filter with its existing action predicate for both count and page reads; future due-range or source changes must accept the contract above and bump `myTasksRegistryVersion`.
 - Data / schema: No schema change; no actor identity is added for deferred `assignedBy`.
 - Workflow / permissions: Role-pooled and personal obligations retain their existing semantics.
-- UI / mobile: The My Tasks workspace exposes working module, priority, and source-qualified status filters and clearly labels due-date, assignment, and arbitrary-location filtering as pending server contracts.
+- UI / mobile: The My Tasks workspace exposes working module, priority, source-qualified status, and native due-bucket filters and clearly labels assignment and arbitrary-location filtering as pending server contracts.
 - Knowledge base / training: Explain that the current queue is paginated but not yet a filtered enterprise task list.
 - Tests / UAT: Use the matrix above before exposing filters.
 

@@ -736,6 +736,15 @@ export async function listIncidentMyTaskPage(
     return { totalCount: 0, items: [], nextCursor: null };
   }
   if (input.filter?.status && !["OPEN", "IN_PROGRESS", "PENDING_REVIEW"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
+  const dueWhere = input.filter?.due
+    ? input.filter.due.kind === "NO_DUE"
+      ? { dueAt: null }
+      : input.filter.due.kind === "OVERDUE"
+        ? { dueAt: { lt: new Date(input.filter.due.to!) } }
+        : input.filter.due.kind === "TODAY"
+          ? { dueAt: { gte: new Date(input.filter.due.from!), lt: new Date(input.filter.due.to!) } }
+          : { dueAt: { gte: new Date(input.filter.due.from!) } }
+    : {};
   const take = Math.min(Math.max(input.take ?? 25, 1), 50);
   const baseWhere = {
     tenantId: session.context.tenantId,
@@ -743,6 +752,8 @@ export async function listIncidentMyTaskPage(
     brandId: session.context.brandId || null,
     locationId: session.context.locationId,
     status: input.filter?.status ? input.filter.status : { in: [...resolvableIncidentStatuses] },
+    ...(input.filter?.priority ? { severity: input.filter.priority } : {}),
+    ...dueWhere,
     resolvedAt: null,
     OR: [
       { severity: { in: ["MEDIUM", "LOW"] } },

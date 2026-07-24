@@ -283,6 +283,7 @@ export async function listReceivingMyTaskPage(
     return { totalCount: 0, items: [], nextCursor: null };
   }
   if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.due && input.filter.due.kind !== "NO_DUE") return { totalCount: 0, items: [], nextCursor: null };
   if (input.filter?.status && input.filter.status !== "DRAFT") return { totalCount: 0, items: [], nextCursor: null };
 
   const take = Math.min(Math.max(input.take ?? receivingMyTaskPageSize, 1), 50);

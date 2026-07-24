@@ -5,7 +5,7 @@
 
 ## Decision
 
-The signed My Tasks cursor scope hash includes an explicit registered-source contract version. The current value is `my-tasks-registry-v4`. It must be bumped whenever an enrolled adapter’s eligibility predicate, source enrollment, ordering semantics, task projection, or queue filter contract changes.
+The signed My Tasks cursor scope hash includes an explicit registered-source contract version. The current value is `my-tasks-registry-v5`. It must be bumped whenever an enrolled adapter’s eligibility predicate, source enrollment, ordering semantics, task projection, or queue filter contract changes.
 
 ## Rationale and controls
 

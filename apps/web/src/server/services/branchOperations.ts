@@ -775,6 +775,7 @@ export async function listBranchOperationMyTaskPage(
       : [])
   ];
   if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
+  if (input.filter?.due && input.filter.due.kind !== "NO_DUE") return { totalCount: 0, items: [], nextCursor: null };
   if (input.filter?.status && !["SUBMITTED", "MANAGER_REVIEW", "RETURNED"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
   const filteredActionPredicates = input.filter?.status
     ? actionPredicates.filter((_predicate, index) => input.filter?.status === "RETURNED" ? index === 1 : index === 0)

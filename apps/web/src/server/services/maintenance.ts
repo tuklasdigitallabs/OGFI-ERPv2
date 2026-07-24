@@ -749,6 +749,15 @@ export async function listMaintenanceMyTaskPage(
     return { totalCount: 0, items: [], nextCursor: null };
   }
   if (input.filter?.status && !["OPEN", "IN_PROGRESS", "PENDING_VENDOR"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
+  const dueWhere = input.filter?.due
+    ? input.filter.due.kind === "NO_DUE"
+      ? { targetDueAt: null }
+      : input.filter.due.kind === "OVERDUE"
+        ? { targetDueAt: { lt: new Date(input.filter.due.to!) } }
+        : input.filter.due.kind === "TODAY"
+          ? { targetDueAt: { gte: new Date(input.filter.due.from!), lt: new Date(input.filter.due.to!) } }
+          : { targetDueAt: { gte: new Date(input.filter.due.from!) } }
+    : {};
   const take = Math.min(Math.max(input.take ?? 25, 1), 50);
   const baseWhere = {
     tenantId: session.context.tenantId,
@@ -756,6 +765,8 @@ export async function listMaintenanceMyTaskPage(
     brandId: session.context.brandId || null,
     locationId: session.context.locationId,
     status: input.filter?.status ? input.filter.status : { in: [...completableMaintenanceStatuses] },
+    ...(input.filter?.priority ? { priority: input.filter.priority } : {}),
+    ...dueWhere,
     completedAt: null,
     OR: [
       { priority: { in: ["MEDIUM", "LOW"] } },
