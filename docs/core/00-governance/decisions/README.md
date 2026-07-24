@@ -100,3 +100,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0114-ADMIN-LOCATIONS-REGISTRY-PAGINATION.md` — selected-company Locations registry, bounded options, and Organization Scope sequencing
 - `DEC-0115-ADMIN-BRANDS-REGISTRY-PAGINATION.md` — selected-company Brands registry, bounded options, and Department deferral
 - `DEC-0116-ADMIN-DEPARTMENTS-REGISTRY-PAGINATION.md` — selected-company Departments pagination with approved dependency-summary counts
+- `DEC-0117-ADMIN-APPROVAL-RULES-REGISTRY-PAGINATION.md` — bounded selected-company and tenant-wide Approval Rules registry with capped step preview

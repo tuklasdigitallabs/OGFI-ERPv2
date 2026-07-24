@@ -198,6 +198,13 @@ const coreAdminDepartmentPageInputSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
 });
 
+const coreAdminApprovalRulePageInputSchema = z.object({
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+});
+
 const updateRolePermissionsSchema = z.object({
   roleId: z.string().uuid(),
   reason: scopeReasonSchema,
@@ -1145,6 +1152,76 @@ async function listCoreAdminDepartmentPageAuthorized(
   };
 }
 
+export type CoreAdminApprovalRulePage = {
+  items: Array<{
+    id: string;
+    transactionType: string;
+    companyName: string;
+    priority: number;
+    isActive: boolean;
+    stepCount: number;
+    stepPreview: string[];
+  }>;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  activeItems: number;
+};
+
+async function listCoreAdminApprovalRulePageAuthorized(
+  session: SessionContext,
+  input: z.input<typeof coreAdminApprovalRulePageInputSchema> = {},
+): Promise<CoreAdminApprovalRulePage> {
+  const values = coreAdminApprovalRulePageInputSchema.parse(input);
+  const query = values.query.toLowerCase();
+  const where: Prisma.ApprovalRuleWhereInput = {
+    tenantId: session.context.tenantId,
+    OR: [{ companyId: session.context.companyId }, { companyId: null }],
+    ...(values.status ? { isActive: values.status === "ACTIVE" } : {}),
+    ...(query
+      ? { transactionType: { contains: query, mode: "insensitive" as const } }
+      : {}),
+  };
+  const [totalItems, activeItems, rules] = await Promise.all([
+    prisma.approvalRule.count({ where }),
+    prisma.approvalRule.count({ where: { ...where, isActive: true } }),
+    prisma.approvalRule.findMany({
+      where,
+      select: {
+        id: true,
+        transactionType: true,
+        priority: true,
+        isActive: true,
+        company: { select: { legalName: true, tradingName: true } },
+        _count: { select: { steps: true } },
+        steps: {
+          orderBy: { stepOrder: "asc" },
+          take: 3,
+          select: { stepOrder: true, approverType: true },
+        },
+      },
+      orderBy: [{ isActive: "desc" }, { priority: "asc" }, { id: "asc" }],
+      skip: (values.page - 1) * values.pageSize,
+      take: values.pageSize,
+    }),
+  ]);
+  return {
+    items: rules.map((rule) => ({
+      id: rule.id,
+      transactionType: rule.transactionType,
+      companyName: rule.company?.tradingName ?? rule.company?.legalName ?? "Tenant-wide",
+      priority: rule.priority,
+      isActive: rule.isActive,
+      stepCount: rule._count.steps,
+      stepPreview: rule.steps.map((step) => `Step ${step.stepOrder}: ${step.approverType}`),
+    })),
+    page: values.page,
+    pageSize: values.pageSize,
+    totalItems,
+    activeItems,
+  };
+}
+
 export async function listCoreAdminRolePage(
   session: SessionContext,
   input: z.input<typeof coreAdminRolePageInputSchema> = {},
@@ -1209,6 +1286,16 @@ export async function listCoreAdminDepartmentPage(
   return listCoreAdminDepartmentPageAuthorized(session, input);
 }
 
+export async function listCoreAdminApprovalRulePage(
+  session: SessionContext,
+  input: z.input<typeof coreAdminApprovalRulePageInputSchema> = {},
+) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  return listCoreAdminApprovalRulePageAuthorized(session, input);
+}
+
 export async function getCoreAdminOverview(
   session: SessionContext,
   userPageInput: z.input<typeof coreAdminUserPageInputSchema> = {},
@@ -1216,24 +1303,25 @@ export async function getCoreAdminOverview(
   brandPageInput: z.input<typeof coreAdminBrandPageInputSchema> = {},
   locationPageInput: z.input<typeof coreAdminLocationPageInputSchema> = {},
   departmentPageInput: z.input<typeof coreAdminDepartmentPageInputSchema> = {},
+  approvalRulePageInput: z.input<typeof coreAdminApprovalRulePageInputSchema> = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const [userPage, rolePage, roleOptions, brandPage, locationPage, departmentPage] = await Promise.all([
+  const [userPage, rolePage, roleOptions, brandPage, locationPage, departmentPage, approvalRulePage] = await Promise.all([
     listCoreAdminUserPageAuthorized(session, userPageInput),
     listCoreAdminRolePageAuthorized(session, rolePageInput),
     listCoreAdminRoleOptionsAuthorized(session),
     listCoreAdminBrandPageAuthorized(session, brandPageInput),
     listCoreAdminLocationPageAuthorized(session, locationPageInput),
     listCoreAdminDepartmentPageAuthorized(session, departmentPageInput),
+    listCoreAdminApprovalRulePageAuthorized(session, approvalRulePageInput),
   ]);
 
   const [
     tenant,
     companies,
-    approvalRules,
     recentAuditEvents,
   ] = await Promise.all([
     prisma.tenant.findFirst({
@@ -1250,19 +1338,6 @@ export async function getCoreAdminOverview(
         id: session.context.companyId,
       },
       orderBy: { legalName: "asc" },
-    }),
-    prisma.approvalRule.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        OR: [{ companyId: session.context.companyId }, { companyId: null }],
-      },
-      include: {
-        company: true,
-        steps: {
-          orderBy: { stepOrder: "asc" },
-        },
-      },
-      orderBy: [{ isActive: "desc" }, { priority: "asc" }],
     }),
     prisma.auditEvent.findMany({
       where: {
@@ -1302,18 +1377,11 @@ export async function getCoreAdminOverview(
     departmentPage,
     locations: locationPage.items,
     locationPage,
-    approvalRules: approvalRules.map((rule) => ({
-      id: rule.id,
-      transactionType: rule.transactionType,
-      companyName:
-        rule.company?.tradingName ?? rule.company?.legalName ?? "Tenant-wide",
-      priority: rule.priority,
-      isActive: rule.isActive,
-      stepCount: rule.steps.length,
-      stepSummary: rule.steps
-        .map((step) => `Step ${step.stepOrder}: ${step.approverType}`)
-        .join(", "),
+    approvalRules: approvalRulePage.items.map((rule) => ({
+      ...rule,
+      stepSummary: rule.stepPreview.join(", "),
     })),
+    approvalRulePage,
     recentAuditEvents: recentAuditEvents.map((event) => ({
       id: event.id,
       eventType: event.eventType,

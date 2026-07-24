@@ -239,6 +239,16 @@ export default async function CoreAdministrationPage({
   const normalizedDepartmentPageSize = Number.isFinite(departmentPageSize)
     ? Math.min(Math.max(departmentPageSize, 10), 100)
     : 25;
+  const approvalRuleQuery = getSearchParam(params, "approvalRuleQuery")?.trim() ?? "";
+  const approvalRuleStatus = getSearchParam(params, "approvalRuleStatus");
+  const approvalRulePage = Number.parseInt(getSearchParam(params, "approvalRulePage") ?? "1", 10);
+  const approvalRulePageSize = Number.parseInt(getSearchParam(params, "approvalRulePageSize") ?? "25", 10);
+  const normalizedApprovalRulePage = Number.isFinite(approvalRulePage)
+    ? Math.min(Math.max(approvalRulePage, 1), 10_000)
+    : 1;
+  const normalizedApprovalRulePageSize = Number.isFinite(approvalRulePageSize)
+    ? Math.min(Math.max(approvalRulePageSize, 10), 100)
+    : 25;
   const auditFilters: CoreAdminAuditEventFilters = {};
   const auditQuery = getSearchParam(params, "q");
   const auditEventType = getSearchParam(params, "eventType");
@@ -326,6 +336,13 @@ export default async function CoreAdministrationPage({
       ...(departmentStatus && ["ACTIVE", "INACTIVE", "ARCHIVED"].includes(departmentStatus)
         ? { status: departmentStatus as "ACTIVE" | "INACTIVE" | "ARCHIVED" }
         : {})
+    }, {
+      page: normalizedApprovalRulePage,
+      pageSize: normalizedApprovalRulePageSize,
+      query: approvalRuleQuery,
+      ...(approvalRuleStatus && ["ACTIVE", "INACTIVE"].includes(approvalRuleStatus)
+        ? { status: approvalRuleStatus as "ACTIVE" | "INACTIVE" }
+        : {})
     }),
     listCoreAdminBrandOptions(session),
     listCoreAdminLocationOptions(session),
@@ -344,7 +361,7 @@ export default async function CoreAdministrationPage({
   const auditNextPageHref = `/admin?${auditNextPageParams.toString()}`;
   const activeUsers = overview.userPage.activeItems;
   const activeRoles = overview.rolePage.activeItems;
-  const activeRules = overview.approvalRules.filter((rule) => rule.isActive).length;
+  const activeRules = overview.approvalRulePage.activeItems;
   const companyLocations = overview.locationPage;
   const highAccessRoleCount = overview.rolePage.highAccessItems;
 
@@ -1206,8 +1223,23 @@ export default async function CoreAdministrationPage({
             </div>
             <Badge tone="info">{activeRules} active</Badge>
           </div>
+          <form className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+            <input type="hidden" name="tab" value="approval-rules" />
+            <input className="rounded-md border border-slate-300 px-3 py-2" name="approvalRuleQuery" defaultValue={approvalRuleQuery} placeholder="Search transaction type" />
+            <select className="rounded-md border border-slate-300 px-3 py-2" name="approvalRuleStatus" defaultValue={approvalRuleStatus ?? ""}>
+              <option value="">All statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+            <button type="submit" className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white">Apply filters</button>
+          </form>
           <div className="divide-y divide-slate-100">
-            {overview.approvalRules.map((rule) => (
+            {overview.approvalRules.length === 0 ? (
+              <div className="ogfi-record-summary p-4">
+                <p className="font-semibold text-slate-950">No approval rules match</p>
+                <p className="mt-1 text-sm text-slate-600">Adjust the filters or configure a rule for the selected company.</p>
+              </div>
+            ) : overview.approvalRules.map((rule) => (
               <div key={rule.id} data-testid="admin-rule-row" className="ogfi-list-row">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -1221,7 +1253,10 @@ export default async function CoreAdministrationPage({
                 <p className="mt-3 text-sm text-slate-600">
                   Priority {rule.priority} · {rule.stepCount} step{rule.stepCount === 1 ? "" : "s"}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">{rule.stepSummary}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {rule.stepSummary || "No step preview available"}
+                  {rule.stepCount > rule.stepPreview.length ? ` · +${rule.stepCount - rule.stepPreview.length} more steps` : ""}
+                </p>
                 <ButtonLink
                   href={`/admin/approval-rules/${rule.id}`}
                   tone="ghost"
@@ -1231,6 +1266,22 @@ export default async function CoreAdministrationPage({
                 </ButtonLink>
               </div>
             ))}
+          </div>
+          <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+            <span>Showing {overview.approvalRules.length} of {overview.approvalRulePage.totalItems} approval rules</span>
+            <PaginationBar
+              page={overview.approvalRulePage.page}
+              pageSize={overview.approvalRulePage.pageSize}
+              totalItems={overview.approvalRulePage.totalItems}
+              itemLabel="approval rules"
+              controlClassName="min-h-10"
+              getPageHref={(nextPage) => {
+                const next = new URLSearchParams({ tab: "approval-rules", approvalRulePage: String(nextPage), approvalRulePageSize: String(overview.approvalRulePage.pageSize) });
+                if (approvalRuleQuery) next.set("approvalRuleQuery", approvalRuleQuery);
+                if (approvalRuleStatus) next.set("approvalRuleStatus", approvalRuleStatus);
+                return `/admin?${next.toString()}`;
+              }}
+            />
           </div>
         </Panel>
         ) : null}

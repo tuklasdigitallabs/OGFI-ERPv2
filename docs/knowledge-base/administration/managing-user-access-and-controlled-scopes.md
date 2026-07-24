@@ -34,6 +34,12 @@ Department registry rows are selected-company scoped and paginated. Their
 budget, budget-line, and cost-center counts are read-only related-record
 summaries; employee-assignment impact is deferred.
 
+Approval Rules is also paginated. It includes rules for the selected company
+and tenant-wide rules, shows bounded transaction-type/status filters, and keeps
+only a capped first-three-step preview in the list. Open View Rule for the full
+authorized routing definition; the list does not grant mutation or approval
+authority.
+
 `Admin` → `Core Administration` → `Users` → open a user
 
 If your account has Core Administration access but not `Administer tenant-wide roles`, Core Administration shows an explicit restricted state and loads no users, roles, scope, or audit records. The same restricted boundary applies when tenant-role authority is present but selected-company Manage scope is absent. Ask an independent administrator to grant the documented authority and selected-company scope; neither permission alone is a substitute.

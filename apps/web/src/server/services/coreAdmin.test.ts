@@ -485,6 +485,19 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).not.toContain("employeeAssignments: true");
   });
 
+  test("approval rules use bounded selected-company and tenant-wide pagination with capped step previews", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    expect(serviceSource).toContain("coreAdminApprovalRulePageInputSchema");
+    expect(serviceSource).toContain("listCoreAdminApprovalRulePageAuthorized");
+    expect(serviceSource).toContain("listCoreAdminApprovalRulePage");
+    expect(serviceSource).toContain("OR: [{ companyId: session.context.companyId }, { companyId: null }]");
+    expect(serviceSource).toContain('orderBy: [{ isActive: "desc" }, { priority: "asc" }, { id: "asc" }]');
+    expect(serviceSource).toContain("take: 3");
+    expect(serviceSource).toContain("_count: { select: { steps: true } }");
+    expect(serviceSource).toContain("stepPreview");
+    expect(serviceSource).not.toContain("include: {\n        company: true,\n        steps:");
+  });
+
   test("admin user access lifecycle forms use modal entry surfaces", () => {
     const detailPageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),

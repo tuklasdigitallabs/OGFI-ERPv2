@@ -26,6 +26,7 @@
 - Organization Scope Locations now uses selected-company server filters, deterministic pagination, and a bounded active location catalog for onboarding. Company remains a selected-company summary.
 - Organization Scope Brands now uses selected-company server filters, deterministic pagination, and a bounded active brand catalog for location creation.
 - Organization Scope Departments now uses selected-company server filters and deterministic pagination. Rows show read-only budget, budget-line, and cost-center related-record counts; employee-assignment impact remains deferred.
+- Core Administration Approval Rules now uses bounded transaction-type/status filters and deterministic pagination across selected-company and tenant-wide rules, with a capped first-three-step preview and full-detail navigation.
 - Acceptance traceability now maps each Phase I and Phase 1.5 UAT workflow to current automated evidence, manual proof still required, and remaining release gates.
 - Pilot deployment hardening now keeps Redis/worker out of the default no-queueing runtime, localhost-binds internal development service ports, runs app containers as non-root in the Docker examples, and provides repeatable PostgreSQL backup/restore-check helper commands for release evidence.
 - A manual staging release rehearsal workflow now runs the release gates, uploads release evidence artifacts, and provides guarded staging deploy/rollback scripts for environments with approved SSH secrets.

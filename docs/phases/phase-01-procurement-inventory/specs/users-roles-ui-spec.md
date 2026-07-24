@@ -64,6 +64,12 @@ disclosure. Departments use a bounded registry and retain read-only dependency s
 
 ## 2. User detail requirements
 
+Implementation note (`DEC-0117`): Approval Rules uses a bounded selected-company
+plus tenant-wide registry with transaction-type/status filters and deterministic
+pagination. Rows show active state, priority, exact step count, and at most the
+first three step/approver-type labels; full routing remains on the authorized
+rule detail route.
+
 Implementation note (`DEC-0116`): Departments use a selected-company server
 registry with bounded filters and paging. Rows retain read-only budget,
 budget-line, and cost-center related-record counts; employee-assignment volume

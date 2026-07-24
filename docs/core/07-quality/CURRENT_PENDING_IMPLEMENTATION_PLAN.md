@@ -474,6 +474,18 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Organization UI now provides Department search, status filtering, empty-state copy, responsive record summaries, and pagination while Company remains a single selected-company summary. The visible Organization Scope header no longer describes Brand/Department registries as pending contracts.
 - Core Admin focused coverage passes 21/21; full web regression passes 1,297 tests with 301 skipped and one TODO; authorization-manifest tests pass 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL authorization/count/query-plan evidence, and hosted recovery/deployment gates remain open. Organization Scope and Phase I remain in progress.
 
+### DEC-0117 Administration Approval Rules registry pagination decision — July 24, 2026
+
+- Accepted a bounded Approval Rules registry with transaction-type search, active/inactive filtering, exact totals, page sizes 10–100, and deterministic `isActive DESC, priority ASC, id ASC` ordering.
+- Preserve tenant-wide plus selected-company visibility under the existing Core Admin, tenant-role, and selected-company Manage guards. Rows retain exact step count and an allowlisted first-three step/approver-type preview because the current visible cards promise that context; full steps and policy details remain on the independently authorized detail route.
+- Decision record: `docs/core/00-governance/decisions/DEC-0117-ADMIN-APPROVAL-RULES-REGISTRY-PAGINATION.md`. Implementation is the next Administration slice; no Administration or Phase I completion is claimed.
+
+### DEC-0117 Administration Approval Rules registry implementation checkpoint — July 24, 2026
+
+- Replaced the eager Approval Rules overview query with a bounded selected-company plus tenant-wide page contract. Transaction-type search and active/inactive filters share the exact tenant/company-or-null predicate for counts and rows; ordering is deterministic by `isActive DESC, priority ASC, id ASC`.
+- The visible registry retains exact step counts and only the first three ordered step/approver-type labels, disclosing additional steps and routing users to the independently authorized detail route. Full step payloads and mutation authority remain excluded from the registry.
+- Core Admin focused coverage passes 22/22; full web regression passes 1,298 tests with 301 skipped and one TODO; authorization-manifest tests pass 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL scope/query-plan evidence, and hosted deployment/recovery gates remain open. Administration and Phase I remain in progress.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
