@@ -89,6 +89,25 @@ describe("quotation recommendation rules", () => {
     expect(workspaceSource).toContain('sourceType="SUPPLIER_QUOTATION"');
   });
 
+  test("supplier quote export preserves commercial component and accreditation columns", () => {
+    const exportSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/quotes/export/route.ts"),
+      "utf8",
+    );
+    for (const column of [
+      "Subtotal Amount",
+      "Tax Amount",
+      "Discount Amount",
+      "Freight Amount",
+      "Other Charges Amount",
+      "Supplier Accreditation",
+    ]) {
+      expect(exportSource).toContain(column);
+    }
+    expect(exportSource).toContain("quote.subtotalAmount");
+    expect(exportSource).toContain("quote.supplierAccreditationStatus");
+  });
+
   test("initial recommendation approval routing is normalized and fail-closed", () => {
     const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
     const start = source.indexOf("export async function submitQuotationRecommendation");

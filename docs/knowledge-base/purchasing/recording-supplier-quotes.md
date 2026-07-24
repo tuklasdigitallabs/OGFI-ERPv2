@@ -12,4 +12,6 @@ Recording a supplier quote only preserves a sourcing option. It does not select 
 
 If no approved requests or supplier/unit-of-measure options are available, resolve the source configuration or approval first. The task remains scoped to the current company and location.
 
+Use `Export CSV` for a scoped line-level comparison extract. Each row includes the quote line amount plus the server-calculated subtotal, tax, discount, freight, other charges, total, and supplier accreditation snapshot; a quote with no lines still appears as one header-level row.
+
 On `Quotes`, select one approved request in the comparison workspace to review its recorded supplier totals, commercial components, line availability, lead time, terms, accreditation snapshot, and recommendation status. Use `Record Recommendation` only when the selected supplier and required justifications are ready; submission starts approval and does not issue a Purchase Order. Use `Add quotation evidence` to attach a supplier document when available. The shared controlled-evidence service scans uploads and keeps them unavailable until clean; this optional evidence does not change quote totals, recommendation status, or Purchase Order state.

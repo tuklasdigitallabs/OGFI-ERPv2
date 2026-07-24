@@ -42,6 +42,8 @@
 
 - PR and PO aging
 - RFQ / quotation comparison queue
+
+Supplier Quotes CSV export is line-grain: one row per recorded quotation line, with a header-only fallback row for quotes without lines. Each row repeats the server-calculated quote commercial snapshot (`Subtotal Amount`, `Tax Amount`, `Discount Amount`, `Freight Amount`, `Other Charges Amount`, and `Quote Total Amount`) and the supplier accreditation snapshot so exported comparison values reconcile to the Quotes workspace. Legacy rows use the documented zero-charge fallback already applied by the scoped quote projection; export remains permission- and selected-location-scoped with standard export audit metadata.
 - Delivery schedule and overdue receiving
 - Transfer queue
 - Supplier exceptions
