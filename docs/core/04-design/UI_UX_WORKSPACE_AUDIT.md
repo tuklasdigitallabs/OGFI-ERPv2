@@ -137,7 +137,7 @@ Before a workspace is marked visually complete, verify the following:
 
 | Priority | Workspace | Severity | Why First |
 |---:|---|---:|---|
-| 1 | Approvals | Critical | Fake tabs and repeated decision forms can cause wrong decisions and poor UAT. |
+| 1 | Approvals | High | Normalized routing has real URL-backed tabs and one decision composer, but the feature-disabled compatibility path still loads an unbounded legacy queue and client-slices it. |
 | 2 | Receiving | High | Queue links to a dedicated `/receiving/new` full-page draft task with a responsive line editor and persistent draft action. |
 | 3 | Workforce | Critical | One route contains too many unrelated operational jobs. |
 | 4 | FinanceSubworkspace / AP | Critical | Monolithic shared component stacks AP, GL, bank/cash queues and repeated action forms. |
