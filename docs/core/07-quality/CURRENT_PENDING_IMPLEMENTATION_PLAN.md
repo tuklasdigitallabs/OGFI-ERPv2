@@ -203,6 +203,7 @@ Direct web-mounted `local-private` storage remains suitable for local developmen
 - The same parity guard now runs for ordinary Stock Count list and paginated-page rows before mapping the legacy compatibility projection. No dashboard or Count Variance authority changed; dashboard attempt aggregates and full attempt-only read cutover remain pending. Focused coverage remains 33/33, with live PostgreSQL/query-plan evidence still required.
 
 - Independent dashboard review rejects per-candidate parity calls: they would add N+1 raw digest scans and still leave the unbounded `varianceCount` aggregate unverified. A single server-owned attempt-only aggregate/predicate contract is now implemented and reused for total and bounded candidates, with current-attempt fail-closed scope, status × blind-count × actor-lineage filtering, deterministic ordering, and no dashboard mutation. Focused dashboard/workflow tests pass 34/34; web typecheck and lint pass. PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)`/representative-volume evidence, disposable-database execution, and hosted/browser gates remain open before production enablement or Count Variance activation; the dashboard is not yet an authoritative Count Variance source.
+- The authorization-surface baseline now declares the exported parity guard, and the authorization manifest passes 20/20. This closes baseline drift only; it does not replace the pending disposable-database, query-plan, browser, or hosted production gates.
 
 ### DEC-0097 Receiving accepted-value filter deferral checkpoint — July 24, 2026
 

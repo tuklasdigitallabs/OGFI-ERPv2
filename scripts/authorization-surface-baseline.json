@@ -33098,27 +33098,6 @@
     ]
   },
   {
-    "id": "server/services/receiving.ts#listReceivingRegisterFilterOptions",
-    "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.receivingView",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "session-delegated-by-caller",
-      "live-permission",
-      "tenant-company-scope-query"
-    ],
-    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
-  },
-  {
     "id": "server/services/receiving.ts#getGoodsReceipt",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.receivingView",
@@ -33248,6 +33227,27 @@
     "id": "server/services/receiving.ts#listReceivingMyTaskPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.receivingPost | permissions.receivingView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/receiving.ts#listReceivingRegisterFilterOptions",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.receivingView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -34688,6 +34688,27 @@
       "ApprovalInstance",
       "AuditEvent"
     ]
+  },
+  {
+    "id": "server/services/stockCounts.ts#assertStockCountAttemptLineParity",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
   },
   {
     "id": "server/services/stockCounts.ts#buildStockCountExportRows",
