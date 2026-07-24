@@ -266,7 +266,7 @@ Until this slice is implemented, evidence fields remain references to external p
 - Submitted counts can be reviewed or returned for recount by a different authorized reviewer; the count creator and users who entered count lines cannot self-review.
 - Count actions are audited and do not create inventory movements or update stock balances.
 - Count export includes line-level item, lot/expiry, counted quantity, reviewer, and generated-adjustment context; system quantity and variance fields remain reviewer-only to preserve blind-count controls.
-- Reviewed count variances can generate one linked `COUNT_VARIANCE` Stock Adjustment from non-zero variance lines; approval, posting, and reversal then follow the controlled Stock Adjustment workflow. Direct count-variance movement posting, materiality thresholds, evidence enforcement, and backdate controls remain future controlled transitions.
+- Reviewed count variances are intended to generate one linked `COUNT_VARIANCE` Stock Adjustment from non-zero variance lines after the immutable recount recovery and lineage gates close; the generation action is currently disabled. Approval, posting, and reversal then follow the controlled Stock Adjustment workflow. Direct count-variance movement posting, materiality thresholds, evidence enforcement, and backdate controls remain future controlled transitions.
 
 **Acceptance criteria**
 - Count captures location, count type, cutoff / freeze approach, counters, and scope.
@@ -274,7 +274,7 @@ Until this slice is implemented, evidence fields remain references to external p
 - System calculates quantity variance for review; value variance remains future costing/reporting work.
 - Material variance requires reason and approval, with stock-count self-review blocked before a linked adjustment is generated.
 - Recount preserves original evidence.
-- Reviewed count variances can generate one linked `COUNT_VARIANCE` Stock Adjustment from non-zero variance lines. The generated adjustment must be approved and separately posted before source-linked stock movements are created.
+- Reviewed count variances are intended to generate one linked `COUNT_VARIANCE` Stock Adjustment from non-zero variance lines after the immutable recount recovery and lineage gates close; generation is currently disabled. The generated adjustment must be approved and separately posted before source-linked stock movements are created.
 
 ### Epic K — Wastage and Adjustment
 

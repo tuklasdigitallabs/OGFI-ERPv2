@@ -302,7 +302,7 @@ Show:
 - Expected quantity may be hidden from counters in blind-count mode.
 - Submitted count cannot be edited without authorized reopening.
 - Variance review requires a clear comparison of expected, actual, value impact, and explanation.
-- Reviewed non-zero variance lines may generate one linked `COUNT_VARIANCE` Stock Adjustment; the count page itself does not post inventory movements.
+- Reviewed non-zero variance lines are intended to generate one linked `COUNT_VARIANCE` Stock Adjustment after the recovery and lineage gates close; the generation action is currently disabled and the count page itself does not post inventory movements.
 
 ---
 

@@ -208,7 +208,7 @@ Required line:
 
 Validation:
 - Authorized reason and scope.
-- Reviewed stock counts can generate one linked `COUNT_VARIANCE` adjustment; direct count-variance movement posting remains deferred.
+- Reviewed stock counts remain eligible for a future linked `COUNT_VARIANCE` adjustment, but generation is currently disabled pending immutable recount recovery, attempt-lineage migration, and production evidence under `DEC-0098`; direct count-variance movement posting remains deferred.
 - Opening balance is blocked in this slice and requires a separate cutover decision.
 - Quantity cannot be zero.
 - Decrease does not reduce stock until approval is complete and a separate authorized posting action succeeds.

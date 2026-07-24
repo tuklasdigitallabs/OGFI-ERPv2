@@ -212,7 +212,7 @@ After required approval:
 - count becomes `posted`;
 - all counts, approvers, reasons, and action timestamps remain auditable.
 
-Implemented Phase I note under `DEC-0026`: reviewed count variances generate one linked `COUNT_VARIANCE` Stock Adjustment from non-zero count lines. The count page does not post inventory. The generated adjustment must follow the Stock Adjustment approval and separate posting workflow before `ADJUSTMENT_IN` / `ADJUSTMENT_OUT` movements update inventory. Direct `COUNT_VARIANCE_IN` / `COUNT_VARIANCE_OUT` posting remains deferred.
+`DEC-0026` defines the controlled bridge, but Count Variance generation is currently disabled pending immutable recount recovery, attempt-lineage migration, and production evidence under `DEC-0098`. Once enabled, reviewed count variances may generate one linked `COUNT_VARIANCE` Stock Adjustment from non-zero count lines; the count page does not post inventory, and the generated adjustment must follow the Stock Adjustment approval and separate posting workflow before `ADJUSTMENT_IN` / `ADJUSTMENT_OUT` movements update inventory. Direct `COUNT_VARIANCE_IN` / `COUNT_VARIANCE_OUT` posting remains deferred.
 
 When a count session is configured to freeze movements and is active for an inventory location, receiving, transfer, wastage, and adjustment posting for that locked location is blocked at the inventory movement posting boundary until the count is reviewed, cancelled, or otherwise no longer active.
 
