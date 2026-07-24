@@ -439,7 +439,11 @@ export default async function ApprovalDetailPage({
                   Add Comment
                 </button>
               </form>
-            ) : null}
+            ) : (
+              <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                Comments are read-only here for this approval type. Add discussion in the authoritative source workspace.
+              </p>
+            )}
             <div className="mt-4 space-y-3">
               {approval.comments.length === 0 ? (
                 <p className="text-sm text-slate-500">No comments yet.</p>
@@ -458,14 +462,20 @@ export default async function ApprovalDetailPage({
           <Panel className="ogfi-detail-card">
             <h2 className="text-lg font-bold text-slate-950">Audit History</h2>
             <p className="text-sm text-slate-500">Append-only activity for this request</p>
-            <ol className="mt-4 space-y-4">
-              {approval.auditEvents.map((event) => (
-                <li key={event.id} className="border-l-2 border-blue-200 pl-3">
-                  <p className="text-sm font-medium text-slate-950">{event.eventType}</p>
-                  <p className="text-xs text-slate-500">{event.occurredAt}</p>
-                </li>
-              ))}
-            </ol>
+            {approval.auditEvents.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                No audit events recorded yet.
+              </p>
+            ) : (
+              <ol className="mt-4 space-y-4">
+                {approval.auditEvents.map((event) => (
+                  <li key={event.id} className="border-l-2 border-blue-200 pl-3">
+                    <p className="text-sm font-medium text-slate-950">{event.eventType}</p>
+                    <p className="text-xs text-slate-500">{event.occurredAt}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
           </Panel>
         </div>
       </div>

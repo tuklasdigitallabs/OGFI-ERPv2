@@ -757,6 +757,17 @@ describe("multi-step approval advancement", () => {
     expect(pageSource).not.toContain('label: "Audit"');
   });
 
+  test("approval detail explains read-only comments and empty audit history", () => {
+    const detailSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
+      "utf8"
+    );
+
+    expect(detailSource).toContain("Comments are read-only here for this approval type");
+    expect(detailSource).toContain("authoritative source workspace");
+    expect(detailSource).toContain("No audit events recorded yet.");
+  });
+
   test("balance closure serializes with receiving and uses quantity CAS", () => {
     const source = extractFunctionSource(
       serviceSource,

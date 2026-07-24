@@ -56,6 +56,8 @@ Always show:
 - Audit summary
 - Any policy warning: unbudgeted, emergency, discrepancy, high-value, blocked supplier, variance
 
+For approval types without an approval-owned discussion writer, the detail surface must state that comments are read-only there and direct users to the authoritative source workspace. Empty audit history must have an explicit empty state rather than an unexplained blank panel.
+
 ### Primary actions
 
 - Approve
