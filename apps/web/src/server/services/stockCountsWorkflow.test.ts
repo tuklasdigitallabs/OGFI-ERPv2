@@ -347,6 +347,17 @@ describe("Stock Count workflow integrity", () => {
     expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
+  test("fails closed when recount is requested before recovery is enabled", async () => {
+    await expect(reviewStockCount(actionForm({
+      reviewAction: "RECOUNT",
+      reviewNotes: "Recount requested"
+    }))).rejects.toThrow("STOCK_COUNT_RECOUNT_DISABLED");
+    expect(mocks.prisma.stockCountSession.findFirst).not.toHaveBeenCalled();
+    expect(mocks.lockInventoryLocationForPosting).not.toHaveBeenCalled();
+    expect(mocks.tx.stockCountSession.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
   test("serializes cancellation behind the location/count locks and withholds audit on CAS conflict", async () => {
     mocks.tx.$queryRaw.mockResolvedValueOnce([
       lockedCount({ status: "IN_PROGRESS" })

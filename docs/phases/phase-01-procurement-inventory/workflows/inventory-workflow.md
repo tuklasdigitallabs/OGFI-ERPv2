@@ -121,7 +121,7 @@ A posted movement is immutable. Corrections use reversal and a new valid movemen
 7. Item and location must be active and within user scope.
 8. Every movement needs source-document lineage and actor / timestamp.
 9. Users cannot alter posted quantities or backdate without explicit controls.
-10. Count results preserve original evidence and recounts.
+10. Count results preserve original evidence; immutable recounts remain a gated future recovery workflow.
 
 ---
 

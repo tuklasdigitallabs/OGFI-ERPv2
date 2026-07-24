@@ -1009,6 +1009,8 @@ const actionFeedbackMessages: Record<string, string> = {
   STOCK_COUNT_NOT_FOUND: "This count is no longer available.",
   STOCK_COUNT_NOT_REVIEWED_FOR_ADJUSTMENT:
     "Only reviewed counts can generate a variance adjustment.",
+  STOCK_COUNT_RECOUNT_DISABLED:
+    "Recount is temporarily unavailable while immutable attempt recovery is being completed. No count evidence was changed.",
   STOCK_COUNT_HAS_NO_VARIANCE_LINES:
     "This reviewed count has no variance lines to adjust.",
   STOCK_COUNT_NOT_OPEN_FOR_ENTRY:

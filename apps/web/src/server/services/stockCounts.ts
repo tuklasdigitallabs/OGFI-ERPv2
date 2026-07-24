@@ -1723,9 +1723,12 @@ export async function reviewStockCount(formData: FormData) {
   await requirePermission(session, permissions.stockCountReview);
   const values = reviewStockCountSchema.parse(Object.fromEntries(formData));
 
+  if (values.reviewAction === "RECOUNT") {
+    throw new Error("STOCK_COUNT_RECOUNT_DISABLED");
+  }
+
   const target = await findScopedStockCountLocation(session, values.id);
-  const nextStatus =
-    values.reviewAction === "RECOUNT" ? "RECOUNT_REQUESTED" : "REVIEWED";
+  const nextStatus = "REVIEWED";
   await prisma.$transaction(async (tx) => {
     await lockInventoryLocationForPosting(
       tx,
@@ -1803,10 +1806,7 @@ export async function reviewStockCount(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         actorUserId: session.user.id,
-        eventType:
-          values.reviewAction === "RECOUNT"
-            ? "stock_count.recount_requested"
-            : "stock_count.reviewed",
+        eventType: "stock_count.reviewed",
         entityType: "StockCountSession",
         entityId: count.id,
         beforeData: { status: "SUBMITTED" },

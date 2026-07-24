@@ -61,4 +61,9 @@ describe("stock count detail action eligibility", () => {
     expect(source).toContain("Inventory posting for");
     expect(source).toContain("Receiving, transfer, wastage, and adjustment posting");
   });
+
+  it("keeps recount visibly unavailable until immutable recovery is verified", () => {
+    expect(source).toContain("Request recount (temporarily unavailable)");
+    expect(source).toContain("Recount recovery is disabled until immutable attempt");
+  });
 });

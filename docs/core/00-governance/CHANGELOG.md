@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Stock Count Recount Safety Gate
+
+- Disabled the legacy mutable recount action at both the server and visible form boundary. Requests now fail closed without locks, audit, or data mutation until immutable attempt recovery is production-verified.
+
 ## 2026-07-24 — Stock Count Current-Attempt Adjustment Read Lineage
 
 - Stock Count detail and CSV adjustment context now follows the selected immutable current attempt, preventing stale prior-attempt adjustment references from being displayed as current.

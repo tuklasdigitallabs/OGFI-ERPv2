@@ -460,8 +460,14 @@ export default async function CountDetailPage({
                       required
                     >
                       <option value="REVIEW">Mark reviewed</option>
-                      <option value="RECOUNT">Request recount</option>
+                      <option value="RECOUNT" disabled>
+                        Request recount (temporarily unavailable)
+                      </option>
                     </select>
+                    <span className="text-xs font-normal text-slate-500">
+                      Recount recovery is disabled until immutable attempt and
+                      adjustment-lineage safeguards are production-verified.
+                    </span>
                   </label>
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Review notes

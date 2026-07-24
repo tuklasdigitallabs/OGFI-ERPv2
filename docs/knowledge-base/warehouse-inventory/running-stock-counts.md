@@ -35,7 +35,7 @@ The dashboard does not currently publish a Count Variance card or exception task
 5. Enter counted quantities for each snapshot line.
 6. Save count entries.
 7. Select `Submit for Review` when all lines are counted.
-8. An authorized reviewer can mark the count reviewed or request a recount with notes.
+8. An authorized reviewer can mark the count reviewed with notes. Recount recovery is temporarily unavailable while immutable attempt safeguards are completed; the detail form explains this state.
 
 ## Expected result
 
@@ -50,7 +50,7 @@ The dashboard does not currently publish a Count Variance card or exception task
 - Do not treat reviewed variance as corrected stock.
 - Count Variance correction is not enabled. Do not attempt to create a replacement adjustment outside the documented recovery release.
 - Cancelled counts remain visible with cancellation reason and audit history.
-- Submitted counts cannot be edited through normal entry; request a recount instead.
+- Submitted counts cannot be edited through normal entry. Recount recovery is not currently available; do not attempt to overwrite the submitted evidence.
 - Access to a count or dashboard does not authorize review, approval, adjustment posting, or inventory movement. The source workflow checks that authority again.
 - Recount history and variance activation remain controlled release work. Do not use a reviewer view as evidence that stock has been corrected.
 
