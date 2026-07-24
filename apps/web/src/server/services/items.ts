@@ -155,6 +155,76 @@ const itemMasterPageInputSchema = z.object({
   pageSize: z.number().int().min(10).max(100).default(25),
 });
 
+const itemMasterOptionCatalogInputSchema = z.object({
+  kind: z.enum(["category", "uom", "item"]),
+  query: z.string().trim().max(120).default(""),
+  selectedIds: z.array(z.string().uuid()).max(20).default([]),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25)
+});
+
+export async function listItemMasterOptionCatalog(
+  session: SessionContext,
+  input: z.input<typeof itemMasterOptionCatalogInputSchema>
+) {
+  await assertAdminCanManageMasterData(session);
+  const values = itemMasterOptionCatalogInputSchema.parse(input);
+  const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+  const scope = { tenantId: session.context.tenantId, companyId: session.context.companyId };
+
+  if (values.kind === "category") {
+    const where = {
+      ...scope,
+      OR: [
+        ...(query ? [{ categoryCode: query }, { categoryName: query }] : []),
+        { id: { in: values.selectedIds } }
+      ],
+      AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
+    };
+    const total = await prisma.itemCategory.count({ where });
+    const rows = await prisma.itemCategory.findMany({ where, orderBy: [{ categoryName: "asc" }, { id: "asc" }], skip: (Math.min(values.page, Math.max(1, Math.ceil(total / values.pageSize))) - 1) * values.pageSize, take: values.pageSize });
+    const selected = values.selectedIds.length
+      ? await prisma.itemCategory.findMany({ where: { ...scope, id: { in: values.selectedIds } }, orderBy: { categoryName: "asc" } })
+      : [];
+    const options = [...selected, ...rows.filter((row) => !selected.some((item) => item.id === row.id))].map((row) => ({ id: row.id, code: row.categoryCode, label: row.categoryName, status: row.status }));
+    return { kind: values.kind, options, page: values.page, pageSize: values.pageSize, total, hasMore: total > options.length };
+  }
+
+  if (values.kind === "uom") {
+    const where = {
+      ...scope,
+      OR: [
+        ...(query ? [{ uomCode: query }, { uomName: query }] : []),
+        { id: { in: values.selectedIds } }
+      ],
+      AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
+    };
+    const total = await prisma.uom.count({ where });
+    const rows = await prisma.uom.findMany({ where, orderBy: [{ uomCode: "asc" }, { id: "asc" }], skip: (Math.min(values.page, Math.max(1, Math.ceil(total / values.pageSize))) - 1) * values.pageSize, take: values.pageSize });
+    const selected = values.selectedIds.length
+      ? await prisma.uom.findMany({ where: { ...scope, id: { in: values.selectedIds } }, orderBy: { uomCode: "asc" } })
+      : [];
+    const options = [...selected, ...rows.filter((row) => !selected.some((item) => item.id === row.id))].map((row) => ({ id: row.id, code: row.uomCode, label: row.uomName, status: row.status }));
+    return { kind: values.kind, options, page: values.page, pageSize: values.pageSize, total, hasMore: total > options.length };
+  }
+
+  const where = {
+    ...scope,
+    OR: [
+      ...(query ? [{ itemCode: query }, { itemName: query }] : []),
+      { id: { in: values.selectedIds } }
+    ],
+    AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
+  };
+  const total = await prisma.item.count({ where });
+  const rows = await prisma.item.findMany({ where, orderBy: [{ itemName: "asc" }, { id: "asc" }], skip: (Math.min(values.page, Math.max(1, Math.ceil(total / values.pageSize))) - 1) * values.pageSize, take: values.pageSize });
+  const selected = values.selectedIds.length
+    ? await prisma.item.findMany({ where: { ...scope, id: { in: values.selectedIds } }, orderBy: { itemName: "asc" } })
+    : [];
+  const options = [...selected, ...rows.filter((row) => !selected.some((item) => item.id === row.id))].map((row) => ({ id: row.id, code: row.itemCode, label: row.itemName, status: row.status }));
+  return { kind: values.kind, options, page: values.page, pageSize: values.pageSize, total, hasMore: total > options.length };
+}
+
 export async function listItemMasterData(
   session: SessionContext,
   input: z.input<typeof itemMasterPageInputSchema> = {},

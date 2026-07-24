@@ -60,6 +60,22 @@ describe("item master-data controls", () => {
     }
   });
 
+  test("option catalogs are bounded and preserve scoped selected values", () => {
+    const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
+    expect(source).toContain("listItemMasterOptionCatalog");
+    expect(source).toContain('pageSize: z.number().int().min(10).max(100)');
+    expect(source).toContain("selectedIds: z.array(z.string().uuid()).max(20)");
+    expect(source).toContain("hasMore: total > options.length");
+    expect(source).toContain('status: \"ACTIVE\" as const');
+  });
+
+  test("conversion reads fence all three related records to company scope", () => {
+    const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
+    expect(source).toContain("fromUom: {");
+    expect(source).toContain("toUom: {");
+    expect(source).toContain("item_uom_conversion.updated");
+  });
+
   test("controlled master-data classifications are rendered as dropdown options", () => {
     const page = readFileSync(
       path.resolve(__dirname, "../../app/(app)/items/page.tsx"),

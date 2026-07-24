@@ -7,3 +7,5 @@ Changing an item requires a reason and does not rewrite historical transactions 
 Categories, UOMs, and conversion setup are separate tabs. Their bounded-read and option-catalog improvements remain under implementation review; do not treat the Item Master page as evidence that the full Master Data workspace is production-ready.
 
 Conversion records are company-scoped through their item and both UOM relationships. The system rejects cross-company or inactive master-data relationships and requires distinct UOMs with a positive factor.
+
+The selector option catalog is being introduced as a bounded server-side lookup. Until all tabs migrate to it, conversion creation may be unavailable while the authoritative setup remains protected.

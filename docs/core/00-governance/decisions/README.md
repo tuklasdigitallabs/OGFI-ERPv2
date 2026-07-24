@@ -123,3 +123,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0137-ADMIN-RELEASE-BOARD-WORKSPACE.md` — separate latest/blocker/composer/history Release Board workspace
 - `DEC-0138-MASTER-DATA-ITEM-REGISTRY-PAGINATION.md` — bounded company-scoped Item Master registry search, filters, and pagination
 - `DEC-0139-MASTER-DATA-CONVERSION-SCOPE-FENCE.md` — tenant/company scope and active-record fences for item UOM conversions
+- `DEC-0140-MASTER-DATA-OPTION-CATALOG.md` — bounded scoped option-catalog foundation for category, UOM, and item selectors
