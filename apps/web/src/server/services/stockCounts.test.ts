@@ -178,6 +178,8 @@ describe("stock count foundation rules", () => {
       strings: readonly string[];
     };
     expect(String(query.strings.join(""))).toContain('sc."currentAttemptId" IS NOT NULL');
+    expect(String(query.strings.join(""))).toContain('JOIN "StockCountAttempt"');
+    expect(String(query.strings.join(""))).toContain('"stockCountSessionId" = sc.id');
   });
 
   test("returns only assigned first-pass start, entry, and submit tasks with bounded minimal reads", async () => {
