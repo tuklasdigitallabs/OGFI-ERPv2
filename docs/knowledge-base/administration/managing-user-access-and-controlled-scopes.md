@@ -30,6 +30,10 @@ Sensitive roles are also not granted through quick assignment. Admin, approver, 
 
 ## Navigation Path
 
+If Core Administration is still loading, wait for the register to appear. If a
+read fails, use Try again; the error state does not expose records or grant a
+fallback authority.
+
 Department registry rows are selected-company scoped and paginated. Their
 budget, budget-line, and cost-center counts are read-only related-record
 summaries; employee-assignment impact is deferred.

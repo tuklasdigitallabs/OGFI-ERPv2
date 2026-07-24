@@ -508,6 +508,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - User Detail shows `shown of total` pagination for both histories while preserving contextual review actions and lifecycle labels. No list-side mutation or authority expansion was introduced.
 - Core Admin focused coverage passes 24/24; full web regression passes 1,300 tests with 301 skipped and one TODO; authorization-manifest tests pass 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL count/scope/CAS evidence, and hosted deployment/recovery gates remain open. Administration and Phase I remain in progress.
 
+### Administration shared visible-state checkpoint — July 24, 2026
+
+- Added route-level Core Administration loading and retryable error surfaces so slow or failed overview reads are explicit and user-safe. This does not change authorization or record data and does not close the external responsive/hosted gates.
+- Focused Core Admin coverage passes 25/25; full web regression passes 1,301 tests with 301 skipped and one TODO; web typecheck, lint, and isolated production build pass. Authorization manifest remains 20/20. Responsive browser, disposable PostgreSQL, hosted deployment/recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

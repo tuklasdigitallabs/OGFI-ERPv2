@@ -562,6 +562,22 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain("Showing {user.sensitiveRoleRequests.length} of");
   });
 
+  test("Core Administration exposes truthful route loading and retryable error states", () => {
+    const loadingSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/loading.tsx"),
+      "utf8"
+    );
+    const errorSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/error.tsx"),
+      "utf8"
+    );
+    expect(loadingSource).toContain("Loading Core Administration");
+    expect(loadingSource).toContain('aria-live="polite"');
+    expect(errorSource).toContain("Core Administration could not be loaded");
+    expect(errorSource).toContain("onClick={reset}");
+    expect(errorSource).toContain('role="alert"');
+  });
+
   test("role permission configuration uses human labels, toggles, recommendations, and audit diff service", () => {
     const rolePageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"),

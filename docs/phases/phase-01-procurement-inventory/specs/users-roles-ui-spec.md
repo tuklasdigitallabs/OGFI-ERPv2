@@ -64,6 +64,9 @@ disclosure. Departments use a bounded registry and retain read-only dependency s
 
 ## 2. User detail requirements
 
+Core Administration provides an explicit route loading state and a retryable,
+user-safe error state for overview reads.
+
 Implementation note (`DEC-0117`): Approval Rules uses a bounded selected-company
 plus tenant-wide registry with transaction-type/status filters and deterministic
 pagination. Rows show active state, priority, exact step count, and at most the

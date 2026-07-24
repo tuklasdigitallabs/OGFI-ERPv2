@@ -29,6 +29,7 @@
 - Core Administration Approval Rules now uses bounded transaction-type/status filters and deterministic pagination across selected-company and tenant-wide rules, with a capped first-three-step preview and full-detail navigation.
 - Core Administration user-detail assignment forms now use bounded searchable role/location catalogs with overflow disclosure; existing referenced assignments remain visible even when not selectable.
 - Core Administration user-detail controlled scope and role request histories now use status-filtered, deterministic pagination with exact totals; silent 20-row caps were removed without changing approval authority.
+- Core Administration now shows explicit loading and retryable error states when overview reads are slow or unavailable.
 - Acceptance traceability now maps each Phase I and Phase 1.5 UAT workflow to current automated evidence, manual proof still required, and remaining release gates.
 - Pilot deployment hardening now keeps Redis/worker out of the default no-queueing runtime, localhost-binds internal development service ports, runs app containers as non-root in the Docker examples, and provides repeatable PostgreSQL backup/restore-check helper commands for release evidence.
 - A manual staging release rehearsal workflow now runs the release gates, uploads release evidence artifacts, and provides guarded staging deploy/rollback scripts for environments with approved SSH secrets.
