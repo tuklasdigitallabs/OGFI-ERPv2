@@ -1,4 +1,5 @@
 import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   getGrantedPermissionCodes,
@@ -4020,9 +4021,59 @@ export async function applyRecommendedRolePermissions(formData: FormData) {
   });
 }
 
+const auditPageInputSchema = z.object({
+  pageSize: z.number().int().min(1).max(100).default(25),
+  cursor: z.string().trim().max(512).optional(),
+});
+const auditFilterInputSchema = z.object({
+  query: z.string().trim().max(120).optional(),
+  eventType: z.string().trim().max(120).optional(),
+  entityType: z.string().trim().max(120).optional(),
+  actor: z.string().trim().max(120).optional(),
+  requestId: z.string().trim().max(120).optional(),
+  occurredFrom: z.string().trim().max(40).optional(),
+  occurredTo: z.string().trim().max(40).optional(),
+});
+
+function auditSensitiveKey(key: string) {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return (
+    normalized.includes("password") ||
+    normalized.includes("credential") ||
+    normalized.includes("secret") ||
+    normalized.includes("token") ||
+    normalized.includes("authorization") ||
+    normalized.includes("cookie") ||
+    normalized.includes("email") ||
+    normalized.includes("ipaddress") ||
+    normalized === "ip" ||
+    normalized.includes("objectkey") ||
+    normalized.includes("storagekey") ||
+    normalized.includes("signedurl") ||
+    normalized.includes("downloadurl") ||
+    normalized.includes("evidenceurl")
+  );
+}
+
+function redactAuditJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactAuditJson);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const output: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    output[key] = auditSensitiveKey(key)
+      ? "[REDACTED]"
+      : redactAuditJson(nested);
+  }
+  return output;
+}
+
 function toSafeJsonRecord(value: unknown) {
   return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
+    ? (redactAuditJson(value) as Record<string, unknown>)
     : null;
 }
 
@@ -4030,21 +4081,12 @@ export async function getCoreAdminAuditEventDetail(
   session: SessionContext,
   auditEventId: string,
 ) {
-  await requirePermission(session, permissions.coreAdminister);
-  await assertCanAdministerTenantRoles(session);
-  await assertCanManageCompanyScope(session, session.context.companyId);
-  const canViewTenantAudit = (
-    await getGrantedPermissionCodes(session)
-  ).includes(permissions.tenantRoleAdminister);
+  const resolved = await resolveCoreAdminAuditWhere(session, {});
 
   const event = await prisma.auditEvent.findFirst({
     where: {
       id: auditEventId,
-      tenantId: session.context.tenantId,
-      OR: [
-        { companyId: session.context.companyId },
-        ...(canViewTenantAudit ? [{ companyId: null }] : []),
-      ],
+      AND: [resolved.where],
     },
     include: {
       actor: true,
@@ -4062,12 +4104,12 @@ export async function getCoreAdminAuditEventDetail(
     entityType: event.entityType,
     entityId: event.entityId,
     actorName: event.actor?.displayName ?? "System",
-    actorEmail: event.actor?.email ?? "",
+    actorEmail: "",
     companyName:
       event.company?.tradingName ?? event.company?.legalName ?? "Tenant-wide",
     occurredAt: event.occurredAt.toISOString(),
     requestId: event.requestId,
-    ipAddress: event.ipAddress,
+    ipAddress: "",
     beforeData: toSafeJsonRecord(event.beforeData),
     afterData: toSafeJsonRecord(event.afterData),
     metadata: toSafeJsonRecord(event.metadata),
@@ -4075,14 +4117,17 @@ export async function getCoreAdminAuditEventDetail(
 }
 
 export type CoreAdminAuditEventFilters = {
-  query?: string;
-  eventType?: string;
-  entityType?: string;
-  actor?: string;
-  requestId?: string;
-  occurredFrom?: string;
-  occurredTo?: string;
+  query?: string | undefined;
+  eventType?: string | undefined;
+  entityType?: string | undefined;
+  actor?: string | undefined;
+  requestId?: string | undefined;
+  occurredFrom?: string | undefined;
+  occurredTo?: string | undefined;
 };
+
+export type CoreAdminAuditEventPageInput = CoreAdminAuditEventFilters &
+  z.input<typeof auditPageInputSchema>;
 
 function parsedDate(value?: string) {
   if (!value?.trim()) {
@@ -4107,9 +4152,60 @@ function isUuid(value: string) {
   );
 }
 
-export async function listCoreAdminAuditEvents(
+function normalizeAuditFilters(filters: CoreAdminAuditEventFilters = {}) {
+  return auditFilterInputSchema.parse({
+    query: filters.query?.trim() || undefined,
+    eventType: filters.eventType?.trim() || undefined,
+    entityType: filters.entityType?.trim() || undefined,
+    actor: filters.actor?.trim() || undefined,
+    requestId: filters.requestId?.trim() || undefined,
+    occurredFrom: filters.occurredFrom?.trim() || undefined,
+    occurredTo: filters.occurredTo?.trim() || undefined,
+  });
+}
+
+function auditCursorHash(filters: CoreAdminAuditEventFilters) {
+  return createHash("sha256")
+    .update(JSON.stringify(normalizeAuditFilters(filters)))
+    .digest("hex");
+}
+
+function encodeAuditCursor(filters: CoreAdminAuditEventFilters, event: { occurredAt: Date; id: string }) {
+  return Buffer.from(
+    JSON.stringify({
+      v: 1,
+      occurredAt: event.occurredAt.toISOString(),
+      id: event.id,
+      filterHash: auditCursorHash(filters),
+    }),
+  ).toString("base64url");
+}
+
+function decodeAuditCursor(cursor: string | undefined, filters: CoreAdminAuditEventFilters) {
+  if (!cursor) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as Record<string, unknown>;
+    if (
+      decoded.v !== 1 ||
+      typeof decoded.occurredAt !== "string" ||
+      typeof decoded.id !== "string" ||
+      decoded.filterHash !== auditCursorHash(filters)
+    ) {
+      throw new Error("AUDIT_CURSOR_INVALID");
+    }
+    const occurredAt = new Date(decoded.occurredAt);
+    if (Number.isNaN(occurredAt.getTime()) || !isUuid(decoded.id)) {
+      throw new Error("AUDIT_CURSOR_INVALID");
+    }
+    return { occurredAt, id: decoded.id };
+  } catch {
+    throw new Error("AUDIT_CURSOR_INVALID");
+  }
+}
+
+async function resolveCoreAdminAuditWhere(
   session: SessionContext,
-  filters: CoreAdminAuditEventFilters = {},
+  filters: CoreAdminAuditEventFilters,
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
@@ -4117,29 +4213,17 @@ export async function listCoreAdminAuditEvents(
   const canViewTenantAudit = (
     await getGrantedPermissionCodes(session)
   ).includes(permissions.tenantRoleAdminister);
-
-  const query = filters.query?.trim();
-  const eventType = filters.eventType?.trim();
-  const entityType = filters.entityType?.trim();
-  const actor = filters.actor?.trim();
-  const requestId = filters.requestId?.trim();
-  const occurredFrom = parsedDate(filters.occurredFrom);
-  const occurredTo = parsedEndOfDay(filters.occurredTo);
+  const normalized = normalizeAuditFilters(filters);
+  const query = normalized.query;
+  const occurredFrom = parsedDate(normalized.occurredFrom);
+  const occurredTo = parsedEndOfDay(normalized.occurredTo);
   const queryConditions: AuditEventWhereInput[] = query
     ? [
         { eventType: { contains: query, mode: "insensitive" } },
         { entityType: { contains: query, mode: "insensitive" } },
         { requestId: { contains: query, mode: "insensitive" } },
-        {
-          actor: {
-            is: { displayName: { contains: query, mode: "insensitive" } },
-          },
-        },
-        {
-          actor: {
-            is: { email: { contains: query, mode: "insensitive" } },
-          },
-        },
+        { actor: { is: { displayName: { contains: query, mode: "insensitive" } } } },
+        { actor: { is: { email: { contains: query, mode: "insensitive" } } } },
         ...(isUuid(query) ? [{ entityId: query }] : []),
       ]
     : [];
@@ -4150,58 +4234,92 @@ export async function listCoreAdminAuditEvents(
       ...(canViewTenantAudit ? [{ companyId: null }] : []),
     ],
   };
-  if (eventType) {
-    where.eventType = { contains: eventType, mode: "insensitive" };
+  if (normalized.eventType) where.eventType = { contains: normalized.eventType, mode: "insensitive" };
+  if (normalized.entityType) where.entityType = { contains: normalized.entityType, mode: "insensitive" };
+  if (normalized.actor) {
+    where.actor = { is: { OR: [
+      { displayName: { contains: normalized.actor, mode: "insensitive" } },
+      { email: { contains: normalized.actor, mode: "insensitive" } },
+    ] } };
   }
-  if (entityType) {
-    where.entityType = { contains: entityType, mode: "insensitive" };
-  }
-  if (actor) {
-    where.actor = {
-      is: {
-        OR: [
-          { displayName: { contains: actor, mode: "insensitive" } },
-          { email: { contains: actor, mode: "insensitive" } },
-        ],
-      },
-    };
-  }
-  if (requestId) {
-    where.requestId = { contains: requestId, mode: "insensitive" };
-  }
-  if (occurredFrom || occurredTo) {
-    where.occurredAt = {
-      ...(occurredFrom ? { gte: occurredFrom } : {}),
-      ...(occurredTo ? { lte: occurredTo } : {}),
-    };
-  }
-  if (queryConditions.length > 0) {
-    where.AND = [{ OR: queryConditions }];
-  }
+  if (normalized.requestId) where.requestId = { contains: normalized.requestId, mode: "insensitive" };
+  if (occurredFrom || occurredTo) where.occurredAt = { ...(occurredFrom ? { gte: occurredFrom } : {}), ...(occurredTo ? { lte: occurredTo } : {}) };
+  if (queryConditions.length > 0) where.AND = [{ OR: queryConditions }];
+  return { where, normalized, canViewTenantAudit };
+}
 
-  const events = await prisma.auditEvent.findMany({
-    where,
-    include: {
-      actor: true,
-      company: true,
-    },
-    orderBy: { occurredAt: "desc" },
-    take: 500,
-  });
-
-  return events.map((event) => ({
+function projectAuditEvent(event: {
+  id: string; eventType: string; entityType: string; entityId: string;
+  actor: { displayName: string; email: string } | null;
+  company: { tradingName: string | null; legalName: string } | null;
+  occurredAt: Date; requestId: string | null; ipAddress: string | null;
+  beforeData?: unknown; afterData?: unknown; metadata?: unknown;
+}) {
+  return {
     id: event.id,
     eventType: event.eventType,
     entityType: event.entityType,
     entityId: event.entityId,
     actorName: event.actor?.displayName ?? "System",
-    actorEmail: event.actor?.email ?? "",
-    companyName:
-      event.company?.tradingName ?? event.company?.legalName ?? "Tenant-wide",
+    actorEmail: "",
+    companyName: event.company?.tradingName ?? event.company?.legalName ?? "Tenant-wide",
     occurredAt: event.occurredAt.toISOString(),
     requestId: event.requestId ?? "",
-    ipAddress: event.ipAddress ?? "",
-  }));
+    ipAddress: "",
+    ...(Object.prototype.hasOwnProperty.call(event, "beforeData")
+      ? { beforeData: toSafeJsonRecord(event.beforeData), afterData: toSafeJsonRecord(event.afterData), metadata: toSafeJsonRecord(event.metadata) }
+      : {}),
+  };
+}
+
+export async function listCoreAdminAuditEventPage(
+  session: SessionContext,
+  input: CoreAdminAuditEventPageInput = {},
+) {
+  const filters = normalizeAuditFilters(input);
+  const values = auditPageInputSchema.parse({ pageSize: input.pageSize, cursor: input.cursor });
+  const resolved = await resolveCoreAdminAuditWhere(session, filters);
+  const cursor = decodeAuditCursor(values.cursor, filters);
+  const cursorWhere = cursor
+    ? { OR: [{ occurredAt: { lt: cursor.occurredAt } }, { occurredAt: cursor.occurredAt, id: { lt: cursor.id } }] }
+    : undefined;
+  const pageWhere = cursorWhere ? { AND: [resolved.where, cursorWhere] } : resolved.where;
+  const [totalItems, events] = await Promise.all([
+    prisma.auditEvent.count({ where: resolved.where }),
+    prisma.auditEvent.findMany({
+      where: pageWhere,
+      include: { actor: true, company: true },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+      take: values.pageSize + 1,
+    }),
+  ]);
+  const hasMore = events.length > values.pageSize;
+  const pageEvents = hasMore ? events.slice(0, values.pageSize) : events;
+  return {
+    items: pageEvents.map(projectAuditEvent),
+    totalItems,
+    pageSize: values.pageSize,
+    hasMore,
+    nextCursor: hasMore ? encodeAuditCursor(filters, pageEvents[pageEvents.length - 1]!) : null,
+  };
+}
+
+export async function listCoreAdminAuditEvents(
+  session: SessionContext,
+  filters: CoreAdminAuditEventFilters = {},
+) {
+  const items: Awaited<ReturnType<typeof listCoreAdminAuditEventPage>>["items"] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await listCoreAdminAuditEventPage(session, {
+      ...filters,
+      pageSize: 100,
+      ...(cursor ? { cursor } : {}),
+    });
+    items.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+  return items;
 }
 
 export async function getCoreAdminPermissionDetail(

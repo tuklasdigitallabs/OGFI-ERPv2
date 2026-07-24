@@ -362,6 +362,7 @@
     ],
     "delegatedServiceIds": [
       "server/services/context.ts#getSessionContext",
+      "server/services/coreAdmin.ts#assertCanManageCompanyScope",
       "server/services/coreAdmin.ts#listCoreAdminAuditEvents",
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
@@ -369,6 +370,7 @@
     ],
     "callChains": [
       "GET -> server/services/context.ts#getSessionContext",
+      "GET -> server/services/coreAdmin.ts#assertCanManageCompanyScope",
       "GET -> server/services/coreAdmin.ts#listCoreAdminAuditEvents",
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
@@ -20716,6 +20718,44 @@
     ],
     "noMutationControls": [
       "no user role or scope disclosure and no audit mutation"
+    ]
+  },
+  {
+    "id": "server/services/coreAdmin.ts#listCoreAdminAuditEventPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live core administrator permission",
+      "selected-company MANAGE scope",
+      "live tenant-role permission for tenant-wide audit",
+      "bounded filter and cursor projection"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION"
+    ],
+    "noMutationControls": [
+      "revoked tenant-role permission and invalid cursors disclose no audit records or mutation"
     ]
   },
   {

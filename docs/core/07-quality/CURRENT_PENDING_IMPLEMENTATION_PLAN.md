@@ -436,6 +436,12 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Parent-led deliberation with independent Architecture and Security review selected Audit Trail redaction plus deterministic keyset pagination as the next Administration slice. The current raw audit detail projection and silent `take: 500` list/export cap are treated as confidentiality and evidence-integrity blockers; Organization Scope pagination is deferred until this contract is implemented and gated.
 - The implementation must use one server-owned tenant/company/filter resolver for list, count, detail, and export; require tenant-role authority plus selected-company `MANAGE` before queries or export-start writes; use `occurredAt DESC, id DESC` cursor ordering; bound filters/page size; recursively redact policy-sensitive values without mutating immutable rows; and prove export parity. No audit or workspace completion is claimed until these controls and responsive visible-surface tests pass.
 
+### DEC-0113 Audit Trail implementation checkpoint — July 24, 2026
+
+- Audit list/detail/export now share the authorized tenant/company filter resolver. The registry uses bounded cursor pages (default 25, maximum 100), exact matching totals, filter-bound cursors, and deterministic `occurredAt DESC, id DESC` ordering. Legacy callers iterate bounded pages rather than using a silent `take: 500` cap.
+- Audit detail and CSV output use projection redaction for actor contact/IP and sensitive nested credential, token, email, storage-key, and URL fields. Stored immutable JSON is not mutated. Direct export performs selected-company Manage preflight before recording export-start activity and omits contact/IP columns.
+- Focused Core Admin tests pass 18/18; report tests pass 11/11; authorization manifest passes 20/20; web typecheck and lint pass; full regression and isolated production build remain the final gates for this checkpoint, along with responsive browser and disposable PostgreSQL export/no-query evidence.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

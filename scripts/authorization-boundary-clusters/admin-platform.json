@@ -1585,6 +1585,14 @@
       "status": "COVERED"
     },
     {
+      "surfaceId": "server/services/coreAdmin.ts#listCoreAdminAuditEventPage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "live tenant-role permission for tenant-wide audit", "bounded filter and cursor projection"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION"],
+      "noMutationControls": ["revoked tenant-role permission and invalid cursors disclose no audit records or mutation"],
+      "status": "COVERED"
+    },
+    {
       "surfaceId": "server/services/coreAdmin.ts#listCoreAdminAuditEvents",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "live tenant-role permission for tenant-wide audit"],

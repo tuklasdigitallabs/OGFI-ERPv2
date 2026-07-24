@@ -89,9 +89,7 @@ export default async function CoreAdminAuditEventDetailPage({
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Actor</p>
           <p className="mt-2 text-lg font-bold text-slate-950">{event.actorName}</p>
-          {event.actorEmail ? (
-            <p className="text-xs text-slate-500">{event.actorEmail}</p>
-          ) : null}
+          <p className="text-xs text-slate-500">Contact details are redacted by audit policy.</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Company</p>
@@ -125,10 +123,6 @@ export default async function CoreAdminAuditEventDetailPage({
               <dt className="font-medium text-slate-500">Request ID</dt>
               <dd className="mt-1 font-semibold text-slate-950">{event.requestId ?? "Not captured"}</dd>
             </div>
-            <div>
-              <dt className="font-medium text-slate-500">IP address</dt>
-              <dd className="mt-1 font-semibold text-slate-950">{event.ipAddress ?? "Not captured"}</dd>
-            </div>
           </dl>
         </Panel>
 
@@ -142,9 +136,9 @@ export default async function CoreAdminAuditEventDetailPage({
           </p>
         </Panel>
 
-        <JsonPanel title="Before Data" value={event.beforeData} />
-        <JsonPanel title="After Data" value={event.afterData} />
-        <JsonPanel title="Metadata" value={event.metadata} />
+        <JsonPanel title="Before Data (policy-redacted)" value={event.beforeData} />
+        <JsonPanel title="After Data (policy-redacted)" value={event.afterData} />
+        <JsonPanel title="Metadata (policy-redacted)" value={event.metadata} />
       </div>
 
     </AppShell>

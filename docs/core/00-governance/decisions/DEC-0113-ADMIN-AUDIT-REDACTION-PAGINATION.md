@@ -47,3 +47,13 @@ reviewers were used without relaxing any hard gate.
 Projection, URL cursor, and UI changes are reversible. Historical audit rows must not be
 rewritten. Organization Locations pagination requires a separate reviewed contract after
 this slice's redaction, export, and production-readiness evidence is complete.
+
+## Implementation evidence
+
+The source checkpoint now provides the shared resolver, bounded keyset page contract,
+filter-bound cursors, recursive output redaction, direct export preflight, and visible
+first/next-page controls. Focused Core Admin tests pass 18/18, report tests pass 11/11,
+the full web regression passes 1,294 tests with 301 skipped and one TODO, authorization
+manifest coverage passes 20/20, and the isolated production build passes. Responsive
+browser, disposable PostgreSQL query/no-mutation, export-volume, and hosted recovery
+gates remain open; this decision does not declare Audit Trail or Workspace 2 complete.

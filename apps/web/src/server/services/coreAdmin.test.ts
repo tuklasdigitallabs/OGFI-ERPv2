@@ -406,7 +406,7 @@ describe("core administration audit search wiring", () => {
     );
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
 
-    expect(adminPageSource).toContain("listCoreAdminAuditEvents(session, auditFilters)");
+    expect(adminPageSource).toContain("listCoreAdminAuditEventPage(session");
     expect(adminPageSource).toContain("const auditExportHref = `/admin/audit/export");
     for (const fieldName of [
       "eventType",
@@ -424,6 +424,21 @@ describe("core administration audit search wiring", () => {
       );
       expect(serviceSource, `${fieldName} service filter`).toContain(`${fieldName}?:`);
     }
+  });
+
+  test("audit service uses bounded keyset pages and a shared redacted projection", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    expect(serviceSource).toContain("listCoreAdminAuditEventPage");
+    expect(serviceSource).toContain('occurredAt: { lt: cursor.occurredAt }');
+    expect(serviceSource).toContain('orderBy: [{ occurredAt: "desc" }, { id: "desc" }]');
+    expect(serviceSource).toContain("take: values.pageSize + 1");
+    expect(serviceSource).toContain("totalItems");
+    expect(serviceSource).toContain("redactAuditJson");
+    expect(serviceSource).toContain("filterHash");
+    expect(serviceSource).not.toContain("take: 500");
+    expect(serviceSource).toContain("const resolved = await resolveCoreAdminAuditWhere(session, {});");
+    expect(serviceSource).toContain('actorEmail: ""');
+    expect(serviceSource).toContain('ipAddress: ""');
   });
 
   test("admin user access lifecycle forms use modal entry surfaces", () => {

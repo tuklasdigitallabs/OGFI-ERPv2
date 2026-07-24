@@ -45,6 +45,12 @@ audit-event, and user-detail routes repeat the tenant-role and selected-company 
 preflight before loading detail data. Missing authority returns to the Administration
 restricted state; audit export uses the same tenant-role boundary.
 
+Implementation note (`DEC-0113`): Audit Trail list, detail, and export use the same
+tenant/company and bounded filter contract. The list uses deterministic keyset paging
+(`occurredAt DESC, id DESC`) with explicit totals and next-page state. Detail and CSV
+projections suppress actor contact/IP fields and recursively redact credential, token,
+email, storage-key, and signed-URL fields without changing immutable audit rows.
+
 ## 2. User detail requirements
 
 Show:

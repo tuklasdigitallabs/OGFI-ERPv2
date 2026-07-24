@@ -12,6 +12,7 @@ import {
 import { canExportCoreAdminAudit } from "@/server/services/exportAuthorization";
 import {
   listCoreAdminAuditEvents,
+  assertCanManageCompanyScope,
   type CoreAdminAuditEventFilters
 } from "@/server/services/coreAdmin";
 
@@ -30,6 +31,14 @@ export async function GET(request: Request) {
       reasonCode: "PERMISSION_DENIED"
     });
     return exportPermissionDeniedResponse();
+  }
+  try {
+    await assertCanManageCompanyScope(session, session.context.companyId);
+  } catch (error) {
+    if (error instanceof Error && error.message === "ADMIN_SCOPE_DENIED") {
+      return exportPermissionDeniedResponse();
+    }
+    throw error;
   }
 
   const url = new URL(request.url);
@@ -77,11 +86,9 @@ export async function GET(request: Request) {
         "Entity Type",
         "Entity ID",
         "Actor",
-        "Actor Email",
         "Company",
         "Occurred At",
-        "Request ID",
-        "IP Address"
+        "Request ID"
       ],
       ...events.map((event) => [
         event.id,
@@ -89,11 +96,9 @@ export async function GET(request: Request) {
         event.entityType,
         event.entityId,
         event.actorName,
-        event.actorEmail,
         event.companyName,
         event.occurredAt,
-        event.requestId,
-        event.ipAddress
+        event.requestId
       ])
     ];
 

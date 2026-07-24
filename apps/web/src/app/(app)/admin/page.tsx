@@ -30,7 +30,7 @@ import {
   createCoreAdminUser,
   assertCanManageCompanyScope,
   getCoreAdminOverview,
-  listCoreAdminAuditEvents,
+  listCoreAdminAuditEventPage,
   type CoreAdminAuditEventFilters
 } from "@/server/services/coreAdmin";
 import { getSessionContext } from "@/server/services/context";
@@ -220,6 +220,11 @@ export default async function CoreAdministrationPage({
   const auditRequestId = getSearchParam(params, "requestId");
   const auditOccurredFrom = getSearchParam(params, "occurredFrom");
   const auditOccurredTo = getSearchParam(params, "occurredTo");
+  const auditPageSizeValue = Number.parseInt(getSearchParam(params, "auditPageSize") ?? "25", 10);
+  const auditPageSize = Number.isFinite(auditPageSizeValue)
+    ? Math.min(Math.max(auditPageSizeValue, 10), 100)
+    : 25;
+  const auditCursor = getSearchParam(params, "auditCursor");
   if (auditQuery) {
     auditFilters.query = auditQuery;
   }
@@ -251,8 +256,11 @@ export default async function CoreAdministrationPage({
   const auditExportHref = `/admin/audit/export${
     auditExportParams.size ? `?${auditExportParams.toString()}` : ""
   }`;
+  const auditPageParams = new URLSearchParams(auditExportParams);
+  auditPageParams.set("tab", "audit");
+  auditPageParams.set("auditPageSize", String(auditPageSize));
 
-  const [overview, auditEvents] = await Promise.all([
+  const [overview, auditPage] = await Promise.all([
     getCoreAdminOverview(session, {
       page: normalizedUserPage,
       pageSize: normalizedUserPageSize,
@@ -268,8 +276,19 @@ export default async function CoreAdministrationPage({
         ? { status: roleStatus as "ACTIVE" | "INACTIVE" | "ARCHIVED" }
         : {}),
     }),
-    listCoreAdminAuditEvents(session, auditFilters)
+    listCoreAdminAuditEventPage(session, {
+      ...auditFilters,
+      pageSize: auditPageSize,
+      ...(auditCursor ? { cursor: auditCursor } : {})
+    })
   ]);
+  const auditEvents = auditPage.items;
+  const auditFirstPageParams = new URLSearchParams(auditPageParams);
+  auditFirstPageParams.delete("auditCursor");
+  const auditNextPageParams = new URLSearchParams(auditPageParams);
+  if (auditPage.nextCursor) auditNextPageParams.set("auditCursor", auditPage.nextCursor);
+  const auditFirstPageHref = `/admin?${auditFirstPageParams.toString()}`;
+  const auditNextPageHref = `/admin?${auditNextPageParams.toString()}`;
   const activeUsers = overview.userPage.activeItems;
   const activeRoles = overview.rolePage.activeItems;
   const activeRules = overview.approvalRules.filter((rule) => rule.isActive).length;
@@ -1201,6 +1220,31 @@ export default async function CoreAdministrationPage({
               ))}
             </div>
           )}
+          <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Showing {auditEvents.length} of {auditPage.totalItems} matching events
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {auditCursor ? (
+                <ButtonLink
+                  href={auditFirstPageHref}
+                  tone="ghost"
+                  className="min-h-10"
+                >
+                  First page
+                </ButtonLink>
+              ) : null}
+              {auditPage.hasMore ? (
+                <ButtonLink
+                  href={auditNextPageHref}
+                  tone="secondary"
+                  className="min-h-10"
+                >
+                  Next page
+                </ButtonLink>
+              ) : null}
+            </div>
+          </div>
         </Panel>
         ) : null}
       </div>
