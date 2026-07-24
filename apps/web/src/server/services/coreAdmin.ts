@@ -2520,6 +2520,13 @@ export async function createUserRoleAssignment(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`
       SELECT "id"
+      FROM "User"
+      WHERE "id" = ${targetUser.id}::uuid
+      FOR UPDATE
+    `;
+    await assertTargetUserInCurrentCompany(session, targetUser.id, tx);
+    await tx.$queryRaw`
+      SELECT "id"
       FROM "Role"
       WHERE "id" = ${role.id}::uuid
       FOR UPDATE
@@ -3154,6 +3161,13 @@ export async function rejectSensitiveUserRoleRequest(formData: FormData) {
   const reviewedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "User"
+      WHERE "id" = ${request.targetUserId}::uuid
+      FOR UPDATE
+    `;
+    await assertTargetUserInCurrentCompany(session, request.targetUserId, tx);
     const claimed = await tx.sensitiveRoleRequest.updateMany({
       where: { id: request.id, status: "PENDING" },
       data: {

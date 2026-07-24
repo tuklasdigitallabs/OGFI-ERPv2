@@ -523,6 +523,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - High-risk scope approval/rejection now locks the target user, revalidates active/effective selected-company membership inside the transaction, and claims only a still-`PENDING` request before creating an assignment or terminal audit event.
 - Focused Core Admin coverage passes 27/27; web typecheck and lint pass. Disposable PostgreSQL concurrency/revocation evidence, responsive browser, hosted deployment/recovery, and UAT gates remain open.
 
+### DEC-0122 Administration sensitive-role review membership CAS — July 24, 2026
+
+- Sensitive-role approval and rejection now lock the target user, revalidate active/effective selected-company membership inside the transaction, and claim only a still-pending request before role assignment or terminal audit posting.
+- Focused Core Admin coverage passes 28/28; web typecheck and lint pass. Disposable PostgreSQL concurrency/revocation evidence, responsive browser, hosted deployment/recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

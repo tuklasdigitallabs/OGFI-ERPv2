@@ -72,6 +72,8 @@ Role catalog and `UserRoleAssignment` administration use a dedicated tenant-leve
 Implementation note (`DEC-0121`): high-risk scope review rechecks this target
 membership under a target-user row lock and claims the pending request by status
 compare-and-swap inside the same transaction as assignment/rejection posting.
+Sensitive-role review applies the same lock, membership revalidation, and pending
+claim invariant under `DEC-0122`.
 - this membership check constrains the eligible target and does not turn the tenant-global assignment into a company-scoped grant; and
 - all checks are server-enforced, with non-enumerating denial and no business mutation on failure.
 

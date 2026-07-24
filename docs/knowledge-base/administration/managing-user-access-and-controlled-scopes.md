@@ -157,9 +157,12 @@ remain visible only while a request is pending review; the authoritative audit
 record retains the complete history.
 
 When approving or rejecting a high-risk location request, OGFI rechecks the target
-user's current company/location membership at commit time. A request already handled
+user’s current company/location membership at commit time. A request already handled
 by another reviewer, or whose target membership is no longer valid, fails safely and
 does not create an assignment.
+
+The same commit-time membership and pending-request checks apply when reviewing a
+controlled sensitive-role request.
 
 - The target user, location, and access level match the actual operational need.
 - The evidence reference is traceable outside the ERP when needed.

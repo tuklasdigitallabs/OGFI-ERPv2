@@ -584,6 +584,13 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain('where: { id: request.id, status: "PENDING" }');
   });
 
+  test("sensitive role review revalidates target membership under transaction lock", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    expect(serviceSource).toContain("await assertTargetUserInCurrentCompany(session, targetUser.id, tx)");
+    expect(serviceSource).toContain("await assertTargetUserInCurrentCompany(session, request.targetUserId, tx)");
+    expect(serviceSource).toContain("tx.sensitiveRoleRequest.updateMany");
+  });
+
   test("Core Administration exposes truthful route loading and retryable error states", () => {
     const loadingSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/loading.tsx"),
