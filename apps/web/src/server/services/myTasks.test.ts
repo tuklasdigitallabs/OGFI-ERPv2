@@ -158,6 +158,7 @@ describe("My Tasks queue", () => {
     await expect(getMyTasksPage(session as never)).resolves.toMatchObject({
       totalCount: null,
       isComplete: false,
+      nextCursor: null,
       unavailableSources: [{ type: "WASTAGE", label: "Wastage" }]
     });
   });

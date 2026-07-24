@@ -465,7 +465,14 @@ export async function getMyTasksPage(
 
   return {
     items,
-    nextCursor: last && hasMore ? encodeMyTasksCursor(session, last) : null,
+    // A partial merge cannot safely issue a continuation cursor. If a failed
+    // source recovers on the next request, seeking after this anchor could
+    // permanently omit rows that were absent from this page. Restart from
+    // page one after availability is restored instead.
+    nextCursor:
+      unavailableSources.length === 0 && last && hasMore
+        ? encodeMyTasksCursor(session, last)
+        : null,
     totalCount:
       unavailableSources.length === 0
         ? successful.reduce((sum, result) => sum + result.value.page.totalCount, 0)
