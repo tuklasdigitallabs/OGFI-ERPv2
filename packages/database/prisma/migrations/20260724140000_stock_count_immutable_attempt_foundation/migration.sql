@@ -31,6 +31,8 @@ CREATE TABLE "StockCountAttempt" (
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "StockCountAttempt_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "StockCountAttempt_attempt_number_check" CHECK ("attemptNumber" > 0),
+  CONSTRAINT "StockCountAttempt_status_check" CHECK ("status" IN ('DRAFT', 'IN_PROGRESS', 'SUBMITTED', 'RECOUNT_REQUESTED', 'REVIEWED', 'CANCELLED', 'VOIDED_FOR_RECOUNT')),
   CONSTRAINT "StockCountAttempt_session_fkey" FOREIGN KEY ("stockCountSessionId") REFERENCES "StockCountSession"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "StockCountAttempt_tenant_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "StockCountAttempt_company_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -143,7 +145,28 @@ BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'Stock count attempt history is immutable' USING ERRCODE = '55000';
   END IF;
-  IF OLD."status" IN ('SUBMITTED', 'REVIEWED', 'CANCELLED', 'VOIDED_FOR_RECOUNT')
+  IF OLD."status" = 'SUBMITTED'
+     AND NEW."status" IN ('REVIEWED', 'RECOUNT_REQUESTED')
+     AND NEW."id" IS NOT DISTINCT FROM OLD."id"
+     AND NEW."stockCountSessionId" IS NOT DISTINCT FROM OLD."stockCountSessionId"
+     AND NEW."tenantId" IS NOT DISTINCT FROM OLD."tenantId"
+     AND NEW."companyId" IS NOT DISTINCT FROM OLD."companyId"
+     AND NEW."inventoryLocationId" IS NOT DISTINCT FROM OLD."inventoryLocationId"
+     AND NEW."attemptNumber" IS NOT DISTINCT FROM OLD."attemptNumber"
+     AND NEW."blindCount" IS NOT DISTINCT FROM OLD."blindCount"
+     AND NEW."freezeMovements" IS NOT DISTINCT FROM OLD."freezeMovements"
+     AND NEW."cutoffAt" IS NOT DISTINCT FROM OLD."cutoffAt"
+     AND NEW."startedAt" IS NOT DISTINCT FROM OLD."startedAt"
+     AND NEW."submittedAt" IS NOT DISTINCT FROM OLD."submittedAt"
+     AND NEW."cancelledAt" IS NOT DISTINCT FROM OLD."cancelledAt"
+     AND NEW."cancellationReason" IS NOT DISTINCT FROM OLD."cancellationReason"
+     AND NEW."reason" IS NOT DISTINCT FROM OLD."reason"
+     AND NEW."evidenceReference" IS NOT DISTINCT FROM OLD."evidenceReference"
+     AND NEW."createdByUserId" IS NOT DISTINCT FROM OLD."createdByUserId"
+     AND NEW."assignedToUserId" IS NOT DISTINCT FROM OLD."assignedToUserId"
+     AND NEW."createdAt" IS NOT DISTINCT FROM OLD."createdAt"
+     THEN RETURN NEW;
+  IF OLD."status" IN ('SUBMITTED', 'RECOUNT_REQUESTED', 'REVIEWED', 'CANCELLED', 'VOIDED_FOR_RECOUNT')
      AND (NEW.* IS DISTINCT FROM OLD.*) THEN
     RAISE EXCEPTION 'Terminal stock count attempt evidence is immutable' USING ERRCODE = '55000';
   END IF;
@@ -159,7 +182,7 @@ BEGIN
     RAISE EXCEPTION 'Stock count attempt line history is immutable' USING ERRCODE = '55000';
   END IF;
   SELECT "status" INTO parent_status FROM "StockCountAttempt" WHERE "id" = OLD."stockCountAttemptId";
-  IF parent_status IN ('SUBMITTED', 'REVIEWED', 'CANCELLED', 'VOIDED_FOR_RECOUNT')
+  IF parent_status IN ('SUBMITTED', 'RECOUNT_REQUESTED', 'REVIEWED', 'CANCELLED', 'VOIDED_FOR_RECOUNT')
      AND (NEW.* IS DISTINCT FROM OLD.*) THEN
     RAISE EXCEPTION 'Terminal stock count attempt line evidence is immutable' USING ERRCODE = '55000';
   END IF;

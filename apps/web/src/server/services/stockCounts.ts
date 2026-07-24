@@ -269,6 +269,7 @@ function scopedStockCountWhere(session: SessionContext, id?: string) {
 
 type LockedStockCount = {
   id: string;
+  currentAttemptId: string | null;
   inventoryLocationId: string;
   status: string;
   blindCount: boolean;
@@ -301,6 +302,7 @@ async function lockScopedStockCount(
 ) {
   const rows = await tx.$queryRaw<LockedStockCount[]>(Prisma.sql`
     SELECT sc.id,
+           sc."currentAttemptId",
            sc."inventoryLocationId",
            sc.status,
            sc."blindCount",
@@ -326,6 +328,82 @@ async function lockScopedStockCount(
     throw new Error("STOCK_COUNT_NOT_FOUND");
   }
   return count;
+}
+
+/**
+ * Keeps the additive immutable attempt-1 record aligned with the legacy
+ * first-pass session during the reversible cutover. The migration backfills
+ * existing sessions; this helper covers sessions created after deployment.
+ */
+async function ensureStockCountAttempt1(
+  tx: TransactionClient,
+  session: SessionContext,
+  count: LockedStockCount
+) {
+  if (count.currentAttemptId) {
+    return count.currentAttemptId;
+  }
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    INSERT INTO "StockCountAttempt" (
+      "stockCountSessionId", "tenantId", "companyId", "inventoryLocationId",
+      "attemptNumber", "status", "blindCount", "freezeMovements",
+      "createdByUserId", "assignedToUserId", "reviewedByUserId",
+      "createdAt", "updatedAt"
+    )
+    SELECT sc.id, sc."tenantId", sc."companyId", sc."inventoryLocationId",
+           1, 'DRAFT', sc."blindCount", sc."freezeMovements",
+           sc."createdByUserId", sc."assignedToUserId", sc."reviewedByUserId",
+           sc."createdAt", sc."updatedAt"
+      FROM "StockCountSession" sc
+     WHERE sc.id = ${count.id}::uuid
+       AND sc."tenantId" = ${session.context.tenantId}::uuid
+       AND sc."companyId" = ${session.context.companyId}::uuid
+    RETURNING id
+  `);
+  const attempt = rows[0];
+  if (!attempt) {
+    throw new Error("STOCK_COUNT_ATTEMPT_CREATE_FAILED");
+  }
+  const linked = await tx.$executeRaw(Prisma.sql`
+    UPDATE "StockCountSession"
+       SET "currentAttemptId" = ${attempt.id}::uuid
+     WHERE id = ${count.id}::uuid
+       AND "tenantId" = ${session.context.tenantId}::uuid
+       AND "companyId" = ${session.context.companyId}::uuid
+       AND "currentAttemptId" IS NULL
+  `);
+  if (linked !== 1) {
+    throw new Error("STOCK_COUNT_ATTEMPT_LINK_FAILED");
+  }
+  return attempt.id;
+}
+
+async function syncStockCountAttempt1Lines(
+  tx: TransactionClient,
+  session: SessionContext,
+  attemptId: string,
+  stockCountSessionId: string,
+  inventoryLocationId: string
+) {
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "StockCountAttemptLine" (
+      "id", "stockCountAttemptId", "tenantId", "companyId", "inventoryLocationId",
+      "itemId", "uomId", "lineNumber", "lotKey", "lotNumber", "expiryDate",
+      "systemQuantityBaseUom", "countedQuantityBaseUom", "varianceQuantityBaseUom",
+      "notes", "countedByUserId", "countedAt", "legacyStockCountLineId",
+      "createdAt", "updatedAt"
+    )
+    SELECT l.id, ${attemptId}::uuid, l."tenantId", l."companyId", l."inventoryLocationId",
+           l."itemId", l."uomId", l."lineNumber", l."lotKey", l."lotNumber", l."expiryDate",
+           l."systemQuantityBaseUom", l."countedQuantityBaseUom", l."varianceQuantityBaseUom",
+           l.notes, l."countedByUserId", l."countedAt", l.id, l."createdAt", l."updatedAt"
+      FROM "StockCountLine" l
+     WHERE l."stockCountSessionId" = ${stockCountSessionId}::uuid
+       AND l."tenantId" = ${session.context.tenantId}::uuid
+       AND l."companyId" = ${session.context.companyId}::uuid
+       AND l."inventoryLocationId" = ${inventoryLocationId}::uuid
+    ON CONFLICT ("legacyStockCountLineId") DO NOTHING
+  `);
 }
 
 type StockCountMyTaskItem = {
@@ -1093,6 +1171,30 @@ export async function startStockCount(formData: FormData) {
       }))
     });
 
+    const attemptId = await ensureStockCountAttempt1(tx, session, count);
+    const attemptUpdated = await tx.$executeRaw(Prisma.sql`
+      UPDATE "StockCountAttempt"
+         SET status = 'IN_PROGRESS',
+             "startedAt" = ${count.databaseNow},
+             "cutoffAt" = ${count.databaseNow},
+             "updatedAt" = ${count.databaseNow}
+       WHERE id = ${attemptId}::uuid
+         AND "stockCountSessionId" = ${count.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND status = 'DRAFT'
+    `);
+    if (attemptUpdated !== 1) {
+      throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
+    }
+    await syncStockCountAttempt1Lines(
+      tx,
+      session,
+      attemptId,
+      count.id,
+      count.inventoryLocationId
+    );
+
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -1153,6 +1255,7 @@ export async function saveStockCountEntries(rawValues: unknown) {
       throw new Error("STOCK_COUNT_LINE_NOT_FOUND");
     }
     const linesById = new Map(lines.map((line) => [line.id, line]));
+    const attemptId = await ensureStockCountAttempt1(tx, session, count);
     for (const entry of values.lines) {
       const line = linesById.get(entry.lineId);
       if (!line) {
@@ -1182,6 +1285,35 @@ export async function saveStockCountEntries(rawValues: unknown) {
       if (updated.count !== 1) {
         throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
       }
+      const attemptUpdated = await tx.$executeRaw(Prisma.sql`
+        UPDATE "StockCountAttemptLine" al
+           SET "countedQuantityBaseUom" = ${entry.countedQuantityBaseUom},
+               "varianceQuantityBaseUom" = ${variance},
+               notes = ${entry.notes || null},
+               "countedByUserId" = ${session.user.id}::uuid,
+               "countedAt" = ${count.databaseNow},
+               "updatedAt" = ${count.databaseNow}
+          FROM "StockCountAttempt" a
+         WHERE al.id = ${entry.lineId}::uuid
+           AND al."legacyStockCountLineId" = ${entry.lineId}::uuid
+           AND al."stockCountAttemptId" = a.id
+           AND a.id = ${attemptId}::uuid
+           AND a.status = 'IN_PROGRESS'
+           AND al."updatedAt" = ${line.updatedAt}
+      `);
+      if (attemptUpdated !== 1) {
+        throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
+      }
+    }
+    const attemptTouched = await tx.$executeRaw(Prisma.sql`
+      UPDATE "StockCountAttempt"
+         SET "updatedAt" = ${count.databaseNow}
+       WHERE id = ${attemptId}::uuid
+         AND "stockCountSessionId" = ${count.id}::uuid
+         AND status = 'IN_PROGRESS'
+    `);
+    if (attemptTouched !== 1) {
+      throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
     }
     const touched = await tx.stockCountSession.updateMany({
       where: {
@@ -1260,6 +1392,7 @@ export async function submitStockCount(formData: FormData) {
     if (lines.some((line) => !line.countedByUserId || !line.countedAt)) {
       throw new Error("STOCK_COUNT_ENTRY_LINEAGE_INCOMPLETE");
     }
+    const attemptId = await ensureStockCountAttempt1(tx, session, count);
     const submitted = await tx.stockCountSession.updateMany({
       where: {
         id: count.id,
@@ -1277,6 +1410,20 @@ export async function submitStockCount(formData: FormData) {
     });
     if (submitted.count !== 1) {
       throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
+    }
+    const attemptSubmitted = await tx.$executeRaw(Prisma.sql`
+      UPDATE "StockCountAttempt"
+         SET status = 'SUBMITTED',
+             "submittedAt" = ${count.databaseNow},
+             "updatedAt" = ${count.databaseNow}
+       WHERE id = ${attemptId}::uuid
+         AND "stockCountSessionId" = ${count.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND status = 'IN_PROGRESS'
+    `);
+    if (attemptSubmitted !== 1) {
+      throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
     }
     await tx.auditEvent.create({
       data: {
@@ -1352,6 +1499,26 @@ export async function reviewStockCount(formData: FormData) {
     });
     if (reviewed.count !== 1) {
       throw new Error("STOCK_COUNT_CONCURRENT_MODIFICATION");
+    }
+    const attemptId = count.currentAttemptId;
+    if (!attemptId) {
+      throw new Error("STOCK_COUNT_ATTEMPT_NOT_LINKED");
+    }
+    const attemptReviewed = await tx.$executeRaw(Prisma.sql`
+      UPDATE "StockCountAttempt"
+         SET status = ${nextStatus},
+             "reviewedAt" = ${count.databaseNow},
+             "reviewedByUserId" = ${session.user.id}::uuid,
+             "reviewNotes" = ${values.reviewNotes},
+             "updatedAt" = ${count.databaseNow}
+       WHERE id = ${attemptId}::uuid
+         AND "stockCountSessionId" = ${count.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND status = 'SUBMITTED'
+    `);
+    if (attemptReviewed !== 1) {
+      throw new Error("STOCK_COUNT_ATTEMPT_CONCURRENT_MODIFICATION");
     }
     await tx.auditEvent.create({
       data: {

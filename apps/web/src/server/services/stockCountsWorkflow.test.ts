@@ -12,6 +12,7 @@ import {
 const mocks = vi.hoisted(() => {
   const tx = {
     $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
     stockCountSession: { updateMany: vi.fn() },
     stockCountLine: {
       count: vi.fn(),
@@ -107,6 +108,7 @@ const updatedAt = new Date("2026-07-23T07:00:00.000Z");
 function lockedCount(overrides: Record<string, unknown> = {}) {
   return {
     id: ids.count,
+    currentAttemptId: ids.count,
     inventoryLocationId: ids.inventoryLocation,
     status: "DRAFT",
     blindCount: true,
@@ -137,6 +139,7 @@ describe("Stock Count workflow integrity", () => {
     });
     mocks.lockInventoryLocationForPosting.mockResolvedValue({});
     mocks.tx.$queryRaw.mockResolvedValue([lockedCount()]);
+    mocks.tx.$executeRaw.mockResolvedValue(1);
     mocks.tx.stockCountSession.updateMany.mockResolvedValue({ count: 1 });
     mocks.tx.stockCountLine.count.mockResolvedValue(0);
     mocks.tx.stockCountLine.findMany.mockResolvedValue([]);
@@ -172,6 +175,7 @@ describe("Stock Count workflow integrity", () => {
       mocks.lockInventoryLocationForPosting.mock.invocationCallOrder[0]
     ).toBeLessThan(mocks.tx.$queryRaw.mock.invocationCallOrder[0]!);
     expect(mocks.tx.inventoryBalance.findMany).toHaveBeenCalled();
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(2);
     expect(mocks.tx.stockCountSession.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -253,6 +257,7 @@ describe("Stock Count workflow integrity", () => {
         data: { status: "SUBMITTED", submittedAt: databaseNow }
       })
     );
+    expect(mocks.tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(mocks.tx.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ eventType: "stock_count.submitted" })

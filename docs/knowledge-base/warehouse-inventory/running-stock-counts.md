@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Use this article to schedule, start, enter, submit, and review a physical stock count. Reviewed count variances do not directly adjust stock balances. When a count-generated adjustment is available, it still requires Stock Adjustment approval and a separate post action before inventory changes.
+Use this article to schedule, start, enter, submit, and review a physical stock count. During the current recount-foundation rollout, those first-pass actions are recorded in both the existing count record and its immutable attempt-1 history; this is internal lineage and does not change the user steps. Reviewed count variances do not directly adjust stock balances. When a count-generated adjustment is available, it still requires Stock Adjustment approval and a separate post action before inventory changes.
 
 ## Before you begin
 

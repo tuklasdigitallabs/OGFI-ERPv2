@@ -1280,7 +1280,7 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
   },
   {
     "migration": "20260724140000_stock_count_immutable_attempt_foundation",
-    "sha256": "2c9937bd462b33ac77564fe1494281988691a608c7a7964f7c1e3e57d62dd1fd",
+    "sha256": "68b492fe94f23ef4fcce7ff7b5b8419ba914569612603fdbe78c78a60ee091ac",
     "risk": "The additive attempt tables backfill every existing Stock Count session/line and add foreign keys, unique indexes, and immutable history guards. A scope mismatch, duplicate legacy key, or trigger defect must fail closed without rewriting count evidence.",
     "expectedDataEffect": "Backfill one immutable attempt and attempt-line row for each existing session/line using the legacy IDs as deterministic lineage; populate current-attempt and adjustment source links; add no inventory movement or balance effects.",
     "recovery": "The migration must run as one transaction. On failure, restore the predecessor backup or use a reviewed forward correction; once attempt history exists, preserve it and keep Count Variance disabled rather than deleting evidence.",

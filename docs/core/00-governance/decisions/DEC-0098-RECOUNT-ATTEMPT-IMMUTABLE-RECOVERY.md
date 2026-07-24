@@ -75,7 +75,7 @@ The current `RECOUNT_REQUESTED` flow reopens a session and mutates the same coun
 
 ## Implementation and documentation impact
 
-- **Code / architecture:** Additive attempt/version entities and transaction boundaries; existing session remains the stable case identity. No implementation is authorized by this record alone.
+- **Code / architecture:** Additive attempt/version entities and transaction boundaries; existing session remains the stable case identity. The migration and reversible first-pass dual-write mirror (start, entry-save, submit, review) are implemented; recovery actions and Count Variance activation remain gated.
 - **Data / schema:** New child tables/relations and migration to attempt 1 require reviewed Prisma migration, data dictionary/schema updates, rollback, and verification evidence.
 - **Workflow / permissions:** Add explicit attempt/recovery permissions and segregation controls; preserve existing stock-count and adjustment permissions until the authority matrix is confirmed.
 - **UI / mobile:** Show case and current attempt clearly, preserve blind-count behavior, explain cutoff retention versus new cutoff, and provide focused MFA/reason/evidence recovery actions only to authorized roles.
@@ -91,7 +91,7 @@ The current `RECOUNT_REQUESTED` flow reopens a session and mutates the same coun
 | Confirm authority matrix, MFA, reason/evidence, and segregation | Security + Operations + Finance | Before void/reversal implementation | Open gate |
 | Specify approval-step termination and notification behavior | Approval/Notifications owners | Before activation | Open gate |
 | Produce migration, rollback, and verification plan for attempt 1 | Data engineering | Before migration | Open gate |
-| Implement additive attempt model and immutable line lineage | Inventory engineering | After gates close | Deferred implementation |
+| Implement additive attempt model and immutable line lineage | Inventory engineering | After gates close | Foundation implemented; recovery/cutover remains open |
 | Validate concurrency, idempotent void, reversal, redaction, and UAT | QA + Security + Release | Before Count Variance activation | Required |
 | Update stock-count/adjustment specifications, glossary, KB, and plan | Mithi + Dunong | With implementation checkpoint | Required |
 
