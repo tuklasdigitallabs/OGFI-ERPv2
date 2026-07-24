@@ -91,5 +91,8 @@ describe("item master-data controls", () => {
     expect(page).toContain('name="inventoryClass"');
     expect(page).toContain('name="itemType"');
     expect(page).toContain('name="uomType"');
+    expect(page).toContain("listItemMasterOptionCatalog");
+    expect(page).toContain("categoryOptionCatalog.hasMore || uomOptionCatalog.hasMore");
+    expect(page).toContain("Conversion item options are being moved to a bounded catalog");
   });
 });

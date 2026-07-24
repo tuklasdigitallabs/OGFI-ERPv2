@@ -8,4 +8,4 @@ Categories, UOMs, and conversion setup are separate tabs. Their bounded-read and
 
 Conversion records are company-scoped through their item and both UOM relationships. The system rejects cross-company or inactive master-data relationships and requires distinct UOMs with a positive factor.
 
-The selector option catalog is being introduced as a bounded server-side lookup. Until all tabs migrate to it, conversion creation may be unavailable while the authoritative setup remains protected.
+Item create/edit selectors use a bounded server-side lookup and creation is disabled when valid choices exceed the catalog bound. Until all tabs migrate to it, conversion creation may be unavailable while the authoritative setup remains protected.

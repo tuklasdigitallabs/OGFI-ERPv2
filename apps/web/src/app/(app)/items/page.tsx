@@ -21,6 +21,7 @@ import {
   itemInventoryClasses,
   itemTypes,
   listItemMasterData,
+  listItemMasterOptionCatalog,
   updateItem,
   updateItemCategory,
   updateItemUomConversion,
@@ -208,11 +209,15 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const requestedPage = Number(Array.isArray(params.itemPage) ? params.itemPage[0] : params.itemPage);
   const itemPage = Number.isInteger(requestedPage) && requestedPage > 0 ? Math.min(requestedPage, 10_000) : 1;
   const masterData = await listItemMasterData(session, { query: itemQuery, status: itemStatus, page: itemPage, pageSize: 25 });
+  const selectedCategoryIds = masterData.items.map((item) => item.itemCategoryId);
+  const selectedUomIds = masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id)));
+  const [categoryOptionCatalog, uomOptionCatalog] = await Promise.all([
+    listItemMasterOptionCatalog(session, { kind: "category", selectedIds: selectedCategoryIds, page: 1, pageSize: 100 }),
+    listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 })
+  ]);
   const activeItems = masterData.itemsPage.activeItems;
-  const activeCategories = masterData.categories.filter(
-    (category) => category.status === "ACTIVE"
-  );
-  const activeUoms = masterData.uoms.filter((uom) => uom.status === "ACTIVE");
+  const activeCategories = categoryOptionCatalog.options.filter((category) => category.status === "ACTIVE");
+  const activeUoms = uomOptionCatalog.options.filter((uom) => uom.status === "ACTIVE");
   const activeMasterItems = masterData.items.filter((item) => item.status === "ACTIVE");
   const actionFeedback = getActionFeedback(params);
 
@@ -283,7 +288,12 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
 
       <div className="mb-5 flex flex-wrap justify-end gap-2">
         {activeTab === "items" ? (
-        <EntryModal title="Create Item" triggerLabel="Create Item">
+        <EntryModal
+          title="Create Item"
+          triggerLabel="Create Item"
+          disabled={categoryOptionCatalog.hasMore || uomOptionCatalog.hasMore}
+          disabledReason="Item selectors exceed the current bounded option catalog; narrow the catalog or complete the selector migration before creating an item."
+        >
           <form action={createItemAction} className="ogfi-form-shell mt-4 grid gap-3">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -301,7 +311,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                 <select className="rounded-md border border-slate-300 px-3 py-2" name="itemCategoryId" required>
                   {activeCategories.map((category) => (
                     <option key={category.id} value={category.id}>
-                      {category.categoryName}
+                      {category.label}
                     </option>
                   ))}
                 </select>
@@ -323,7 +333,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                 <select className="rounded-md border border-slate-300 px-3 py-2" name="baseUomId" required>
                   {activeUoms.map((uom) => (
                     <option key={uom.id} value={uom.id}>
-                      {uom.uomCode}
+                      {uom.code}
                     </option>
                   ))}
                 </select>
@@ -334,7 +344,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                   <option value="">None</option>
                   {activeUoms.map((uom) => (
                     <option key={uom.id} value={uom.id}>
-                      {uom.uomCode}
+                      {uom.code}
                     </option>
                   ))}
                 </select>
@@ -345,7 +355,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                   <option value="">None</option>
                   {activeUoms.map((uom) => (
                     <option key={uom.id} value={uom.id}>
-                      {uom.uomCode}
+                      {uom.code}
                     </option>
                   ))}
                 </select>
@@ -450,14 +460,14 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               <select className="rounded-md border border-slate-300 px-3 py-2" name="fromUomId" required>
                 {activeUoms.map((uom) => (
                   <option key={uom.id} value={uom.id}>
-                    From {uom.uomCode}
+                    From {uom.code}
                   </option>
                 ))}
               </select>
               <select className="rounded-md border border-slate-300 px-3 py-2" name="toUomId" required>
                 {activeUoms.map((uom) => (
                   <option key={uom.id} value={uom.id}>
-                    To {uom.uomCode}
+                    To {uom.code}
                   </option>
                 ))}
               </select>
@@ -567,9 +577,9 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                           <label className="grid gap-1 text-sm font-medium text-slate-700">
                             Category
                             <select className={inputClass} name="itemCategoryId" defaultValue={item.itemCategoryId} required>
-                              {masterData.categories.map((category) => (
+                              {categoryOptionCatalog.options.map((category) => (
                                 <option key={category.id} value={category.id}>
-                                  {category.categoryName} ({category.status})
+                                  {category.label} ({category.status})
                                 </option>
                               ))}
                             </select>
@@ -589,9 +599,9 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                           <label className="grid gap-1 text-sm font-medium text-slate-700">
                             Base UOM
                             <select className={inputClass} name="baseUomId" defaultValue={item.baseUomId} required>
-                              {masterData.uoms.map((uom) => (
+                              {uomOptionCatalog.options.map((uom) => (
                                 <option key={uom.id} value={uom.id}>
-                                  {uom.uomCode} ({uom.status})
+                                  {uom.code} ({uom.status})
                                 </option>
                               ))}
                             </select>
@@ -600,9 +610,9 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                             Purchase UOM
                             <select className={inputClass} name="purchaseUomId" defaultValue={item.purchaseUomId ?? ""}>
                               <option value="">None</option>
-                              {masterData.uoms.map((uom) => (
+                              {uomOptionCatalog.options.map((uom) => (
                                 <option key={uom.id} value={uom.id}>
-                                  {uom.uomCode} ({uom.status})
+                                  {uom.code} ({uom.status})
                                 </option>
                               ))}
                             </select>
@@ -611,9 +621,9 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                             Issue UOM
                             <select className={inputClass} name="issueUomId" defaultValue={item.issueUomId ?? ""}>
                               <option value="">None</option>
-                              {masterData.uoms.map((uom) => (
+                              {uomOptionCatalog.options.map((uom) => (
                                 <option key={uom.id} value={uom.id}>
-                                  {uom.uomCode} ({uom.status})
+                                  {uom.code} ({uom.status})
                                 </option>
                               ))}
                             </select>
