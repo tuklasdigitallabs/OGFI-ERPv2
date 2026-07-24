@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Receiving Register Accepted-Value Filter Deferral
+
+- Added confirmed `DEC-0097`: accepted-value URL, UI, and ordinary CSV behavior remain deferred until cost permission, receipt aggregate, currency conversion/handling, null unit-cost semantics, filtered-CSV context, and representative PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)`/volume evidence are approved.
+- No code or visible value control was added. Requested Spark/GPT-5.4 reviewers were unavailable and the closest permitted GPT-5.6 fallback was used without relaxing hard gates.
+
 ## 2026-07-24 — Receiving Register Item Filter Deferral
 
 - Added confirmed `DEC-0096`: item filtering remains non-operative until the reporting/product owner confirms full-receipt-context versus matching-line CSV semantics, the scoped `GoodsReceiptLine` relation and bounded option strategy are documented, and representative PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)` evidence is available.

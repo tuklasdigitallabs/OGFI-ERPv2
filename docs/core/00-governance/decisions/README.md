@@ -76,6 +76,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0094-RECEIVING-REGISTER-FILTER-CONTRACT.md`
 - `DEC-0095-RECEIVING-REGISTER-RECEIVER-FILTER.md`
 - `DEC-0096-RECEIVING-REGISTER-ITEM-FILTER-DEFERRAL.md`
+- `DEC-0097-RECEIVING-REGISTER-ACCEPTED-VALUE-FILTER-DEFERRAL.md`
 
 ## Suggested future decision records
 

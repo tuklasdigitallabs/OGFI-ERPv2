@@ -184,6 +184,10 @@ Direct web-mounted `local-private` storage remains suitable for local developmen
 - A fresh isolated production build for source SHA `7ec94be` passed with `NEXT_DIST_DIR=.next-quality` (compile, type validation, static generation, route optimization, and build traces). Generated `tsconfig`/route metadata was restored to the repository’s tracked baseline afterward. This closes only the local build check; authenticated production-mode browser, disposable PostgreSQL, and hosted release/recovery evidence remain open.
 - Release-tool self-test and secret review passed for the current candidate; evidence was written under `release-evidence/self-tests/` and `release-evidence/secret-review/`. These checks do not replace hosted deployment, recovery, database, or authenticated browser gates.
 
+### DEC-0097 Receiving accepted-value filter deferral checkpoint — July 24, 2026
+
+- `DEC-0097` keeps accepted-value filtering deferred as a Phase C decision. Independent workflow and data/security review found that an operative value filter would otherwise expose an undefined financial contract: receipt versus line grain, nullable `GoodsReceiptLine.unitCost` treatment (unknown is not zero), PO-level currency and mixed-currency handling, confidential-cost authorization, CSV context, and aggregate query-plan/volume behavior. No accepted-value URL parameter or visible control is added. Any future implementation must use exact Decimal server-side predicates shared by rows, tab counts, pagination, and ordinary CSV, with non-enumerating denial and explicit zero-versus-NULL tests. Browser, disposable PostgreSQL, query-plan, hosted, and final release gates remain open.
+
 ### SPF-008 ordinary Inventory Ledger pagination checkpoint — July 24, 2026
 
 - The ordinary Inventory Ledger now uses a server-backed page query with bounded 25-row pages, exact scoped counts, deterministic `occurredAt DESC, id DESC` ordering, and filter-preserving pagination for search and movement type. The existing exact reconciliation trace remains on its dedicated server-paginated service, and CSV export remains a separately authorized full filtered export.
