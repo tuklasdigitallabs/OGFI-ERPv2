@@ -13,6 +13,8 @@ If a count cannot be opened because its attempt history is unavailable, contact 
 
 If a detail or export action reports that count history is unavailable or inconsistent, stop and contact an administrator. The system intentionally does not export a potentially divergent count until its immutable attempt and legacy line history reconcile.
 
+The review-only dashboard variance summary now reads the current immutable attempt history through a bounded server query. It is a work queue aid, not an approval or stock-correction result; if attempt history is missing or database readiness evidence is unavailable, the summary may be withheld. Count Variance remains inactive until the documented recovery and production-readiness gates are complete.
+
 ## Before you begin
 
 - Your role must include the needed stock count permission, such as `inventory.stock_count.create`, `inventory.stock_count.enter`, or `inventory.stock_count.review`.

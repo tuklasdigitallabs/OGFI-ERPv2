@@ -103,17 +103,15 @@ describe("stock count foundation rules", () => {
   });
 
   test("dashboard read requires stock-count review permission and returns bounded header-only candidates", async () => {
-    mockPrisma.stockCountSession.count.mockResolvedValue(3);
-    mockPrisma.stockCountSession.findMany.mockResolvedValue([
-      {
-        id: "count-1",
-        publicReference: "SC-2026-00001",
-        status: "SUBMITTED",
-        createdAt: new Date("2026-07-20T00:00:00.000Z"),
-        inventoryLocation: { name: "BGC Store" },
-        _count: { lines: 2 }
-      }
-    ]);
+    mockPrisma.$queryRaw.mockResolvedValueOnce([{
+      id: "count-1",
+      publicReference: "SC-2026-00001",
+      status: "SUBMITTED",
+      createdAt: new Date("2026-07-20T00:00:00.000Z"),
+      inventoryLocationName: "BGC Store",
+      varianceLineCount: 2,
+      totalCount: 3
+    }]);
 
     const reviewerSession = {
       ...dashboardSession,
@@ -133,28 +131,53 @@ describe("stock count foundation rules", () => {
       varianceCount: 3,
       taskCandidates: [{ inventoryLocationName: "BGC Store", varianceLineCount: 2 }]
     });
-    expect(mockPrisma.stockCountSession.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        tenantId: reviewerSession.context.tenantId,
-        companyId: reviewerSession.context.companyId,
-        inventoryLocation: { locationId: reviewerSession.context.locationId },
-        lines: { some: { varianceQuantityBaseUom: { not: 0 } } }
-      })
-    });
-    expect(mockPrisma.stockCountSession.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        take: 8,
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: expect.not.objectContaining({ lines: expect.anything() })
-      })
-    );
+    expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    const query = mockPrisma.$queryRaw.mock.calls[0]?.[0] as {
+      values: unknown[];
+      strings: readonly string[];
+    };
+    expect(query.values).toEqual(expect.arrayContaining([
+      reviewerSession.context.tenantId,
+      reviewerSession.context.companyId,
+      reviewerSession.context.locationId,
+      reviewerSession.user.id
+    ]));
+    expect(String(query.strings.join(""))).toContain("StockCountAttemptLine");
+    expect(String(query.strings.join(""))).toContain("LIMIT");
   });
 
   test("dashboard read rejects non-review stock-count callers before querying", async () => {
     await expect(
       getStockCountDashboardRead(dashboardSession as never)
     ).rejects.toThrow("PERMISSION_DENIED");
-    expect(mockPrisma.stockCountSession.count).not.toHaveBeenCalled();
+    expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  test("dashboard attempt aggregate fails closed when no current attempt is present", async () => {
+    mockPrisma.$queryRaw.mockResolvedValueOnce([]);
+    const reviewerSession = {
+      ...dashboardSession,
+      permissionCodes: [permissions.stockCountReview]
+    };
+    mockPrisma.userRoleAssignment.findMany.mockResolvedValue([{
+      role: {
+        permissions: [{
+          permission: {
+            tenantId: reviewerSession.context.tenantId,
+            code: permissions.stockCountReview
+          }
+        }]
+      }
+    }]);
+
+    await expect(getStockCountDashboardRead(reviewerSession as never)).resolves.toEqual({
+      varianceCount: 0,
+      taskCandidates: []
+    });
+    const query = mockPrisma.$queryRaw.mock.calls[0]?.[0] as {
+      strings: readonly string[];
+    };
+    expect(String(query.strings.join(""))).toContain('sc."currentAttemptId" IS NOT NULL');
   });
 
   test("returns only assigned first-pass start, entry, and submit tasks with bounded minimal reads", async () => {

@@ -637,6 +637,16 @@ const stockCountDashboardActionStatuses = [
   "RECOUNT_REQUESTED"
 ];
 
+type StockCountDashboardAttemptAggregateRow = {
+  id: string;
+  publicReference: string;
+  status: string;
+  inventoryLocationName: string;
+  varianceLineCount: number;
+  createdAt: Date;
+  totalCount: number;
+};
+
 export type StockCountDashboardRead = {
   varianceCount: number;
   taskCandidates: Array<{
@@ -658,65 +668,87 @@ export async function getStockCountDashboardRead(
 ): Promise<StockCountDashboardRead> {
   await requirePermission(session, permissions.stockCountReview);
 
-  const varianceWhere = {
-    ...scopedStockCountWhere(session),
-    status: { in: stockCountDashboardActionStatuses },
-    lines: { some: { varianceQuantityBaseUom: { not: 0 } } },
-    OR: [
-      { blindCount: false },
-      { blindCount: true, status: "REVIEWED" },
-      {
-        blindCount: true,
-        status: "SUBMITTED",
-        NOT: { createdByUserId: session.user.id },
-        lines: {
-          some: {
-            countedQuantityBaseUom: { not: null },
-            countedByUserId: { not: null },
-            countedAt: { not: null }
-          },
-          every: {
-            AND: [
-              { countedQuantityBaseUom: { not: null } },
-              { countedByUserId: { not: null } },
-              { NOT: { countedByUserId: session.user.id } },
-              { countedAt: { not: null } }
-            ]
-          }
-        }
-      }
-    ]
-  } satisfies Prisma.StockCountSessionWhereInput;
-  const [varianceCount, candidates] = await Promise.all([
-    prisma.stockCountSession.count({ where: varianceWhere }),
-    prisma.stockCountSession.findMany({
-      where: varianceWhere,
-      select: {
-        id: true,
-        publicReference: true,
-        status: true,
-        createdAt: true,
-        inventoryLocation: { select: { name: true } },
-        _count: {
-          select: {
-            lines: { where: { varianceQuantityBaseUom: { not: 0 } } }
-          }
-        }
-      },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      take: stockCountDashboardTaskCandidateLimit
-    })
-  ]);
+  // One scoped current-attempt query supplies both the total and bounded rows.
+  // Missing current-attempt lineage is excluded (fail closed); legacy lines are
+  // intentionally not consulted by this dashboard contract.
+  const rows = await prisma.$queryRaw<StockCountDashboardAttemptAggregateRow[]>(Prisma.sql`
+    WITH scoped AS (
+      SELECT sc.id,
+             sc."publicReference",
+             sc."createdAt",
+             a.status,
+             a."blindCount",
+             a."createdByUserId",
+             il.name AS "inventoryLocationName",
+             a.id AS "attemptId"
+        FROM "StockCountSession" sc
+        JOIN "StockCountAttempt" a
+          ON a.id = sc."currentAttemptId"
+         AND a."stockCountSessionId" = sc.id
+         AND a."tenantId" = sc."tenantId"
+         AND a."companyId" = sc."companyId"
+         AND a."inventoryLocationId" = sc."inventoryLocationId"
+        JOIN "InventoryLocation" il
+          ON il.id = sc."inventoryLocationId"
+         AND il."tenantId" = sc."tenantId"
+         AND il."companyId" = sc."companyId"
+       WHERE sc."currentAttemptId" IS NOT NULL
+         AND sc."tenantId" = ${session.context.tenantId}::uuid
+         AND sc."companyId" = ${session.context.companyId}::uuid
+         AND il."locationId" = ${session.context.locationId}::uuid
+         AND a.status IN (${Prisma.join(stockCountDashboardActionStatuses)})
+    ), line_rollup AS (
+      SELECT al."stockCountAttemptId" AS "attemptId",
+             COUNT(*) FILTER (WHERE al."varianceQuantityBaseUom" <> 0)::int AS "varianceLineCount",
+             COUNT(*)::int AS "lineCount",
+             COUNT(*) FILTER (WHERE al."countedQuantityBaseUom" IS NOT NULL
+                               AND al."countedByUserId" IS NOT NULL
+                               AND al."countedAt" IS NOT NULL)::int AS "completeLineCount",
+             COUNT(*) FILTER (WHERE al."countedByUserId" = ${session.user.id}::uuid)::int AS "actorLineCount"
+        FROM "StockCountAttemptLine" al
+       JOIN scoped s ON s."attemptId" = al."stockCountAttemptId"
+       WHERE al."tenantId" = ${session.context.tenantId}::uuid
+         AND al."companyId" = ${session.context.companyId}::uuid
+       GROUP BY al."stockCountAttemptId"
+    ), eligible AS (
+      SELECT s.*, r."varianceLineCount"
+        FROM scoped s
+        JOIN line_rollup r ON r."attemptId" = s."attemptId"
+       WHERE r."varianceLineCount" > 0
+         AND (
+           s."blindCount" = false
+           OR s.status = 'REVIEWED'
+           OR (
+             s.status = 'SUBMITTED'
+             AND s."blindCount" = true
+             AND s."createdByUserId" <> ${session.user.id}::uuid
+             AND r."lineCount" > 0
+             AND r."completeLineCount" = r."lineCount"
+             AND r."actorLineCount" = 0
+           )
+         )
+    ), ranked AS (
+      SELECT e.*, COUNT(*) OVER ()::int AS "totalCount"
+        FROM eligible e
+       ORDER BY e."createdAt" ASC, e.id ASC
+       LIMIT ${stockCountDashboardTaskCandidateLimit}
+    )
+    SELECT id, "publicReference", status, "inventoryLocationName",
+           "varianceLineCount", "createdAt", "totalCount"
+      FROM ranked
+     ORDER BY "createdAt" ASC, id ASC
+  `);
+  const varianceCount = rows[0] ? Number(rows[0].totalCount) : 0;
 
   return {
     varianceCount,
-    taskCandidates: candidates.map((count) => ({
+    taskCandidates: rows.map((count) => ({
       id: count.id,
       publicReference: count.publicReference,
       status: count.status,
-      inventoryLocationName: count.inventoryLocation.name,
-      varianceLineCount: count._count.lines,
-      createdAt: count.createdAt.toISOString()
+      inventoryLocationName: count.inventoryLocationName,
+      varianceLineCount: Number(count.varianceLineCount),
+      createdAt: new Date(count.createdAt).toISOString()
     }))
   };
 }
