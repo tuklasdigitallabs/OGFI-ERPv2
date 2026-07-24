@@ -57,6 +57,11 @@ totals, deterministic name/ID ordering, and pagination. The initial-location sel
 uses a separate bounded active catalog and discloses overflow. Company, Brand, and
 Department lists remain explicitly pending separate contracts.
 
+Implementation note (`DEC-0115`): Brands now use a selected-company server registry with
+bounded name/code and status filters, exact totals, deterministic name/ID ordering, and
+pagination. Location creation uses a separate bounded active-brand catalog with overflow
+disclosure. Departments remain pending their own dependency-count contract.
+
 ## 2. User detail requirements
 
 Show:

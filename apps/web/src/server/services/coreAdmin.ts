@@ -184,6 +184,13 @@ const coreAdminLocationPageInputSchema = z.object({
     .optional(),
 });
 
+const coreAdminBrandPageInputSchema = z.object({
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["ACTIVE", "INACTIVE", "ARCHIVED"]).optional(),
+});
+
 const updateRolePermissionsSchema = z.object({
   roleId: z.string().uuid(),
   reason: scopeReasonSchema,
@@ -973,6 +980,89 @@ async function listCoreAdminLocationOptionsAuthorized(session: SessionContext) {
   };
 }
 
+export type CoreAdminBrandPage = {
+  items: Array<{
+    id: string;
+    companyId: string;
+    companyName: string;
+    code: string;
+    name: string;
+    status: string;
+  }>;
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  activeItems: number;
+};
+
+async function listCoreAdminBrandPageAuthorized(
+  session: SessionContext,
+  input: z.input<typeof coreAdminBrandPageInputSchema> = {},
+): Promise<CoreAdminBrandPage> {
+  const values = coreAdminBrandPageInputSchema.parse(input);
+  const query = values.query.toLowerCase();
+  const where: Prisma.BrandWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.status ? { status: values.status } : {}),
+    ...(query
+      ? {
+          OR: [
+            { name: { contains: query, mode: "insensitive" as const } },
+            { code: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+  const [totalItems, activeItems, brands] = await Promise.all([
+    prisma.brand.count({ where }),
+    prisma.brand.count({ where: { ...where, status: "ACTIVE" } }),
+    prisma.brand.findMany({
+      where,
+      include: { company: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      skip: (values.page - 1) * values.pageSize,
+      take: values.pageSize,
+    }),
+  ]);
+  return {
+    items: brands.map((brand) => ({
+      id: brand.id,
+      companyId: brand.companyId,
+      companyName: brand.company.tradingName ?? brand.company.legalName,
+      code: brand.code,
+      name: brand.name,
+      status: brand.status,
+    })),
+    page: values.page,
+    pageSize: values.pageSize,
+    totalItems,
+    activeItems,
+  };
+}
+
+async function listCoreAdminBrandOptionsAuthorized(session: SessionContext) {
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    status: "ACTIVE" as const,
+  };
+  const [totalItems, options] = await Promise.all([
+    prisma.brand.count({ where }),
+    prisma.brand.findMany({
+      where,
+      select: { id: true, name: true, code: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: 100,
+    }),
+  ]);
+  return {
+    items: options,
+    totalItems,
+    hasMore: totalItems > options.length,
+  };
+}
+
 export async function listCoreAdminRolePage(
   session: SessionContext,
   input: z.input<typeof coreAdminRolePageInputSchema> = {},
@@ -1010,27 +1100,45 @@ export async function listCoreAdminLocationOptions(session: SessionContext) {
   return listCoreAdminLocationOptionsAuthorized(session);
 }
 
+export async function listCoreAdminBrandPage(
+  session: SessionContext,
+  input: z.input<typeof coreAdminBrandPageInputSchema> = {},
+) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  return listCoreAdminBrandPageAuthorized(session, input);
+}
+
+export async function listCoreAdminBrandOptions(session: SessionContext) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  return listCoreAdminBrandOptionsAuthorized(session);
+}
+
 export async function getCoreAdminOverview(
   session: SessionContext,
   userPageInput: z.input<typeof coreAdminUserPageInputSchema> = {},
   rolePageInput: z.input<typeof coreAdminRolePageInputSchema> = {},
+  brandPageInput: z.input<typeof coreAdminBrandPageInputSchema> = {},
   locationPageInput: z.input<typeof coreAdminLocationPageInputSchema> = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const [userPage, rolePage, roleOptions, locationPage] = await Promise.all([
+  const [userPage, rolePage, roleOptions, brandPage, locationPage] = await Promise.all([
     listCoreAdminUserPageAuthorized(session, userPageInput),
     listCoreAdminRolePageAuthorized(session, rolePageInput),
     listCoreAdminRoleOptionsAuthorized(session),
+    listCoreAdminBrandPageAuthorized(session, brandPageInput),
     listCoreAdminLocationPageAuthorized(session, locationPageInput),
   ]);
 
   const [
     tenant,
     companies,
-    brands,
     departments,
     approvalRules,
     recentAuditEvents,
@@ -1049,16 +1157,6 @@ export async function getCoreAdminOverview(
         id: session.context.companyId,
       },
       orderBy: { legalName: "asc" },
-    }),
-    prisma.brand.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-      },
-      include: {
-        company: true,
-      },
-      orderBy: { name: "asc" },
     }),
     prisma.department.findMany({
       where: {
@@ -1123,14 +1221,8 @@ export async function getCoreAdminOverview(
       timezone: company.timezone,
       status: company.status,
     })),
-    brands: brands.map((brand) => ({
-      id: brand.id,
-      companyId: brand.companyId,
-      companyName: brand.company.tradingName ?? brand.company.legalName,
-      name: brand.name,
-      code: brand.code,
-      status: brand.status,
-    })),
+    brands: brandPage.items,
+    brandPage,
     departments: departments.map((department) => ({
       id: department.id,
       companyId: department.companyId,

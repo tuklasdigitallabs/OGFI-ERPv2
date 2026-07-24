@@ -457,6 +457,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Independent Architecture and Security reviews selected Brands-first as the next registry because Brand is the direct Company → Brand → Location dependency. The slice will use selected-company server predicates, bounded name/code/status filters, deterministic ordering, exact totals, and a separate active Brand option catalog.
 - Company remains a single read-only selected-company summary. Departments remain deferred for their own finance/workforce dependency-count contract; the Organization workspace must not be called complete while Departments remain pending.
 
+### DEC-0115 Organization Scope Brands implementation checkpoint — July 24, 2026
+
+- The overview now delegates Brands to a bounded selected-company page contract instead of an unbounded brand list. Name/code and status filters, exact totals, deterministic `name ASC, id ASC` ordering, and a separate active-brand option catalog capped at 100 are implemented. Location creation no longer treats paginated rows as selector authority.
+- Focused Core Admin coverage passes 20/20; web typecheck and lint pass. Full regression, authorization manifest, isolated production build, responsive browser, disposable PostgreSQL count/authorization, selector overflow, and hosted recovery gates remain open for this checkpoint. Departments remain pending and Organization Scope is not complete.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
