@@ -442,6 +442,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Audit detail and CSV output use projection redaction for actor contact/IP and sensitive nested credential, token, email, storage-key, and URL fields. Stored immutable JSON is not mutated. Direct export performs selected-company Manage preflight before recording export-start activity and omits contact/IP columns.
 - Focused Core Admin tests pass 18/18; report tests pass 11/11; authorization manifest passes 20/20; web typecheck and lint pass; full regression and isolated production build remain the final gates for this checkpoint, along with responsive browser and disposable PostgreSQL export/no-query evidence.
 
+### DEC-0114 Organization Scope Locations pagination decision — July 24, 2026
+
+- Independent Architecture and Security reviews selected a Locations-first registry as the next Administration slice. It will use selected-company server predicates, bounded query/status/type/brand filters, deterministic `name ASC, id ASC` ordering, exact count/page parity, and separate bounded active option catalogs for dependent forms.
+- Company, Brand, Department, and broader Organization Scope completion remain deferred. The visible Organization tab must retain truthful pending/read-only wording until its remaining registries have their own contracts and production evidence.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
