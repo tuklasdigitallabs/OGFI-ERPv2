@@ -1,5 +1,5 @@
-import { prisma } from "@ogfi/database";
-import { randomUUID } from "crypto";
+import { prisma, Prisma } from "@ogfi/database";
+import { createHash, randomUUID } from "crypto";
 import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import { assertAuthorizedLocation, requireSessionContext, type SessionContext } from "./context";
@@ -36,6 +36,7 @@ const optionalNonNegativeIntegerSchema = z.preprocess(
 const createSupplierQuoteHeaderSchema = z.object({
   purchaseRequestId: z.string().uuid(),
   supplierId: z.string().uuid(),
+  idempotencyKey: z.string().min(1).max(200).transform((value) => value.trim()),
   quoteReference: z.string().min(1).max(80).transform((value) => value.trim()),
   quoteDate: z.string().min(1),
   validityDate: optionalDateSchema,
@@ -516,7 +517,36 @@ export async function createSupplierQuote(formData: FormData) {
   });
   const totalAmount = quoteLines.reduce((total, line) => total + line.lineTotal, 0);
 
-  await prisma.$transaction(async (tx) => {
+  const canonicalRequest = {
+    version: "supplier-quote-v1",
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    actorUserId: session.user.id,
+    purchaseRequestId: request.id,
+    requestLocationId: request.requestLocationId,
+    supplierId: supplier.id,
+    quoteReference: values.quoteReference,
+    quoteDate: values.quoteDate,
+    validityDate: values.validityDate ?? null,
+    terms: values.terms ?? null,
+    lines: [...quoteLines]
+      .sort((left, right) => left.sourcePrLineId.localeCompare(right.sourcePrLineId))
+      .map((line) => ({
+        sourcePrLineId: line.sourcePrLineId,
+        quantity: line.quantity.toFixed(6),
+        uomId: line.uomId,
+        unitPrice: line.unitPrice.toFixed(6),
+        availabilityStatus: line.availabilityStatus,
+        leadTimeDays: line.leadTimeDays,
+        notes: line.notes
+      }))
+  };
+  const idempotencyRequestHash = createHash("sha256")
+    .update(JSON.stringify(canonicalRequest))
+    .digest("hex");
+
+  try {
+    return await prisma.$transaction(async (tx) => {
     const quotationRequest = await tx.quotationRequest.upsert({
       where: { purchaseRequestId: request.id },
       create: {
@@ -530,25 +560,52 @@ export async function createSupplierQuote(formData: FormData) {
       update: {}
     });
 
-    const quote = await tx.supplierQuotation.create({
-      data: {
-        quotationRequestId: quotationRequest.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        supplierId: supplier.id,
-        quoteReference: values.quoteReference,
-        quoteDate: new Date(`${values.quoteDate}T00:00:00.000Z`),
-        currencyCode: company.currencyCode,
-        totalAmount,
-        validityDate: values.validityDate
-          ? new Date(`${values.validityDate}T00:00:00.000Z`)
-          : null,
-        terms: values.terms ?? null,
-        lines: {
-          create: quoteLines
-        }
+    const existingQuotes = await tx.$queryRaw<Array<{ id: string; "idempotencyRequestHash": string | null }>>(Prisma.sql`
+      SELECT "id", "idempotencyRequestHash"
+      FROM "SupplierQuotation"
+      WHERE "tenantId" = ${session.context.tenantId}::uuid
+        AND "companyId" = ${session.context.companyId}::uuid
+        AND "idempotencyKey" = ${values.idempotencyKey}
+      LIMIT 1
+    `);
+    const existingQuote = existingQuotes[0];
+    if (existingQuote) {
+      if (existingQuote.idempotencyRequestHash !== idempotencyRequestHash) {
+        throw new Error("SUPPLIER_QUOTE_IDEMPOTENCY_CONFLICT");
       }
-    });
+      return existingQuote.id;
+    }
+
+    const quoteId = randomUUID();
+    const quoteRows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      INSERT INTO "SupplierQuotation" (
+        "id", "quotationRequestId", "tenantId", "companyId", "supplierId",
+        "idempotencyKey", "idempotencyRequestHash", "quoteReference", "quoteDate",
+        "currencyCode", "totalAmount", "validityDate", "terms", "status", "createdAt"
+      ) VALUES (
+        ${quoteId}::uuid, ${quotationRequest.id}::uuid, ${session.context.tenantId}::uuid,
+        ${session.context.companyId}::uuid, ${supplier.id}::uuid, ${values.idempotencyKey},
+        ${idempotencyRequestHash}, ${values.quoteReference}, ${new Date(`${values.quoteDate}T00:00:00.000Z`)},
+        ${company.currencyCode}, ${totalAmount}, ${values.validityDate ? new Date(`${values.validityDate}T00:00:00.000Z`) : null},
+        ${values.terms ?? null}, 'RECORDED', NOW()
+      ) RETURNING "id"
+    `);
+    const quote = quoteRows[0];
+    if (!quote) {
+      throw new Error("SUPPLIER_QUOTE_CREATE_FAILED");
+    }
+    for (const line of quoteLines) {
+      await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "SupplierQuotationLine" (
+          "id", "supplierQuotationId", "sourcePrLineId", "itemId", "quantity", "uomId",
+          "unitPrice", "lineTotal", "availabilityStatus", "leadTimeDays", "notes"
+        ) VALUES (
+          ${randomUUID()}::uuid, ${quote.id}::uuid, ${line.sourcePrLineId}::uuid, ${line.itemId}::uuid,
+          ${line.quantity}, ${line.uomId}::uuid, ${line.unitPrice}, ${line.lineTotal},
+          ${line.availabilityStatus}, ${line.leadTimeDays}, ${line.notes}
+        )
+      `);
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -567,7 +624,30 @@ export async function createSupplierQuote(formData: FormData) {
         }
       }
     });
-  });
+    return quote.id;
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      Array.isArray(error.meta?.target) &&
+      error.meta.target.some((target) => String(target).includes("idempotencyKey"))
+    ) {
+      const existingQuotes = await prisma.$queryRaw<Array<{ id: string; idempotencyRequestHash: string | null }>>(Prisma.sql`
+        SELECT "id", "idempotencyRequestHash"
+        FROM "SupplierQuotation"
+        WHERE "tenantId" = ${session.context.tenantId}::uuid
+          AND "companyId" = ${session.context.companyId}::uuid
+          AND "idempotencyKey" = ${values.idempotencyKey}
+        LIMIT 1
+      `);
+      if (existingQuotes[0]?.idempotencyRequestHash === idempotencyRequestHash) {
+        return existingQuotes[0].id;
+      }
+      throw new Error("SUPPLIER_QUOTE_IDEMPOTENCY_CONFLICT");
+    }
+    throw error;
+  }
 }
 
 export async function createQuotationRecommendation(formData: FormData) {

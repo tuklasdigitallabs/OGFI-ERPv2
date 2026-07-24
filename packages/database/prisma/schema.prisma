@@ -3546,6 +3546,8 @@ model SupplierQuotation {
   tenantId           String                    @db.Uuid
   companyId          String                    @db.Uuid
   supplierId         String                    @db.Uuid
+  idempotencyKey     String?                   @db.VarChar(200)
+  idempotencyRequestHash String?               @db.Char(64)
   quoteReference     String
   quoteDate          DateTime
   currencyCode       String
@@ -3565,6 +3567,7 @@ model SupplierQuotation {
   @@unique([id, quotationRequestId])
   @@index([tenantId, companyId, supplierId])
   @@index([quotationRequestId])
+  @@unique([tenantId, companyId, idempotencyKey], map: "SupplierQuotation_tenantId_companyId_idempotencyKey_key")
 }
 
 model QuotationRecommendation {

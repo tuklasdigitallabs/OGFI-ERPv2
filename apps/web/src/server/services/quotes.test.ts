@@ -52,6 +52,19 @@ describe("quotation recommendation rules", () => {
     expect(submit).toContain("purchaseRequest.lines.reduce");
   });
 
+  test("quote creation binds retries to a canonical scoped request hash", () => {
+    const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
+    expect(source).toContain('idempotencyKey: z.string().min(1).max(200)');
+    expect(source).toContain('version: "supplier-quote-v1"');
+    expect(source).toContain('createHash("sha256")');
+    expect(source).toContain('"idempotencyRequestHash"');
+    expect(source).toContain("SUPPLIER_QUOTE_IDEMPOTENCY_CONFLICT");
+    expect(readFileSync(path.resolve(__dirname, "../../../../../packages/database/prisma/schema.prisma"), "utf8"))
+      .toContain("SupplierQuotation_tenantId_companyId_idempotencyKey_key");
+    expect(readFileSync(path.resolve(__dirname, "../../components/SupplierQuoteLinesEditor.tsx"), "utf8"))
+      .toContain('name="idempotencyKey"');
+  });
+
   test("initial recommendation approval routing is normalized and fail-closed", () => {
     const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
     const start = source.indexOf("export async function submitQuotationRecommendation");
@@ -129,7 +142,7 @@ describe("quotation recommendation rules", () => {
     expect(source).toContain("SUPPLIER_QUOTE_LINE_DUPLICATE");
     expect(source).toContain("SUPPLIER_QUOTE_LINES_INCOMPLETE");
     expect(source).toContain("SUPPLIER_QUOTE_LINES_LIMIT_EXCEEDED");
-    expect(source).toContain("create: quoteLines");
+    expect(source).toContain('INSERT INTO "SupplierQuotationLine"');
     expect(source).toContain("lineCount: quoteLines.length");
     expect(source).not.toContain('take: 1,\n        include: {\n          item: true,\n          uom: true');
   });

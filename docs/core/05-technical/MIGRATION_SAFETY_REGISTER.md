@@ -1292,6 +1292,21 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "owner": "Database Engineering owns migration/backfill/guards; Stock Count Engineering owns cutover; Security, QA, Operations, and Release verify lineage, cutoff, concurrency, blind-count, and recovery behavior.",
     "verification": "Prisma schema validation passes. Disposable PostgreSQL migration/backfill, append-only guard, cutoff/concurrency, source-link, redeploy, drift, restore, and hosted evidence remain mandatory before Count Variance activation or production approval.",
     "expectedRecoveryTime": "Measure populated backfill, lock/statement timeouts, forward-fix, and isolated restore against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260724150000_supplier_quote_create_idempotency",
+    "sha256": "269e139e5388f6fb9dcf253953dd520ca579abdac29a93c3539fe59a2b2d88e2",
+    "risk": "The nullable tenant/company/idempotency-key unique index can fail if a predecessor contains duplicate non-null keys; quote rows and audit history must not be rewritten.",
+    "expectedDataEffect": "Add nullable quote retry-key and canonical request-hash columns plus a scoped unique index; existing supplier quotations remain unchanged.",
+    "recovery": "Stop on duplicate keys or partial DDL, reconcile through an audited forward fix or predecessor restore, and preserve all quote and audit evidence.",
+    "reviewerStatus": "PENDING",
+    "failurePoint": "Duplicate key, lock/DDL failure, checksum mismatch, second-deploy delta, Prisma drift, or restore non-equivalence.",
+    "transactionBehavior": "Prisma migration transaction; inspect the migration journal and index state before retry after interruption.",
+    "reversibility": "The additive nullable columns are backward compatible. Retain populated retry evidence through application rollback; use a forward correction or verified restore rather than deleting keys.",
+    "decisionTrigger": "Stop on any predecessor data delta, wrong unique scope, checksum mismatch, duplicate replay, redeploy delta, drift, or restore mismatch.",
+    "owner": "Database Engineering owns the migration; Quotations Engineering owns canonical hashing and replay behavior; Security, QA, and Release verify scope and concurrency.",
+    "verification": "Prisma schema/type validation and focused quote tests pass. Disposable PostgreSQL exact retry, changed-payload, cross-scope, concurrent race, migration, redeploy, restore, and hosted evidence remain mandatory before production approval.",
+    "expectedRecoveryTime": "Measure lock, forward-fix, concurrent replay, and isolated restore duration against the approved hosted RPO/RTO."
   }
 ]
 ```

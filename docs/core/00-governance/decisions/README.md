@@ -89,3 +89,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - Configurable approval rules
 - Modern SaaS UI with operational context
 - `DEC-0102-QUOTES-CREATE-TASK-MODE.md` — Supplier Quote capture route and workspace boundary
+- `DEC-0103-QUOTES-CREATE-IDEMPOTENCY.md` — Supplier Quote retry safety and canonical request binding

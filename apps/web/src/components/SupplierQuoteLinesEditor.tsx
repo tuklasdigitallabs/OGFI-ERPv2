@@ -15,17 +15,19 @@ function draftLines(request: QuoteRequestOption | undefined, uoms: UomOption[]):
 export function SupplierQuoteLinesEditor({ requests, suppliers, uoms, action }: Props) {
   const hasFormOptions = requests.length > 0 && suppliers.length > 0 && uoms.length > 0;
   const [selectedRequestId, setSelectedRequestId] = useState(requests[0]?.id ?? "");
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [lines, setLines] = useState<DraftLine[]>(() => draftLines(requests[0], uoms));
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [errors, setErrors] = useState<number[]>([]);
   const selected = lines[selectedIndex] ?? lines[0];
   const incomplete = useMemo(() => lines.flatMap((line, index) => Number(line.quantity) > 0 && line.uomId && Number(line.unitPrice) > 0 && line.availabilityStatus.trim() ? [] : [index]), [lines]);
   const input = "min-h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
-  function selectRequest(id: string) { setSelectedRequestId(id); setLines(draftLines(requests.find((request) => request.id === id), uoms)); setSelectedIndex(0); setErrors([]); }
+  function selectRequest(id: string) { setSelectedRequestId(id); setIdempotencyKey(crypto.randomUUID()); setLines(draftLines(requests.find((request) => request.id === id), uoms)); setSelectedIndex(0); setErrors([]); }
   function update(values: Partial<DraftLine>) { setLines((current) => current.map((line, index) => index === selectedIndex ? { ...line, ...values } : line)); }
   function submit(event: FormEvent<HTMLFormElement>) { if (incomplete[0] === undefined) return; event.preventDefault(); setErrors(incomplete); setSelectedIndex(incomplete[0]); }
 
   return <form action={action} className="flex h-full min-h-0 flex-col" onSubmit={submit}>
+    <input name="idempotencyKey" type="hidden" value={idempotencyKey} readOnly />
     {lines.map((line) => <input key={`source-${line.sourcePrLineId}`} name="sourcePrLineId" type="hidden" value={line.sourcePrLineId} readOnly />)}
     {lines.map((line) => <input key={`qty-${line.sourcePrLineId}`} name="lineQuantity" type="hidden" value={line.quantity} readOnly />)}
     {lines.map((line) => <input key={`uom-${line.sourcePrLineId}`} name="lineUomId" type="hidden" value={line.uomId} readOnly />)}

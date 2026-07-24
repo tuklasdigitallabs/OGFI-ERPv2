@@ -382,3 +382,4 @@ Add a dated entry whenever an approved decision changes product scope, business 
 - The authorization surface baseline now explicitly registers the server-owned receiver option reader; the authorization manifest passes 20/20. Database-backed authorization, browser, production-build, and hosted release gates remain open.
 - An isolated `NEXT_DIST_DIR=.next-quality` production build passed for source SHA `7ec94be`; generated route metadata was restored after verification. Browser, disposable PostgreSQL, and hosted release/recovery gates remain open.
 - Release-tool self-test and secret review passed for the current candidate; generated evidence remains under the local release-evidence directories. Hosted deployment/recovery and database-backed gates remain open.
+- Added confirmed `DEC-0103`: supplier quote creation now uses tenant/company-scoped idempotency keys and canonical request hashes so exact retries do not duplicate quotes or audit events.

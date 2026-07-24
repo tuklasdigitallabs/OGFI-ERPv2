@@ -917,6 +917,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "Record at least one supplier quote line.",
   SUPPLIER_QUOTE_LINE_NOT_FOUND:
     "One of the selected supplier quote lines is no longer available.",
+  SUPPLIER_QUOTE_IDEMPOTENCY_CONFLICT:
+    "This quote submission key was already used for different quote details. Start a new quote task and try again.",
   SELF_APPROVAL_BLOCKED:
     "You cannot approve, return, or reject your own request.",
   SELF_ROLE_MUTATION_BLOCKED:
