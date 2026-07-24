@@ -26,6 +26,7 @@ import {
   createUatEvidenceRecord,
   deploymentEvidenceTypes,
   enablementEvidenceTypes,
+  getReleaseSecurityAttentionUser,
   getReleaseSecurityEvidenceSummary,
   getUatEvidenceSummary,
   getDeploymentEvidenceRecord,
@@ -310,6 +311,10 @@ export default async function AdminReadinessPage({
     selectedCategory === "security"
       ? await getReleaseSecurityEvidenceSummary(session)
       : null;
+  const securityAttentionUserId = getSearchParam(params, "securityAttentionUserId");
+  const selectedSecurityAttentionUser = selectedCategory === "security" && securityAttentionUserId
+    ? await getReleaseSecurityAttentionUser(session, securityAttentionUserId)
+    : null;
   const deploymentQ = (getSearchParam(params, "deploymentQ") ?? "").slice(0, 120);
   const deploymentTypeValue = getSearchParam(params, "deploymentType");
   const deploymentEvidenceType = deploymentEvidenceTypes.includes(deploymentTypeValue as (typeof deploymentEvidenceTypes)[number]) ? (deploymentTypeValue as (typeof deploymentEvidenceTypes)[number]) : undefined;
@@ -376,6 +381,9 @@ export default async function AdminReadinessPage({
   const selectedReleaseBoardDecision = selectedCategory === "go_no_go" && getSearchParam(params, "boardDecisionId")
     ? await getReleaseBoardDecision(session, getSearchParam(params, "boardDecisionId") as string)
     : null;
+  const boardDecisionContextParams = new URLSearchParams({ category: "go_no_go", boardDecisionPage: String(releaseBoardDecisionPage.page), boardDecisionPageSize: String(releaseBoardDecisionPage.pageSize) });
+  if (boardDecisionQ) boardDecisionContextParams.set("boardDecisionQ", boardDecisionQ);
+  if (boardDecision) boardDecisionContextParams.set("boardDecision", boardDecision);
   const exportGeneratedAt = new Date().toISOString();
   const exportGeneratedAtParam = encodeURIComponent(exportGeneratedAt);
   const exportHref = `/admin/readiness/export?generatedAt=${exportGeneratedAtParam}`;
@@ -1275,6 +1283,30 @@ export default async function AdminReadinessPage({
         ) : null}
 
         {securityEvidenceSummary ? (
+          <>
+          {securityAttentionUserId ? (
+            <Panel className="mb-5 border-amber-100 bg-amber-50/60">
+              {selectedSecurityAttentionUser ? (
+                <div className="grid gap-3 text-sm text-amber-950">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Selected security attention</p>
+                      <h3 className="text-lg font-bold">{selectedSecurityAttentionUser.displayName}</h3>
+                      <p>{selectedSecurityAttentionUser.email}</p>
+                    </div>
+                    <Badge tone={selectedSecurityAttentionUser.mfaStatus === "ACTIVE" || selectedSecurityAttentionUser.mfaStatus === "VERIFIED" ? "success" : "warning"}>
+                      MFA {selectedSecurityAttentionUser.mfaStatus ?? "MISSING"}
+                    </Badge>
+                  </div>
+                  <p>Company locations: {selectedSecurityAttentionUser.locationNames.join(", ") || "Company scope"}</p>
+                  <p>Sensitive permissions: {selectedSecurityAttentionUser.permissionCodes.join(", ") || "None"}</p>
+                  <p>Local identity: {selectedSecurityAttentionUser.hasLocalIdentity ? "Present" : "Missing"}; pending provider invalidation: {selectedSecurityAttentionUser.pendingProviderInvalidation ? "Yes" : "No"}.</p>
+                  <p className="text-xs text-amber-800">Read-only snapshot as of {new Date(selectedSecurityAttentionUser.asOfUtc).toLocaleString()} ({selectedSecurityAttentionUser.sourceStatus}). Use the authoritative User Detail or session controls for changes.</p>
+                  <a className="font-semibold text-blue-700 hover:underline" href="/admin/readiness?category=security">Close selected attention</a>
+                </div>
+              ) : <p className="text-sm text-amber-950">The selected security attention record is unavailable in the current company scope.</p>}
+            </Panel>
+          ) : null}
           <div className="mb-5 grid gap-3 lg:grid-cols-5">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1337,9 +1369,13 @@ export default async function AdminReadinessPage({
             {securityEvidenceSummary.sampleAttentionUsers.length > 0 ? (
               <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-950 lg:col-span-5">
                 <p className="font-bold">MFA attention sample</p>
-                <p className="mt-1">
-                  {securityEvidenceSummary.sampleAttentionUsers.join(", ")}
-                </p>
+                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                  {securityEvidenceSummary.sampleAttentionUsers.map((user) => (
+                    <a key={user.id} className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?category=security&securityAttentionUserId=${user.id}`}>
+                      {user.displayName}
+                    </a>
+                  ))}
+                </div>
               </div>
             ) : null}
             {securityEvidenceSummary.pendingControlledAccessRequestCount > 0 ? (
@@ -1372,6 +1408,8 @@ export default async function AdminReadinessPage({
               </p>
             </div>
           </div>
+          <p className="mb-5 text-xs text-slate-500">Security counters are a live, scoped snapshot ({securityEvidenceSummary.sourceStatus}) as of {new Date(securityEvidenceSummary.asOfUtc).toLocaleString()}.</p>
+          </>
         ) : null}
 
         {uatEvidenceSummary ? (
@@ -1645,7 +1683,7 @@ export default async function AdminReadinessPage({
                     >
                       {record.verificationStatus.replaceAll("_", " ")}
                     </Badge>
-                    <a className="min-h-11 inline-flex items-center justify-center rounded-md border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50" href={`/admin/readiness?category=enablement&enablementEvidenceId=${record.id}`}>Open evidence</a>
+                    <a className="min-h-11 inline-flex items-center justify-center rounded-md border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50" href={`/admin/readiness?${new URLSearchParams(`${enablementContextParams.toString()}&enablementEvidenceId=${record.id}`).toString()}`}>Open evidence</a>
                   </div>
                 ))}
               </div>
@@ -1677,7 +1715,7 @@ export default async function AdminReadinessPage({
           {getSearchParam(params, "boardDecisionId") ? (
             <Panel className="mb-5 border-blue-100 bg-blue-50/40">
               {selectedReleaseBoardDecision ? (
-                <div className="grid gap-3 text-sm text-slate-700"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected Release Board decision</p><h3 className="text-lg font-bold text-slate-950">{boardDecisionLabel(selectedReleaseBoardDecision.decision)}</h3></div><Badge tone={selectedReleaseBoardDecision.decision === "GO" ? "success" : selectedReleaseBoardDecision.decision === "HOLD" || selectedReleaseBoardDecision.decision === "ROLLBACK" ? "destructive" : "warning"}>{boardDecisionLabel(selectedReleaseBoardDecision.decision)}</Badge></div><p>Decided {new Date(selectedReleaseBoardDecision.decidedAt).toLocaleString()} by {selectedReleaseBoardDecision.chairUser.displayName || selectedReleaseBoardDecision.chairUser.email}</p><p>Evidence: {selectedReleaseBoardDecision.evidenceReference}</p><p>{selectedReleaseBoardDecision.decisionNote}</p><p>Participants: {Array.isArray(selectedReleaseBoardDecision.participants) ? selectedReleaseBoardDecision.participants.join(", ") : "Recorded participant list unavailable"}</p><a className="font-semibold text-blue-700 hover:underline" href="/admin/readiness?category=go_no_go">Close selected decision</a></div>
+                <div className="grid gap-3 text-sm text-slate-700"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected Release Board decision</p><h3 className="text-lg font-bold text-slate-950">{boardDecisionLabel(selectedReleaseBoardDecision.decision)}</h3></div><Badge tone={selectedReleaseBoardDecision.decision === "GO" ? "success" : selectedReleaseBoardDecision.decision === "HOLD" || selectedReleaseBoardDecision.decision === "ROLLBACK" ? "destructive" : "warning"}>{boardDecisionLabel(selectedReleaseBoardDecision.decision)}</Badge></div><p>Decided {new Date(selectedReleaseBoardDecision.decidedAt).toLocaleString()} by {selectedReleaseBoardDecision.chairUser.displayName || selectedReleaseBoardDecision.chairUser.email}</p><p>Evidence: {selectedReleaseBoardDecision.evidenceReference}</p><p>{selectedReleaseBoardDecision.decisionNote}</p><p>Participants: {Array.isArray(selectedReleaseBoardDecision.participants) ? selectedReleaseBoardDecision.participants.join(", ") : "Recorded participant list unavailable"}</p><a className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?${boardDecisionContextParams.toString()}`}>Close selected decision</a></div>
               ) : <p className="text-sm text-slate-700">The selected Release Board decision is unavailable in the current company scope.</p>}
             </Panel>
           ) : null}
@@ -1713,7 +1751,7 @@ export default async function AdminReadinessPage({
                     </p>
                     <div>
                       <p className="font-semibold text-slate-950">
-                      <a className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?category=go_no_go&boardDecisionId=${decision.id}`}>{decision.evidenceReference}</a>
+                      <a className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?${new URLSearchParams(`${boardDecisionContextParams.toString()}&boardDecisionId=${decision.id}`).toString()}`}>{decision.evidenceReference}</a>
                       </p>
                       <p className="mt-1 text-sm leading-5 text-slate-600">
                         {decision.decisionNote}

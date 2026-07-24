@@ -117,3 +117,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0131-ADMIN-ENABLEMENT-EVIDENCE-PAGINATION.md` — bounded enablement evidence register and aggregate dependency checks
 - `DEC-0132-ADMIN-SECURITY-READINESS-PROJECTION.md` — selected-company security projection hardening and remaining aggregate gates
 - `DEC-0133-ADMIN-RELEASE-BOARD-DECISION-REGISTER.md` — bounded append-only Release Board decision register and selected detail
+- `DEC-0134-ADMIN-SECURITY-READINESS-SQL-PROJECTION.md` — single-snapshot SQL security counters and scoped attention detail

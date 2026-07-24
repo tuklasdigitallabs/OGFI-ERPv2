@@ -71,9 +71,8 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("pendingSensitiveRoleRequestCount");
     expect(serviceSource).toContain("breakGlassPostReviewDueCount");
     expect(serviceSource).toContain("readyForStrictMfa");
-    expect(serviceSource).toContain("activeAssignmentWindowFilter");
-    expect(serviceSource).toContain("startsAt: { lte: now }");
-    expect(serviceSource).toContain("OR: [{ endsAt: null }, { endsAt: { gt: now } }]");
+    expect(serviceSource).toContain('"startsAt" <=');
+    expect(serviceSource).toContain('"endsAt" IS NULL');
     expect(serviceSource).toContain("listDeploymentEvidenceRecords");
     expect(serviceSource).toContain("summarizeDeploymentEvidence");
     expect(serviceSource).toContain("createDeploymentEvidenceRecord");
@@ -88,6 +87,10 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("listReleaseBoardDecisions");
     expect(serviceSource).toContain("listReleaseBoardDecisionPage");
     expect(serviceSource).toContain("getReleaseBoardDecision");
+    expect(serviceSource).toContain("getReleaseSecurityAttentionUser");
+    expect(serviceSource).toContain("latest_authenticator");
+    expect(serviceSource).toContain("json_build_object");
+    expect(serviceSource).toContain('orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain('orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("createReleaseBoardDecision");
     expect(serviceSource).toContain("assertGoNoGoGateDecision");
@@ -101,6 +104,9 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("Record Release Board Decision");
     expect(pageSource).toContain("boardDecisionPageSize");
     expect(pageSource).toContain("Selected Release Board decision");
+    expect(pageSource).toContain("Selected security attention");
+    expect(pageSource).toContain("securityAttentionUserId");
+    expect(pageSource).toContain("enablementContextParams.toString()");
     expect(pageSource).toContain("Export Readiness Register");
     expect(pageSource).toContain("X-OGFI-CSV-SHA256");
     expect(pageSource).toContain("Download SHA-256");
@@ -124,8 +130,12 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("getDeploymentEvidenceRecord");
     expect(serviceSource).toContain("getDeploymentEvidenceSummary");
     expect(serviceSource).toContain("assertCanManageReleaseReadiness(session)");
-    expect(serviceSource).toContain("scopeAssignments");
-    expect(serviceSource).toContain("latestRuntimeAuthenticatorByUser");
+    expect(serviceSource).toContain('"UserScopeAssignment"');
+    expect(serviceSource).toContain("latest_authenticator");
+    expect(serviceSource).toContain("WITH company_scoped_users AS MATERIALIZED");
+    expect(serviceSource).toContain("COALESCE(BOOL_AND");
+    expect(serviceSource).toContain("asOfUtc");
+    expect(serviceSource).toContain("sourceStatus: \"LIVE_SNAPSHOT\"");
     expect(serviceSource).toContain("listEnablementEvidencePage");
     expect(serviceSource).toContain("getEnablementEvidenceRecord");
     expect(serviceSource).toContain("getEnablementEvidenceSummary");

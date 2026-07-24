@@ -57,6 +57,15 @@ Enablement evidence is reviewed from a selected record. Training readiness requi
 
 Security controls are derived from the selected company’s live access and authentication state. The MFA attention names are an explicitly labeled sample, not a complete user list; use the linked authoritative MFA, session invalidation, break-glass, or access-request workspace for action. A security counter cannot override a server-side unresolved gate.
 
+Security counters are calculated as one selected-company PostgreSQL snapshot and
+show its source status and UTC time. Up to three attention users can be opened for
+a read-only summary of scoped locations, sensitive permissions, MFA state, local
+identity presence, and pending provider invalidation. Missing, foreign, inactive,
+or non-privileged IDs show the same unavailable state; secrets and authenticator
+keys are never displayed. Make changes only in the authoritative User Detail or
+security-control workflows. Disposable-database/query-plan and external-provider
+proof remain required before the security gate is ready.
+
 ## UAT Evidence Rules
 
 UAT gates require both evidence and a decision note before they are marked ready, conditional, or waived. The decision note should name one or more of:

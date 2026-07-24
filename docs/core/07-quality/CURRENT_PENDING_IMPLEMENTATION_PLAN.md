@@ -584,6 +584,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - The GO / NO-GO category now uses a selected-company, management-authorized bounded decision register with search, outcome filtering, exact totals, deterministic ordering, stale-page clamping, and a selected read-only decision detail panel. Malformed or foreign IDs return a generic unavailable state; decisions remain append-only and cannot be edited or hard-deleted.
 - Existing audited decision creation and gate-transition controls remain authoritative: GO still requires the readiness summary to allow proceeding, and READY/CONDITIONAL_GO/WAIVED gate statuses still require the latest matching board outcome. This slice does not complete the separate Release Board workspace, composer, date filters, bounded export, audit/activity detail, responsive browser proof, disposable PostgreSQL evidence, hosted recovery, or UAT execution.
 
+### DEC-0134 Administration security readiness SQL projection — July 24, 2026
+
+- Security Readiness counters now use one parameterized, materialized PostgreSQL snapshot with exact tenant/company scope, active assignment windows, sensitive-role membership, deterministic latest MFA state, bounded three-user attention sample, explicit `LIVE_SNAPSHOT` source status, and UTC `asOf` metadata. The selected attention identity is a separate scoped, read-only detail query that exposes no secrets or mutation authority and returns generic unavailable behavior for malformed, foreign, inactive, or non-privileged users.
+- This closes the unbounded application-memory projection gap but not the Security gate. Disposable PostgreSQL isolation/latest-status/concurrency execution, representative `EXPLAIN (ANALYZE, BUFFERS)`, external provider/vault evidence, responsive browser proof, hosted deployment/recovery, and UAT remain open. Authoritative User Detail and session-control workflows remain the mutation surfaces.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

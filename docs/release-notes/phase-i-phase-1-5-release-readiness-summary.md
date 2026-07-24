@@ -156,6 +156,11 @@ Security Readiness now narrows privileged access and MFA projections and require
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.
 
+Security Readiness now derives counters from a single scoped PostgreSQL snapshot,
+shows source/time metadata, and provides bounded read-only attention detail
+without exposing MFA secrets or expanding authority. Disposable-database,
+query-plan, provider-proof, hosted, and UAT gates remain open.
+
 The GO / NO-GO category now provides a selected-company, searchable, paginated,
 append-only Release Board decision register with deterministic ordering and a
 read-only selected decision detail. Full Release Board workspace/composer,

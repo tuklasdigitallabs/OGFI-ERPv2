@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { Prisma, prisma } from "@ogfi/database";
 import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import { assertCanManageCompanyScope } from "./coreAdmin";
@@ -572,243 +572,278 @@ function formatReleaseBoardParticipants(participants: unknown) {
   return "";
 }
 
-function activeAssignmentWindowFilter(now = new Date()) {
-  return {
-    status: "ACTIVE" as const,
-    startsAt: { lte: now },
-    OR: [{ endsAt: null }, { endsAt: { gt: now } }],
-  };
-}
-
 export async function getReleaseSecurityEvidenceSummary(
   session: SessionContext,
 ) {
   await assertCanManageReleaseReadiness(session);
   const now = new Date();
-  const activeAssignmentFilter = activeAssignmentWindowFilter(now);
-
-  const companyLocations = await prisma.location.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE",
-    },
-    select: { id: true },
-  });
-  const companyLocationIds = new Set(
-    companyLocations.map((location) => location.id),
-  );
-
-  const [
-    users,
-    enrollments,
-    runtimeAuthenticators,
-    pendingInvalidations,
-    breakGlassGrants,
-    pendingAuthRecoveryRequests,
-    pendingHighRiskScopeRequests,
-    pendingSensitiveRoleRequests,
-  ] = await Promise.all([
-    prisma.user.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        status: "ACTIVE",
-      },
-      select: {
-        id: true,
-        displayName: true,
-        email: true,
-        scopeAssignments: {
-          where: activeAssignmentFilter,
-          select: { scopeType: true, scopeId: true },
-        },
-        roleAssignments: {
-          where: activeAssignmentFilter,
-          select: {
-            role: {
-              select: {
-                permissions: {
-                  select: { permission: { select: { code: true } } },
-                },
-              },
-            },
-          },
-        },
-        authIdentities: {
-          where: { provider: "LOCAL", status: "ACTIVE" },
-          select: { id: true },
-        },
-      },
-      orderBy: { displayName: "asc" },
-    }),
-    prisma.privilegedMfaEnrollment.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-      },
-      select: { id: true, targetUserId: true, status: true, createdAt: true },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    }),
-    prisma.mfaAuthenticator.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        status: { in: ["PENDING", "ACTIVE", "REVOKED"] },
-      },
-      select: { id: true, userId: true, status: true, createdAt: true },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    }),
-    prisma.authSessionInvalidation.count({
-      where: {
-        tenantId: session.context.tenantId,
-        OR: [{ companyId: session.context.companyId }, { companyId: null }],
-        status: "PENDING_PROVIDER",
-      },
-    }),
-    prisma.breakGlassAccessGrant.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: {
-          in: ["PENDING_REVIEW", "ACTIVE", "REVOKED", "EXPIRED", "REJECTED"],
-        },
-      },
-      select: { id: true, status: true },
-    }),
-    prisma.authRecoveryRequest.count({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "PENDING",
-      },
-    }),
-    prisma.highRiskScopeRequest.count({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "PENDING",
-      },
-    }),
-    prisma.sensitiveRoleRequest.count({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "PENDING",
-      },
-    }),
-  ]);
-
-  const latestEnrollmentByUser = new Map<
-    string,
-    (typeof enrollments)[number]
-  >();
-  for (const enrollment of enrollments) {
-    if (!latestEnrollmentByUser.has(enrollment.targetUserId)) {
-      latestEnrollmentByUser.set(enrollment.targetUserId, enrollment);
-    }
-  }
-  const latestRuntimeAuthenticatorByUser = new Map<
-    string,
-    (typeof runtimeAuthenticators)[number]
-  >();
-  for (const authenticator of runtimeAuthenticators) {
-    if (!latestRuntimeAuthenticatorByUser.has(authenticator.userId)) {
-      latestRuntimeAuthenticatorByUser.set(authenticator.userId, authenticator);
-    }
-  }
   const localRuntimeMfa = getAuthMode() === "local";
-
-  const privilegedUsers = users
-    .map((user) => {
-      const inCompanyScope = user.scopeAssignments.some(
-        (scope) =>
-          (scope.scopeType === "COMPANY" &&
-            scope.scopeId === session.context.companyId) ||
-          (scope.scopeType === "LOCATION" &&
-            companyLocationIds.has(scope.scopeId)),
-      );
-      const sensitivePermissionCount = new Set(
-        user.roleAssignments.flatMap((assignment) =>
-          assignment.role.permissions
-            .map((rolePermission) => rolePermission.permission.code)
-            .filter((code) => isSensitivePermissionCode(code)),
-        ),
-      ).size;
-
-      return {
-        user,
-        inCompanyScope,
-        sensitivePermissionCount,
-        enrollment: latestEnrollmentByUser.get(user.id),
-        runtimeAuthenticator: latestRuntimeAuthenticatorByUser.get(user.id),
-      };
-    })
-    .filter(
-      (entry) => entry.inCompanyScope && entry.sensitivePermissionCount > 0,
-    );
-  const companyScopedUsers = users.filter((user) =>
-    user.scopeAssignments.some(
-      (scope) =>
-        (scope.scopeType === "COMPANY" &&
-          scope.scopeId === session.context.companyId) ||
-        (scope.scopeType === "LOCATION" &&
-          companyLocationIds.has(scope.scopeId)),
-    ),
+  const sensitivePermissionCodes = Object.values(permissions).filter((code) =>
+    isSensitivePermissionCode(code),
   );
-  const missingLocalIdentityUsers = localRuntimeMfa
-    ? companyScopedUsers.filter((user) => user.authIdentities.length === 0)
+  type SecurityAggregateRow = {
+    privilegedUserCount: bigint;
+    verifiedMfaUserCount: bigint;
+    pendingMfaUserCount: bigint;
+    missingOrRevokedMfaUserCount: bigint;
+    pendingProviderInvalidationCount: bigint;
+    missingLocalIdentityUserCount: bigint;
+    pendingAuthRecoveryRequestCount: bigint;
+    pendingHighRiskScopeRequestCount: bigint;
+    pendingSensitiveRoleRequestCount: bigint;
+    openBreakGlassCount: bigint;
+    breakGlassPostReviewDueCount: bigint;
+    readyForStrictMfa: boolean;
+    sampleAttentionUsers: unknown;
+  };
+  const [row] = await prisma.$queryRaw<SecurityAggregateRow[]>`
+    WITH company_scoped_users AS MATERIALIZED (
+      SELECT u.id, u."displayName",
+        EXISTS (
+          SELECT 1 FROM "AuthIdentity" ai
+          WHERE ai."tenantId" = u."tenantId" AND ai."userId" = u.id
+            AND ai.provider = 'LOCAL' AND ai.status = 'ACTIVE'
+        ) AS "hasLocalIdentity"
+      FROM "User" u
+      WHERE u."tenantId" = ${session.context.tenantId}::uuid
+        AND u.status = CAST('ACTIVE' AS "RecordStatus")
+        AND EXISTS (
+          SELECT 1 FROM "UserScopeAssignment" sa
+          WHERE sa."userId" = u.id AND sa.status = CAST('ACTIVE' AS "RecordStatus")
+            AND sa."startsAt" <= ${now}
+            AND (sa."endsAt" IS NULL OR sa."endsAt" > ${now})
+            AND (
+              (sa."scopeType" = CAST('COMPANY' AS "ScopeType") AND sa."scopeId" = ${session.context.companyId}::uuid)
+              OR (sa."scopeType" = CAST('LOCATION' AS "ScopeType") AND EXISTS (
+                SELECT 1 FROM "Location" l
+                WHERE l.id = sa."scopeId" AND l."tenantId" = ${session.context.tenantId}::uuid
+                  AND l."companyId" = ${session.context.companyId}::uuid
+                  AND l.status = CAST('ACTIVE' AS "RecordStatus")
+              ))
+            )
+        )
+    ),
+    privileged_users AS MATERIALIZED (
+      SELECT csu.id, csu."displayName", csu."hasLocalIdentity"
+      FROM company_scoped_users csu
+      WHERE EXISTS (
+        SELECT 1
+        FROM "UserRoleAssignment" ura
+        JOIN "Role" r ON r.id = ura."roleId"
+        JOIN "RolePermission" rp ON rp."roleId" = r.id
+        JOIN "Permission" p ON p.id = rp."permissionId"
+        WHERE ura."userId" = csu.id AND ura.status = CAST('ACTIVE' AS "RecordStatus")
+          AND ura."startsAt" <= ${now}
+          AND (ura."endsAt" IS NULL OR ura."endsAt" > ${now})
+          AND r.status = CAST('ACTIVE' AS "RecordStatus")
+          AND (r."tenantId" IS NULL OR r."tenantId" = ${session.context.tenantId}::uuid)
+          AND p.code IN (${Prisma.join(sensitivePermissionCodes)})
+      )
+    ),
+    latest_enrollment AS (
+      SELECT e."targetUserId", e.status,
+        ROW_NUMBER() OVER (PARTITION BY e."targetUserId" ORDER BY e."createdAt" DESC, e.id DESC) AS rn
+      FROM "PrivilegedMfaEnrollment" e
+      WHERE e."tenantId" = ${session.context.tenantId}::uuid
+        AND e."companyId" = ${session.context.companyId}::uuid
+    ),
+    latest_authenticator AS (
+      SELECT a."userId", a.status,
+        ROW_NUMBER() OVER (PARTITION BY a."userId" ORDER BY a."createdAt" DESC, a.id DESC) AS rn
+      FROM "MfaAuthenticator" a
+      WHERE a."tenantId" = ${session.context.tenantId}::uuid
+        AND a.status IN ('PENDING', 'ACTIVE', 'REVOKED')
+    ),
+    privileged_mfa AS (
+      SELECT pu.id, pu."displayName", pu."hasLocalIdentity",
+        ${localRuntimeMfa}::boolean AS "localRuntimeMfa",
+        la.status AS "runtimeStatus", le.status AS "enrollmentStatus"
+      FROM privileged_users pu
+      LEFT JOIN latest_authenticator la ON la."userId" = pu.id AND la.rn = 1
+      LEFT JOIN latest_enrollment le ON le."targetUserId" = pu.id AND le.rn = 1
+    ),
+    attention AS (
+      SELECT pm.id, pm."displayName",
+        CASE WHEN pm."localRuntimeMfa" THEN pm."runtimeStatus" ELSE pm."enrollmentStatus" END AS "mfaStatus",
+        CASE WHEN pm."localRuntimeMfa" THEN pm."runtimeStatus" IS NULL ELSE pm."enrollmentStatus" IS NULL END AS "mfaMissing"
+      FROM privileged_mfa pm
+      WHERE (pm."localRuntimeMfa" AND (pm."runtimeStatus" IS NULL OR pm."runtimeStatus" IN ('PENDING', 'REVOKED')))
+         OR (NOT pm."localRuntimeMfa" AND (pm."enrollmentStatus" IS NULL OR pm."enrollmentStatus" IN ('PENDING_VERIFICATION', 'REVOKED')))
+      ORDER BY pm."displayName" ASC, pm.id ASC
+      LIMIT 3
+    ),
+    metrics AS (
+      SELECT
+        COUNT(*)::bigint AS "privilegedUserCount",
+        COUNT(*) FILTER (WHERE (${localRuntimeMfa} AND pm."runtimeStatus" = 'ACTIVE') OR (NOT ${localRuntimeMfa} AND pm."enrollmentStatus" = 'VERIFIED'))::bigint AS "verifiedMfaUserCount",
+        COUNT(*) FILTER (WHERE (${localRuntimeMfa} AND pm."runtimeStatus" = 'PENDING') OR (NOT ${localRuntimeMfa} AND pm."enrollmentStatus" = 'PENDING_VERIFICATION'))::bigint AS "pendingMfaUserCount",
+        COUNT(*) FILTER (WHERE (${localRuntimeMfa} AND (pm."runtimeStatus" IS NULL OR pm."runtimeStatus" = 'REVOKED')) OR (NOT ${localRuntimeMfa} AND (pm."enrollmentStatus" IS NULL OR pm."enrollmentStatus" = 'REVOKED')))::bigint AS "missingOrRevokedMfaUserCount",
+        (SELECT COUNT(*) FROM company_scoped_users WHERE NOT "hasLocalIdentity")::bigint AS "missingLocalIdentityUserCount",
+        COALESCE(BOOL_AND(NOT (((${localRuntimeMfa} AND pm."runtimeStatus" IS NULL) OR (NOT ${localRuntimeMfa} AND pm."enrollmentStatus" IS NULL)) OR ((${localRuntimeMfa} AND pm."runtimeStatus" = 'PENDING') OR (NOT ${localRuntimeMfa} AND pm."enrollmentStatus" = 'PENDING_VERIFICATION')) OR ((${localRuntimeMfa} AND pm."runtimeStatus" = 'REVOKED') OR (NOT ${localRuntimeMfa} AND pm."enrollmentStatus" = 'REVOKED')))), true) AS "readyForStrictMfa"
+      FROM privileged_mfa pm
+    )
+    SELECT m.*,
+      (SELECT COALESCE(json_agg(json_build_object('id', a.id, 'displayName', a."displayName") ORDER BY a."displayName", a.id), '[]'::json) FROM attention a) AS "sampleAttentionUsers",
+      (SELECT COUNT(*) FROM "AuthSessionInvalidation" i WHERE i."tenantId" = ${session.context.tenantId}::uuid AND i.status = 'PENDING_PROVIDER' AND (i."companyId" = ${session.context.companyId}::uuid OR i."companyId" IS NULL))::bigint AS "pendingProviderInvalidationCount",
+      (SELECT COUNT(*) FROM "AuthRecoveryRequest" r WHERE r."tenantId" = ${session.context.tenantId}::uuid AND r."companyId" = ${session.context.companyId}::uuid AND r.status = 'PENDING')::bigint AS "pendingAuthRecoveryRequestCount",
+      (SELECT COUNT(*) FROM "HighRiskScopeRequest" r WHERE r."tenantId" = ${session.context.tenantId}::uuid AND r."companyId" = ${session.context.companyId}::uuid AND r.status = 'PENDING')::bigint AS "pendingHighRiskScopeRequestCount",
+      (SELECT COUNT(*) FROM "SensitiveRoleRequest" r WHERE r."tenantId" = ${session.context.tenantId}::uuid AND r."companyId" = ${session.context.companyId}::uuid AND r.status = 'PENDING')::bigint AS "pendingSensitiveRoleRequestCount",
+      (SELECT COUNT(*) FROM "BreakGlassAccessGrant" b WHERE b."tenantId" = ${session.context.tenantId}::uuid AND b."companyId" = ${session.context.companyId}::uuid AND b.status IN ('PENDING_REVIEW', 'ACTIVE'))::bigint AS "openBreakGlassCount",
+      (SELECT COUNT(*) FROM "BreakGlassAccessGrant" b WHERE b."tenantId" = ${session.context.tenantId}::uuid AND b."companyId" = ${session.context.companyId}::uuid AND b.status IN ('REVOKED', 'EXPIRED', 'REJECTED'))::bigint AS "breakGlassPostReviewDueCount"
+    FROM metrics m
+  `;
+  if (!row) throw new Error("RELEASE_SECURITY_SUMMARY_UNAVAILABLE");
+  const sampleAttentionUsers = Array.isArray(row.sampleAttentionUsers)
+    ? row.sampleAttentionUsers.flatMap((value) => {
+        if (!value || typeof value !== "object") return [];
+        const candidate = value as { id?: unknown; displayName?: unknown };
+        return typeof candidate.id === "string" && typeof candidate.displayName === "string"
+          ? [{ id: candidate.id, displayName: candidate.displayName }]
+          : [];
+      })
     : [];
 
-  const verifiedMfaUsers = privilegedUsers.filter((entry) =>
-    localRuntimeMfa
-      ? entry.runtimeAuthenticator?.status === "ACTIVE"
-      : entry.enrollment?.status === "VERIFIED",
-  );
-  const pendingMfaUsers = privilegedUsers.filter((entry) =>
-    localRuntimeMfa
-      ? entry.runtimeAuthenticator?.status === "PENDING"
-      : entry.enrollment?.status === "PENDING_VERIFICATION",
-  );
-  const revokedMfaUsers = privilegedUsers.filter((entry) =>
-    localRuntimeMfa
-      ? entry.runtimeAuthenticator?.status === "REVOKED"
-      : entry.enrollment?.status === "REVOKED",
-  );
-  const missingMfaUsers = privilegedUsers.filter((entry) =>
-    localRuntimeMfa ? !entry.runtimeAuthenticator : !entry.enrollment,
-  );
-  const openBreakGlassCount = breakGlassGrants.filter((grant) =>
-    ["PENDING_REVIEW", "ACTIVE"].includes(grant.status),
-  ).length;
-  const breakGlassPostReviewDueCount = breakGlassGrants.filter((grant) =>
-    ["REVOKED", "EXPIRED", "REJECTED"].includes(grant.status),
-  ).length;
-
   return {
-    privilegedUserCount: privilegedUsers.length,
-    verifiedMfaUserCount: verifiedMfaUsers.length,
-    pendingMfaUserCount: pendingMfaUsers.length,
-    missingOrRevokedMfaUserCount:
-      missingMfaUsers.length + revokedMfaUsers.length,
-    pendingProviderInvalidationCount: pendingInvalidations,
-    missingLocalIdentityUserCount: missingLocalIdentityUsers.length,
-    pendingAuthRecoveryRequestCount: pendingAuthRecoveryRequests,
-    pendingHighRiskScopeRequestCount: pendingHighRiskScopeRequests,
-    pendingSensitiveRoleRequestCount: pendingSensitiveRoleRequests,
+    privilegedUserCount: Number(row.privilegedUserCount),
+    verifiedMfaUserCount: Number(row.verifiedMfaUserCount),
+    pendingMfaUserCount: Number(row.pendingMfaUserCount),
+    missingOrRevokedMfaUserCount: Number(row.missingOrRevokedMfaUserCount),
+    pendingProviderInvalidationCount: Number(row.pendingProviderInvalidationCount),
+    missingLocalIdentityUserCount: Number(row.missingLocalIdentityUserCount),
+    pendingAuthRecoveryRequestCount: Number(row.pendingAuthRecoveryRequestCount),
+    pendingHighRiskScopeRequestCount: Number(row.pendingHighRiskScopeRequestCount),
+    pendingSensitiveRoleRequestCount: Number(row.pendingSensitiveRoleRequestCount),
     pendingControlledAccessRequestCount:
-      pendingHighRiskScopeRequests + pendingSensitiveRoleRequests,
-    openBreakGlassCount,
-    breakGlassPostReviewDueCount,
-    readyForStrictMfa:
-      pendingMfaUsers.length === 0 &&
-      missingMfaUsers.length === 0 &&
-      revokedMfaUsers.length === 0,
-    sampleAttentionUsers: [
-      ...missingMfaUsers,
-      ...pendingMfaUsers,
-      ...revokedMfaUsers,
-    ]
-      .slice(0, 3)
-      .map((entry) => displayUser(entry.user)),
+      Number(row.pendingHighRiskScopeRequestCount) + Number(row.pendingSensitiveRoleRequestCount),
+    openBreakGlassCount: Number(row.openBreakGlassCount),
+    breakGlassPostReviewDueCount: Number(row.breakGlassPostReviewDueCount),
+    readyForStrictMfa: row.readyForStrictMfa,
+    sampleAttentionUsers,
+    asOfUtc: now.toISOString(),
+    sourceStatus: "LIVE_SNAPSHOT" as const,
+  };
+}
+
+export async function getReleaseSecurityAttentionUser(
+  session: SessionContext,
+  userId: string,
+) {
+  await assertCanManageReleaseReadiness(session);
+  const parsedUserId = z.string().uuid().safeParse(userId);
+  if (!parsedUserId.success) return null;
+  const now = new Date();
+  const localRuntimeMfa = getAuthMode() === "local";
+  const sensitivePermissionCodes = Object.values(permissions).filter((code) =>
+    isSensitivePermissionCode(code),
+  );
+  type SecurityAttentionRow = {
+    id: string;
+    displayName: string;
+    email: string;
+    locationNames: string[] | null;
+    permissionCodes: string[] | null;
+    hasLocalIdentity: boolean;
+    runtimeMfaStatus: string | null;
+    enrollmentStatus: string | null;
+    pendingProviderInvalidation: boolean;
+  };
+  const [row] = await prisma.$queryRaw<SecurityAttentionRow[]>`
+    WITH scoped_user AS MATERIALIZED (
+      SELECT u.id, u."displayName", u.email,
+        EXISTS (
+          SELECT 1 FROM "AuthIdentity" ai
+          WHERE ai."tenantId" = u."tenantId" AND ai."userId" = u.id
+            AND ai.provider = 'LOCAL' AND ai.status = 'ACTIVE'
+        ) AS "hasLocalIdentity"
+      FROM "User" u
+      WHERE u.id = ${parsedUserId.data}::uuid
+        AND u."tenantId" = ${session.context.tenantId}::uuid
+        AND u.status = CAST('ACTIVE' AS "RecordStatus")
+        AND EXISTS (
+          SELECT 1 FROM "UserScopeAssignment" sa
+          WHERE sa."userId" = u.id AND sa.status = CAST('ACTIVE' AS "RecordStatus")
+            AND sa."startsAt" <= ${now}
+            AND (sa."endsAt" IS NULL OR sa."endsAt" > ${now})
+            AND (
+              (sa."scopeType" = CAST('COMPANY' AS "ScopeType") AND sa."scopeId" = ${session.context.companyId}::uuid)
+              OR (sa."scopeType" = CAST('LOCATION' AS "ScopeType") AND EXISTS (
+                SELECT 1 FROM "Location" l
+                WHERE l.id = sa."scopeId" AND l."tenantId" = ${session.context.tenantId}::uuid
+                  AND l."companyId" = ${session.context.companyId}::uuid
+                  AND l.status = CAST('ACTIVE' AS "RecordStatus")
+              ))
+            )
+        )
+    ),
+    privileged AS (
+      SELECT su.*
+      FROM scoped_user su
+      WHERE EXISTS (
+        SELECT 1
+        FROM "UserRoleAssignment" ura
+        JOIN "Role" r ON r.id = ura."roleId"
+        JOIN "RolePermission" rp ON rp."roleId" = r.id
+        JOIN "Permission" p ON p.id = rp."permissionId"
+        WHERE ura."userId" = su.id AND ura.status = CAST('ACTIVE' AS "RecordStatus")
+          AND ura."startsAt" <= ${now}
+          AND (ura."endsAt" IS NULL OR ura."endsAt" > ${now})
+          AND r.status = CAST('ACTIVE' AS "RecordStatus")
+          AND (r."tenantId" IS NULL OR r."tenantId" = ${session.context.tenantId}::uuid)
+          AND p.code IN (${Prisma.join(sensitivePermissionCodes)})
+      )
+    ),
+    latest_enrollment AS (
+      SELECT e."targetUserId", e.status,
+        ROW_NUMBER() OVER (PARTITION BY e."targetUserId" ORDER BY e."createdAt" DESC, e.id DESC) AS rn
+      FROM "PrivilegedMfaEnrollment" e
+      WHERE e."tenantId" = ${session.context.tenantId}::uuid
+        AND e."companyId" = ${session.context.companyId}::uuid
+    ),
+    latest_authenticator AS (
+      SELECT a."userId", a.status,
+        ROW_NUMBER() OVER (PARTITION BY a."userId" ORDER BY a."createdAt" DESC, a.id DESC) AS rn
+      FROM "MfaAuthenticator" a
+      WHERE a."tenantId" = ${session.context.tenantId}::uuid
+    )
+    SELECT p.id, p."displayName", p.email, p."hasLocalIdentity",
+      COALESCE((SELECT array_agg(DISTINCT l.name ORDER BY l.name)
+        FROM "UserScopeAssignment" sa JOIN "Location" l ON l.id = sa."scopeId"
+        WHERE sa."userId" = p.id AND sa."scopeType" = CAST('LOCATION' AS "ScopeType")
+          AND sa.status = CAST('ACTIVE' AS "RecordStatus") AND sa."startsAt" <= ${now}
+          AND (sa."endsAt" IS NULL OR sa."endsAt" > ${now})
+          AND l."tenantId" = ${session.context.tenantId}::uuid AND l."companyId" = ${session.context.companyId}::uuid
+      ), ARRAY[]::text[]) AS "locationNames",
+      COALESCE((SELECT array_agg(DISTINCT p2.code ORDER BY p2.code)
+        FROM "UserRoleAssignment" ura2 JOIN "Role" r2 ON r2.id = ura2."roleId"
+        JOIN "RolePermission" rp2 ON rp2."roleId" = r2.id JOIN "Permission" p2 ON p2.id = rp2."permissionId"
+        WHERE ura2."userId" = p.id AND ura2.status = CAST('ACTIVE' AS "RecordStatus")
+          AND ura2."startsAt" <= ${now} AND (ura2."endsAt" IS NULL OR ura2."endsAt" > ${now})
+          AND r2.status = CAST('ACTIVE' AS "RecordStatus")
+          AND (r2."tenantId" IS NULL OR r2."tenantId" = ${session.context.tenantId}::uuid)
+          AND p2.code IN (${Prisma.join(sensitivePermissionCodes)})
+      ), ARRAY[]::text[]) AS "permissionCodes",
+      (SELECT a.status FROM latest_authenticator a WHERE a."userId" = p.id AND a.rn = 1) AS "runtimeMfaStatus",
+      (SELECT e.status FROM latest_enrollment e WHERE e."targetUserId" = p.id AND e.rn = 1) AS "enrollmentStatus",
+      EXISTS (
+        SELECT 1 FROM "AuthSessionInvalidation" i
+        WHERE i."tenantId" = ${session.context.tenantId}::uuid AND i."targetUserId" = p.id
+          AND i.status = 'PENDING_PROVIDER' AND (i."companyId" = ${session.context.companyId}::uuid OR i."companyId" IS NULL)
+      ) AS "pendingProviderInvalidation"
+    FROM privileged p
+  `;
+  if (!row) return null;
+  return {
+    id: row.id,
+    displayName: row.displayName,
+    email: row.email,
+    locationNames: row.locationNames ?? [],
+    permissionCodes: row.permissionCodes ?? [],
+    hasLocalIdentity: row.hasLocalIdentity,
+    mfaStatus: localRuntimeMfa ? row.runtimeMfaStatus : row.enrollmentStatus,
+    mfaSource: localRuntimeMfa ? "LOCAL_RUNTIME" as const : "PROVIDER_ENROLLMENT" as const,
+    pendingProviderInvalidation: row.pendingProviderInvalidation,
+    asOfUtc: now.toISOString(),
+    sourceStatus: "LIVE_SNAPSHOT" as const,
   };
 }
 
@@ -1932,7 +1967,7 @@ async function getLatestReleaseBoardDecision(session: SessionContext) {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
     },
-    orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
   });
 }
 
