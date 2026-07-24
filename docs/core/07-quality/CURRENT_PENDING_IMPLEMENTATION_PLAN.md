@@ -497,6 +497,17 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - The assignment UI provides server-side location/role refinement controls and explains when the first 100 results are not complete. Existing assignment and controlled-request mutation services continue to revalidate live target membership, scope, sensitive-role eligibility, MFA, segregation, and audit requirements.
 - Core Admin focused coverage passes 23/23; full web regression passes 1,299 tests with 301 skipped and one TODO; authorization-manifest tests pass 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL selector-scope/no-query evidence, and hosted deployment/recovery gates remain open. Administration and Phase I remain in progress.
 
+### DEC-0119 Administration user request-history pagination decision — July 24, 2026
+
+- Accepted separate bounded page contracts for Controlled Scope Requests and Controlled Role Requests. Both retain the target-user selected-company boundary, allowlisted lifecycle status filters, exact totals, and deterministic `createdAt DESC, id DESC` ordering; silent `take: 20` caps are removed.
+- Existing row review context and action controls remain source-owned and independently reauthorized. Decision record: `docs/core/00-governance/decisions/DEC-0119-ADMIN-USER-REQUEST-HISTORY-PAGINATION.md`.
+
+### DEC-0119 Administration user request-history pagination implementation checkpoint — July 24, 2026
+
+- Controlled Scope Requests and Controlled Role Requests now use separate URL-backed status-filtered pages with exact totals and deterministic `createdAt DESC, id DESC` ordering. The prior silent `take: 20` cap is removed; target-user, tenant, selected-company, and no-self-review boundaries remain unchanged.
+- User Detail shows `shown of total` pagination for both histories while preserving contextual review actions and lifecycle labels. No list-side mutation or authority expansion was introduced.
+- Core Admin focused coverage passes 24/24; full web regression passes 1,300 tests with 301 skipped and one TODO; authorization-manifest tests pass 20/20; web typecheck, lint, and isolated production build pass. Responsive browser, disposable PostgreSQL count/scope/CAS evidence, and hosted deployment/recovery gates remain open. Administration and Phase I remain in progress.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

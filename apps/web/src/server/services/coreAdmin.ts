@@ -1931,7 +1931,16 @@ export async function createCoreAdminLocation(formData: FormData) {
 export async function getCoreAdminUserDetail(
   session: SessionContext,
   userId: string,
-  options: { locationQuery?: string; roleQuery?: string } = {},
+  options: {
+    locationQuery?: string;
+    roleQuery?: string;
+    scopeRequestPage?: number;
+    scopeRequestPageSize?: number;
+    scopeRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
+    roleRequestPage?: number;
+    roleRequestPageSize?: number;
+    roleRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
+  } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
@@ -2138,6 +2147,10 @@ export async function getCoreAdminUserDetail(
   });
   const roleQuery = options.roleQuery?.trim().toLowerCase() ?? "";
   const locationQuery = options.locationQuery?.trim().toLowerCase() ?? "";
+  const scopeRequestPage = Math.min(Math.max(options.scopeRequestPage ?? 1, 1), 10_000);
+  const scopeRequestPageSize = Math.min(Math.max(options.scopeRequestPageSize ?? 25, 10), 100);
+  const roleRequestPage = Math.min(Math.max(options.roleRequestPage ?? 1, 1), 10_000);
+  const roleRequestPageSize = Math.min(Math.max(options.roleRequestPageSize ?? 25, 10), 100);
   const assignableRoleWhere: Prisma.RoleWhereInput = {
       tenantId: session.context.tenantId,
       status: "ACTIVE",
@@ -2168,25 +2181,34 @@ export async function getCoreAdminUserDetail(
       take: 100,
     }),
   ]);
-  const [highRiskScopeRequests, sensitiveRoleRequests] =
+  const scopeRequestWhere: Prisma.HighRiskScopeRequestWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    targetUserId: user.id,
+    ...(options.scopeRequestStatus
+      ? { status: options.scopeRequestStatus }
+      : { status: { in: ["PENDING", "APPROVED", "REJECTED"] } }),
+  };
+  const roleRequestWhere: Prisma.SensitiveRoleRequestWhereInput = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    targetUserId: user.id,
+    ...(options.roleRequestStatus
+      ? { status: options.roleRequestStatus }
+      : { status: { in: ["PENDING", "APPROVED", "REJECTED"] } }),
+  };
+  const [scopeRequestTotal, highRiskScopeRequests, roleRequestTotal, sensitiveRoleRequests] =
     await Promise.all([
+      prisma.highRiskScopeRequest.count({ where: scopeRequestWhere }),
       prisma.highRiskScopeRequest.findMany({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          targetUserId: user.id,
-          status: { in: ["PENDING", "APPROVED", "REJECTED"] },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 20,
+        where: scopeRequestWhere,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (scopeRequestPage - 1) * scopeRequestPageSize,
+        take: scopeRequestPageSize,
       }),
+      prisma.sensitiveRoleRequest.count({ where: roleRequestWhere }),
       prisma.sensitiveRoleRequest.findMany({
-        where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          targetUserId: user.id,
-          status: { in: ["PENDING", "APPROVED", "REJECTED"] },
-        },
+        where: roleRequestWhere,
         include: {
           role: {
             include: {
@@ -2196,8 +2218,9 @@ export async function getCoreAdminUserDetail(
             },
           },
         },
-        orderBy: { createdAt: "desc" },
-        take: 20,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (roleRequestPage - 1) * roleRequestPageSize,
+        take: roleRequestPageSize,
       }),
     ]);
   const referencedLocationIds = Array.from(
@@ -2365,9 +2388,14 @@ export async function getCoreAdminUserDetail(
         locationType: location?.locationType ?? "UNKNOWN",
         riskLabel: location
           ? getLocationScopeRiskLabel(location)
-          : "Scope record not found",
+        : "Scope record not found",
       };
     }),
+    highRiskScopeRequestPage: {
+      page: scopeRequestPage,
+      pageSize: scopeRequestPageSize,
+      totalItems: scopeRequestTotal,
+    },
     canMutateScopes: user.id !== session.user.id,
     canMutateRoles: user.id !== session.user.id,
     assignableRoles: assignableRoles
@@ -2413,6 +2441,11 @@ export async function getCoreAdminUserDetail(
         getPermissionPresentation(rolePermission.permission.code),
       ),
     })),
+    sensitiveRoleRequestPage: {
+      page: roleRequestPage,
+      pageSize: roleRequestPageSize,
+      totalItems: roleRequestTotal,
+    },
     permissionCodes,
     permissions: permissionCodes.map((code) => getPermissionPresentation(code)),
     auditEvents: user.auditEvents.map((event) => ({

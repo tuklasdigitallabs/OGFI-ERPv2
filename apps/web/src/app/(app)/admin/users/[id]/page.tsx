@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -214,9 +214,29 @@ export default async function CoreAdminUserDetailPage({
   const roleQuery = Array.isArray(resolvedSearchParams.roleQuery)
     ? resolvedSearchParams.roleQuery[0]
     : resolvedSearchParams.roleQuery;
+  const scopeRequestStatusValue = Array.isArray(resolvedSearchParams.scopeRequestStatus)
+    ? resolvedSearchParams.scopeRequestStatus[0]
+    : resolvedSearchParams.scopeRequestStatus;
+  const roleRequestStatusValue = Array.isArray(resolvedSearchParams.roleRequestStatus)
+    ? resolvedSearchParams.roleRequestStatus[0]
+    : resolvedSearchParams.roleRequestStatus;
+  const scopeRequestPageValue = Number.parseInt(String(resolvedSearchParams.scopeRequestPage ?? "1"), 10);
+  const roleRequestPageValue = Number.parseInt(String(resolvedSearchParams.roleRequestPage ?? "1"), 10);
+  const scopeRequestPageSizeValue = Number.parseInt(String(resolvedSearchParams.scopeRequestPageSize ?? "25"), 10);
+  const roleRequestPageSizeValue = Number.parseInt(String(resolvedSearchParams.roleRequestPageSize ?? "25"), 10);
   const user = await getCoreAdminUserDetail(session, id, {
     ...(locationQuery ? { locationQuery } : {}),
     ...(roleQuery ? { roleQuery } : {}),
+    scopeRequestPage: Number.isFinite(scopeRequestPageValue) ? scopeRequestPageValue : 1,
+    scopeRequestPageSize: Number.isFinite(scopeRequestPageSizeValue) ? scopeRequestPageSizeValue : 25,
+    roleRequestPage: Number.isFinite(roleRequestPageValue) ? roleRequestPageValue : 1,
+    roleRequestPageSize: Number.isFinite(roleRequestPageSizeValue) ? roleRequestPageSizeValue : 25,
+    ...(scopeRequestStatusValue && ["PENDING", "APPROVED", "REJECTED"].includes(scopeRequestStatusValue)
+      ? { scopeRequestStatus: scopeRequestStatusValue as "PENDING" | "APPROVED" | "REJECTED" }
+      : {}),
+    ...(roleRequestStatusValue && ["PENDING", "APPROVED", "REJECTED"].includes(roleRequestStatusValue)
+      ? { roleRequestStatus: roleRequestStatusValue as "PENDING" | "APPROVED" | "REJECTED" }
+      : {}),
   });
   if (!user) {
     redirect("/admin");
@@ -524,6 +544,12 @@ export default async function CoreAdminUserDetailPage({
               <Badge tone="warning">Approval required</Badge>
             </div>
 
+            <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="scopeRequestPage" value="1" />
+              <input className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" name="scopeRequestStatus" defaultValue={scopeRequestStatusValue ?? ""} placeholder="Status: PENDING, APPROVED, or REJECTED" />
+              <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter requests</button>
+            </form>
+
             <div className="mt-4">
               {requestableHighRiskLocations.length === 0 ? (
                 <p className="text-sm text-slate-600">
@@ -690,6 +716,21 @@ export default async function CoreAdminUserDetailPage({
                 })
               )}
             </div>
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+              <span>Showing {user.highRiskScopeRequests.length} of {user.highRiskScopeRequestPage.totalItems} scope requests</span>
+              <PaginationBar
+                page={user.highRiskScopeRequestPage.page}
+                pageSize={user.highRiskScopeRequestPage.pageSize}
+                totalItems={user.highRiskScopeRequestPage.totalItems}
+                itemLabel="scope requests"
+                controlClassName="min-h-10"
+                getPageHref={(nextPage) => {
+                  const next = new URLSearchParams({ scopeRequestPage: String(nextPage), scopeRequestPageSize: String(user.highRiskScopeRequestPage.pageSize) });
+                  if (scopeRequestStatusValue) next.set("scopeRequestStatus", scopeRequestStatusValue);
+                  return `/admin/users/${user.id}?${next.toString()}`;
+                }}
+              />
+            </div>
           </Panel>
         ) : null}
 
@@ -767,6 +808,12 @@ export default async function CoreAdminUserDetailPage({
               </div>
               <Badge tone="warning">Dual approval</Badge>
             </div>
+
+            <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="roleRequestPage" value="1" />
+              <input className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" name="roleRequestStatus" defaultValue={roleRequestStatusValue ?? ""} placeholder="Status: PENDING, APPROVED, or REJECTED" />
+              <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter requests</button>
+            </form>
 
             <div className="mt-4">
               {user.requestableSensitiveRoles.length === 0 ? (
@@ -936,6 +983,21 @@ export default async function CoreAdminUserDetailPage({
                   );
                 })
               )}
+            </div>
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+              <span>Showing {user.sensitiveRoleRequests.length} of {user.sensitiveRoleRequestPage.totalItems} role requests</span>
+              <PaginationBar
+                page={user.sensitiveRoleRequestPage.page}
+                pageSize={user.sensitiveRoleRequestPage.pageSize}
+                totalItems={user.sensitiveRoleRequestPage.totalItems}
+                itemLabel="role requests"
+                controlClassName="min-h-10"
+                getPageHref={(nextPage) => {
+                  const next = new URLSearchParams({ roleRequestPage: String(nextPage), roleRequestPageSize: String(user.sensitiveRoleRequestPage.pageSize) });
+                  if (roleRequestStatusValue) next.set("roleRequestStatus", roleRequestStatusValue);
+                  return `/admin/users/${user.id}?${next.toString()}`;
+                }}
+              />
             </div>
           </Panel>
         ) : null}

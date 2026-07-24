@@ -46,6 +46,10 @@ roles. When more than 100 options match, refine the server-side search rather
 than assuming the first page is complete. Existing assigned or requested scope
 records remain visible in history even when they are no longer selectable.
 
+Controlled Scope Requests and Controlled Role Requests are separate paginated
+histories. Use the lifecycle status filter and page controls to review older
+requests; a visible request row does not itself authorize approval or rejection.
+
 `Admin` → `Core Administration` → `Users` → open a user
 
 If your account has Core Administration access but not `Administer tenant-wide roles`, Core Administration shows an explicit restricted state and loads no users, roles, scope, or audit records. The same restricted boundary applies when tenant-role authority is present but selected-company Manage scope is absent. Ask an independent administrator to grant the documented authority and selected-company scope; neither permission alone is a substitute.

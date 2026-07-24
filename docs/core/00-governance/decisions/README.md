@@ -102,3 +102,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0116-ADMIN-DEPARTMENTS-REGISTRY-PAGINATION.md` — selected-company Departments pagination with approved dependency-summary counts
 - `DEC-0117-ADMIN-APPROVAL-RULES-REGISTRY-PAGINATION.md` — bounded selected-company and tenant-wide Approval Rules registry with capped step preview
 - `DEC-0118-ADMIN-USER-DETAIL-OPTION-CATALOGS.md` — bounded user-detail role/location option catalogs with overflow disclosure
+- `DEC-0119-ADMIN-USER-REQUEST-HISTORY-PAGINATION.md` — bounded Controlled Scope and Role Request history pages with lifecycle filters

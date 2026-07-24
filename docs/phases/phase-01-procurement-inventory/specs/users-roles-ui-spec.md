@@ -76,6 +76,11 @@ selected-company scoped; roles are active tenant-global options. Overflow is
 disclosed and requires refinement, while existing referenced scopes remain
 visible as history even when they are not selectable.
 
+Implementation note (`DEC-0119`): Controlled Scope Requests and Controlled Role
+Requests on User Detail are separate URL-backed paginated histories with
+allowlisted lifecycle filters, exact totals, and newest-first deterministic
+ordering. Review actions remain contextual and server-authorized.
+
 Implementation note (`DEC-0116`): Departments use a selected-company server
 registry with bounded filters and paging. Rows retain read-only budget,
 budget-line, and cost-center related-record counts; employee-assignment volume

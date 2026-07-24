@@ -543,6 +543,25 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).not.toContain("permissionCodes: role.permissions.map");
   });
 
+  test("user detail controlled request history uses bounded status-filtered pages", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const detailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),
+      "utf8"
+    );
+    expect(serviceSource).toContain("scopeRequestPageSize");
+    expect(serviceSource).toContain("roleRequestPageSize");
+    expect(serviceSource).toContain("scopeRequestTotal");
+    expect(serviceSource).toContain("roleRequestTotal");
+    expect(serviceSource).toContain('orderBy: [{ createdAt: "desc" }, { id: "desc" }]');
+    expect(serviceSource).toContain("highRiskScopeRequestPage");
+    expect(serviceSource).toContain("sensitiveRoleRequestPage");
+    expect(detailPageSource).toContain('name="scopeRequestStatus"');
+    expect(detailPageSource).toContain('name="roleRequestStatus"');
+    expect(detailPageSource).toContain("Showing {user.highRiskScopeRequests.length} of");
+    expect(detailPageSource).toContain("Showing {user.sensitiveRoleRequests.length} of");
+  });
+
   test("role permission configuration uses human labels, toggles, recommendations, and audit diff service", () => {
     const rolePageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"),
