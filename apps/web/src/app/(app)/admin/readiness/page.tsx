@@ -1734,6 +1734,7 @@ export default async function AdminReadinessPage({
 
         {selectedCategory === "go_no_go" ? (
           <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50/50 px-4 py-3"><p className="text-sm text-slate-700">Need the latest decision, blocker summary, and full decision composer?</p><a className="min-h-11 inline-flex items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white" href="/admin/readiness/release-board">Open Release Board workspace</a></div>
           {getSearchParam(params, "boardDecisionId") ? (
             <Panel className="mb-5 border-blue-100 bg-blue-50/40">
               {selectedReleaseBoardDecision ? (

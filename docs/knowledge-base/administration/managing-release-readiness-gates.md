@@ -215,8 +215,14 @@ The GO / NO-GO register is searchable and paginated for the selected company.
 Open a decision reference to view its read-only detail. The register is
 append-only: corrections are recorded as a new decision, and malformed or
 out-of-scope links show an unavailable message without revealing another
-company's record. The separate full Release Board workspace and bounded export
+company’s record. The separate full Release Board workspace and bounded export
 remain follow-up work.
+
+Use **Open Release Board workspace** for the latest decision, current blocker
+counts, the full decision composer, selected decision detail, and paginated
+history. Recording a decision is audited and append-only; it does not change a
+gate status. Date filters, workspace export, and audit/activity history remain
+follow-up controls until their release evidence is available.
 
 ## Status Guide
 

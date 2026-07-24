@@ -27,6 +27,10 @@ describe("release readiness gates", () => {
       "utf8"
     );
     const feedbackSource = readFileSync(path.resolve(__dirname, "actionFeedback.ts"), "utf8");
+    const releaseBoardSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/readiness/release-board/page.tsx"),
+      "utf8"
+    );
 
     expect(releaseReadinessCategories).toEqual(
       expect.arrayContaining([
@@ -107,6 +111,11 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("Selected security attention");
     expect(pageSource).toContain("securityAttentionUserId");
     expect(pageSource).toContain("enablementContextParams.toString()");
+    expect(releaseBoardSource).toContain("assertCanManageReleaseReadiness");
+    expect(releaseBoardSource).toContain("Latest Release Board decision");
+    expect(releaseBoardSource).toContain("Current readiness blockers");
+    expect(releaseBoardSource).toContain("Record a Release Board decision");
+    expect(releaseBoardSource).toContain("PaginationBar");
     expect(pageSource).toContain("Export Readiness Register");
     expect(pageSource).toContain("X-OGFI-CSV-SHA256");
     expect(pageSource).toContain("Download SHA-256");

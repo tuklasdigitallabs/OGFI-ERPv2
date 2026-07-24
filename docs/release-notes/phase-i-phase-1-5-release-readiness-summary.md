@@ -161,6 +161,11 @@ the shared reporting date-span/row limits, with selected-company Manage scope
 checked before export begins. The default UI link uses the last 31 UTC days;
 over-limit requests fail without partial output.
 
+Administration now includes a separate Release Board workspace with latest
+decision and blocker summaries, an audited append-only composer, selected
+decision detail, and paginated history. This does not complete external release
+evidence, browser, database, hosted recovery, or UAT gates.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.

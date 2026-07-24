@@ -599,6 +599,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Readiness CSV and checksum exports now require strict UTC `from`/`to` dates, enforce the shared reporting date-span and row policies, count evidence/decision rows before bounded fetches, and fail with stable 400/413 responses before emitting bytes. The UI supplies a default 31-day UTC window and discloses the bound. Core Admin plus selected-company Manage scope is required before export audit start or data access.
 - Async private-artifact delivery remains deferred. Database volume/query-plan, responsive browser, hosted recovery, and UAT gates remain open.
 
+### DEC-0137 Administration Release Board workspace — July 24, 2026
+
+- Added a separate `/admin/readiness/release-board` workspace with latest decision, readiness blocker counts, full audited append-only composer, selected read-only detail, searchable history, and server pagination. The existing GO / NO-GO register links to it; gate status remains source-owned and decision creation does not mutate gates.
+- Date filters, bounded workspace export, richer audit/activity history, responsive browser proof, disposable PostgreSQL isolation/query-plan evidence, hosted deployment/recovery, and UAT execution remain open. This is a controlled workspace slice, not Readiness or Phase I completion.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
