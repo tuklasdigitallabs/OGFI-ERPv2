@@ -17,7 +17,6 @@ import {
 import { getSessionContext } from "@/server/services/context";
 import {
   createDraftPurchaseRequest,
-  listPurchaseRequestDraftOptions,
   listPurchaseRequestPage,
   listPurchaseRequestsDashboardProfilePage,
   resolvePurchaseRequestDashboardProfile,
@@ -104,7 +103,7 @@ export default async function PurchaseRequestsPage({
   }
   const exportHref = `/purchase-requests/export${exportParams.size ? `?${exportParams.toString()}` : ""}`;
   const canExportPurchaseRequestCsv = canExportPurchaseRequests(session);
-  const [dashboardProfilePage, workspaceRequests, draftOptions, purchasingPolicy] = await Promise.all([
+  const [dashboardProfilePage, workspaceRequests, purchasingPolicy] = await Promise.all([
     dashboardProfile
       ? listPurchaseRequestsDashboardProfilePage(session, dashboardProfile, requestedPage)
       : Promise.resolve(null),
@@ -112,9 +111,9 @@ export default async function PurchaseRequestsPage({
       status: selectedStatus,
       search,
     }, { page: requestedPage }),
-    listPurchaseRequestDraftOptions(session),
     getPurchasingControlPolicy(session),
   ]);
+  const draftOptions = { items: [], uoms: [], budgetLines: [] };
   const requests = dashboardProfilePage?.items ?? workspaceRequests?.items ?? [];
   const canCreateDraft = session.permissionCodes.includes(
     permissions.purchaseRequestCreate,

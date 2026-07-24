@@ -241,6 +241,20 @@ describe("purchase request workflow controls", () => {
     expect(serviceSource).toContain("quotationRequiredThresholdPhp");
   });
 
+  test("draft entry uses bounded server-owned lookup contracts", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "purchaseRequests.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/purchase-requests/page.tsx"), "utf8");
+    const editorSource = readFileSync(path.resolve(__dirname, "../../components/PurchaseRequestLinesEditor.tsx"), "utf8");
+    expect(serviceSource).toContain("searchPurchaseRequestDraftLookup");
+    expect(serviceSource).toContain("assertAuthorizedLocation(session, session.context.locationId)");
+    expect(serviceSource).toContain('pageSize: z.number().int().min(10).max(50)');
+    expect(serviceSource).toContain("itemUomConversion.findMany");
+    expect(pageSource).not.toContain("listPurchaseRequestDraftOptions");
+    expect(editorSource).toContain("/api/purchase-requests/draft-lookup?kind=item");
+    expect(editorSource).toContain("/api/purchase-requests/draft-lookup?kind=uom");
+    expect(editorSource).toContain("/api/purchase-requests/draft-lookup?kind=budget");
+  });
+
   test("emergency purchase requests derive same-day SLA status without changing approval routing", () => {
     expect(isEmergencyPurchaseUrgency("Emergency - stockout")).toBe(true);
     expect(isEmergencyPurchaseUrgency("Normal")).toBe(false);

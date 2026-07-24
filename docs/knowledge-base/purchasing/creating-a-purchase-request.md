@@ -19,6 +19,7 @@ Low stock must not automatically create a PO. If warehouse stock is available, u
 - If the urgency is emergency, prepare the emergency reason, evidence reference such as an incident number/photo/approval note, and estimated amount. Emergency requests must have a positive estimate and must stay within the configured emergency cap.
 - Use an active catalog item when one exists. Free-text lines require a UOM code.
 - When using a catalog item, select a UOM that is configured for that item. The server checks the item/UOM relationship again when creating the draft; an invalid or stale pair is rejected without creating the request.
+- Catalog-item and budget-line choices are searched through bounded server lookups. If a search is larger than the safe page, narrow the text before creating the draft; the editor does not silently accept an incomplete result set. The selected item, valid UOM, and budget context are retained while you search.
 - An approval rule must be configured before a draft can be submitted.
 - Current recommended approval bands are shown in the workspace from Admin Settings: standard approval from PHP 10,000, high-value review from PHP 50,000, executive review from PHP 200,000, and 3 quotes from PHP 50,000 when quotation comparison is required. These values are policy context; assigned approval rules and scope still control the actual approval route.
 
@@ -35,10 +36,10 @@ Low stock must not automatically create a PO. If warehouse stock is available, u
 4. For emergency urgency, enter the emergency reason and evidence reference.
 5. Enter the business justification.
 6. Enter the line description.
-7. Select a catalog item when available, or leave it as a free-text line.
+7. Search for and select a catalog item when available, or leave it as a free-text line. Narrow the search if the workspace reports too many matches.
 8. Enter the requested quantity.
 9. Enter the estimated unit cost when available. This is required for emergency requests because the system checks the configured emergency cap.
-10. Select a catalog unit or enter a free-text UOM.
+10. Select a valid catalog unit for the selected item, or enter a free-text UOM for a free-text line.
 11. Enter the line purpose.
 12. Select `Create Draft Purchase Request`.
 13. Open the draft detail page.

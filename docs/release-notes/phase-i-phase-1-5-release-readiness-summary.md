@@ -195,7 +195,9 @@ map to a stable duplicate outcome; browser, database, hosted, and UAT gates rema
 
 Purchase Request draft creation now rejects catalog item/UOM combinations that
 are not configured for the selected item, while preserving emergency free-text
-lines. Bounded draft-entry lookup migration remains open.
+lines. Draft entry now uses bounded server-owned item, valid-UOM, and budget-line
+lookups with selected-context retention and explicit overflow/error states. A
+full overflow pager and browser/database/hosted/UAT evidence remain open.
 
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,

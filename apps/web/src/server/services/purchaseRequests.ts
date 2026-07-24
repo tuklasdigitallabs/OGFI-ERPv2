@@ -1233,6 +1233,108 @@ export async function listPurchaseRequestDraftOptions(session: SessionContext) {
   };
 }
 
+const purchaseRequestDraftLookupInputSchema = z.object({
+  kind: z.enum(["item", "uom", "budget"]),
+  query: z.string().trim().max(120).default(""),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(50).default(25),
+  itemId: optionalUuidSchema,
+  selectedId: optionalUuidSchema,
+});
+
+export async function searchPurchaseRequestDraftLookup(
+  session: SessionContext,
+  input: z.input<typeof purchaseRequestDraftLookupInputSchema>,
+) {
+  await requirePermission(session, permissions.purchaseRequestCreate);
+  assertAuthorizedLocation(session, session.context.locationId);
+  const values = purchaseRequestDraftLookupInputSchema.parse(input);
+  if (values.kind === "item" && values.query.length < 2 && !values.selectedId) {
+    return { kind: values.kind, options: [], page: 1, pageSize: values.pageSize, totalItems: 0, totalPages: 1, hasNextPage: false, hasPreviousPage: false };
+  }
+  if (values.kind === "uom" && !values.itemId) {
+    return { kind: values.kind, options: [], page: 1, pageSize: values.pageSize, totalItems: 0, totalPages: 1, hasNextPage: false, hasPreviousPage: false };
+  }
+  const scope = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    status: "ACTIVE" as const,
+  };
+  if (values.kind === "item") {
+    const where = {
+      ...scope,
+      ...(values.query
+        ? {
+            OR: [
+              { itemName: { contains: values.query, mode: "insensitive" as const } },
+              { itemCode: { contains: values.query, mode: "insensitive" as const } },
+              ...(values.selectedId ? [{ id: values.selectedId }] : []),
+            ],
+          }
+        : values.selectedId ? { id: values.selectedId } : {}),
+    };
+    const totalItems = await prisma.item.count({ where });
+    const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+    const page = Math.min(values.page, totalPages);
+    const options = await prisma.item.findMany({
+      where,
+      select: { id: true, itemCode: true, itemName: true, purchaseUomId: true },
+      orderBy: [{ itemName: "asc" }, { itemCode: "asc" }, { id: "asc" }],
+      skip: (page - 1) * values.pageSize,
+      take: values.pageSize,
+    });
+    return { kind: values.kind, options: options.map((item) => ({ id: item.id, itemCode: item.itemCode, itemName: item.itemName, defaultUomId: item.purchaseUomId, uoms: [] })), page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+  }
+  if (values.kind === "uom") {
+    const itemId = values.itemId;
+    if (!itemId) {
+      return { kind: values.kind, options: [], page: 1, pageSize: values.pageSize, totalItems: 0, totalPages: 1, hasNextPage: false, hasPreviousPage: false };
+    }
+    const item = await prisma.item.findFirst({
+      where: { ...scope, id: itemId },
+      select: { id: true, baseUomId: true, purchaseUomId: true, issueUomId: true },
+    });
+    if (!item) throw new Error("PR_LINE_ITEM_NOT_FOUND");
+    const conversions = await prisma.itemUomConversion.findMany({
+      where: { itemId: item.id },
+      select: { fromUomId: true, toUomId: true },
+    });
+    const validIds = [item.baseUomId, item.purchaseUomId, item.issueUomId, ...conversions.flatMap((row) => [row.fromUomId, row.toUomId])].filter((id): id is string => Boolean(id));
+    const where = {
+      ...scope,
+      id: { in: validIds.length ? validIds : ["00000000-0000-0000-0000-000000000000"] },
+      ...(values.query
+        ? { OR: [{ uomCode: { contains: values.query, mode: "insensitive" as const } }, { uomName: { contains: values.query, mode: "insensitive" as const } }, ...(values.selectedId ? [{ id: values.selectedId }] : [])] }
+        : values.selectedId ? { OR: [{ id: values.selectedId }] }
+        : {}),
+    };
+    const totalItems = await prisma.uom.count({ where });
+    const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+    const page = Math.min(values.page, totalPages);
+    const options = await prisma.uom.findMany({ where, select: { id: true, uomCode: true, uomName: true }, orderBy: [{ uomCode: "asc" }, { id: "asc" }], skip: (page - 1) * values.pageSize, take: values.pageSize });
+    return { kind: values.kind, options, page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+  }
+  const activeBudgetStatuses = ["ACTIVE", "PARTIALLY_RELEASED"] as ("ACTIVE" | "PARTIALLY_RELEASED")[];
+  const budgetSearch = values.query
+    ? [{ code: { contains: values.query, mode: "insensitive" as const } }, { name: { contains: values.query, mode: "insensitive" as const } }, ...(values.selectedId ? [{ id: values.selectedId }] : [])]
+    : values.selectedId ? [{ id: values.selectedId }] : undefined;
+  const budgetScopeAnd = [
+    ...(session.context.brandId ? [{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }] : []),
+    ...(budgetSearch ? [{ OR: budgetSearch }] : []),
+  ];
+  const where = {
+    ...scope,
+    budget: { is: { status: { in: activeBudgetStatuses } } },
+    OR: [{ locationId: null }, { locationId: session.context.locationId }],
+    ...(budgetScopeAnd.length ? { AND: budgetScopeAnd } : {}),
+  };
+  const totalItems = await prisma.budgetLine.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  const options = await prisma.budgetLine.findMany({ where, select: { id: true, code: true, name: true, budget: { select: { publicReference: true, name: true } } }, orderBy: [{ code: "asc" }, { name: "asc" }, { id: "asc" }], skip: (page - 1) * values.pageSize, take: values.pageSize });
+  return { kind: values.kind, options, page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
+}
+
 export async function createDraftPurchaseRequest(formData: FormData) {
   const session = await requireSessionContext();
   const values = createDraftHeaderSchema.parse(Object.fromEntries(formData));

@@ -131,3 +131,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0145-SUPPLIER-ITEM-LINK-RACE-DUPLICATE.md` — stable duplicate outcome for concurrent supplier-item link creation
 - `DEC-0146-SUPPLIER-ITEM-BOUNDED-LOOKUP-COMPOSER.md` — selected-supplier bounded searchable item/UOM lookup composer
 - `DEC-0147-PR-CATALOG-UOM-RELATION-GUARD.md` — server validation that catalog UOMs are valid for selected Purchase Request items
+- `DEC-0148-PR-BOUNDED-DRAFT-LOOKUPS.md` — bounded server-owned item, valid-UOM, and budget-line lookups during Purchase Request draft entry

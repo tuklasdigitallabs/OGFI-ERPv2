@@ -660,6 +660,12 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 - Purchase Request draft creation now validates each catalog item/UOM pair against the item's base, purchase, issue, and configured conversion endpoints. Emergency free-text lines remain allowed; invalid catalog pairs fail with stable user-safe feedback before any draft side effects.
 - Focused Purchase Request tests (12), web typecheck, and lint pass. The visible draft editor still needs bounded searchable item/UOM lookups and an explicit budget-line overflow/lookup contract before the PR workspace can pass its list and visible-surface gates.
 
+### DEC-0148 Purchase Request bounded draft lookups — July 24, 2026
+
+- Purchase Request draft entry now uses a server-authorized, tenant/company/location-scoped lookup endpoint for catalog items, item-valid UOMs, and active budget lines. Inputs validate query, page, page size, item context, and selected-ID retention; responses provide exact totals, deterministic ordering, and bounded pages.
+- The editor preserves selected item/UOM/budget context across searches, provides explicit lookup error and empty-result feedback, and blocks submission when a safe page overflows so users must narrow the search rather than accept silent truncation. Emergency free-text lines remain available.
+- Focused Purchase Request tests (13), web typecheck, lint, and diff checks are the checkpoint evidence. A full pager for overflow, authenticated responsive-browser evidence, disposable-PostgreSQL authorization/query evidence, hosted recovery, and UAT remain open; the Purchase Request workspace is not complete.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.
