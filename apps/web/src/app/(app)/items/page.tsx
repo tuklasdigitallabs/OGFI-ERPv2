@@ -23,6 +23,7 @@ import {
   itemTypes,
   getItemMasterRecord,
   getItemCategoryRecord,
+  getItemUomConversionRecord,
   getUomRecord,
   listItemMasterData,
   listItemMasterOptionCatalog,
@@ -60,6 +61,17 @@ function masterTabReturnPath(formData: FormData, tab: "categories" | "uoms") {
   if (["ACTIVE", "INACTIVE", "ARCHIVED"].includes(status)) query.set(`${prefix}Status`, status);
   if (Number.isInteger(page) && page > 0 && page <= 10_000) query.set(`${prefix}Page`, String(page));
   if (/^[0-9a-f-]{36}$/i.test(id)) query.set(`${prefix}Id`, id);
+  return `/items?${query.toString()}`;
+}
+
+function conversionReturnPath(formData: FormData) {
+  const query = new URLSearchParams({ tab: "conversions" });
+  const search = String(formData.get("returnConversionQuery") ?? "").trim().slice(0, 120);
+  const page = Number(formData.get("returnConversionPage") ?? "1");
+  const id = String(formData.get("returnConversionId") ?? "");
+  if (search) query.set("conversionQuery", search);
+  if (Number.isInteger(page) && page > 0 && page <= 10_000) query.set("conversionPage", String(page));
+  if (/^[0-9a-f-]{36}$/i.test(id)) query.set("conversionId", id);
   return `/items?${query.toString()}`;
 }
 
@@ -189,10 +201,10 @@ async function updateConversionAction(formData: FormData) {
   try {
     await updateItemUomConversion(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/items?tab=conversions", error));
+    redirect(actionErrorRedirectPath(conversionReturnPath(formData), error));
   }
   revalidatePath("/items");
-  redirect("/items?tab=conversions");
+  redirect(conversionReturnPath(formData));
 }
 
 type ItemsPageProps = {
@@ -238,6 +250,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const selectedItemId = Array.isArray(params.itemId) ? params.itemId[0] : params.itemId;
   const selectedCategoryId = Array.isArray(params.categoryId) ? params.categoryId[0] : params.categoryId;
   const selectedUomId = Array.isArray(params.uomId) ? params.uomId[0] : params.uomId;
+  const selectedConversionId = Array.isArray(params.conversionId) ? params.conversionId[0] : params.conversionId;
   const itemStatusRaw = Array.isArray(params.itemStatus) ? params.itemStatus[0] : params.itemStatus;
   const itemStatus = itemStatusRaw === "ACTIVE" || itemStatusRaw === "INACTIVE" || itemStatusRaw === "ARCHIVED" ? itemStatusRaw : undefined;
   const requestedPage = Number(Array.isArray(params.itemPage) ? params.itemPage[0] : params.itemPage);
@@ -272,6 +285,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const selectedItem = selectedItemId ? await getItemMasterRecord(session, selectedItemId).catch(() => null) : null;
   const selectedCategory = selectedCategoryId ? await getItemCategoryRecord(session, selectedCategoryId).catch(() => null) : null;
   const selectedUom = selectedUomId ? await getUomRecord(session, selectedUomId).catch(() => null) : null;
+  const selectedConversion = selectedConversionId ? await getItemUomConversionRecord(session, selectedConversionId).catch(() => null) : null;
   const selectedCategoryIds = [...masterData.items.map((item) => item.itemCategoryId), ...(selectedItem ? [selectedItem.itemCategoryId] : [])];
   const selectedUomIds = [...masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id))), ...(selectedItem ? [selectedItem.baseUomId, selectedItem.purchaseUomId, selectedItem.issueUomId].filter((id): id is string => Boolean(id)) : [])];
   const selectedConversionItemIds = masterData.conversions.map((conversion) => conversion.itemId);
@@ -304,6 +318,12 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
     if (uomQuery) query.set("uomQuery", uomQuery);
     if (uomStatus) query.set("uomStatus", uomStatus);
     if (uomId) query.set("uomId", uomId);
+    return `/items?${query.toString()}`;
+  };
+  const conversionActionHref = (conversionId?: string) => {
+    const query = new URLSearchParams({ tab: "conversions", conversionPage: String(masterData.conversionsPage.page) });
+    if (conversionQuery) query.set("conversionQuery", conversionQuery);
+    if (conversionId) query.set("conversionId", conversionId);
     return `/items?${query.toString()}`;
   };
 
@@ -1070,10 +1090,13 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                   </span>
                 </summary>
                 <div className="flex flex-wrap justify-end gap-2 rounded-xl bg-slate-50/70 p-4">
+                  <Link className="inline-flex min-h-10 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50" href={conversionActionHref(conversion.id)}>Open controls</Link>
                   <EntryModal
                     title={`Edit ${conversion.itemName} conversion`}
                     triggerClassName={secondaryEditTrigger}
                     triggerLabel="Edit"
+                    disabled
+                    disabledReason="Use Open controls to edit the selected conversion."
                   >
                     <form action={updateConversionAction} className="ogfi-form-shell mt-4 grid gap-3">
                       <input name="conversionId" type="hidden" value={conversion.id} />
@@ -1119,6 +1142,18 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
               </details>
             ))}
           </div>
+          {selectedConversion ? (
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-bold text-slate-950">Selected conversion: {selectedConversion.item.itemName}</h3><p className="text-sm text-slate-600">{selectedConversion.fromUom.uomCode} → {selectedConversion.toUom.uomCode}; only the factor and rounding rule are editable.</p></div><Link className="text-sm font-semibold text-blue-700 hover:underline" href={conversionActionHref()}>Close controls</Link></div>
+              <form action={updateConversionAction} className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                <input name="conversionId" type="hidden" value={selectedConversion.id} /><input name="returnConversionQuery" type="hidden" value={conversionQuery} /><input name="returnConversionPage" type="hidden" value={String(masterData.conversionsPage.page)} /><input name="returnConversionId" type="hidden" value={selectedConversion.id} />
+                <label className="grid gap-1 text-sm font-medium text-slate-700">Conversion factor<input className={inputClass} name="conversionFactor" min="0.000001" step="0.000001" type="number" defaultValue={Number(selectedConversion.conversionFactor)} required /></label>
+                <label className="grid gap-1 text-sm font-medium text-slate-700">Rounding rule<select className={inputClass} name="roundingRule" defaultValue={selectedConversion.roundingRule} required><option value="none">none</option><option value="up">up</option><option value="down">down</option><option value="nearest">nearest</option></select></label>
+                <label className="grid gap-1 text-sm font-medium text-slate-700">Update reason<input className={inputClass} name="reason" minLength={5} required /></label>
+                <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-bold text-white md:col-span-3 md:justify-self-start">Save Conversion</button>
+              </form>
+            </div>
+          ) : selectedConversionId ? <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">The selected conversion is unavailable in the current company scope.</p> : null}
           {masterData.conversionsPage.totalItems === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{conversionQuery ? "No conversions match the selected filters." : "No conversions yet."}</p> : null}
           {masterData.conversionsPage.totalItems > 0 ? (
             <PaginationBar

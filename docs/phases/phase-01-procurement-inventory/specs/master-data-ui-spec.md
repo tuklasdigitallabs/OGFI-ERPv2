@@ -45,6 +45,9 @@ inventory movements require controlled migration and are rejected server-side.
 
 Categories and UOMs use the same selected-record action pattern; repeated row
 controls are disabled with guidance to open the selected composer.
+
+Conversion edits use a selected conversion composer with scoped item/UOM detail;
+row edit controls are disabled with guidance and creation uses bounded selectors.
 | MDM-10 | Import / Change Request Review | Controlled bulk or change management |
 
 ## 2. Master Data Home

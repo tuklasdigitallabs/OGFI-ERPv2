@@ -246,6 +246,20 @@ export async function getUomRecord(session: SessionContext, uomId: string) {
   });
 }
 
+export async function getItemUomConversionRecord(session: SessionContext, conversionId: string) {
+  await assertAdminCanManageMasterData(session);
+  const id = itemMasterRecordIdSchema.parse(conversionId);
+  return prisma.itemUomConversion.findFirst({
+    where: {
+      id,
+      item: { tenantId: session.context.tenantId, companyId: session.context.companyId },
+      fromUom: { tenantId: session.context.tenantId, companyId: session.context.companyId },
+      toUom: { tenantId: session.context.tenantId, companyId: session.context.companyId }
+    },
+    include: { item: true, fromUom: true, toUom: true }
+  });
+}
+
 export async function listItemMasterOptionCatalog(
   session: SessionContext,
   input: z.input<typeof itemMasterOptionCatalogInputSchema>

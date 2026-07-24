@@ -13,3 +13,5 @@ All four tabs use server-backed filters and pagination. Item create/edit selecto
 Select an item and choose Open controls to edit or deactivate it. The selected-item composer preserves the current search and page context. If an item has posted inventory history, its base UOM cannot be changed through normal editing; a controlled migration is required. Conversion creation uses bounded active item/UOM selectors and is disabled only when those catalogs overflow.
 
 Categories and UOMs use the same selected-record controls. Row-level legacy controls explain that Open controls is the authoritative action location.
+
+Conversion edits use a selected conversion composer; item and UOM endpoints remain read-only within that edit surface, while factor, rounding rule, and reason are validated server-side.

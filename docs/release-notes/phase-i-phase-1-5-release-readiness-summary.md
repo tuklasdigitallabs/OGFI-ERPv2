@@ -182,6 +182,10 @@ Item edit and deactivation now use a selected item action composer with preserve
 filter/page context. Base-UOM changes are blocked after posted inventory history
 and require a controlled migration.
 
+Category, UOM, and conversion edits now use selected-record composers with
+context-preserving redirects; repeated row mutation controls are disabled with
+clear guidance.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.

@@ -118,5 +118,8 @@ describe("item master-data controls", () => {
     expect(page).toContain("Selected UOM:");
     expect(page).toContain("returnCategoryPage");
     expect(page).toContain("returnUomPage");
+    expect(page).toContain("Selected conversion:");
+    expect(page).toContain("returnConversionPage");
+    expect(page).toContain("getItemUomConversionRecord");
   });
 });
