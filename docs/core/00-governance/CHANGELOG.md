@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Immutable Recount Attempts And Variance Recovery
+
+- Added confirmed `DEC-0098` for `DEC-0061`: use an additive immutable child Stock Count Attempt/version model while preserving the current session as attempt 1; retain a cutoff only under a continuously active movement freeze and canonical location lock, otherwise start a new cutoff.
+- Approved-but-unposted linked count-variance adjustments require MFA, reason, evidence, idempotent void-for-recount, preserved approval history, and terminated pending steps; posted adjustments require full reversal. Authority, notification, migration, and verification details remain implementation gates. Requested Spark/GPT-5.4 reviewers were unavailable and the closest permitted GPT-5.6 fallback was used without relaxing hard gates.
+
 ## 2026-07-24 — Receiving Register Accepted-Value Filter Deferral
 
 - Added confirmed `DEC-0097`: accepted-value URL, UI, and ordinary CSV behavior remain deferred until cost permission, receipt aggregate, currency conversion/handling, null unit-cost semantics, filtered-CSV context, and representative PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)`/volume evidence are approved.
