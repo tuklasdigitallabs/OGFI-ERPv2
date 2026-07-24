@@ -161,13 +161,20 @@ async function createUatEvidenceAction(formData: FormData) {
 async function updateUatEvidenceAction(formData: FormData) {
   "use server";
 
+  const context = new URLSearchParams({ category: "uat" });
+  for (const key of ["uatQ", "uatEvidenceType", "uatResult", "uatVerificationStatus", "uatWorkflowArea", "uatEnvironment", "uatPage", "uatPageSize", "evidenceId"]) {
+    const value = formData.get(key);
+    if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key, value);
+  }
+  const returnPath = `/admin/readiness?${context.toString()}`;
+
   try {
     await updateUatEvidenceStatus(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/readiness?category=uat", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/readiness");
-  redirect("/admin/readiness?category=uat");
+  redirect(returnPath);
 }
 
 async function createEnablementEvidenceAction(formData: FormData) {
@@ -233,6 +240,23 @@ export default async function AdminReadinessPage({
     : undefined;
   const pageValue = Number.parseInt(getSearchParam(params, "page") ?? "1", 10);
   const pageSizeValue = Number.parseInt(getSearchParam(params, "pageSize") ?? "10", 10);
+  const uatQuery = (getSearchParam(params, "uatQ") ?? "").slice(0, 120);
+  const uatEvidenceTypeValue = getSearchParam(params, "uatEvidenceType");
+  const uatEvidenceType = uatEvidenceTypes.includes(uatEvidenceTypeValue as (typeof uatEvidenceTypes)[number])
+    ? (uatEvidenceTypeValue as (typeof uatEvidenceTypes)[number])
+    : undefined;
+  const uatResultValue = getSearchParam(params, "uatResult");
+  const uatResult = uatEvidenceResults.includes(uatResultValue as (typeof uatEvidenceResults)[number])
+    ? (uatResultValue as (typeof uatEvidenceResults)[number])
+    : undefined;
+  const uatStatusValue = getSearchParam(params, "uatVerificationStatus");
+  const uatVerificationStatus = ["RECORDED", "VERIFIED", "REJECTED"].includes(uatStatusValue ?? "")
+    ? (uatStatusValue as "RECORDED" | "VERIFIED" | "REJECTED")
+    : undefined;
+  const uatWorkflowArea = (getSearchParam(params, "uatWorkflowArea") ?? "").slice(0, 120);
+  const uatEnvironment = (getSearchParam(params, "uatEnvironment") ?? "").slice(0, 80);
+  const uatPageValue = Number.parseInt(getSearchParam(params, "uatPage") ?? "1", 10);
+  const uatPageSizeValue = Number.parseInt(getSearchParam(params, "uatPageSize") ?? "10", 10);
   const gatePage = await listReleaseReadinessGatePage(session, {
     category: selectedCategory,
     query,
@@ -246,14 +270,27 @@ export default async function AdminReadinessPage({
     : null;
   const uatEvidencePage = selectedCategory === "uat"
     ? await listUatEvidencePage(session, {
-        query,
-        page: Number.isFinite(pageValue) ? Math.min(Math.max(pageValue, 1), 10_000) : 1,
-        pageSize: Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 10,
+        query: uatQuery,
+        evidenceType: uatEvidenceType,
+        result: uatResult,
+        verificationStatus: uatVerificationStatus,
+        workflowArea: uatWorkflowArea,
+        environment: uatEnvironment,
+        page: Number.isFinite(uatPageValue) ? Math.min(Math.max(uatPageValue, 1), 10_000) : 1,
+        pageSize: Number.isFinite(uatPageSizeValue) ? Math.min(Math.max(uatPageSizeValue, 10), 100) : 10,
       })
     : { items: [], page: 1, pageSize: 10, totalItems: 0 };
   const selectedUatEvidence = selectedCategory === "uat" && getSearchParam(params, "evidenceId")
     ? await getUatEvidenceRecord(session, getSearchParam(params, "evidenceId") as string)
     : null;
+  const uatContextParams = new URLSearchParams({ category: "uat", uatPage: String(uatEvidencePage.page), uatPageSize: String(uatEvidencePage.pageSize) });
+  if (uatQuery) uatContextParams.set("uatQ", uatQuery);
+  if (uatEvidenceType) uatContextParams.set("uatEvidenceType", uatEvidenceType);
+  if (uatResult) uatContextParams.set("uatResult", uatResult);
+  if (uatVerificationStatus) uatContextParams.set("uatVerificationStatus", uatVerificationStatus);
+  if (uatWorkflowArea) uatContextParams.set("uatWorkflowArea", uatWorkflowArea);
+  if (uatEnvironment) uatContextParams.set("uatEnvironment", uatEnvironment);
+  const uatContextHref = `/admin/readiness?${uatContextParams.toString()}`;
   const securityEvidenceSummary =
     selectedCategory === "security"
       ? await getReleaseSecurityEvidenceSummary(session)
@@ -949,7 +986,29 @@ export default async function AdminReadinessPage({
                 <p>{uatEvidenceTypeLabel(selectedUatEvidence.evidenceType)} · {selectedUatEvidence.workflowArea} · {selectedUatEvidence.environment}</p>
                 <p>Result: {selectedUatEvidence.result}; executed {new Date(selectedUatEvidence.executedAt).toLocaleString()}; tester {selectedUatEvidence.testerName}</p>
                 <p>Reference: {selectedUatEvidence.evidenceReference}</p>
-                <a className="text-sm font-semibold text-blue-700 hover:underline" href="/admin/readiness?category=uat">Close selected evidence</a>
+                {selectedUatEvidence.verificationStatus === "RECORDED" ? (
+                  selectedUatEvidence.createdByUserId === session.user.id ? (
+                    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">Another authorized reviewer must verify or reject evidence recorded by you.</p>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <form action={updateUatEvidenceAction}>
+                        <input name="evidenceId" type="hidden" value={selectedUatEvidence.id} />
+                        <input name="status" type="hidden" value="VERIFIED" />
+                        <input name="reason" type="hidden" value="Verified UAT evidence from the selected evidence review panel." />
+                        <input name="uatQ" type="hidden" value={uatQuery} /><input name="uatEvidenceType" type="hidden" value={uatEvidenceType ?? ""} /><input name="uatResult" type="hidden" value={uatResult ?? ""} /><input name="uatVerificationStatus" type="hidden" value={uatVerificationStatus ?? ""} /><input name="uatWorkflowArea" type="hidden" value={uatWorkflowArea} /><input name="uatEnvironment" type="hidden" value={uatEnvironment} /><input name="uatPage" type="hidden" value={String(uatEvidencePage.page)} /><input name="uatPageSize" type="hidden" value={String(uatEvidencePage.pageSize)} />
+                        <button className="min-h-11 w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100">Verify evidence</button>
+                      </form>
+                      <form action={updateUatEvidenceAction} className="grid gap-2">
+                        <input name="evidenceId" type="hidden" value={selectedUatEvidence.id} />
+                        <input name="status" type="hidden" value="REJECTED" />
+                        <input name="uatQ" type="hidden" value={uatQuery} /><input name="uatEvidenceType" type="hidden" value={uatEvidenceType ?? ""} /><input name="uatResult" type="hidden" value={uatResult ?? ""} /><input name="uatVerificationStatus" type="hidden" value={uatVerificationStatus ?? ""} /><input name="uatWorkflowArea" type="hidden" value={uatWorkflowArea} /><input name="uatEnvironment" type="hidden" value={uatEnvironment} /><input name="uatPage" type="hidden" value={String(uatEvidencePage.page)} /><input name="uatPageSize" type="hidden" value={String(uatEvidencePage.pageSize)} />
+                        <input name="reason" className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Rejection reason (required)" minLength={5} required />
+                        <button className="min-h-11 rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800 hover:bg-rose-100">Reject evidence</button>
+                      </form>
+                    </div>
+                  )
+                ) : null}
+                <a className="text-sm font-semibold text-blue-700 hover:underline" href={uatContextHref}>Close selected evidence</a>
               </div>
             ) : (
               <p className="text-sm text-slate-700">The selected UAT evidence is unavailable in the current company scope.</p>
@@ -1254,6 +1313,28 @@ export default async function AdminReadinessPage({
 
         {uatEvidenceSummary ? (
           <div className="mb-5 overflow-hidden rounded-xl border border-slate-200">
+            <form className="grid gap-3 border-b border-slate-100 bg-slate-50 p-4 md:grid-cols-[1fr_12rem_10rem_12rem_12rem_auto] md:items-end" method="get">
+              <input name="category" type="hidden" value="uat" />
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Search
+                <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="uatQ" defaultValue={uatQuery} placeholder="Title, reference, or tester" />
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Evidence type
+                <select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="uatEvidenceType" defaultValue={uatEvidenceType ?? ""}><option value="">All types</option>{uatEvidenceTypes.map((type) => <option key={type} value={type}>{uatEvidenceTypeLabel(type)}</option>)}</select>
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Result
+                <select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="uatResult" defaultValue={uatResult ?? ""}><option value="">All results</option>{uatEvidenceResults.map((result) => <option key={result} value={result}>{result.replaceAll("_", " ")}</option>)}</select>
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Review status
+                <select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="uatVerificationStatus" defaultValue={uatVerificationStatus ?? ""}><option value="">All statuses</option>{["RECORDED", "VERIFIED", "REJECTED"].map((status) => <option key={status} value={status}>{status}</option>)}</select>
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Environment
+                <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="uatEnvironment" defaultValue={uatEnvironment} placeholder="Staging" />
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-slate-700">Workflow area
+                <select className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2" name="uatWorkflowArea" defaultValue={uatWorkflowArea}><option value="">All workflow areas</option>{uatWorkflowAreaOptions.map((area) => <option key={area} value={area}>{area}</option>)}</select>
+              </label>
+              <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" type="submit">Apply</button>
+            </form>
             <div className="grid gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[12rem_1fr_10rem_9rem_12rem]">
               <span>Type</span>
               <span>Evidence</span>
@@ -1277,7 +1358,7 @@ export default async function AdminReadinessPage({
                       </p>
                     </div>
                     <div>
-                      <a className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?category=uat&evidenceId=${record.id}`}>{record.title}</a>
+                      <a className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?${new URLSearchParams(`${uatContextParams.toString()}&evidenceId=${record.id}`).toString()}`}>{record.title}</a>
                       <p className="mt-1 text-xs text-slate-600">
                         {record.evidenceReference}
                       </p>
@@ -1313,60 +1394,7 @@ export default async function AdminReadinessPage({
                     >
                       {record.verificationStatus.replaceAll("_", " ")}
                     </Badge>
-                    {record.verificationStatus === "RECORDED" ? (
-                      <div className="grid gap-2">
-                        <form action={updateUatEvidenceAction}>
-                          <input name="evidenceId" type="hidden" value={record.id} />
-                          <input name="status" type="hidden" value="VERIFIED" />
-                          <input
-                            name="reason"
-                            type="hidden"
-                            value="Verified UAT evidence for DEC-0036 release readiness."
-                          />
-                          <button className="min-h-9 w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100">
-                            Verify
-                          </button>
-                        </form>
-                        <EntryModal
-                          title={`Reject ${record.title}`}
-                          triggerLabel="Reject"
-                          triggerClassName="w-full border border-rose-200 bg-white text-rose-700 hover:bg-rose-50"
-                        >
-                          <form
-                            action={updateUatEvidenceAction}
-                            className="ogfi-form-shell mt-4 grid gap-4"
-                          >
-                            <input name="evidenceId" type="hidden" value={record.id} />
-                            <input name="status" type="hidden" value="REJECTED" />
-                            <label className="grid gap-1 text-sm font-medium text-slate-700">
-                              Rejection reason
-                              <textarea
-                                className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                                name="reason"
-                                required
-                              />
-                            </label>
-                            <button className="min-h-10 rounded-md bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700">
-                              Reject Evidence
-                            </button>
-                          </form>
-                        </EntryModal>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500">
-                        {record.verifiedByUser
-                          ? `Verified by ${
-                              record.verifiedByUser.displayName ||
-                              record.verifiedByUser.email
-                            }`
-                          : record.rejectedByUser
-                            ? `Rejected by ${
-                                record.rejectedByUser.displayName ||
-                                record.rejectedByUser.email
-                              }`
-                            : "No action available"}
-                      </p>
-                    )}
+                    <a className="min-h-11 inline-flex items-center justify-center rounded-md border border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50" href={`/admin/readiness?${new URLSearchParams(`${uatContextParams.toString()}&evidenceId=${record.id}`).toString()}`}>Open evidence</a>
                   </div>
                 ))}
               </div>
@@ -1382,8 +1410,13 @@ export default async function AdminReadinessPage({
               totalItems={uatEvidencePage.totalItems}
               itemLabel="UAT evidence records"
               getPageHref={(nextPage) => {
-                const next = new URLSearchParams({ category: "uat", page: String(nextPage), pageSize: String(uatEvidencePage.pageSize) });
-                if (query) next.set("q", query);
+                const next = new URLSearchParams({ category: "uat", uatPage: String(nextPage), uatPageSize: String(uatEvidencePage.pageSize) });
+                if (uatQuery) next.set("uatQ", uatQuery);
+                if (uatEvidenceType) next.set("uatEvidenceType", uatEvidenceType);
+                if (uatResult) next.set("uatResult", uatResult);
+                if (uatVerificationStatus) next.set("uatVerificationStatus", uatVerificationStatus);
+                if (uatWorkflowArea) next.set("uatWorkflowArea", uatWorkflowArea);
+                if (uatEnvironment) next.set("uatEnvironment", uatEnvironment);
                 return `/admin/readiness?${next.toString()}`;
               }}
             />

@@ -49,6 +49,8 @@ Selecting a UAT evidence title opens a scoped detail panel with its type, workfl
 
 The UAT summary counters are calculated from scoped aggregate checks across the register, not from the current page of rows. A filtered or paginated view therefore cannot make a missing evidence type appear ready.
 
+UAT rows do not perform review actions inline. Open a record to review it. Only a recorded item can be verified or rejected, and the person who recorded it cannot perform that review. Rejection requires a reason; verified and rejected records are retained as read-only history.
+
 ## UAT Evidence Rules
 
 UAT gates require both evidence and a decision note before they are marked ready, conditional, or waived. The decision note should name one or more of:

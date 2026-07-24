@@ -139,6 +139,10 @@ UAT readiness counters and gate checks now use scoped aggregate queries instead 
 loading the full register. Export, deployment, enablement, security, GO/NO-GO, and
 external production-readiness gates remain separate.
 
+UAT evidence review actions now live on the selected record, while list rows remain
+read-only. The page separates UAT filter/pagination state from gate pagination and
+preserves creator self-review and recorded-state controls.
+
 Release Readiness gate status now has bounded server-side category, status, search,
 and pagination controls with exact matching totals. This checkpoint does not close
 the separate evidence, security aggregate, GO/NO-GO, browser, database, hosted, or

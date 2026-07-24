@@ -1413,8 +1413,13 @@ export async function updateUatEvidenceStatus(formData: FormData) {
     }
 
     const now = new Date();
-    const saved = await tx.uatEvidenceRecord.update({
-      where: { id: existing.id },
+    const claimed = await tx.uatEvidenceRecord.updateMany({
+      where: {
+        id: existing.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        verificationStatus: "RECORDED",
+      },
       data:
         values.status === "VERIFIED"
           ? {
@@ -1431,6 +1436,14 @@ export async function updateUatEvidenceStatus(formData: FormData) {
               verifiedAt: null,
               verifiedByUserId: null,
             },
+    });
+    if (claimed.count !== 1) throw new Error("UAT_EVIDENCE_NOT_RECORDED");
+    const saved = await tx.uatEvidenceRecord.findFirstOrThrow({
+      where: {
+        id: existing.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+      },
     });
 
     await tx.auditEvent.create({

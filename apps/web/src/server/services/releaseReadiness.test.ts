@@ -126,6 +126,12 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("Showing {visibleGates.length} of {gatePage.totalItems} gates");
     expect(pageSource).toContain("Search gates");
     expect(pageSource).toContain("<PaginationBar");
+    expect(pageSource).toContain("uatEvidenceType");
+    expect(pageSource).toContain("uatPageSize");
+    expect(pageSource).toContain("Verify evidence");
+    expect(pageSource).toContain("Another authorized reviewer must verify or reject");
+    expect(serviceSource).toContain("updateMany({");
+    expect(serviceSource).toContain('verificationStatus: "RECORDED"');
     expect(serviceSource).toContain("Security proof target");
     expect(serviceSource).toContain(
       "external-security/mfa-provider-enrollment-and-runtime-proof.<approved-extension>"
