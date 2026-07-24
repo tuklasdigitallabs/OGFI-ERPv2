@@ -80,6 +80,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0098-RECOUNT-ATTEMPT-IMMUTABLE-RECOVERY.md`
 - `DEC-0099-STOCK-COUNT-DASHBOARD-ATTEMPT-PARITY-GATE.md`
 - `DEC-0100-RECEIVING-ITEM-FILTER-CONTRACT-DEFERRAL.md`
+- `DEC-0101-RECEIVING-CREATE-TASK-MODE.md`
 
 ## Suggested future decision records
 

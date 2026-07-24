@@ -12987,7 +12987,7 @@
     ]
   },
   {
-    "id": "receiving/page.tsx#createReceiptAction",
+    "id": "receiving/new/page.tsx#createReceiptAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
     "scopeDimensions": [
@@ -13024,6 +13024,25 @@
     "noMutationControls": [
       "GoodsReceipt",
       "AuditEvent"
+    ]
+  },
+  {
+    "id": "receiving/new/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "inventory.receiving.view",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
     ]
   },
   {

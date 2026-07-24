@@ -1,5 +1,10 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Receiving Create Task Mode
+
+- Added confirmed `DEC-0101`: replace the Receiving register create TaskSheet with a dedicated responsive `/receiving/new` full-page task mode while preserving the existing server action, validation, idempotency, scope authorization, audit, and draft-only semantics.
+- No new write endpoint, permission, posting transition, or database schema is authorized by this decision. Requested Spark/GPT-5.4 reviewers were unavailable and the closest permitted GPT-5.6 fallback was used without relaxing hard gates.
+
 ## 2026-07-24 — Receiving Item-Filter Contract Deferral
 
 - Added confirmed `DEC-0100`: Receiving item filtering remains non-operative until product/reporting confirms receipt-level versus matching-line grain and CSV context, the scoped GoodsReceiptLine relation/options are documented, and representative PostgreSQL `EXPLAIN (ANALYZE, BUFFERS)`/volume evidence is reviewed.

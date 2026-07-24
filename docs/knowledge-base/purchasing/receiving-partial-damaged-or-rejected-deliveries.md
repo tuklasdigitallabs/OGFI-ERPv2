@@ -25,7 +25,7 @@ Use this article when a supplier delivery does not perfectly match the issued Pu
 ## Steps
 
 1. Open `Receiving`.
-2. Find the issued or partially received Purchase Order.
+2. Select `Create Draft Receipt` to open the full-page receiving task, then choose the issued or partially received Purchase Order.
 3. Enter the supplier delivery reference when available.
 4. For each received line, enter the delivered quantity.
 5. Enter the accepted quantity that should stock in.
@@ -35,7 +35,7 @@ Use this article when a supplier delivery does not perfectly match the issued Pu
 9. Enter a discrepancy reason for any rejected, damaged, or short quantity.
 10. Enter an evidence reference, such as a photo filename, document ID, delivery note, or incident reference.
 11. Add lot or expiry data when required.
-12. Select `Create Draft Receipt`.
+12. Select `Create Draft Receipt` at the bottom of the task page. This saves a draft only; it does not post inventory.
 13. Review the draft and select `Post Receipt`.
 
 [Screenshot placeholder: Receiving form showing delivered, accepted, rejected, damaged, discrepancy reason, and evidence reference fields.]

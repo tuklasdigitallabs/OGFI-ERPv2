@@ -3,12 +3,7 @@ import { redirect } from "next/navigation";
 import { Badge, ButtonLink, EmptyState, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { GoodsReceiptLinesEditor } from "@/components/GoodsReceiptLinesEditor";
-import { TaskSheet } from "@/components/TaskSheet";
-import {
-  actionErrorRedirectPath,
-  getActionFeedback
-} from "@/server/services/actionFeedback";
+import { actionErrorRedirectPath, getActionFeedback } from "@/server/services/actionFeedback";
 import {
   canReadPurchaseOrders,
   canUseReceiving,
@@ -18,11 +13,9 @@ import {
 import { getSessionContext } from "@/server/services/context";
 import { canExportReceivingReports } from "@/server/services/exportAuthorization";
 import {
-  createGoodsReceiptFromPurchaseOrder,
   listGoodsReceiptPage,
   listReceivingRegisterFilterOptions,
   listReceivingDashboardProfilePage,
-  listReceivablePurchaseOrders,
   postGoodsReceipt,
   receivingDashboardProfileHref,
   resolveReceivingDashboardProfile
@@ -84,19 +77,6 @@ function receivingHref(tab: ReceivingTab, page = 1, query?: string, filters: { s
   if (filters.receivedByUserId) params.set("receivedByUserId", filters.receivedByUserId);
   const serialized = params.toString();
   return serialized ? `/receiving?${serialized}` : "/receiving";
-}
-
-async function createReceiptAction(formData: FormData) {
-  "use server";
-
-  let receiptId: string;
-  try {
-    receiptId = await createGoodsReceiptFromPurchaseOrder(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/receiving", error));
-  }
-  revalidatePath("/receiving");
-  redirect(`/receiving/${receiptId}`);
 }
 
 async function postReceiptAction(formData: FormData) {
@@ -196,11 +176,10 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
     : null;
   const activeTab = getReceivingTab(params);
   const page = getPage(params);
-  const [registerPage, receivableOrders, filterOptions] = profile
-    ? [null, [], null]
+  const [registerPage, filterOptions] = profile
+    ? [null, null]
     : await Promise.all([
-        listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE, ...(query ? { query } : {}), ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}), ...(receivedByUserId ? { receivedByUserId } : {}) }),
-        canCreateReceiving ? listReceivablePurchaseOrders(session) : Promise.resolve([]),
+      listGoodsReceiptPage(session, { tab: activeTab, page, pageSize: PAGE_SIZE, ...(query ? { query } : {}), ...(status ? { status } : {}), ...(receivedFrom ? { receivedFrom } : {}), ...(receivedTo ? { receivedTo } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}), ...(receivedByUserId ? { receivedByUserId } : {}) }),
         listReceivingRegisterFilterOptions(session, { ...(query ? { query } : {}), ...(supplierId ? { supplierId } : {}), ...(purchaseOrderId ? { purchaseOrderId } : {}), ...(receivedByUserId ? { receivedByUserId } : {}) })
       ]);
   const receipts = registerPage?.items ?? [];
@@ -255,9 +234,9 @@ export default async function ReceivingPage({ searchParams }: ReceivingPageProps
       <div className="space-y-4">
         {!profile && canCreateReceiving ? (
           <div className="flex justify-end">
-            <TaskSheet title="Create Draft Receipt" description="Receive one issued purchase order with controlled accepted and discrepancy quantities." trigger={<span>Create Draft Receipt</span>} triggerClassName="bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700" size="workspace" bodyScroll="contained" bodyClassName="p-0">
-              {receivableOrders.length === 0 ? <div className="m-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No issued Purchase Orders are ready for receiving in this location.</div> : <GoodsReceiptLinesEditor action={createReceiptAction} orders={receivableOrders} />}
-            </TaskSheet>
+            <ButtonLink href="/receiving/new" className="bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700">
+              Create Draft Receipt
+            </ButtonLink>
           </div>
         ) : null}
 

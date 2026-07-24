@@ -6,6 +6,10 @@ const source = readFileSync(
   fileURLToPath(new URL("./page.tsx", import.meta.url)),
   "utf8"
 );
+const createSource = readFileSync(
+  fileURLToPath(new URL("./new/page.tsx", import.meta.url)),
+  "utf8"
+);
 
 describe("Receiving Follow-up dashboard profile", () => {
   it("uses the closed server-owned profile and server pagination", () => {
@@ -51,5 +55,16 @@ describe("Receiving Follow-up dashboard profile", () => {
     expect(source).toContain("purchaseOrderId ? { purchaseOrderId } : {}");
     expect(source).toContain("receivedByUserId ? { receivedByUserId } : {}");
     expect(source).toContain("supplierId=${encodeURIComponent(supplierId)}");
+  });
+
+  it("uses a dedicated full-page draft task with fixed scope and draft-only semantics", () => {
+    expect(source).toContain('href="/receiving/new"');
+    expect(source).not.toContain("<TaskSheet");
+    expect(createSource).toContain("canUseReceiving");
+    expect(createSource).toContain("permissions.receivingCreate");
+    expect(createSource).toContain('href="/receiving"');
+    expect(createSource).toContain("Draft only");
+    expect(createSource).toContain("No inventory posting");
+    expect(createSource).toContain("createGoodsReceiptFromPurchaseOrder");
   });
 });

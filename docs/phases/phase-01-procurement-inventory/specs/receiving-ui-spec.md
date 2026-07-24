@@ -104,7 +104,7 @@ Notify Purchasing and relevant manager when configured thresholds are met.
 
 - Large line-item touch controls and barcode/search support where available.
 - Camera attachment for delivery receipt and damage evidence.
-- Persistent `Review & Post Receipt` action.
+- Persistent `Create Draft Receipt` action in the full-page `/receiving/new` task mode. Posting remains a separate authorized action on the saved receipt detail page.
 - Do not rely on horizontal tables; use expandable item cards.
 
 ## 7. Acceptance criteria
