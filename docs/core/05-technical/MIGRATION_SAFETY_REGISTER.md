@@ -1247,6 +1247,51 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "owner": "Database Engineering owns migration, constraints, canonical routines, append-only guards, role reconciliation, and recovery. Backend owns the supplied-transaction qualifier and empty adapter registry. Security and QA independently verify scope, privilege, forgery, concurrency, rollback, and dormant reachability. Finance, Operations, Security, and Release own the unresolved DEC-0047 policy and activation gates.",
     "verification": "Static/focused evidence passes Prisma validation, 7 database contracts, 8 qualifier tests, 8 database-role tool tests, exact routine/trigger integrity assertions, authorization-manifest coverage, lint, typecheck, full package tests, production build, secret review, and release-tool self-tests. Twenty-three disposable PostgreSQL cases are authored but unexecuted because DISPOSABLE_DATABASE_ADMIN_URL is unavailable. Architecture, Security, and QA approve only the dormant source checkpoint; populated predecessor, migration/trigger/ACL behavior, redeploy, drift, report/export, restore, hosted, policy, adapter, and activation evidence remain required before production approval. No production migration has been applied.",
     "expectedRecoveryTime": "Migration lock failure is bounded by five seconds and statements by fifteen minutes. Measure populated constraint/index duration, forward-fix, second deploy, and isolated restore against approved hosted RPO/RTO during rehearsal."
+  },
+  {
+    "migration": "20260724120000_document_number_sequences",
+    "sha256": "da5cd2436684f0cee04bfec991802c988cb6a7c10fea4f65a45e8606d573db77",
+    "risk": "The sequence-row insert and scoped unique index can fail if a predecessor already contains a conflicting document-number allocation.",
+    "expectedDataEffect": "Create the company/document-type/year sequence table and seed no business rows; existing document records remain unchanged.",
+    "recovery": "Stop on duplicate or partial DDL, inspect the migration journal and sequence objects, and restore the predecessor backup or apply a reviewed forward correction. Never rewrite issued document numbers.",
+    "reviewerStatus": "PENDING",
+    "failurePoint": "Lock or statement timeout, conflicting object/index, checksum mismatch, second-deploy delta, schema drift, or restore non-equivalence.",
+    "transactionBehavior": "Prisma migration transaction; inspect the journal and created sequence objects before retry if deployment is interrupted.",
+    "reversibility": "Keep the additive sequence table through application rollback; use a reviewed forward correction or verified restore rather than deleting allocated sequence history.",
+    "decisionTrigger": "Stop on any predecessor data delta, duplicate allocation, wrong unique scope, checksum mismatch, redeploy delta, drift, or restore mismatch.",
+    "owner": "Database Engineering owns the sequence schema and recovery; Procurement/Receiving Engineering owns allocation parity; QA and Release verify exact numbers and redeploy.",
+    "verification": "Hash-bound inventory entry added for exact-SHA disposable PostgreSQL rehearsal; populated predecessor, concurrent allocation, restore, and hosted evidence remain required.",
+    "expectedRecoveryTime": "Measure lock, forward-fix, and isolated restore duration against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260724130000_goods_receipt_create_idempotency",
+    "sha256": "e4dd8776ae6ebf42c53f87a61669049f89386fc7ca2e435c5f6cc711bd00ccb2",
+    "risk": "The tenant/company/idempotency-key unique index can fail if an existing duplicate key is present; the additive hash columns must not alter existing receipts.",
+    "expectedDataEffect": "Add nullable retry key and canonical request-hash columns plus a scoped unique index; no existing receipt data is rewritten.",
+    "recovery": "Stop on duplicate keys or partial DDL, reconcile through an audited forward fix or restore the predecessor backup, and never delete receipts or audit history to satisfy the index.",
+    "reviewerStatus": "PENDING",
+    "failurePoint": "Duplicate key, lock/DDL failure, checksum mismatch, second-deploy delta, Prisma drift, or restore non-equivalence.",
+    "transactionBehavior": "Prisma migration transaction; inspect migration journal and index state before retry after interruption.",
+    "reversibility": "The nullable additive columns are backward compatible. Retain idempotency evidence once populated; use a forward correction or verified restore rather than deleting keys.",
+    "decisionTrigger": "Stop on duplicate or changed predecessor receipt/audit rows, wrong unique scope, checksum mismatch, redeploy delta, drift, or restore mismatch.",
+    "owner": "Database Engineering owns the migration; Receiving Engineering owns replay/conflict behavior; Security, QA, and Release verify scope and concurrency.",
+    "verification": "Hash-bound inventory entry added; fresh disposable lifecycle and receiving serialization evidence previously passed for the predecessor candidate, while populated migration/restore/hosted evidence remains required for final approval.",
+    "expectedRecoveryTime": "Measure lock, forward-fix, and isolated restore duration against the approved hosted RPO/RTO."
+  },
+  {
+    "migration": "20260724140000_stock_count_immutable_attempt_foundation",
+    "sha256": "2c9937bd462b33ac77564fe1494281988691a608c7a7964f7c1e3e57d62dd1fd",
+    "risk": "The additive attempt tables backfill every existing Stock Count session/line and add foreign keys, unique indexes, and immutable history guards. A scope mismatch, duplicate legacy key, or trigger defect must fail closed without rewriting count evidence.",
+    "expectedDataEffect": "Backfill one immutable attempt and attempt-line row for each existing session/line using the legacy IDs as deterministic lineage; populate current-attempt and adjustment source links; add no inventory movement or balance effects.",
+    "recovery": "The migration must run as one transaction. On failure, restore the predecessor backup or use a reviewed forward correction; once attempt history exists, preserve it and keep Count Variance disabled rather than deleting evidence.",
+    "reviewerStatus": "PENDING",
+    "failurePoint": "Lock/statement timeout, duplicate legacy lineage, foreign-key mismatch, trigger or immutability defect, checksum mismatch, second-deploy delta, schema drift, or restore non-equivalence.",
+    "transactionBehavior": "One explicit transaction is required for table creation, backfill, source-link updates, constraints, indexes, and ENABLE ALWAYS history guards; no partial backfill is acceptable.",
+    "reversibility": "Application rollback retains the additive attempt tables and guards. Destructive rollback is permitted only before activation after proving the new tables empty; otherwise use an evidence-preserving forward correction or verified restore.",
+    "decisionTrigger": "Stop on any legacy row/content delta, missing attempt-1 lineage, mutable terminal evidence, cross-scope acceptance, duplicate attempt/line identity, redeploy delta, drift, or restore mismatch.",
+    "owner": "Database Engineering owns migration/backfill/guards; Stock Count Engineering owns cutover; Security, QA, Operations, and Release verify lineage, cutoff, concurrency, blind-count, and recovery behavior.",
+    "verification": "Prisma schema validation passes. Disposable PostgreSQL migration/backfill, append-only guard, cutoff/concurrency, source-link, redeploy, drift, restore, and hosted evidence remain mandatory before Count Variance activation or production approval.",
+    "expectedRecoveryTime": "Measure populated backfill, lock/statement timeouts, forward-fix, and isolated restore against the approved hosted RPO/RTO."
   }
 ]
 ```

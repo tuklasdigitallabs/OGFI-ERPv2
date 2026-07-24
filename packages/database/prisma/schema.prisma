@@ -1015,6 +1015,8 @@ model Tenant {
   authBootstrapState                      AuthBootstrapState?
   stockCountSessions                      StockCountSession[]
   stockCountLines                         StockCountLine[]
+  stockCountAttempts                      StockCountAttempt[]
+  stockCountAttemptLines                  StockCountAttemptLine[]
   wastageReports                          WastageReport[]
   wastageLines                            WastageLine[]
   wastagePolicies                         WastagePolicy[]
@@ -1181,6 +1183,8 @@ model Company {
   authRecoveryRequests                    AuthRecoveryRequest[]
   stockCountSessions                      StockCountSession[]
   stockCountLines                         StockCountLine[]
+  stockCountAttempts                      StockCountAttempt[]
+  stockCountAttemptLines                  StockCountAttemptLine[]
   wastageReports                          WastageReport[]
   wastageLines                            WastageLine[]
   wastagePolicies                         WastagePolicy[]
@@ -1517,6 +1521,10 @@ model User {
   assignedStockCountSessions          StockCountSession[]                   @relation("StockCountAssignee")
   reviewedStockCountSessions          StockCountSession[]                   @relation("StockCountReviewer")
   countedStockCountLines              StockCountLine[]                      @relation("StockCountLineCounter")
+  createdStockCountAttempts           StockCountAttempt[]                   @relation("StockCountAttemptCreator")
+  assignedStockCountAttempts          StockCountAttempt[]                   @relation("StockCountAttemptAssignee")
+  reviewedStockCountAttempts          StockCountAttempt[]                   @relation("StockCountAttemptReviewer")
+  countedStockCountAttemptLines       StockCountAttemptLine[]                @relation("StockCountAttemptLineCounter")
   reportedWastageReports              WastageReport[]                       @relation("WastageReportReporter")
   reviewedWastageReports              WastageReport[]                       @relation("WastageReportReviewer")
   postedWastageReports                WastageReport[]                       @relation("WastageReportPoster")
@@ -2805,6 +2813,7 @@ model Uom {
   inventoryTransferLines        InventoryTransferLine[]
   inventoryTransferReceiptLines InventoryTransferReceiptLine[]
   stockCountLines               StockCountLine[]
+  stockCountAttemptLines        StockCountAttemptLine[]
   wastageLines                  WastageLine[]
   stockAdjustmentLines          StockAdjustmentLine[]
   recipeVersionYields           RecipeVersion[]                @relation("RecipeVersionYieldUom")
@@ -2851,6 +2860,7 @@ model Item {
   inventoryTransferLines        InventoryTransferLine[]
   inventoryTransferReceiptLines InventoryTransferReceiptLine[]
   stockCountLines               StockCountLine[]
+  stockCountAttemptLines        StockCountAttemptLine[]
   wastageLines                  WastageLine[]
   stockAdjustmentLines          StockAdjustmentLine[]
   recipeLines                   RecipeLine[]
@@ -3737,7 +3747,9 @@ model InventoryLocation {
   sourceInventoryTransferLines      InventoryTransferLine[] @relation("InventoryTransferLineSourceInventoryLocation")
   destinationInventoryTransferLines InventoryTransferLine[] @relation("InventoryTransferLineDestinationInventoryLocation")
   stockCountSessions                StockCountSession[]
+  stockCountAttempts                StockCountAttempt[]     @relation("StockCountAttemptLocation")
   stockCountLines                   StockCountLine[]
+  stockCountAttemptLines            StockCountAttemptLine[]
   wastageReports                    WastageReport[]
   wastageLines                      WastageLine[]
   wastagePolicies                   WastagePolicy[]
@@ -3835,6 +3847,7 @@ model StockCountSession {
   createdByUserId     String            @db.Uuid
   assignedToUserId    String?           @db.Uuid
   reviewedByUserId    String?           @db.Uuid
+  currentAttemptId    String?           @unique @db.Uuid
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   tenant              Tenant            @relation(fields: [tenantId], references: [id])
@@ -3845,6 +3858,8 @@ model StockCountSession {
   reviewedBy          User?             @relation("StockCountReviewer", fields: [reviewedByUserId], references: [id])
   lines               StockCountLine[]
   stockAdjustments    StockAdjustment[]
+  attempts            StockCountAttempt[]
+  currentAttempt      StockCountAttempt? @relation("StockCountCurrentAttempt", fields: [currentAttemptId], references: [id])
 
   @@unique([companyId, publicReference])
   @@index([tenantId, companyId, status, scheduledDate])
@@ -3879,10 +3894,88 @@ model StockCountLine {
   uom                     Uom                   @relation(fields: [uomId], references: [id])
   countedBy               User?                 @relation("StockCountLineCounter", fields: [countedByUserId], references: [id])
   stockAdjustmentLines    StockAdjustmentLine[]
+  attemptLineMigration    StockCountAttemptLine? @relation("StockCountAttemptLineLegacySource")
 
   @@unique([stockCountSessionId, itemId, lotKey])
   @@unique([stockCountSessionId, lineNumber])
   @@index([tenantId, companyId, stockCountSessionId, itemId], map: "StockCountLine_tenantId_companyId_stockCountSessionId_itemId_id")
+  @@index([inventoryLocationId, itemId, lotKey])
+}
+
+model StockCountAttempt {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stockCountSessionId String            @db.Uuid
+  tenantId            String            @db.Uuid
+  companyId           String            @db.Uuid
+  inventoryLocationId String            @db.Uuid
+  attemptNumber       Int
+  status              String            @default("DRAFT")
+  blindCount          Boolean           @default(true)
+  freezeMovements     Boolean           @default(false)
+  cutoffAt            DateTime?
+  startedAt           DateTime?
+  submittedAt         DateTime?
+  reviewedAt          DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  reviewNotes         String?
+  reason              String?
+  evidenceReference   String?
+  createdByUserId     String            @db.Uuid
+  assignedToUserId    String?           @db.Uuid
+  reviewedByUserId    String?           @db.Uuid
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  stockCountSession   StockCountSession @relation(fields: [stockCountSessionId], references: [id])
+  tenant              Tenant            @relation(fields: [tenantId], references: [id])
+  company             Company           @relation(fields: [companyId], references: [id])
+  inventoryLocation   InventoryLocation @relation("StockCountAttemptLocation", fields: [inventoryLocationId], references: [id])
+  createdBy           User              @relation("StockCountAttemptCreator", fields: [createdByUserId], references: [id])
+  assignedTo          User?             @relation("StockCountAttemptAssignee", fields: [assignedToUserId], references: [id])
+  reviewedBy          User?             @relation("StockCountAttemptReviewer", fields: [reviewedByUserId], references: [id])
+  lines               StockCountAttemptLine[]
+  stockAdjustments    StockAdjustment[]
+  currentForSession   StockCountSession? @relation("StockCountCurrentAttempt")
+
+  @@unique([stockCountSessionId, attemptNumber])
+  @@index([tenantId, companyId, status, createdAt])
+  @@index([tenantId, companyId, inventoryLocationId, status])
+}
+
+model StockCountAttemptLine {
+  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stockCountAttemptId     String            @db.Uuid
+  tenantId                String            @db.Uuid
+  companyId               String            @db.Uuid
+  inventoryLocationId     String            @db.Uuid
+  itemId                  String            @db.Uuid
+  uomId                   String            @db.Uuid
+  lineNumber              Int
+  lotKey                  String            @default("NOLOT|NOEXP")
+  lotNumber               String?
+  expiryDate              DateTime?
+  systemQuantityBaseUom   Decimal           @default(0) @db.Decimal(18, 6)
+  countedQuantityBaseUom  Decimal?          @db.Decimal(18, 6)
+  varianceQuantityBaseUom Decimal?          @db.Decimal(18, 6)
+  notes                   String?
+  countedByUserId         String?           @db.Uuid
+  countedAt               DateTime?
+  legacyStockCountLineId  String?           @unique @db.Uuid
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  attempt                 StockCountAttempt @relation(fields: [stockCountAttemptId], references: [id])
+  tenant                  Tenant            @relation(fields: [tenantId], references: [id])
+  company                 Company           @relation(fields: [companyId], references: [id])
+  inventoryLocation       InventoryLocation @relation(fields: [inventoryLocationId], references: [id])
+  item                    Item              @relation(fields: [itemId], references: [id])
+  uom                     Uom               @relation(fields: [uomId], references: [id])
+  countedBy               User?             @relation("StockCountAttemptLineCounter", fields: [countedByUserId], references: [id])
+  legacyStockCountLine    StockCountLine?   @relation("StockCountAttemptLineLegacySource", fields: [legacyStockCountLineId], references: [id])
+  stockAdjustmentLines    StockAdjustmentLine[]
+
+  @@unique([stockCountAttemptId, itemId, lotKey])
+  @@unique([stockCountAttemptId, lineNumber])
+  @@index([tenantId, companyId, stockCountAttemptId, itemId])
   @@index([inventoryLocationId, itemId, lotKey])
 }
 
@@ -4039,6 +4132,7 @@ model StockAdjustment {
   sourceDocumentType        String?
   sourceDocumentId          String?               @db.Uuid
   sourceStockCountSessionId String?               @db.Uuid
+  sourceStockCountAttemptId String?               @db.Uuid
   totalEstimatedValueImpact Decimal               @default(0) @db.Decimal(18, 6)
   submittedAt               DateTime?
   postedAt                  DateTime?
@@ -4056,6 +4150,7 @@ model StockAdjustment {
   postedBy                  User?                 @relation("StockAdjustmentPoster", fields: [postedByUserId], references: [id])
   reversedBy                User?                 @relation("StockAdjustmentReverser", fields: [reversedByUserId], references: [id])
   sourceStockCountSession   StockCountSession?    @relation(fields: [sourceStockCountSessionId], references: [id])
+  sourceStockCountAttempt   StockCountAttempt?    @relation(fields: [sourceStockCountAttemptId], references: [id])
   lines                     StockAdjustmentLine[]
 
   @@unique([companyId, publicReference])
@@ -4088,6 +4183,7 @@ model StockAdjustmentLine {
   evidenceReference      String?
   postedMovementId       String?            @unique @db.Uuid
   sourceStockCountLineId String?            @db.Uuid
+  sourceStockCountAttemptLineId String?     @db.Uuid
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
   stockAdjustment        StockAdjustment    @relation(fields: [stockAdjustmentId], references: [id])
@@ -4098,6 +4194,7 @@ model StockAdjustmentLine {
   uom                    Uom                @relation(fields: [uomId], references: [id])
   postedMovement         InventoryMovement? @relation("StockAdjustmentLinePostedMovement", fields: [postedMovementId], references: [id])
   sourceStockCountLine   StockCountLine?    @relation(fields: [sourceStockCountLineId], references: [id])
+  sourceStockCountAttemptLine StockCountAttemptLine? @relation(fields: [sourceStockCountAttemptLineId], references: [id])
 
   @@unique([stockAdjustmentId, lineNumber])
   @@index([tenantId, companyId, stockAdjustmentId, itemId], map: "StockAdjustmentLine_tenantId_companyId_stockAdjustmentId_itemId")
