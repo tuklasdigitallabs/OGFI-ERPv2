@@ -650,6 +650,11 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 - Supplier-item link creation now maps the unique-key race on supplier, item, and purchase UOM to the stable `DUPLICATE_SUPPLIER_ITEM_LINK` outcome while preserving atomic price-history and audit creation.
 - The global link composer still needs a bounded, searchable, selected-ID-preserving supplier/item/UOM lookup before the Supplier workspace can pass its visible-surface and list-behavior gates.
 
+### DEC-0146 Supplier-item bounded lookup composer — July 24, 2026
+
+- Supplier-item creation now uses the selected-supplier catalog with server-owned active item and purchase-UOM lookup pages, bounded search, deterministic ordering, exact totals, selected-option context, out-of-range page clamping, empty-state handling, and independent pager links. Global unbounded selectors and their render-time full-catalog query were removed.
+- Register/catalog/lookup URL context and validated create error/success return paths are preserved. Focused supplier tests (4), web typecheck, lint, and diff checks pass; responsive browser, disposable PostgreSQL isolation/query-plan, hosted recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

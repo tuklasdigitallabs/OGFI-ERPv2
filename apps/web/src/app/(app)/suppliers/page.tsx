@@ -18,7 +18,7 @@ import {
   deactivateSupplier,
   deactivateSupplierItemLink,
   getSupplierCatalog,
-  listSupplierItemLinkOptions,
+  getSupplierItemLinkLookup,
   listSuppliers,
   updateSupplierAccreditation
 } from "@/server/services/suppliers";
@@ -65,13 +65,24 @@ async function updateSupplierAccreditationAction(formData: FormData) {
 async function createSupplierItemLinkAction(formData: FormData) {
   "use server";
 
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith("/suppliers")
+    ? submittedReturnPath
+    : "/suppliers";
+  const returnUrl = new URL(returnPath, "http://ogfi.local");
+  const submittedItemId = formData.get("itemId");
+  const submittedUomId = formData.get("purchaseUomId");
+  if (typeof submittedItemId === "string" && submittedItemId) returnUrl.searchParams.set("selectedItemId", submittedItemId);
+  if (typeof submittedUomId === "string" && submittedUomId) returnUrl.searchParams.set("selectedUomId", submittedUomId);
+  const contextualReturnPath = `${returnUrl.pathname}${returnUrl.search}`;
+
   try {
     await createSupplierItemLink(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/suppliers", error));
+    redirect(actionErrorRedirectPath(contextualReturnPath, error));
   }
   revalidatePath("/suppliers");
-  redirect("/suppliers");
+  redirect(contextualReturnPath);
 }
 
 async function deactivateSupplierItemLinkAction(formData: FormData) {
@@ -140,7 +151,15 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const supplierAccreditationStatus = firstParam(params.accreditationStatus);
   const supplierPageValue = Number(firstParam(params.page) ?? "1");
   const supplierAction = firstParam(params.supplierAction);
-  const [supplierData, linkOptions] = await Promise.all([
+  const selectedSupplierId = firstParam(params.supplier);
+  const linkAction = firstParam(params.linkAction) === "create" ? "create" : null;
+  const itemLinkQuery = firstParam(params.itemLinkQuery) ?? "";
+  const itemLinkPage = Number(firstParam(params.itemLinkPage) ?? "1");
+  const selectedItemId = firstParam(params.selectedItemId);
+  const uomLinkQuery = firstParam(params.uomLinkQuery) ?? "";
+  const uomLinkPage = Number(firstParam(params.uomLinkPage) ?? "1");
+  const selectedUomId = firstParam(params.selectedUomId);
+  const [supplierData] = await Promise.all([
     listSuppliers(session, {
       query: supplierQuery,
       status: supplierStatus === "ACTIVE" || supplierStatus === "INACTIVE" ? supplierStatus : undefined,
@@ -149,13 +168,11 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
         : undefined,
       page: Number.isFinite(supplierPageValue) && supplierPageValue > 0 ? Math.min(supplierPageValue, 10_000) : 1,
       pageSize: 25
-    }),
-    listSupplierItemLinkOptions(session)
+    })
   ]);
   const suppliers = supplierData.suppliers;
   const approvedCount = suppliers.filter((supplier) => supplier.accreditationStatus === "APPROVED").length;
   const activeItemLinkCount = suppliers.reduce((count, supplier) => count + supplier.itemLinkCount, 0);
-  const selectedSupplierId = firstParam(params.supplier);
   const catalogQuery = firstParam(params.catalogQuery) ?? "";
   const catalogStatus = firstParam(params.catalogStatus);
   const catalogCategory = firstParam(params.catalogCategory);
@@ -173,6 +190,18 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
       })
     : null;
   const selectedSupplier = selectedSupplierCatalog?.supplier ?? null;
+  const selectedSupplierLinkLookup =
+    selectedSupplier?.status === "ACTIVE" && linkAction === "create"
+      ? await getSupplierItemLinkLookup(session, selectedSupplier.id, {
+          itemQuery: itemLinkQuery,
+          itemPage: Number.isFinite(itemLinkPage) && itemLinkPage > 0 ? itemLinkPage : 1,
+          ...(selectedItemId ? { selectedItemId } : {}),
+          uomQuery: uomLinkQuery,
+          uomPage: Number.isFinite(uomLinkPage) && uomLinkPage > 0 ? uomLinkPage : 1,
+          ...(selectedUomId ? { selectedUomId } : {}),
+          pageSize: 25
+      })
+      : null;
   const catalogBaseParams = new URLSearchParams();
   if (selectedSupplierId) {
     catalogBaseParams.set("supplier", selectedSupplierId);
@@ -197,6 +226,28 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     if (supplierStatus) nextParams.set("status", supplierStatus);
     if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
     if (action) nextParams.set("supplierAction", action);
+    return `/suppliers?${nextParams.toString()}`;
+  };
+  const supplierLinkActionHref = (supplierId: string) => {
+    const nextParams = new URLSearchParams({ supplier: supplierId, linkAction: "create" });
+    if (supplierQuery) nextParams.set("query", supplierQuery);
+    if (supplierStatus) nextParams.set("status", supplierStatus);
+    if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
+    if (catalogQuery) nextParams.set("catalogQuery", catalogQuery);
+    if (catalogStatus) nextParams.set("catalogStatus", catalogStatus);
+    if (catalogCategory) nextParams.set("catalogCategory", catalogCategory);
+    if (catalogPage > 1) nextParams.set("catalogPage", String(catalogPage));
+    if (itemLinkQuery) nextParams.set("itemLinkQuery", itemLinkQuery);
+    if (itemLinkPage > 1) nextParams.set("itemLinkPage", String(itemLinkPage));
+    if (selectedItemId) nextParams.set("selectedItemId", selectedItemId);
+    if (uomLinkQuery) nextParams.set("uomLinkQuery", uomLinkQuery);
+    if (uomLinkPage > 1) nextParams.set("uomLinkPage", String(uomLinkPage));
+    if (selectedUomId) nextParams.set("selectedUomId", selectedUomId);
+    return `/suppliers?${nextParams.toString()}`;
+  };
+  const supplierLookupPageHref = (supplierId: string, kind: "item" | "uom", page: number) => {
+    const nextParams = new URLSearchParams(supplierLinkActionHref(supplierId).split("?")[1] ?? "");
+    nextParams.set(kind === "item" ? "itemLinkPage" : "uomLinkPage", String(page));
     return `/suppliers?${nextParams.toString()}`;
   };
   const selectedSupplierAction = supplierAction === "accreditation" || supplierAction === "deactivate" ? supplierAction : null;
@@ -298,12 +349,11 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             </button>
           </form>
         </EntryModal>
-        <EntryModal
-          title="Link Supplier Item"
-          triggerLabel="Link Supplier Item"
-          disabled
-          disabledReason="Global linking is paused until the bounded searchable supplier, item, and purchase-UOM selector migration is complete. Use the selected supplier catalog for read-only review; no hidden unbounded action is available."
-        >
+        {/* Supplier-item creation is available in the selected-supplier composer below. */}
+        <div className="max-w-md rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900" role="status">
+          Link a supplier item from a selected supplier catalog. The global action is intentionally unavailable while the bounded lookup composer is used.
+        </div>
+        {/*
           <form action={createSupplierItemLinkAction} className="ogfi-form-shell mt-4 grid gap-3">
             <div className="grid gap-3 md:grid-cols-3">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -379,7 +429,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               Link Supplier Item
             </button>
           </form>
-        </EntryModal>
+        */}
       </div>
 
       <div className="space-y-4">
@@ -574,6 +624,94 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                     <input className="min-h-10 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required />
                   </label>
                   <button className="min-h-10 rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800">Deactivate supplier</button>
+                </form>
+              </div>
+            ) : null}
+
+            {selectedSupplier.status === "ACTIVE" && !selectedSupplierLinkLookup ? (
+              <div className="border-b border-slate-100 bg-blue-50/40 px-5 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-slate-950">Link an item to this supplier</h3>
+                    <p className="text-sm text-slate-600">Searchable item and purchase-UOM lookups are scoped to the selected company.</p>
+                  </div>
+                  <Link className="min-h-10 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700" href={supplierLinkActionHref(selectedSupplier.id)}>
+                    Create supplier-item link
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+
+            {selectedSupplierLinkLookup ? (
+              <div className="border-b border-slate-100 bg-blue-50/40 px-5 py-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-slate-950">Create supplier-item link</h3>
+                    <p className="text-sm text-slate-600">Only the selected supplier is affected. Search and page through active master records.</p>
+                  </div>
+                  <Link className="text-sm font-semibold text-blue-700 hover:underline" href={supplierActionHref(selectedSupplier.id)}>Close composer</Link>
+                </div>
+                <form method="get" className="mb-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                  <input name="supplier" type="hidden" value={selectedSupplier.id} />
+                  <input name="linkAction" type="hidden" value="create" />
+                  {supplierQuery ? <input name="query" type="hidden" value={supplierQuery} /> : null}
+                  {supplierStatus ? <input name="status" type="hidden" value={supplierStatus} /> : null}
+                  {supplierAccreditationStatus ? <input name="accreditationStatus" type="hidden" value={supplierAccreditationStatus} /> : null}
+                  {catalogQuery ? <input name="catalogQuery" type="hidden" value={catalogQuery} /> : null}
+                  {catalogStatus ? <input name="catalogStatus" type="hidden" value={catalogStatus} /> : null}
+                  {catalogCategory ? <input name="catalogCategory" type="hidden" value={catalogCategory} /> : null}
+                  {catalogPage > 1 ? <input name="catalogPage" type="hidden" value={catalogPage} /> : null}
+                  {selectedItemId ? <input name="selectedItemId" type="hidden" value={selectedItemId} /> : null}
+                  {selectedUomId ? <input name="selectedUomId" type="hidden" value={selectedUomId} /> : null}
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Search item
+                    <input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="itemLinkQuery" defaultValue={itemLinkQuery} placeholder="Item name or code" />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Search purchase UOM
+                    <input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="uomLinkQuery" defaultValue={uomLinkQuery} placeholder="UOM code or name" />
+                  </label>
+                  <button className="min-h-10 self-end rounded-lg bg-slate-700 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Search lookups</button>
+                </form>
+                <form action={createSupplierItemLinkAction} className="grid gap-3">
+                  <input name="supplierId" type="hidden" value={selectedSupplier.id} />
+                  <input name="returnPath" type="hidden" value={supplierLinkActionHref(selectedSupplier.id)} />
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Item
+                      <select className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" defaultValue={selectedItemId ?? ""} name="itemId" required>
+                        <option value="">Select an item</option>
+                        {selectedSupplierLinkLookup.items.options.map((item) => <option key={item.id} value={item.id}>{item.itemName} / {item.itemCode}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Purchase UOM
+                      <select className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" defaultValue={selectedUomId ?? ""} name="purchaseUomId" required>
+                        <option value="">Select a purchase UOM</option>
+                        {selectedSupplierLinkLookup.uoms.options.map((uom) => <option key={uom.id} value={uom.id}>{uom.uomCode} / {uom.uomName}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Supplier SKU<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="supplierSku" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Supplier item name<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="supplierItemName" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Lead days<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" min="0" name="leadTimeDays" type="number" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Preferred rank<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" min="0" name="preferredRank" type="number" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Minimum order quantity<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" min="0.000001" name="minOrderQty" step="0.000001" type="number" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Reference unit price<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" min="0.000001" name="unitPrice" step="0.000001" type="number" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Price effective from<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="effectiveFrom" type="date" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Link reason<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" minLength={5} name="reason" required /></label>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+                    <span>Items: page {selectedSupplierLinkLookup.items.page} of {Math.max(1, Math.ceil(selectedSupplierLinkLookup.items.totalItems / selectedSupplierLinkLookup.items.pageSize))} ({selectedSupplierLinkLookup.items.totalItems} matches)</span>
+                    <span className="flex gap-3">
+                      {selectedSupplierLinkLookup.items.hasPreviousPage ? <Link className="font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "item", selectedSupplierLinkLookup.items.page - 1)}>Previous items</Link> : null}
+                      {selectedSupplierLinkLookup.items.hasNextPage ? <Link className="font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "item", selectedSupplierLinkLookup.items.page + 1)}>Next items</Link> : null}
+                    </span>
+                    <span>UOMs: page {selectedSupplierLinkLookup.uoms.page} of {Math.max(1, Math.ceil(selectedSupplierLinkLookup.uoms.totalItems / selectedSupplierLinkLookup.uoms.pageSize))} ({selectedSupplierLinkLookup.uoms.totalItems} matches)</span>
+                    <span className="flex gap-3">
+                      {selectedSupplierLinkLookup.uoms.hasPreviousPage ? <Link className="font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "uom", selectedSupplierLinkLookup.uoms.page - 1)}>Previous UOMs</Link> : null}
+                      {selectedSupplierLinkLookup.uoms.hasNextPage ? <Link className="font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "uom", selectedSupplierLinkLookup.uoms.page + 1)}>Next UOMs</Link> : null}
+                    </span>
+                  </div>
+                  {selectedSupplierLinkLookup.items.options.length === 0 || selectedSupplierLinkLookup.uoms.options.length === 0 ? <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">No active item or purchase-UOM options match the current lookup. Adjust the searches before creating a link.</p> : null}
+                  <button disabled={selectedSupplierLinkLookup.items.options.length === 0 || selectedSupplierLinkLookup.uoms.options.length === 0} className="min-h-10 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Link supplier item</button>
                 </form>
               </div>
             ) : null}

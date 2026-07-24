@@ -90,6 +90,16 @@ const supplierListInputSchema = z.object({
   pageSize: z.number().int().min(10).max(100).default(25)
 });
 
+const supplierItemLinkLookupInputSchema = z.object({
+  itemQuery: z.string().trim().max(120).default(""),
+  itemPage: z.number().int().min(1).max(10_000).default(1),
+  selectedItemId: z.string().uuid().optional(),
+  uomQuery: z.string().trim().max(120).default(""),
+  uomPage: z.number().int().min(1).max(10_000).default(1),
+  selectedUomId: z.string().uuid().optional(),
+  pageSize: z.number().int().min(10).max(50).default(25)
+});
+
 export function assertNoDuplicateSupplierCode(existingSupplierId?: string) {
   if (existingSupplierId) {
     throw new Error("DUPLICATE_SUPPLIER_CODE");
@@ -404,54 +414,103 @@ export async function getSupplierCatalog(
   };
 }
 
-export async function listSupplierItemLinkOptions(session: SessionContext) {
+export async function getSupplierItemLinkLookup(
+  session: SessionContext,
+  supplierId: string,
+  input: z.input<typeof supplierItemLinkLookupInputSchema> = {}
+) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
+  const values = supplierItemLinkLookupInputSchema.parse(input);
+  const supplier = await prisma.supplier.findFirst({
+    where: {
+      id: supplierId,
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE"
+    },
+    select: { id: true, supplierCode: true, legalName: true }
+  });
+  if (!supplier) {
+    throw new Error("SUPPLIER_NOT_FOUND");
+  }
 
-
-  const [suppliers, items, uoms] = await Promise.all([
-    prisma.supplier.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      },
-      orderBy: { supplierCode: "asc" }
-    }),
+  const itemWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    status: "ACTIVE" as const,
+    ...(values.itemQuery || values.selectedItemId
+      ? {
+          OR: [
+            ...(values.itemQuery
+              ? [
+                  { itemName: { contains: values.itemQuery, mode: "insensitive" as const } },
+                  { itemCode: { contains: values.itemQuery, mode: "insensitive" as const } }
+                ]
+              : []),
+            ...(values.selectedItemId ? [{ id: values.selectedItemId }] : [])
+          ]
+        }
+      : {})
+  };
+  const uomWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    status: "ACTIVE" as const,
+    ...(values.uomQuery || values.selectedUomId
+      ? {
+          OR: [
+            ...(values.uomQuery
+              ? [
+                  { uomCode: { contains: values.uomQuery, mode: "insensitive" as const } },
+                  { uomName: { contains: values.uomQuery, mode: "insensitive" as const } }
+                ]
+              : []),
+            ...(values.selectedUomId ? [{ id: values.selectedUomId }] : [])
+          ]
+        }
+      : {})
+  };
+  const [itemTotal, uomTotal] = await Promise.all([
+    prisma.item.count({ where: itemWhere }),
+    prisma.uom.count({ where: uomWhere })
+  ]);
+  const itemPage = Math.min(values.itemPage, Math.max(1, Math.ceil(itemTotal / values.pageSize)));
+  const uomPage = Math.min(values.uomPage, Math.max(1, Math.ceil(uomTotal / values.pageSize)));
+  const [items, uoms] = await Promise.all([
     prisma.item.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      },
-      orderBy: { itemName: "asc" }
+      where: itemWhere,
+      select: { id: true, itemCode: true, itemName: true },
+      orderBy: [{ itemName: "asc" }, { itemCode: "asc" }, { id: "asc" }],
+      skip: (itemPage - 1) * values.pageSize,
+      take: values.pageSize
     }),
     prisma.uom.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      },
-      orderBy: { uomCode: "asc" }
+      where: uomWhere,
+      select: { id: true, uomCode: true, uomName: true },
+      orderBy: [{ uomCode: "asc" }, { id: "asc" }],
+      skip: (uomPage - 1) * values.pageSize,
+      take: values.pageSize
     })
   ]);
-
   return {
-    suppliers: suppliers.map((supplier) => ({
-      id: supplier.id,
-      supplierCode: supplier.supplierCode,
-      legalName: supplier.legalName
-    })),
-    items: items.map((item) => ({
-      id: item.id,
-      itemCode: item.itemCode,
-      itemName: item.itemName
-    })),
-    uoms: uoms.map((uom) => ({
-      id: uom.id,
-      uomCode: uom.uomCode,
-      uomName: uom.uomName
-    }))
+    supplier,
+    items: {
+      options: items,
+      page: itemPage,
+      pageSize: values.pageSize,
+      totalItems: itemTotal,
+      hasNextPage: itemPage * values.pageSize < itemTotal,
+      hasPreviousPage: itemPage > 1
+    },
+    uoms: {
+      options: uoms,
+      page: uomPage,
+      pageSize: values.pageSize,
+      totalItems: uomTotal,
+      hasNextPage: uomPage * values.pageSize < uomTotal,
+      hasPreviousPage: uomPage > 1
+    }
   };
 }
 
