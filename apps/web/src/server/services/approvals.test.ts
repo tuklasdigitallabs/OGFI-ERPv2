@@ -754,6 +754,10 @@ describe("multi-step approval advancement", () => {
     expect(pageSource).toContain("getApprovalDetail(session, item.approvalInstanceId)");
     expect(pageSource).toContain('redirect("/approvals?error=APPROVAL_AUTHORITY_STALE&stale=1")');
     expect(pageSource).toContain("ActionFeedbackBanner");
+    expect(pageSource).toContain("Approval Inbox unavailable");
+    expect(pageSource).toContain('code !== "APPROVAL_ROUTING_BACKFILL_REQUIRED"');
+    expect(pageSource).toContain('code !== "APPROVAL_ROUTING_V1_DISABLED"');
+    expect(pageSource).not.toContain("listPendingApprovals(session)");
     expect(pageSource).not.toContain('label: "Returned"');
     expect(pageSource).not.toContain('label: "Audit"');
   });

@@ -639,6 +639,12 @@ Categories and UOMs now expose selected URL-backed detail/action composers with 
 
 Conversion edit now uses the selected conversion composer with scoped detail and preserved query/page context; legacy row edit controls are disabled with guidance. Master Data still requires external database/browser/recovery/UAT evidence.
 
+### DEC-0144 Approval Inbox feature-disabled state — July 24, 2026
+
+- `/approvals` now checks normalized routing before any list read. When routing is disabled, it presents an explicit unavailable state and no false zero count or legacy client-sliced queue. Normalized server pagination remains unchanged when enabled.
+- If the flag is enabled before runtime backfill readiness is complete, the known backfill-readiness failure renders the same unavailable state; unrelated database and authorization faults remain errors. Focused approval tests (42), typecheck, lint, and diff checks pass for this checkpoint.
+- Approval routing activation remains NO-GO pending PostgreSQL parity/isolation, live authorization revocation, all-family policy/cutover, hosted recovery, browser, and UAT gates.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

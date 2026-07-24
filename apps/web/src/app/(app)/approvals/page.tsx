@@ -11,7 +11,6 @@ import { getSessionContext } from "@/server/services/context";
 import {
   getApprovalDetail,
   listNormalizedApprovalInboxPage,
-  listPendingApprovals,
   type ApprovalQueueItem
 } from "@/server/services/approvals";
 import { normalizedApprovalRoutingEnabled } from "@/server/services/approvalRouting";
@@ -112,8 +111,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
   const page = getPage(params);
   const actionFeedback = getActionFeedback(params);
   const normalizedRouting = normalizedApprovalRoutingEnabled();
-  let approvals: ApprovalQueueItem[];
-  let urgentApprovals: ApprovalQueueItem[];
+  let approvalInboxUnavailable = !normalizedRouting;
   let pagedApprovals: ApprovalQueueItem[];
   let approvalCount: number;
   let urgentApprovalCount: number;
@@ -121,6 +119,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
   let safePage: number;
 
   if (normalizedRouting) {
+    try {
     const dueBefore = new Date(Date.now() + 86_400_000);
     const [inboxPage, dueSoonPage] = await Promise.all([
       listNormalizedApprovalInboxPage(session, {
@@ -155,21 +154,24 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
       redirect("/approvals?error=APPROVAL_AUTHORITY_STALE&stale=1");
     }
     pagedApprovals = details.filter((detail): detail is NonNullable<typeof detail> => detail !== null);
-    approvals = activeTab === "inbox" ? pagedApprovals : [];
-    urgentApprovals = activeTab === "due-soon" ? pagedApprovals : [];
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code !== "APPROVAL_ROUTING_BACKFILL_REQUIRED" && code !== "APPROVAL_ROUTING_V1_DISABLED") {
+        throw error;
+      }
+      approvalInboxUnavailable = true;
+      approvalCount = 0;
+      urgentApprovalCount = 0;
+      visibleApprovalCount = 0;
+      safePage = 1;
+      pagedApprovals = [];
+    }
   } else {
-    approvals = await listPendingApprovals(session);
-    urgentApprovals = approvals.filter(isDueSoon);
-    const visibleApprovals = activeTab === "due-soon" ? urgentApprovals : approvals;
-    approvalCount = approvals.length;
-    urgentApprovalCount = urgentApprovals.length;
-    visibleApprovalCount = visibleApprovals.length;
-    const pageCount = Math.max(1, Math.ceil(visibleApprovalCount / PAGE_SIZE));
-    safePage = Math.min(page, pageCount);
-    pagedApprovals = visibleApprovals.slice(
-      (safePage - 1) * PAGE_SIZE,
-      safePage * PAGE_SIZE
-    );
+    approvalCount = 0;
+    urgentApprovalCount = 0;
+    visibleApprovalCount = 0;
+    safePage = 1;
+    pagedApprovals = [];
   }
   const tabEmptyCopy =
     activeTab === "due-soon"
@@ -185,14 +187,21 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
             };
 
   return (
-    <AppShell
+      <AppShell
       session={session}
       title="Approval Inbox"
       subtitle="Assigned controlled record decisions"
       activeNav="approvals"
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
-      <div className="ogfi-data-surface">
+      {approvalInboxUnavailable ? (
+        <div className="ogfi-data-surface border-amber-200 bg-amber-50/60 p-6" role="status">
+          <h2 className="text-xl font-bold text-amber-950">Approval Inbox unavailable</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-900">
+            Normalized approval routing is not enabled for this environment. No legacy approval list is shown, and no approval action is available here. An administrator must complete the approval-routing cutover and its database, authorization, and hosted release gates before this inbox can be activated.
+          </p>
+        </div>
+      ) : <div className="ogfi-data-surface">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h2 className="text-2xl font-bold tracking-tight text-slate-950">Pending decisions</h2>
@@ -317,7 +326,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
             getPageHref={(nextPage) => approvalsHref(activeTab, nextPage)}
           />
         ) : null}
-      </div>
+      </div>}
     </AppShell>
   );
 }

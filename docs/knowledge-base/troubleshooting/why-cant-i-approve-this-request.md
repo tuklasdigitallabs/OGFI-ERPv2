@@ -9,6 +9,8 @@
 
 Use this article when an approval button is missing, an approval action fails, or a user cannot find an expected approval in `Approval Inbox`.
 
+If Approval Inbox says it is unavailable, normalized approval routing is disabled in the current environment. This is not a zero-approval result; no approval action is exposed until the documented routing, database, authorization, and release gates are accepted. Follow the assigned source-workflow owner’s instructions rather than retrying a hidden legacy queue.
+
 Approval access is more specific than module access. A user must have the right permission, be assigned to the current approval step, have approval scope for the record location, and pass segregation-of-duties checks.
 
 ## Before You Start

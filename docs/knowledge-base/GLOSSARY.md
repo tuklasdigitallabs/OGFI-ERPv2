@@ -86,3 +86,4 @@
 | Supplier Register                   | The company-scoped supplier catalog with server-backed search, lifecycle/accreditation filters, and paginated matching results. Its item-link preview is not the full supplier catalog. |
 | Selected action composer            | A focused, URL-selected record area where a controlled mutation is performed, preserving the list filters and record context instead of repeating a full form in every row. |
 | Base-UOM migration                  | A controlled process required to change an item’s base unit after posted inventory history; normal Item Master editing cannot rewrite that transaction basis. |
+| Approval Inbox unavailable           | A truthful feature-disabled state shown when normalized approval routing is not enabled. It does not mean there are zero pending approvals and does not grant an alternate approval path. |
