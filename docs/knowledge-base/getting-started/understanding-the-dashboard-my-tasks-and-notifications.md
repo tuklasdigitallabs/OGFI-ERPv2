@@ -16,7 +16,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 | Area | Use it for |
 |---|---|
 | `Operations Dashboard` | Read-only Phase I visibility from scoped source records. |
-| `My Tasks` | The paginated operational action queue currently enrolled for your selected scope. It opens the source record; it does not perform the action itself. |
+| `My Tasks` | The paginated operational action queue currently enrolled for your selected scope. It opens the source record; it does not perform the action itself. It is not yet a complete cross-module filtered task list. |
 | `Approval Inbox` | Assigned approval decisions for controlled records. |
 | `My Work` | Assigned project tracker work, task status, blockers, and due dates. |
 | `Notifications` | Scoped in-app alerts for approval assignments, due/overdue approval reminders, project work, risks, milestones, and project deadline reminders. |
@@ -72,6 +72,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - A dashboard drilldown narrows an already authorized source list. It does not grant access to a PO, PR, transfer, or Receiving Report; alter the selected scope; or permit changing the dashboard filter through the URL.
 - `Today’s work` is a prioritized read-only view. Opening an item does not bypass the source record’s permission, status, or segregation-of-duties checks.
 - `My Tasks` is not a replacement for Approval Inbox or project `My Work`, and it does not yet include every operational source. Its signed page cursor only continues the current queue page; it does not grant access or action authority.
+- The current My Tasks page does not expose an arbitrary location, assigned-by, or cross-module status filter. Do not infer those meanings from a task's creator, reporter, opener, submitter, or displayed location text. Filter controls will be added only after every enrolled adapter can apply the same server-owned predicates to both counts and pages.
 - If a task page expires or no longer matches your user, scope, permissions, or the current source registry, My Tasks restarts at page one and explains the reset. It never weakens cursor validation to preserve an old page.
 - A role-pooled My Tasks item means your role may perform the displayed action in the selected scope. Another authorized user may complete it first, so the source record always rechecks its current status and your authority when opened.
 - An assigned Stock Count task may be started, entered, or submitted only by its recorded counter. A future-scheduled count cannot be started early. Blind-count system quantities, variances, reviewer facts, adjustment links, and variance-bearing audit history stay hidden from the assigned counter, even when that user also holds review permission.

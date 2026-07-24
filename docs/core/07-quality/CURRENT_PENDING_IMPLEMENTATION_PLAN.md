@@ -252,6 +252,12 @@ Direct web-mounted `local-private` storage remains suitable for local developmen
 - Signed My Tasks cursors now include an explicit registered-source contract version (`my-tasks-registry-v2`) in their scope hash. Any future adapter predicate, ordering, enrollment, or projection change must bump this version so old cursors fail closed instead of traversing a changed queue contract.
 - Focused My Tasks coverage, full web lint/typecheck/test, and the authorization-manifest gate remain required evidence; browser, PostgreSQL, and hosted production gates remain open.
 
+### DEC-0107 My Tasks filter contract checkpoint — July 24, 2026
+
+- Independent workflow and data/security reviews confirmed that the dashboard's required My Tasks filters cannot be shipped as client-side or post-merge filtering. The current adapters expose heterogeneous projections, source-native statuses, fixed `HIGH`/no-due semantics for most sources, no common assigned-by field, and only the already-selected location scope.
+- The confirmed implementation contract is server-owned module, canonical priority, source-qualified status, selected-location context, and native `dueAt` only. Every filter must be applied inside each adapter's count and page predicate and bound into the signed cursor; `assignedBy` and arbitrary multi-location selectors remain deferred. The existing partial-source continuation risk must be resolved before filtered pagination is called complete.
+- No filter controls were added because inert or incomplete controls would violate the visible-surface gate. The current queue remains explicitly paginated and source-enrolled, not a complete filtered enterprise task list. See `docs/core/00-governance/decisions/DEC-0107-MY-TASKS-FILTER-CONTRACT.md`.
+
 ### SPF-008 ordinary Stock Counts pagination checkpoint — July 24, 2026
 
 - The ordinary Stock Counts register now uses a server-backed 25-row page query with exact selected-scope counts, deterministic `createdAt DESC, id DESC` ordering, and page links. Blind-count redaction and review permissions remain enforced by the shared mapper; export remains a separately authorized full report.

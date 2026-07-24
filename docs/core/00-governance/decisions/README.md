@@ -92,3 +92,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0103-QUOTES-CREATE-IDEMPOTENCY.md` — Supplier Quote retry safety and canonical request binding
 - `DEC-0104-QUOTES-COMPARISON-WORKSPACE.md` — Master-detail comparison and recommendation workspace boundary
 - `DEC-0105-QUOTES-COMMERCIAL-FIELDS.md` — Decimal commercial components and supplier snapshots
+- `DEC-0107-MY-TASKS-FILTER-CONTRACT.md` — Server-owned My Tasks filters, deferred assignment semantics, and pagination safeguards
