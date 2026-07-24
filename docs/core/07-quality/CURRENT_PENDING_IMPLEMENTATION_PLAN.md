@@ -624,6 +624,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - The company-scoped Supplier Register now uses validated search, lifecycle/accreditation filters, deterministic ordering, bounded pages, exact totals, and selected-company Manage authorization. Supplier catalog detail remains separately scoped and paginated.
 - Focused action composers, supplier option-catalog review, disposable PostgreSQL/query-plan evidence, responsive browser verification, hosted recovery, and UAT remain open.
 
+### DEC-0142 Supplier selected action composer — July 24, 2026
+
+- Supplier accreditation and deactivation now use a selected supplier URL state and focused action composer in the supplier catalog workspace. Repeated registry-row forms were removed; item-link deactivation remains in selected catalog detail.
+- Item/category/UOM/conversion composers, cross-company browser/deep-link evidence, disposable PostgreSQL, hosted recovery, and UAT remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

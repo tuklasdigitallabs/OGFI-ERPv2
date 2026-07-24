@@ -59,5 +59,8 @@ describe("supplier master-data controls", () => {
     expect(page).toContain("supplierData.suppliersPage");
     expect(page).toContain("PaginationBar");
     expect(page).toContain("Search supplier code or name");
+    expect(page).toContain("selectedSupplierAction");
+    expect(page).toContain("Open controls");
+    expect(page).toContain("The selected supplier is the only record affected.");
   });
 });

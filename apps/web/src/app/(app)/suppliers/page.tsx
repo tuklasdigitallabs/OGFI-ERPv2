@@ -139,6 +139,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const supplierStatus = firstParam(params.status);
   const supplierAccreditationStatus = firstParam(params.accreditationStatus);
   const supplierPageValue = Number(firstParam(params.page) ?? "1");
+  const supplierAction = firstParam(params.supplierAction);
   const [supplierData, linkOptions] = await Promise.all([
     listSuppliers(session, {
       query: supplierQuery,
@@ -190,6 +191,15 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     nextParams.set("catalogPage", String(page));
     return `/suppliers?${nextParams.toString()}`;
   };
+  const supplierActionHref = (supplierId: string, action?: "accreditation" | "deactivate") => {
+    const nextParams = new URLSearchParams({ supplier: supplierId });
+    if (supplierQuery) nextParams.set("query", supplierQuery);
+    if (supplierStatus) nextParams.set("status", supplierStatus);
+    if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
+    if (action) nextParams.set("supplierAction", action);
+    return `/suppliers?${nextParams.toString()}`;
+  };
+  const selectedSupplierAction = supplierAction === "accreditation" || supplierAction === "deactivate" ? supplierAction : null;
 
   return (
     <AppShell
@@ -462,75 +472,18 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                     </Badge>
                     {supplier.status === "ACTIVE" ? (
                       <>
-                        <EntryModal
-                          title="Update Supplier Accreditation"
-                          triggerClassName="min-h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
-                          triggerLabel="Accreditation"
+                        <Link
+                          className="inline-flex min-h-9 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
+                          href={supplierActionHref(supplier.id, "accreditation")}
                         >
-                          <form
-                            action={updateSupplierAccreditationAction}
-                            className="ogfi-form-shell mt-4 grid gap-3"
-                          >
-                            <input name="supplierId" type="hidden" value={supplier.id} />
-                            <label className="grid gap-1 text-sm font-medium text-slate-700">
-                              Accreditation status
-                              <select
-                                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                defaultValue={supplier.accreditationStatus}
-                                name="accreditationStatus"
-                                required
-                              >
-                                <option value="PENDING_REVIEW">Pending review</option>
-                                <option value="APPROVED">Approved</option>
-                                <option value="SUSPENDED">Suspended</option>
-                                <option value="BLOCKED">Blocked</option>
-                              </select>
-                            </label>
-                            <label className="grid gap-1 text-sm font-medium text-slate-700">
-                              Reason
-                              <input
-                                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                name="reason"
-                                required
-                              />
-                            </label>
-                            <label className="grid gap-1 text-sm font-medium text-slate-700">
-                              Evidence reference
-                              <input
-                                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                name="evidenceReference"
-                                placeholder="Accreditation checklist, supplier file, or review note"
-                              />
-                            </label>
-                            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-3 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
-                              Save Accreditation
-                            </button>
-                          </form>
-                        </EntryModal>
-                        <EntryModal
-                          title="Deactivate Supplier"
-                          triggerClassName="min-h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
-                          triggerLabel="Deactivate"
+                          Open controls
+                        </Link>
+                        <Link
+                          className="inline-flex min-h-9 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
+                          href={supplierActionHref(supplier.id, "deactivate")}
                         >
-                          <form action={deactivateSupplierAction} className="ogfi-form-shell mt-4 grid gap-3">
-                            <input name="supplierId" type="hidden" value={supplier.id} />
-                            <p className="text-sm text-slate-600">
-                              Deactivation preserves supplier history and also suspends PO
-                              accreditation.
-                            </p>
-                            <label className="grid gap-1 text-sm font-medium text-slate-700">
-                              Deactivation reason
-                              <input
-                                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                name="reason"
-                                required
-                              />
-                            </label>
-                            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
-                              Deactivate Supplier
-                            </button>
-                          </form>
-                        </EntryModal>
+                          Deactivate
+                        </Link>
                       </>
                     ) : (
                       <span className="text-sm text-slate-500">Retained history</span>
@@ -574,6 +527,51 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 Close catalog
               </Link>
             </div>
+
+            {selectedSupplierAction === "accreditation" && selectedSupplier.status === "ACTIVE" ? (
+              <div className="border-b border-slate-100 bg-blue-50/40 px-5 py-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-slate-950">Update supplier accreditation</h3>
+                    <p className="text-sm text-slate-600">The selected supplier is the only record affected.</p>
+                  </div>
+                  <Link className="text-sm font-semibold text-blue-700 hover:underline" href={supplierActionHref(selectedSupplier.id)}>Close controls</Link>
+                </div>
+                <form action={updateSupplierAccreditationAction} className="grid gap-3 md:grid-cols-[1fr_1fr_1.5fr_auto] md:items-end">
+                  <input name="supplierId" type="hidden" value={selectedSupplier.id} />
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Accreditation status
+                    <select className="min-h-10 rounded-md border border-slate-300 bg-white px-3" defaultValue={selectedSupplier.accreditationStatus} name="accreditationStatus" required>
+                      <option value="PENDING_REVIEW">Pending review</option><option value="APPROVED">Approved</option><option value="SUSPENDED">Suspended</option><option value="BLOCKED">Blocked</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Reason
+                    <input className="min-h-10 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Evidence reference
+                    <input className="min-h-10 rounded-md border border-slate-300 bg-white px-3" name="evidenceReference" placeholder="Supplier file or review note" />
+                  </label>
+                  <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">Save</button>
+                </form>
+              </div>
+            ) : null}
+            {selectedSupplierAction === "deactivate" && selectedSupplier.status === "ACTIVE" ? (
+              <div className="border-b border-slate-100 bg-amber-50/60 px-5 py-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-slate-950">Deactivate supplier</h3>
+                    <p className="text-sm text-slate-600">History is retained and PO accreditation is suspended.</p>
+                  </div>
+                  <Link className="text-sm font-semibold text-blue-700 hover:underline" href={supplierActionHref(selectedSupplier.id)}>Close controls</Link>
+                </div>
+                <form action={deactivateSupplierAction} className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+                  <input name="supplierId" type="hidden" value={selectedSupplier.id} />
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason
+                    <input className="min-h-10 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required />
+                  </label>
+                  <button className="min-h-10 rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800">Deactivate supplier</button>
+                </form>
+              </div>
+            ) : null}
 
             <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-4">
               <div className="rounded-xl border border-slate-200 bg-white p-4">

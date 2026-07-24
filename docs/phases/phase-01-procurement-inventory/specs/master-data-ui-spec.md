@@ -34,6 +34,10 @@ full option catalog and focused action composer are migrated.
 Implementation note (`DEC-0141`): the Supplier Register is company-scoped with
 server-backed search, lifecycle/accreditation filters, deterministic pagination,
 and exact totals; supplier catalog detail remains a separate paginated surface.
+
+Implementation note (`DEC-0142`): supplier accreditation and deactivation use a
+selected supplier action composer in the catalog workspace; registry rows do not
+repeat the full mutation forms.
 | MDM-10 | Import / Change Request Review | Controlled bulk or change management |
 
 ## 2. Master Data Home

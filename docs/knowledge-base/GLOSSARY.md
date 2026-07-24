@@ -84,3 +84,4 @@
 | Synchronous export window          | The configured maximum date span and row count permitted for an immediate CSV download. Admin Audit exports reject requests outside this window instead of silently truncating data; larger exports require a future approved background delivery path. |
 | Item Master registry                | The company-scoped catalog of inventory and purchasing items. Its visible registry is server-filtered and paginated; the total count is authoritative for the applied filters. |
 | Supplier Register                   | The company-scoped supplier catalog with server-backed search, lifecycle/accreditation filters, and paginated matching results. Its item-link preview is not the full supplier catalog. |
+| Selected action composer            | A focused, URL-selected record area where a controlled mutation is performed, preserving the list filters and record context instead of repeating a full form in every row. |
