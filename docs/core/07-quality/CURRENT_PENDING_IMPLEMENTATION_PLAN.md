@@ -594,6 +594,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Enablement readiness summaries now use bounded tenant/company-scoped counts and evidence-type grouping plus a targeted acknowledged-training count. The documented rule is preserved: a verified training signoff with both known-limit and support-route flags can satisfy those two requirements; otherwise standalone verified evidence remains required. The prior unbounded verified-row hydration is removed.
 - Query-plan/volume, responsive browser, hosted recovery, and UAT gates remain open; this does not complete Enablement or Phase I.
 
+### DEC-0136 Administration Readiness export bounds — July 24, 2026
+
+- Readiness CSV and checksum exports now require strict UTC `from`/`to` dates, enforce the shared reporting date-span and row policies, count evidence/decision rows before bounded fetches, and fail with stable 400/413 responses before emitting bytes. The UI supplies a default 31-day UTC window and discloses the bound. Core Admin plus selected-company Manage scope is required before export audit start or data access.
+- Async private-artifact delivery remains deferred. Database volume/query-plan, responsive browser, hosted recovery, and UAT gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

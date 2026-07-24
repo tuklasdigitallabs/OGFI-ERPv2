@@ -249,6 +249,12 @@ remain follow-up work.
 
 The local pilot readiness check verifies that the DEC-0036 evidence-register tables exist. During actual UAT and release rehearsal, the release owner can tighten the check with threshold variables:
 
+The Readiness CSV and checksum links use a strict UTC date window. The default
+page link covers the last 31 UTC calendar days; the reporting export policy also
+enforces maximum date span and row limits. Invalid windows return a safe error,
+and over-limit requests return no partial file. Export requires Core Admin and
+active Manage scope for the selected company.
+
 - `PILOT_MIN_UAT_EVIDENCE_RECORDS`
 - `PILOT_MIN_VERIFIED_UAT_EVIDENCE_RECORDS`
 - `PILOT_MIN_DEPLOYMENT_EVIDENCE_RECORDS`

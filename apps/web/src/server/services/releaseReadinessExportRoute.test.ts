@@ -10,6 +10,7 @@ const mockServices = vi.hoisted(() => ({
   buildReportCsvMetadata: vi.fn(),
   logOperationalExportAudit: vi.fn(),
   logOperationalExportFailure: vi.fn()
+  ,getReportExportPolicy: vi.fn()
 }));
 
 vi.mock("@/server/services/context", () => ({
@@ -33,6 +34,10 @@ vi.mock("@/server/services/exportAudit", () => ({
 vi.mock("@/server/services/releaseReadiness", () => ({
   buildReleaseReadinessExportRows: mockServices.buildReleaseReadinessExportRows,
   assertCanManageReleaseReadiness: mockServices.assertCanManageReleaseReadiness
+}));
+
+vi.mock("@/server/services/policySettings", () => ({
+  getReportExportPolicy: mockServices.getReportExportPolicy
 }));
 
 import { GET as readinessExportGET } from "../../app/(app)/admin/readiness/export/route";
@@ -68,6 +73,7 @@ describe("release readiness export route", () => {
     mockServices.getSessionContext.mockResolvedValue(session);
     mockServices.canExportReleaseReadiness.mockReturnValue(true);
     mockServices.assertCanManageReleaseReadiness.mockResolvedValue(undefined);
+    mockServices.getReportExportPolicy.mockResolvedValue({ maxRows: 10000, maxDateSpanDays: 31 });
     mockServices.buildReportCsvMetadata.mockResolvedValue([
       ["Report ID", "release-readiness"],
       ["Scope", "Company release readiness"]
@@ -81,7 +87,7 @@ describe("release readiness export route", () => {
   test("serves a matching CSV checksum header and downloadable SHA-256 sidecar", async () => {
     const generatedAt = "2026-07-07T01:02:03.000Z";
     const csvResponse = await readinessExportGET(
-      request(`/admin/readiness/export?generatedAt=${encodeURIComponent(generatedAt)}`)
+      request(`/admin/readiness/export?generatedAt=${encodeURIComponent(generatedAt)}&from=2026-07-01&to=2026-07-07`)
     );
     const csvBody = await csvResponse.text();
     const expectedChecksum = createHash("sha256").update(csvBody).digest("hex");
@@ -97,7 +103,7 @@ describe("release readiness export route", () => {
       request(
         `/admin/readiness/export?generatedAt=${encodeURIComponent(
           generatedAt
-        )}&format=sha256`
+        )}&format=sha256&from=2026-07-01&to=2026-07-07`
       )
     );
 
@@ -108,5 +114,12 @@ describe("release readiness export route", () => {
       "attachment; filename=release-readiness-register.csv.sha256"
     );
     expect(checksumResponse.headers.get("Content-Type")).toContain("text/plain");
+  });
+
+  test("rejects a missing strict UTC date window before export", async () => {
+    const response = await readinessExportGET(request("/admin/readiness/export"));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "REPORT_EXPORT_DATE_RANGE_REQUIRED" });
+    expect(mockServices.buildReleaseReadinessExportRows).not.toHaveBeenCalled();
   });
 });

@@ -2073,8 +2073,21 @@ export async function createReleaseBoardDecision(formData: FormData) {
 
 export async function buildReleaseReadinessExportRows(
   session: SessionContext,
+  options: { from: Date; to: Date; maxRows: number },
 ): Promise<CsvRow[]> {
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
+  const toExclusive = new Date(options.to.getTime() + 86_400_000);
+  const evidenceBaseWhere = { tenantId: session.context.tenantId, companyId: session.context.companyId };
+  const [uatCount, deploymentCount, enablementCount, boardCount] = await Promise.all([
+    prisma.uatEvidenceRecord.count({ where: { ...evidenceBaseWhere, executedAt: { gte: options.from, lt: toExclusive } } }),
+    prisma.deploymentEvidenceRecord.count({ where: { ...evidenceBaseWhere, performedAt: { gte: options.from, lt: toExclusive } } }),
+    prisma.enablementEvidenceRecord.count({ where: { ...evidenceBaseWhere, completedAt: { gte: options.from, lt: toExclusive } } }),
+    prisma.releaseBoardDecision.count({ where: { ...evidenceBaseWhere, decidedAt: { gte: options.from, lt: toExclusive } } }),
+  ]);
+  if (uatCount + deploymentCount + enablementCount + boardCount > options.maxRows) {
+    throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+  }
 
   const [
     gates,
@@ -2085,11 +2098,11 @@ export async function buildReleaseReadinessExportRows(
     releaseBoardDecisions,
   ] = await Promise.all([
     listReleaseReadinessGates(session),
-    listUatEvidenceRecords(session),
-    listDeploymentEvidenceRecords(session),
-    listEnablementEvidenceRecords(session),
+    prisma.uatEvidenceRecord.findMany({ where: { ...evidenceBaseWhere, executedAt: { gte: options.from, lt: toExclusive } }, include: { createdByUser: { select: { displayName: true, email: true } }, verifiedByUser: { select: { displayName: true, email: true } }, rejectedByUser: { select: { displayName: true, email: true } } }, orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }], take: options.maxRows }),
+    prisma.deploymentEvidenceRecord.findMany({ where: { ...evidenceBaseWhere, performedAt: { gte: options.from, lt: toExclusive } }, include: { createdByUser: { select: { displayName: true, email: true } }, verifiedByUser: { select: { displayName: true, email: true } }, rejectedByUser: { select: { displayName: true, email: true } } }, orderBy: [{ performedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }], take: options.maxRows }),
+    prisma.enablementEvidenceRecord.findMany({ where: { ...evidenceBaseWhere, completedAt: { gte: options.from, lt: toExclusive } }, include: { createdByUser: { select: { displayName: true, email: true } }, verifiedByUser: { select: { displayName: true, email: true } }, rejectedByUser: { select: { displayName: true, email: true } } }, orderBy: [{ completedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }], take: options.maxRows }),
     getReleaseSecurityEvidenceSummary(session),
-    listReleaseBoardDecisions(session),
+    prisma.releaseBoardDecision.findMany({ where: { ...evidenceBaseWhere, decidedAt: { gte: options.from, lt: toExclusive } }, include: { chairUser: { select: { displayName: true, email: true } } }, orderBy: [{ decidedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }], take: options.maxRows }),
   ]);
   const readinessSummary = summarizeReleaseReadiness(gates);
   const uatSummary = summarizeUatEvidence(uatEvidenceRecords);

@@ -119,3 +119,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0133-ADMIN-RELEASE-BOARD-DECISION-REGISTER.md` — bounded append-only Release Board decision register and selected detail
 - `DEC-0134-ADMIN-SECURITY-READINESS-SQL-PROJECTION.md` — single-snapshot SQL security counters and scoped attention detail
 - `DEC-0135-ADMIN-ENABLEMENT-AGGREGATE-SEMANTICS.md` — bounded enablement summary counts and preserved acknowledgement truth table
+- `DEC-0136-ADMIN-READINESS-EXPORT-BOUNDS.md` — strict UTC range, policy row limits, and selected-company export authorization

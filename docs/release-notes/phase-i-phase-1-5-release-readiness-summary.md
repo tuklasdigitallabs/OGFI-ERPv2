@@ -156,6 +156,11 @@ Enablement dependency counters now use scoped count/group queries and preserve
 the training-signoff acknowledgement truth table without hydrating the full
 verified register. Query-plan, hosted, and UAT gates remain open.
 
+Readiness CSV and checksum exports now require a strict UTC date window and obey
+the shared reporting date-span/row limits, with selected-company Manage scope
+checked before export begins. The default UI link uses the last 31 UTC days;
+over-limit requests fail without partial output.
+
 Security Readiness now narrows privileged access and MFA projections and requires
 selected-company management scope before reading them. SQL aggregate proof,
 attention detail, source freshness, and authoritative action links remain pending.

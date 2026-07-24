@@ -403,7 +403,10 @@ export default async function AdminReadinessPage({
   if (boardDecision) boardDecisionContextParams.set("boardDecision", boardDecision);
   const exportGeneratedAt = new Date().toISOString();
   const exportGeneratedAtParam = encodeURIComponent(exportGeneratedAt);
-  const exportHref = `/admin/readiness/export?generatedAt=${exportGeneratedAtParam}`;
+  const exportToUtc = exportGeneratedAt.slice(0, 10);
+  const exportFromDate = new Date(Date.parse(`${exportToUtc}T00:00:00.000Z`) - 30 * 86_400_000);
+  const exportFromUtc = exportFromDate.toISOString().slice(0, 10);
+  const exportHref = `/admin/readiness/export?generatedAt=${exportGeneratedAtParam}&from=${exportFromUtc}&to=${exportToUtc}`;
   const exportChecksumHref = `${exportHref}&format=sha256`;
   const phase3UatCoverage = uatEvidenceSummary
     ? [
@@ -463,7 +466,9 @@ export default async function AdminReadinessPage({
                 </a>
                 <span className="max-w-xl text-xs leading-5 text-slate-500">
                   Download both files in this view together; the checksum file
-                  matches this CSV timestamp. Browser CSV responses also include
+                  matches this CSV timestamp. The default export window is the
+                  last 31 UTC calendar days and is bounded by the reporting
+                  export policy. Browser CSV responses also include
                   X-OGFI-CSV-SHA256.
                 </span>
               </div>
