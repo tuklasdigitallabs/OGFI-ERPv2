@@ -466,6 +466,13 @@ describe("stock count foundation rules", () => {
       cutoffAt: new Date("2026-07-23T00:00:00.000Z"),
       submittedAt: null,
       reviewedAt: new Date("2026-07-23T01:00:00.000Z"),
+      currentAttempt: {
+        attemptNumber: 2,
+        stockAdjustments: [{
+          publicReference: "ADJ-CURRENT",
+          status: "APPROVED"
+        }]
+      },
       stockAdjustments: [{
         publicReference: "ADJ-SECRET",
         status: "APPROVED"
@@ -496,6 +503,7 @@ describe("stock count foundation rules", () => {
     expect(rows[1]?.[19]).toBe("");
     expect(rows[1]?.[21]).toBe("");
     expect(rows[1]?.[20]).toBe(10);
+    expect(rows[1]?.at(-1)).toBe(2);
   });
 
   test("detail and export adjustment context follows the current attempt", async () => {

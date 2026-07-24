@@ -1004,6 +1004,7 @@ export async function buildStockCountExportRows(session: SessionContext) {
       reviewedBy: { select: { displayName: true } },
       currentAttempt: {
         select: {
+          attemptNumber: true,
           stockAdjustments: {
             orderBy: { createdAt: "desc" },
             take: 1,
@@ -1058,7 +1059,8 @@ export async function buildStockCountExportRows(session: SessionContext) {
       "Variance Qty",
       "Line Notes",
       "Counted By",
-      "Counted At"
+      "Counted At",
+      "Current Attempt"
     ]
   ];
 
@@ -1110,7 +1112,8 @@ export async function buildStockCountExportRows(session: SessionContext) {
           : "",
         canShowEnteredCountFacts ? line.notes ?? "" : "",
         canShowEnteredCountFacts ? line.countedBy?.displayName ?? "" : "",
-        canShowEnteredCountFacts ? line.countedAt?.toISOString() ?? "" : ""
+        canShowEnteredCountFacts ? line.countedAt?.toISOString() ?? "" : "",
+        count.currentAttempt?.attemptNumber ?? ""
       ]);
     }
   }

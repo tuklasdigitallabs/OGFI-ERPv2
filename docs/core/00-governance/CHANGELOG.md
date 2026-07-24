@@ -1,5 +1,9 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-24 — Stock Count Export Attempt Context
+
+- Stock Count CSV rows now append the validated current immutable attempt number without changing existing line-grain fields or protected-fact redaction.
+
 ## 2026-07-24 — Stock Count Current Attempt Context
 
 - Stock Count list, page, and detail projections now include validated current-attempt identity; detail visibly labels the immutable attempt number without enabling recount or variance actions.
