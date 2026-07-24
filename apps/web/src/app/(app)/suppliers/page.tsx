@@ -225,6 +225,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     if (supplierQuery) nextParams.set("query", supplierQuery);
     if (supplierStatus) nextParams.set("status", supplierStatus);
     if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
+    if (supplierPageValue > 1) nextParams.set("page", String(supplierPageValue));
     if (action) nextParams.set("supplierAction", action);
     return `/suppliers?${nextParams.toString()}`;
   };
@@ -657,6 +658,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   {supplierQuery ? <input name="query" type="hidden" value={supplierQuery} /> : null}
                   {supplierStatus ? <input name="status" type="hidden" value={supplierStatus} /> : null}
                   {supplierAccreditationStatus ? <input name="accreditationStatus" type="hidden" value={supplierAccreditationStatus} /> : null}
+                  {supplierPageValue > 1 ? <input name="page" type="hidden" value={supplierPageValue} /> : null}
                   {catalogQuery ? <input name="catalogQuery" type="hidden" value={catalogQuery} /> : null}
                   {catalogStatus ? <input name="catalogStatus" type="hidden" value={catalogStatus} /> : null}
                   {catalogCategory ? <input name="catalogCategory" type="hidden" value={catalogCategory} /> : null}
