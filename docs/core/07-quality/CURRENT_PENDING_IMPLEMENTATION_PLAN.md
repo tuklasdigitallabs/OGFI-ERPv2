@@ -810,3 +810,7 @@ The workspace foundation remains subject to the shared attachment/storage, autho
 ## 10. Maintenance Rule
 
 Update this register only when implementation state, release scope, a confirmed production control, or a material blocker changes. Do not mark an item complete based only on data display, backend scaffolding, local demonstration, or unverified tests. Link completion evidence to the relevant workspace, test run, migration, release artifact, or decision record.
+### DEC-0153 Purchase Order approved-recommendation lookup — July 25, 2026
+- Replaced the eager all-record recommendation selector with a server-authorized lookup API and responsive composer. Search covers PR reference, supplier, and quote; results are deterministic, exact-count, 25-row pages with selected-option retention.
+- Mutation remains protected by the existing transactional `createPurchaseOrderFromRecommendation` revalidation for tenant/company/location, approved status, approved PR, supplier status, and duplicate PO prevention.
+- Evidence: `purchaseOrders.test.ts` 36/36 passed; web TypeScript check passed. Browser responsive, database query-plan, hosted deployment, and UAT evidence remain open. PO amendment TaskSheet and remaining visible/detail history gates are still pending.

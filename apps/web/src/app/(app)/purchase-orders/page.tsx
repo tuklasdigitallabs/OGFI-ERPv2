@@ -4,6 +4,7 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { PurchaseOrderCreateComposer } from "@/components/PurchaseOrderCreateComposer";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -117,13 +118,12 @@ export default async function PurchaseOrdersPage({
       : Promise.resolve(null),
     dashboardProfile ? Promise.resolve(null) : listPurchaseOrderPage(session, filters, { page: requestedPage }),
     canCreatePurchaseOrders
-      ? listApprovedRecommendationsForPo(session)
-      : Promise.resolve([])
+      ? listApprovedRecommendationsForPo(session, { page: 1, pageSize: 25 })
+      : Promise.resolve({ options: [], total: 0, page: 1, pageSize: 25, pageCount: 1, query: "" })
   ]);
   const orders = dashboardProfilePage?.items ?? workspaceOrders?.items ?? [];
   const totalOrders = dashboardProfilePage?.totalCount ?? workspaceOrders?.totalItems ?? orders.length;
   const scopedTotal = orders.reduce((total, order) => total + order.totalAmount, 0);
-  const firstRecommendation = approvedRecommendations[0];
 
   return (
     <AppShell
@@ -163,7 +163,7 @@ export default async function PurchaseOrdersPage({
         <Panel>
           <p className="text-sm font-semibold text-slate-500">Approved recommendations</p>
           <p className="mt-2 text-3xl font-bold text-emerald-700">
-            {approvedRecommendations.length}
+            {approvedRecommendations.total}
           </p>
         </Panel>
         <Panel>
@@ -178,39 +178,8 @@ export default async function PurchaseOrdersPage({
         {canCreatePurchaseOrders ? (
           <div className="flex justify-end">
             <EntryModal title="Create Draft PO" triggerLabel="Create Draft PO">
-              {approvedRecommendations.length > 0 ? (
-                <form action={createPurchaseOrderAction} className="mt-4 grid gap-3">
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Approved recommendation
-                    <select
-                      className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-2"
-                      name="quotationRecommendationId"
-                      defaultValue={firstRecommendation?.id}
-                      required
-                    >
-                      {approvedRecommendations.map((recommendation) => (
-                        <option key={recommendation.id} value={recommendation.id}>
-                          {recommendation.purchaseRequestReference} /{" "}
-                          {recommendation.selectedSupplierName} /{" "}
-                          {recommendation.currencyCode}{" "}
-                          {recommendation.selectedEvaluatedTotal.toFixed(2)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
-                    <p className="font-semibold text-slate-900">
-                      {firstRecommendation?.lineLabel ?? "Approved quote"}
-                    </p>
-                    <p className="mt-1">
-                      Expected delivery defaults to{" "}
-                      {firstRecommendation?.expectedDeliveryDate ?? "the PR required date"}.
-                    </p>
-                  </div>
-                  <button className="inline-flex min-h-9 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                    Create Draft PO
-                  </button>
-                </form>
+              {approvedRecommendations.total > 0 ? (
+                <PurchaseOrderCreateComposer action={createPurchaseOrderAction} />
               ) : (
                 <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   No approved supplier recommendations are ready for PO creation.

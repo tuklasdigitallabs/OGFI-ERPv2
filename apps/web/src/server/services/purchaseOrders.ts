@@ -1518,50 +1518,52 @@ export async function getPurchaseOrder(session: SessionContext, id: string) {
 
 export async function listApprovedRecommendationsForPo(
   session: SessionContext,
+  options: { query?: string; page?: number; pageSize?: number; selectedId?: string } = {},
 ) {
   await requirePermission(session, permissions.purchaseOrderCreate);
-
+  const pageSize = Math.min(25, Math.max(10, Math.floor(options.pageSize ?? 25)));
+  const page = Math.max(1, Math.floor(options.page ?? 1));
+  const query = options.query?.trim() ?? "";
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    status: "APPROVED" as const,
+    purchaseOrder: null,
+    quotationRequest: { purchaseRequest: { requestLocationId: session.context.locationId, status: "APPROVED" as const } },
+    ...(query ? { OR: [
+      { quotationRequest: { purchaseRequest: { publicReference: { contains: query, mode: "insensitive" as const } } } },
+      { selectedSupplierQuotation: { quoteReference: { contains: query, mode: "insensitive" as const } } },
+      { selectedSupplierQuotation: { supplier: { tradingName: { contains: query, mode: "insensitive" as const } } } },
+      { selectedSupplierQuotation: { supplier: { legalName: { contains: query, mode: "insensitive" as const } } } },
+    ] } : {}),
+  };
+  const total = await prisma.quotationRecommendation.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(page, pageCount);
   const recommendations = await prisma.quotationRecommendation.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "APPROVED",
-      purchaseOrder: null,
+    where,
+    select: {
+      id: true, currencyCode: true, selectedEvaluatedTotal: true, approvedAt: true,
       quotationRequest: {
-        purchaseRequest: {
-          requestLocationId: session.context.locationId,
-          status: "APPROVED",
-        },
-      },
-    },
-    include: {
-      quotationRequest: {
-        include: {
+        select: {
           purchaseRequest: {
-            include: {
-              requestLocation: true,
-            },
+            select: { publicReference: true, requiredDate: true },
           },
         },
       },
       selectedSupplierQuotation: {
-        include: {
-          supplier: true,
-          lines: {
-            include: {
-              uom: true,
-              item: true,
-              sourcePrLine: true,
-            },
-          },
+        select: {
+          quoteReference: true,
+          supplier: { select: { tradingName: true, legalName: true } },
+          lines: { select: { item: { select: { itemName: true } }, sourcePrLine: { select: { description: true } } }, take: 1, orderBy: { id: "asc" } },
         },
       },
-      preparedBy: true,
     },
-    orderBy: { approvedAt: "desc" },
+    orderBy: [{ approvedAt: "desc" }, { id: "desc" }],
+    skip: (currentPage - 1) * pageSize,
+    take: pageSize,
   });
-
-  return recommendations.map((recommendation) => ({
+  const mapped = recommendations.map((recommendation) => ({
     id: recommendation.id,
     purchaseRequestReference:
       recommendation.quotationRequest.purchaseRequest.publicReference,
@@ -1581,8 +1583,13 @@ export async function listApprovedRecommendationsForPo(
       recommendation.selectedSupplierQuotation.lines[0]?.sourcePrLine
         ?.description ??
       "Approved quote line",
-    preparedByName: recommendation.preparedBy.displayName,
+    preparedByName: "Approved sourcing",
   }));
+  if (options.selectedId && !mapped.some((item) => item.id === options.selectedId)) {
+    const selected = await prisma.quotationRecommendation.findFirst({ where: { ...where, id: options.selectedId }, select: { id: true, currencyCode: true, selectedEvaluatedTotal: true, quotationRequest: { select: { purchaseRequest: { select: { publicReference: true, requiredDate: true } } } }, selectedSupplierQuotation: { select: { quoteReference: true, supplier: { select: { tradingName: true, legalName: true } }, lines: { select: { item: { select: { itemName: true } }, sourcePrLine: { select: { description: true } } }, take: 1, orderBy: { id: "asc" } } } } } });
+    if (selected) mapped.unshift({ id: selected.id, purchaseRequestReference: selected.quotationRequest.purchaseRequest.publicReference, selectedSupplierName: selected.selectedSupplierQuotation.supplier.tradingName ?? selected.selectedSupplierQuotation.supplier.legalName, selectedQuoteReference: selected.selectedSupplierQuotation.quoteReference, currencyCode: selected.currencyCode, selectedEvaluatedTotal: Number(selected.selectedEvaluatedTotal), expectedDeliveryDate: selected.quotationRequest.purchaseRequest.requiredDate.toISOString().slice(0, 10), lineLabel: selected.selectedSupplierQuotation.lines[0]?.item?.itemName ?? selected.selectedSupplierQuotation.lines[0]?.sourcePrLine?.description ?? "Approved quote line", preparedByName: "Approved sourcing" });
+  }
+  return { options: mapped, total, page: currentPage, pageSize, pageCount, query };
 }
 
 export async function createPurchaseOrderFromRecommendation(
