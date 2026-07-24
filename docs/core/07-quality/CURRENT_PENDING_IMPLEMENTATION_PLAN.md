@@ -554,6 +554,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - The legacy full-register summary/export paths, selected-record detail drawer, deployment/enablement evidence bounds, security aggregate bounds, GO/NO-GO surface, responsive browser, disposable PostgreSQL, hosted recovery, and UAT execution gates remain open.
 - The UAT list now supports a scoped selected-record read-only detail panel with generic unavailable behavior for malformed or foreign IDs. Verify/Reject actions remain on the existing audited controls; a dedicated action drawer and bounded aggregate summary are still required.
 
+### DEC-0128 Administration UAT aggregate summary — July 24, 2026
+
+- UAT readiness summaries and UAT gate-transition checks now use tenant/company-scoped aggregate counts and existence checks for verification status, required evidence types, unresolved results, and Phase 3 workflow-area coverage. The page no longer hydrates the full UAT register to render its summary.
+- UAT export remains separate, and deployment/enablement/security/GO-NO-GO evidence, selected action drawer behavior, browser/database/hosted recovery, and UAT execution gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

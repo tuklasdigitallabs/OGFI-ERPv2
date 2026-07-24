@@ -114,6 +114,9 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("listReleaseReadinessGatePage");
     expect(serviceSource).toContain("listUatEvidencePage");
     expect(serviceSource).toContain("getUatEvidenceRecord");
+    expect(serviceSource).toContain("getUatEvidenceSummary");
+    expect(serviceSource).toContain("groupBy({ by: [\"verificationStatus\"]");
+    expect(serviceSource).toContain("unresolvedResultCount");
     expect(serviceSource).toContain("safeParse(evidenceId)");
     expect(serviceSource).toContain('orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("uatEvidencePageInputSchema");

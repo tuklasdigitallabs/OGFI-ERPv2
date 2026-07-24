@@ -1169,6 +1169,60 @@ export function summarizeUatEvidence(
   };
 }
 
+export async function getUatEvidenceSummary(session: SessionContext) {
+  await assertCanManageReleaseReadiness(session);
+  const baseWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+  };
+  const requiredTypes: UatEvidenceType[] = [
+    "SCENARIO_EXECUTION",
+    "DEFECT_DISPOSITION",
+    "POLICY_VERSION_TRACE",
+    "ACCEPTANCE_MATRIX",
+    "DEFAULT_REVISION_REGISTER",
+  ];
+  const passing = ["PASS", "RETEST_PASS", "WAIVED"];
+  const coverage = (evidenceType: UatEvidenceType, workflowArea: string) =>
+    prisma.uatEvidenceRecord.count({
+      where: {
+        ...baseWhere,
+        evidenceType,
+        workflowArea,
+        verificationStatus: "VERIFIED",
+        result: { in: passing },
+      },
+    }).then((count) => count > 0);
+  const [total, statusGroups, verifiedTypes, unresolvedResultCount, financeScenario, financeMatrix, workforceScenario, workforceMatrix, deferredDefect, deferredRevision] = await Promise.all([
+    prisma.uatEvidenceRecord.count({ where: baseWhere }),
+    prisma.uatEvidenceRecord.groupBy({ by: ["verificationStatus"], where: baseWhere, _count: { _all: true } }),
+    prisma.uatEvidenceRecord.groupBy({ by: ["evidenceType"], where: { ...baseWhere, verificationStatus: "VERIFIED" } }),
+    prisma.uatEvidenceRecord.count({ where: { ...baseWhere, verificationStatus: "VERIFIED", result: { in: ["FAIL", "BLOCKED"] } } }),
+    coverage("SCENARIO_EXECUTION", phase3UatWorkflowAreas.finance),
+    coverage("ACCEPTANCE_MATRIX", phase3UatWorkflowAreas.finance),
+    coverage("SCENARIO_EXECUTION", phase3UatWorkflowAreas.workforce),
+    coverage("ACCEPTANCE_MATRIX", phase3UatWorkflowAreas.workforce),
+    coverage("DEFECT_DISPOSITION", phase3UatWorkflowAreas.deferredBlockers),
+    coverage("DEFAULT_REVISION_REGISTER", phase3UatWorkflowAreas.deferredBlockers),
+  ]);
+  const statusCount = (status: string) => statusGroups.find((group) => group.verificationStatus === status)?._count._all ?? 0;
+  const verifiedTypeSet = new Set(verifiedTypes.map((group) => group.evidenceType));
+  const missingTypes = requiredTypes.filter((type) => !verifiedTypeSet.has(type));
+  const result = {
+    total,
+    verified: statusCount("VERIFIED"),
+    recorded: statusCount("RECORDED"),
+    rejected: statusCount("REJECTED"),
+    unresolvedResultCount,
+    missingTypes,
+    phase3FinanceReady: financeScenario && financeMatrix,
+    phase3WorkforceReady: workforceScenario && workforceMatrix,
+    phase3DeferredBlockerReviewReady: deferredDefect && deferredRevision,
+    ready: missingTypes.length === 0 && unresolvedResultCount === 0,
+  };
+  return result;
+}
+
 async function assertUatGateReadyEvidence(
   session: SessionContext,
   definition: ReleaseReadinessGateDefinition,
@@ -1178,8 +1232,7 @@ async function assertUatGateReadyEvidence(
     return;
   }
 
-  const records = await listUatEvidenceRecords(session);
-  const summary = summarizeUatEvidence(records);
+  const summary = await getUatEvidenceSummary(session);
   const requiredByGate: Record<string, UatEvidenceType[]> = {
     "uat.scenario_execution": ["SCENARIO_EXECUTION"],
     "uat.defect_disposition": ["DEFECT_DISPOSITION"],

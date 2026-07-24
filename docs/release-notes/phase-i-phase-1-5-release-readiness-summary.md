@@ -135,6 +135,10 @@ UAT evidence titles now open a selected, company-scoped read-only detail panel w
 safe unavailable handling for malformed or foreign identifiers. Verification and
 rejection remain governed by the existing audited controls.
 
+UAT readiness counters and gate checks now use scoped aggregate queries instead of
+loading the full register. Export, deployment, enablement, security, GO/NO-GO, and
+external production-readiness gates remain separate.
+
 Release Readiness gate status now has bounded server-side category, status, search,
 and pagination controls with exact matching totals. This checkpoint does not close
 the separate evidence, security aggregate, GO/NO-GO, browser, database, hosted, or

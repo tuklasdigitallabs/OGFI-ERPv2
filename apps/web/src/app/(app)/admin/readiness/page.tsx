@@ -27,13 +27,13 @@ import {
   deploymentEvidenceTypes,
   enablementEvidenceTypes,
   getReleaseSecurityEvidenceSummary,
+  getUatEvidenceSummary,
   getUatEvidenceRecord,
   listDeploymentEvidenceRecords,
   listEnablementEvidenceRecords,
   listReleaseBoardDecisions,
   listReleaseReadinessGates,
   listReleaseReadinessGatePage,
-  listUatEvidenceRecords,
   listUatEvidencePage,
   releaseBoardDecisions,
   releaseReadinessCategories,
@@ -41,7 +41,6 @@ import {
   summarizeDeploymentEvidence,
   summarizeEnablementEvidence,
   summarizeReleaseReadiness,
-  summarizeUatEvidence,
   uatEvidenceResults,
   uatEvidenceTypes,
   uatWorkflowAreaOptions,
@@ -242,8 +241,9 @@ export default async function AdminReadinessPage({
     pageSize: Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 10,
   });
   const visibleGates = gatePage.items;
-  const uatEvidenceRecords =
-    selectedCategory === "uat" ? await listUatEvidenceRecords(session) : [];
+  const uatEvidenceSummary = selectedCategory === "uat"
+    ? await getUatEvidenceSummary(session)
+    : null;
   const uatEvidencePage = selectedCategory === "uat"
     ? await listUatEvidencePage(session, {
         query,
@@ -254,8 +254,6 @@ export default async function AdminReadinessPage({
   const selectedUatEvidence = selectedCategory === "uat" && getSearchParam(params, "evidenceId")
     ? await getUatEvidenceRecord(session, getSearchParam(params, "evidenceId") as string)
     : null;
-  const uatEvidenceSummary =
-    selectedCategory === "uat" ? summarizeUatEvidence(uatEvidenceRecords) : null;
   const securityEvidenceSummary =
     selectedCategory === "security"
       ? await getReleaseSecurityEvidenceSummary(session)

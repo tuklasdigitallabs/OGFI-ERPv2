@@ -47,6 +47,8 @@ The UAT evidence register is also paginated and shows an exact matching total fo
 
 Selecting a UAT evidence title opens a scoped detail panel with its type, workflow area, environment, result, tester, execution time, and evidence reference. If the record is outside the selected company or no longer available, the panel reports that it is unavailable without revealing whether another company has a matching ID.
 
+The UAT summary counters are calculated from scoped aggregate checks across the register, not from the current page of rows. A filtered or paginated view therefore cannot make a missing evidence type appear ready.
+
 ## UAT Evidence Rules
 
 UAT gates require both evidence and a decision note before they are marked ready, conditional, or waived. The decision note should name one or more of:
