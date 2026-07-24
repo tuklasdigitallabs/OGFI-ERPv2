@@ -23,6 +23,8 @@ describe("quotation recommendation rules", () => {
     expect(createSource).toContain("SupplierQuoteLinesEditor");
     expect(createSource).toContain("No PO commitment");
     expect(createSource).toContain("permissions.quoteManage");
+    expect(readFileSync(path.resolve(__dirname, "../../app/(app)/quotes/loading.tsx"), "utf8")).toContain("Loading approved requests");
+    expect(readFileSync(path.resolve(__dirname, "../../app/(app)/quotes/error.tsx"), "utf8")).toContain("No quote, recommendation, or Purchase Order data was changed");
   });
 
   test("approved quote queue uses server pagination", () => {

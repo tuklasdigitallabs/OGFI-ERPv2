@@ -223,7 +223,7 @@ Once approved, available actions depend on policy:
 
 ## 7. PUR-05 and PUR-06 Quotation Comparison
 
-Current implementation uses a master-detail Quotes workspace: the approved-request queue is server-paginated, and one selected request owns the supplier comparison and recommendation composer. Quote capture persists server-calculated tax, discount, freight, other-charge, subtotal, and supplier-accreditation snapshot fields in company currency. The surface does not imply PO commitment. Optional quotation evidence uses the shared controlled-evidence panel with `SUPPLIER_QUOTATION` scope, scan/quarantine/availability states, and audited download; mandatory attachment requirements remain deferred until the controlled-evidence requirement matrix is confirmed.
+Current implementation uses a master-detail Quotes workspace: the approved-request queue is server-paginated, and one selected request owns the supplier comparison and recommendation composer. Quote capture persists server-calculated tax, discount, freight, other-charge, subtotal, and supplier-accreditation snapshot fields in company currency. The surface does not imply PO commitment. Optional quotation evidence uses the shared controlled-evidence panel with `SUPPLIER_QUOTATION` scope, scan/quarantine/availability states, and audited download; mandatory attachment requirements remain deferred until the controlled-evidence requirement matrix is confirmed. The route exposes a layout-preserving loading skeleton and a retryable error state that explicitly says quote/recommendation/PO data was not changed.
 
 ### Purpose
 
