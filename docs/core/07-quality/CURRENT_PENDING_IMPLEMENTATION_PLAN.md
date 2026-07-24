@@ -548,6 +548,11 @@ After the shared baseline is stable, complete workspaces in this dependency orde
 - Release Readiness now uses a server-authorized, URL-backed category/status/search/page contract with exact matching totals for its gate register. Gate updates re-read the target by tenant, company, and gate key inside the transaction; existing evidence and release-board controls remain unchanged.
 - This is a bounded gate-register checkpoint, not Readiness completion. Evidence registers, security aggregate reads, GO/NO-GO history, selected-gate detail/drawer behavior, responsive browser proof, disposable PostgreSQL authorization/count/query-plan evidence, hosted deployment/recovery, and UAT gates remain open.
 
+### DEC-0127 Administration UAT evidence pagination — July 24, 2026
+
+- The UAT evidence register now has a selected-company, server-owned bounded page contract with search, evidence type/result/status/workflow/environment filters, exact totals, deterministic ordering, and stale-page clamping. The visible UAT list uses this contract while preserving existing audited evidence mutations.
+- The legacy full-register summary/export paths, selected-record detail drawer, deployment/enablement evidence bounds, security aggregate bounds, GO/NO-GO surface, responsive browser, disposable PostgreSQL, hosted recovery, and UAT execution gates remain open.
+
 ### Workspace 1 implementation checkpoint — July 23, 2026
 
 - Confirmed `DEC-0053` after independent UX, correctness, and security review. The overview now places compact scope/freshness context before `Today’s work`, then compact KPI/supporting content. The earlier KPI-first wording in the Phase I dashboard screen specification was aligned with the higher-authority Dashboard Rules and the existing workspace audit.

@@ -492,7 +492,7 @@ export async function listReleaseReadinessGatePage(
   session: SessionContext,
   input: z.input<typeof releaseReadinessGatePageInputSchema> = {},
 ) {
-  await requirePermission(session, permissions.coreAdminister);
+  await assertCanManageReleaseReadiness(session);
   const values = releaseReadinessGatePageInputSchema.parse(input);
   const all = await listReleaseReadinessGates(session);
   const query = values.query.toLowerCase();
@@ -1025,6 +1025,56 @@ export async function listUatEvidenceRecords(session: SessionContext) {
     },
     orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }],
   });
+}
+
+const uatEvidencePageInputSchema = z.object({
+  query: z.string().trim().max(120).default(""),
+  evidenceType: uatEvidenceTypeSchema.optional(),
+  result: z.enum(uatEvidenceResults).optional(),
+  verificationStatus: z.enum(["RECORDED", "VERIFIED", "REJECTED"]).optional(),
+  workflowArea: z.string().trim().max(120).default(""),
+  environment: z.string().trim().max(80).default(""),
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(10),
+});
+
+export async function listUatEvidencePage(
+  session: SessionContext,
+  input: z.input<typeof uatEvidencePageInputSchema> = {},
+) {
+  await assertCanManageReleaseReadiness(session);
+  const values = uatEvidencePageInputSchema.parse(input);
+  const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.evidenceType ? { evidenceType: values.evidenceType } : {}),
+    ...(values.result ? { result: values.result } : {}),
+    ...(values.verificationStatus ? { verificationStatus: values.verificationStatus } : {}),
+    ...(values.workflowArea ? { workflowArea: { contains: values.workflowArea, mode: "insensitive" as const } } : {}),
+    ...(values.environment ? { environment: { contains: values.environment, mode: "insensitive" as const } } : {}),
+    ...(query ? { OR: [{ title: query }, { evidenceReference: query }, { testerName: query }] } : {}),
+  };
+  const [totalItems, records] = await Promise.all([
+    prisma.uatEvidenceRecord.count({ where }),
+    prisma.uatEvidenceRecord.findMany({
+      where,
+      include: {
+        createdByUser: { select: { displayName: true, email: true } },
+        verifiedByUser: { select: { displayName: true, email: true } },
+        rejectedByUser: { select: { displayName: true, email: true } },
+      },
+      orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      skip: (values.page - 1) * values.pageSize,
+      take: values.pageSize,
+    }),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  if (page !== values.page) {
+    return listUatEvidencePage(session, { ...values, page });
+  }
+  return { items: records, page, pageSize: values.pageSize, totalItems };
 }
 
 export function summarizeUatEvidence(

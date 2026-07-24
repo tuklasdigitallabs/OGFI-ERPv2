@@ -112,6 +112,9 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("break-glass-review-and-revocation-proof.*");
     expect(serviceSource).toContain("buildReleaseReadinessExportRows");
     expect(serviceSource).toContain("listReleaseReadinessGatePage");
+    expect(serviceSource).toContain("listUatEvidencePage");
+    expect(serviceSource).toContain('orderBy: [{ executedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }]');
+    expect(serviceSource).toContain("uatEvidencePageInputSchema");
     expect(serviceSource).toContain("pageSize");
     expect(serviceSource).toContain("max(100)");
     expect(serviceSource).toContain("tenantId: session.context.tenantId");

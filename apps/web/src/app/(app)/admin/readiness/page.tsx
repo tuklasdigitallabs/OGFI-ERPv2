@@ -33,6 +33,7 @@ import {
   listReleaseReadinessGates,
   listReleaseReadinessGatePage,
   listUatEvidenceRecords,
+  listUatEvidencePage,
   releaseBoardDecisions,
   releaseReadinessCategories,
   releaseReadinessStatuses,
@@ -242,6 +243,13 @@ export default async function AdminReadinessPage({
   const visibleGates = gatePage.items;
   const uatEvidenceRecords =
     selectedCategory === "uat" ? await listUatEvidenceRecords(session) : [];
+  const uatEvidencePage = selectedCategory === "uat"
+    ? await listUatEvidencePage(session, {
+        query,
+        page: Number.isFinite(pageValue) ? Math.min(Math.max(pageValue, 1), 10_000) : 1,
+        pageSize: Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 10,
+      })
+    : { items: [], page: 1, pageSize: 10, totalItems: 0 };
   const uatEvidenceSummary =
     selectedCategory === "uat" ? summarizeUatEvidence(uatEvidenceRecords) : null;
   const securityEvidenceSummary =
@@ -1229,9 +1237,9 @@ export default async function AdminReadinessPage({
               <span>Status</span>
               <span>Control</span>
             </div>
-            {uatEvidenceRecords.length > 0 ? (
+            {uatEvidencePage.items.length > 0 ? (
               <div className="divide-y divide-slate-100">
-                {uatEvidenceRecords.map((record) => (
+                {uatEvidencePage.items.map((record) => (
                   <div
                     key={record.id}
                     className="grid gap-3 px-4 py-4 text-sm md:grid-cols-[12rem_1fr_10rem_9rem_12rem] md:items-center"
@@ -1343,6 +1351,18 @@ export default async function AdminReadinessPage({
                 No UAT evidence recorded yet.
               </div>
             )}
+            <PaginationBar
+              className="border-t border-slate-100 px-4 py-3"
+              page={uatEvidencePage.page}
+              pageSize={uatEvidencePage.pageSize}
+              totalItems={uatEvidencePage.totalItems}
+              itemLabel="UAT evidence records"
+              getPageHref={(nextPage) => {
+                const next = new URLSearchParams({ category: "uat", page: String(nextPage), pageSize: String(uatEvidencePage.pageSize) });
+                if (query) next.set("q", query);
+                return `/admin/readiness?${next.toString()}`;
+              }}
+            />
           </div>
         ) : null}
 

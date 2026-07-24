@@ -127,6 +127,10 @@ existing create/deactivate lifecycle.
 Admin Settings now uses bounded server-side category/search pagination with exact
 matching totals while preserving audited policy override/reset behavior.
 
+The UAT evidence register now uses a bounded selected-company page contract with
+search, deterministic ordering, and exact totals. Full summary/export reads and
+selected-evidence detail remain follow-up work; this does not make Readiness ready.
+
 Release Readiness gate status now has bounded server-side category, status, search,
 and pagination controls with exact matching totals. This checkpoint does not close
 the separate evidence, security aggregate, GO/NO-GO, browser, database, hosted, or
