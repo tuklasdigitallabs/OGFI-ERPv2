@@ -26,7 +26,10 @@ export function canExportSupplierQuotes(session: SessionContext) {
 }
 
 export function canExportCoreAdminAudit(session: SessionContext) {
-  return session.permissionCodes.includes(permissions.coreAdminister);
+  return (
+    session.permissionCodes.includes(permissions.coreAdminister) &&
+    session.permissionCodes.includes(permissions.tenantRoleAdminister)
+  );
 }
 
 export function canExportReleaseReadiness(session: SessionContext) {

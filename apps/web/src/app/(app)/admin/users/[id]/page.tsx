@@ -12,6 +12,7 @@ import { getDefaultAppRoute, permissions } from "@/server/services/authorization
 import {
   approveHighRiskUserLocationScopeRequest,
   approveSensitiveUserRoleRequest,
+  assertCanManageCompanyScope,
   createUserRoleAssignment,
   createUserLocationScopeAssignment,
   deactivateUserRoleAssignment,
@@ -176,6 +177,33 @@ export default async function CoreAdminUserDetailPage({
   }
   if (!session.permissionCodes.includes(permissions.coreAdminister)) {
     redirect(getDefaultAppRoute(session.permissionCodes));
+  }
+
+  try {
+    await assertCanManageCompanyScope(session, session.context.companyId);
+  } catch (error) {
+    if (error instanceof Error && error.message === "ADMIN_SCOPE_DENIED") {
+      return (
+        <AppShell
+          session={session}
+          title="User Access"
+          subtitle="Core Administration user detail"
+          activeNav="admin"
+        >
+          <Panel className="ogfi-detail-card border-amber-200 bg-amber-50">
+            <Badge tone="warning">Access restricted</Badge>
+            <h2 className="mt-3 text-lg font-bold text-slate-950">
+              Selected-company Manage scope is required
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">
+              This account cannot open user access details for the selected company.
+              No user, role, scope, or access-history data was loaded.
+            </p>
+          </Panel>
+        </AppShell>
+      );
+    }
+    throw error;
   }
 
   const { id } = await params;

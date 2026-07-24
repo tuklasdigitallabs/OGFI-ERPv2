@@ -364,10 +364,18 @@ describe("export authorization", () => {
     ).toBe(true);
   });
 
-  test("uses core administer permission for admin audit exports", () => {
+  test("requires core administer and tenant-role authority for admin audit exports", () => {
     expect(canExportCoreAdminAudit(sessionWithPermissions([]))).toBe(false);
     expect(
       canExportCoreAdminAudit(sessionWithPermissions([permissions.coreAdminister]))
+    ).toBe(false);
+    expect(
+      canExportCoreAdminAudit(
+        sessionWithPermissions([
+          permissions.coreAdminister,
+          permissions.tenantRoleAdminister
+        ])
+      )
     ).toBe(true);
   });
 

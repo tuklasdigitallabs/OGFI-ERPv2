@@ -1599,6 +1599,7 @@ export async function getCoreAdminUserDetail(
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
 
   try {
     await assertTargetUserInCurrentCompany(session, userId);
@@ -3411,6 +3412,7 @@ export async function getCoreAdminLocationDetail(
   locationId: string,
 ) {
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
   const location = await prisma.location.findFirst({
@@ -4029,6 +4031,7 @@ export async function getCoreAdminAuditEventDetail(
   auditEventId: string,
 ) {
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
   const canViewTenantAudit = (
     await getGrantedPermissionCodes(session)
@@ -4109,6 +4112,7 @@ export async function listCoreAdminAuditEvents(
   filters: CoreAdminAuditEventFilters = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
   const canViewTenantAudit = (
     await getGrantedPermissionCodes(session)
@@ -4206,6 +4210,7 @@ export async function getCoreAdminPermissionDetail(
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
 
   const permission = await prisma.permission.findFirst({
     where: {
@@ -4283,6 +4288,7 @@ export async function getCoreAdminCompanyDetail(
   companyId: string,
 ) {
   await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
   if (companyId !== session.context.companyId) {
     return null;

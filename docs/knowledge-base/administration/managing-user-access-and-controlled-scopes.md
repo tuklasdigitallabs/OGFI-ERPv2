@@ -18,6 +18,7 @@ Sensitive roles are also not granted through quick assignment. Admin, approver, 
 
 - Select the company in which the user should be managed.
 - To view or change Administration records, you need both `Administer tenant-wide roles` access and active `Manage` scope for the selected company. Core Administration access or tenant-role authority without selected-company Manage scope is not enough.
+- Direct links to company, location, permission, audit-event, and user-detail pages enforce the same two checks before loading the record. If either check fails, Administration shows its restricted state and does not disclose whether the requested record exists. Audit export also requires tenant-role authority.
 - Target-user role changes also require the existing company administration access shown for the selected company.
 - For a role grant, deactivation, request, or review, the target account must be active and must have a current active company assignment for the selected company or an active location assignment to an active location in that company. A default company alone is not an access assignment.
 - If you create a user with an initial role, also select an initial active location in the selected company. The system creates the location membership and role together; it does not create a role-only user through this path.

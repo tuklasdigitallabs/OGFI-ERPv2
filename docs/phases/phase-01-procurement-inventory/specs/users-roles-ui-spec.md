@@ -40,6 +40,11 @@ uses a separate bounded active-role option catalog (first 100, with an explicit 
 when more roles exist); the full library remains available through the paginated Roles
 workspace. Role permissions remain tenant-global and viewing a role never grants access.
 
+Implementation note (`DEC-0110` remediation): direct company, location, permission,
+audit-event, and user-detail routes repeat the tenant-role and selected-company Manage
+preflight before loading detail data. Missing authority returns to the Administration
+restricted state; audit export uses the same tenant-role boundary.
+
 ## 2. User detail requirements
 
 Show:

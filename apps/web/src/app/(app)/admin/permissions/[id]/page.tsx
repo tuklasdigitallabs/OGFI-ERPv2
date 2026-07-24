@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
-import { getCoreAdminPermissionDetail } from "@/server/services/coreAdmin";
+import { assertCanManageCompanyScope, getCoreAdminPermissionDetail } from "@/server/services/coreAdmin";
 import { getSessionContext } from "@/server/services/context";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,17 @@ export default async function CoreAdminPermissionDetailPage({
   }
   if (!session.permissionCodes.includes(permissions.coreAdminister)) {
     redirect(getDefaultAppRoute(session.permissionCodes));
+  }
+  if (!session.permissionCodes.includes(permissions.tenantRoleAdminister)) {
+    redirect("/admin");
+  }
+  try {
+    await assertCanManageCompanyScope(session, session.context.companyId);
+  } catch (error) {
+    if (error instanceof Error && error.message === "ADMIN_SCOPE_DENIED") {
+      redirect("/admin");
+    }
+    throw error;
   }
 
   const { id } = await params;

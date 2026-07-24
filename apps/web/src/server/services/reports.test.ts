@@ -56,7 +56,8 @@ describe("operational report catalog", () => {
   it("marks approval aging as view-only and audit export as admin-controlled", () => {
     const session = sessionWithPermissions([
       permissions.purchaseRequestApprove,
-      permissions.coreAdminister
+      permissions.coreAdminister,
+      permissions.tenantRoleAdminister
     ]);
 
     expect(listOperationalReports(session)).toEqual(

@@ -20497,7 +20497,7 @@
   {
     "id": "server/services/coreAdmin.ts#getCoreAdminCompanyDetail",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -20534,7 +20534,7 @@
   {
     "id": "server/services/coreAdmin.ts#getCoreAdminLocationDetail",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",

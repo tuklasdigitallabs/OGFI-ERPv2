@@ -90,11 +90,17 @@ describe("core administration audit search wiring", () => {
       "OR: [{ companyId: session.context.companyId }, { companyId: null }]",
     );
     expect(userDetailSource).toContain("assertTargetUserInCurrentCompany(session, userId)");
+    expect(userDetailSource).toContain(
+      "assertCanManageCompanyScope(session, session.context.companyId)",
+    );
     expect(userDetailSource).toContain('error.message === "TARGET_USER_NOT_FOUND"');
     expect(userDetailSource).toContain("visibleScopeAssignments");
     expect(readFileSync(path.resolve(__dirname, "../../app/(app)/admin/page.tsx"), "utf8")).toContain(
       "assertCanManageCompanyScope(session, session.context.companyId)",
     );
+    expect(
+      readFileSync(path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"), "utf8"),
+    ).toContain("No user, role, scope, or access-history data was loaded.");
     expect(serviceSource).toContain(
       "await assertCanManageCompanyScope(session, session.context.companyId);",
     );
