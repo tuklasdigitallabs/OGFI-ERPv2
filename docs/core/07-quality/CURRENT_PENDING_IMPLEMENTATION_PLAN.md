@@ -869,3 +869,8 @@ Update this register only when implementation state, release scope, a confirmed 
 ### DEC-0166 Administration User Access scope-read selection — July 25, 2026
 - The page now invokes the bounded polymorphic scope projection only for Overview, Scopes, and scope Requests. Roles, role Requests, and Audit use an explicit empty projection and display an unavailable scope KPI marker instead of running an irrelevant scope read.
 - Evidence: Core Admin tests 34/34, web TypeScript, lint, production build, and diff checks pass. PostgreSQL query-count/isolation, responsive browser, hosted recovery, and UAT remain open; role-page/effective-permission shaping remains separate.
+
+### DEC-0167 Administration User Access role-read selection — July 25, 2026
+- The detail service now loads assigned-role rows, role totals, and effective-permission projections only for Overview and Roles. Role identifiers remain available for Roles and role Requests so the assignable-role catalog can exclude active assignments; non-role sections receive an explicit empty role projection.
+- Overview/Roles retain their role and permission KPIs; Scopes, Requests, and Audit render an unavailable marker rather than implying a loaded count. Role mutation and authorization services remain unchanged.
+- Evidence: Core Admin focused tests, web TypeScript, lint, production build, and diff checks are being rerun for this slice. PostgreSQL query-count/isolation/query-plan, responsive browser, hosted recovery, and UAT remain open; Administration and Phase I are not complete.

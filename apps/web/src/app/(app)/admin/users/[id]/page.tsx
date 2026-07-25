@@ -283,6 +283,7 @@ export default async function CoreAdminUserDetailPage({
     section === "overview" ||
     section === "scopes" ||
     (section === "requests" && requestKind === "scope");
+  const loadRoleSurface = section === "overview" || section === "roles";
   const scopePage = loadScopePage
     ? await listCoreAdminUserScopePage(session, id, {
         ...(scopeQuery ? { query: scopeQuery } : {}),
@@ -383,7 +384,7 @@ export default async function CoreAdminUserDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Roles</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{user.roles.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{loadRoleSurface ? user.roles.length : "—"}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Scopes</p>
@@ -391,7 +392,7 @@ export default async function CoreAdminUserDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Permissions</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{user.permissions.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{loadRoleSurface ? user.permissions.length : "—"}</p>
         </Panel>
       </div>
       <nav aria-label="User access sections" className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-[var(--shadow-soft)]">

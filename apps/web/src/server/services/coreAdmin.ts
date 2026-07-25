@@ -1977,10 +1977,14 @@ export async function getCoreAdminUserDetail(
     return null;
   }
 
-  const activeRoleAssignmentIds = await prisma.userRoleAssignment.findMany({
-    where: { userId: user.id, status: "ACTIVE", role: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] } },
-    select: { roleId: true },
-  });
+  const loadRoleSurface =
+    options.userAccessSection === undefined ||
+    options.userAccessSection === "overview" ||
+    options.userAccessSection === "roles";
+  const needsRoleCatalog =
+    options.userAccessSection === undefined ||
+    options.userAccessSection === "roles" ||
+    (options.userAccessSection === "requests" && options.requestKind === "role");
   const rolePageSize = Math.min(25, Math.max(10, Math.floor(options.assignedRolePageSize ?? options.rolePageSize ?? 25)));
   const assignedRoleQuery = (options.assignedRoleQuery ?? options.roleQuery)?.trim() ?? "";
   const roleAssignmentWhere: Prisma.UserRoleAssignmentWhereInput = {
@@ -1988,22 +1992,30 @@ export async function getCoreAdminUserDetail(
     status: "ACTIVE",
     role: { AND: [{ OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] }], ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
   };
-  const [activeRoleCount, effectivePermissions] = await Promise.all([
-    prisma.userRoleAssignment.count({ where: roleAssignmentWhere }),
-    prisma.permission.findMany({
+  const [activeRoleAssignmentIds, activeRoleCount, effectivePermissions] = await Promise.all([
+    loadRoleSurface || needsRoleCatalog
+      ? prisma.userRoleAssignment.findMany({
+          where: { userId: user.id, status: "ACTIVE", role: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] } },
+          select: { roleId: true },
+        })
+      : Promise.resolve([]),
+    loadRoleSurface ? prisma.userRoleAssignment.count({ where: roleAssignmentWhere }) : Promise.resolve(0),
+    loadRoleSurface ? prisma.permission.findMany({
       where: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }], roles: { some: { role: { assignments: { some: { userId: user.id, status: "ACTIVE" } } } } } },
       select: { code: true },
-    }),
+    }) : Promise.resolve([]),
   ]);
   const rolePageCount = Math.max(1, Math.ceil(activeRoleCount / rolePageSize));
   const rolePage = Math.min(Math.max(1, Math.floor(options.assignedRolePage ?? options.rolePage ?? 1)), rolePageCount);
-  const roleAssignments = await prisma.userRoleAssignment.findMany({
-    where: roleAssignmentWhere,
-    select: { id: true, startsAt: true, role: { select: { id: true, name: true, code: true, status: true } } },
-    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-    skip: (rolePage - 1) * rolePageSize,
-    take: rolePageSize,
-  });
+  const roleAssignments = loadRoleSurface
+    ? await prisma.userRoleAssignment.findMany({
+        where: roleAssignmentWhere,
+        select: { id: true, startsAt: true, role: { select: { id: true, name: true, code: true, status: true } } },
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        skip: (rolePage - 1) * rolePageSize,
+        take: rolePageSize,
+      })
+    : [];
 
   const permissionCodes = Array.from(
     new Set(

@@ -559,6 +559,9 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain('requestKind: section === "requests" ? requestKind : "none"');
     expect(serviceSource).toContain("const loadRoleCatalog =");
     expect(serviceSource).toContain("const loadLocationCatalog =");
+    expect(serviceSource).toContain("const loadRoleSurface =");
+    expect(serviceSource).toContain("const needsRoleCatalog =");
+    expect(serviceSource).toContain("loadRoleSurface || needsRoleCatalog");
     expect(serviceSource).toContain('orderBy: [{ createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("highRiskScopeRequestPage");
     expect(serviceSource).toContain("sensitiveRoleRequestPage");
@@ -616,6 +619,9 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain('aria-label="User access sections"');
     expect(detailPageSource).toContain('section === "roles" && user.canMutateRoles');
     expect(detailPageSource).toContain("const loadScopePage =");
+    expect(detailPageSource).toContain("const loadRoleSurface = section === \"overview\" || section === \"roles\";");
+    expect(detailPageSource).toContain('{loadRoleSurface ? user.roles.length : "—"}');
+    expect(detailPageSource).toContain('{loadRoleSurface ? user.permissions.length : "—"}');
     expect(detailPageSource).toContain('(section === \"requests\" && requestKind === \"scope\")');
   });
 
