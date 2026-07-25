@@ -1968,10 +1968,6 @@ export async function getCoreAdminUserDetail(
     },
     include: {
       roleAssignments: false,
-      scopeAssignments: {
-        where: { status: "ACTIVE" },
-        orderBy: { startsAt: "asc" },
-      },
       auditEvents: {
         where: {
           OR: [{ companyId: session.context.companyId }, { companyId: null }],
@@ -2022,146 +2018,6 @@ export async function getCoreAdminUserDetail(
   const assignedRoleIds = new Set(
     activeRoleAssignmentIds.map((assignment) => assignment.roleId),
   );
-  const scopeIdsByType = user.scopeAssignments.reduce(
-    (groups, assignment) => {
-      groups[assignment.scopeType].push(assignment.scopeId);
-      return groups;
-    },
-    {
-      COMPANY: [] as string[],
-      BRAND: [] as string[],
-      LOCATION: [] as string[],
-      DEPARTMENT: [] as string[],
-      PROJECT: [] as string[],
-    },
-  );
-  const [
-    scopeCompanies,
-    scopeBrands,
-    scopeLocations,
-    scopeDepartments,
-    scopeProjects,
-  ] = await Promise.all([
-    prisma.company.findMany({
-      where: {
-        id: { in: scopeIdsByType.COMPANY },
-        tenantId: session.context.tenantId,
-      },
-      select: {
-        id: true,
-        legalName: true,
-        tradingName: true,
-        currencyCode: true,
-      },
-    }),
-    prisma.brand.findMany({
-      where: {
-        id: { in: scopeIdsByType.BRAND },
-        tenantId: session.context.tenantId,
-      },
-      select: { id: true, name: true, code: true, companyId: true },
-    }),
-    prisma.location.findMany({
-      where: {
-        id: { in: scopeIdsByType.LOCATION },
-        tenantId: session.context.tenantId,
-      },
-      include: {
-        company: { select: { legalName: true, tradingName: true } },
-        brand: { select: { name: true } },
-      },
-    }),
-    prisma.department.findMany({
-      where: {
-        id: { in: scopeIdsByType.DEPARTMENT },
-        tenantId: session.context.tenantId,
-      },
-      include: { company: { select: { legalName: true, tradingName: true } } },
-    }),
-    prisma.project.findMany({
-      where: {
-        id: { in: scopeIdsByType.PROJECT },
-        tenantId: session.context.tenantId,
-      },
-      include: { company: { select: { legalName: true, tradingName: true } } },
-    }),
-  ]);
-  const scopeDisplay = new Map<
-    string,
-    { name: string; context: string; code?: string | null }
-  >();
-  scopeCompanies.forEach((company) => {
-    scopeDisplay.set(company.id, {
-      name: company.tradingName ?? company.legalName,
-      context: `${company.currencyCode} company`,
-    });
-  });
-  scopeBrands.forEach((brand) => {
-    scopeDisplay.set(brand.id, {
-      name: brand.name,
-      context: "Brand",
-      code: brand.code,
-    });
-  });
-  scopeLocations.forEach((location) => {
-    scopeDisplay.set(location.id, {
-      name: location.name,
-      context: [
-        location.brand?.name,
-        location.company.tradingName ?? location.company.legalName,
-        location.locationType.replace(/_/g, " "),
-      ]
-        .filter(Boolean)
-        .join(" / "),
-      code: location.code,
-    });
-  });
-  scopeDepartments.forEach((department) => {
-    scopeDisplay.set(department.id, {
-      name: department.name,
-      context: `${department.company.tradingName ?? department.company.legalName} / Department`,
-      code: department.code,
-    });
-  });
-  scopeProjects.forEach((project) => {
-    scopeDisplay.set(project.id, {
-      name: project.name,
-      context: `${project.company.tradingName ?? project.company.legalName} / Project`,
-      code: project.code,
-    });
-  });
-  const visibleScopeIdsByType = {
-    COMPANY: new Set(
-      scopeCompanies
-      .filter((company) => company.id === session.context.companyId)
-      .map((company) => company.id),
-    ),
-    BRAND: new Set(
-      scopeBrands
-      .filter((brand) => brand.companyId === session.context.companyId)
-      .map((brand) => brand.id),
-    ),
-    LOCATION: new Set(
-      scopeLocations
-      .filter((location) => location.companyId === session.context.companyId)
-      .map((location) => location.id),
-    ),
-    DEPARTMENT: new Set(
-      scopeDepartments
-      .filter((department) => department.companyId === session.context.companyId)
-      .map((department) => department.id),
-    ),
-    PROJECT: new Set(
-      scopeProjects
-      .filter((project) => project.companyId === session.context.companyId)
-      .map((project) => project.id),
-    ),
-  };
-  const visibleScopeAssignments = user.scopeAssignments.filter((assignment) => {
-    const allowedIds =
-      visibleScopeIdsByType[assignment.scopeType as keyof typeof visibleScopeIdsByType];
-    return allowedIds?.has(assignment.scopeId) ?? false;
-  });
   const roleQuery = options.roleQuery?.trim().toLowerCase() ?? "";
   const locationQuery = options.locationQuery?.trim().toLowerCase() ?? "";
   const scopeRequestPage = Math.min(Math.max(options.scopeRequestPage ?? 1, 1), 10_000);
@@ -2242,9 +2098,6 @@ export async function getCoreAdminUserDetail(
     ]);
   const referencedLocationIds = Array.from(
     new Set([
-      ...user.scopeAssignments
-        .filter((assignment) => assignment.scopeType === "LOCATION")
-        .map((assignment) => assignment.scopeId),
       ...highRiskScopeRequests.map((request) => request.locationId),
     ]),
   );
@@ -2345,39 +2198,7 @@ export async function getCoreAdminUserDetail(
       totalPages: rolePageCount,
       query: assignedRoleQuery,
     },
-    scopes: visibleScopeAssignments.map((assignment) => ({
-      id: assignment.id,
-      type: assignment.scopeType,
-      scopeId: assignment.scopeId,
-      displayName:
-        scopeDisplay.get(assignment.scopeId)?.name ?? "Unknown scope",
-      displayContext:
-        scopeDisplay.get(assignment.scopeId)?.context ??
-        "Scope record not found",
-      code: scopeDisplay.get(assignment.scopeId)?.code ?? null,
-      accessLevel: assignment.accessLevel,
-      canMutate:
-        assignment.scopeType === "LOCATION" &&
-        isDirectlyAssignableLocationScope({
-          locationType:
-            scopeLocations.find(
-              (location) => location.id === assignment.scopeId,
-            )?.locationType ?? "UNKNOWN",
-          accessLevel: assignment.accessLevel as z.infer<
-            typeof accessLevelSchema
-          >,
-        }),
-      riskLabel:
-        assignment.scopeType === "LOCATION"
-          ? getLocationScopeRiskLabel({
-              locationType:
-                scopeLocations.find(
-                  (location) => location.id === assignment.scopeId,
-                )?.locationType ?? "UNKNOWN",
-            })
-          : "Broad scope requires controlled approval",
-      startsAt: assignment.startsAt.toISOString(),
-    })),
+    scopes: [],
     assignableLocations: activeLocationCatalog.map((location) => ({
       id: location.id,
       name: location.name,
@@ -2508,7 +2329,8 @@ type CoreAdminUserScopePage = {
   code: string | null;
   locationType: string | null;
   effectiveState: "CURRENT" | "FUTURE" | "EXPIRED";
-  totalItems: number;
+  canMutate: boolean;
+  riskLabel: string;
 };
 
 export async function listCoreAdminUserScopePage(
@@ -2524,7 +2346,7 @@ export async function listCoreAdminUserScopePage(
   const requestedPage = Math.max(1, Math.floor(input.page ?? 1));
   const query = input.query?.trim() ?? "";
   const type = ["COMPANY", "BRAND", "LOCATION", "DEPARTMENT", "PROJECT"].includes(input.scopeType ?? "") ? input.scopeType! : null;
-  const rows = await prisma.$queryRaw<CoreAdminUserScopePage[]>`
+  const scopeBase = Prisma.sql`
     WITH scoped AS (
       SELECT usa.id, usa."scopeType"::text AS "scopeType", usa."scopeId", usa."accessLevel"::text AS "accessLevel", usa."startsAt", usa."endsAt", COALESCE(c."tradingName", c."legalName") AS "displayName", c."legalName" || ' / Company' AS "displayContext", c.code, NULL::text AS "locationType"
         FROM "UserScopeAssignment" usa JOIN "Company" c ON c.id = usa."scopeId" AND c."tenantId" = ${session.context.tenantId} AND c.id = ${session.context.companyId}
@@ -2546,17 +2368,37 @@ export async function listCoreAdminUserScopePage(
         FROM "UserScopeAssignment" usa JOIN "Project" p ON p.id = usa."scopeId" AND p."tenantId" = ${session.context.tenantId} AND p."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = p."companyId"
        WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'PROJECT'
     ), filtered AS (
-      SELECT *, CASE WHEN "startsAt" > CURRENT_TIMESTAMP THEN 'FUTURE' WHEN "endsAt" IS NOT NULL AND "endsAt" <= CURRENT_TIMESTAMP THEN 'EXPIRED' ELSE 'CURRENT' END AS "effectiveState", COUNT(*) OVER()::int AS "totalItems" FROM scoped
+      SELECT *, CASE WHEN "startsAt" > CURRENT_TIMESTAMP THEN 'FUTURE' WHEN "endsAt" IS NOT NULL AND "endsAt" <= CURRENT_TIMESTAMP THEN 'EXPIRED' ELSE 'CURRENT' END AS "effectiveState" FROM scoped
        WHERE (${type}::text IS NULL OR "scopeType" = ${type})
          AND (${query} = '' OR "displayName" ILIKE '%' || ${query} || '%' OR COALESCE(code, '') ILIKE '%' || ${query} || '%')
     )
-    SELECT * FROM filtered ORDER BY "scopeType" ASC, "displayName" ASC, "startsAt" ASC, id ASC
-    OFFSET ${(Math.min(requestedPage, 10000) - 1) * pageSize} LIMIT ${pageSize}
   `;
-  const totalItems = rows[0]?.totalItems ?? 0;
+  const countRows = await prisma.$queryRaw<Array<{ totalItems: number }>>`${scopeBase} SELECT COUNT(*)::int AS "totalItems" FROM filtered`;
+  const totalItems = countRows[0]?.totalItems ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, totalPages);
-  return { items: rows, page, pageSize, totalItems, totalPages, query, scopeType: type };
+  const rows = await prisma.$queryRaw<Array<Omit<CoreAdminUserScopePage, "canMutate" | "riskLabel">>>`${scopeBase} SELECT * FROM filtered ORDER BY "scopeType" ASC, "displayName" ASC, "startsAt" ASC, id ASC OFFSET ${(page - 1) * pageSize} LIMIT ${pageSize}`;
+  return {
+    items: rows.map((row) => ({
+      ...row,
+      canMutate:
+        row.scopeType === "LOCATION" &&
+        isDirectlyAssignableLocationScope({
+          locationType: row.locationType ?? "UNKNOWN",
+          accessLevel: row.accessLevel as z.infer<typeof accessLevelSchema>,
+        }),
+      riskLabel:
+        row.scopeType === "LOCATION"
+          ? getLocationScopeRiskLabel({ locationType: row.locationType ?? "UNKNOWN" })
+          : "Broad scope requires controlled approval",
+    })),
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    query,
+    scopeType: type,
+  };
 }
 
 export async function createUserRoleAssignment(formData: FormData) {

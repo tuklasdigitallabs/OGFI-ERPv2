@@ -94,7 +94,8 @@ describe("core administration audit search wiring", () => {
       "assertCanManageCompanyScope(session, session.context.companyId)",
     );
     expect(userDetailSource).toContain('error.message === "TARGET_USER_NOT_FOUND"');
-    expect(userDetailSource).toContain("visibleScopeAssignments");
+    expect(userDetailSource).not.toContain("scopeAssignments:");
+    expect(userDetailSource).toContain("scopes: []");
     expect(readFileSync(path.resolve(__dirname, "../../app/(app)/admin/page.tsx"), "utf8")).toContain(
       "assertCanManageCompanyScope(session, session.context.companyId)",
     );
@@ -711,7 +712,10 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain('JOIN \"Location\"');
     expect(serviceSource).toContain('JOIN \"Department\"');
     expect(serviceSource).toContain('JOIN \"Project\"');
-    expect(serviceSource).toContain("COUNT(*) OVER()");
+    expect(serviceSource).toContain('SELECT COUNT(*)::int AS "totalItems" FROM filtered');
+    expect(serviceSource).toContain("canMutate");
+    expect(serviceSource).toContain("const countRows = await prisma.$queryRaw");
+    expect(serviceSource).toContain("const page = Math.min(requestedPage, totalPages)");
     expect(serviceSource).toContain('ORDER BY \"scopeType\" ASC');
     expect(pageSource).toContain("scopeQuery");
     expect(pageSource).toContain("scopeType");

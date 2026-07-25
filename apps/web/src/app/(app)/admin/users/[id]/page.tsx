@@ -262,7 +262,7 @@ export default async function CoreAdminUserDetailPage({
   });
   const scopedUser = {
     ...user,
-    scopes: scopePage.items.map((item) => ({ ...(user.scopes.find((scope) => scope.id === item.id) ?? {
+    scopes: scopePage.items.map((item) => ({
       id: item.id,
       type: item.scopeType,
       scopeId: item.scopeId,
@@ -270,10 +270,12 @@ export default async function CoreAdminUserDetailPage({
       displayContext: item.displayContext,
       code: item.code,
       accessLevel: item.accessLevel,
-      canMutate: false,
-      riskLabel: "Scope action requires live revalidation",
+      canMutate: item.canMutate,
+      riskLabel: item.riskLabel,
       startsAt: item.startsAt.toISOString(),
-    }), effectiveState: item.effectiveState, endsAt: item.endsAt?.toISOString() ?? null })),
+      effectiveState: item.effectiveState,
+      endsAt: item.endsAt?.toISOString() ?? null,
+    })),
     scopesPage: scopePage,
   };
   const selectedScope = scopeActionId ? scopedUser.scopes.find((scope) => scope.id === scopeActionId) : null;
