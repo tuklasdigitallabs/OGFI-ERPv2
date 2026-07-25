@@ -21,6 +21,7 @@ By the end of this module, participants can:
 
 1. Sign in as an administrator.
 2. Open administration views for companies, roles, permissions, approval rules, and audit events.
+   In Role Detail, use the permission search and Sensitive / Overrides / Recommended Drift filters; explain that paging does not remove enabled permissions outside the visible page when a controlled save is submitted.
 3. Confirm a user's active role assignment and active location scope.
 4. Explain why role controls capability and scope controls location visibility.
 5. Review an approval rule and identify assigned user or role steps.

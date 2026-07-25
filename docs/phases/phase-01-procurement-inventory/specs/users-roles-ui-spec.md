@@ -79,6 +79,13 @@ selected-company scoped; roles are active tenant-global options. Overflow is
 disclosed and requires refinement, while existing referenced scopes remain
 visible as history even when they are not selectable.
 
+Implementation note (`DEC-0191`): Role Detail permission review uses a bounded,
+URL-backed server matrix with code/action search and Sensitive, Overrides, and
+Recommended Drift filters. The selected role's complete enabled-code set is
+carried as hidden state for mutation so filtering or paging cannot disable
+permissions that are not on the current page. Matrix counts are explicitly
+page-local; role-level enabled/drift totals remain authoritative summary values.
+
 Implementation note (`DEC-0119`): Controlled Scope Requests and Controlled Role
 Requests on User Detail are separate URL-backed paginated histories with
 allowlisted lifecycle filters, exact totals, and newest-first deterministic

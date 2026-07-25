@@ -94,7 +94,19 @@ export default async function CoreAdminRoleDetailPage({
   const actionFeedback = getActionFeedback(queryParams);
   const assignmentQuery = Array.isArray(queryParams.assignmentQuery) ? queryParams.assignmentQuery[0] : queryParams.assignmentQuery;
   const assignmentPageValue = Number.parseInt(String(Array.isArray(queryParams.assignmentPage) ? queryParams.assignmentPage[0] : queryParams.assignmentPage ?? "1"), 10);
-  const role = await getCoreAdminRoleDetail(session, id, { ...(assignmentQuery ? { query: assignmentQuery } : {}), page: Number.isFinite(assignmentPageValue) ? assignmentPageValue : 1, pageSize: 25 });
+  const permissionQuery = Array.isArray(queryParams.permissionQuery) ? queryParams.permissionQuery[0] : queryParams.permissionQuery;
+  const permissionPageValue = Number.parseInt(String(Array.isArray(queryParams.permissionPage) ? queryParams.permissionPage[0] : queryParams.permissionPage ?? "1"), 10);
+  const permissionFilterValue = Array.isArray(queryParams.permissionFilter) ? queryParams.permissionFilter[0] : queryParams.permissionFilter;
+  const permissionFilter = permissionFilterValue === "SENSITIVE" || permissionFilterValue === "OVERRIDES" || permissionFilterValue === "RECOMMENDED_DRIFT" ? permissionFilterValue : "ALL";
+  const role = await getCoreAdminRoleDetail(session, id, {
+    ...(assignmentQuery ? { query: assignmentQuery } : {}),
+    page: Number.isFinite(assignmentPageValue) ? assignmentPageValue : 1,
+    pageSize: 25,
+    ...(permissionQuery ? { permissionQuery } : {}),
+    permissionPage: Number.isFinite(permissionPageValue) ? permissionPageValue : 1,
+    permissionPageSize: 25,
+    permissionFilter,
+  });
   if (!role) {
     redirect("/admin");
   }
@@ -184,8 +196,24 @@ export default async function CoreAdminRoleDetailPage({
               </p>
             </div>
           </div>
+          <form method="get" className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <input type="hidden" name="permissionPage" value="1" />
+            {assignmentQuery ? <input type="hidden" name="assignmentQuery" value={assignmentQuery} /> : null}
+            {Number.isFinite(assignmentPageValue) && assignmentPageValue > 1 ? <input type="hidden" name="assignmentPage" value={assignmentPageValue} /> : null}
+            <input className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm" name="permissionQuery" defaultValue={role.permissionPage.query} placeholder="Search permission code or action" />
+            <select className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm" name="permissionFilter" defaultValue={role.permissionPage.filter}>
+              <option value="ALL">All permissions</option>
+              <option value="SENSITIVE">Sensitive</option>
+              <option value="OVERRIDES">Overrides</option>
+              <option value="RECOMMENDED_DRIFT">Recommended drift</option>
+            </select>
+            <button type="submit" className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter</button>
+          </form>
           <form action={updateRolePermissionsAction} className="mt-5">
             <input name="roleId" type="hidden" value={role.id} />
+            {role.enabledPermissionCodes
+              .filter((code) => !role.permissionGroups.some((group) => group.permissions.some((permission) => permission.code === code)))
+              .map((code) => <input key={code} name="permissionCodes" type="hidden" value={code} />)}
             <div className="space-y-4">
               {role.permissionGroups.map((group) => (
                 <section
@@ -196,8 +224,8 @@ export default async function CoreAdminRoleDetailPage({
                     <div>
                       <h3 className="font-bold text-slate-950">{group.name}</h3>
                       <p className="text-xs text-slate-500">
-                        {group.enabledCount}/{group.permissions.length} enabled ·{" "}
-                        {group.recommendedCount} recommended
+                        {group.enabledCount}/{group.permissions.length} enabled on this page ·{" "}
+                        {group.recommendedCount} recommended on this page
                       </p>
                     </div>
                     <Badge tone="neutral">{group.permissions.length} permissions</Badge>
@@ -255,6 +283,14 @@ export default async function CoreAdminRoleDetailPage({
                 </section>
               ))}
             </div>
+            <PaginationBar
+              page={role.permissionPage.page}
+              pageSize={role.permissionPage.pageSize}
+              totalItems={role.permissionPage.totalItems}
+              itemLabel="permissions"
+              controlClassName="min-h-11"
+              getPageHref={(nextPage) => `/admin/roles/${role.id}?permissionPage=${nextPage}${role.permissionPage.query ? `&permissionQuery=${encodeURIComponent(role.permissionPage.query)}` : ""}${role.permissionPage.filter !== "ALL" ? `&permissionFilter=${role.permissionPage.filter}` : ""}${assignmentQuery ? `&assignmentQuery=${encodeURIComponent(assignmentQuery)}` : ""}${Number.isFinite(assignmentPageValue) && assignmentPageValue > 1 ? `&assignmentPage=${assignmentPageValue}` : ""}`}
+            />
             <div className="sticky bottom-0 mt-5 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-[0_-18px_42px_-34px_rgba(15,23,42,0.7)] backdrop-blur">
               <label className="grid gap-1 text-sm font-semibold text-slate-700">
                 Change reason

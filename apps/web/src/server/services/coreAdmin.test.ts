@@ -815,4 +815,28 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("minLength={5}");
     expect(pageSource).toContain("returnPath");
   });
+
+  test("role permission matrix uses bounded server paging and preserves hidden grants", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("permissionPageSize");
+    expect(serviceSource).toContain("permissionQuery");
+    expect(serviceSource).toContain("permissionFilter");
+    expect(serviceSource).toContain("permissionTotal");
+    expect(serviceSource).toContain("skip: (permissionPage - 1) * permissionPageSize");
+    expect(serviceSource).toContain("take: permissionPageSize");
+    expect(serviceSource).toContain("enabledPermissionCodes");
+    expect(serviceSource).toContain("AND: [");
+    expect(serviceSource).toContain('OR: [{ tenantId: session.context.tenantId }, { tenantId: null }]');
+    expect(serviceSource).not.toContain("const [role, assignmentCount, allPermissions]");
+    expect(pageSource).toContain('name="permissionQuery"');
+    expect(pageSource).toContain('name="permissionFilter"');
+    expect(pageSource).toContain('name="permissionCodes" type="hidden"');
+    expect(pageSource).toContain('<form method="get" className="mt-5 grid gap-2');
+    expect(pageSource).toContain('<form action={updateRolePermissionsAction} className="mt-5">');
+    expect(pageSource).toContain('itemLabel="permissions"');
+    expect(pageSource).toContain("permissionPage");
+    expect(pageSource).toContain("on this page");
+    expect(pageSource).not.toContain('<button className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter</button>');
+  });
 });

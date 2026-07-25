@@ -140,3 +140,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0188-REOPEN-SPF-004-EXACT-CANDIDATE.md` — reopen authorization regression validation for the current exact release candidate
 - `DEC-0189-SUPPLIER-CATALOG-CATEGORY-OPTION-PAGING.md` — bounded supplier catalog category option paging and selected-category retention
 - `DEC-0190-SUPPLIER-CATALOG-OPTION-CONTRACT-GATE.md` — executable regression coverage for bounded supplier category options and preserved context
+- `DEC-0191-ROLE-PERMISSION-MATRIX-PAGING.md` — bounded searchable Role Detail permission matrix with complete-set mutation preservation

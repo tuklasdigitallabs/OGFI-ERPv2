@@ -3945,7 +3945,15 @@ export async function getCoreAdminLocationDetail(
 export async function getCoreAdminRoleDetail(
   session: SessionContext,
   roleId: string,
-  input: { page?: number; pageSize?: number; query?: string } = {},
+  input: {
+    page?: number;
+    pageSize?: number;
+    query?: string;
+    permissionPage?: number;
+    permissionPageSize?: number;
+    permissionQuery?: string;
+    permissionFilter?: "ALL" | "SENSITIVE" | "OVERRIDES" | "RECOMMENDED_DRIFT";
+  } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
@@ -3954,6 +3962,10 @@ export async function getCoreAdminRoleDetail(
   const pageSize = Math.min(25, Math.max(10, Math.floor(input.pageSize ?? 25)));
   const requestedPage = Math.max(1, Math.floor(input.page ?? 1));
   const query = input.query?.trim() ?? "";
+  const permissionPageSize = Math.min(100, Math.max(10, Math.floor(input.permissionPageSize ?? 25)));
+  const requestedPermissionPage = Math.max(1, Math.floor(input.permissionPage ?? 1));
+  const permissionQuery = input.permissionQuery?.trim().slice(0, 120) ?? "";
+  const permissionFilter = input.permissionFilter ?? "ALL";
   const assignmentWhere = {
     status: "ACTIVE" as const,
     ...(query ? { user: { OR: [
@@ -3961,8 +3973,7 @@ export async function getCoreAdminRoleDetail(
       { email: { contains: query, mode: "insensitive" as const } },
     ] } } : {}),
   };
-  const [role, assignmentCount, allPermissions] = await Promise.all([
-    prisma.role.findFirst({
+  const role = await prisma.role.findFirst({
       where: {
         id: roleId,
         tenantId: session.context.tenantId,
@@ -3974,19 +3985,44 @@ export async function getCoreAdminRoleDetail(
           },
         },
       },
-    }),
-    prisma.userRoleAssignment.count({ where: { roleId, ...assignmentWhere } }),
-    prisma.permission.findMany({
-      where: {
-        OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
-      },
-      orderBy: [{ module: "asc" }, { action: "asc" }, { code: "asc" }],
-    }),
-  ]);
+    });
 
   if (!role) {
     return null;
   }
+
+  const currentPermissionCodes = new Set(
+    role.permissions.map((rolePermission) => rolePermission.permission.code),
+  );
+  const recommendedPermissionCodes = new Set(getRecommendedPermissionCodesForRole(role.code));
+  const sensitivePermissionCodes = Object.values(permissions).filter(isSensitivePermissionCode);
+  const permissionFilterCodes = permissionFilter === "SENSITIVE"
+    ? sensitivePermissionCodes
+    : permissionFilter === "RECOMMENDED_DRIFT"
+      ? Array.from(new Set([
+          ...Array.from(currentPermissionCodes).filter((code) => !recommendedPermissionCodes.has(code)),
+          ...Array.from(recommendedPermissionCodes).filter((code) => !currentPermissionCodes.has(code)),
+        ]))
+      : permissionFilter === "OVERRIDES"
+        ? Array.from(currentPermissionCodes).filter((code) => !recommendedPermissionCodes.has(code))
+        : undefined;
+  const permissionWhere: Prisma.PermissionWhereInput = {
+    AND: [
+      { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] },
+      ...(permissionQuery
+        ? [{ OR: [
+            { code: { contains: permissionQuery, mode: "insensitive" as const } },
+            { module: { contains: permissionQuery, mode: "insensitive" as const } },
+            { action: { contains: permissionQuery, mode: "insensitive" as const } },
+          ] }]
+        : []),
+      ...(permissionFilterCodes ? [{ code: { in: permissionFilterCodes } }] : []),
+    ],
+  };
+  const [assignmentCount, permissionTotal] = await Promise.all([
+    prisma.userRoleAssignment.count({ where: { roleId, ...assignmentWhere } }),
+    prisma.permission.count({ where: permissionWhere }),
+  ]);
 
   const pageCount = Math.max(1, Math.ceil(assignmentCount / pageSize));
   const page = Math.min(requestedPage, pageCount);
@@ -3998,13 +4034,15 @@ export async function getCoreAdminRoleDetail(
     take: pageSize,
   });
 
-  const currentPermissionCodes = new Set(
-    role.permissions.map((rolePermission) => rolePermission.permission.code),
-  );
-  const recommendedPermissionCodes = new Set(
-    getRecommendedPermissionCodesForRole(role.code),
-  );
-  const permissionRows = allPermissions.map((permission) => {
+  const permissionPageCount = Math.max(1, Math.ceil(permissionTotal / permissionPageSize));
+  const permissionPage = Math.min(requestedPermissionPage, permissionPageCount);
+  const permissionRowsData = await prisma.permission.findMany({
+    where: permissionWhere,
+    orderBy: [{ module: "asc" }, { action: "asc" }, { code: "asc" }],
+    skip: (permissionPage - 1) * permissionPageSize,
+    take: permissionPageSize,
+  });
+  const permissionRows = permissionRowsData.map((permission) => {
     const presentation = getPermissionPresentation(permission.code);
     const enabled = currentPermissionCodes.has(permission.code);
     const recommended = recommendedPermissionCodes.has(permission.code);
@@ -4028,7 +4066,7 @@ export async function getCoreAdminRoleDetail(
     };
   });
   const permissionGroups = Array.from(
-    permissionRows
+      permissionRows
       .reduce((groups, permission) => {
         const group = groups.get(permission.group) ?? {
           name: permission.group,
@@ -4071,6 +4109,15 @@ export async function getCoreAdminRoleDetail(
     sensitiveEnabledCount,
     hasRecommendedSet: recommendedPermissionCodes.size > 0,
     permissionGroups,
+    permissionPage: {
+      page: permissionPage,
+      pageSize: permissionPageSize,
+      totalItems: permissionTotal,
+      totalPages: permissionPageCount,
+      query: permissionQuery,
+      filter: permissionFilter,
+    },
+    enabledPermissionCodes: Array.from(currentPermissionCodes),
     permissions: role.permissions.map((rolePermission) => ({
       id: rolePermission.permission.id,
       code: rolePermission.permission.code,
