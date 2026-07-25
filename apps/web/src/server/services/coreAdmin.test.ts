@@ -859,4 +859,27 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("permissionReturnPath");
     expect(pageSource).not.toContain('<button className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter</button>');
   });
+
+  test("location detail uses a bounded assigned-access register", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/locations/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("getCoreAdminLocationDetail");
+    expect(serviceSource).toContain('z.string().uuid().safeParse(locationId)');
+    expect(serviceSource).toContain("accessPageSize");
+    expect(serviceSource).toContain("Number.isFinite(rawPageSize)");
+    expect(serviceSource).toContain("tenantId: session.context.tenantId");
+    expect(serviceSource).toContain("startsAt: { lte: effectiveNow }");
+    expect(serviceSource).toContain("endsAt: { gt: effectiveNow }");
+    expect(serviceSource).toContain('role: {');
+    expect(serviceSource).toContain("scopeAssignmentTotal");
+    expect(serviceSource).toContain("assignedUsersPage");
+    expect(serviceSource).toContain("skip: (accessPage - 1) * accessPageSize");
+    expect(serviceSource).toContain("take: accessPageSize");
+    expect(serviceSource).toContain('orderBy: [{ userId: "asc" }, { id: "asc" }]');
+    expect(serviceSource).not.toContain("scopeAssignments.findMany({\n      where: {\n        scopeType: \"LOCATION\"");
+    expect(pageSource).toContain("accessPage");
+    expect(pageSource).toContain('itemLabel="active location assignments"');
+    expect(pageSource).toContain("location.assignedUsersPage.totalItems");
+    expect(pageSource).toContain("Showing {location.assignedUsers.length} of");
+  });
 });

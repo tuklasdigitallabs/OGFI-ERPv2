@@ -3902,10 +3902,18 @@ export async function getCoreAdminApprovalRuleDetail(
 export async function getCoreAdminLocationDetail(
   session: SessionContext,
   locationId: string,
+  input: {
+    accessPage?: number;
+    accessPageSize?: number;
+  } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
+
+  if (!z.string().uuid().safeParse(locationId).success) {
+    return null;
+  }
 
   const location = await prisma.location.findFirst({
     where: {
@@ -3923,25 +3931,28 @@ export async function getCoreAdminLocationDetail(
     return null;
   }
 
-  const [scopeAssignments, purchaseRequests, auditEvents] = await Promise.all([
-    prisma.userScopeAssignment.findMany({
-      where: {
-        scopeType: "LOCATION",
-        scopeId: location.id,
-        status: "ACTIVE",
-      },
-      include: {
-        user: {
-          include: {
-            roleAssignments: {
-              where: { status: "ACTIVE" },
-              include: { role: true },
-            },
-          },
-        },
-      },
-      orderBy: { startsAt: "asc" },
-    }),
+  const rawPageSize = Number(input.accessPageSize ?? 25);
+  const rawPage = Number(input.accessPage ?? 1);
+  const accessPageSize = Number.isFinite(rawPageSize)
+    ? Math.min(100, Math.max(10, Math.floor(rawPageSize)))
+    : 25;
+  const requestedAccessPage = Number.isFinite(rawPage)
+    ? Math.min(100_000, Math.max(1, Math.floor(rawPage)))
+    : 1;
+  const effectiveNow = new Date();
+  const accessWhere = {
+    scopeType: "LOCATION" as const,
+    scopeId: location.id,
+    status: "ACTIVE" as const,
+    startsAt: { lte: effectiveNow },
+    OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+    user: {
+      tenantId: session.context.tenantId,
+      status: "ACTIVE" as const,
+    },
+  };
+  const [scopeAssignmentTotal, purchaseRequests, auditEvents] = await Promise.all([
+    prisma.userScopeAssignment.count({ where: accessWhere }),
     prisma.purchaseRequest.findMany({
       where: {
         tenantId: session.context.tenantId,
@@ -3985,6 +3996,40 @@ export async function getCoreAdminLocationDetail(
       take: 10,
     }),
   ]);
+  const accessPageCount = Math.max(1, Math.ceil(scopeAssignmentTotal / accessPageSize));
+  const accessPage = Math.min(requestedAccessPage, accessPageCount);
+  const scopeAssignments = await prisma.userScopeAssignment.findMany({
+    where: accessWhere,
+    select: {
+      id: true,
+      userId: true,
+      startsAt: true,
+      accessLevel: true,
+      user: {
+        select: {
+          displayName: true,
+          email: true,
+          roleAssignments: {
+            where: {
+              status: "ACTIVE",
+              startsAt: { lte: effectiveNow },
+              OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+              role: {
+                status: "ACTIVE",
+                OR: [{ tenantId: null }, { tenantId: session.context.tenantId }],
+              },
+            },
+            select: { role: { select: { name: true } } },
+            orderBy: { startsAt: "asc" },
+            take: 8,
+          },
+        },
+      },
+    },
+    orderBy: [{ userId: "asc" }, { id: "asc" }],
+    skip: (accessPage - 1) * accessPageSize,
+    take: accessPageSize,
+  });
 
   return {
     id: location.id,
@@ -3996,6 +4041,12 @@ export async function getCoreAdminLocationDetail(
     address: location.address,
     companyName: location.company.tradingName ?? location.company.legalName,
     brandName: location.brand?.name ?? "Company-wide",
+    assignedUsersPage: {
+      page: accessPage,
+      pageSize: accessPageSize,
+      totalItems: scopeAssignmentTotal,
+      totalPages: accessPageCount,
+    },
     assignedUsers: scopeAssignments.map((assignment) => ({
       id: assignment.id,
       userId: assignment.userId,

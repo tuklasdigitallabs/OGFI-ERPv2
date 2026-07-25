@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import { assertCanManageCompanyScope, getCoreAdminLocationDetail } from "@/server/services/coreAdmin";
@@ -8,9 +8,11 @@ import { getSessionContext } from "@/server/services/context";
 export const dynamic = "force-dynamic";
 
 export default async function CoreAdminLocationDetailPage({
-  params
+  params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await getSessionContext();
   if (!session) {
@@ -32,7 +34,13 @@ export default async function CoreAdminLocationDetailPage({
   }
 
   const { id } = await params;
-  const location = await getCoreAdminLocationDetail(session, id);
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const accessPageValue = Number.parseInt(String(resolvedSearchParams.accessPage ?? "1"), 10);
+  const accessPageSizeValue = Number.parseInt(String(resolvedSearchParams.accessPageSize ?? "25"), 10);
+  const location = await getCoreAdminLocationDetail(session, id, {
+    accessPage: Number.isFinite(accessPageValue) ? accessPageValue : 1,
+    accessPageSize: Number.isFinite(accessPageSizeValue) ? accessPageSizeValue : 25,
+  });
   if (!location) {
     redirect("/admin");
   }
@@ -75,8 +83,8 @@ export default async function CoreAdminLocationDetailPage({
           </div>
         </Panel>
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Assigned users</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{location.assignedUsers.length}</p>
+          <p className="text-sm font-semibold text-slate-500">Active access assignments</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{location.assignedUsersPage.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Status</p>
@@ -121,6 +129,7 @@ export default async function CoreAdminLocationDetailPage({
 
         <Panel className="ogfi-detail-card">
           <h2 className="text-lg font-bold text-slate-950">Assigned Access</h2>
+          <p className="mt-1 text-sm text-slate-500">Showing {location.assignedUsers.length} of {location.assignedUsersPage.totalItems} active location assignments.</p>
           <div className="mt-4 divide-y divide-slate-100">
             {location.assignedUsers.length === 0 ? (
               <p className="py-4 text-sm text-slate-600">No active users are assigned to this location.</p>
@@ -141,6 +150,15 @@ export default async function CoreAdminLocationDetailPage({
               ))
             )}
           </div>
+          {location.assignedUsersPage.totalItems > 0 ? (
+            <PaginationBar
+              page={location.assignedUsersPage.page}
+              pageSize={location.assignedUsersPage.pageSize}
+              totalItems={location.assignedUsersPage.totalItems}
+              itemLabel="active location assignments"
+              getPageHref={(nextPage) => `/admin/locations/${location.id}?accessPage=${nextPage}&accessPageSize=${location.assignedUsersPage.pageSize}`}
+            />
+          ) : null}
         </Panel>
 
         <Panel className="ogfi-detail-card">
