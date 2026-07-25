@@ -34,8 +34,14 @@ function accessibleCompanyPredicate(session: SessionContext, canManageTenantGlob
 }
 
 function parseDateRange(createdFrom?: string, createdTo?: string) {
-  const from = createdFrom ? new Date(`${createdFrom}T00:00:00.000Z`) : undefined;
-  const to = createdTo ? new Date(`${createdTo}T23:59:59.999Z`) : undefined;
+  const parseDate = (value: string | undefined, endOfDay = false) => {
+    if (!value) return undefined;
+    const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error("AUTH_INVALIDATION_DATE_INVALID");
+    return date;
+  };
+  const from = parseDate(createdFrom);
+  const to = parseDate(createdTo, true);
   if (from && to && from > to) throw new Error("AUTH_INVALIDATION_DATE_RANGE_INVALID");
   if (from && to && to.getTime() - from.getTime() > 366 * 24 * 60 * 60 * 1000) throw new Error("AUTH_INVALIDATION_DATE_RANGE_TOO_LONG");
   return { from, to };
@@ -130,21 +136,24 @@ export async function listAuthSessionInvalidations(
   const range = parseDateRange(values.createdFrom, values.createdTo);
   const pageSize = values.pageSize ?? 25;
   const requestedPage = values.page ?? 1;
+  const scopePredicate = accessibleCompanyPredicate(session, access.canManageTenantGlobal);
   const where = {
     tenantId: session.context.tenantId,
-    ...accessibleCompanyPredicate(session, access.canManageTenantGlobal),
-    ...(values.status ? { status: values.status } : {}),
-    ...(range.from || range.to ? { createdAt: { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) } } : {}),
-    ...(query
-      ? {
-          OR: [
+    AND: [
+      scopePredicate,
+      ...(values.status ? [{ status: values.status }] : []),
+      ...(range.from || range.to ? [{ createdAt: { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) } }] : []),
+      ...(query
+        ? [{
+            OR: [
             { reason: { contains: query, mode: "insensitive" as const } },
             { sourceEventType: { contains: query, mode: "insensitive" as const } },
             { sourceRecordId: { contains: query, mode: "insensitive" as const } },
             { targetUser: { OR: [{ displayName: { contains: query, mode: "insensitive" as const } }, { email: { contains: query, mode: "insensitive" as const } }] } },
-          ],
-        }
-      : {}),
+            ],
+          }]
+        : []),
+    ],
   };
   const totalItems = await prisma.authSessionInvalidation.count({ where });
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -195,6 +204,7 @@ export async function listAuthSessionInvalidations(
 
 export async function getAuthSessionInvalidation(session: SessionContext, id: string) {
   const access = await assertCanManageAuthInvalidations(session);
+  if (!z.string().uuid().safeParse(id).success) return null;
   return prisma.authSessionInvalidation.findFirst({
     where: { id, tenantId: session.context.tenantId, ...accessibleCompanyPredicate(session, access.canManageTenantGlobal) },
     select: {

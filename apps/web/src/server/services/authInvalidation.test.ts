@@ -43,6 +43,9 @@ describe("auth provider invalidation register", () => {
     expect(authInvalidationSource).toContain("totalPages");
     expect(authInvalidationSource).toContain('orderBy: [{ createdAt: "desc" }, { id: "desc" }]');
     expect(authInvalidationSource).toContain("scopeLabel");
+    expect(authInvalidationSource).toContain("scopePredicate");
+    expect(authInvalidationSource).toContain("safeParse(id)");
+    expect(authInvalidationSource).toContain("AUTH_INVALIDATION_DATE_INVALID");
     expect(authInvalidationSource).toContain("getAuthSessionInvalidation");
     expect(authInvalidationSource).not.toContain("include: {");
     expect(authInvalidationSource).toContain("completeAuthSessionInvalidation");
