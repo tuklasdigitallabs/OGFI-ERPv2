@@ -245,6 +245,8 @@ export default async function CoreAdministrationPage({
   const auditQuery = getSearchParam(params, "q");
   const auditEventType = getSearchParam(params, "eventType");
   const auditEntityType = getSearchParam(params, "entityType");
+  const auditEntityId = getSearchParam(params, "entityId");
+  const auditEntityIdIsValid = !auditEntityId || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(auditEntityId);
   const auditActor = getSearchParam(params, "actor");
   const auditRequestId = getSearchParam(params, "requestId");
   const auditOccurredFrom = getSearchParam(params, "occurredFrom");
@@ -262,6 +264,9 @@ export default async function CoreAdministrationPage({
   }
   if (auditEntityType) {
     auditFilters.entityType = auditEntityType;
+  }
+  if (auditEntityId && auditEntityIdIsValid) {
+    auditFilters.entityId = auditEntityId;
   }
   if (auditActor) {
     auditFilters.actor = auditActor;
@@ -338,7 +343,7 @@ export default async function CoreAdministrationPage({
     }, { activeTab }),
     activeTab === "users" || activeTab === "organization" ? listCoreAdminBrandOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
     activeTab === "users" || activeTab === "organization" ? listCoreAdminLocationOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
-    activeTab === "audit" ? listCoreAdminAuditEventPage(session, {
+    activeTab === "audit" && auditEntityIdIsValid ? listCoreAdminAuditEventPage(session, {
       ...auditFilters,
       pageSize: auditPageSize,
       ...(auditCursor ? { cursor: auditCursor } : {})
@@ -1207,13 +1212,19 @@ export default async function CoreAdministrationPage({
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge tone="info">Read-only</Badge>
-              {canExportAudit ? (
+              {canExportAudit && auditEntityIdIsValid ? (
                 <ButtonLink href={auditExportHref} tone="ghost" className="ogfi-chip">
                   Export CSV
                 </ButtonLink>
               ) : null}
             </div>
           </div>
+          {auditEntityId ? (
+            <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${auditEntityIdIsValid ? "border-blue-200 bg-blue-50 text-blue-900" : "border-amber-200 bg-amber-50 text-amber-900"}`} role="status">
+              {auditEntityIdIsValid ? `Filtered to Entity ID ${auditEntityId}.` : "The Entity ID filter is invalid. No audit query was run."}
+              <ButtonLink href="/admin?tab=audit" tone="ghost" className="ml-3 min-h-10">Clear filter</ButtonLink>
+            </div>
+          ) : null}
           <form className="ogfi-form-shell mb-4 grid gap-3 border-b border-slate-100 pb-4 md:grid-cols-3 xl:grid-cols-4">
             <input name="tab" type="hidden" value="audit" />
             <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -1241,6 +1252,15 @@ export default async function CoreAdministrationPage({
                 defaultValue={auditFilters.entityType}
                 name="entityType"
                 placeholder="PurchaseOrder"
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-medium text-slate-700">
+              Entity ID
+              <input
+                className="rounded-md border border-slate-300 px-3 py-2"
+                defaultValue={auditFilters.entityId}
+                name="entityId"
+                placeholder="Selected record UUID"
               />
             </label>
             <label className="grid gap-1 text-sm font-medium text-slate-700">
@@ -1318,7 +1338,7 @@ export default async function CoreAdministrationPage({
                       <p className="text-xs text-slate-500">Request {event.requestId}</p>
                     ) : null}
                     <ButtonLink
-                      href={`/admin/audit/${event.id}`}
+                      href={`/admin/audit/${event.id}?returnTo=${encodeURIComponent(`/admin?${auditPageParams.toString()}`)}`}
                       tone="ghost"
                       className="ogfi-chip mt-2"
                     >

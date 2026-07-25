@@ -42,3 +42,7 @@ Selected Supplier work is now split into URL-backed Overview, Catalog,
 Accreditation, and Audit sections. Catalog-only reads prevent inactive tabs
 from hydrating item links; Audit is a read-only handoff to bounded Admin Audit
 until a supplier-specific projection is approved.
+
+Supplier Audit handoff now reaches the real Admin Audit workspace and applies
+an exact selected-entity filter through paging, export, and event detail. The
+existing redacted, read-only audit authority remains unchanged.

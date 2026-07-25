@@ -86,6 +86,8 @@ describe("supplier master-data controls", () => {
     expect(page).toContain('label: "Catalog"');
     expect(page).toContain('label: "Accreditation"');
     expect(page).toContain('label: "Audit"');
+    expect(page).toContain("/admin?tab=audit&entityType=Supplier&entityId=");
+    expect(page).not.toContain("/admin/audit?entityType=Supplier");
     expect(page).toContain('supplierTab === "catalog"');
     expect(page).not.toContain('title="Deactivate Supplier Item Link"');
     expect(page).toContain('name="returnPath"');

@@ -639,7 +639,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               <div className="p-5 text-sm text-slate-700">
                 <p className="font-semibold text-slate-950">Supplier audit history is available in Admin Audit.</p>
                 <p className="mt-1">This read-only handoff does not expose raw event metadata here. Use the bounded, redacted Admin Audit workspace for the authoritative company-scoped history.</p>
-                <Link className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-4 font-semibold text-blue-700 hover:bg-slate-50" href={`/admin/audit?entityType=Supplier&entityId=${selectedSupplier.id}`}>Open Admin Audit</Link>
+                <Link className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-4 font-semibold text-blue-700 hover:bg-slate-50" href={`/admin?tab=audit&entityType=Supplier&entityId=${selectedSupplier.id}`}>Open Admin Audit</Link>
               </div>
             ) : null}
             {supplierTab === "accreditation" && selectedSupplier.status === "ACTIVE" ? (

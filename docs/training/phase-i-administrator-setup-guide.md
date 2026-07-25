@@ -67,6 +67,10 @@ and next action, Catalog for item links, Accreditation for supplier review, and
 Audit to open the authoritative Admin Audit history. The tabs preserve supplier
 filters and page context.
 
+From a Supplier's Audit tab, confirm that Admin Audit shows the selected
+Supplier Entity ID filter. Paging, export, and View Event must retain that
+filter; never rely on a broad entity-type search for one supplier.
+
 ## Common errors and recovery
 
 - Granting company-wide access to fix one missing record: assign the smallest correct scope.

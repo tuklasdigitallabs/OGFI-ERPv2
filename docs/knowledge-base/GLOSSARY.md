@@ -93,3 +93,4 @@
 | Option catalog                      | A server-authorized, bounded list of active master-data choices with deterministic paging and selected-value retention; it never grants mutation authority. |
 | Approval Inbox unavailable           | A truthful feature-disabled state shown when normalized approval routing is not enabled. It does not mean there are zero pending approvals and does not grant an alternate approval path. |
 | Active-tab projection               | A Core Administration read profile that loads only the selected workspace register and required option catalogs; inactive sections are not queried or shown as zero-valued metrics. |
+| Entity-scoped audit filter           | A UUID-validated, server-enforced Audit Trail predicate that narrows events to one authorized record and remains bound to cursor, export, and detail-return context. |

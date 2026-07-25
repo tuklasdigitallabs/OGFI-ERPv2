@@ -426,6 +426,7 @@ describe("core administration audit search wiring", () => {
     for (const fieldName of [
       "eventType",
       "entityType",
+      "entityId",
       "actor",
       "requestId",
       "occurredFrom",
@@ -450,6 +451,8 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("totalItems");
     expect(serviceSource).toContain("redactAuditJson");
     expect(serviceSource).toContain("filterHash");
+    expect(serviceSource).toContain("where.entityId = normalized.entityId");
+    expect(serviceSource).toContain("entityId: filters.entityId?.trim() || undefined");
     expect(serviceSource).not.toContain("take: 500");
     expect(serviceSource).toContain("const resolved = await resolveCoreAdminAuditWhere(session, {});");
     expect(serviceSource).toContain('actorEmail: ""');

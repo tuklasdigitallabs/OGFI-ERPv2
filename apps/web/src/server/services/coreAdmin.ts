@@ -4461,6 +4461,7 @@ const auditFilterInputSchema = z.object({
   query: z.string().trim().max(120).optional(),
   eventType: z.string().trim().max(120).optional(),
   entityType: z.string().trim().max(120).optional(),
+  entityId: z.string().uuid().optional(),
   actor: z.string().trim().max(120).optional(),
   requestId: z.string().trim().max(120).optional(),
   occurredFrom: z.string().trim().max(40).optional(),
@@ -4554,6 +4555,7 @@ export type CoreAdminAuditEventFilters = {
   query?: string | undefined;
   eventType?: string | undefined;
   entityType?: string | undefined;
+  entityId?: string | undefined;
   actor?: string | undefined;
   requestId?: string | undefined;
   occurredFrom?: string | undefined;
@@ -4593,6 +4595,7 @@ function normalizeAuditFilters(filters: CoreAdminAuditEventFilters = {}) {
     query: filters.query?.trim() || undefined,
     eventType: filters.eventType?.trim() || undefined,
     entityType: filters.entityType?.trim() || undefined,
+    entityId: filters.entityId?.trim() || undefined,
     actor: filters.actor?.trim() || undefined,
     requestId: filters.requestId?.trim() || undefined,
     occurredFrom: filters.occurredFrom?.trim() || undefined,
@@ -4675,6 +4678,7 @@ async function resolveCoreAdminAuditWhere(
   };
   if (normalized.eventType) where.eventType = { contains: normalized.eventType, mode: "insensitive" };
   if (normalized.entityType) where.entityType = { contains: normalized.entityType, mode: "insensitive" };
+  if (normalized.entityId) where.entityId = normalized.entityId;
   if (normalized.actor) {
     where.actor = { is: { OR: [
       { displayName: { contains: normalized.actor, mode: "insensitive" } },

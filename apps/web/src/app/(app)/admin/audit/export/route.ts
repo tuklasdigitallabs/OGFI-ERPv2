@@ -49,6 +49,10 @@ export async function GET(request: Request) {
   const query = url.searchParams.get("q");
   const eventType = url.searchParams.get("eventType");
   const entityType = url.searchParams.get("entityType");
+  const entityId = url.searchParams.get("entityId");
+  if (entityId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(entityId)) {
+    return new Response("Invalid entity ID filter", { status: 400 });
+  }
   const actor = url.searchParams.get("actor");
   const requestId = url.searchParams.get("requestId");
   const occurredFrom = url.searchParams.get("occurredFrom");
@@ -61,6 +65,9 @@ export async function GET(request: Request) {
   }
   if (entityType) {
     filters.entityType = entityType;
+  }
+  if (entityId) {
+    filters.entityId = entityId;
   }
   if (actor) {
     filters.actor = actor;

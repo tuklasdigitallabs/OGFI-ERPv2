@@ -25,9 +25,11 @@ function JsonPanel({
 }
 
 export default async function CoreAdminAuditEventDetailPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await getSessionContext();
   if (!session) {
@@ -49,6 +51,11 @@ export default async function CoreAdminAuditEventDetailPage({
   }
 
   const { id } = await params;
+  const detailParams = searchParams ? await searchParams : {};
+  const submittedReturnTo = Array.isArray(detailParams.returnTo) ? detailParams.returnTo[0] : detailParams.returnTo;
+  const returnTo = typeof submittedReturnTo === "string" && submittedReturnTo.startsWith("/admin?tab=audit")
+    ? submittedReturnTo
+    : "/admin?tab=audit";
   const event = await getCoreAdminAuditEventDetail(session, id);
   if (!event) {
     redirect("/admin");
@@ -65,7 +72,7 @@ export default async function CoreAdminAuditEventDetailPage({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm">
-              <ButtonLink href="/admin?tab=audit" tone="ghost" className="ogfi-chip">
+              <ButtonLink href={returnTo} tone="ghost" className="ogfi-chip">
                 Audit Trail
               </ButtonLink>
               <span className="text-slate-400">/</span>
@@ -75,7 +82,7 @@ export default async function CoreAdminAuditEventDetailPage({
               You are viewing one audit event. Return to Audit Trail to continue searching evidence.
             </p>
           </div>
-          <ButtonLink href="/admin?tab=audit" tone="secondary">
+          <ButtonLink href={returnTo} tone="secondary">
             Back to Audit Trail
           </ButtonLink>
         </div>
