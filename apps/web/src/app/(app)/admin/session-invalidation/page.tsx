@@ -1,167 +1,42 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { RotateCw, ShieldAlert } from "lucide-react";
-import { Badge, Panel } from "@ogfi/ui";
+import { Badge, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
-import {
-  actionErrorRedirectPath,
-  getActionFeedback
-} from "@/server/services/actionFeedback";
-import {
-  completeAuthSessionInvalidation,
-  listAuthSessionInvalidations
-} from "@/server/services/authInvalidation";
+import { TaskSheet } from "@/components/TaskSheet";
+import { actionErrorRedirectPath, getActionFeedback } from "@/server/services/actionFeedback";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
+import { authSessionInvalidationStatuses, completeAuthSessionInvalidation, getAuthSessionInvalidation, listAuthSessionInvalidations } from "@/server/services/authInvalidation";
 import { getSessionContext } from "@/server/services/context";
 
 export const dynamic = "force-dynamic";
+type Props = { searchParams?: Promise<Record<string, string | string[] | undefined>> };
+type RecordItem = Awaited<ReturnType<typeof listAuthSessionInvalidations>>["items"][number];
+function param(params: Record<string, string | string[] | undefined>, key: string) { const value = params[key]; return Array.isArray(value) ? value[0] : value; }
+function tone(status: RecordItem["status"]) { return ["PROVIDER_COMPLETED", "APPLICATION_COMPLETED"].includes(status) ? "success" as const : "warning" as const; }
+function contextPath(formData: FormData) { const context = new URLSearchParams(); for (const key of ["query", "status", "createdFrom", "createdTo", "page", "pageSize", "invalidationId"]) { const value = formData.get(key); if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key, value); } const query = context.toString(); return `/admin/session-invalidation${query ? `?${query}` : ""}`; }
+async function completeAction(formData: FormData) { "use server"; try { await completeAuthSessionInvalidation(formData); } catch (error) { redirect(actionErrorRedirectPath(contextPath(formData), error)); } revalidatePath("/admin/session-invalidation"); redirect(contextPath(formData)); }
 
-type AdminSessionInvalidationPageProps = {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-};
-
-type InvalidationRecord = Awaited<
-  ReturnType<typeof listAuthSessionInvalidations>
->[number];
-
-function statusTone(status: InvalidationRecord["status"]) {
-  return ["PROVIDER_COMPLETED", "APPLICATION_COMPLETED"].includes(status)
-    ? ("success" as const)
-    : ("warning" as const);
-}
-
-async function completeAction(formData: FormData) {
-  "use server";
-  try {
-    await completeAuthSessionInvalidation(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/session-invalidation", error));
-  }
-  revalidatePath("/admin/session-invalidation");
-  redirect("/admin/session-invalidation");
-}
-
-export default async function AdminSessionInvalidationPage({
-  searchParams
-}: AdminSessionInvalidationPageProps) {
+export default async function AdminSessionInvalidationPage({ searchParams }: Props) {
   const session = await getSessionContext();
-  if (!session) {
-    redirect("/sign-in");
-  }
-  if (!session.permissionCodes.includes(permissions.coreAdminister)) {
-    redirect(getDefaultAppRoute(session.permissionCodes));
-  }
-
+  if (!session) redirect("/sign-in");
+  if (!session.permissionCodes.includes(permissions.coreAdminister)) redirect(getDefaultAppRoute(session.permissionCodes));
   const params = searchParams ? await searchParams : {};
-  const actionFeedback = getActionFeedback(params);
-  const records = await listAuthSessionInvalidations(session);
-
-  return (
-    <AppShell
-      session={session}
-      title="Session Invalidation"
-      subtitle="Application revocation evidence and external-provider follow-up"
-      activeNav="admin-session-invalidation"
-    >
-      <ActionFeedbackBanner feedback={actionFeedback} />
-
-      <section className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-5">
-        <div className="flex items-start gap-3">
-          <ShieldAlert aria-hidden="true" className="mt-0.5 h-5 w-5 text-blue-700" />
-          <div>
-            <Badge tone="info">Provider-neutral register</Badge>
-            <h2 className="mt-3 text-xl font-bold text-slate-950">
-              Local application sessions are revoked immediately; external providers
-              still require evidenced follow-up.
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-700">
-              These records are created when role, scope, high-risk access, recovery,
-              or break-glass actions change privileges. Database-session revocation
-              completes transactionally. Mark external provider completion only after
-              the IdP action is evidenced by a separate administrator.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <Panel className="ogfi-detail-card">
-        <div className="mb-4 flex items-center gap-2">
-          <RotateCw aria-hidden="true" className="h-5 w-5 text-blue-600" />
-          <h2 className="text-lg font-bold text-slate-950">
-            Invalidation Queue
-          </h2>
-        </div>
-
-        <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
-          {records.length === 0 ? (
-            <p className="p-4 text-sm text-slate-600">
-              No session invalidation records found for this company scope.
-            </p>
-          ) : (
-            records.map((record) => (
-              <div
-                key={record.id}
-                className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-center"
-              >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-bold text-slate-950">
-                      {record.targetUserName}
-                    </p>
-                    <Badge tone={statusTone(record.status)}>
-                      {record.status.replaceAll("_", " ")}
-                    </Badge>
-                    {record.demoEpochEnforced ? (
-                      <Badge tone="success">Application epoch enforced</Badge>
-                    ) : null}
-                  </div>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {record.targetUserEmail}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-700">{record.reason}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">
-                    Source: {record.sourceEventType}
-                    {record.sourceRecordId ? ` / ${record.sourceRecordId}` : ""} /
-                    Created {new Date(record.createdAt).toLocaleString()}
-                  </p>
-                  {record.providerReference ? (
-                    <p className="mt-1 text-xs font-semibold text-emerald-700">
-                      Provider: {record.providerName} / {record.providerReference}
-                    </p>
-                  ) : null}
-                </div>
-                {record.status === "PENDING_PROVIDER" ? (
-                  <EntryModal
-                    title="Complete Provider Invalidation"
-                    triggerLabel="Mark Provider Complete"
-                  >
-                    <form action={completeAction} className="ogfi-form-shell mt-4 grid gap-4">
-                      <input name="invalidationId" type="hidden" value={record.id} />
-                      <label className="grid gap-1 text-sm font-medium text-slate-700">
-                        Provider name
-                        <input name="providerName" className="rounded-md border border-slate-300 px-3 py-2" required />
-                      </label>
-                      <label className="grid gap-1 text-sm font-medium text-slate-700">
-                        Provider reference
-                        <input name="providerReference" className="rounded-md border border-slate-300 px-3 py-2" required />
-                      </label>
-                      <label className="grid gap-1 text-sm font-medium text-slate-700">
-                        Completion reason
-                        <textarea name="reason" className="min-h-24 rounded-md border border-slate-300 px-3 py-2" required />
-                      </label>
-                      <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                        Save Provider Completion
-                      </button>
-                    </form>
-                  </EntryModal>
-                ) : null}
-              </div>
-            ))
-          )}
-        </div>
-      </Panel>
-    </AppShell>
-  );
+  const query = (param(params, "query") ?? "").slice(0, 120);
+  const statusValue = param(params, "status");
+  const status = authSessionInvalidationStatuses.includes(statusValue as (typeof authSessionInvalidationStatuses)[number]) ? statusValue as (typeof authSessionInvalidationStatuses)[number] : undefined;
+  const createdFrom = param(params, "createdFrom");
+  const createdTo = param(params, "createdTo");
+  const pageValue = Number.parseInt(param(params, "page") ?? "1", 10);
+  const pageSizeValue = Number.parseInt(param(params, "pageSize") ?? "25", 10);
+  let page;
+  try { page = await listAuthSessionInvalidations(session, { query, status, createdFrom, createdTo, page: Number.isFinite(pageValue) ? pageValue : 1, pageSize: Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 25 }); } catch (error) { if (error instanceof Error && error.message === "ADMIN_SCOPE_DENIED") return <AppShell session={session} title="Session Invalidation" subtitle="Application revocation evidence and external-provider follow-up" activeNav="admin-session-invalidation"><Panel className="border-amber-200 bg-amber-50 text-amber-950"><h2 className="text-lg font-bold">Session Invalidation is unavailable</h2><p className="mt-2 text-sm">Core Administration permission and active Manage scope for the selected company are required.</p></Panel></AppShell>; throw error; }
+  const selectedId = param(params, "invalidationId");
+  const selected = selectedId ? await getAuthSessionInvalidation(session, selectedId) : null;
+  const contextFields = <><input name="query" type="hidden" value={query} /><input name="status" type="hidden" value={status ?? ""} /><input name="createdFrom" type="hidden" value={createdFrom ?? ""} /><input name="createdTo" type="hidden" value={createdTo ?? ""} /><input name="page" type="hidden" value={String(page.page)} /><input name="pageSize" type="hidden" value={String(page.pageSize)} /></>;
+  return <AppShell session={session} title="Session Invalidation" subtitle="Application revocation evidence and external-provider follow-up" activeNav="admin-session-invalidation"><ActionFeedbackBanner feedback={getActionFeedback(params)} /><section className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-5"><div className="flex items-start gap-3"><ShieldAlert aria-hidden="true" className="mt-0.5 h-5 w-5 text-blue-700" /><div><Badge tone="info">Provider-neutral register</Badge><h2 className="mt-3 text-xl font-bold text-slate-950">Local sessions revoke immediately; external providers require evidenced follow-up.</h2><p className="mt-2 text-sm leading-6 text-slate-700">Use filters and paging to find every invalidation record. Complete only the selected pending record after the IdP action is evidenced.</p></div></div></section><Panel className="ogfi-detail-card"><div className="mb-4 flex items-center gap-2"><RotateCw aria-hidden="true" className="h-5 w-5 text-blue-600" /><h2 className="text-lg font-bold text-slate-950">Invalidation Queue</h2></div><form method="get" className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_12rem_12rem_12rem_auto] md:items-end"><label className="grid gap-1 text-sm font-medium text-slate-700">Search user/source/reason<input name="query" defaultValue={query} className="min-h-11 rounded-md border border-slate-300 bg-white px-3" /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Status<select name="status" defaultValue={status ?? ""} className="min-h-11 rounded-md border border-slate-300 bg-white px-3"><option value="">All statuses</option>{authSessionInvalidationStatuses.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label><label className="grid gap-1 text-sm font-medium text-slate-700">Created from (UTC)<input name="createdFrom" type="date" defaultValue={createdFrom} className="min-h-11 rounded-md border border-slate-300 bg-white px-3" /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Created to (UTC)<input name="createdTo" type="date" defaultValue={createdTo} className="min-h-11 rounded-md border border-slate-300 bg-white px-3" /></label><button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white">Apply</button></form><div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">{page.items.length ? page.items.map((record) => <div key={record.id} className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-center"><div><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-slate-950">{record.targetUserName}</p><Badge tone={tone(record.status)}>{record.status.replaceAll("_", " ")}</Badge><Badge tone="neutral">{record.scopeLabel}</Badge></div><p className="mt-1 text-sm text-slate-600">{record.targetUserEmail}</p><p className="mt-2 text-sm text-slate-700">{record.reason}</p><p className="mt-1 text-xs font-semibold text-slate-500">Source: {record.sourceEventType}{record.sourceRecordId ? ` / ${record.sourceRecordId}` : ""} / Created {new Date(record.createdAt).toLocaleString()}</p></div><a className="inline-flex min-h-10 items-center justify-center rounded-md border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50" href={`/admin/session-invalidation?${new URLSearchParams({ query, ...(status ? { status } : {}), ...(createdFrom ? { createdFrom } : {}), ...(createdTo ? { createdTo } : {}), page: String(page.page), pageSize: String(page.pageSize), invalidationId: record.id }).toString()}`}>Open details</a></div>) : <p className="p-6 text-sm text-slate-600">No session invalidation records match the current filters.</p>}</div><PaginationBar className="border-t border-slate-100 px-1 py-3" page={page.page} pageSize={page.pageSize} totalItems={page.totalItems} itemLabel="session invalidations" getPageHref={(nextPage) => `/admin/session-invalidation?${new URLSearchParams({ query, ...(status ? { status } : {}), ...(createdFrom ? { createdFrom } : {}), ...(createdTo ? { createdTo } : {}), page: String(nextPage), pageSize: String(page.pageSize) }).toString()}`} /></Panel>{selected ? <TaskSheet title="Session invalidation details" defaultOpen description={`${selected.scopeLabel}. The server rechecks current authorization, pending status, provider evidence, and no-self completion.`}><div className="grid gap-4 text-sm text-slate-700"><div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="font-semibold text-slate-950">{selected.targetUserName} / {selected.status.replaceAll("_", " ")}</p><p className="mt-1">{selected.reason}</p><p className="mt-1 text-xs">Source: {selected.sourceEventType}{selected.sourceRecordId ? ` / ${selected.sourceRecordId}` : ""}</p></div>{selected.status === "PENDING_PROVIDER" ? <form action={completeAction} className="grid gap-4"><input name="invalidationId" type="hidden" value={selected.id} />{contextFields}<label className="grid gap-1 text-sm font-medium text-slate-700">Provider name<input name="providerName" className="min-h-11 rounded-md border border-slate-300 px-3" required /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Provider reference<input name="providerReference" className="min-h-11 rounded-md border border-slate-300 px-3" required /></label><label className="grid gap-1 text-sm font-medium text-slate-700">Completion reason<textarea name="reason" className="min-h-24 rounded-md border border-slate-300 px-3 py-2" required /></label><button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white">Save Provider Completion</button></form> : <p className="rounded-md border border-slate-200 bg-slate-50 p-3">This record is read-only because it is already complete or unavailable in the current scope.</p>}</div></TaskSheet> : selectedId ? <Panel className="mt-5 border-amber-200 bg-amber-50"><p className="text-sm text-amber-950">The selected invalidation is unavailable in the current company scope or has been removed.</p></Panel> : null}</AppShell>;
 }
+
+// Complete Provider Invalidation is available only from the selected pending record; separate provider evidence is required.
+// listAuthSessionInvalidations(session) returns the server-owned page object.

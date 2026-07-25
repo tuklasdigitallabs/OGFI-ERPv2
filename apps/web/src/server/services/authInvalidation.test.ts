@@ -38,6 +38,13 @@ describe("auth provider invalidation register", () => {
     expect(migrationSource).toContain('CREATE TABLE "AuthSessionInvalidation"');
     expect(authInvalidationSource).toContain("recordAuthSessionInvalidation");
     expect(authInvalidationSource).toContain("listAuthSessionInvalidations");
+    expect(authInvalidationSource).toContain("authSessionInvalidationPageInputSchema");
+    expect(authInvalidationSource).toContain("totalItems");
+    expect(authInvalidationSource).toContain("totalPages");
+    expect(authInvalidationSource).toContain('orderBy: [{ createdAt: "desc" }, { id: "desc" }]');
+    expect(authInvalidationSource).toContain("scopeLabel");
+    expect(authInvalidationSource).toContain("getAuthSessionInvalidation");
+    expect(authInvalidationSource).not.toContain("include: {");
     expect(authInvalidationSource).toContain("completeAuthSessionInvalidation");
     expect(authInvalidationSource).toContain('status: "PENDING_PROVIDER"');
     expect(authInvalidationSource).toContain('status: "PROVIDER_COMPLETED"');
@@ -68,6 +75,10 @@ describe("auth provider invalidation register", () => {
     expect(adminPageSource).toContain("Complete Provider Invalidation");
     expect(adminPageSource).toContain("separate");
     expect(adminPageSource).toContain("listAuthSessionInvalidations(session)");
+    expect(adminPageSource).toContain("PaginationBar");
+    expect(adminPageSource).toContain("TaskSheet");
+    expect(adminPageSource).toContain("createdFrom");
+    expect(adminPageSource).toContain("Open details");
     expect(shellNavigationSource).toContain("Session Invalidation");
     expect(shellNavigationSource).toContain("/admin/session-invalidation");
     expect(actionFeedbackSource).toContain("AUTH_SESSION_INVALIDATION_NOT_FOUND");

@@ -97,3 +97,4 @@
 | Active-tab projection               | A Core Administration read profile that loads only the selected workspace register and required option catalogs; inactive sections are not queried or shown as zero-valued metrics. |
 | Entity-scoped audit filter           | A UUID-validated, server-enforced Audit Trail predicate that narrows events to one authorized record and remains bound to cursor, export, and detail-return context. |
 | Break-Glass bounded queue             | The server-paginated emergency-access register. It exposes exact filtered totals, deterministic pages, and a selected-record action sheet; it is not an exhaustive unbounded catalog. |
+| Session Invalidation bounded queue    | The server-paginated provider-follow-up register with exact filtered totals, UTC date/search filters, truthful company scope labels, and a selected pending-record completion action. |

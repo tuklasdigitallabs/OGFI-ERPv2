@@ -812,10 +812,10 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
         },
       });
       const companyOnlyRecords = await listAuthSessionInvalidations(staleSession);
-      expect(companyOnlyRecords.map((record) => record.id)).toContain(
+      expect(companyOnlyRecords.items.map((record) => record.id)).toContain(
         companyInvalidationId,
       );
-      expect(companyOnlyRecords.map((record) => record.id)).not.toContain(
+      expect(companyOnlyRecords.items.map((record) => record.id)).not.toContain(
         globalInvalidationId,
       );
       const inaccessibleError = await completeAuthSessionInvalidation(
@@ -881,7 +881,7 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
         },
       });
       const tenantAdminRecords = await listAuthSessionInvalidations(staleSession);
-      expect(tenantAdminRecords.map((record) => record.id)).toEqual(
+      expect(tenantAdminRecords.items.map((record) => record.id)).toEqual(
         expect.arrayContaining([companyInvalidationId, globalInvalidationId]),
       );
       await completeAuthSessionInvalidation(completionForm(globalInvalidationId));

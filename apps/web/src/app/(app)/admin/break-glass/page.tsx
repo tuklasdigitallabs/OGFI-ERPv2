@@ -18,12 +18,11 @@ function param(params: Record<string, string | string[] | undefined>, key: strin
 function humanize(value: string) { return value.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
 function tone(status: Grant["status"]) { return status === "ACTIVE" ? "destructive" as const : status === "PENDING_REVIEW" ? "warning" as const : status === "POST_REVIEWED" ? "success" as const : "neutral" as const; }
 function contextPath(formData: FormData) { const context = new URLSearchParams(); for (const key of ["query", "status", "targetUserQuery", "locationQuery", "page", "pageSize", "grantId"]) { const value = formData.get(key); if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key, value); } const query = context.toString(); return `/admin/break-glass${query ? `?${query}` : ""}`; }
-async function run(action: (formData: FormData) => Promise<void>, formData: FormData) { "use server"; try { await action(formData); } catch (error) { redirect(actionErrorRedirectPath(contextPath(formData), error)); } revalidatePath("/admin/break-glass"); redirect(contextPath(formData)); }
-async function requestAction(formData: FormData) { "use server"; await run(requestBreakGlassAccess, formData); }
-async function approveAction(formData: FormData) { "use server"; await run(approveBreakGlassAccess, formData); }
-async function rejectAction(formData: FormData) { "use server"; await run(rejectBreakGlassAccess, formData); }
-async function revokeAction(formData: FormData) { "use server"; await run(revokeBreakGlassAccess, formData); }
-async function postReviewAction(formData: FormData) { "use server"; await run(completeBreakGlassPostReview, formData); }
+async function requestAction(formData: FormData) { "use server"; try { await requestBreakGlassAccess(formData); } catch (error) { redirect(actionErrorRedirectPath(contextPath(formData), error)); } revalidatePath("/admin/break-glass"); redirect(contextPath(formData)); }
+async function approveAction(formData: FormData) { "use server"; try { await approveBreakGlassAccess(formData); } catch (error) { redirect(actionErrorRedirectPath(contextPath(formData), error)); } revalidatePath("/admin/break-glass"); redirect(contextPath(formData)); }
+async function rejectAction(formData: FormData) { "use server"; try { await rejectBreakGlassAccess(formData); } catch (error) { redirect(actionErrorRedirectPath(contextPath(formData), error)); } revalidatePath("/admin/break-glass"); redirect(contextPath(formData)); }
+async function revokeAction(formData: FormData) { "use server"; try { await revokeBreakGlassAccess(formData); } catch (error) { redirect(actionErrorRedirectPath(contextPath(formData), error)); } revalidatePath("/admin/break-glass"); redirect(contextPath(formData)); }
+async function postReviewAction(formData: FormData) { "use server"; try { await completeBreakGlassPostReview(formData); } catch (error) { redirect(actionErrorRedirectPath(contextPath(formData), error)); } revalidatePath("/admin/break-glass"); redirect(contextPath(formData)); }
 
 export default async function AdminBreakGlassPage({ searchParams }: Props) {
   const session = await getSessionContext();

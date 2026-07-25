@@ -58,6 +58,8 @@ The affected user signs in again with organization code, email, password, and ru
 
 If an external provider is configured and a follow-up record exists, use `Admin` → `Session Invalidation`. Select `Mark Provider Complete` only after the external action is finished and its provider name and reference are available. A separate administrator must confirm it.
 
+The Session Invalidation register is a bounded, server-paginated queue. Filter by status, user/source/reason text, and inclusive UTC creation dates; tenant-wide records are labeled separately from selected-company records. Open one record to complete provider evidence. Completed or unavailable records remain read-only.
+
 ## Related Articles
 
 - Signing In And Selecting Your Location

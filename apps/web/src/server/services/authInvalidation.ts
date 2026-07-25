@@ -13,6 +13,33 @@ const completeAuthSessionInvalidationSchema = z.object({
   providerReference: z.string().trim().min(2).max(240),
   reason: z.string().trim().min(5).max(500),
 });
+export const authSessionInvalidationStatuses = [
+  "PENDING_PROVIDER",
+  "PROVIDER_COMPLETED",
+  "APPLICATION_COMPLETED",
+] as const;
+const authSessionInvalidationPageInputSchema = z.object({
+  query: z.string().trim().max(120).optional(),
+  status: z.enum(authSessionInvalidationStatuses).optional(),
+  createdFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  createdTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  page: z.number().int().min(1).max(10_000).optional(),
+  pageSize: z.number().int().min(10).max(100).optional(),
+});
+
+function accessibleCompanyPredicate(session: SessionContext, canManageTenantGlobal: boolean) {
+  return canManageTenantGlobal
+    ? { OR: [{ companyId: session.context.companyId }, { companyId: null }] }
+    : { companyId: session.context.companyId };
+}
+
+function parseDateRange(createdFrom?: string, createdTo?: string) {
+  const from = createdFrom ? new Date(`${createdFrom}T00:00:00.000Z`) : undefined;
+  const to = createdTo ? new Date(`${createdTo}T23:59:59.999Z`) : undefined;
+  if (from && to && from > to) throw new Error("AUTH_INVALIDATION_DATE_RANGE_INVALID");
+  if (from && to && to.getTime() - from.getTime() > 366 * 24 * 60 * 60 * 1000) throw new Error("AUTH_INVALIDATION_DATE_RANGE_TOO_LONG");
+  return { from, to };
+}
 
 async function assertCanManageAuthInvalidations(session: SessionContext) {
   await requirePermission(session, permissions.coreAdminister);
@@ -93,29 +120,51 @@ export async function recordAuthSessionInvalidation(
   });
 }
 
-export async function listAuthSessionInvalidations(session: SessionContext) {
+export async function listAuthSessionInvalidations(
+  session: SessionContext,
+  input: z.input<typeof authSessionInvalidationPageInputSchema> = {},
+) {
   const access = await assertCanManageAuthInvalidations(session);
+  const values = authSessionInvalidationPageInputSchema.parse(input);
+  const query = values.query?.slice(0, 120) ?? "";
+  const range = parseDateRange(values.createdFrom, values.createdTo);
+  const pageSize = values.pageSize ?? 25;
+  const requestedPage = values.page ?? 1;
+  const where = {
+    tenantId: session.context.tenantId,
+    ...accessibleCompanyPredicate(session, access.canManageTenantGlobal),
+    ...(values.status ? { status: values.status } : {}),
+    ...(range.from || range.to ? { createdAt: { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) } } : {}),
+    ...(query
+      ? {
+          OR: [
+            { reason: { contains: query, mode: "insensitive" as const } },
+            { sourceEventType: { contains: query, mode: "insensitive" as const } },
+            { sourceRecordId: { contains: query, mode: "insensitive" as const } },
+            { targetUser: { OR: [{ displayName: { contains: query, mode: "insensitive" as const } }, { email: { contains: query, mode: "insensitive" as const } }] } },
+          ],
+        }
+      : {}),
+  };
+  const totalItems = await prisma.authSessionInvalidation.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
   const records = await prisma.authSessionInvalidation.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      ...(access.canManageTenantGlobal
-        ? {
-            OR: [
-              { companyId: session.context.companyId },
-              { companyId: null },
-            ],
-          }
-        : { companyId: session.context.companyId }),
+    where,
+    select: {
+      id: true, companyId: true, status: true, targetUserId: true, requestedByUserId: true,
+      reason: true, sourceEventType: true, sourceRecordId: true, demoEpochEnforced: true,
+      providerName: true, providerReference: true, completedAt: true, createdAt: true,
+      targetUser: { select: { displayName: true, email: true } },
+      requestedByUser: { select: { displayName: true, email: true } },
     },
-    include: {
-      targetUser: true,
-      requestedByUser: true,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
   });
 
-  return records.map((record) => ({
+  return {
+    items: records.map((record) => ({
     id: record.id,
     status: record.status,
     targetUserName: record.targetUser.displayName || record.targetUser.email,
@@ -131,7 +180,31 @@ export async function listAuthSessionInvalidations(session: SessionContext) {
     providerReference: record.providerReference,
     completedAt: record.completedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
-  }));
+    scopeLabel: record.companyId ? "Selected company" : "Tenant-wide",
+    })),
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    query,
+    status: values.status ?? null,
+    createdFrom: values.createdFrom ?? null,
+    createdTo: values.createdTo ?? null,
+  };
+}
+
+export async function getAuthSessionInvalidation(session: SessionContext, id: string) {
+  const access = await assertCanManageAuthInvalidations(session);
+  return prisma.authSessionInvalidation.findFirst({
+    where: { id, tenantId: session.context.tenantId, ...accessibleCompanyPredicate(session, access.canManageTenantGlobal) },
+    select: {
+      id: true, companyId: true, status: true, targetUserId: true, requestedByUserId: true,
+      reason: true, sourceEventType: true, sourceRecordId: true, demoEpochEnforced: true,
+      providerName: true, providerReference: true, completedAt: true, createdAt: true,
+      targetUser: { select: { displayName: true, email: true } },
+      requestedByUser: { select: { displayName: true, email: true } },
+    },
+  }).then((record) => record ? { ...record, targetUserName: record.targetUser.displayName || record.targetUser.email, targetUserEmail: record.targetUser.email, requestedByName: record.requestedByUser ? record.requestedByUser.displayName || record.requestedByUser.email : null, scopeLabel: record.companyId ? "Selected company" : "Tenant-wide", createdAt: record.createdAt.toISOString(), completedAt: record.completedAt?.toISOString() ?? null } : null);
 }
 
 export async function completeAuthSessionInvalidation(formData: FormData) {
