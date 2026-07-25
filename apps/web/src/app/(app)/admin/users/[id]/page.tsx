@@ -164,13 +164,14 @@ async function deactivateRoleAssignment(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const returnPath = String(formData.get("returnPath") || "/admin/users/" + targetUserId + "?section=roles");
   try {
     await deactivateUserRoleAssignment(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 export default async function CoreAdminUserDetailPage({
@@ -231,6 +232,7 @@ export default async function CoreAdminUserDetailPage({
   const scopeType = Array.isArray(resolvedSearchParams.scopeType) ? resolvedSearchParams.scopeType[0] : resolvedSearchParams.scopeType;
   const scopePageValue = Number.parseInt(String(resolvedSearchParams.scopePage ?? "1"), 10);
   const scopeActionId = Array.isArray(resolvedSearchParams.scopeActionId) ? resolvedSearchParams.scopeActionId[0] : resolvedSearchParams.scopeActionId;
+  const roleActionId = Array.isArray(resolvedSearchParams.roleActionId) ? resolvedSearchParams.roleActionId[0] : resolvedSearchParams.roleActionId;
   const sectionValue = Array.isArray(resolvedSearchParams.section) ? resolvedSearchParams.section[0] : resolvedSearchParams.section;
   const section: UserAccessSection = ["overview", "roles", "scopes", "requests", "audit"].includes(sectionValue ?? "")
     ? (sectionValue as UserAccessSection)
@@ -319,6 +321,8 @@ export default async function CoreAdminUserDetailPage({
     scopesPage: scopePage,
   };
   const selectedScope = scopeActionId ? scopedUser.scopes.find((scope) => scope.id === scopeActionId) : null;
+  const selectedRole = roleActionId ? user.roles.find((role) => role.assignmentId === roleActionId) : null;
+  const roleReturnPath = `/admin/users/${id}?section=roles${user.rolesPage.page > 1 ? `&assignedRolePage=${user.rolesPage.page}` : ""}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`;
   const scopeReturnPath = `/admin/users/${id}?scopePage=${scopePage.page}${scopePage.query ? `&scopeQuery=${encodeURIComponent(scopePage.query)}` : ""}${scopePage.scopeType ? `&scopeType=${encodeURIComponent(scopePage.scopeType)}` : ""}`;
   const requestReturnPath = `/admin/users/${id}?section=requests&requestKind=${requestKind}${requestActionId ? `&requestActionId=${encodeURIComponent(requestActionId)}` : ""}${scopeRequestStatusValue ? `&scopeRequestStatus=${encodeURIComponent(scopeRequestStatusValue)}` : ""}${roleRequestStatusValue ? `&roleRequestStatus=${encodeURIComponent(roleRequestStatusValue)}` : ""}${requestKind === "scope" ? `&scopeRequestPage=${user?.highRiskScopeRequestPage.page ?? 1}` : `&roleRequestPage=${user?.sensitiveRoleRequestPage.page ?? 1}`}`;
   const selectedScopeRequest = requestKind === "scope" && requestActionId
@@ -422,6 +426,7 @@ export default async function CoreAdminUserDetailPage({
             {user.canMutateRoles ? <Badge tone="warning">Mutable</Badge> : <Badge>Self protected</Badge>}
           </div>
           <form className="mt-4 flex flex-wrap gap-2" method="get">
+            <input name="section" type="hidden" value="roles" />
             <label className="grid min-w-56 flex-1 gap-1 text-sm font-medium text-slate-700">
               Search assigned roles
               <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="assignedRoleQuery" defaultValue={user.rolesPage.query} placeholder="Role name or code" />
@@ -442,32 +447,53 @@ export default async function CoreAdminUserDetailPage({
                     <p className="font-semibold text-slate-950">{role.name}</p>
                     <p className="mt-1 text-xs font-semibold text-slate-500">{role.code} · {role.status}</p>
                     <p className="mt-2 text-sm text-slate-600">Assigned {role.startsAt}</p>
-                    <ButtonLink href={`/admin/roles/${role.roleId}`} tone="ghost" className="mt-2 min-h-11 px-0 text-sm text-blue-700">View role detail</ButtonLink>
+                    <div className="mt-2 flex flex-wrap gap-3">
+                      <ButtonLink href={`/admin/roles/${role.roleId}`} tone="ghost" className="min-h-11 px-0 text-sm text-blue-700">View role detail</ButtonLink>
+                      {user.canMutateRoles && role.canMutate ? (
+                        <ButtonLink href={`${roleReturnPath}&roleActionId=${encodeURIComponent(role.assignmentId)}`} tone="ghost" className="min-h-11 px-0 text-sm text-amber-700">Open role controls</ButtonLink>
+                      ) : null}
+                    </div>
                   </div>
-                  {user.canMutateRoles && role.canMutate ? (
-                    <EntryModal title="Deactivate Role" triggerLabel="Deactivate Role">
-                      <form action={deactivateRoleAssignment} className="ogfi-form-shell mt-4 grid gap-3">
-                        <input name="targetUserId" type="hidden" value={user.id} />
-                        <input name="assignmentId" type="hidden" value={role.assignmentId} />
-                        <label className="grid gap-1 text-sm font-medium text-slate-700">
-                          Role deactivation reason
-                          <input
-                            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                            name="reason"
-                            required
-                          />
-                        </label>
-                        <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
-                          Deactivate Role
-                        </button>
-                      </form>
-                    </EntryModal>
-                  ) : null}
                 </div>
               ))
             )}
           </div>
-          {user.rolesPage.totalItems > 0 ? <PaginationBar page={user.rolesPage.page} pageSize={user.rolesPage.pageSize} totalItems={user.rolesPage.totalItems} itemLabel="assigned roles" getPageHref={(nextPage) => `/admin/users/${user.id}?assignedRolePage=${nextPage}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`} /> : null}
+          {user.rolesPage.totalItems > 0 ? <PaginationBar page={user.rolesPage.page} pageSize={user.rolesPage.pageSize} totalItems={user.rolesPage.totalItems} itemLabel="assigned roles" getPageHref={(nextPage) => `/admin/users/${user.id}?section=roles&assignedRolePage=${nextPage}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`} /> : null}
+          {roleActionId ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4" data-testid="admin-user-role-controls">
+              {selectedRole ? (
+                <>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-amber-900">Role controls</p>
+                      <p className="mt-1 font-semibold text-slate-950">{selectedRole.name} ({selectedRole.code})</p>
+                      <p className="mt-1 text-sm text-slate-700">Status: {selectedRole.status} · Assigned {selectedRole.startsAt}</p>
+                    </div>
+                    <ButtonLink href={roleReturnPath} tone="ghost" className="min-h-11">Close controls</ButtonLink>
+                  </div>
+                  {user.canMutateRoles && selectedRole.canMutate ? (
+                    <form action={deactivateRoleAssignment} className="ogfi-form-shell mt-4 grid gap-3">
+                      <input name="targetUserId" type="hidden" value={user.id} />
+                      <input name="assignmentId" type="hidden" value={selectedRole.assignmentId} />
+                      <input name="returnPath" type="hidden" value={roleReturnPath} />
+                      <p className="text-sm text-amber-900">Deactivation revokes this user’s role assignment after server-side eligibility and concurrency checks.</p>
+                      <label className="grid gap-1 text-sm font-medium text-slate-700">
+                        Role deactivation reason
+                        <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="reason" minLength={5} required />
+                      </label>
+                      <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
+                        Deactivate Role
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="mt-3 text-sm text-amber-900">This role cannot be changed from the current user context. Server-side authorization and self-protection controls remain authoritative.</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-amber-900">This role assignment is no longer on the selected page or is no longer active. Refresh the role list before taking action.</p>
+              )}
+            </div>
+          ) : null}
         </Panel>
         </> : null}
 

@@ -874,3 +874,8 @@ Update this register only when implementation state, release scope, a confirmed 
 - The detail service now loads assigned-role rows, role totals, and effective-permission projections only for Overview and Roles. Role identifiers remain available for Roles and role Requests so the assignable-role catalog can exclude active assignments; non-role sections receive an explicit empty role projection.
 - Overview/Roles retain their role and permission KPIs; Scopes, Requests, and Audit render an unavailable marker rather than implying a loaded count. Role mutation and authorization services remain unchanged.
 - Evidence: Core Admin focused tests 34/34, web TypeScript, lint, production build, and diff checks pass. PostgreSQL query-count/isolation/query-plan, responsive browser, hosted recovery, and UAT remain open; Administration and Phase I are not complete.
+
+### DEC-0168 Administration User Access role action composer — July 25, 2026
+- Replaced repeated per-row role deactivation forms with one URL-selected role controls composer. Selection preserves the bounded assigned-role search/page context, shows role/status/consequence context, requires a five-character reason, and returns to the same filtered page after success or error.
+- Stale, filtered-out, or non-mutable selections are explicitly read-only; the existing server mutation remains authoritative for tenant/company scope, self-protection, sensitive-role and approval-rule restrictions, CAS/locking, privilege epoch, and audit.
+- Evidence: Core Admin focused tests 34/34, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT remain open; Administration and Phase I are not complete.

@@ -499,7 +499,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).not.toContain("include: {\n        company: true,\n        steps:");
   });
 
-  test("admin user access lifecycle forms use modal entry surfaces", () => {
+  test("admin user access lifecycle forms use focused entry surfaces", () => {
     const detailPageSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),
       "utf8"
@@ -507,7 +507,6 @@ describe("core administration audit search wiring", () => {
 
     expect(detailPageSource).toContain("EntryModal");
     for (const title of [
-      "Deactivate Role",
       "Deactivate Scope",
       "Assign Location Scope",
       "Assign Role"
@@ -522,6 +521,13 @@ describe("core administration audit search wiring", () => {
     ]) {
       expect(detailPageSource).toContain(`action={${actionName}}`);
     }
+    expect(detailPageSource).toContain("const roleActionId =");
+    expect(detailPageSource).toContain("Open role controls");
+    expect(detailPageSource).toContain('data-testid="admin-user-role-controls"');
+    expect(detailPageSource).toContain('name="returnPath"');
+    expect(detailPageSource).toContain('name="reason" minLength={5} required');
+    expect(detailPageSource).toContain("This role assignment is no longer on the selected page");
+    expect(detailPageSource).not.toContain('<EntryModal title="Deactivate Role"');
   });
 
   test("user detail assignment catalogs are bounded, searchable, and do not serialize role permissions", () => {
