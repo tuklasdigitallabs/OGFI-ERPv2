@@ -33164,27 +33164,6 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
-    "id": "server/services/purchaseRequests.ts#listPurchaseRequestDraftOptions",
-    "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.purchaseRequestCreate",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "session-delegated-by-caller",
-      "live-permission",
-      "tenant-company-scope-query"
-    ],
-    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
-  },
-  {
     "id": "server/services/purchaseRequests.ts#listPurchaseRequestMyTaskPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.purchaseRequestSubmit",
