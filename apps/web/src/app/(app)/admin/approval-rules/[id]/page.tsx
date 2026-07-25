@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import { getCoreAdminApprovalRuleDetail } from "@/server/services/coreAdmin";
@@ -8,9 +8,11 @@ import { getSessionContext } from "@/server/services/context";
 export const dynamic = "force-dynamic";
 
 export default async function CoreAdminApprovalRuleDetailPage({
-  params
+  params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await getSessionContext();
   if (!session) {
@@ -21,7 +23,17 @@ export default async function CoreAdminApprovalRuleDetailPage({
   }
 
   const { id } = await params;
-  const rule = await getCoreAdminApprovalRuleDetail(session, id);
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const stepsPageValue = Number.parseInt(String(resolvedSearchParams.stepsPage ?? "1"), 10);
+  const stepsPageSizeValue = Number.parseInt(String(resolvedSearchParams.stepsPageSize ?? "25"), 10);
+  const auditPageValue = Number.parseInt(String(resolvedSearchParams.auditPage ?? "1"), 10);
+  const auditPageSizeValue = Number.parseInt(String(resolvedSearchParams.auditPageSize ?? "25"), 10);
+  const rule = await getCoreAdminApprovalRuleDetail(session, id, {
+    stepsPage: Number.isFinite(stepsPageValue) ? stepsPageValue : 1,
+    stepsPageSize: Number.isFinite(stepsPageSizeValue) ? stepsPageSizeValue : 25,
+    auditPage: Number.isFinite(auditPageValue) ? auditPageValue : 1,
+    auditPageSize: Number.isFinite(auditPageSizeValue) ? auditPageSizeValue : 25,
+  });
   if (!rule) {
     redirect("/admin");
   }
@@ -67,11 +79,11 @@ export default async function CoreAdminApprovalRuleDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Steps</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{rule.steps.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{rule.stepsPage.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Created</p>
-          <p className="mt-2 text-sm font-semibold text-slate-950">{rule.createdAt}</p>
+          <p className="mt-2 text-sm font-semibold text-slate-950">{new Date(rule.createdAt).toLocaleString("en-PH", { timeZone: rule.timezone })}</p>
         </Panel>
       </div>
 
@@ -80,7 +92,7 @@ export default async function CoreAdminApprovalRuleDetailPage({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-950">Approval Steps</h2>
-              <p className="text-sm text-slate-500">Assigned approver chain</p>
+              <p className="text-sm text-slate-500">Showing {rule.steps.length} of {rule.stepsPage.totalItems} approval steps</p>
             </div>
             <Badge tone="info">Read-only</Badge>
           </div>
@@ -96,7 +108,7 @@ export default async function CoreAdminApprovalRuleDetailPage({
                         Step {step.stepOrder}: {step.approverType}
                       </p>
                       <p className="text-sm text-slate-700">{step.assigneeName}</p>
-                      <p className="text-xs text-slate-500">{step.assigneeCode}</p>
+                      <p className="text-xs text-slate-500">{step.assigneeCode} / {step.assigneeStatus}</p>
                     </div>
                     <Badge tone={step.required ? "success" : "neutral"}>
                       {step.required ? "Required" : "Optional"}
@@ -109,6 +121,15 @@ export default async function CoreAdminApprovalRuleDetailPage({
               ))
             )}
           </div>
+          {rule.stepsPage.totalItems > 0 ? (
+            <PaginationBar
+              page={rule.stepsPage.page}
+              pageSize={rule.stepsPage.pageSize}
+              totalItems={rule.stepsPage.totalItems}
+              itemLabel="approval steps"
+              getPageHref={(nextPage) => `/admin/approval-rules/${rule.id}?stepsPage=${nextPage}&stepsPageSize=${rule.stepsPage.pageSize}&auditPage=${rule.auditPage.page}&auditPageSize=${rule.auditPage.pageSize}`}
+            />
+          ) : null}
         </Panel>
 
         <Panel className="ogfi-detail-card">
@@ -133,6 +154,7 @@ export default async function CoreAdminApprovalRuleDetailPage({
 
         <Panel className="xl:col-span-2">
           <h2 className="text-lg font-bold text-slate-950">Related Audit Activity</h2>
+          <p className="mt-1 text-sm text-slate-500">Showing {rule.relatedAuditEvents.length} of {rule.auditPage.totalItems} events in the selected company.</p>
           {rule.relatedAuditEvents.length === 0 ? (
             <p className="mt-4 text-sm text-slate-600">
               No recent controlled actions reference this approval rule.
@@ -146,12 +168,21 @@ export default async function CoreAdminApprovalRuleDetailPage({
                     {event.entityType} / {event.entityId}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {event.actorName} / {event.occurredAt}
+                    {event.actorName} / {new Date(event.occurredAt).toLocaleString("en-PH", { timeZone: rule.timezone })}
                   </p>
                 </div>
               ))}
             </div>
           )}
+          {rule.auditPage.totalItems > 0 ? (
+            <PaginationBar
+              page={rule.auditPage.page}
+              pageSize={rule.auditPage.pageSize}
+              totalItems={rule.auditPage.totalItems}
+              itemLabel="audit events"
+              getPageHref={(nextPage) => `/admin/approval-rules/${rule.id}?stepsPage=${rule.stepsPage.page}&stepsPageSize=${rule.stepsPage.pageSize}&auditPage=${nextPage}&auditPageSize=${rule.auditPage.pageSize}`}
+            />
+          ) : null}
         </Panel>
       </div>
 

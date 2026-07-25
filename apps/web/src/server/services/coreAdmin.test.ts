@@ -902,4 +902,24 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).not.toContain("company.brands.map");
     expect(pageSource).not.toContain("company.locations.map");
   });
+
+  test("approval rule detail bounds steps and related audit activity", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/approval-rules/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("getCoreAdminApprovalRuleDetail");
+    expect(serviceSource).toContain('z.string().uuid().safeParse(approvalRuleId)');
+    expect(serviceSource).toContain("stepTotal");
+    expect(serviceSource).toContain("auditTotal");
+    expect(serviceSource).toContain("stepsPageSize");
+    expect(serviceSource).toContain("auditPageSize");
+    expect(serviceSource).toContain('orderBy: [{ stepOrder: "asc" }, { id: "asc" }]');
+    expect(serviceSource).toContain('orderBy: [{ occurredAt: "desc" }, { id: "desc" }]');
+    expect(serviceSource).toContain("select: { id: true, code: true, name: true, status: true }");
+    expect(serviceSource).not.toContain("steps: {\n        orderBy: { stepOrder: \"asc\" }");
+    expect(pageSource).toContain('itemLabel="approval steps"');
+    expect(pageSource).toContain('itemLabel="audit events"');
+    expect(pageSource).toContain("rule.stepsPage.totalItems");
+    expect(pageSource).toContain("rule.auditPage.totalItems");
+    expect(pageSource).toContain("rule.timezone");
+  });
 });

@@ -3800,12 +3800,38 @@ export async function deactivateUserScopeAssignment(formData: FormData) {
 export async function getCoreAdminApprovalRuleDetail(
   session: SessionContext,
   approvalRuleId: string,
+  input: {
+    stepsPage?: number;
+    stepsPageSize?: number;
+    auditPage?: number;
+    auditPageSize?: number;
+  } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
+  if (!z.string().uuid().safeParse(approvalRuleId).success) {
+    return null;
+  }
   const canViewTenantRule = (await getGrantedPermissionCodes(session)).includes(
     permissions.tenantRoleAdminister,
   );
+
+  const rawStepsPageSize = Number(input.stepsPageSize ?? 25);
+  const rawStepsPage = Number(input.stepsPage ?? 1);
+  const rawAuditPageSize = Number(input.auditPageSize ?? 25);
+  const rawAuditPage = Number(input.auditPage ?? 1);
+  const stepsPageSize = Number.isFinite(rawStepsPageSize)
+    ? Math.min(100, Math.max(10, Math.floor(rawStepsPageSize)))
+    : 25;
+  const requestedStepsPage = Number.isFinite(rawStepsPage)
+    ? Math.min(100_000, Math.max(1, Math.floor(rawStepsPage)))
+    : 1;
+  const auditPageSize = Number.isFinite(rawAuditPageSize)
+    ? Math.min(100, Math.max(10, Math.floor(rawAuditPageSize)))
+    : 25;
+  const requestedAuditPage = Number.isFinite(rawAuditPage)
+    ? Math.min(100_000, Math.max(1, Math.floor(rawAuditPage)))
+    : 1;
 
   const rule = await prisma.approvalRule.findFirst({
     where: {
@@ -3816,10 +3842,15 @@ export async function getCoreAdminApprovalRuleDetail(
         ...(canViewTenantRule ? [{ companyId: null }] : []),
       ],
     },
-    include: {
-      company: true,
-      steps: {
-        orderBy: { stepOrder: "asc" },
+    select: {
+      id: true,
+      transactionType: true,
+      scopeFilters: true,
+      priority: true,
+      isActive: true,
+      createdAt: true,
+      company: {
+        select: { tradingName: true, legalName: true, timezone: true },
       },
     },
   });
@@ -3828,40 +3859,60 @@ export async function getCoreAdminApprovalRuleDetail(
     return null;
   }
 
-  const roleIds = rule.steps
-    .map((step) => step.roleId)
-    .filter((roleId): roleId is string => Boolean(roleId));
-  const userIds = rule.steps
-    .map((step) => step.userId)
-    .filter((userId): userId is string => Boolean(userId));
-
-  const [roles, users, relatedAuditEvents] = await Promise.all([
-    prisma.role.findMany({
-      where: {
-        id: { in: roleIds },
-        tenantId: session.context.tenantId,
-      },
-    }),
-    prisma.user.findMany({
-      where: {
-        id: { in: userIds },
-        tenantId: session.context.tenantId,
+  const stepTotal = await prisma.approvalRuleStep.count({
+    where: { approvalRuleId: rule.id },
+  });
+  const auditWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    metadata: { path: ["approvalRuleId"], equals: rule.id },
+  };
+  const auditTotal = await prisma.auditEvent.count({ where: auditWhere });
+  const stepsPageCount = Math.max(1, Math.ceil(stepTotal / stepsPageSize));
+  const stepsPage = Math.min(requestedStepsPage, stepsPageCount);
+  const auditPageCount = Math.max(1, Math.ceil(auditTotal / auditPageSize));
+  const auditPage = Math.min(requestedAuditPage, auditPageCount);
+  const [stepRows, relatedAuditEvents] = await Promise.all([
+    prisma.approvalRuleStep.findMany({
+      where: { approvalRuleId: rule.id },
+      orderBy: [{ stepOrder: "asc" }, { id: "asc" }],
+      skip: (stepsPage - 1) * stepsPageSize,
+      take: stepsPageSize,
+      select: {
+        id: true,
+        stepOrder: true,
+        approverType: true,
+        roleId: true,
+        userId: true,
+        required: true,
+        escalationHours: true,
       },
     }),
     prisma.auditEvent.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        metadata: {
-          path: ["approvalRuleId"],
-          equals: rule.id,
-        },
+      where: auditWhere,
+      select: {
+        id: true,
+        eventType: true,
+        entityType: true,
+        entityId: true,
+        occurredAt: true,
+        actor: { select: { displayName: true } },
       },
-      include: {
-        actor: true,
-      },
-      orderBy: { occurredAt: "desc" },
-      take: 10,
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+      skip: (auditPage - 1) * auditPageSize,
+      take: auditPageSize,
+    }),
+  ]);
+  const roleIds = Array.from(new Set(stepRows.map((step) => step.roleId).filter((id): id is string => Boolean(id))));
+  const userIds = Array.from(new Set(stepRows.map((step) => step.userId).filter((id): id is string => Boolean(id))));
+  const [roles, users] = await Promise.all([
+    prisma.role.findMany({
+      where: { id: { in: roleIds }, OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] },
+      select: { id: true, code: true, name: true, status: true },
+    }),
+    prisma.user.findMany({
+      where: { id: { in: userIds }, tenantId: session.context.tenantId },
+      select: { id: true, displayName: true, email: true, status: true },
     }),
   ]);
 
@@ -3870,11 +3921,13 @@ export async function getCoreAdminApprovalRuleDetail(
     transactionType: rule.transactionType,
     companyName:
       rule.company?.tradingName ?? rule.company?.legalName ?? "Tenant-wide",
+    timezone: rule.company?.timezone ?? "Asia/Manila",
     priority: rule.priority,
     isActive: rule.isActive,
     scopeFilters: rule.scopeFilters,
     createdAt: rule.createdAt.toISOString(),
-    steps: rule.steps.map((step) => {
+    stepsPage: { page: stepsPage, pageSize: stepsPageSize, totalItems: stepTotal, totalPages: stepsPageCount },
+    steps: stepRows.map((step) => {
       const role = roles.find((record) => record.id === step.roleId);
       const user = users.find((record) => record.id === step.userId);
 
@@ -3884,10 +3937,12 @@ export async function getCoreAdminApprovalRuleDetail(
         approverType: step.approverType,
         assigneeName: role?.name ?? user?.displayName ?? "Unassigned",
         assigneeCode: role?.code ?? user?.email ?? "",
+        assigneeStatus: role?.status ?? user?.status ?? "MISSING",
         required: step.required,
         escalationHours: step.escalationHours,
       };
     }),
+    auditPage: { page: auditPage, pageSize: auditPageSize, totalItems: auditTotal, totalPages: auditPageCount },
     relatedAuditEvents: relatedAuditEvents.map((event) => ({
       id: event.id,
       eventType: event.eventType,

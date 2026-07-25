@@ -43,6 +43,10 @@ The UI is complete only when a first-time permitted user can identify the record
 
 Company Context is a read-only selected-company drilldown. Its Company Access panel is an assignment-grain register of active, currently effective company assignments for active users in the current tenant. It reports exact request-time totals, supports URL-backed 10–100 row pages and bounded name/email search, renders assignment timestamps in the company timezone, and exposes explicit empty and filtered-empty states. Brands and Locations are summary counts with a handoff to the bounded Organization Scope registries; Approval Rules remain in their authoritative registry and are not silently hydrated here.
 
+### Approval Rule detail registers
+
+Approval Rule detail is read-only. Approval Steps and Related Audit Activity are independent server-paginated registers with exact totals, 10–100 row bounds, deterministic ordering, explicit empty states, and responsive pagination. Step assignee labels are current-page projections and may state that a referenced role or user is inactive or unavailable; they do not grant approval authority. Audit activity is limited to the selected company and renders timestamps in the rule company timezone.
+
 ### Organization Scope — Location Context assigned access
 
 The selected-company Location Context detail is a read-only, server-authorized view. Its Assigned Access panel is an assignment-grain register: it shows active, currently effective location assignments for active users in the current tenant, with active/effective tenant or global role names as a bounded preview. The panel reports an exact request-time assignment total and uses URL-backed pages of 10–100 rows, deterministic `userId ASC, assignmentId ASC` ordering, stale-page clamping, truthful empty state, and shared responsive pagination controls. It does not grant, edit, or revoke access; those actions remain in the User Access workspace.

@@ -145,3 +145,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0200-USER-ACCESS-EFFECTIVE-PERMISSION-REGISTER.md` — complete read-only selected-user effective-permission register in the Roles section
 - `DEC-0203-ADMIN-LOCATION-DETAIL-ASSIGNED-ACCESS-PAGING.md` — bounded assignment-grain Assigned Access register on Location Context detail
 - `DEC-0204-ADMIN-COMPANY-CONTEXT-BOUNDED-ACCESS.md` — bounded assignment-grain Company Access and truthful registry handoffs on Company Context detail
+- `DEC-0205-ADMIN-APPROVAL-RULE-DETAIL-BOUNDED-REGISTERS.md` — bounded Approval Steps and selected-company Related Audit Activity registers
