@@ -12,6 +12,8 @@
 |---|---|---|
 | IAM-01 | User List | Search users, status, role, location scope, last access |
 | IAM-02 | User Detail | Identity, status, role assignments, scopes, access history |
+
+User Detail’s Assigned Role Lifecycle register is assignment-grain and status-active, so scheduled and ended effective dates remain visible for lifecycle and revocation review. Each row labels assignment state (`CURRENT`, `FUTURE`, or `EXPIRED`) separately from role status. It is not the effective-permission authority view.
 | IAM-03 | Invite / Create User | Controlled onboarding |
 | IAM-04 | Role Library | View standard roles and permission summaries |
 | IAM-05 | Role Detail | Permission matrix, restricted/admin controls |

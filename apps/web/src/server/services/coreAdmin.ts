@@ -2018,7 +2018,7 @@ export async function getCoreAdminUserDetail(
   const roleAssignments = loadRoleSurface
     ? await prisma.userRoleAssignment.findMany({
         where: roleAssignmentWhere,
-        select: { id: true, startsAt: true, role: { select: { id: true, name: true, code: true, status: true } } },
+        select: { id: true, startsAt: true, endsAt: true, role: { select: { id: true, name: true, code: true, status: true } } },
         orderBy: [{ startsAt: "asc" }, { id: "asc" }],
         skip: (rolePage - 1) * rolePageSize,
         take: rolePageSize,
@@ -2269,6 +2269,12 @@ export async function getCoreAdminUserDetail(
       status: assignment.role.status,
       canMutate: isAssignableNonSensitiveRole(assignment.role.code),
       startsAt: assignment.startsAt.toISOString(),
+      endsAt: assignment.endsAt?.toISOString() ?? null,
+      effectiveState: assignment.startsAt > effectiveNow
+        ? "FUTURE"
+        : assignment.endsAt && assignment.endsAt <= effectiveNow
+          ? "EXPIRED"
+          : "CURRENT",
     })),
     rolesPage: {
       page: rolePage,

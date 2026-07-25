@@ -439,8 +439,8 @@ export default async function CoreAdminUserDetailPage({
         <Panel className="ogfi-detail-card">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">Assigned Roles</h2>
-              <p className="text-sm text-slate-500">Non-sensitive role changes require a reason</p>
+              <h2 className="text-lg font-bold text-slate-950">Assigned Role Lifecycle</h2>
+              <p className="text-sm text-slate-500">Active assignment records include scheduled (FUTURE) and ended (EXPIRED) dates; this is not the user’s current effective permission set.</p>
             </div>
             {user.canMutateRoles ? <Badge tone="warning">Mutable</Badge> : <Badge>Self protected</Badge>}
           </div>
@@ -454,7 +454,7 @@ export default async function CoreAdminUserDetailPage({
           </form>
           <div className="mt-4 divide-y divide-slate-100">
             {user.roles.length === 0 ? (
-              <p className="py-4 text-sm text-slate-600">{user.rolesPage.query ? "No roles match this filter." : "No active roles are assigned."}</p>
+              <p className="py-4 text-sm text-slate-600">{user.rolesPage.query ? "No role assignment records match this filter." : "No active role assignment records."}</p>
             ) : (
               user.roles.map((role) => (
                 <div
@@ -464,8 +464,8 @@ export default async function CoreAdminUserDetailPage({
                 >
                   <div>
                     <p className="font-semibold text-slate-950">{role.name}</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">{role.code} · {role.status}</p>
-                    <p className="mt-2 text-sm text-slate-600">Assigned {formatUserAccessDate(role.startsAt)}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{role.code} · Assignment: {role.effectiveState} · Role: {role.status}</p>
+                    <p className="mt-2 text-sm text-slate-600">Assigned {formatUserAccessDate(role.startsAt)}{role.endsAt ? ` · ends ${formatUserAccessDate(role.endsAt)}` : ""}</p>
                     <div className="mt-2 flex flex-wrap gap-3">
                       <ButtonLink href={`/admin/roles/${role.roleId}`} tone="ghost" className="min-h-11 px-0 text-sm text-blue-700">View role detail</ButtonLink>
                       {user.canMutateRoles && role.canMutate ? (

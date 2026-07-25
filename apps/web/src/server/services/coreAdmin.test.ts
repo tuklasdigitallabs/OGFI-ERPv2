@@ -957,4 +957,17 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("role.timezone");
     expect(pageSource).not.toContain("{user.scopes.length} scopes");
   });
+
+  test("user detail labels lifecycle role assignment records", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("effectiveState: assignment.startsAt > effectiveNow");
+    expect(serviceSource).toContain("endsAt: assignment.endsAt?.toISOString() ?? null");
+    expect(pageSource).toContain("Assigned Role Lifecycle");
+    expect(pageSource).toContain("scheduled (FUTURE) and ended (EXPIRED)");
+    expect(pageSource).toContain("Assignment: {role.effectiveState}");
+    expect(pageSource).toContain("role.effectiveState");
+    expect(pageSource).toContain("role.endsAt");
+    expect(pageSource).not.toContain("No active roles are assigned.");
+  });
 });
