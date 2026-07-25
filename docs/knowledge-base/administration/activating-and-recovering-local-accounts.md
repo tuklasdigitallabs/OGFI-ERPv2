@@ -35,7 +35,7 @@ The user opens the link, creates and confirms a password that meets the displaye
 
 ## Recover An Existing Account
 
-1. Open `Admin` → `Authentication` → `Recovery`, then use the bounded filters or paging to find the request. To create a request, search the bounded eligible-account choices and select an existing account with an active local identity.
+1. Open `Admin` → `Authentication` → `Recovery`, then use the bounded filters or paging to find the request. Select `Request recovery` to open the focused composer, search the bounded eligible-account choices, and select an existing account with an active local identity.
 2. Choose `Password / credentials only` or `Password and lost MFA device`.
 3. Enter the identity-verification reason and evidence reference.
 4. Select `Request recovery review`.
