@@ -17,3 +17,5 @@ Deployment Evidence review now uses the same focused Verify/Reject sheet, with m
 UAT evidence capture now uses a workspace TaskSheet with mobile-safe controls and preserved filter/page context instead of a long centered modal.
 
 Enablement evidence review now uses a focused TaskSheet with explicit training, knowledge-base, and release-note readiness consequences and visible rejection-reason validation.
+
+Readiness gate updates now use one selected-gate TaskSheet with preserved register context and the existing server-enforced status, evidence, blocker, reason, authorization, and audit controls.

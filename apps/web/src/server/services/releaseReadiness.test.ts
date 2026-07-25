@@ -489,6 +489,11 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain('name="uatPageSize"');
     expect(pageSource).toContain('size="workspace"');
     expect(pageSource).not.toContain('<EntryModal\n                title="Record UAT Evidence"');
+    expect(pageSource).toContain("selectedGateKey");
+    expect(pageSource).toContain("readiness-gate-update-controls");
+    expect(pageSource).toContain("Open gate controls");
+    expect(pageSource).toContain("gateContextParams");
+    expect(pageSource).not.toContain('triggerLabel="Update Gate"');
   });
 
   test("UAT gates require evidence and decision notes for acceptance/default revision tracking", () => {

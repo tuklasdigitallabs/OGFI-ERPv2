@@ -118,13 +118,20 @@ function boardDecisionLabel(decision: string) {
 async function updateReadinessGateAction(formData: FormData) {
   "use server";
 
+  const context = new URLSearchParams({ category: "uat" });
+  for (const key of ["category", "q", "statusFilter", "page", "pageSize", "gateKey"]) {
+    const value = formData.get(key);
+    if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key === "statusFilter" ? "status" : key, value);
+  }
+  const returnPath = `/admin/readiness?${context.toString()}`;
+
   try {
     await updateReleaseReadinessGate(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/readiness", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/readiness");
-  redirect("/admin/readiness");
+  redirect(returnPath);
 }
 
 async function createDeploymentEvidenceAction(formData: FormData) {
@@ -305,6 +312,13 @@ export default async function AdminReadinessPage({
     pageSize: Number.isFinite(pageSizeValue) ? Math.min(Math.max(pageSizeValue, 10), 100) : 10,
   });
   const visibleGates = gatePage.items;
+  const selectedGateKey = (getSearchParam(params, "gateKey") ?? "").slice(0, 160);
+  const selectedGate = selectedGateKey
+    ? gates.find((gate) => gate.gateKey === selectedGateKey && gate.category === selectedCategory) ?? null
+    : null;
+  const gateContextParams = new URLSearchParams({ category: selectedCategory, page: String(gatePage.page), pageSize: String(gatePage.pageSize) });
+  if (query) gateContextParams.set("q", query);
+  if (selectedStatus) gateContextParams.set("status", selectedStatus);
   const uatEvidenceSummary = selectedCategory === "uat"
     ? await getUatEvidenceSummary(session)
     : null;
@@ -1842,6 +1856,68 @@ export default async function AdminReadinessPage({
           </>
         ) : null}
 
+        {selectedGateKey ? (
+          <Panel className="mb-5 border-blue-100 bg-blue-50/40">
+            {selectedGate ? (
+              <div className="grid gap-3 text-sm text-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected readiness gate</p>
+                    <h3 className="text-lg font-bold text-slate-950">{selectedGate.title}</h3>
+                  </div>
+                  <Badge tone={readinessTone(selectedGate.status)}>{statusLabel(selectedGate.status)}</Badge>
+                </div>
+                <p>{selectedGate.description}</p>
+                <TaskSheet
+                  title={`Update ${selectedGate.title}`}
+                  description="Choose the audited readiness state and provide the evidence, decision note, blocker, and reason required by policy. The server rechecks selected-company scope and the current gate before saving."
+                  trigger="Open gate update controls"
+                  triggerClassName="min-h-11 w-fit bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+                  size="workspace"
+                  bodyScroll="contained"
+                >
+                  <form action={updateReadinessGateAction} className="ogfi-form-shell mt-4 grid gap-4" data-testid="readiness-gate-update-controls">
+                    <input name="gateKey" type="hidden" value={selectedGate.gateKey} />
+                    <input name="category" type="hidden" value={selectedCategory} />
+                    <input name="q" type="hidden" value={query} />
+                    <input name="statusFilter" type="hidden" value={selectedStatus ?? ""} />
+                    <input name="page" type="hidden" value={String(gatePage.page)} />
+                    <input name="pageSize" type="hidden" value={String(gatePage.pageSize)} />
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+                      <p className="font-bold text-slate-950">{selectedGate.title}</p>
+                      <p className="mt-1 text-sm leading-5 text-slate-600">{selectedGate.description}</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="grid gap-1 text-sm font-medium text-slate-700">Status
+                        <select className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="status" defaultValue={selectedGate.status}>
+                          {releaseReadinessStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-sm font-medium text-slate-700">Target date
+                        <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="targetDate" type="date" defaultValue={selectedGate.targetDate ? selectedGate.targetDate.slice(0, 10) : undefined} />
+                      </label>
+                    </div>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Evidence reference
+                      <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="evidenceReference" defaultValue={selectedGate.evidenceReference ?? ""} placeholder="Artifact path, signed pack, screenshot ID, or report reference" />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Decision note
+                      <textarea className="min-h-20 rounded-md border border-slate-300 px-3 py-2" name="decisionNote" defaultValue={selectedGate.decisionNote ?? ""} placeholder={selectedGate.category === "uat" ? "Required for UAT READY, Conditional GO, or Waived. Include owner signoff, finding disposition, or default revision decision." : "Required for Conditional GO or Waived."} />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Blocker summary
+                      <textarea className="min-h-20 rounded-md border border-slate-300 px-3 py-2" name="blockerSummary" defaultValue={selectedGate.blockerSummary ?? ""} placeholder="Required when placing this gate on HOLD." />
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Reason for update
+                      <textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reason" placeholder="Explain why this readiness gate is being updated." required />
+                    </label>
+                    <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Save Readiness Gate</button>
+                  </form>
+                </TaskSheet>
+                <a className="font-semibold text-blue-700 hover:underline" href={`/admin/readiness?${gateContextParams.toString()}`}>Close selected gate</a>
+              </div>
+            ) : <p className="text-sm text-slate-700">The selected readiness gate is unavailable in the current company scope.</p>}
+          </Panel>
+        ) : null}
+
         <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
           {visibleGates.map((gate) => (
             <div
@@ -1898,94 +1974,7 @@ export default async function AdminReadinessPage({
                     : "Not yet"}
                 </p>
               </div>
-              <EntryModal
-                title={`Update ${gate.title}`}
-                triggerLabel="Update Gate"
-                triggerClassName="w-full border border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-              >
-                <form
-                  action={updateReadinessGateAction}
-                  className="ogfi-form-shell mt-4 grid gap-4"
-                >
-                  <input name="gateKey" type="hidden" value={gate.gateKey} />
-                  <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
-                    <p className="font-bold text-slate-950">{gate.title}</p>
-                    <p className="mt-1 text-sm leading-5 text-slate-600">
-                      {gate.description}
-                    </p>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                      Status
-                      <select
-                        className="rounded-md border border-slate-300 px-3 py-2"
-                        name="status"
-                        defaultValue={gate.status}
-                      >
-                        {releaseReadinessStatuses.map((status) => (
-                          <option key={status} value={status}>
-                            {statusLabel(status)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                      Target date
-                      <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
-                        name="targetDate"
-                        type="date"
-                        defaultValue={
-                          gate.targetDate ? gate.targetDate.slice(0, 10) : undefined
-                        }
-                      />
-                    </label>
-                  </div>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Evidence reference
-                    <input
-                      className="rounded-md border border-slate-300 px-3 py-2"
-                      name="evidenceReference"
-                      defaultValue={gate.evidenceReference ?? ""}
-                      placeholder="Artifact path, signed pack, screenshot ID, or report reference"
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Decision note
-                    <textarea
-                      className="min-h-20 rounded-md border border-slate-300 px-3 py-2"
-                      name="decisionNote"
-                      defaultValue={gate.decisionNote ?? ""}
-                      placeholder={
-                        gate.category === "uat"
-                          ? "Required for UAT READY, Conditional GO, or Waived. Include owner signoff, finding disposition, or default revision decision."
-                          : "Required for Conditional GO or Waived."
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Blocker summary
-                    <textarea
-                      className="min-h-20 rounded-md border border-slate-300 px-3 py-2"
-                      name="blockerSummary"
-                      defaultValue={gate.blockerSummary ?? ""}
-                      placeholder="Required when placing this gate on HOLD."
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Reason for update
-                    <textarea
-                      className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                      name="reason"
-                      placeholder="Explain why this readiness gate is being updated."
-                      required
-                    />
-                  </label>
-                  <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                    Save Readiness Gate
-                  </button>
-                </form>
-              </EntryModal>
+              <a className="min-h-11 inline-flex w-full items-center justify-center rounded-md border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50" href={`/admin/readiness?${new URLSearchParams(`${gateContextParams.toString()}&gateKey=${encodeURIComponent(gate.gateKey)}`).toString()}`}>Open gate controls</a>
             </div>
           ))}
         </div>
