@@ -10,7 +10,7 @@ import {
 import { Badge, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -20,6 +20,7 @@ import { getSessionContext } from "@/server/services/context";
 import {
   listCompanyPolicySettings,
   listCompanyPolicySettingPage,
+  defaultPolicySettings,
   policySettingCategories,
   resetCompanyPolicySetting,
   updateCompanyPolicySetting
@@ -46,6 +47,22 @@ function normalizeCategory(value: string | undefined) {
   return policySettingCategories.some((category) => category.id === value)
     ? value!
     : policySettingCategories[0]!.id;
+}
+
+function normalizeSettingsReturnPath(formData: FormData) {
+  const category = normalizeCategory(String(formData.get("category") || ""));
+  const query = String(formData.get("q") || "").trim().slice(0, 120);
+  const rawPage = Number.parseInt(String(formData.get("page") || "1"), 10);
+  const rawPageSize = Number.parseInt(String(formData.get("pageSize") || "25"), 10);
+  const page = Number.isFinite(rawPage) ? Math.min(Math.max(rawPage, 1), 10_000) : 1;
+  const pageSize = Number.isFinite(rawPageSize) ? Math.min(Math.max(rawPageSize, 10), 100) : 25;
+  const selectedKey = String(formData.get("settingKey") || "");
+  const params = new URLSearchParams({ category, page: String(page), pageSize: String(pageSize) });
+  if (query) params.set("q", query);
+  if (defaultPolicySettings.some((setting) => setting.key === selectedKey)) {
+    params.set("settingKey", selectedKey);
+  }
+  return `/admin/settings?${params.toString()}`;
 }
 
 function displayPolicyValue(setting: PolicySetting) {
@@ -314,25 +331,27 @@ function renderPolicyValueField(setting: PolicySetting) {
 async function updatePolicySettingAction(formData: FormData) {
   "use server";
 
+  const returnPath = normalizeSettingsReturnPath(formData);
   try {
     await updateCompanyPolicySetting(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/settings", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/settings");
-  redirect("/admin/settings");
+  redirect(returnPath);
 }
 
 async function resetPolicySettingAction(formData: FormData) {
   "use server";
 
+  const returnPath = normalizeSettingsReturnPath(formData);
   try {
     await resetCompanyPolicySetting(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/settings", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/settings");
-  redirect("/admin/settings");
+  redirect(returnPath);
 }
 
 export default async function AdminSettingsPage({
@@ -350,6 +369,7 @@ export default async function AdminSettingsPage({
   const actionFeedback = getActionFeedback(params);
   const selectedCategory = normalizeCategory(getSearchParam(params, "category"));
   const query = getSearchParam(params, "q") ?? "";
+  const settingKey = getSearchParam(params, "settingKey");
   const pageValue = Number.parseInt(getSearchParam(params, "page") ?? "1", 10);
   const pageSizeValue = Number.parseInt(getSearchParam(params, "pageSize") ?? "25", 10);
   const settingsPage = await listCompanyPolicySettingPage(session, {
@@ -361,6 +381,19 @@ export default async function AdminSettingsPage({
   const settings = settingsPage.items;
   const category = policySettingCategories.find((item) => item.id === selectedCategory)!;
   const visibleSettings = settings;
+  const selectedSetting = settingKey ? visibleSettings.find((setting) => setting.key === settingKey) : null;
+  const buildSettingsHref = (nextPage = settingsPage.page, nextSettingKey?: string) => {
+    const nextParams = new URLSearchParams({
+      category: selectedCategory,
+      page: String(nextPage),
+      pageSize: String(settingsPage.pageSize)
+    });
+    if (query) nextParams.set("q", query);
+    if (nextSettingKey && defaultPolicySettings.some((setting) => setting.key === nextSettingKey)) {
+      nextParams.set("settingKey", nextSettingKey);
+    }
+    return `/admin/settings?${nextParams.toString()}`;
+  };
   const overriddenCount = settingsPage.totalOverrides;
   const defaultCount = settingsPage.totalDefaults;
 
@@ -521,53 +554,69 @@ export default async function AdminSettingsPage({
                   )}
                 </div>
                 <div className="grid gap-2">
-                  <EntryModal
-                    title={`Configure ${setting.label}`}
-                    triggerLabel="Configure"
-                    triggerClassName="w-full border border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
-                  >
-                    <form
-                      action={updatePolicySettingAction}
-                      className="ogfi-form-shell mt-4 grid gap-4"
-                    >
-                      <input name="key" type="hidden" value={setting.key} />
-                      <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
-                        <p className="font-bold text-slate-950">{setting.label}</p>
-                        <p className="mt-1 text-sm leading-5 text-slate-600">
-                          {setting.description}
-                        </p>
-                        <p className="mt-2 text-xs font-semibold text-blue-700">
-                          Recommended value: {displayPolicyValue({ ...setting, value: setting.defaultValue })}
-                        </p>
-                      </div>
-                      {renderPolicyValueField(setting)}
-                      <label className="grid gap-1 text-sm font-medium text-slate-700">
-                        Reason for change
-                        <textarea
-                          className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                          name="reason"
-                          placeholder="Explain the policy reason for this override or reset."
-                          required
-                        />
-                      </label>
-                      <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                        Save Setting
-                      </button>
-                    </form>
-                  </EntryModal>
-                  {setting.isOverridden ? (
-                    <form action={resetPolicySettingAction}>
-                      <input name="key" type="hidden" value={setting.key} />
-                      <button className="min-h-10 w-full rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">
-                        Use Recommended
-                      </button>
-                    </form>
-                  ) : null}
+                  <a href={buildSettingsHref(settingsPage.page, setting.key)} className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                    Open policy controls
+                  </a>
                 </div>
               </div>
             ))}
           </div>
         </div>
+
+        {settingKey ? (
+          <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4" data-testid="admin-settings-selected-controls">
+            {selectedSetting ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-blue-900">Selected policy</p>
+                  <p className="mt-1 font-bold text-slate-950">{selectedSetting.label}</p>
+                  <p className="mt-1 text-sm text-slate-600">Current: {displayPolicyValue(selectedSetting)} · Type: {selectedSetting.valueType}</p>
+                </div>
+                <TaskSheet
+                  title={`Configure ${selectedSetting.label}`}
+                  description="Review the current and recommended values, then save an audited company-policy change."
+                  trigger="Open policy controls"
+                  triggerClassName="min-h-11 bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+                  size="workspace"
+                  bodyScroll="contained"
+                >
+                  <form action={updatePolicySettingAction} className="ogfi-form-shell grid gap-4">
+                    <input name="key" type="hidden" value={selectedSetting.key} />
+                    <input name="category" type="hidden" value={selectedCategory} />
+                    <input name="q" type="hidden" value={query} />
+                    <input name="page" type="hidden" value={settingsPage.page} />
+                    <input name="pageSize" type="hidden" value={settingsPage.pageSize} />
+                    <input name="settingKey" type="hidden" value={selectedSetting.key} />
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+                      <p className="font-bold text-slate-950">{selectedSetting.label}</p>
+                      <p className="mt-1 text-sm leading-5 text-slate-600">{selectedSetting.description}</p>
+                      <p className="mt-2 text-xs font-semibold text-blue-700">Recommended value: {displayPolicyValue({ ...selectedSetting, value: selectedSetting.defaultValue })}</p>
+                    </div>
+                    {renderPolicyValueField(selectedSetting)}
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Reason for change
+                      <textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reason" minLength={5} placeholder="Explain the policy reason for this override or reset." required />
+                    </label>
+                    <button className="min-h-11 w-fit rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Save Setting</button>
+                  </form>
+                  {selectedSetting.isOverridden ? (
+                    <form action={resetPolicySettingAction} className="mt-3">
+                      <input name="key" type="hidden" value={selectedSetting.key} />
+                      <input name="category" type="hidden" value={selectedCategory} />
+                      <input name="q" type="hidden" value={query} />
+                      <input name="page" type="hidden" value={settingsPage.page} />
+                      <input name="pageSize" type="hidden" value={settingsPage.pageSize} />
+                      <input name="settingKey" type="hidden" value={selectedSetting.key} />
+                      <button className="min-h-11 rounded-md border border-emerald-200 bg-white px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">Use Recommended</button>
+                    </form>
+                  ) : null}
+                </TaskSheet>
+              </div>
+            ) : (
+              <p className="text-sm text-blue-900">This policy is no longer on the selected filtered page. Refresh the registry before taking action.</p>
+            )}
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
           <span>Showing {visibleSettings.length} of {settingsPage.totalItems} policies</span>
@@ -577,7 +626,7 @@ export default async function AdminSettingsPage({
             totalItems={settingsPage.totalItems}
             itemLabel="policies"
             controlClassName="min-h-10"
-            getPageHref={(nextPage) => `/admin/settings?category=${selectedCategory}&page=${nextPage}&pageSize=${settingsPage.pageSize}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
+            getPageHref={(nextPage) => buildSettingsHref(nextPage)}
           />
         </div>
 

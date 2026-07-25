@@ -10,15 +10,17 @@ Open **Admin > Admin Settings** to review the recommended F&B pilot defaults and
 
 Use the category tabs and **Search policies** field to narrow the register. Results
 are server-paginated and show an exact matching total; page links preserve the
-selected category and search text. Configure or Use Recommended remains available
-only to authorized administrators with company Manage scope, and every change still
-requires a reason and audit history.
+selected category and search text. Select **Open policy controls** on a row to open
+the single policy composer; the selected category, search text, page, and page size
+are preserved through save and reset. Configure remains available only to authorized
+administrators with company Manage scope, and every update still requires a reason
+and audit history.
 
 ## Recommended Defaults Versus Overrides
 
 - **Recommended** means the company is still using the DEC-0036 baseline value.
 - **Overridden** means an administrator changed the company value and recorded a reason.
-- Structured values, such as retention, backup/restore, supplier-accreditation, and lot/expiry category policies, show a readable summary on the page while keeping the raw JSON available in the configure modal for controlled updates.
+- Structured values, such as retention, backup/restore, supplier-accreditation, and lot/expiry category policies, show a readable summary on the page while keeping the raw JSON available in the selected policy composer for controlled updates.
 - Every save writes an audit event with the previous value, new value, actor, and reason.
 
 ## Security And Continuity Settings

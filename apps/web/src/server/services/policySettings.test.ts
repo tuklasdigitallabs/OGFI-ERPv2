@@ -413,5 +413,14 @@ describe("DEC-0036 policy setting registry", () => {
     expect(pageSource).toContain("PaginationBar");
     expect(pageSource).toContain('name="q"');
     expect(pageSource).not.toContain("settings.filter(");
+    expect(pageSource).toContain("function normalizeSettingsReturnPath");
+    expect(pageSource).toContain('const settingKey = getSearchParam(params, "settingKey")');
+    expect(pageSource).toContain("const selectedSetting =");
+    expect(pageSource).toContain("const buildSettingsHref =");
+    expect(pageSource).toContain("Open policy controls");
+    expect(pageSource).toContain("<TaskSheet");
+    expect(pageSource).toContain('data-testid="admin-settings-selected-controls"');
+    expect(pageSource).toContain('name="reason" minLength={5}');
+    expect(pageSource).not.toContain("<EntryModal");
   });
 });

@@ -884,3 +884,8 @@ Update this register only when implementation state, release scope, a confirmed 
 - Scope search, type filters, paging, selected controls, and deactivation return paths now use one canonical URL builder that retains `section=scopes` and active query/type/page context. Scope actions no longer fall back to Overview after navigation or mutation.
 - Selection remains bounded to the current page and all authorization, selected-company, reason, concurrency, self-protection, and audit controls remain server-authoritative.
 - Evidence: Core Admin focused tests 34/34, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT remain open; Administration and Phase I are not complete.
+
+### DEC-0170 Administration Settings policy action composer — July 25, 2026
+- Admin Settings now uses one URL-selected policy action composer instead of repeated per-row Configure and Use Recommended forms. The selected policy context preserves category, search, page, and page-size state, shows current/recommended values and type, and returns to the same bounded registry context after update or reset.
+- `settingKey` is allowlisted display/navigation state only; existing policy services remain authoritative for selected-company Manage authorization, definition lookup, value validation, transaction, and audit. Update reasons require five characters; reset uses a separate short audited form.
+- Evidence: Policy Settings focused tests 6/6, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT remain open; Administration and Phase I are not complete.
