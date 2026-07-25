@@ -137,3 +137,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0151-QUOTE-LINE-COMPARISON-MATRIX.md` — read-only line-aligned supplier quote comparison with explicit missing-line states
 - `DEC-0152-ADMIN-PERMISSION-ACCESS-BOUNDED-DETAIL.md` — bounded tenant-role permission detail with current-company effective-user previews
 - `DEC-0187-AUTHORIZATION-MANIFEST-LOOKUP-ROUTES.md` — protected lookup-route classification and explicit remaining authorization evidence gates
+- `DEC-0188-REOPEN-SPF-004-EXACT-CANDIDATE.md` — reopen authorization regression validation for the current exact release candidate
