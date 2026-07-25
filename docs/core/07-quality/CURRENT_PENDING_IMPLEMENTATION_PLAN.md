@@ -953,6 +953,7 @@ Update this register only when implementation state, release scope, a confirmed 
 ### DEC-0183 Supplier Audit handoff correctness — July 25, 2026
 - Supplier Audit now links to the real `/admin?tab=audit` workspace with an exact UUID `entityId` filter. Core Admin applies the entity predicate together with existing tenant/company/authorization predicates; cursor hashes, pagination, CSV export, and event-detail return links preserve the filter.
 - The handoff remains read-only and redacted; no supplier-local duplicate audit authority or procurement/inventory mutation was introduced. Invalid or foreign entity IDs cannot widen the result set.
+- The supplier-local projection remains intentionally deferred: the exact Core Admin handoff is the approved audit source of truth, and a second projection would duplicate cursor, redaction, export, and authorization semantics before UAT identifies a concrete local-context need.
 - Evidence: Core Admin and Supplier focused tests 39/39, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Supplier Master Data, Administration, and Phase I are not complete.
 
 ### DEC-0184 Administration User Access controlled TaskSheets — July 25, 2026
