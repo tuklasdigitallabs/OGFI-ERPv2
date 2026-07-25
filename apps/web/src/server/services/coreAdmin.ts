@@ -809,6 +809,10 @@ const coreAdminHighAccessPermissionCodes = [
   permissions.wastageReverse,
 ];
 
+function tenantGlobalPermissionWhere(tenantId: string): Prisma.PermissionWhereInput {
+  return { OR: [{ tenantId }, { tenantId: null }] };
+}
+
 export type CoreAdminRolePage = {
   items: Array<{
     id: string;
@@ -4285,17 +4289,18 @@ export async function getCoreAdminRoleDetail(
       },
       include: {
         permissions: {
-          include: {
-            permission: true,
-          },
+          where: { permission: tenantGlobalPermissionWhere(session.context.tenantId) },
+          select: { permission: { select: { id: true, code: true, module: true, action: true, description: true } } },
         },
       },
-    });
+  });
 
   if (!role) {
     return null;
   }
 
+  const rolePermissionTotal = await prisma.rolePermission.count({ where: { roleId: role.id } });
+  const permissionIntegrityIssue = rolePermissionTotal !== role.permissions.length;
   const currentPermissionCodes = new Set(
     role.permissions.map((rolePermission) => rolePermission.permission.code),
   );
@@ -4421,6 +4426,7 @@ export async function getCoreAdminRoleDetail(
     },
     timezone: selectedCompany?.timezone ?? "Asia/Manila",
     scopeCatalogCapped,
+    permissionIntegrityIssue,
     enabledPermissionCodes: Array.from(currentPermissionCodes),
     permissions: role.permissions.map((rolePermission) => ({
       id: rolePermission.permission.id,
@@ -4475,9 +4481,8 @@ async function updateRolePermissionCodes({
       },
       include: {
         permissions: {
-          include: {
-            permission: true,
-          },
+          where: { permission: tenantGlobalPermissionWhere(session.context.tenantId) },
+          select: { permission: { select: { code: true } } },
         },
       },
     }),
@@ -4490,6 +4495,10 @@ async function updateRolePermissionCodes({
 
   if (!role) {
     throw new Error("ROLE_NOT_FOUND");
+  }
+  const rolePermissionTotal = await prisma.rolePermission.count({ where: { roleId: role.id } });
+  if (rolePermissionTotal !== role.permissions.length) {
+    throw new Error("ROLE_PERMISSION_SCOPE_CORRUPTED");
   }
   const now = new Date();
   const actorAssignment = await prisma.userRoleAssignment.findFirst({
@@ -4549,8 +4558,11 @@ async function updateRolePermissionCodes({
     `;
     const lockedPermissionRows = await tx.rolePermission.findMany({
       where: { roleId: role.id },
-      select: { permission: { select: { code: true } } },
+      select: { permission: { select: { code: true, tenantId: true } } },
     });
+    if (lockedPermissionRows.some((row) => row.permission.tenantId !== null && row.permission.tenantId !== session.context.tenantId)) {
+      throw new Error("ROLE_PERMISSION_SCOPE_CORRUPTED");
+    }
     const lockedCurrentCodes = lockedPermissionRows
       .map((row) => row.permission.code)
       .sort();

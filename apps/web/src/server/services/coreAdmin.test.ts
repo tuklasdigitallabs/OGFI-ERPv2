@@ -804,6 +804,12 @@ describe("core administration audit search wiring", () => {
     expect(feedbackSource).toContain("NO_ROLE_PERMISSION_CHANGES");
     expect(feedbackSource).toContain("ADMIN_ROLE_CORE_PERMISSION_REQUIRED");
     expect(feedbackSource).toContain("ROLE_RECOMMENDATION_NOT_CONFIGURED");
+    expect(feedbackSource).toContain("ROLE_PERMISSION_SCOPE_CORRUPTED");
+    expect(serviceSource).toContain("permissionIntegrityIssue");
+    expect(serviceSource).toContain('throw new Error("ROLE_PERMISSION_SCOPE_CORRUPTED")');
+    expect(readFileSync(path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"), "utf8")).toContain(
+      "Permission data needs administrator review; editing is unavailable",
+    );
   });
 
   test("permission access detail uses bounded current-company role previews", () => {

@@ -201,6 +201,14 @@ export default async function CoreAdminRoleDetailPage({
               </p>
             </div>
           </div>
+          {role.permissionIntegrityIssue ? (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+              <div className="flex gap-2">
+                <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>Permission data needs administrator review; editing is unavailable until the role-permission links are reconciled.</p>
+              </div>
+            </div>
+          ) : null}
           <form method="get" className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
             <input type="hidden" name="permissionPage" value="1" />
             {assignmentQuery ? <input type="hidden" name="assignmentQuery" value={assignmentQuery} /> : null}
@@ -302,7 +310,7 @@ export default async function CoreAdminRoleDetailPage({
               controlClassName="min-h-11"
               getPageHref={(nextPage) => `/admin/roles/${role.id}?permissionPage=${nextPage}${role.permissionPage.query ? `&permissionQuery=${encodeURIComponent(role.permissionPage.query)}` : ""}${role.permissionPage.filter !== "ALL" ? `&permissionFilter=${role.permissionPage.filter}` : ""}${assignmentQuery ? `&assignmentQuery=${encodeURIComponent(assignmentQuery)}` : ""}${Number.isFinite(assignmentPageValue) && assignmentPageValue > 1 ? `&assignmentPage=${assignmentPageValue}` : ""}`}
             />
-            <div className="sticky bottom-0 mt-5 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-[0_-18px_42px_-34px_rgba(15,23,42,0.7)] backdrop-blur">
+            {role.permissionIntegrityIssue ? null : <div className="sticky bottom-0 mt-5 rounded-xl border border-slate-200 bg-white/95 p-4 shadow-[0_-18px_42px_-34px_rgba(15,23,42,0.7)] backdrop-blur">
               <label className="grid gap-1 text-sm font-semibold text-slate-700">
                 Change reason
                 <input
@@ -355,7 +363,7 @@ export default async function CoreAdminRoleDetailPage({
                   </EntryModal>
                 ) : null}
               </div>
-            </div>
+            </div>}
           </form>
         </Panel>
 

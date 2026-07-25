@@ -553,6 +553,8 @@ const actionFeedbackMessages: Record<string, string> = {
   NO_ROLE_PERMISSION_CHANGES:
     "No role permission changes were detected. Change at least one toggle before saving.",
   ROLE_NOT_FOUND: "The selected role is no longer available.",
+  ROLE_PERMISSION_SCOPE_CORRUPTED:
+    "Role permissions include an unavailable tenant link; editing is disabled until an administrator reconciles the role.",
   ROLE_RECOMMENDATION_NOT_CONFIGURED:
     "This role does not have a system recommended permission set yet.",
   UNKNOWN_PERMISSION_CODE:

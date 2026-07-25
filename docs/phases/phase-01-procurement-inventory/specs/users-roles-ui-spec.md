@@ -58,6 +58,12 @@ and labels its summary tab `Selected company summary`. Brand, Department, and Lo
 registries and create actions are selected-company scoped, not a tenant-wide company
 directory; User Access remains authoritative for assigning user scope.
 
+Implementation note (`DEC-0214`): Role Detail permission counts, matrix, drift, and
+hidden enabled-code preservation use the tenant-local/global permission set. Unsupported
+role-permission links show a read-only integrity warning and hide permission mutation
+composers until an administrator reconciles the data; direct actions fail closed without
+audit or writes.
+
 Implementation note (`DEC-0113`): Audit Trail list, detail, and export use the same
 tenant/company and bounded filter contract. The list uses deterministic keyset paging
 (`occurredAt DESC, id DESC`) with explicit totals and next-page state. Detail and CSV
