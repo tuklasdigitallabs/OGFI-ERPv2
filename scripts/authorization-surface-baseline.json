@@ -366,7 +366,8 @@
       "server/services/coreAdmin.ts#listCoreAdminAuditEvents",
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
-      "server/services/exportAudit.ts#logOperationalExportFailure"
+      "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy"
     ],
     "callChains": [
       "GET -> server/services/context.ts#getSessionContext",
@@ -374,7 +375,8 @@
       "GET -> server/services/coreAdmin.ts#listCoreAdminAuditEvents",
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
-      "GET -> server/services/exportAudit.ts#logOperationalExportFailure"
+      "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY",
@@ -1395,6 +1397,8 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
+      "server/services/policySettings.ts#getReportExportPolicy",
+      "server/services/releaseReadiness.ts#assertCanManageReleaseReadiness",
       "server/services/releaseReadiness.ts#buildReleaseReadinessExportRows"
     ],
     "callChains": [
@@ -1402,6 +1406,8 @@
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy",
+      "GET -> server/services/releaseReadiness.ts#assertCanManageReleaseReadiness",
       "GET -> server/services/releaseReadiness.ts#buildReleaseReadinessExportRows"
     ],
     "boundaryClassifications": [
@@ -1510,44 +1516,6 @@
     ],
     "noMutationControls": [
       "shared permission denial covered; evidence-record target validation negative remains"
-    ]
-  },
-  {
-    "id": "admin/readiness/page.tsx#createReleaseBoardDecisionAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/releaseReadiness.ts#createReleaseBoardDecision"
-    ],
-    "callChains": [
-      "createReleaseBoardDecisionAction -> server/services/releaseReadiness.ts#createReleaseBoardDecision"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requireSessionContext",
-      "releaseReadiness.assertCanManageReleaseReadiness"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "shared permission denial covered; decision-specific evidence and status negative remains"
     ]
   },
   {
@@ -1759,6 +1727,62 @@
     ],
     "noMutationControls": [
       "foreign evidence-record status negative remains"
+    ]
+  },
+  {
+    "id": "admin/readiness/release-board/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "admin/readiness/release-board/page.tsx#recordDecisionAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/releaseReadiness.ts#createReleaseBoardDecision"
+    ],
+    "callChains": [
+      "recordDecisionAction -> server/services/releaseReadiness.ts#createReleaseBoardDecision"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "releaseReadiness.assertCanManageReleaseReadiness"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-RELEASE-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "shared permission denial covered; decision-specific evidence and status negative remains"
     ]
   },
   {
@@ -2984,6 +3008,131 @@
     ],
     "noMutationControls": [
       "no metric disclosure, audit write, or authentication-state mutation"
+    ]
+  },
+  {
+    "id": "app/api/items/option-catalog/route.ts#GET",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "session",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "401_AUTH_REQUIRED_OR_400_OPTION_INPUT_INVALID_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ROUTE-MATRIX-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/context.ts#getSessionContext",
+      "server/services/items.ts#listItemMasterOptionCatalog"
+    ],
+    "callChains": [
+      "GET -> server/services/context.ts#getSessionContext",
+      "GET -> server/services/items.ts#listItemMasterOptionCatalog"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation"
+    ]
+  },
+  {
+    "id": "app/api/purchase-orders/approved-recommendations/route.ts#GET",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "purchasing.purchase_order.create",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "session",
+      "route-authorization",
+      "scoped-service-builder"
+    ],
+    "denialContract": "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ROUTE-MATRIX-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/context.ts#getSessionContext",
+      "server/services/purchaseOrders.ts#listApprovedRecommendationsForPo"
+    ],
+    "callChains": [
+      "GET -> server/services/context.ts#getSessionContext",
+      "GET -> server/services/purchaseOrders.ts#listApprovedRecommendationsForPo"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation"
+    ]
+  },
+  {
+    "id": "app/api/purchase-requests/draft-lookup/route.ts#GET",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "purchasing.purchase_request.create",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "LOCATION"
+    ],
+    "guardChain": [
+      "session",
+      "route-authorization",
+      "scoped-service-builder"
+    ],
+    "denialContract": "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ROUTE-MATRIX-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/context.ts#getSessionContext",
+      "server/services/purchaseRequests.ts#searchPurchaseRequestDraftLookup"
+    ],
+    "callChains": [
+      "GET -> server/services/context.ts#getSessionContext",
+      "GET -> server/services/purchaseRequests.ts#searchPurchaseRequestDraftLookup"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "authentication cookie",
+      "session validation",
+      "live context resolution"
+    ],
+    "noMutationControls": [
+      "invalid or stale session cannot authorize protected mutation"
     ]
   },
   {
@@ -20721,6 +20870,27 @@
     ]
   },
   {
+    "id": "server/services/coreAdmin.ts#listCoreAdminApprovalRulePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/coreAdmin.ts#listCoreAdminAuditEventPage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
@@ -20838,49 +21008,28 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/coreAdmin.ts#listCoreAdminLocationOptions",
-    "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "session-delegated-by-caller",
-      "live-permission",
-      "tenant-company-scope-query"
-    ],
-    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
-  },
-  {
-    "id": "server/services/coreAdmin.ts#listCoreAdminApprovalRulePage",
-    "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
-    ],
-    "guardChain": [
-      "session-delegated-by-caller",
-      "live-permission",
-      "tenant-company-scope-query"
-    ],
-    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
-  },
-  {
     "id": "server/services/coreAdmin.ts#listCoreAdminDepartmentPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/coreAdmin.ts#listCoreAdminLocationOptions",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
     "scopeDimensions": [
@@ -20943,7 +21092,49 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/coreAdmin.ts#listCoreAdminUserAuditEventPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/coreAdmin.ts#listCoreAdminUserPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/coreAdmin.ts#listCoreAdminUserScopePage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister | permissions.tenantRoleAdminister",
     "scopeDimensions": [
@@ -26688,7 +26879,112 @@
     ]
   },
   {
+    "id": "server/services/items.ts#getItemCategoryRecord",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/items.ts#getItemMasterRecord",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/items.ts#getItemUomConversionRecord",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/items.ts#getUomRecord",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/items.ts#listItemMasterData",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/items.ts#listItemMasterOptionCatalog",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
     "scopeDimensions": [
@@ -27589,6 +27885,27 @@
     "permissionSource": "REVIEWED_DELEGATION"
   },
   {
+    "id": "server/services/operationalReasonCodes.ts#getOperationalReasonCodeDetail",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/operationalReasonCodes.ts#listActiveOperationalReasonCodes",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -27608,6 +27925,27 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/operationalReasonCodes.ts#listOperationalReasonCodePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
     "id": "server/services/operationalReasonCodes.ts#listOperationalReasonCodes",
@@ -28994,6 +29332,27 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/policySettings.ts#listCompanyPolicySettingPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
     "id": "server/services/policySettings.ts#listCompanyPolicySettings",
@@ -33036,6 +33395,27 @@
     ]
   },
   {
+    "id": "server/services/purchaseRequests.ts#searchPurchaseRequestDraftLookup",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.purchaseRequestCreate",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/purchaseRequests.ts#submitPurchaseRequest",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.purchaseRequestSubmit | permissions.purchaseRequestApprove",
@@ -33959,6 +34339,27 @@
     ]
   },
   {
+    "id": "server/services/releaseReadiness.ts#assertCanManageReleaseReadiness",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/releaseReadiness.ts#buildReleaseReadinessExportRows",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
@@ -34139,6 +34540,132 @@
     ]
   },
   {
+    "id": "server/services/releaseReadiness.ts#getDeploymentEvidenceRecord",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#getDeploymentEvidenceSummary",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#getEnablementEvidenceRecord",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#getEnablementEvidenceSummary",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#getReleaseBoardDecision",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#getReleaseSecurityAttentionUser",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/releaseReadiness.ts#getReleaseSecurityEvidenceSummary",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
@@ -34173,6 +34700,69 @@
     "noMutationControls": [
       "outer and inner live permission deny before security evidence query"
     ]
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#getUatEvidenceRecord",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#getUatEvidenceSummary",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#listDeploymentEvidencePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
     "id": "server/services/releaseReadiness.ts#listDeploymentEvidenceRecords",
@@ -34211,6 +34801,27 @@
     ]
   },
   {
+    "id": "server/services/releaseReadiness.ts#listEnablementEvidencePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/releaseReadiness.ts#listEnablementEvidenceRecords",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
@@ -34247,7 +34858,49 @@
     ]
   },
   {
+    "id": "server/services/releaseReadiness.ts#listReleaseBoardDecisionPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/releaseReadiness.ts#listReleaseBoardDecisions",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#listReleaseReadinessGatePage",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
     "scopeDimensions": [
@@ -34285,6 +34938,27 @@
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/releaseReadiness.ts#listUatEvidencePage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
@@ -35540,7 +36214,7 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
-    "id": "server/services/suppliers.ts#listSupplierItemLinkOptions",
+    "id": "server/services/suppliers.ts#getSupplierItemLinkLookup",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
     "scopeDimensions": [

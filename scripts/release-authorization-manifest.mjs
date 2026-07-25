@@ -1211,6 +1211,41 @@ export function buildAuthorizationSurfaceManifest() {
       },
     ],
   ]);
+  const controlledLookupRoutes = new Map([
+    [
+      "app/api/items/option-catalog/route.ts",
+      {
+        permission: "SERVICE_ENFORCED",
+        dimensions: ["TENANT", "COMPANY"],
+        guardChain: ["session", "domain-service", "service-authorization"],
+        denialContract: "401_AUTH_REQUIRED_OR_400_OPTION_INPUT_INVALID_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
+        method: "GET",
+        testIds: ["AUTHZ-ROUTE-MATRIX-001"],
+      },
+    ],
+    [
+      "app/api/purchase-orders/approved-recommendations/route.ts",
+      {
+        permission: "purchasing.purchase_order.create",
+        dimensions: ["TENANT", "COMPANY", "LOCATION"],
+        guardChain: ["session", "route-authorization", "scoped-service-builder"],
+        denialContract: "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
+        method: "GET",
+        testIds: ["AUTHZ-ROUTE-MATRIX-001"],
+      },
+    ],
+    [
+      "app/api/purchase-requests/draft-lookup/route.ts",
+      {
+        permission: "purchasing.purchase_request.create",
+        dimensions: ["TENANT", "COMPANY", "LOCATION"],
+        guardChain: ["session", "route-authorization", "scoped-service-builder"],
+        denialContract: "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
+        method: "GET",
+        testIds: ["AUTHZ-ROUTE-MATRIX-001"],
+      },
+    ],
+  ]);
   for (const routeFile of allRouteFiles) {
     if (routeFile.startsWith(`${protectedAppRoot}${path.sep}`)) continue;
     const relativePath = path
@@ -1277,6 +1312,43 @@ export function buildAuthorizationSurfaceManifest() {
             `${relativePath}#${controlledInternalPolicy.method}`,
             serviceId,
           ]),
+        }),
+      );
+      continue;
+    }
+    const controlledLookupPolicy = controlledLookupRoutes.get(relativePath);
+    if (controlledLookupPolicy) {
+      const source = readFileSync(routeFile, "utf8");
+      const routeDelegations = analyzeServerActionDelegations(
+        source,
+        relativePath,
+        knownServiceIds,
+        knownServiceSymbols,
+        [controlledLookupPolicy.method],
+      ).get(controlledLookupPolicy.method);
+      entries.push(
+        entry({
+          id: `${relativePath}#${controlledLookupPolicy.method}`,
+          surfaceType: "ROUTE_HANDLER",
+          permission: controlledLookupPolicy.permission,
+          dimensions: controlledLookupPolicy.dimensions,
+          guardChain: controlledLookupPolicy.guardChain,
+          denialContract: controlledLookupPolicy.denialContract,
+          riskTier: "HIGH",
+          testIds: controlledLookupPolicy.testIds,
+          boundaryClassifications: ["PUBLIC_BOUNDARY"],
+          boundaryCaseIds: [
+            "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION",
+          ],
+          authorizationAdapterIds: [
+            "session validation",
+            "live Core Administration permission",
+            "tenant/company scope predicate",
+            "bounded option-catalog query",
+          ],
+          delegatedServiceIds: routeDelegations.delegatedServiceIds,
+          callChains: routeDelegations.callChains,
+          noMutationControls: ["Item", "ItemCategory", "Uom", "AuditEvent"],
         }),
       );
       continue;
