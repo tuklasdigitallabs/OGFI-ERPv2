@@ -56,7 +56,17 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("coreAdminUserPageInputSchema");
     expect(serviceSource).toContain("listCoreAdminUserPageAuthorized");
     expect(serviceSource).toContain('orderBy: [{ displayName: "asc" }, { id: "asc" }]');
-    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("effectiveNow");
+    expect(serviceSource).toContain("take: 9");
+    expect(serviceSource).toContain("effectiveRolePreviewCapped");
+    expect(serviceSource).toContain("const page = Math.min(values.page, pageCount)");
+    const userListSource = serviceSource.slice(
+      serviceSource.indexOf("async function listCoreAdminUserPageAuthorized"),
+      serviceSource.indexOf("const coreAdminHighAccessPermissionCodes"),
+    );
+    expect(userListSource).not.toContain("scopeAssignments");
+    expect(userListSource).not.toContain("include:");
+    expect(serviceSource).toContain("skip: (page - 1) * values.pageSize");
     expect(serviceSource).toContain("take: values.pageSize");
     expect(adminPageSource).toContain("permissions.tenantRoleAdminister");
     expect(adminPageSource).toContain("No users, roles, scope, or audit records were loaded.");
@@ -64,6 +74,8 @@ describe("core administration audit search wiring", () => {
     expect(adminPageSource).toContain("<PaginationBar");
     expect(adminPageSource).toContain('name="userQuery"');
     expect(adminPageSource).toContain('name="userStatus"');
+    expect(adminPageSource).toContain("Current effective roles");
+    expect(adminPageSource).toContain('8+ roles');
   });
 
   test("Core Administration uses an active-tab read profile and compact URL-backed tabs", () => {

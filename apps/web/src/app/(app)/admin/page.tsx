@@ -537,7 +537,7 @@ export default async function CoreAdministrationPage({
             <div className="ogfi-table-head hidden grid-cols-[1.2fr_1fr_1.4fr_1fr_auto] gap-4 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-500 md:grid">
               <span>User</span>
               <span>Name</span>
-              <span>Roles</span>
+              <span>Current effective roles</span>
               <span>Status</span>
               <span className="text-right">Action</span>
             </div>
@@ -559,7 +559,7 @@ export default async function CoreAdministrationPage({
                   <p className="font-semibold text-slate-950">{user.displayName}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {user.roles.length === 0 ? (
-                      <Badge>No role</Badge>
+                      <Badge>{user.currentAccessState === "INACTIVE_USER" ? "Inactive user" : "No current role"}</Badge>
                     ) : (
                       user.roles.map((role) => (
                         <Badge key={role} tone="info" size="sm">
@@ -567,9 +567,10 @@ export default async function CoreAdministrationPage({
                         </Badge>
                       ))
                     )}
+                    {user.effectiveRolePreviewCapped ? <Badge tone="warning">8+ roles</Badge> : null}
                   </div>
-                  <Badge tone={user.status === "ACTIVE" ? "success" : "neutral"}>
-                    {user.status}
+                  <Badge tone={user.currentAccessState === "CURRENT" ? "success" : "neutral"}>
+                    {user.currentAccessState === "CURRENT" ? "CURRENT" : user.currentAccessState === "INACTIVE_USER" ? user.status : "NO CURRENT ACCESS"}
                   </Badge>
                   <div className="flex justify-start md:justify-end">
                     <ButtonLink

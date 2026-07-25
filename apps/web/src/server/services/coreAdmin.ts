@@ -714,7 +714,8 @@ export type CoreAdminUserPage = {
     email: string;
     status: string;
     roles: string[];
-    scopes: Array<{ type: string; id: string; accessLevel: string }>;
+    effectiveRolePreviewCapped: boolean;
+    currentAccessState: "CURRENT" | "INACTIVE_USER" | "NO_CURRENT_ACCESS";
   }>;
   page: number;
   pageSize: number;
@@ -728,6 +729,7 @@ async function listCoreAdminUserPageAuthorized(
 ): Promise<CoreAdminUserPage> {
   const values = coreAdminUserPageInputSchema.parse(input);
   const query = values.query.toLowerCase();
+  const effectiveNow = new Date();
   const where: Prisma.UserWhereInput = {
     tenantId: session.context.tenantId,
     ...(values.status
@@ -742,40 +744,53 @@ async function listCoreAdminUserPageAuthorized(
         }
       : {}),
   };
-  const [totalItems, activeItems, users] = await Promise.all([
+  const [totalItems, activeItems] = await Promise.all([
     prisma.user.count({ where }),
     prisma.user.count({ where: { ...where, status: "ACTIVE" as NonNullable<Prisma.UserWhereInput["status"]> } }),
-    prisma.user.findMany({
-      where,
-      include: {
-    roleAssignments: {
-          where: { status: "ACTIVE" },
-          include: { role: true },
-        },
-        scopeAssignments: {
-          where: { status: "ACTIVE" },
-          orderBy: { startsAt: "asc" },
-        },
-      },
-      orderBy: [{ displayName: "asc" }, { id: "asc" }],
-      skip: (values.page - 1) * values.pageSize,
-      take: values.pageSize,
-    }),
   ]);
+  const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, pageCount);
+  const users = await prisma.user.findMany({
+    where,
+    select: {
+      id: true,
+      displayName: true,
+      email: true,
+      status: true,
+      roleAssignments: {
+        where: {
+          status: "ACTIVE",
+          startsAt: { lte: effectiveNow },
+          OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+          role: {
+            status: "ACTIVE",
+            OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
+          },
+        },
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+        take: 9,
+        select: { role: { select: { name: true } } },
+      },
+    },
+    orderBy: [{ displayName: "asc" }, { id: "asc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
   return {
     items: users.map((user) => ({
       id: user.id,
       displayName: user.displayName,
       email: user.email,
       status: user.status,
-      roles: user.roleAssignments.map((assignment) => assignment.role.name),
-      scopes: user.scopeAssignments.map((assignment) => ({
-        type: assignment.scopeType,
-        id: assignment.scopeId,
-        accessLevel: assignment.accessLevel,
-      })),
+      roles: user.status === "ACTIVE" ? user.roleAssignments.slice(0, 8).map((assignment) => assignment.role.name) : [],
+      effectiveRolePreviewCapped: user.status === "ACTIVE" && user.roleAssignments.length > 8,
+      currentAccessState: user.status !== "ACTIVE"
+        ? "INACTIVE_USER"
+        : user.roleAssignments.length > 0
+          ? "CURRENT"
+          : "NO_CURRENT_ACCESS",
     })),
-    page: values.page,
+    page,
     pageSize: values.pageSize,
     totalItems,
     activeItems,

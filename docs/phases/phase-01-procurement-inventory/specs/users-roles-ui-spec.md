@@ -47,6 +47,12 @@ audit-event, and user-detail routes repeat the tenant-role and selected-company 
 preflight before loading detail data. Missing authority returns to the Administration
 restricted state; audit export uses the same tenant-role boundary.
 
+Implementation note (`DEC-0209`): the Users & Access registry labels its role column
+`Current effective roles`. It previews only active, currently effective tenant-local or
+global roles, shows up to eight names with an explicit `8+ roles` cap marker, and labels
+inactive or role-less users truthfully. Scope assignments remain on User Access detail;
+the tenant-level registry does not copy unvalidated scope IDs.
+
 Implementation note (`DEC-0113`): Audit Trail list, detail, and export use the same
 tenant/company and bounded filter contract. The list uses deterministic keyset paging
 (`occurredAt DESC, id DESC`) with explicit totals and next-page state. Detail and CSV

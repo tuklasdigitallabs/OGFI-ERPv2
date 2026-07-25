@@ -149,3 +149,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0206-ADMIN-AUDIT-EVENT-BOUNDED-DETAIL.md` — tenant-safe, redacted, bounded Audit Event detail projection
 - `DEC-0207-ADMIN-ROLE-DETAIL-EFFECTIVE-PREVIEWS.md` — effective Role Detail assignments and truthful capped scope previews
 - `DEC-0208-ADMIN-USER-ROLE-LIFECYCLE-TRUTH.md` — explicit lifecycle versus effective-permission semantics on User Access role records
+- `DEC-0209-ADMIN-USERS-EFFECTIVE-ROLE-PREVIEW.md` — bounded tenant-safe current-role preview on the Core Administration Users registry
