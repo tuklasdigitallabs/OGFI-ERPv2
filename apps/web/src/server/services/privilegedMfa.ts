@@ -275,14 +275,10 @@ export async function verifyPrivilegedMfaEnrollment(formData: FormData) {
     throw new Error("PRIVILEGED_MFA_SELF_VERIFICATION_BLOCKED");
   }
   await prisma.$transaction(async (tx) => {
-    const claimed = await tx.privilegedMfaEnrollment.updateMany({ where: { id: enrollment.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "PENDING_VERIFICATION" }, data: { status: "PENDING_VERIFICATION" } });
+    const verifiedAt = new Date();
+    const claimed = await tx.privilegedMfaEnrollment.updateMany({ where: { id: enrollment.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "PENDING_VERIFICATION" }, data: { status: "VERIFIED", verifiedByUserId: session.user.id, verificationNote: values.reason, verifiedAt } });
     if (claimed.count !== 1) throw new Error("PRIVILEGED_MFA_ENROLLMENT_NOT_FOUND");
-    const saved = await tx.privilegedMfaEnrollment.update({ where: { id: enrollment.id }, data: {
-        status: "VERIFIED",
-        verifiedByUserId: session.user.id,
-        verificationNote: values.reason,
-        verifiedAt: new Date()
-      } });
+    const saved = await tx.privilegedMfaEnrollment.findUniqueOrThrow({ where: { id: enrollment.id } });
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -321,14 +317,10 @@ export async function revokePrivilegedMfaEnrollment(formData: FormData) {
     throw new Error("PRIVILEGED_MFA_SELF_VERIFICATION_BLOCKED");
   }
   await prisma.$transaction(async (tx) => {
-    const claimed = await tx.privilegedMfaEnrollment.updateMany({ where: { id: enrollment.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: { in: ["PENDING_VERIFICATION", "VERIFIED"] } }, data: { status: enrollment.status } });
+    const revokedAt = new Date();
+    const claimed = await tx.privilegedMfaEnrollment.updateMany({ where: { id: enrollment.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: { in: ["PENDING_VERIFICATION", "VERIFIED"] } }, data: { status: "REVOKED", revokedByUserId: session.user.id, revocationReason: values.reason, revokedAt } });
     if (claimed.count !== 1) throw new Error("PRIVILEGED_MFA_ENROLLMENT_NOT_FOUND");
-    const saved = await tx.privilegedMfaEnrollment.update({ where: { id: enrollment.id }, data: {
-        status: "REVOKED",
-        revokedByUserId: session.user.id,
-        revocationReason: values.reason,
-        revokedAt: new Date()
-      } });
+    const saved = await tx.privilegedMfaEnrollment.findUniqueOrThrow({ where: { id: enrollment.id } });
     await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
