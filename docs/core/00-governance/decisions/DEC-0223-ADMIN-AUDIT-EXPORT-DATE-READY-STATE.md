@@ -76,5 +76,7 @@ action.
 - Architecture review recommended this bounded slice with High confidence; the
   closest permitted GPT-5.6 fallback was used because requested Code Spark and
   GPT-5.4 models were unavailable.
-- Local focused Core Administration contract test passes after implementation;
-  broader PostgreSQL, browser, hosted, and UAT gates remain open.
+- Local Core Administration contract coverage passes 45/45 and export-authorization
+  coverage passes 25/25 after the shared visibility contract was updated; the full
+  non-database web suite passes 1,338 tests with 301 skipped and one todo. Broader
+  PostgreSQL, browser, hosted, and UAT gates remain open.

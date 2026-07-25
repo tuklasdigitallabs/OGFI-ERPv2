@@ -70,7 +70,7 @@ const exportPageVisibilityContracts = {
   "admin/page.tsx": {
     helperName: "canExportCoreAdminAudit",
     flagName: "canExportAudit",
-    gateFlagName: "canExportAudit && auditEntityIdIsValid",
+    gateFlagName: "canExportAudit && auditEntityIdIsValid && auditExportDateRangeReady",
     hrefSnippet: "const auditExportHref = `/admin/audit/export"
   },
   "admin/readiness/page.tsx": {
