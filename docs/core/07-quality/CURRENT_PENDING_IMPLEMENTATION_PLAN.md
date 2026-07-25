@@ -977,4 +977,7 @@ Update this register only when implementation state, release scope, a confirmed 
 
 ### DEC-0188 SPF-004 exact-candidate revalidation — July 25, 2026
 - Reopened SPF-004 for the current release candidate. The previous hosted closure remains historical evidence for exact SHA `60690ddd41c12fa31dbdeb3fdec6ebfc8a90f170`; later protected API classifications, lookup behavior, and Administration/Readiness reader bindings require exact-candidate reruns.
+
+### DEC-0189 Supplier catalog category option paging — July 25, 2026
+- Replaced the unbounded supplier-category option read with a tenant/company/supplier-scoped, deterministically ordered, bounded service page. The Catalog UI preserves selected-category scope, exposes refinement and previous/next option controls, and keeps item-link pagination independent. No schema or public API migration is required; focused UI/type/test validation and PostgreSQL high-cardinality evidence remain part of the open shared gates.
 - Current status is **Reopened — exact-candidate revalidation pending**. Disposable PostgreSQL permission/isolation/no-mutation execution, hosted exact-SHA build/database/manifest evidence, and accepted fixture browser evidence remain required. Production-mode `next start` E2E stays assigned to SPF-001/SPF-009.

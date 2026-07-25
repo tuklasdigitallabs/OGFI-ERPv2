@@ -185,6 +185,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const catalogQuery = firstParam(params.catalogQuery) ?? "";
   const catalogStatus = firstParam(params.catalogStatus);
   const catalogCategory = firstParam(params.catalogCategory);
+  const catalogCategoryQuery = firstParam(params.catalogCategoryQuery) ?? "";
+  const catalogCategoryPage = Number(firstParam(params.catalogCategoryPage) ?? "1");
   const catalogPage = Number(firstParam(params.catalogPage) ?? "1");
   const selectedSupplierCatalog = selectedSupplierId && supplierTab === "catalog"
     ? await getSupplierCatalog(session, selectedSupplierId, {
@@ -194,6 +196,9 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             ? catalogStatus
             : "ALL",
         ...(catalogCategory ? { categoryId: catalogCategory } : {}),
+        categoryQuery: catalogCategoryQuery,
+        categoryPage: Number.isFinite(catalogCategoryPage) ? catalogCategoryPage : 1,
+        categoryPageSize: 25,
         page: Number.isFinite(catalogPage) ? catalogPage : 1,
         pageSize: 25
       })
@@ -231,9 +236,17 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   if (catalogCategory) {
     catalogBaseParams.set("catalogCategory", catalogCategory);
   }
+  if (catalogCategoryQuery) catalogBaseParams.set("catalogCategoryQuery", catalogCategoryQuery);
+  if (catalogCategoryPage > 1) catalogBaseParams.set("catalogCategoryPage", String(catalogCategoryPage));
   const catalogPageHref = (page: number) => {
     const nextParams = new URLSearchParams(catalogBaseParams);
     nextParams.set("catalogPage", String(page));
+    return `/suppliers?${nextParams.toString()}`;
+  };
+  const catalogCategoryPageHref = (page: number) => {
+    const nextParams = new URLSearchParams(catalogBaseParams);
+    if (catalogPage > 1) nextParams.set("catalogPage", String(catalogPage));
+    nextParams.set("catalogCategoryPage", String(page));
     return `/suppliers?${nextParams.toString()}`;
   };
   const supplierActionHref = (supplierId: string, action?: "accreditation" | "deactivate") => {
@@ -254,6 +267,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     if (catalogQuery) nextParams.set("catalogQuery", catalogQuery);
     if (catalogStatus) nextParams.set("catalogStatus", catalogStatus);
     if (catalogCategory) nextParams.set("catalogCategory", catalogCategory);
+    if (catalogCategoryQuery) nextParams.set("catalogCategoryQuery", catalogCategoryQuery);
+    if (catalogCategoryPage > 1) nextParams.set("catalogCategoryPage", String(catalogCategoryPage));
     if (catalogPage > 1) nextParams.set("catalogPage", String(catalogPage));
     if (itemLinkQuery) nextParams.set("itemLinkQuery", itemLinkQuery);
     if (itemLinkPage > 1) nextParams.set("itemLinkPage", String(itemLinkPage));
@@ -271,6 +286,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     if (catalogQuery) nextParams.set("catalogQuery", catalogQuery);
     if (catalogStatus) nextParams.set("catalogStatus", catalogStatus);
     if (catalogCategory) nextParams.set("catalogCategory", catalogCategory);
+    if (catalogCategoryQuery) nextParams.set("catalogCategoryQuery", catalogCategoryQuery);
+    if (catalogCategoryPage > 1) nextParams.set("catalogCategoryPage", String(catalogCategoryPage));
     if (catalogPage > 1) nextParams.set("catalogPage", String(catalogPage));
     if (linkId) nextParams.set("selectedSupplierItemLinkId", linkId);
     return `/suppliers?${nextParams.toString()}`;
@@ -285,6 +302,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
       if (catalogQuery) nextParams.set("catalogQuery", catalogQuery);
       if (catalogStatus) nextParams.set("catalogStatus", catalogStatus);
       if (catalogCategory) nextParams.set("catalogCategory", catalogCategory);
+      if (catalogCategoryQuery) nextParams.set("catalogCategoryQuery", catalogCategoryQuery);
+      if (catalogCategoryPage > 1) nextParams.set("catalogCategoryPage", String(catalogCategoryPage));
       if (catalogPage > 1) nextParams.set("catalogPage", String(catalogPage));
     }
     return `/suppliers?${nextParams.toString()}`;
@@ -789,6 +808,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   {catalogQuery ? <input name="catalogQuery" type="hidden" value={catalogQuery} /> : null}
                   {catalogStatus ? <input name="catalogStatus" type="hidden" value={catalogStatus} /> : null}
                   {catalogCategory ? <input name="catalogCategory" type="hidden" value={catalogCategory} /> : null}
+                  {/* Changing the refinement query intentionally resets category options to page one. */}
                   {catalogPage > 1 ? <input name="catalogPage" type="hidden" value={catalogPage} /> : null}
                   {selectedItemId ? <input name="selectedItemId" type="hidden" value={selectedItemId} /> : null}
                   {selectedUomId ? <input name="selectedUomId" type="hidden" value={selectedUomId} /> : null}
@@ -916,6 +936,18 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                     </option>
                   ))}
                 </select>
+                <input
+                  className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                  defaultValue={catalogCategoryQuery}
+                  name="catalogCategoryQuery"
+                  placeholder="Refine category options"
+                  aria-label="Refine category options"
+                />
+                {selectedSupplierCatalog.categoriesPage.hasNextPage || selectedSupplierCatalog.categoriesPage.hasPreviousPage ? (
+                  <span className="text-xs font-normal text-slate-500">
+                    Showing category options {selectedSupplierCatalog.categoriesPage.page} of {Math.max(1, Math.ceil(selectedSupplierCatalog.categoriesPage.totalItems / selectedSupplierCatalog.categoriesPage.pageSize))}; refine search or use the arrows below.
+                  </span>
+                ) : null}
               </label>
               <div className="flex items-end gap-2">
                 <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
@@ -1046,6 +1078,23 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 ) : null}
               </div>
             </div>
+            {selectedSupplierCatalog.categoriesPage.hasPreviousPage || selectedSupplierCatalog.categoriesPage.hasNextPage ? (
+              <div className="flex justify-end gap-2 px-5 pb-4">
+                {selectedSupplierCatalog.categoriesPage.hasPreviousPage ? (
+                  <Link className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold" href={catalogCategoryPageHref(selectedSupplierCatalog.categoriesPage.page - 1)}>
+                    Previous category options
+                  </Link>
+                ) : null}
+                {selectedSupplierCatalog.categoriesPage.hasNextPage ? (
+                  <Link
+                    className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
+                    href={catalogCategoryPageHref(selectedSupplierCatalog.categoriesPage.page + 1)}
+                  >
+                    Next category options
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
           </section>
         ) : null}
       </div>

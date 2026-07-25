@@ -216,6 +216,9 @@ export async function getSupplierCatalog(
     query?: string;
     status?: "ACTIVE" | "INACTIVE" | "ALL";
     categoryId?: string;
+    categoryQuery?: string;
+    categoryPage?: number;
+    categoryPageSize?: number;
     page?: number;
     pageSize?: number;
   }
@@ -245,6 +248,35 @@ export async function getSupplierCatalog(
   const status = filters?.status ?? "ALL";
   const pageSize = Math.min(Math.max(filters?.pageSize ?? 25, 10), 100);
   const page = Math.max(filters?.page ?? 1, 1);
+  const categoryPageSize = Math.min(Math.max(filters?.categoryPageSize ?? 25, 10), 100);
+  const categoryPage = Math.max(filters?.categoryPage ?? 1, 1);
+  const categoryQuery = filters?.categoryQuery?.trim().slice(0, 120);
+  const categoryWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(categoryQuery
+      ? {
+          OR: [
+            { categoryName: { contains: categoryQuery, mode: "insensitive" as const } },
+            { categoryCode: { contains: categoryQuery, mode: "insensitive" as const } }
+          ]
+        }
+      : {}),
+    items: {
+      some: {
+        supplierItemLinks: { some: { supplierId: supplier.id } }
+      }
+    }
+  };
+  const selectedCategoryWhere = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    items: {
+      some: {
+        supplierItemLinks: { some: { supplierId: supplier.id } }
+      }
+    }
+  };
   const where = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
@@ -275,7 +307,7 @@ export async function getSupplierCatalog(
       : {})
   };
 
-  const [totalCount, activeCount, categoryCount, categories, filteredTotalCount, itemLinks] =
+  const [totalCount, activeCount, categoryCount, categoryTotalCount, categories, selectedCategory, filteredTotalCount, itemLinks] =
     await Promise.all([
       prisma.supplierItemLink.count({
         where: {
@@ -292,27 +324,7 @@ export async function getSupplierCatalog(
           status: "ACTIVE"
         }
       }),
-      prisma.supplierItemLink
-        .findMany({
-          where: {
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            supplierId: supplier.id
-          },
-          select: {
-            item: {
-              select: {
-                itemCategoryId: true
-              }
-            }
-          },
-          distinct: ["itemId"]
-        })
-        .then(
-          (links) =>
-            new Set(links.map((link) => link.item.itemCategoryId)).size
-        ),
-      prisma.itemCategory.findMany({
+      prisma.itemCategory.count({
         where: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
@@ -320,14 +332,27 @@ export async function getSupplierCatalog(
             some: {
               supplierItemLinks: {
                 some: {
+                  tenantId: session.context.tenantId,
+                  companyId: session.context.companyId,
                   supplierId: supplier.id
                 }
               }
             }
           }
-        },
-        orderBy: { categoryName: "asc" }
+        }
       }),
+      prisma.itemCategory.count({ where: categoryWhere }),
+      prisma.itemCategory.findMany({
+        where: categoryWhere,
+        orderBy: [{ categoryName: "asc" }, { id: "asc" }],
+        skip: (categoryPage - 1) * categoryPageSize,
+        take: categoryPageSize
+      }),
+      filters?.categoryId
+        ? prisma.itemCategory.findFirst({
+            where: { ...selectedCategoryWhere, id: filters.categoryId }
+          })
+        : Promise.resolve(null),
       prisma.supplierItemLink.count({
         where
       }),
@@ -381,11 +406,23 @@ export async function getSupplierCatalog(
       inactiveCount: totalCount - activeCount,
       categoryCount
     },
-    categories: categories.map((category) => ({
+    categories: [
+      ...(selectedCategory && !categories.some((category) => category.id === selectedCategory.id)
+        ? [selectedCategory]
+        : []),
+      ...categories
+    ].map((category) => ({
       id: category.id,
       categoryCode: category.categoryCode,
       categoryName: category.categoryName
     })),
+    categoriesPage: {
+      page: categoryPage,
+      pageSize: categoryPageSize,
+      totalItems: categoryTotalCount,
+      hasNextPage: categoryPage * categoryPageSize < categoryTotalCount,
+      hasPreviousPage: categoryPage > 1
+    },
     page,
     pageSize,
     filteredCount: filteredTotalCount,

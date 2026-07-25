@@ -90,3 +90,10 @@ Catalog, Accreditation, and Audit sections. Only Catalog loads the paginated
 item-link register. Accreditation owns supplier review controls, while Audit
 is an explicit read-only handoff to the bounded Admin Audit workspace until a
 supplier-specific projection is approved; it does not render raw events.
+
+Implementation note (`DEC-0189`): supplier Catalog category options are a
+tenant/company/supplier-scoped, URL-backed page rather than an unbounded select.
+The page is deterministically ordered, bounded, and exposes previous/next
+controls plus an optional refinement query. A selected category is retained
+only after the same supplier-scope check, even when it is outside the current
+option page; item-link pagination remains independent.
