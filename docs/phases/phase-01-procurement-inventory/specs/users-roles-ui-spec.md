@@ -159,3 +159,4 @@ selected tab loads only its server-owned register and required option catalogs;
 inactive sections are not queried or represented as zero-valued metrics. Filters,
 pagination, denied states, and create actions remain within the selected
 workspace context.
+> Administration implementation note (DEC-0193): Break-Glass Access is a server-paginated, filterable queue. Lifecycle actions are performed in a selected-record TaskSheet; bounded target catalogs fail closed with an explanatory disabled state when refinement is required.

@@ -14,6 +14,8 @@ Break-glass access grants a temporary location scope after a separate admin appr
 
 `Admin` → `Break-Glass Access`
 
+The register is a bounded queue. Use status, reason/evidence, target-user, and location filters, then open one grant to review its full context and available action. Paging is server-owned, so records outside the current page are not silently treated as absent.
+
 ## Request Access
 
 1. Open `Break-Glass Access`.
@@ -56,6 +58,7 @@ After access is rejected, revoked, or expired:
 - You cannot approve, reject, or post-review break-glass access that you requested or that grants access to yourself.
 - Break-glass requests are company-scoped and location-scoped.
 - Active or pending duplicate break-glass access for the same target user is blocked.
+- Request target-user and location catalogs are bounded. If either catalog needs refinement, the request action is temporarily disabled and the screen explains why; this prevents selecting an incomplete emergency-access catalog.
 - Every request, activation, rejection, revocation, expiry, and post-review writes audit history with the DEC-0036 reference.
 - External MFA, identity-provider elevation, infrastructure access, and vault activity must still be evidenced in their approved systems.
 

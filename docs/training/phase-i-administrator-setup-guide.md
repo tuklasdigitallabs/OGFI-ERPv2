@@ -28,7 +28,7 @@ By the end of this module, participants can:
 6. Open audit events and filter by action, entity, actor, request ID, or date range.
 7. Open **Admin > MFA Enrollment** and explain that ERP-side MFA evidence does not replace external provider MFA.
 8. Open **Admin > Session Invalidation** and identify records still pending external provider completion.
-9. Open **Admin > Break-Glass Access** and explain request, separate approval, expiry, revocation, and post-review controls.
+9. Open **Admin > Break-Glass Access** and explain the bounded queue filters, selected-record action sheet, request, separate approval, expiry, revocation, and post-review controls.
 10. Open **Admin > Admin Settings**, use category/search/pagination to find a policy, and review recommended versus overridden DEC-0036 defaults.
 11. In **Purchasing controls**, explain the recommended approval bands: standard approval from PHP 10,000, high-value review from PHP 50,000, senior/executive review from PHP 200,000, emergency cap PHP 5,000, and 3 quotes from PHP 50,000 estimated request value when quotation comparison is required.
 12. In **Security and continuity**, explain the readable retention and backup/restore summaries, then show that raw JSON remains editable only through a reasoned audited override.

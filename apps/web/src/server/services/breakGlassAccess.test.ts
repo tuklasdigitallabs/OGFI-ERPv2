@@ -46,6 +46,12 @@ describe("break-glass access controls", () => {
     expect(serviceSource).toContain("BREAK_GLASS_SELF_REVIEW_BLOCKED");
     expect(serviceSource).toContain("expireActiveBreakGlassGrants");
     expect(serviceSource).toContain("createBreakGlassAssignment");
+    expect(serviceSource).toContain("breakGlassPageInputSchema");
+    expect(serviceSource).toContain("totalItems");
+    expect(serviceSource).toContain("orderBy: [{ createdAt: \"desc\" }, { id: \"desc\" }]");
+    expect(serviceSource).toContain("usersHasMore");
+    expect(serviceSource).toContain('scopeType: "COMPANY"');
+    expect(serviceSource).toContain("startsAt: { lte: new Date() }");
     expect(serviceSource).toContain("await touchUserPrivilegeEpoch(tx, grant.targetUserId)");
     expect(serviceSource).toContain('eventType: "break_glass_access.requested"');
     expect(serviceSource).toContain('eventType: "break_glass_access.activated"');
@@ -55,6 +61,10 @@ describe("break-glass access controls", () => {
     expect(pageSource).toContain("Break-glass register");
     expect(pageSource).toContain("Request Break-Glass Access");
     expect(pageSource).toContain("Complete Break-Glass Post-Review");
+    expect(pageSource).toContain("PaginationBar");
+    expect(pageSource).toContain("Open actions");
+    expect(pageSource).toContain("TaskSheet");
+    expect(pageSource).toContain("status");
     expect(navSource).toContain("Break-Glass Access");
     expect(feedbackSource).toContain("BREAK_GLASS_EXPIRY_TOO_LONG");
     expect(feedbackSource).toContain("BREAK_GLASS_POST_REVIEW_NOT_READY");

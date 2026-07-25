@@ -21,6 +21,14 @@ export const breakGlassAccessStatuses = [
 const breakGlassMaxDurationHours = 24;
 const scopeReasonSchema = z.string().trim().min(5).max(500);
 const accessLevelSchema = z.enum(["VIEW", "OPERATE", "APPROVE", "MANAGE"]);
+const breakGlassPageInputSchema = z.object({
+  query: z.string().trim().max(120).optional(),
+  status: z.enum(breakGlassAccessStatuses).optional(),
+  targetUserQuery: z.string().trim().max(120).optional(),
+  locationQuery: z.string().trim().max(120).optional(),
+  page: z.number().int().min(1).max(10_000).optional(),
+  pageSize: z.number().int().min(10).max(100).optional()
+});
 
 const requestBreakGlassAccessSchema = z.object({
   targetUserId: z.string().uuid(),
@@ -88,6 +96,8 @@ async function expireActiveBreakGlassGrants(session: SessionContext) {
 
   for (const grant of expired) {
     await prisma.$transaction(async (tx) => {
+      const claimed = await tx.breakGlassAccessGrant.updateMany({ where: { id: grant.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE", requestedUntil: { lte: new Date() } }, data: { status: "ACTIVE" } });
+      if (claimed.count !== 1) return;
       if (grant.assignmentId) {
         await tx.userScopeAssignment.updateMany({
           where: {
@@ -155,28 +165,62 @@ async function createBreakGlassAssignment(
   return assignment;
 }
 
-export async function listBreakGlassAccessGrants(session: SessionContext) {
+export async function listBreakGlassAccessGrants(
+  session: SessionContext,
+  input: z.input<typeof breakGlassPageInputSchema> = {}
+) {
   await assertCanManageBreakGlass(session);
   await expireActiveBreakGlassGrants(session);
 
+  const values = breakGlassPageInputSchema.parse(input);
+  const pageSize = values.pageSize ?? 25;
+  const requestedPage = values.page ?? 1;
+  const query = values.query?.slice(0, 120) ?? "";
+  const targetUserQuery = values.targetUserQuery?.slice(0, 120) ?? "";
+  const locationQuery = values.locationQuery?.slice(0, 120) ?? "";
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.status ? { status: values.status } : {}),
+    ...(query
+      ? {
+          OR: [
+            { reason: { contains: query, mode: "insensitive" as const } },
+            { evidenceReference: { contains: query, mode: "insensitive" as const } }
+          ]
+        }
+      : {}),
+    ...(targetUserQuery
+      ? { targetUser: { OR: [{ displayName: { contains: targetUserQuery, mode: "insensitive" as const } }, { email: { contains: targetUserQuery, mode: "insensitive" as const } }] } }
+      : {}),
+    ...(locationQuery
+      ? { location: { OR: [{ name: { contains: locationQuery, mode: "insensitive" as const } }, { code: { contains: locationQuery, mode: "insensitive" as const } }] } }
+      : {})
+  };
+  const totalItems = await prisma.breakGlassAccessGrant.count({ where });
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(totalItems / pageSize)));
   const grants = await prisma.breakGlassAccessGrant.findMany({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId
+    where,
+    select: {
+      id: true, status: true, targetUserId: true, locationId: true, accessLevel: true,
+      reason: true, evidenceReference: true, requestedUntil: true, assignmentId: true,
+      approvalReason: true, approvedAt: true, revocationReason: true, revokedAt: true,
+      postReviewOutcome: true, postReviewReason: true, postReviewEvidenceReference: true,
+      postReviewedAt: true, createdAt: true,
+      targetUser: { select: { displayName: true, email: true } },
+      location: { select: { name: true, code: true, locationType: true } },
+      requestedByUser: { select: { displayName: true, email: true } },
+      approvedByUser: { select: { displayName: true, email: true } },
+      revokedByUser: { select: { displayName: true, email: true } },
+      postReviewedByUser: { select: { displayName: true, email: true } }
     },
-    include: {
-      targetUser: true,
-      location: true,
-      requestedByUser: true,
-      approvedByUser: true,
-      revokedByUser: true,
-      postReviewedByUser: true
-    },
-    orderBy: { createdAt: "desc" },
-    take: 50
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize
   });
 
-  return grants.map((grant) => ({
+  return {
+    items: grants.map((grant) => ({
     id: grant.id,
     status: grant.status as BreakGlassStatus,
     targetUserId: grant.targetUserId,
@@ -207,38 +251,63 @@ export async function listBreakGlassAccessGrants(session: SessionContext) {
     postReviewEvidenceReference: grant.postReviewEvidenceReference,
     postReviewedAt: grant.postReviewedAt?.toISOString() ?? null,
     createdAt: grant.createdAt.toISOString()
-  }));
+    })),
+    page,
+    pageSize,
+    totalItems,
+    totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
+    query,
+    status: values.status ?? null,
+    targetUserQuery,
+    locationQuery
+  };
 }
 
 export async function listBreakGlassAccessOptions(session: SessionContext) {
   await assertCanManageBreakGlass(session);
-  const [users, locations] = await Promise.all([
-    prisma.user.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        status: "ACTIVE",
-        id: { not: session.user.id }
-      },
-      orderBy: { displayName: "asc" }
-    }),
+  const [locationIdsForMembership, locations] = await Promise.all([
+    prisma.location.findMany({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" }, select: { id: true } }),
     prisma.location.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      },
-      orderBy: { name: "asc" }
+    where: {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      status: "ACTIVE"
+    },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    take: 101
     })
   ]);
+  const locationIds = locationIdsForMembership.map((location) => location.id);
+  const users = await prisma.user.findMany({
+    where: {
+      tenantId: session.context.tenantId,
+      status: "ACTIVE",
+      id: { not: session.user.id },
+      scopeAssignments: {
+        some: {
+          status: "ACTIVE",
+          startsAt: { lte: new Date() },
+          AND: [
+            { OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+            { OR: [{ scopeType: "COMPANY", scopeId: session.context.companyId }, { scopeType: "LOCATION", scopeId: { in: locationIds } }] }
+          ]
+        }
+      }
+    },
+    orderBy: [{ displayName: "asc" }, { id: "asc" }],
+    take: 101
+  });
   return {
-    users: users.map((user) => ({
+    users: users.slice(0, 100).map((user) => ({
       id: user.id,
       label: `${formatUserName(user)} / ${user.email}`
     })),
-    locations: locations.map((location) => ({
+    locations: locations.slice(0, 100).map((location) => ({
       id: location.id,
       label: `${location.name} / ${location.locationType.replace(/_/g, " ")}`
     })),
+    usersHasMore: users.length > 100,
+    locationsHasMore: locations.length > 100,
     maxDurationHours: breakGlassMaxDurationHours
   };
 }
@@ -263,20 +332,38 @@ export async function requestBreakGlassAccess(formData: FormData) {
   }
   const requestedUntil = parseRequestedUntil(values.requestedUntil);
 
-  const [targetUser, location, pendingGrant] = await Promise.all([
-    prisma.user.findFirst({
-      where: {
-        id: values.targetUserId,
-        tenantId: session.context.tenantId,
-        status: "ACTIVE"
-      }
-    }),
-    prisma.location.findFirst({
+  const location = await prisma.location.findFirst({
       where: {
         id: values.locationId,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "ACTIVE"
+      }
+    });
+  if (!location) {
+    throw new Error("TARGET_LOCATION_NOT_FOUND");
+  }
+  const [targetUser, pendingGrant] = await Promise.all([
+    prisma.user.findFirst({
+      where: {
+        id: values.targetUserId,
+        tenantId: session.context.tenantId,
+        status: "ACTIVE",
+        scopeAssignments: {
+          some: {
+            status: "ACTIVE",
+            startsAt: { lte: new Date() },
+            AND: [
+              { OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+              {
+                OR: [
+                  { scopeType: "COMPANY", scopeId: location.companyId },
+                  { scopeType: "LOCATION", scopeId: location.id }
+                ]
+              }
+            ]
+          }
+        }
       }
     }),
     prisma.breakGlassAccessGrant.findFirst({
@@ -292,9 +379,6 @@ export async function requestBreakGlassAccess(formData: FormData) {
 
   if (!targetUser) {
     throw new Error("TARGET_USER_NOT_FOUND");
-  }
-  if (!location) {
-    throw new Error("TARGET_LOCATION_NOT_FOUND");
   }
   if (pendingGrant) {
     throw new Error("DUPLICATE_ACTIVE_BREAK_GLASS_ACCESS");
@@ -396,6 +480,8 @@ export async function approveBreakGlassAccess(formData: FormData) {
   const approvedAt = new Date();
 
   await prisma.$transaction(async (tx) => {
+    const claimed = await tx.breakGlassAccessGrant.updateMany({ where: { id: grant.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "PENDING_REVIEW" }, data: { status: "PENDING_REVIEW" } });
+    if (claimed.count !== 1) throw new Error("BREAK_GLASS_ACCESS_NOT_FOUND");
     const assignment = await createBreakGlassAssignment(tx, {
       targetUserId: grant.targetUserId,
       locationId: grant.locationId,
@@ -474,6 +560,8 @@ export async function rejectBreakGlassAccess(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    const claimed = await tx.breakGlassAccessGrant.updateMany({ where: { id: grant.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "PENDING_REVIEW" }, data: { status: "PENDING_REVIEW" } });
+    if (claimed.count !== 1) throw new Error("BREAK_GLASS_ACCESS_NOT_FOUND");
     await tx.breakGlassAccessGrant.update({
       where: { id: grant.id },
       data: {
@@ -531,6 +619,8 @@ export async function revokeBreakGlassAccess(formData: FormData) {
     }
   });
   await prisma.$transaction(async (tx) => {
+    const claimed = await tx.breakGlassAccessGrant.updateMany({ where: { id: grant.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" }, data: { status: "ACTIVE" } });
+    if (claimed.count !== 1) throw new Error("BREAK_GLASS_ACCESS_NOT_FOUND");
     if (grant.assignmentId) {
       await tx.userScopeAssignment.updateMany({
         where: {
@@ -607,6 +697,8 @@ export async function completeBreakGlassPostReview(formData: FormData) {
     }
   });
   await prisma.$transaction(async (tx) => {
+    const claimed = await tx.breakGlassAccessGrant.updateMany({ where: { id: grant.id, tenantId: session.context.tenantId, companyId: session.context.companyId, status: { in: ["REVOKED", "EXPIRED", "REJECTED"] } }, data: { status: grant.status } });
+    if (claimed.count !== 1) throw new Error("BREAK_GLASS_POST_REVIEW_NOT_READY");
     await tx.breakGlassAccessGrant.update({
       where: { id: grant.id },
       data: {
