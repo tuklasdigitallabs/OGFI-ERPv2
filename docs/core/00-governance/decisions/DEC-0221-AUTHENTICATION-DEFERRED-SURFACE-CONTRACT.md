@@ -17,6 +17,7 @@ The route already states that account readiness and activation delivery are sepa
 
 - Authentication page contract: 2/2.
 - Disposable PostgreSQL lifecycle safety: 15/15. The actual database-backed gate cannot start because `DISPOSABLE_DATABASE_ADMIN_URL` is unset and Docker is unavailable.
+- `pnpm test:e2e` reaches the same fail-closed preflight and does not execute a browser case; no browser pass is claimed.
 - Web lint, typecheck, and `git diff --check`: pass.
 - Disposable PostgreSQL, responsive authenticated browser, hosted recovery/deployment, production-authenticated E2E, and UAT remain open.
 
