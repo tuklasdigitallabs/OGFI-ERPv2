@@ -157,3 +157,5 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0214-ADMIN-ROLE-PERMISSION-INTEGRITY.md` — fail-closed Role Detail behavior for unsupported tenant permission links
 - `DEC-0215-PR-DRAFT-LOOKUP-SELECTED-SCOPE-HARDENING.md` — selected-location/brand budget-line retention and removal of the dead unbounded draft catalog
 - `DEC-0216-PR-DRAFT-EDITOR-MULTILINE-CONTINUITY.md` — bounded per-ID selected-option caches across multi-line draft editing
+- `DEC-0217-ADMIN-SENSITIVE-ROLE-PERMISSION-INTEGRITY.md` — fail-closed sensitive-role request creation and approval for unsupported permission links
+- `DEC-0218-ADMIN-PERMISSION-ACCESS-GLOBAL-ROLE-PARITY.md` — tenant/global granting-role provenance and selected-company preview parity
