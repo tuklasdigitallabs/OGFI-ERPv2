@@ -51,6 +51,10 @@ Approval Rule detail is read-only. Approval Steps and Related Audit Activity are
 
 Audit Event detail is read-only and tenant/scope authorized. Actor and company fields use allowlisted projections; sensitive nested keys remain redacted. Before/after/metadata panels have explicit depth, node, and byte budgets, contained scrolling, and a visible notice when the projection is truncated. The immutable stored event is never changed by viewing it, and timestamps use the event company timezone.
 
+### Role Detail assigned users
+
+Role Detail shows currently effective role assignments only: active/effective assignment dates, active users, and active roles. Its scope badges are selected-company previews capped at eight per user and never represent complete authority; capped or incomplete catalogs are disclosed. Assignment timestamps use the selected company timezone.
+
 ### Organization Scope — Location Context assigned access
 
 The selected-company Location Context detail is a read-only, server-authorized view. Its Assigned Access panel is an assignment-grain register: it shows active, currently effective location assignments for active users in the current tenant, with active/effective tenant or global role names as a bounded preview. The panel reports an exact request-time assignment total and uses URL-backed pages of 10–100 rows, deterministic `userId ASC, assignmentId ASC` ordering, stale-page clamping, truthful empty state, and shared responsive pagination controls. It does not grant, edit, or revoke access; those actions remain in the User Access workspace.

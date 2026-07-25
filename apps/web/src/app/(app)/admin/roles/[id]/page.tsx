@@ -365,7 +365,7 @@ export default async function CoreAdminRoleDetailPage({
             <div>
               <h2 className="text-lg font-bold text-slate-950">Assigned Users</h2>
               <p className="text-sm text-slate-500">
-                Role changes affect every active assignment below.
+                Showing currently effective role assignments. Scope badges are selected-company previews, not complete access{role.scopeCatalogCapped ? "; the company scope catalog is capped" : ""}.
               </p>
             </div>
           </div>
@@ -387,9 +387,9 @@ export default async function CoreAdminRoleDetailPage({
                       <p className="font-semibold text-slate-950">{user.displayName}</p>
                       <p className="text-xs text-slate-500">{user.email}</p>
                     </div>
-                    <Badge tone="success">{user.scopes.length} scopes</Badge>
+                    <Badge tone="success">{user.scopePreviewCapped ? `Showing ${user.scopes.length}+ scope previews` : `${user.scopes.length} scope previews`}</Badge>
                   </div>
-                  <p className="mt-2 text-sm text-slate-600">Assigned {user.startsAt}</p>
+                  <p className="mt-2 text-sm text-slate-600">Assigned {new Date(user.startsAt).toLocaleString("en-PH", { timeZone: role.timezone })}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {user.scopes.map((scope) => (
                       <Badge key={scope.id} tone="info">

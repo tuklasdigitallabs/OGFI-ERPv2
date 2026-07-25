@@ -939,4 +939,22 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("max-h-96");
     expect(pageSource).toContain("event.timezone");
   });
+
+  test("role detail assigned-user register uses effective assignments and truthful scope previews", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/roles/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain('z.string().uuid().safeParse(roleId)');
+    expect(serviceSource).toContain("const effectiveNow = new Date();");
+    expect(serviceSource).toContain('scopePreviewCapped: assignment.user.scopeAssignments.length > 8');
+    expect(serviceSource).toContain("scopeCatalogCapped");
+    expect(serviceSource).toContain('role: {');
+    expect(serviceSource).toContain("take: 9");
+    expect(serviceSource).toContain('scopeType: "LOCATION" as const');
+    expect(serviceSource).toContain('status: "ACTIVE" as const');
+    expect(pageSource).toContain("currently effective role assignments");
+    expect(pageSource).toContain("scopePreviewCapped");
+    expect(pageSource).toContain("scopeCatalogCapped");
+    expect(pageSource).toContain("role.timezone");
+    expect(pageSource).not.toContain("{user.scopes.length} scopes");
+  });
 });

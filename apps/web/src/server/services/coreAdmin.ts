@@ -4001,6 +4001,10 @@ export async function getCoreAdminLocationDetail(
     status: "ACTIVE" as const,
     startsAt: { lte: effectiveNow },
     OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+    role: {
+      status: "ACTIVE" as const,
+      OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
+    },
     user: {
       tenantId: session.context.tenantId,
       status: "ACTIVE" as const,
@@ -4150,19 +4154,61 @@ export async function getCoreAdminRoleDetail(
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const pageSize = Math.min(25, Math.max(10, Math.floor(input.pageSize ?? 25)));
-  const requestedPage = Math.max(1, Math.floor(input.page ?? 1));
-  const query = input.query?.trim() ?? "";
-  const permissionPageSize = Math.min(100, Math.max(10, Math.floor(input.permissionPageSize ?? 25)));
-  const requestedPermissionPage = Math.max(1, Math.floor(input.permissionPage ?? 1));
-  const permissionQuery = input.permissionQuery?.trim().slice(0, 120) ?? "";
+  if (!z.string().uuid().safeParse(roleId).success) {
+    return null;
+  }
+
+  const rawPageSize = Number(input.pageSize ?? 25);
+  const rawPage = Number(input.page ?? 1);
+  const rawPermissionPageSize = Number(input.permissionPageSize ?? 25);
+  const rawPermissionPage = Number(input.permissionPage ?? 1);
+  const pageSize = Number.isFinite(rawPageSize) ? Math.min(25, Math.max(10, Math.floor(rawPageSize))) : 25;
+  const requestedPage = Number.isFinite(rawPage) ? Math.min(100_000, Math.max(1, Math.floor(rawPage))) : 1;
+  const query = typeof input.query === "string" ? input.query.trim().slice(0, 120) : "";
+  const permissionPageSize = Number.isFinite(rawPermissionPageSize) ? Math.min(100, Math.max(10, Math.floor(rawPermissionPageSize))) : 25;
+  const requestedPermissionPage = Number.isFinite(rawPermissionPage) ? Math.min(100_000, Math.max(1, Math.floor(rawPermissionPage))) : 1;
+  const permissionQuery = typeof input.permissionQuery === "string" ? input.permissionQuery.trim().slice(0, 120) : "";
   const permissionFilter = input.permissionFilter ?? "ALL";
+  const effectiveNow = new Date();
+  const [companyBrands, companyLocations, companyDepartments, companyProjects] = await Promise.all([
+    prisma.brand.findMany({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId }, select: { id: true }, orderBy: { id: "asc" }, take: 1001 }),
+    prisma.location.findMany({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId }, select: { id: true }, orderBy: { id: "asc" }, take: 1001 }),
+    prisma.department.findMany({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId }, select: { id: true }, orderBy: { id: "asc" }, take: 1001 }),
+    prisma.project.findMany({ where: { tenantId: session.context.tenantId, companyId: session.context.companyId }, select: { id: true }, orderBy: { id: "asc" }, take: 1001 }),
+  ]);
+  const scopeCatalogCapped = [companyBrands, companyLocations, companyDepartments, companyProjects].some((rows) => rows.length > 1000);
+  const selectedCompany = await prisma.company.findFirst({
+    where: { id: session.context.companyId, tenantId: session.context.tenantId },
+    select: { timezone: true },
+  });
+  const scopePreviewWhere = {
+    status: "ACTIVE" as const,
+    startsAt: { lte: effectiveNow },
+    OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+    AND: [{ OR: [
+      { scopeType: "COMPANY" as const, scopeId: session.context.companyId },
+      { scopeType: "BRAND" as const, scopeId: { in: companyBrands.map((row) => row.id) } },
+      { scopeType: "LOCATION" as const, scopeId: { in: companyLocations.map((row) => row.id) } },
+      { scopeType: "DEPARTMENT" as const, scopeId: { in: companyDepartments.map((row) => row.id) } },
+      { scopeType: "PROJECT" as const, scopeId: { in: companyProjects.map((row) => row.id) } },
+    ] }],
+  };
   const assignmentWhere = {
     status: "ACTIVE" as const,
-    ...(query ? { user: { OR: [
-      { displayName: { contains: query, mode: "insensitive" as const } },
-      { email: { contains: query, mode: "insensitive" as const } },
-    ] } } : {}),
+    startsAt: { lte: effectiveNow },
+    OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+    role: {
+      status: "ACTIVE" as const,
+      OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
+    },
+    user: {
+      tenantId: session.context.tenantId,
+      status: "ACTIVE" as const,
+      ...(query ? { OR: [
+        { displayName: { contains: query, mode: "insensitive" as const } },
+        { email: { contains: query, mode: "insensitive" as const } },
+      ] } : {}),
+    },
   };
   const role = await prisma.role.findFirst({
       where: {
@@ -4219,7 +4265,7 @@ export async function getCoreAdminRoleDetail(
   const page = Math.min(requestedPage, pageCount);
   const assignments = await prisma.userRoleAssignment.findMany({
     where: { roleId, ...assignmentWhere },
-    select: { id: true, userId: true, startsAt: true, user: { select: { displayName: true, email: true, scopeAssignments: { where: { status: "ACTIVE" }, orderBy: { startsAt: "asc" }, take: 8, select: { id: true, scopeType: true, scopeId: true, accessLevel: true } } } } },
+    select: { id: true, userId: true, startsAt: true, user: { select: { displayName: true, email: true, scopeAssignments: { where: scopePreviewWhere, orderBy: [{ startsAt: "asc" }, { id: "asc" }], take: 9, select: { id: true, scopeType: true, scopeId: true, accessLevel: true } } } } },
     orderBy: [{ startsAt: "asc" }, { id: "asc" }],
     skip: (page - 1) * pageSize,
     take: pageSize,
@@ -4305,6 +4351,8 @@ export async function getCoreAdminRoleDetail(
       query: permissionQuery,
       filter: permissionFilter,
     },
+    timezone: selectedCompany?.timezone ?? "Asia/Manila",
+    scopeCatalogCapped,
     enabledPermissionCodes: Array.from(currentPermissionCodes),
     permissions: role.permissions.map((rolePermission) => ({
       id: rolePermission.permission.id,
@@ -4323,12 +4371,13 @@ export async function getCoreAdminRoleDetail(
       displayName: assignment.user.displayName,
       email: assignment.user.email,
       startsAt: assignment.startsAt.toISOString(),
-      scopes: assignment.user.scopeAssignments.map((scope) => ({
+      scopes: assignment.user.scopeAssignments.slice(0, 8).map((scope) => ({
         id: scope.id,
         type: scope.scopeType,
         scopeId: scope.scopeId,
         accessLevel: scope.accessLevel,
       })),
+      scopePreviewCapped: assignment.user.scopeAssignments.length > 8,
     })),
     assignedUsersPage: { page, pageSize, totalItems: assignmentCount, totalPages: pageCount, query },
   };
