@@ -910,6 +910,11 @@ Update this register only when implementation state, release scope, a confirmed 
 - Existing selected-company/Core Administration Manage authorization, UTC/value/required-field validation, reason/audit behavior, and no-direct-gate-mutation semantics remain server-authoritative.
 - Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
 
+### DEC-0177 Administration Readiness Release Board canonical authority — July 25, 2026
+- The main Readiness register no longer renders a duplicate Release Board decision creation modal. It now links to the dedicated `/admin/readiness/release-board` composer as the single GO/NO-GO decision authority; selected decision detail remains read-only and context-preserving.
+- Dedicated Release Board authorization, readiness eligibility, UTC/required validation, append-only audit, and no-direct-gate-mutation semantics remain authoritative. Administrator training now points to the dedicated workspace.
+- Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
+
 ### DEC-0172 Administration Readiness selected Deployment review sheet — July 25, 2026
 - Selected Deployment Evidence Verify/Reject actions now use one focused TaskSheet with explicit migration/restore/rollback/monitoring readiness consequences, preserved filter/page context, 44px controls, and visible rejection-reason validation. Inline competing review forms were removed.
 - Existing selected-company authorization, creator self-review protection, `RECORDED` CAS, reason validation, audit, generic unavailable behavior, and no-direct-gate-mutation semantics remain server-authoritative.

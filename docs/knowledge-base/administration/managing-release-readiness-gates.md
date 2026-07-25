@@ -59,6 +59,8 @@ To update a readiness gate, choose **Open gate controls** on the selected gate. 
 
 Deployment and Enablement **Record Evidence** actions also open focused sheets. Complete the required fields and reason there; active filters and pagination are preserved when the record saves or a validation error is returned.
 
+Use **Open Release Board workspace** to record a GO/NO-GO decision. The dedicated workspace is the only decision composer; the Readiness register is a scoped, read-only register and decision-detail view.
+
 UAT rows do not perform review actions inline. Open a record and then its review controls. Only a recorded item can be verified or rejected, and the person who recorded it cannot perform that review. Rejection requires a reason; verified and rejected records are retained as read-only history.
 
 Deployment evidence follows the same selected-record review pattern. The migration/backup/restore readiness counter only clears when each required evidence type is verified; monitoring/hypercare is tracked separately. A recorded or rejected item does not clear a deployment gate.

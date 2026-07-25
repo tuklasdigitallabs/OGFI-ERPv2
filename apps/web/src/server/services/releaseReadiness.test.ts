@@ -109,7 +109,10 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain('title="Record Enablement Evidence"');
     expect(pageSource).toContain('name="deploymentPageSize"');
     expect(pageSource).toContain('name="enablementPageSize"');
-    expect(pageSource).toContain("Record Release Board Decision");
+    expect(pageSource).toContain("Open Release Board workspace");
+    expect(pageSource).toContain('/admin/readiness/release-board');
+    expect(pageSource).not.toContain('title="Record Release Board Decision"');
+    expect(pageSource).not.toContain("createReleaseBoardDecisionAction");
     expect(pageSource).toContain("boardDecisionPageSize");
     expect(pageSource).toContain("Selected Release Board decision");
     expect(pageSource).toContain("Selected security attention");

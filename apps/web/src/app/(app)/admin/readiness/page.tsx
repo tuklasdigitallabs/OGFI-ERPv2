@@ -11,7 +11,6 @@ import {
 import { Badge, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
-import { EntryModal } from "@/components/EntryModal";
 import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
@@ -23,7 +22,6 @@ import { canExportReleaseReadiness } from "@/server/services/exportAuthorization
 import {
   createDeploymentEvidenceRecord,
   createEnablementEvidenceRecord,
-  createReleaseBoardDecision,
   createUatEvidenceRecord,
   deploymentEvidenceTypes,
   enablementEvidenceTypes,
@@ -243,18 +241,6 @@ async function updateEnablementEvidenceAction(formData: FormData) {
   }
   revalidatePath("/admin/readiness");
   redirect(returnPath);
-}
-
-async function createReleaseBoardDecisionAction(formData: FormData) {
-  "use server";
-
-  try {
-    await createReleaseBoardDecision(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/readiness?category=go_no_go", error));
-  }
-  revalidatePath("/admin/readiness");
-  redirect("/admin/readiness?category=go_no_go");
 }
 
 export default async function AdminReadinessPage({
@@ -1045,82 +1031,6 @@ export default async function AdminReadinessPage({
                   </button>
                 </form>
               </TaskSheet>
-            ) : null}
-            {selectedCategory === "go_no_go" ? (
-              <EntryModal
-                title="Record Release Board Decision"
-                triggerLabel="Record Decision"
-                triggerClassName="border border-blue-200 bg-blue-600 text-white hover:bg-blue-700"
-              >
-                <form
-                  action={createReleaseBoardDecisionAction}
-                  className="ogfi-form-shell mt-4 grid gap-4"
-                >
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                      Decision
-                      <select
-                        className="rounded-md border border-slate-300 px-3 py-2"
-                        name="decision"
-                        required
-                      >
-                        {releaseBoardDecisions.map((decision) => (
-                          <option key={decision} value={decision}>
-                            {boardDecisionLabel(decision)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">
-                      Decided at
-                      <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
-                        name="decidedAt"
-                        type="datetime-local"
-                        required
-                      />
-                    </label>
-                  </div>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Evidence reference
-                    <input
-                      className="rounded-md border border-slate-300 px-3 py-2"
-                      name="evidenceReference"
-                      placeholder="Signed decision record, meeting minutes, or approval packet"
-                      required
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Participants
-                    <textarea
-                      className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                      name="participants"
-                      placeholder="Product Owner, QA Lead, Release Manager, Security Owner, Operations Owner, Warehouse/Inventory Owner, Enablement Owner"
-                      required
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Decision note
-                    <textarea
-                      className="min-h-28 rounded-md border border-slate-300 px-3 py-2"
-                      name="decisionNote"
-                      placeholder="Decision basis, conditions, rollback trigger, mitigation, owner, expiry, or forward-fix plan"
-                      required
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">
-                    Reason for recording
-                    <textarea
-                      className="min-h-20 rounded-md border border-slate-300 px-3 py-2"
-                      name="reason"
-                      required
-                    />
-                  </label>
-                  <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-                    Save Decision
-                  </button>
-                </form>
-              </EntryModal>
             ) : null}
             <Badge tone="info">Source DEC-0036</Badge>
           </div>
