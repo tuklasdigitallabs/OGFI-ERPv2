@@ -6,6 +6,7 @@ describe("authentication recovery bounded queue contract", () => {
   test("keeps recovery reads bounded and selected actions server-authoritative", () => {
     const service = readFileSync(path.resolve(__dirname, "authenticationAdmin.ts"), "utf8");
     const page = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/authentication/page.tsx"), "utf8");
+    const loading = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/authentication/loading.tsx"), "utf8");
     expect(service).toContain("listAuthRecoveryRequestPage");
     expect(service).toContain("listAuthRecoveryTargetCatalog");
     expect(service).toContain("take: 101");
@@ -18,6 +19,9 @@ describe("authentication recovery bounded queue contract", () => {
     expect(page).toContain("PaginationBar");
     expect(page).toContain("TaskSheet");
     expect(page).toContain("View audit");
+    expect(page).toContain("AUTH_RECOVERY_INVALID_INTENT");
+    expect(page).toContain("Clear filters");
+    expect(loading).toContain("Loading Authentication Recovery");
     expect(page).toContain("Open details");
     expect(page).toContain("Account readiness");
     expect(page).not.toContain("listAuthRecoveryRequests(session)");

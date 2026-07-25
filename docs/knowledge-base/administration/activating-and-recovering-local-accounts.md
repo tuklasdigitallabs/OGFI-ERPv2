@@ -55,6 +55,7 @@ The user opens the link, creates and confirms a password that meets the displaye
 - Direct activation is only for users without an active local identity. Existing accounts must use controlled recovery.
 - Recovery requests cannot be created for an account without an active local identity; use the Activation section for first-time setup.
 - If a search or UTC date filter is invalid or too broad, OGFI shows no records until you correct it; it does not silently broaden the result set.
+- If an action fails because another reviewer acted, scope changed, MFA assurance expired, or the target is not eligible, the workspace explains the safe next step without exposing internal error codes.
 - The requesting administrator cannot review the same recovery request, and the target user cannot request or review their own recovery.
 - Activation links are secrets. They are not shown to administrators and must not be copied into tickets, public chat, screenshots, or the MFA evidence register.
 - A failed delivery does not expose the link. Correct the approved SMTP transport or account email and use the controlled retry action before expiry.

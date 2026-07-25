@@ -320,7 +320,13 @@ export async function listAuthRecoveryRequestPage(session: SessionContext, input
   await assertCanManageAuthentication(session);
   const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const rawQuery = typeof raw.query === "string" ? raw.query.trim() : "";
-  const validDate = (v: unknown) => typeof v !== "string" || ( /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00.000Z`)) );
+  const validDate = (v: unknown) => {
+    if (typeof v !== "string") return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+    const [year, month, day] = v.split("-").map(Number);
+    const parsed = new Date(Date.UTC(year!, month! - 1, day!));
+    return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month! - 1 && parsed.getUTCDate() === day;
+  };
   if (rawQuery.length > 120 || !validDate(raw.createdFrom) || !validDate(raw.createdTo) || (typeof raw.createdFrom === "string" && typeof raw.createdTo === "string" && raw.createdFrom > raw.createdTo)) {
     const pageSize = typeof raw.pageSize === "number" && raw.pageSize >= 10 && raw.pageSize <= 100 ? raw.pageSize : 25;
     return { items: [], page: 1, pageSize, totalItems: 0, totalPages: 1, invalidInput: true as const };
