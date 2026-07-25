@@ -36,6 +36,8 @@ function humanizeEnum(value: string) {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+type UserAccessSection = "overview" | "roles" | "scopes" | "requests" | "audit";
+
 async function createLocationScope(formData: FormData) {
   "use server";
 
@@ -230,7 +232,9 @@ export default async function CoreAdminUserDetailPage({
   const scopePageValue = Number.parseInt(String(resolvedSearchParams.scopePage ?? "1"), 10);
   const scopeActionId = Array.isArray(resolvedSearchParams.scopeActionId) ? resolvedSearchParams.scopeActionId[0] : resolvedSearchParams.scopeActionId;
   const sectionValue = Array.isArray(resolvedSearchParams.section) ? resolvedSearchParams.section[0] : resolvedSearchParams.section;
-  const section = ["overview", "roles", "scopes", "requests", "audit"].includes(sectionValue ?? "") ? sectionValue! : "overview";
+  const section: UserAccessSection = ["overview", "roles", "scopes", "requests", "audit"].includes(sectionValue ?? "")
+    ? (sectionValue as UserAccessSection)
+    : "overview";
   const requestKindValue = Array.isArray(resolvedSearchParams.requestKind) ? resolvedSearchParams.requestKind[0] : resolvedSearchParams.requestKind;
   const requestKind = requestKindValue === "role" ? "role" : "scope";
   const requestActionId = Array.isArray(resolvedSearchParams.requestActionId) ? resolvedSearchParams.requestActionId[0] : resolvedSearchParams.requestActionId;
@@ -255,6 +259,7 @@ export default async function CoreAdminUserDetailPage({
     scopeRequestPage: Number.isFinite(scopeRequestPageValue) ? scopeRequestPageValue : 1,
     scopeRequestPageSize: Number.isFinite(scopeRequestPageSizeValue) ? scopeRequestPageSizeValue : 25,
     requestKind: section === "requests" ? requestKind : "none",
+    userAccessSection: section,
     roleRequestPage: Number.isFinite(roleRequestPageValue) ? roleRequestPageValue : 1,
     roleRequestPageSize: Number.isFinite(roleRequestPageSizeValue) ? roleRequestPageSizeValue : 25,
     ...(scopeRequestStatusValue && ["PENDING", "APPROVED", "REJECTED"].includes(scopeRequestStatusValue)
@@ -802,7 +807,7 @@ export default async function CoreAdminUserDetailPage({
           </Panel>
         ) : null}
 
-        {section !== "requests" && user.canMutateRoles ? (
+        {section === "roles" && user.canMutateRoles ? (
           <Panel className="xl:col-span-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>

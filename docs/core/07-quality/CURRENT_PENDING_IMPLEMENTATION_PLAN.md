@@ -861,3 +861,7 @@ Update this register only when implementation state, release scope, a confirmed 
 - Non-Requests sections now pass `requestKind: "none"`, skipping both controlled-request count/list queries; Requests scope and role sections continue to load only their selected dataset. Existing callers without a kind retain compatibility behavior.
 - Corrected Audit predicate composition so exact actor scoping survives free-text search and cannot leak another same-company actor’s event.
 - Evidence: Core Admin tests 34/34, web TypeScript, lint, production build, and diff checks pass. Query-count/isolation, PostgreSQL, responsive browser, hosted recovery, and UAT remain open; role/scope/catalog non-active reads remain a separate follow-up.
+
+### DEC-0165 Administration User Access section-aware catalogs — July 25, 2026
+- Added an allowlisted section projection for assignment catalogs: Overview/Audit skip both, Roles loads roles, Scopes loads locations, and Requests loads only the catalog matching its selected kind. Omitted projection callers retain compatibility behavior. Assign Role is now visible only in Roles; selector surfaces remain section-specific.
+- Evidence: Core Admin tests 34/34, web TypeScript, lint, production build, and diff checks pass. Query-count/isolation, PostgreSQL, responsive browser, hosted recovery, and UAT remain open; scope-page and role-page reads remain a separate follow-up.

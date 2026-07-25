@@ -1947,6 +1947,7 @@ export async function getCoreAdminUserDetail(
     roleRequestPage?: number;
     roleRequestPageSize?: number;
     roleRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
+    userAccessSection?: "overview" | "roles" | "scopes" | "requests" | "audit";
   } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
@@ -2018,6 +2019,14 @@ export async function getCoreAdminUserDetail(
   const scopeRequestPageSize = Math.min(Math.max(options.scopeRequestPageSize ?? 25, 10), 100);
   const roleRequestPage = Math.min(Math.max(options.roleRequestPage ?? 1, 1), 10_000);
   const roleRequestPageSize = Math.min(Math.max(options.roleRequestPageSize ?? 25, 10), 100);
+  const loadRoleCatalog =
+    options.userAccessSection === undefined ||
+    options.userAccessSection === "roles" ||
+    (options.userAccessSection === "requests" && options.requestKind === "role");
+  const loadLocationCatalog =
+    options.userAccessSection === undefined ||
+    options.userAccessSection === "scopes" ||
+    (options.userAccessSection === "requests" && options.requestKind === "scope");
   const assignableRoleWhere: Prisma.RoleWhereInput = {
       tenantId: session.context.tenantId,
       status: "ACTIVE",
@@ -2032,8 +2041,8 @@ export async function getCoreAdminUserDetail(
         : {}),
   };
   const [assignableRoleTotal, assignableRoles] = await Promise.all([
-    prisma.role.count({ where: assignableRoleWhere }),
-    prisma.role.findMany({
+    loadRoleCatalog ? prisma.role.count({ where: assignableRoleWhere }) : Promise.resolve(0),
+    loadRoleCatalog ? prisma.role.findMany({
       where: assignableRoleWhere,
       select: {
         id: true,
@@ -2046,7 +2055,7 @@ export async function getCoreAdminUserDetail(
       },
       orderBy: [{ name: "asc" }, { id: "asc" }],
       take: 100,
-    }),
+    }) : Promise.resolve([]),
   ]);
   const scopeRequestWhere: Prisma.HighRiskScopeRequestWhereInput = {
     tenantId: session.context.tenantId,
@@ -2116,8 +2125,8 @@ export async function getCoreAdminUserDetail(
   };
   const [activeLocationTotal, activeLocationCatalog, referencedLocations] =
     await Promise.all([
-      prisma.location.count({ where: locationWhere }),
-      prisma.location.findMany({
+      loadLocationCatalog ? prisma.location.count({ where: locationWhere }) : Promise.resolve(0),
+      loadLocationCatalog ? prisma.location.findMany({
         where: locationWhere,
         select: {
           id: true,
@@ -2127,7 +2136,7 @@ export async function getCoreAdminUserDetail(
         },
         orderBy: [{ name: "asc" }, { id: "asc" }],
         take: 100,
-      }),
+      }) : Promise.resolve([]),
       referencedLocationIds.length
         ? prisma.location.findMany({
             where: {

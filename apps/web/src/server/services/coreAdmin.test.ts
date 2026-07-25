@@ -557,6 +557,8 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("const loadScopeRequests = options.requestKind === undefined || options.requestKind === \"scope\"");
     expect(serviceSource).toContain("const loadRoleRequests = options.requestKind === undefined || options.requestKind === \"role\"");
     expect(detailPageSource).toContain('requestKind: section === "requests" ? requestKind : "none"');
+    expect(serviceSource).toContain("const loadRoleCatalog =");
+    expect(serviceSource).toContain("const loadLocationCatalog =");
     expect(serviceSource).toContain('orderBy: [{ createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("highRiskScopeRequestPage");
     expect(serviceSource).toContain("sensitiveRoleRequestPage");
@@ -612,6 +614,7 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain('section === "requests" && requestKind === "scope"');
     expect(detailPageSource).toContain('section === "audit" ?');
     expect(detailPageSource).toContain('aria-label="User access sections"');
+    expect(detailPageSource).toContain('section === "roles" && user.canMutateRoles');
   });
 
   test("high-risk scope review revalidates target membership and claims pending CAS", () => {
