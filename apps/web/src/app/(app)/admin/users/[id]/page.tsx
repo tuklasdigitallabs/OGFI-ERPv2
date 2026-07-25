@@ -18,6 +18,7 @@ import {
   deactivateUserRoleAssignment,
   deactivateUserScopeAssignment,
   getCoreAdminUserDetail,
+  listCoreAdminUserScopePage,
   rejectHighRiskUserLocationScopeRequest,
   rejectSensitiveUserRoleRequest,
   requestSensitiveUserRole,
@@ -218,6 +219,9 @@ export default async function CoreAdminUserDetailPage({
     ? resolvedSearchParams.assignedRoleQuery[0]
     : resolvedSearchParams.assignedRoleQuery;
   const assignedRolePageValue = Number.parseInt(String(resolvedSearchParams.assignedRolePage ?? "1"), 10);
+  const scopeQuery = Array.isArray(resolvedSearchParams.scopeQuery) ? resolvedSearchParams.scopeQuery[0] : resolvedSearchParams.scopeQuery;
+  const scopeType = Array.isArray(resolvedSearchParams.scopeType) ? resolvedSearchParams.scopeType[0] : resolvedSearchParams.scopeType;
+  const scopePageValue = Number.parseInt(String(resolvedSearchParams.scopePage ?? "1"), 10);
   const scopeRequestStatusValue = Array.isArray(resolvedSearchParams.scopeRequestStatus)
     ? resolvedSearchParams.scopeRequestStatus[0]
     : resolvedSearchParams.scopeRequestStatus;
@@ -231,7 +235,7 @@ export default async function CoreAdminUserDetailPage({
   const user = await getCoreAdminUserDetail(session, id, {
     ...(locationQuery ? { locationQuery } : {}),
     ...(roleQuery ? { roleQuery } : {}),
-    assignedRoleQuery,
+    ...(assignedRoleQuery ? { assignedRoleQuery } : {}),
     assignedRolePage: Number.isFinite(assignedRolePageValue) ? assignedRolePageValue : 1,
     assignedRolePageSize: 25,
     scopeRequestPage: Number.isFinite(scopeRequestPageValue) ? scopeRequestPageValue : 1,
@@ -248,21 +252,43 @@ export default async function CoreAdminUserDetailPage({
   if (!user) {
     redirect("/admin");
   }
+  const scopePage = await listCoreAdminUserScopePage(session, id, {
+    ...(scopeQuery ? { query: scopeQuery } : {}),
+    ...(scopeType ? { scopeType } : {}),
+    page: Number.isFinite(scopePageValue) ? scopePageValue : 1,
+    pageSize: 25,
+  });
+  const scopedUser = {
+    ...user,
+    scopes: scopePage.items.map((item) => user.scopes.find((scope) => scope.id === item.id) ?? {
+      id: item.id,
+      type: item.scopeType,
+      scopeId: item.scopeId,
+      displayName: item.displayName,
+      displayContext: item.displayContext,
+      code: item.code,
+      accessLevel: item.accessLevel,
+      canMutate: false,
+      riskLabel: "Scope action requires live revalidation",
+      startsAt: item.startsAt.toISOString(),
+    }),
+    scopesPage: scopePage,
+  };
   const assignedLocationScopeIds = new Set(
-    user.scopes
+    scopedUser.scopes
       .filter((scope) => scope.type === "LOCATION")
       .map((scope) => scope.scopeId)
   );
-  const availableLocations = user.assignableLocations.filter(
+  const availableLocations = scopedUser.assignableLocations.filter(
     (location) =>
       !assignedLocationScopeIds.has(location.id) && location.directAssignable
   );
   const pendingHighRiskLocationIds = new Set(
-    user.highRiskScopeRequests
+    scopedUser.highRiskScopeRequests
       .filter((request) => request.status === "PENDING")
       .map((request) => request.locationId)
   );
-  const requestableHighRiskLocations = user.assignableLocations.filter(
+  const requestableHighRiskLocations = scopedUser.assignableLocations.filter(
     (location) =>
       !assignedLocationScopeIds.has(location.id) &&
       !pendingHighRiskLocationIds.has(location.id)
@@ -309,7 +335,7 @@ export default async function CoreAdminUserDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Scopes</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{user.scopes.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{scopedUser.scopesPage.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Permissions</p>
@@ -398,11 +424,16 @@ export default async function CoreAdminUserDetailPage({
             </div>
             {user.canMutateScopes ? <Badge tone="warning">Mutable</Badge> : <Badge>Self protected</Badge>}
           </div>
+          <form className="mt-4 grid gap-2 md:grid-cols-[1fr_12rem_auto]" method="get">
+            <label className="grid gap-1 text-sm font-medium text-slate-700">Search scopes<input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="scopeQuery" defaultValue={scopedUser.scopesPage.query} placeholder="Name or code" /></label>
+            <label className="grid gap-1 text-sm font-medium text-slate-700">Type<select className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="scopeType" defaultValue={scopedUser.scopesPage.scopeType ?? ""}><option value="">All types</option>{["COMPANY", "BRAND", "LOCATION", "DEPARTMENT", "PROJECT"].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+            <button className="mt-auto min-h-11 rounded-md bg-slate-800 px-4 text-sm font-semibold text-white" type="submit">Search</button>
+          </form>
           <div className="mt-4 divide-y divide-slate-100">
-            {user.scopes.length === 0 ? (
+            {scopedUser.scopes.length === 0 ? (
               <p className="py-4 text-sm text-slate-600">No active scopes are assigned.</p>
             ) : (
-              user.scopes.map((scope) => (
+              scopedUser.scopes.map((scope) => (
                 <div
                   key={scope.id}
                   data-testid="admin-user-scope-row"
@@ -454,6 +485,7 @@ export default async function CoreAdminUserDetailPage({
               ))
             )}
           </div>
+          {scopedUser.scopesPage.totalItems > 0 ? <PaginationBar page={scopedUser.scopesPage.page} pageSize={scopedUser.scopesPage.pageSize} totalItems={scopedUser.scopesPage.totalItems} itemLabel="scopes" getPageHref={(nextPage) => `/admin/users/${user.id}?scopePage=${nextPage}${scopedUser.scopesPage.query ? `&scopeQuery=${encodeURIComponent(scopedUser.scopesPage.query)}` : ""}${scopedUser.scopesPage.scopeType ? `&scopeType=${encodeURIComponent(scopedUser.scopesPage.scopeType)}` : ""}`} /> : null}
         </Panel>
 
         <Panel className="ogfi-detail-card">

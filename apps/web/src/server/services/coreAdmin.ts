@@ -1935,6 +1935,11 @@ export async function getCoreAdminUserDetail(
   options: {
     locationQuery?: string;
     roleQuery?: string;
+    assignedRoleQuery?: string;
+    assignedRolePage?: number;
+    assignedRolePageSize?: number;
+    rolePage?: number;
+    rolePageSize?: number;
     scopeRequestPage?: number;
     scopeRequestPageSize?: number;
     scopeRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
@@ -1982,15 +1987,15 @@ export async function getCoreAdminUserDetail(
   }
 
   const activeRoleAssignmentIds = await prisma.userRoleAssignment.findMany({
-    where: { userId: user.id, status: "ACTIVE", role: { tenantId: { in: [session.context.tenantId, null] } } },
+    where: { userId: user.id, status: "ACTIVE", role: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] } },
     select: { roleId: true },
   });
-  const rolePageSize = Math.min(25, Math.max(10, Math.floor(options.rolePageSize ?? 25)));
-  const assignedRoleQuery = options.roleQuery?.trim() ?? "";
+  const rolePageSize = Math.min(25, Math.max(10, Math.floor(options.assignedRolePageSize ?? options.rolePageSize ?? 25)));
+  const assignedRoleQuery = (options.assignedRoleQuery ?? options.roleQuery)?.trim() ?? "";
   const roleAssignmentWhere: Prisma.UserRoleAssignmentWhereInput = {
     userId: user.id,
     status: "ACTIVE",
-    role: { tenantId: { in: [session.context.tenantId, null] }, ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
+    role: { AND: [{ OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] }], ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
   };
   const [activeRoleCount, effectivePermissions] = await Promise.all([
     prisma.userRoleAssignment.count({ where: roleAssignmentWhere }),
@@ -2000,7 +2005,7 @@ export async function getCoreAdminUserDetail(
     }),
   ]);
   const rolePageCount = Math.max(1, Math.ceil(activeRoleCount / rolePageSize));
-  const rolePage = Math.min(Math.max(1, Math.floor(options.rolePage ?? 1)), rolePageCount);
+  const rolePage = Math.min(Math.max(1, Math.floor(options.assignedRolePage ?? options.rolePage ?? 1)), rolePageCount);
   const roleAssignments = await prisma.userRoleAssignment.findMany({
     where: roleAssignmentWhere,
     select: { id: true, startsAt: true, role: { select: { id: true, name: true, code: true, status: true } } },
@@ -2489,6 +2494,68 @@ export async function getCoreAdminUserDetail(
       occurredAt: event.occurredAt.toISOString(),
     })),
   };
+}
+
+type CoreAdminUserScopePage = {
+  id: string;
+  scopeType: string;
+  scopeId: string;
+  accessLevel: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  displayName: string;
+  displayContext: string;
+  code: string | null;
+  locationType: string | null;
+  totalItems: number;
+};
+
+export async function listCoreAdminUserScopePage(
+  session: SessionContext,
+  userId: string,
+  input: { page?: number; pageSize?: number; query?: string; scopeType?: string } = {},
+) {
+  await requirePermission(session, permissions.coreAdminister);
+  await assertCanAdministerTenantRoles(session);
+  await assertCanManageCompanyScope(session, session.context.companyId);
+  await assertTargetUserInCurrentCompany(session, userId);
+  const pageSize = Math.min(100, Math.max(10, Math.floor(input.pageSize ?? 25)));
+  const requestedPage = Math.max(1, Math.floor(input.page ?? 1));
+  const query = input.query?.trim() ?? "";
+  const type = ["COMPANY", "BRAND", "LOCATION", "DEPARTMENT", "PROJECT"].includes(input.scopeType ?? "") ? input.scopeType! : null;
+  const rows = await prisma.$queryRaw<CoreAdminUserScopePage[]>`
+    WITH scoped AS (
+      SELECT usa.id, usa."scopeType"::text AS "scopeType", usa."scopeId", usa."accessLevel"::text AS "accessLevel", usa."startsAt", usa."endsAt", COALESCE(c."tradingName", c."legalName") AS "displayName", c."legalName" || ' / Company' AS "displayContext", c.code, NULL::text AS "locationType"
+        FROM "UserScopeAssignment" usa JOIN "Company" c ON c.id = usa."scopeId" AND c."tenantId" = ${session.context.tenantId} AND c.id = ${session.context.companyId}
+       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'COMPANY'
+      UNION ALL
+      SELECT usa.id, usa."scopeType"::text, usa."scopeId", usa."accessLevel"::text, usa."startsAt", usa."endsAt", b.name, c."tradingName" || ' / Brand', b.code, NULL::text
+        FROM "UserScopeAssignment" usa JOIN "Brand" b ON b.id = usa."scopeId" AND b."tenantId" = ${session.context.tenantId} AND b."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = b."companyId"
+       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'BRAND'
+      UNION ALL
+      SELECT usa.id, usa."scopeType"::text, usa."scopeId", usa."accessLevel"::text, usa."startsAt", usa."endsAt", l.name, COALESCE(b.name || ' / ', '') || c."tradingName" || ' / ' || l."locationType"::text, l.code, l."locationType"::text
+        FROM "UserScopeAssignment" usa JOIN "Location" l ON l.id = usa."scopeId" AND l."tenantId" = ${session.context.tenantId} AND l."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = l."companyId" LEFT JOIN "Brand" b ON b.id = l."brandId"
+       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'LOCATION'
+      UNION ALL
+      SELECT usa.id, usa."scopeType"::text, usa."scopeId", usa."accessLevel"::text, usa."startsAt", usa."endsAt", d.name, c."tradingName" || ' / Department', d.code, NULL::text
+        FROM "UserScopeAssignment" usa JOIN "Department" d ON d.id = usa."scopeId" AND d."tenantId" = ${session.context.tenantId} AND d."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = d."companyId"
+       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'DEPARTMENT'
+      UNION ALL
+      SELECT usa.id, usa."scopeType"::text, usa."scopeId", usa."accessLevel"::text, usa."startsAt", usa."endsAt", p.name, c."tradingName" || ' / Project', p.code, NULL::text
+        FROM "UserScopeAssignment" usa JOIN "Project" p ON p.id = usa."scopeId" AND p."tenantId" = ${session.context.tenantId} AND p."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = p."companyId"
+       WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'PROJECT'
+    ), filtered AS (
+      SELECT *, COUNT(*) OVER()::int AS "totalItems" FROM scoped
+       WHERE (${type}::text IS NULL OR "scopeType" = ${type})
+         AND (${query} = '' OR "displayName" ILIKE '%' || ${query} || '%' OR COALESCE(code, '') ILIKE '%' || ${query} || '%')
+    )
+    SELECT * FROM filtered ORDER BY "scopeType" ASC, "displayName" ASC, "startsAt" ASC, id ASC
+    OFFSET ${(Math.min(requestedPage, 10000) - 1) * pageSize} LIMIT ${pageSize}
+  `;
+  const totalItems = rows[0]?.totalItems ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  return { items: rows, page, pageSize, totalItems, totalPages, query, scopeType: type };
 }
 
 export async function createUserRoleAssignment(formData: FormData) {
@@ -4041,7 +4108,7 @@ export async function getCoreAdminRoleDetail(
       { email: { contains: query, mode: "insensitive" as const } },
     ] } } : {}),
   };
-  const [role, allPermissions, assignmentCount] = await Promise.all([
+  const [role, assignmentCount, allPermissions] = await Promise.all([
     prisma.role.findFirst({
       where: {
         id: roleId,

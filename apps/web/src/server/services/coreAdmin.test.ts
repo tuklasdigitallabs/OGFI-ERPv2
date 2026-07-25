@@ -700,4 +700,21 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("Search assigned roles");
     expect(pageSource).toContain('itemLabel="assigned roles"');
   });
+
+  test("user scope detail uses a tenant/company-filtered polymorphic page contract", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("listCoreAdminUserScopePage");
+    expect(serviceSource).toContain("WITH scoped AS");
+    expect(serviceSource).toContain('JOIN \"Company\"');
+    expect(serviceSource).toContain('JOIN \"Brand\"');
+    expect(serviceSource).toContain('JOIN \"Location\"');
+    expect(serviceSource).toContain('JOIN \"Department\"');
+    expect(serviceSource).toContain('JOIN \"Project\"');
+    expect(serviceSource).toContain("COUNT(*) OVER()");
+    expect(serviceSource).toContain('ORDER BY \"scopeType\" ASC');
+    expect(pageSource).toContain("scopeQuery");
+    expect(pageSource).toContain("scopeType");
+    expect(pageSource).toContain('itemLabel="scopes"');
+  });
 });
