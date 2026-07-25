@@ -262,7 +262,7 @@ export default async function CoreAdminUserDetailPage({
   });
   const scopedUser = {
     ...user,
-    scopes: scopePage.items.map((item) => user.scopes.find((scope) => scope.id === item.id) ?? {
+    scopes: scopePage.items.map((item) => ({ ...(user.scopes.find((scope) => scope.id === item.id) ?? {
       id: item.id,
       type: item.scopeType,
       scopeId: item.scopeId,
@@ -273,7 +273,7 @@ export default async function CoreAdminUserDetailPage({
       canMutate: false,
       riskLabel: "Scope action requires live revalidation",
       startsAt: item.startsAt.toISOString(),
-    }),
+    }), effectiveState: item.effectiveState, endsAt: item.endsAt?.toISOString() ?? null })),
     scopesPage: scopePage,
   };
   const selectedScope = scopeActionId ? scopedUser.scopes.find((scope) => scope.id === scopeActionId) : null;
@@ -461,6 +461,7 @@ export default async function CoreAdminUserDetailPage({
                   <div>
                     <Badge tone="success">{humanizeEnum(scope.accessLevel)}</Badge>
                     <p className="mt-2 text-sm text-slate-600">Assigned {scope.startsAt}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{scope.effectiveState}{scope.endsAt ? ` · ends ${scope.endsAt.slice(0, 10)}` : ""}</p>
                     <p className="mt-1 text-xs text-slate-500">
                       {scope.riskLabel}
                     </p>

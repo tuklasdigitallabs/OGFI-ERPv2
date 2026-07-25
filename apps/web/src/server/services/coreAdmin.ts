@@ -2507,6 +2507,7 @@ type CoreAdminUserScopePage = {
   displayContext: string;
   code: string | null;
   locationType: string | null;
+  effectiveState: "CURRENT" | "FUTURE" | "EXPIRED";
   totalItems: number;
 };
 
@@ -2545,7 +2546,7 @@ export async function listCoreAdminUserScopePage(
         FROM "UserScopeAssignment" usa JOIN "Project" p ON p.id = usa."scopeId" AND p."tenantId" = ${session.context.tenantId} AND p."companyId" = ${session.context.companyId} JOIN "Company" c ON c.id = p."companyId"
        WHERE usa."userId" = ${userId} AND usa.status = 'ACTIVE' AND usa."scopeType" = 'PROJECT'
     ), filtered AS (
-      SELECT *, COUNT(*) OVER()::int AS "totalItems" FROM scoped
+      SELECT *, CASE WHEN "startsAt" > CURRENT_TIMESTAMP THEN 'FUTURE' WHEN "endsAt" IS NOT NULL AND "endsAt" <= CURRENT_TIMESTAMP THEN 'EXPIRED' ELSE 'CURRENT' END AS "effectiveState", COUNT(*) OVER()::int AS "totalItems" FROM scoped
        WHERE (${type}::text IS NULL OR "scopeType" = ${type})
          AND (${query} = '' OR "displayName" ILIKE '%' || ${query} || '%' OR COALESCE(code, '') ILIKE '%' || ${query} || '%')
     )
