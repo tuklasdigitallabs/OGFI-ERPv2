@@ -1298,6 +1298,7 @@ export async function listCoreAdminApprovalRulePage(
 }
 
 export type CoreAdminOverviewTab = "users" | "roles" | "organization" | "approval-rules" | "audit";
+export type CoreAdminOrganizationSection = "companies" | "brands" | "departments" | "locations";
 
 type CoreAdminRoleOptions = Awaited<ReturnType<typeof listCoreAdminRoleOptionsAuthorized>>;
 
@@ -1316,20 +1317,21 @@ export async function getCoreAdminOverview(
   locationPageInput: z.input<typeof coreAdminLocationPageInputSchema> = {},
   departmentPageInput: z.input<typeof coreAdminDepartmentPageInputSchema> = {},
   approvalRulePageInput: z.input<typeof coreAdminApprovalRulePageInputSchema> = {},
-  options: { activeTab?: CoreAdminOverviewTab } = {},
+  options: { activeTab?: CoreAdminOverviewTab; organizationSection?: CoreAdminOrganizationSection } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
   const activeTab = options.activeTab ?? "users";
+  const organizationSection = options.organizationSection ?? "companies";
   const [userPage, rolePage, roleOptions, brandPage, locationPage, departmentPage, approvalRulePage] = await Promise.all([
     activeTab === "users" ? listCoreAdminUserPageAuthorized(session, userPageInput) : Promise.resolve(emptyCoreAdminUserPage()),
     activeTab === "roles" ? listCoreAdminRolePageAuthorized(session, rolePageInput) : Promise.resolve(emptyCoreAdminRolePage()),
     activeTab === "users" ? listCoreAdminRoleOptionsAuthorized(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false } satisfies CoreAdminRoleOptions),
-    activeTab === "organization" ? listCoreAdminBrandPageAuthorized(session, brandPageInput) : Promise.resolve(emptyCoreAdminBrandPage()),
-    activeTab === "organization" ? listCoreAdminLocationPageAuthorized(session, locationPageInput) : Promise.resolve(emptyCoreAdminLocationPage()),
-    activeTab === "organization" ? listCoreAdminDepartmentPageAuthorized(session, departmentPageInput) : Promise.resolve(emptyCoreAdminDepartmentPage()),
+    activeTab === "organization" && organizationSection === "brands" ? listCoreAdminBrandPageAuthorized(session, brandPageInput) : Promise.resolve(emptyCoreAdminBrandPage()),
+    activeTab === "organization" && organizationSection === "locations" ? listCoreAdminLocationPageAuthorized(session, locationPageInput) : Promise.resolve(emptyCoreAdminLocationPage()),
+    activeTab === "organization" && organizationSection === "departments" ? listCoreAdminDepartmentPageAuthorized(session, departmentPageInput) : Promise.resolve(emptyCoreAdminDepartmentPage()),
     activeTab === "approval-rules" ? listCoreAdminApprovalRulePageAuthorized(session, approvalRulePageInput) : Promise.resolve(emptyCoreAdminApprovalRulePage()),
   ]);
 
@@ -1345,7 +1347,7 @@ export async function getCoreAdminOverview(
         status: true,
       },
     }),
-    activeTab === "organization" ? prisma.company.findMany({
+    activeTab === "organization" && (organizationSection === "companies" || organizationSection === "brands" || organizationSection === "departments" || organizationSection === "locations") ? prisma.company.findMany({
       where: {
         tenantId: session.context.tenantId,
         id: session.context.companyId,

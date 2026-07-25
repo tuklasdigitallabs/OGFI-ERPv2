@@ -963,3 +963,8 @@ Update this register only when implementation state, release scope, a confirmed 
 ### DEC-0185 Core Administration duplicate Audit read cleanup — July 25, 2026
 - Removed the unused `recentAuditEvents` query from the active Audit overview profile; the bounded keyset Audit register is now the sole visible Audit read while the compatibility field returns an empty projection.
 - Evidence: Core Admin focused tests 35/35, web TypeScript, lint, production build, and diff checks pass. PostgreSQL no-query/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Administration and Phase I are not complete.
+
+### DEC-0186 Core Administration Organization Scope tabs — July 25, 2026
+- Organization Scope now uses URL-backed Companies / Summary, Brands, Departments, and Locations sections. Only the selected registry is rendered and its bounded page read is loaded; inactive organization registers are not hydrated.
+- Existing tenant/company authorization, deterministic pagination, filters, bounded location brand catalog, create actions, and scope predicates remain authoritative. Nested section/filter/page URLs preserve context.
+- Evidence: Core Admin focused tests 35/35, web TypeScript, lint, production build, and diff checks pass. PostgreSQL no-query/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Administration and Phase I are not complete.

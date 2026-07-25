@@ -197,6 +197,10 @@ you need—Users & Access, Roles & Permissions, Organization Scope, Approval Rul
 or Audit Trail. Only the selected register and its required option catalogs are
 loaded; inactive sections are explicitly not loaded in the current view.
 
+Organization Scope uses nested Companies / Summary, Brands, Departments, and
+Locations tabs. Open the register needed for the task; inactive registers are
+not loaded in the current view, and filters and page context remain in the URL.
+
 Controlled Scope and Role Requests, including review actions, open in a focused
 task sheet with contained scrolling. Confirm the target user, requester,
 status, evidence indicator, and next action before approving or rejecting; the

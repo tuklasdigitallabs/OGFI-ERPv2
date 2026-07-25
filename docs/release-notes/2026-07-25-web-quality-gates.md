@@ -51,3 +51,7 @@ User Access controlled Scope/Role request creation and review now use contained
 TaskSheets with 44px controls and preserved request context. Core Administration
 also no longer performs a duplicate unused Audit read when the Audit tab is
 active.
+
+Organization Scope now uses nested URL-backed Companies, Brands, Departments,
+and Locations sections. Only the selected register and required catalog are
+loaded, reducing inactive-register reads and long mobile scroll surfaces.

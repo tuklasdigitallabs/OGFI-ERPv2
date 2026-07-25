@@ -76,6 +76,10 @@ creation and review. Verify target user, company, requester, status, evidence,
 and reason before submitting; historical or self-requested records are not
 reviewable.
 
+In Organization Scope, use the nested Companies / Summary, Brands, Departments,
+and Locations tabs. Locations exposes only its bounded active-brand catalog;
+switch to Brands to review the full paginated brand register.
+
 ## Common errors and recovery
 
 - Granting company-wide access to fix one missing record: assign the smallest correct scope.

@@ -77,6 +77,12 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("recentAuditEvents: []");
     expect(adminPageSource).toContain("<WorkspaceTabs");
     expect(adminPageSource).toContain("Only the selected workspace register and its required option catalogs are loaded");
+    expect(serviceSource).toContain("CoreAdminOrganizationSection");
+    expect(serviceSource).toContain("organizationSection === \"brands\"");
+    expect(serviceSource).toContain("organizationSection === \"locations\"");
+    expect(adminPageSource).toContain("organizationSection");
+    expect(adminPageSource).toContain("Companies / Summary");
+    expect(adminPageSource).toContain("label: \"Departments\"");
     expect(adminPageSource).not.toContain("const workspaces = [");
   });
 

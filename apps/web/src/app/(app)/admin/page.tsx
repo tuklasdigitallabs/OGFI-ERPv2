@@ -26,6 +26,7 @@ import {
   listCoreAdminBrandOptions,
   listCoreAdminLocationOptions,
   type CoreAdminAuditEventFilters
+  , type CoreAdminOrganizationSection
 } from "@/server/services/coreAdmin";
 import { getSessionContext } from "@/server/services/context";
 import { canExportCoreAdminAudit } from "@/server/services/exportAuthorization";
@@ -77,50 +78,54 @@ async function createRoleAction(formData: FormData) {
 
 async function createCompanyAction(formData: FormData) {
   "use server";
+  const returnPath = "/admin?tab=organization&organizationSection=companies";
 
   try {
     await createCoreAdminCompany(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin?tab=organization", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin");
-  redirect("/admin?tab=organization");
+  redirect(returnPath);
 }
 
 async function createBrandAction(formData: FormData) {
   "use server";
+  const returnPath = "/admin?tab=organization&organizationSection=brands";
 
   try {
     await createCoreAdminBrand(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin?tab=organization", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin");
-  redirect("/admin?tab=organization");
+  redirect(returnPath);
 }
 
 async function createDepartmentAction(formData: FormData) {
   "use server";
+  const returnPath = "/admin?tab=organization&organizationSection=departments";
 
   try {
     await createCoreAdminDepartment(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin?tab=organization", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin");
-  redirect("/admin?tab=organization");
+  redirect(returnPath);
 }
 
 async function createLocationAction(formData: FormData) {
   "use server";
+  const returnPath = "/admin?tab=organization&organizationSection=locations";
 
   try {
     await createCoreAdminLocation(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin?tab=organization", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin");
-  redirect("/admin?tab=organization");
+  redirect(returnPath);
 }
 
 export default async function CoreAdministrationPage({
@@ -190,6 +195,10 @@ export default async function CoreAdministrationPage({
   const params = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(params);
   const activeTab = normalizeAdminTab(getSearchParam(params, "tab"));
+  const organizationSectionValue = getSearchParam(params, "organizationSection");
+  const organizationSection: CoreAdminOrganizationSection = organizationSectionValue === "brands" || organizationSectionValue === "departments" || organizationSectionValue === "locations"
+    ? organizationSectionValue
+    : "companies";
   const userQuery = getSearchParam(params, "userQuery")?.trim() ?? "";
   const userStatus = getSearchParam(params, "userStatus");
   const userPage = Number.parseInt(getSearchParam(params, "userPage") ?? "1", 10);
@@ -340,9 +349,9 @@ export default async function CoreAdministrationPage({
       ...(approvalRuleStatus && ["ACTIVE", "INACTIVE"].includes(approvalRuleStatus)
         ? { status: approvalRuleStatus as "ACTIVE" | "INACTIVE" }
         : {})
-    }, { activeTab }),
-    activeTab === "users" || activeTab === "organization" ? listCoreAdminBrandOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
-    activeTab === "users" || activeTab === "organization" ? listCoreAdminLocationOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
+    }, { activeTab, organizationSection }),
+    activeTab === "users" || (activeTab === "organization" && organizationSection === "locations") ? listCoreAdminBrandOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
+    activeTab === "users" ? listCoreAdminLocationOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
     activeTab === "audit" && auditEntityIdIsValid ? listCoreAdminAuditEventPage(session, {
       ...auditFilters,
       pageSize: auditPageSize,
@@ -725,7 +734,7 @@ export default async function CoreAdministrationPage({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <MapPin aria-hidden="true" className="h-5 w-5 text-blue-600" />
-              <EntryModal title="Create Company" triggerLabel="Create Company">
+              {organizationSection === "companies" ? <EntryModal title="Create Company" triggerLabel="Create Company">
                 <form action={createCompanyAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Company code
@@ -762,8 +771,8 @@ export default async function CoreAdministrationPage({
                     Create Company
                   </button>
                 </form>
-              </EntryModal>
-              <EntryModal title="Create Brand" triggerLabel="Create Brand">
+              </EntryModal> : null}
+              {organizationSection === "brands" ? <EntryModal title="Create Brand" triggerLabel="Create Brand">
                 <form action={createBrandAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Company
@@ -794,8 +803,8 @@ export default async function CoreAdministrationPage({
                     Create Brand
                   </button>
                 </form>
-              </EntryModal>
-              <EntryModal title="Create Department" triggerLabel="Create Department">
+              </EntryModal> : null}
+              {organizationSection === "departments" ? <EntryModal title="Create Department" triggerLabel="Create Department">
                 <form action={createDepartmentAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Company
@@ -826,8 +835,8 @@ export default async function CoreAdministrationPage({
                     Create Department
                   </button>
                 </form>
-              </EntryModal>
-              <EntryModal title="Create Branch / Location" triggerLabel="Create Branch / Location">
+              </EntryModal> : null}
+              {organizationSection === "locations" ? <EntryModal title="Create Branch / Location" triggerLabel="Create Branch / Location">
                 <form action={createLocationAction} className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2">
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Company
@@ -894,11 +903,19 @@ export default async function CoreAdministrationPage({
                     Create Branch / Location
                   </button>
                 </form>
-              </EntryModal>
+              </EntryModal> : null}
             </div>
           </div>
+          <WorkspaceTabs
+            items={[
+              { label: "Companies / Summary", href: "/admin?tab=organization&organizationSection=companies", active: organizationSection === "companies" },
+              { label: "Brands", href: "/admin?tab=organization&organizationSection=brands", active: organizationSection === "brands" },
+              { label: "Departments", href: "/admin?tab=organization&organizationSection=departments", active: organizationSection === "departments" },
+              { label: "Locations", href: "/admin?tab=organization&organizationSection=locations", active: organizationSection === "locations" }
+            ]}
+          />
           <div className="grid gap-4 xl:grid-cols-4">
-            <section className="space-y-3">
+            {organizationSection === "companies" ? <section className="space-y-3">
               <div>
                 <h3 className="font-bold text-slate-950">Companies</h3>
                 <p className="text-sm text-slate-500">Legal operating entities</p>
@@ -925,15 +942,15 @@ export default async function CoreAdministrationPage({
                   </ButtonLink>
                 </div>
               ))}
-            </section>
+            </section> : null}
 
-            <section className="space-y-3">
+            {organizationSection === "brands" ? <section className="space-y-3">
               <div>
                 <h3 className="font-bold text-slate-950">Brands</h3>
                 <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
               </div>
               <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-2">
-                <input type="hidden" name="tab" value="organization" />
+                <input type="hidden" name="tab" value="organization" /><input type="hidden" name="organizationSection" value="brands" />
                 <input className="rounded-md border border-slate-300 px-3 py-2" name="brandQuery" defaultValue={brandQuery} placeholder="Search brand name or code" />
                 <select className="rounded-md border border-slate-300 px-3 py-2" name="brandStatus" defaultValue={brandStatus ?? ""}>
                   <option value="">All statuses</option>
@@ -942,7 +959,7 @@ export default async function CoreAdministrationPage({
                   <option value="ARCHIVED">Archived</option>
                 </select>
                 <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white md:w-fit">Apply filters</button>
-                <ButtonLink href="/admin?tab=organization" tone="ghost" className="min-h-10 md:w-fit">Clear</ButtonLink>
+                <ButtonLink href="/admin?tab=organization&organizationSection=brands" tone="ghost" className="min-h-10 md:w-fit">Clear</ButtonLink>
               </form>
               {overview.brands.length === 0 ? (
                 <div className="ogfi-record-summary p-4">
@@ -977,22 +994,22 @@ export default async function CoreAdministrationPage({
                   itemLabel="brands"
                   controlClassName="min-h-10"
                   getPageHref={(nextPage) => {
-                    const next = new URLSearchParams({ tab: "organization", brandPage: String(nextPage), brandPageSize: String(overview.brandPage.pageSize) });
+                    const next = new URLSearchParams({ tab: "organization", organizationSection: "brands", brandPage: String(nextPage), brandPageSize: String(overview.brandPage.pageSize) });
                     if (brandQuery) next.set("brandQuery", brandQuery);
                     if (brandStatus) next.set("brandStatus", brandStatus);
                     return `/admin?${next.toString()}`;
                   }}
                 />
               </div>
-            </section>
+            </section> : null}
 
-            <section className="space-y-3">
+            {organizationSection === "departments" ? <section className="space-y-3">
               <div>
                 <h3 className="font-bold text-slate-950">Departments</h3>
                 <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
               </div>
               <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
-                <input type="hidden" name="tab" value="organization" />
+                <input type="hidden" name="tab" value="organization" /><input type="hidden" name="organizationSection" value="departments" />
                 <input className="rounded-md border border-slate-300 px-3 py-2" name="departmentQuery" defaultValue={departmentQuery} placeholder="Search name or code" />
                 <select className="rounded-md border border-slate-300 px-3 py-2" name="departmentStatus" defaultValue={departmentStatus ?? ""}>
                   <option value="">All statuses</option>
@@ -1046,22 +1063,22 @@ export default async function CoreAdministrationPage({
                   itemLabel="departments"
                   controlClassName="min-h-10"
                   getPageHref={(nextPage) => {
-                    const next = new URLSearchParams({ tab: "organization", departmentPage: String(nextPage), departmentPageSize: String(overview.departmentPage.pageSize) });
+                    const next = new URLSearchParams({ tab: "organization", organizationSection: "departments", departmentPage: String(nextPage), departmentPageSize: String(overview.departmentPage.pageSize) });
                     if (departmentQuery) next.set("departmentQuery", departmentQuery);
                     if (departmentStatus) next.set("departmentStatus", departmentStatus);
                     return `/admin?${next.toString()}`;
                   }}
                 />
               </div>
-            </section>
+            </section> : null}
 
-            <section className="space-y-3">
+            {organizationSection === "locations" ? <section className="space-y-3">
               <div>
                 <h3 className="font-bold text-slate-950">Locations</h3>
                 <p className="text-sm text-slate-500">Selected-company registry with server filters and paging</p>
               </div>
               <form className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
-                <input type="hidden" name="tab" value="organization" />
+                <input type="hidden" name="tab" value="organization" /><input type="hidden" name="organizationSection" value="locations" />
                 <input className="rounded-md border border-slate-300 px-3 py-2" name="locationQuery" defaultValue={locationQuery} placeholder="Search name, code, or brand" />
                 <select className="rounded-md border border-slate-300 px-3 py-2" name="locationStatus" defaultValue={locationStatus ?? ""}>
                   <option value="">All statuses</option>
@@ -1074,7 +1091,7 @@ export default async function CoreAdministrationPage({
                   {['BRANCH','WAREHOUSE','COMMISSARY','CENTRAL_KITCHEN','HEAD_OFFICE','PROJECT_SITE','TEMPORARY_SITE'].map((type) => <option key={type} value={type}>{type.replaceAll('_', ' ')}</option>)}
                 </select>
                 <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white md:w-fit">Apply filters</button>
-                <ButtonLink href="/admin?tab=organization" tone="ghost" className="min-h-10 md:w-fit">Clear</ButtonLink>
+                <ButtonLink href="/admin?tab=organization&organizationSection=locations" tone="ghost" className="min-h-10 md:w-fit">Clear</ButtonLink>
               </form>
               {overview.locations.length === 0 ? (
                 <div className="ogfi-record-summary p-4">
@@ -1111,7 +1128,7 @@ export default async function CoreAdministrationPage({
                   itemLabel="locations"
                   controlClassName="min-h-10"
                   getPageHref={(nextPage) => {
-                    const next = new URLSearchParams({ tab: "organization", locationPage: String(nextPage), locationPageSize: String(overview.locationPage.pageSize) });
+                    const next = new URLSearchParams({ tab: "organization", organizationSection: "locations", locationPage: String(nextPage), locationPageSize: String(overview.locationPage.pageSize) });
                     if (locationQuery) next.set("locationQuery", locationQuery);
                     if (locationStatus) next.set("locationStatus", locationStatus);
                     if (locationType) next.set("locationType", locationType);
@@ -1119,7 +1136,7 @@ export default async function CoreAdministrationPage({
                   }}
                 />
               </div>
-            </section>
+            </section> : null}
           </div>
         </Panel>
         ) : null}
