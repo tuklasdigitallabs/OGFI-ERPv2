@@ -1936,6 +1936,9 @@ export async function getCoreAdminUserDetail(
     assignedRolePageSize?: number;
     rolePage?: number;
     rolePageSize?: number;
+    permissionPage?: number;
+    permissionPageSize?: number;
+    permissionQuery?: string;
     scopeRequestPage?: number;
     scopeRequestPageSize?: number;
     scopeRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
@@ -1979,30 +1982,37 @@ export async function getCoreAdminUserDetail(
     options.userAccessSection === "roles";
   const rolePageSize = Math.min(25, Math.max(10, Math.floor(options.assignedRolePageSize ?? options.rolePageSize ?? 25)));
   const assignedRoleQuery = (options.assignedRoleQuery ?? options.roleQuery)?.trim() ?? "";
+  const permissionPageSize = Math.min(100, Math.max(10, Math.floor(options.permissionPageSize ?? 25)));
+  const permissionQuery = options.permissionQuery?.trim().slice(0, 120) ?? "";
   const effectiveNow = new Date();
   const roleAssignmentWhere: Prisma.UserRoleAssignmentWhereInput = {
     userId: user.id,
     status: "ACTIVE",
-    startsAt: { lte: effectiveNow },
-    OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
-    role: { AND: [{ status: "ACTIVE" }, { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] }], ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
+    role: { AND: [{ OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] }], ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
   };
-  const effectivePermissionWhere: Prisma.PermissionWhereInput = {
+  const effectivePermissionBaseWhere: Prisma.PermissionWhereInput = {
     OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
-    roles: { some: { role: { status: "ACTIVE", assignments: { some: { userId: user.id, status: "ACTIVE", startsAt: { lte: effectiveNow }, OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }] } } } } },
+    roles: { some: { role: { status: "ACTIVE", OR: [{ tenantId: session.context.tenantId }, { tenantId: null }], assignments: { some: { userId: user.id, status: "ACTIVE", startsAt: { lte: effectiveNow }, OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }] } } } } },
   };
-  const [activeRoleCount, effectivePermissions] = await Promise.all([
+  const effectivePermissionWhere: Prisma.PermissionWhereInput = permissionQuery
+    ? { AND: [effectivePermissionBaseWhere, { code: { contains: permissionQuery, mode: "insensitive" } }] }
+    : effectivePermissionBaseWhere;
+  const [activeRoleCount, effectivePermissionTotal, filteredPermissionTotal] = await Promise.all([
     loadRoleSurface ? prisma.userRoleAssignment.count({ where: roleAssignmentWhere }) : Promise.resolve(0),
-    loadRoleSurface ? prisma.permission.findMany({
-      where: effectivePermissionWhere,
-      select: { id: true, code: true },
-      orderBy: { code: "asc" },
-      take: 13,
-    }) : Promise.resolve([]),
+    loadRoleSurface ? prisma.permission.count({ where: effectivePermissionBaseWhere }) : Promise.resolve(0),
+    loadRoleSurface ? prisma.permission.count({ where: effectivePermissionWhere }) : Promise.resolve(0),
   ]);
-  const effectivePermissionTotal = loadRoleSurface
-    ? await prisma.permission.count({ where: effectivePermissionWhere })
-    : 0;
+  const permissionPageCount = Math.max(1, Math.ceil(filteredPermissionTotal / permissionPageSize));
+  const permissionPage = Math.min(Math.max(1, Math.floor(options.permissionPage ?? 1)), permissionPageCount);
+  const effectivePermissionRows = loadRoleSurface
+    ? await prisma.permission.findMany({
+        where: effectivePermissionWhere,
+        select: { id: true, code: true },
+        orderBy: [{ code: "asc" }, { id: "asc" }],
+        skip: options.userAccessSection === "roles" ? (permissionPage - 1) * permissionPageSize : 0,
+        take: options.userAccessSection === "roles" ? permissionPageSize : 13,
+      })
+    : [];
   const rolePageCount = Math.max(1, Math.ceil(activeRoleCount / rolePageSize));
   const rolePage = Math.min(Math.max(1, Math.floor(options.assignedRolePage ?? options.rolePage ?? 1)), rolePageCount);
   const roleAssignments = loadRoleSurface
@@ -2017,10 +2027,10 @@ export async function getCoreAdminUserDetail(
 
   const permissionCodes = Array.from(
     new Set(
-      effectivePermissions.map((permission) => permission.code),
+      effectivePermissionRows.map((permission) => permission.code),
     ),
   );
-  const permissionIdByCode = new Map(effectivePermissions.map((permission) => [permission.code, permission.id]));
+  const permissionIdByCode = new Map(effectivePermissionRows.map((permission) => [permission.code, permission.id]));
   const roleQuery = options.roleQuery?.trim().toLowerCase() ?? "";
   const locationQuery = options.locationQuery?.trim().toLowerCase() ?? "";
   const scopeRequestPage = Math.min(Math.max(options.scopeRequestPage ?? 1, 1), 10_000);
@@ -2388,6 +2398,13 @@ export async function getCoreAdminUserDetail(
     },
     permissionCodes,
     permissionTotal: effectivePermissionTotal,
+    permissionsPage: {
+      page: permissionPage,
+      pageSize: permissionPageSize,
+      totalItems: filteredPermissionTotal,
+      totalPages: permissionPageCount,
+      query: permissionQuery,
+    },
     permissions: permissionCodes.map((code) => ({
       id: permissionIdByCode.get(code) ?? null,
       ...getPermissionPresentation(code),

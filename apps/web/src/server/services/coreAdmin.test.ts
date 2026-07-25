@@ -797,11 +797,16 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("assignedRoleQuery");
     expect(serviceSource).toContain("rolesPage");
     expect(serviceSource).toContain("orderBy: [{ startsAt: \"asc\" }, { id: \"asc\" }]");
-    expect(serviceSource).toContain("effectivePermissions");
+    expect(serviceSource).toContain("effectivePermissionRows");
+    expect(serviceSource).toContain("permissionPageSize");
+    expect(serviceSource).toContain("permissionQuery");
     expect(pageSource).toContain("assignedRoleQuery");
     expect(pageSource).toContain("assignedRolePage");
     expect(pageSource).toContain("Search assigned roles");
     expect(pageSource).toContain('itemLabel="assigned roles"');
+    expect(pageSource).toContain("Search effective permissions");
+    expect(pageSource).toContain('itemLabel="effective permissions"');
+    expect(pageSource).toContain("Open effective permission list");
   });
 
   test("user scope detail uses a tenant/company-filtered polymorphic page contract", () => {

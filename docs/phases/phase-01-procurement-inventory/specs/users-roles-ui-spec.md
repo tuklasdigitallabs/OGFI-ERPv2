@@ -91,6 +91,14 @@ carried as hidden state for mutation so filtering or paging cannot disable
 permissions that are not on the current page. Matrix counts are explicitly
 page-local; role-level enabled/drift totals remain authoritative summary values.
 
+Implementation note (`DEC-0200`): User Access Overview keeps a bounded effective-
+permission preview, while the Roles section provides the complete read-only
+effective-permission register for the selected user. The register is server-
+owned, URL-backed, searchable, deterministically ordered, exactly counted, and
+paginated. Its union uses only currently effective active tenant/global roles
+and assignments; each permission links to the authorized Permission Access
+definition/granting-role view, and no register control mutates access.
+
 Implementation note (`DEC-0119`): Controlled Scope Requests and Controlled Role
 Requests on User Detail are separate URL-backed paginated histories with
 allowlisted lifecycle filters, exact totals, and newest-first deterministic

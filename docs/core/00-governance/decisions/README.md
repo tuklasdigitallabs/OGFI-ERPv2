@@ -142,3 +142,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0190-SUPPLIER-CATALOG-OPTION-CONTRACT-GATE.md` — executable regression coverage for bounded supplier category options and preserved context
 - `DEC-0191-ROLE-PERMISSION-MATRIX-PAGING.md` — bounded searchable Role Detail permission matrix with complete-set mutation preservation
 - `DEC-0192-PERMISSION-ACCESS-SUMMARY-TRUTH.md` — exact granting-role total and explicit bounded preview-user semantics
+- `DEC-0200-USER-ACCESS-EFFECTIVE-PERMISSION-REGISTER.md` — complete read-only selected-user effective-permission register in the Roles section

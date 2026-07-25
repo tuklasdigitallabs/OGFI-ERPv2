@@ -280,12 +280,19 @@ export default async function CoreAdminUserDetailPage({
   const roleRequestPageValue = Number.parseInt(String(resolvedSearchParams.roleRequestPage ?? "1"), 10);
   const scopeRequestPageSizeValue = Number.parseInt(String(resolvedSearchParams.scopeRequestPageSize ?? "25"), 10);
   const roleRequestPageSizeValue = Number.parseInt(String(resolvedSearchParams.roleRequestPageSize ?? "25"), 10);
+  const permissionPageValue = Number.parseInt(String(resolvedSearchParams.permissionPage ?? "1"), 10);
+  const permissionQuery = Array.isArray(resolvedSearchParams.permissionQuery)
+    ? resolvedSearchParams.permissionQuery[0]
+    : resolvedSearchParams.permissionQuery;
   const user = await getCoreAdminUserDetail(session, id, {
     ...(locationQuery ? { locationQuery } : {}),
     ...(roleQuery ? { roleQuery } : {}),
     ...(assignedRoleQuery ? { assignedRoleQuery } : {}),
     assignedRolePage: Number.isFinite(assignedRolePageValue) ? assignedRolePageValue : 1,
     assignedRolePageSize: 25,
+    permissionPage: Number.isFinite(permissionPageValue) ? permissionPageValue : 1,
+    permissionPageSize: 25,
+    ...(section === "roles" && permissionQuery ? { permissionQuery } : {}),
     scopeRequestPage: Number.isFinite(scopeRequestPageValue) ? scopeRequestPageValue : 1,
     scopeRequestPageSize: Number.isFinite(scopeRequestPageSizeValue) ? scopeRequestPageSizeValue : 25,
     requestKind: section === "requests" ? requestKind : "none",
@@ -512,9 +519,22 @@ export default async function CoreAdminUserDetailPage({
         {section === "overview" || section === "roles" ? <>
         <Panel className="ogfi-detail-card">
           <h2 className="text-lg font-bold text-slate-950">Effective Permissions</h2>
+          <p className="mt-1 text-sm text-slate-500">Read-only access derived from this user’s currently effective active roles in the selected company.</p>
+          {section === "roles" ? (
+            <form className="mt-4 flex flex-wrap gap-2" method="get">
+              <input name="section" type="hidden" value="roles" />
+              <input name="assignedRolePage" type="hidden" value={user.rolesPage.page} />
+              {user.rolesPage.query ? <input name="assignedRoleQuery" type="hidden" value={user.rolesPage.query} /> : null}
+              <label className="grid min-w-56 flex-1 gap-1 text-sm font-medium text-slate-700">
+                Search effective permissions
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="permissionQuery" maxLength={120} defaultValue={user.permissionsPage.query} placeholder="Permission code" />
+              </label>
+              <button className="mt-auto min-h-11 rounded-md bg-slate-800 px-4 text-sm font-semibold text-white" type="submit">Search</button>
+            </form>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             {user.permissions.length === 0 ? (
-              <p className="text-sm text-slate-600">No effective permissions from active roles.</p>
+              <p className="text-sm text-slate-600">{user.permissionsPage.query ? "No effective permissions match this filter." : "No effective permissions from active roles."}</p>
             ) : (
               user.permissions.map((permission) => (
                 permission.id ? (
@@ -527,8 +547,16 @@ export default async function CoreAdminUserDetailPage({
               ))
             )}
           </div>
-          {user.permissionTotal > user.permissions.length ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500"><span>Showing {user.permissions.length} of {user.permissionTotal} effective permissions.</span><ButtonLink href={`/admin/users/${user.id}?section=roles`} tone="ghost" className="min-h-11 px-0 text-blue-700">Review role permission details</ButtonLink></div>
+          {section === "roles" ? (
+            <>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                <span>{user.permissionsPage.query ? `Showing ${user.permissions.length} matching permissions of ${user.permissionTotal} effective permissions` : `Showing ${user.permissions.length} of ${user.permissionTotal} effective permissions`}</span>
+                {user.permissionsPage.query ? <ButtonLink href={`/admin/users/${user.id}?section=roles`} tone="ghost" className="min-h-11 px-0 text-blue-700">Clear search</ButtonLink> : null}
+              </div>
+              {user.permissionsPage.totalItems > 0 ? <PaginationBar page={user.permissionsPage.page} pageSize={user.permissionsPage.pageSize} totalItems={user.permissionsPage.totalItems} itemLabel="effective permissions" getPageHref={(nextPage) => `/admin/users/${user.id}?section=roles&permissionPage=${nextPage}${user.permissionsPage.query ? `&permissionQuery=${encodeURIComponent(user.permissionsPage.query)}` : ""}${user.rolesPage.page > 1 ? `&assignedRolePage=${user.rolesPage.page}` : ""}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`} /> : null}
+            </>
+          ) : user.permissionTotal > user.permissions.length ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500"><span>Showing {user.permissions.length} of {user.permissionTotal} effective permissions.</span><ButtonLink href={`/admin/users/${user.id}?section=roles&permissionPage=1`} tone="ghost" className="min-h-11 px-0 text-blue-700">Open effective permission list</ButtonLink></div>
           ) : null}
         </Panel>
 
