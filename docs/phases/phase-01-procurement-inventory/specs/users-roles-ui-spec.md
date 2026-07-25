@@ -53,6 +53,11 @@ global roles, shows up to eight names with an explicit `8+ roles` cap marker, an
 inactive or role-less users truthfully. Scope assignments remain on User Access detail;
 the tenant-level registry does not copy unvalidated scope IDs.
 
+Implementation note (`DEC-0211`): Organization Scope visibly names the selected company
+and labels its summary tab `Selected company summary`. Brand, Department, and Location
+registries and create actions are selected-company scoped, not a tenant-wide company
+directory; User Access remains authoritative for assigning user scope.
+
 Implementation note (`DEC-0113`): Audit Trail list, detail, and export use the same
 tenant/company and bounded filter contract. The list uses deterministic keyset paging
 (`occurredAt DESC, id DESC`) with explicit totals and next-page state. Detail and CSV

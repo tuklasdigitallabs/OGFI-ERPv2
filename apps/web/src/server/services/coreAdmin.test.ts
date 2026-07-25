@@ -93,7 +93,9 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("organizationSection === \"brands\"");
     expect(serviceSource).toContain("organizationSection === \"locations\"");
     expect(adminPageSource).toContain("organizationSection");
-    expect(adminPageSource).toContain("Companies / Summary");
+    expect(adminPageSource).toContain("Selected company summary");
+    expect(adminPageSource).toContain("Selected company: {session.context.companyName}");
+    expect(adminPageSource).toContain("This is not a tenant-wide company directory.");
     expect(adminPageSource).toContain("label: \"Departments\"");
     expect(adminPageSource).not.toContain("const workspaces = [");
   });

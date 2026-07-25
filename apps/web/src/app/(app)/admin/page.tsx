@@ -726,11 +726,12 @@ export default async function CoreAdministrationPage({
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-950">Organization Scope</h2>
+              <p className="mt-1 text-sm font-semibold text-blue-700">Selected company: {session.context.companyName}</p>
               <p className="text-sm text-slate-500">
-                Company, brand, and location records that define where users operate.
+                Review the selected company and its brand, department, and location records that define where users operate.
               </p>
               <p className="mt-2 text-xs font-medium text-amber-700">
-                Company remains a selected-company summary; Brand, Department, and Location registries use bounded server pagination.
+                This is not a tenant-wide company directory. Brand, Department, and Location registries and create actions are limited to the selected company; User Access controls who receives scope.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -909,7 +910,7 @@ export default async function CoreAdministrationPage({
           </div>
           <WorkspaceTabs
             items={[
-              { label: "Companies / Summary", href: "/admin?tab=organization&organizationSection=companies", active: organizationSection === "companies" },
+              { label: "Selected company summary", href: "/admin?tab=organization&organizationSection=companies", active: organizationSection === "companies" },
               { label: "Brands", href: "/admin?tab=organization&organizationSection=brands", active: organizationSection === "brands" },
               { label: "Departments", href: "/admin?tab=organization&organizationSection=departments", active: organizationSection === "departments" },
               { label: "Locations", href: "/admin?tab=organization&organizationSection=locations", active: organizationSection === "locations" }

@@ -151,3 +151,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0208-ADMIN-USER-ROLE-LIFECYCLE-TRUTH.md` — explicit lifecycle versus effective-permission semantics on User Access role records
 - `DEC-0209-ADMIN-USERS-EFFECTIVE-ROLE-PREVIEW.md` — bounded tenant-safe current-role preview on the Core Administration Users registry
 - `DEC-0210-ADMIN-ROLE-LIBRARY-TENANT-SAFE-PREVIEW.md` — tenant-safe permission counts/previews and stale-page handling for Role Library
+- `DEC-0211-ADMIN-ORGANIZATION-SELECTED-COMPANY-CONTEXT.md` — explicit selected-company context for Organization Scope registries and actions
