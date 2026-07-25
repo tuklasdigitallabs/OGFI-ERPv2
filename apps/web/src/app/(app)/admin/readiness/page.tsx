@@ -160,13 +160,19 @@ async function updateDeploymentEvidenceAction(formData: FormData) {
 async function createUatEvidenceAction(formData: FormData) {
   "use server";
 
+  const context = new URLSearchParams({ category: "uat" });
+  for (const key of ["uatQ", "uatEvidenceType", "uatResult", "uatVerificationStatus", "uatWorkflowArea", "uatEnvironment", "uatPage", "uatPageSize"]) {
+    const value = formData.get(key);
+    if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key, value);
+  }
+  const returnPath = `/admin/readiness?${context.toString()}`;
   try {
     await createUatEvidenceRecord(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/readiness?category=uat", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/readiness");
-  redirect("/admin/readiness?category=uat");
+  redirect(returnPath);
 }
 
 async function updateUatEvidenceAction(formData: FormData) {
@@ -644,20 +650,30 @@ export default async function AdminReadinessPage({
           </div>
           <div className="flex flex-wrap gap-2">
             {uatEvidenceSummary ? (
-              <EntryModal
+              <TaskSheet
                 title="Record UAT Evidence"
-                triggerLabel="Record Evidence"
+                trigger="Record Evidence"
                 triggerClassName="border border-blue-200 bg-blue-600 text-white hover:bg-blue-700"
+                size="workspace"
+                bodyScroll="contained"
               >
                 <form
                   action={createUatEvidenceAction}
                   className="ogfi-form-shell mt-4 grid gap-4"
                 >
+                  <input name="uatQ" type="hidden" value={uatQuery} />
+                  <input name="uatEvidenceType" type="hidden" value={uatEvidenceType ?? ""} />
+                  <input name="uatResult" type="hidden" value={uatResult ?? ""} />
+                  <input name="uatVerificationStatus" type="hidden" value={uatVerificationStatus ?? ""} />
+                  <input name="uatWorkflowArea" type="hidden" value={uatWorkflowArea} />
+                  <input name="uatEnvironment" type="hidden" value={uatEnvironment} />
+                  <input name="uatPage" type="hidden" value={uatEvidencePage.page} />
+                  <input name="uatPageSize" type="hidden" value={uatEvidencePage.pageSize} />
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Evidence type
                       <select
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="evidenceType"
                         required
                       >
@@ -671,7 +687,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Result
                       <select
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="result"
                         required
                       >
@@ -696,7 +712,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Workflow area
                       <select
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="workflowArea"
                         required
                       >
@@ -710,7 +726,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Environment
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="environment"
                         placeholder="Staging, pilot"
                         required
@@ -730,7 +746,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Executed at
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="executedAt"
                         type="datetime-local"
                         required
@@ -739,7 +755,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Tester / owner
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="testerName"
                         placeholder="QA lead, process owner, tester"
                         required
@@ -784,7 +800,7 @@ export default async function AdminReadinessPage({
                     Save Evidence
                   </button>
                 </form>
-              </EntryModal>
+              </TaskSheet>
             ) : null}
             {deploymentEvidenceSummary ? (
               <EntryModal
@@ -1655,7 +1671,7 @@ export default async function AdminReadinessPage({
                 <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected enablement evidence</p><h3 className="text-lg font-bold text-slate-950">{selectedEnablementEvidence.title}</h3></div><Badge tone={selectedEnablementEvidence.verificationStatus === "VERIFIED" ? "success" : selectedEnablementEvidence.verificationStatus === "REJECTED" ? "destructive" : "warning"}>{selectedEnablementEvidence.verificationStatus}</Badge></div>
                 <p>{enablementEvidenceTypeLabel(selectedEnablementEvidence.evidenceType)} · {selectedEnablementEvidence.audienceRole} · owner {selectedEnablementEvidence.ownerName}</p>
                 <p>Completed {new Date(selectedEnablementEvidence.completedAt).toLocaleString()}; reference {selectedEnablementEvidence.evidenceReference}</p>
-                {selectedEnablementEvidence.verificationStatus === "RECORDED" ? (selectedEnablementEvidence.createdByUserId === session.user.id ? <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-900">Another authorized reviewer must review evidence recorded by you.</p> : <div className="grid gap-2 sm:grid-cols-2"><form action={updateEnablementEvidenceAction}><input name="evidenceId" type="hidden" value={selectedEnablementEvidence.id} /><input name="status" type="hidden" value="VERIFIED" /><input name="reason" type="hidden" value="Verified enablement evidence from the selected evidence review panel." /><input name="enablementQ" type="hidden" value={enablementQ} /><input name="enablementType" type="hidden" value={enablementEvidenceType ?? ""} /><input name="enablementStatus" type="hidden" value={enablementVerificationStatus ?? ""} /><input name="enablementAudienceRole" type="hidden" value={enablementAudienceRole} /><input name="enablementPage" type="hidden" value={String(enablementEvidencePage.page)} /><input name="enablementPageSize" type="hidden" value={String(enablementEvidencePage.pageSize)} /><input name="enablementEvidenceId" type="hidden" value={selectedEnablementEvidence.id} /><button className="min-h-11 w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800">Verify evidence</button></form><form action={updateEnablementEvidenceAction} className="grid gap-2"><input name="evidenceId" type="hidden" value={selectedEnablementEvidence.id} /><input name="status" type="hidden" value="REJECTED" /><input name="enablementQ" type="hidden" value={enablementQ} /><input name="enablementType" type="hidden" value={enablementEvidenceType ?? ""} /><input name="enablementStatus" type="hidden" value={enablementVerificationStatus ?? ""} /><input name="enablementAudienceRole" type="hidden" value={enablementAudienceRole} /><input name="enablementPage" type="hidden" value={String(enablementEvidencePage.page)} /><input name="enablementPageSize" type="hidden" value={String(enablementEvidencePage.pageSize)} /><input name="enablementEvidenceId" type="hidden" value={selectedEnablementEvidence.id} /><input name="reason" className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Rejection reason (required)" minLength={5} required /><button className="min-h-11 rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800">Reject evidence</button></form></div>) : null}
+                {selectedEnablementEvidence.verificationStatus === "RECORDED" ? (selectedEnablementEvidence.createdByUserId === session.user.id ? <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 font-semibold text-amber-900">Another authorized reviewer must review evidence recorded by you.</p> : <TaskSheet title="Review selected enablement evidence" description="Choose one audited outcome. The server rechecks company scope, creator self-review, and RECORDED status before changing the record." trigger="Open review controls" bodyScroll="contained"><div className="grid gap-3" data-testid="enablement-evidence-review-controls"><p className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-950">Verification updates training, knowledge-base, and release-note readiness counts. Reject when the evidence does not support enablement readiness.</p><div className="grid gap-2 sm:grid-cols-2"><form action={updateEnablementEvidenceAction}><input name="evidenceId" type="hidden" value={selectedEnablementEvidence.id} /><input name="status" type="hidden" value="VERIFIED" /><input name="reason" type="hidden" value="Verified enablement evidence from the selected evidence review panel." /><input name="enablementQ" type="hidden" value={enablementQ} /><input name="enablementType" type="hidden" value={enablementEvidenceType ?? ""} /><input name="enablementStatus" type="hidden" value={enablementVerificationStatus ?? ""} /><input name="enablementAudienceRole" type="hidden" value={enablementAudienceRole} /><input name="enablementPage" type="hidden" value={String(enablementEvidencePage.page)} /><input name="enablementPageSize" type="hidden" value={String(enablementEvidencePage.pageSize)} /><input name="enablementEvidenceId" type="hidden" value={selectedEnablementEvidence.id} /><button className="min-h-11 w-full rounded-md border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800">Verify evidence</button></form><form action={updateEnablementEvidenceAction} className="grid gap-2"><input name="evidenceId" type="hidden" value={selectedEnablementEvidence.id} /><input name="status" type="hidden" value="REJECTED" /><input name="enablementQ" type="hidden" value={enablementQ} /><input name="enablementType" type="hidden" value={enablementEvidenceType ?? ""} /><input name="enablementStatus" type="hidden" value={enablementVerificationStatus ?? ""} /><input name="enablementAudienceRole" type="hidden" value={enablementAudienceRole} /><input name="enablementPage" type="hidden" value={String(enablementEvidencePage.page)} /><input name="enablementPageSize" type="hidden" value={String(enablementEvidencePage.pageSize)} /><input name="enablementEvidenceId" type="hidden" value={selectedEnablementEvidence.id} /><input name="reason" className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Rejection reason (required)" minLength={5} required /><button className="min-h-11 rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800">Reject evidence</button></form></div></div></TaskSheet>) : null}
                 <a className="font-semibold text-blue-700 hover:underline" href={enablementContextHref}>Close selected evidence</a>
               </div>
             ) : <p className="text-sm text-slate-700">The selected enablement evidence is unavailable in the current company scope.</p>}

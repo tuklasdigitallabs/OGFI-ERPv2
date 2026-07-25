@@ -895,7 +895,17 @@ Update this register only when implementation state, release scope, a confirmed 
 - Existing selected-company authorization, creator self-review protection, `RECORDED` CAS, reason validation, audit, and generic unavailable behavior remain server-authoritative.
 - Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
 
+### DEC-0174 Administration Readiness enablement review sheet — July 25, 2026
+- Selected enablement evidence Verify/Reject actions now use one focused TaskSheet with explicit training, knowledge-base, and release-note readiness consequences, preserved filter/page context, 44px controls, and visible rejection-reason validation.
+- Existing selected-company authorization, creator self-review protection, `RECORDED` CAS, reason validation, audit, and no-direct-gate-mutation semantics remain server-authoritative.
+- Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
+
 ### DEC-0172 Administration Readiness selected Deployment review sheet — July 25, 2026
 - Selected Deployment Evidence Verify/Reject actions now use one focused TaskSheet with explicit migration/restore/rollback/monitoring readiness consequences, preserved filter/page context, 44px controls, and visible rejection-reason validation. Inline competing review forms were removed.
 - Existing selected-company authorization, creator self-review protection, `RECORDED` CAS, reason validation, audit, generic unavailable behavior, and no-direct-gate-mutation semantics remain server-authoritative.
+- Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
+
+### DEC-0173 Administration Readiness UAT evidence capture sheet — July 25, 2026
+- The long Record UAT Evidence workflow now uses a shared workspace TaskSheet with 44px controls instead of a centered modal. It retains all evidence fields and preserves UAT filter/page context through normalized success and error redirects.
+- Existing selected-company/Core Admin Manage authorization, UTC/value/required-field validation, audit, and no-direct-gate-transition semantics remain authoritative; hidden context is navigation state only. Enablement selected review parity remains next.
 - Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.

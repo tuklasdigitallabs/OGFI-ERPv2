@@ -13,3 +13,7 @@ Admin Settings now uses one selected-policy composer for Configure and Use Recom
 Release Readiness UAT evidence review now uses one focused review sheet for Verify/Reject actions, with explicit status consequences and preserved filter/page context.
 
 Deployment Evidence review now uses the same focused Verify/Reject sheet, with migration/restore/monitoring readiness consequences and preserved registry context.
+
+UAT evidence capture now uses a workspace TaskSheet with mobile-safe controls and preserved filter/page context instead of a long centered modal.
+
+Enablement evidence review now uses a focused TaskSheet with explicit training, knowledge-base, and release-note readiness consequences and visible rejection-reason validation.

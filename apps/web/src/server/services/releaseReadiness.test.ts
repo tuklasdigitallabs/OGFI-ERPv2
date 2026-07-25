@@ -482,6 +482,13 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("Review selected deployment evidence");
     expect(pageSource).toContain('data-testid="deployment-evidence-review-controls"');
     expect(pageSource).toContain("deployment readiness counts");
+    expect(pageSource).toContain("Review selected enablement evidence");
+    expect(pageSource).toContain('data-testid="enablement-evidence-review-controls"');
+    expect(pageSource).toContain("training, knowledge-base, and release-note readiness counts");
+    expect(pageSource).toContain('title="Record UAT Evidence"');
+    expect(pageSource).toContain('name="uatPageSize"');
+    expect(pageSource).toContain('size="workspace"');
+    expect(pageSource).not.toContain('<EntryModal\n                title="Record UAT Evidence"');
   });
 
   test("UAT gates require evidence and decision notes for acceptance/default revision tracking", () => {
