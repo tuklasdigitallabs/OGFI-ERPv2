@@ -19,3 +19,5 @@ UAT evidence capture now uses a workspace TaskSheet with mobile-safe controls an
 Enablement evidence review now uses a focused TaskSheet with explicit training, knowledge-base, and release-note readiness consequences and visible rejection-reason validation.
 
 Readiness gate updates now use one selected-gate TaskSheet with preserved register context and the existing server-enforced status, evidence, blocker, reason, authorization, and audit controls.
+
+Deployment and Enablement evidence capture now uses the same mobile-safe TaskSheet pattern as UAT, preserving active filters and page context on save and validation errors.

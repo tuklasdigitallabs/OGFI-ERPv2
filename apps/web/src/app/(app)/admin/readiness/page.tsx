@@ -137,13 +137,20 @@ async function updateReadinessGateAction(formData: FormData) {
 async function createDeploymentEvidenceAction(formData: FormData) {
   "use server";
 
+  const context = new URLSearchParams({ category: "deployment" });
+  for (const key of ["deploymentQ", "deploymentType", "deploymentStatus", "deploymentEnvironment", "deploymentPage", "deploymentPageSize"]) {
+    const value = formData.get(key);
+    if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key, value);
+  }
+  const returnPath = `/admin/readiness?${context.toString()}`;
+
   try {
     await createDeploymentEvidenceRecord(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/readiness?category=deployment", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/readiness");
-  redirect("/admin/readiness?category=deployment");
+  redirect(returnPath);
 }
 
 async function updateDeploymentEvidenceAction(formData: FormData) {
@@ -204,13 +211,20 @@ async function updateUatEvidenceAction(formData: FormData) {
 async function createEnablementEvidenceAction(formData: FormData) {
   "use server";
 
+  const context = new URLSearchParams({ category: "enablement" });
+  for (const key of ["enablementQ", "enablementType", "enablementStatus", "enablementAudienceRole", "enablementPage", "enablementPageSize"]) {
+    const value = formData.get(key);
+    if (typeof value === "string" && value.length > 0 && value.length <= 160) context.set(key, value);
+  }
+  const returnPath = `/admin/readiness?${context.toString()}`;
+
   try {
     await createEnablementEvidenceRecord(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/readiness?category=enablement", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/admin/readiness");
-  redirect("/admin/readiness?category=enablement");
+  redirect(returnPath);
 }
 
 async function updateEnablementEvidenceAction(formData: FormData) {
@@ -817,20 +831,28 @@ export default async function AdminReadinessPage({
               </TaskSheet>
             ) : null}
             {deploymentEvidenceSummary ? (
-              <EntryModal
+              <TaskSheet
                 title="Record Deployment Evidence"
-                triggerLabel="Record Evidence"
+                trigger="Record Evidence"
                 triggerClassName="border border-blue-200 bg-blue-600 text-white hover:bg-blue-700"
+                size="workspace"
+                bodyScroll="contained"
               >
                 <form
                   action={createDeploymentEvidenceAction}
                   className="ogfi-form-shell mt-4 grid gap-4"
                 >
+                  <input name="deploymentQ" type="hidden" value={deploymentQ} />
+                  <input name="deploymentType" type="hidden" value={deploymentEvidenceType ?? ""} />
+                  <input name="deploymentStatus" type="hidden" value={deploymentVerificationStatus ?? ""} />
+                  <input name="deploymentEnvironment" type="hidden" value={deploymentEnvironment} />
+                  <input name="deploymentPage" type="hidden" value={String(deploymentEvidencePage.page)} />
+                  <input name="deploymentPageSize" type="hidden" value={String(deploymentEvidencePage.pageSize)} />
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Evidence type
                       <select
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="evidenceType"
                         required
                       >
@@ -844,7 +866,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Environment
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="environment"
                         placeholder="Staging, pilot, production"
                         required
@@ -854,7 +876,7 @@ export default async function AdminReadinessPage({
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Title
                     <input
-                      className="rounded-md border border-slate-300 px-3 py-2"
+                      className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                       name="title"
                       placeholder="Staging restore rehearsal completed"
                       required
@@ -873,7 +895,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Performed at
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="performedAt"
                         type="datetime-local"
                         required
@@ -882,7 +904,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Performed by
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="performedBy"
                         placeholder="Person, team, or vendor"
                         required
@@ -905,27 +927,35 @@ export default async function AdminReadinessPage({
                       required
                     />
                   </label>
-                  <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                  <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
                     Save Evidence
                   </button>
                 </form>
-              </EntryModal>
+              </TaskSheet>
             ) : null}
             {enablementEvidenceSummary ? (
-              <EntryModal
+              <TaskSheet
                 title="Record Enablement Evidence"
-                triggerLabel="Record Evidence"
+                trigger="Record Evidence"
                 triggerClassName="border border-blue-200 bg-blue-600 text-white hover:bg-blue-700"
+                size="workspace"
+                bodyScroll="contained"
               >
                 <form
                   action={createEnablementEvidenceAction}
                   className="ogfi-form-shell mt-4 grid gap-4"
                 >
+                  <input name="enablementQ" type="hidden" value={enablementQ} />
+                  <input name="enablementType" type="hidden" value={enablementEvidenceType ?? ""} />
+                  <input name="enablementStatus" type="hidden" value={enablementVerificationStatus ?? ""} />
+                  <input name="enablementAudienceRole" type="hidden" value={enablementAudienceRole} />
+                  <input name="enablementPage" type="hidden" value={String(enablementEvidencePage.page)} />
+                  <input name="enablementPageSize" type="hidden" value={String(enablementEvidencePage.pageSize)} />
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Evidence type
                       <select
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="evidenceType"
                         required
                       >
@@ -939,7 +969,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Audience / role
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="audienceRole"
                         placeholder="Branch managers, storekeepers, purchasing"
                         required
@@ -949,7 +979,7 @@ export default async function AdminReadinessPage({
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Title
                     <input
-                      className="rounded-md border border-slate-300 px-3 py-2"
+                      className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                       name="title"
                       placeholder="Branch manager training signoff completed"
                       required
@@ -958,7 +988,7 @@ export default async function AdminReadinessPage({
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Evidence reference
                     <input
-                      className="rounded-md border border-slate-300 px-3 py-2"
+                      className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                       name="evidenceReference"
                       placeholder="Attendance sheet, KB review checklist, release note, or training impact reference"
                       required
@@ -968,7 +998,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Completed at
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="completedAt"
                         type="datetime-local"
                         required
@@ -977,7 +1007,7 @@ export default async function AdminReadinessPage({
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Owner / trainer
                       <input
-                        className="rounded-md border border-slate-300 px-3 py-2"
+                        className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                         name="ownerName"
                         placeholder="Trainer, enablement owner, or reviewer"
                         required
@@ -1010,11 +1040,11 @@ export default async function AdminReadinessPage({
                       required
                     />
                   </label>
-                  <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                  <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
                     Save Evidence
                   </button>
                 </form>
-              </EntryModal>
+              </TaskSheet>
             ) : null}
             {selectedCategory === "go_no_go" ? (
               <EntryModal

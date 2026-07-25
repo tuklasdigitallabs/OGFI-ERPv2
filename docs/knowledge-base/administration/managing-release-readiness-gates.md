@@ -57,6 +57,8 @@ For enablement evidence, open a record and choose **Open review controls**. Veri
 
 To update a readiness gate, choose **Open gate controls** on the selected gate. The focused sheet keeps the current category, filters, and page context. The server still enforces the allowed status, evidence, decision-note, blocker, authorization, and audit rules.
 
+Deployment and Enablement **Record Evidence** actions also open focused sheets. Complete the required fields and reason there; active filters and pagination are preserved when the record saves or a validation error is returned.
+
 UAT rows do not perform review actions inline. Open a record and then its review controls. Only a recorded item can be verified or rejected, and the person who recorded it cannot perform that review. Rejection requires a reason; verified and rejected records are retained as read-only history.
 
 Deployment evidence follows the same selected-record review pattern. The migration/backup/restore readiness counter only clears when each required evidence type is verified; monitoring/hypercare is tracked separately. A recorded or rejected item does not clear a deployment gate.
