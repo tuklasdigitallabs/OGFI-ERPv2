@@ -37,19 +37,34 @@ function humanizeEnum(value: string) {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function formatUserAccessDate(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Manila",
+  }).format(date);
+}
+
 type UserAccessSection = "overview" | "roles" | "scopes" | "requests" | "audit";
 
 async function createLocationScope(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith(`/admin/users/${targetUserId}`)
+    ? submittedReturnPath
+    : `/admin/users/${targetUserId}?section=scopes`;
   try {
     await createUserLocationScopeAssignment(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 async function requestHighRiskScope(formData: FormData) {
@@ -160,13 +175,17 @@ async function createRoleAssignment(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith(`/admin/users/${targetUserId}`)
+    ? submittedReturnPath
+    : `/admin/users/${targetUserId}?section=roles`;
   try {
     await createUserRoleAssignment(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 async function deactivateRoleAssignment(formData: FormData) {
@@ -381,7 +400,7 @@ export default async function CoreAdminUserDetailPage({
               <span className="font-semibold text-slate-700">{user.displayName}</span>
             </nav>
             <p className="mt-2 text-sm text-slate-500">
-              You are managing one user. Return to the Users workspace to choose another user.
+              Company: {session.context.companyName}. You are managing one user. Return to the Users workspace to choose another user.
             </p>
           </div>
           <ButtonLink href="/admin?tab=users" tone="secondary">
@@ -398,7 +417,7 @@ export default async function CoreAdminUserDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Roles</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{loadRoleSurface ? user.roles.length : "—"}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{loadRoleSurface ? user.rolesPage.totalItems : "—"}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Scopes</p>
@@ -445,7 +464,7 @@ export default async function CoreAdminUserDetailPage({
           </form>
           <div className="mt-4 divide-y divide-slate-100">
             {user.roles.length === 0 ? (
-              <p className="py-4 text-sm text-slate-600">No active roles are assigned.</p>
+              <p className="py-4 text-sm text-slate-600">{user.rolesPage.query ? "No roles match this filter." : "No active roles are assigned."}</p>
             ) : (
               user.roles.map((role) => (
                 <div
@@ -456,7 +475,7 @@ export default async function CoreAdminUserDetailPage({
                   <div>
                     <p className="font-semibold text-slate-950">{role.name}</p>
                     <p className="mt-1 text-xs font-semibold text-slate-500">{role.code} · {role.status}</p>
-                    <p className="mt-2 text-sm text-slate-600">Assigned {role.startsAt}</p>
+                    <p className="mt-2 text-sm text-slate-600">Assigned {formatUserAccessDate(role.startsAt)}</p>
                     <div className="mt-2 flex flex-wrap gap-3">
                       <ButtonLink href={`/admin/roles/${role.roleId}`} tone="ghost" className="min-h-11 px-0 text-sm text-blue-700">View role detail</ButtonLink>
                       {user.canMutateRoles && role.canMutate ? (
@@ -541,7 +560,7 @@ export default async function CoreAdminUserDetailPage({
           </form>
           <div className="mt-4 divide-y divide-slate-100">
             {scopedUser.scopes.length === 0 ? (
-              <p className="py-4 text-sm text-slate-600">No active scopes are assigned.</p>
+              <p className="py-4 text-sm text-slate-600">{scopedUser.scopesPage.query || scopedUser.scopesPage.scopeType ? "No scopes match this filter." : "No active scopes are assigned."}</p>
             ) : (
               scopedUser.scopes.map((scope) => (
                 <div
@@ -566,8 +585,8 @@ export default async function CoreAdminUserDetailPage({
                   </div>
                   <div>
                     <Badge tone="success">{humanizeEnum(scope.accessLevel)}</Badge>
-                    <p className="mt-2 text-sm text-slate-600">Assigned {scope.startsAt}</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">{scope.effectiveState}{scope.endsAt ? ` · ends ${scope.endsAt.slice(0, 10)}` : ""}</p>
+                    <p className="mt-2 text-sm text-slate-600">Assigned {formatUserAccessDate(scope.startsAt)}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{scope.effectiveState}{scope.endsAt ? ` · ends ${formatUserAccessDate(scope.endsAt)}` : ""}</p>
                     <p className="mt-1 text-xs text-slate-500">
                       {scope.riskLabel}
                     </p>
@@ -606,7 +625,7 @@ export default async function CoreAdminUserDetailPage({
               <div className="mt-4 divide-y divide-slate-100">
                 {auditPage.items.map((event) => (
                   <div key={event.id} data-testid="admin-user-audit-row" className="ogfi-list-row grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <div><p className="font-semibold text-slate-950">{event.eventType}</p><p className="text-sm text-slate-600">{event.entityType} / {event.entityId}</p><p className="text-xs text-slate-500">{event.occurredAt} · {event.companyName}</p></div>
+                    <div><p className="font-semibold text-slate-950">{event.eventType}</p><p className="text-sm text-slate-600">{event.entityType} / {event.entityId}</p><p className="text-xs text-slate-500">{formatUserAccessDate(event.occurredAt)} · {event.companyName}</p></div>
                     <ButtonLink href={`/admin/audit/${event.id}?returnTo=${encodeURIComponent(`/admin/users/${user.id}?section=audit${auditQuery ? `&auditQuery=${encodeURIComponent(auditQuery)}` : ""}`)}`} tone="ghost" className="min-h-11 self-start text-blue-700">Open audit detail</ButtonLink>
                   </div>
                 ))}
@@ -652,6 +671,7 @@ export default async function CoreAdminUserDetailPage({
                 <EntryModal title="Assign Location Scope" triggerLabel="Assign Scope">
                   <form action={createLocationScope} className="ogfi-form-shell mt-4 grid gap-3">
                     <input name="targetUserId" type="hidden" value={user.id} />
+                    <input name="returnPath" type="hidden" value={scopeReturnPath} />
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Location
                       <select className="rounded-md border border-slate-300 px-3 py-2" name="locationId" required>
@@ -677,7 +697,7 @@ export default async function CoreAdminUserDetailPage({
                       Scope assignment reason
                       <input className="rounded-md border border-slate-300 px-3 py-2" name="reason" required />
                     </label>
-                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
                       Assign Scope
                     </button>
                   </form>
@@ -719,13 +739,15 @@ export default async function CoreAdminUserDetailPage({
               ) : (
                 <TaskSheet
                   title="Request Controlled Scope"
-                  trigger={<button className="inline-flex min-h-11 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700">Request Controlled Scope</button>}
+                  trigger={<span>Request Controlled Scope</span>}
+                  triggerClassName="min-h-11 bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700"
                   size="default"
                   bodyScroll="contained"
                   description={`Controlled scope request for ${user.displayName} in the selected company. Evidence and a reason are required.`}
                 >
                   <form action={requestHighRiskScope} className="ogfi-form-shell mt-4 grid gap-3">
                     <input name="targetUserId" type="hidden" value={user.id} />
+                    <input name="returnPath" type="hidden" value={requestReturnPath} />
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Location
                       <select className="rounded-md border border-slate-300 px-3 py-2" name="locationId" required>
@@ -762,7 +784,7 @@ export default async function CoreAdminUserDetailPage({
                         required
                       />
                     </label>
-                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700 sm:w-fit">
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700 sm:w-fit">
                       Submit Controlled Request
                     </button>
                   </form>
@@ -821,13 +843,16 @@ export default async function CoreAdminUserDetailPage({
                         <p className="mt-1 text-xs font-semibold text-slate-500">
                           {request.evidenceRecorded ? "Evidence recorded" : "No evidence reference recorded"} / Requested by{" "}
                           {request.requestedByName} on{" "}
-                          {request.createdAt.slice(0, 10)}
+                          {formatUserAccessDate(request.createdAt)}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {request.status === "PENDING" ? "Next action: eligible second-admin review" : `Outcome: ${humanizeEnum(request.status)}`}
                         </p>
                         {request.reviewedByName ? (
                           <p className="mt-1 text-xs font-semibold text-slate-500">
                             Reviewed by {request.reviewedByName}
                             {request.reviewedAt
-                              ? ` on ${request.reviewedAt.slice(0, 10)}`
+                              ? ` on ${formatUserAccessDate(request.reviewedAt)}`
                               : ""}
                             {request.reviewReason ? ` / ${request.reviewReason}` : ""}
                           </p>
@@ -897,6 +922,7 @@ export default async function CoreAdminUserDetailPage({
                 <EntryModal title="Assign Role" triggerLabel="Assign Role">
                   <form action={createRoleAssignment} className="ogfi-form-shell mt-4 grid gap-3">
                     <input name="targetUserId" type="hidden" value={user.id} />
+                    <input name="returnPath" type="hidden" value={roleReturnPath} />
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Role
                       <select className="rounded-md border border-slate-300 px-3 py-2" name="roleId" required>
@@ -911,7 +937,7 @@ export default async function CoreAdminUserDetailPage({
                       Role assignment reason
                       <input className="rounded-md border border-slate-300 px-3 py-2" name="reason" required />
                     </label>
-                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
                       Assign Role
                     </button>
                   </form>
@@ -952,13 +978,15 @@ export default async function CoreAdminUserDetailPage({
               ) : (
                 <TaskSheet
                   title="Request Controlled Role"
-                  trigger={<button className="inline-flex min-h-11 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700">Request Controlled Role</button>}
+                  trigger={<span>Request Controlled Role</span>}
+                  triggerClassName="min-h-11 bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700"
                   size="default"
                   bodyScroll="contained"
                   description={`Controlled role request for ${user.displayName}. Evidence, MFA, and a reason are required.`}
                 >
                   <form action={requestSensitiveRole} className="ogfi-form-shell mt-4 grid gap-3">
                     <input name="targetUserId" type="hidden" value={user.id} />
+                    <input name="returnPath" type="hidden" value={requestReturnPath} />
                     <label className="grid gap-1 text-sm font-medium text-slate-700">
                       Role
                       <select className="rounded-md border border-slate-300 px-3 py-2" name="roleId" required>
@@ -986,7 +1014,7 @@ export default async function CoreAdminUserDetailPage({
                         required
                       />
                     </label>
-                    <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700 sm:w-fit">
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700 sm:w-fit">
                       Submit Controlled Role Request
                     </button>
                   </form>
@@ -1032,7 +1060,7 @@ export default async function CoreAdminUserDetailPage({
                           {request.riskLabel}
                         </p>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {request.permissionLabels.slice(0, 6).map((permission) => (
+                          {request.permissionLabels.map((permission) => (
                             <Badge
                               key={permission.code}
                               tone={permission.sensitive ? "warning" : "info"}
@@ -1041,9 +1069,9 @@ export default async function CoreAdminUserDetailPage({
                               {permission.label}
                             </Badge>
                           ))}
-                          {request.permissionLabels.length > 6 ? (
+                          {request.permissionLabels.length === 7 ? (
                             <Badge tone="neutral" size="sm">
-                              +{request.permissionLabels.length - 6} more
+                              Permission preview capped at 7
                             </Badge>
                           ) : null}
                           {request.status !== "PENDING" ? (
@@ -1060,13 +1088,13 @@ export default async function CoreAdminUserDetailPage({
                         <p className="mt-1 text-xs font-semibold text-slate-500">
                           {request.evidenceRecorded ? "Evidence recorded" : "No evidence reference recorded"} / Requested by{" "}
                           {request.requestedByName} on{" "}
-                          {request.createdAt.slice(0, 10)}
+                          {formatUserAccessDate(request.createdAt)}
                         </p>
                         {request.reviewedByName ? (
                           <p className="mt-1 text-xs font-semibold text-slate-500">
                             Reviewed by {request.reviewedByName}
                             {request.reviewedAt
-                              ? ` on ${request.reviewedAt.slice(0, 10)}`
+                              ? ` on ${formatUserAccessDate(request.reviewedAt)}`
                               : ""}
                             {request.reviewReason
                               ? ` / ${request.reviewReason}`
@@ -1108,7 +1136,7 @@ export default async function CoreAdminUserDetailPage({
                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
                   <p className="font-semibold text-slate-950">{selectedScopeRequest.locationName}</p>
                   <p>{selectedScopeRequest.locationCode ?? "No code"} · {humanizeEnum(selectedScopeRequest.locationType)} · {humanizeEnum(selectedScopeRequest.accessLevel)}</p>
-                  <p className="mt-1">Requested by {selectedScopeRequest.requestedByName} on {selectedScopeRequest.createdAt.slice(0, 10)}. {selectedScopeRequest.riskLabel}</p>
+                  <p className="mt-1">Requested by {selectedScopeRequest.requestedByName} on {formatUserAccessDate(selectedScopeRequest.createdAt)}. {selectedScopeRequest.riskLabel}</p>
                   {selectedScopeRequest.reason ? <p className="mt-2">Reason: {selectedScopeRequest.reason}</p> : null}
                   {selectedScopeRequest.evidenceReference ? <p className="mt-1">Evidence reference recorded.</p> : null}
                 </div>
@@ -1130,7 +1158,7 @@ export default async function CoreAdminUserDetailPage({
                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
                   <p className="font-semibold text-slate-950">{selectedRoleRequest.roleName}</p>
                   <p>{selectedRoleRequest.roleCode} · {selectedRoleRequest.riskLabel}</p>
-                  <p className="mt-1">Requested by {selectedRoleRequest.requestedByName} on {selectedRoleRequest.createdAt.slice(0, 10)}.</p>
+                  <p className="mt-1">Requested by {selectedRoleRequest.requestedByName} on {formatUserAccessDate(selectedRoleRequest.createdAt)}.</p>
                   {selectedRoleRequest.reason ? <p className="mt-2">Reason: {selectedRoleRequest.reason}</p> : null}
                   {selectedRoleRequest.evidenceReference ? <p className="mt-1">Evidence reference recorded.</p> : null}
                 </div>

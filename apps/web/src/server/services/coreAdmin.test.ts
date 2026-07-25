@@ -661,7 +661,7 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain("buildScopeHref(scope.id)");
     expect(detailPageSource).toContain("buildScopeHref(undefined, nextPage)");
     expect(detailPageSource).toContain("const loadRoleSurface = section === \"overview\" || section === \"roles\";");
-    expect(detailPageSource).toContain('{loadRoleSurface ? user.roles.length : "—"}');
+    expect(detailPageSource).toContain('{loadRoleSurface ? user.rolesPage.totalItems : "—"}');
     expect(detailPageSource).toContain('{loadRoleSurface ? user.permissions.length : "—"}');
     expect(detailPageSource).toContain('(section === \"requests\" && requestKind === \"scope\")');
   });

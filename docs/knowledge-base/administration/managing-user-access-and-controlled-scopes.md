@@ -2,7 +2,7 @@
 
 **Audience / required role:** ERP administrators with Core Administration access; role administration also requires `Administer tenant-wide roles` access
 **Applies to:** User roles, sensitive roles, location scopes, high-risk scopes, and Manage-level access
-**Last verified against:** `DEC-0043`, `DEC-0108`, `DEC-0110`, `DEC-0111`; implemented Core Admin user onboarding and user detail services; tenant-role and selected-company Manage authorization, server-paginated Users and Roles registries, selected-company target checks, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
+**Last verified against:** `DEC-0043`, `DEC-0108`, `DEC-0110`, `DEC-0111`, `DEC-0198`; implemented Core Admin user onboarding and user detail services; tenant-role and selected-company Manage authorization, server-paginated Users and Roles registries, selected-company target checks, direct low-risk scope assignment, controlled high-risk scope request, controlled sensitive role request, approval, rejection, audit, and session revalidation tests
 
 ## Purpose
 
@@ -207,6 +207,14 @@ Controlled Scope and Role Requests, including review actions, open in a focused
 task sheet with contained scrolling. Confirm the target user, requester,
 status, evidence indicator, and next action before approving or rejecting; the
 same server-side no-self-approval, MFA, scope, reason, and audit controls apply.
+
+User Access assignment, request, and audit timestamps are displayed in the
+company operating timezone (`Asia/Manila` for the initial release). Pending
+controlled-role rows show a bounded permission preview (up to seven labels) and
+explicitly disclose when the preview is capped; terminal history does not expose
+the sensitive permission list. Assignment and request forms return to the
+selected section and page after submission so filters and review context are not
+silently lost.
 
 ## Related Articles
 

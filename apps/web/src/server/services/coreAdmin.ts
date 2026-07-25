@@ -2101,7 +2101,9 @@ export async function getCoreAdminUserDetail(
             include: {
               role: {
                 include: {
-                  permissions: {
+                permissions: {
+                    orderBy: { permission: { code: "asc" } },
+                    take: 7,
                     include: { permission: true },
                   },
                 },
