@@ -19,6 +19,9 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
   const [itemOptions, setItemOptions] = useState<DraftItemOption[]>(initialItems);
   const [budgetOptions, setBudgetOptions] = useState<DraftBudgetLineOption[]>(initialBudgetLines);
   const [uomOptions, setUomOptions] = useState<DraftUomOption[]>(initialUoms);
+  const [itemCache, setItemCache] = useState<Record<string, DraftItemOption>>({});
+  const [budgetCache, setBudgetCache] = useState<Record<string, DraftBudgetLineOption>>({});
+  const [uomCache, setUomCache] = useState<Record<string, DraftUomOption[]>>({});
   const [itemQuery, setItemQuery] = useState("");
   const [uomQuery, setUomQuery] = useState("");
   const [budgetQuery, setBudgetQuery] = useState("");
@@ -35,11 +38,24 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
   const isEmergency = urgency === "Emergency";
   const selectedIndex = Math.max(0, lines.findIndex((line) => line.key === selectedKey));
   const selected = lines[selectedIndex] ?? lines[0]!;
-  const selectedItem = itemOptions.find((item) => item.id === selected.itemId);
-  const items = itemOptions;
-  const budgetLines = budgetOptions;
+  const items = useMemo(() => {
+    const merged = new Map(itemOptions.map((item) => [item.id, item]));
+    Object.values(itemCache).forEach((item) => merged.set(item.id, item));
+    return Array.from(merged.values());
+  }, [itemCache, itemOptions]);
+  const budgetLines = useMemo(() => {
+    const merged = new Map(budgetOptions.map((line) => [line.id, line]));
+    Object.values(budgetCache).forEach((line) => merged.set(line.id, line));
+    return Array.from(merged.values());
+  }, [budgetCache, budgetOptions]);
+  const selectedItem = items.find((item) => item.id === selected.itemId);
   const uoms = uomOptions;
-  const validUoms = selectedItem ? uomOptions : uoms;
+  const validUoms = useMemo(() => {
+    if (!selectedItem) return uoms;
+    const merged = new Map((uomCache[selected.itemId] ?? []).map((uom) => [uom.id, uom]));
+    uoms.forEach((uom) => merged.set(uom.id, uom));
+    return Array.from(merged.values());
+  }, [selected.itemId, selectedItem, uomCache, uoms]);
   useEffect(() => {
     if (itemQuery.trim().length < 2) {
       setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained ? [retained, ...initialItems.filter((item) => item.id !== retained.id)] : initialItems; });
@@ -55,7 +71,7 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
         return response.json() as Promise<{ options: DraftItemOption[] }>;
       })
-      .then((result: { options: DraftItemOption[]; page?: number; totalPages?: number }) => { const options = result.options.map((item) => ({ ...item, uoms: [] })); setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained && !options.some((item) => item.id === retained.id) ? [retained, ...options] : options; }); setItemPage(result.page ?? itemPage); setItemTotalPages(result.totalPages ?? 1); setLookupMessage(options.length ? null : "No active catalog items match this search."); setLookupLoading(false); })
+      .then((result: { options: DraftItemOption[]; page?: number; totalPages?: number }) => { const options = result.options.map((item) => ({ ...item, uoms: [] })); setItemCache((current) => ({ ...current, ...Object.fromEntries(options.map((item) => [item.id, item])) })); setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained && !options.some((item) => item.id === retained.id) ? [retained, ...options] : options; }); setItemPage(result.page ?? itemPage); setItemTotalPages(result.totalPages ?? 1); setLookupMessage(options.length ? null : "No active catalog items match this search."); setLookupLoading(false); })
       .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setLookupError(true); setLookupMessage("Item lookup is unavailable. Retry the search or contact an administrator."); });
     return () => controller.abort();
   }, [itemQuery, initialItems, selected.itemId, itemPage, lookupRetry]);
@@ -73,7 +89,7 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
         return response.json() as Promise<{ options: DraftUomOption[] }>;
       })
-      .then((result: { options: DraftUomOption[]; page?: number; totalPages?: number }) => { setUomOptions(result.options); setUomPage(result.page ?? uomPage); setUomTotalPages(result.totalPages ?? 1); setLookupMessage(result.options.length ? null : "No valid UOMs are configured for this item."); setLookupLoading(false); })
+      .then((result: { options: DraftUomOption[]; page?: number; totalPages?: number }) => { setUomCache((current) => ({ ...current, [selected.itemId]: result.options })); setUomOptions(result.options); setUomPage(result.page ?? uomPage); setUomTotalPages(result.totalPages ?? 1); setLookupMessage(result.options.length ? null : "No valid UOMs are configured for this item."); setLookupLoading(false); })
       .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setLookupError(true); setUomOptions([]); setLookupMessage("No valid UOMs are available for this item. Choose another item or ask an administrator."); });
     return () => controller.abort();
   }, [selected.itemId, selected.uomId, uomQuery, uomPage, initialUoms, lookupRetry]);
@@ -91,7 +107,7 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
         return response.json() as Promise<{ options: Array<{ id: string; code: string; name: string; budget?: { publicReference: string; name: string } | null }>; page?: number; totalPages?: number }>;
       })
-      .then((result) => { const options = result.options.map((option) => ({ id: option.id, label: `${option.code} / ${option.name}`, helper: option.budget ? `${option.budget.publicReference} / ${option.budget.name}` : "" })); setBudgetOptions(options); setBudgetPage(result.page ?? budgetPage); setBudgetTotalPages(result.totalPages ?? 1); setLookupMessage(options.length ? null : "No active budget lines match this search."); setLookupLoading(false); })
+      .then((result) => { const options = result.options.map((option) => ({ id: option.id, label: `${option.code} / ${option.name}`, helper: option.budget ? `${option.budget.publicReference} / ${option.budget.name}` : "" })); setBudgetCache((current) => ({ ...current, ...Object.fromEntries(options.map((line) => [line.id, line])) })); setBudgetOptions(options); setBudgetPage(result.page ?? budgetPage); setBudgetTotalPages(result.totalPages ?? 1); setLookupMessage(options.length ? null : "No active budget lines match this search."); setLookupLoading(false); })
       .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setLookupError(true); setLookupMessage("Budget lookup is unavailable. You can leave budget classification for Finance."); });
     return () => controller.abort();
   }, [budgetQuery, initialBudgetLines, selected.budgetLineId, budgetPage, lookupRetry]);
@@ -102,7 +118,7 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
   }), [isEmergency, lines]);
   const input = "min-h-11 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
   function update(values: Partial<Omit<DraftLine, "key">>) { setLines((current) => current.map((line) => line.key === selected.key ? { ...line, ...values } : line)); }
-  function handleItemChange(itemId: string) { const item = itemOptions.find((option) => option.id === itemId); setUomQuery(""); setUomPage(1); update({ itemId, itemName: item?.itemName ?? "", uomId: item?.defaultUomId ?? "", uomCode: "" }); }
+  function handleItemChange(itemId: string) { const item = items.find((option) => option.id === itemId); if (item) setItemCache((current) => ({ ...current, [item.id]: item })); setUomQuery(""); setUomPage(1); update({ itemId, itemName: item?.itemName ?? "", uomId: item?.defaultUomId ?? "", uomCode: "" }); }
   function addLine() { if (lines.length >= PURCHASE_REQUEST_MAX_LINES) return; const key = Math.max(...lines.map((line) => line.key)) + 1; setLines((current) => [...current, emptyLine(key)]); setSelectedKey(key); }
   function removeLine() { if (lines.length === 1) return; const next = lines.filter((line) => line.key !== selected.key); setLines(next); setSelectedKey(next[Math.min(selectedIndex, next.length - 1)]!.key); }
   function submit(event: FormEvent<HTMLFormElement>) { if (incomplete[0] === undefined) return; event.preventDefault(); setErrors(incomplete); setSelectedKey(lines[incomplete[0]]!.key); }

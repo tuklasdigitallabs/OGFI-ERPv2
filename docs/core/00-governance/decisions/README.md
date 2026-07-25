@@ -156,3 +156,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0213-ADMIN-APPROVAL-RULE-REGISTRY-PAGING.md` — filtered stale-page clamping for the bounded Approval Rules registry
 - `DEC-0214-ADMIN-ROLE-PERMISSION-INTEGRITY.md` — fail-closed Role Detail behavior for unsupported tenant permission links
 - `DEC-0215-PR-DRAFT-LOOKUP-SELECTED-SCOPE-HARDENING.md` — selected-location/brand budget-line retention and removal of the dead unbounded draft catalog
+- `DEC-0216-PR-DRAFT-EDITOR-MULTILINE-CONTINUITY.md` — bounded per-ID selected-option caches across multi-line draft editing

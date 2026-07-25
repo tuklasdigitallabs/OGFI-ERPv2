@@ -262,6 +262,10 @@ describe("purchase request workflow controls", () => {
     expect(serviceSource).toContain("{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }");
     expect(editorSource).toContain("aria-busy={lookupLoading}");
     expect(editorSource).toContain("Retry lookups");
+    expect(editorSource).toContain("itemCache");
+    expect(editorSource).toContain("budgetCache");
+    expect(editorSource).toContain("uomCache");
+    expect(editorSource).toContain("Object.values(itemCache)");
     expect(editorSource).toContain("min-h-11");
     expect(pageSource).toContain("session.context.companyName");
     expect(pageSource).toContain("session.user.displayName");
