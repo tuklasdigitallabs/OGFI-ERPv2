@@ -412,58 +412,6 @@
     ]
   },
   {
-    "id": "admin/authentication/page.tsx#issueActivation",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/authentication.ts#assertTrustedServerActionOrigin",
-      "server/services/authenticationAdmin.ts#issueAuthenticationActivation",
-      "server/services/context.ts#getSessionContext"
-    ],
-    "callChains": [
-      "issueActivation -> server/services/authentication.ts#assertTrustedServerActionOrigin",
-      "issueActivation -> server/services/authenticationAdmin.ts#issueAuthenticationActivation",
-      "issueActivation -> server/services/context.ts#getSessionContext"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requirePermission(core.administer)",
-      "assertCanManageCompanyScope",
-      "targetUserIdsForCompany",
-      "assertPrivilegedMfaForAction",
-      "authentication cookie",
-      "session validation",
-      "live context resolution"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-LIVE-PERMISSION-REVOKED-DENIES-READ",
-      "AUTHZ-ADMIN-COMPANY-MANAGE-REVOKED-DENIES-WRITE-NO-MUTATION",
-      "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION",
-      "AUTHZ-ADMIN-PRIVILEGED-MFA-DENIED-NO-TOKEN-MUTATION",
-      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "activation token count unchanged on every denial",
-      "invalid or stale session cannot authorize protected mutation"
-    ]
-  },
-  {
     "id": "admin/authentication/page.tsx#manageRecovery",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -539,107 +487,6 @@
     "riskTier": "STANDARD",
     "executableTestIds": [
       "AUTHZ-DEEPLINK-001"
-    ]
-  },
-  {
-    "id": "admin/authentication/page.tsx#retryDelivery",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/authentication.ts#assertTrustedServerActionOrigin",
-      "server/services/authenticationAdmin.ts#retryAuthenticationActivationDelivery",
-      "server/services/context.ts#getSessionContext"
-    ],
-    "callChains": [
-      "retryDelivery -> server/services/authentication.ts#assertTrustedServerActionOrigin",
-      "retryDelivery -> server/services/authenticationAdmin.ts#retryAuthenticationActivationDelivery",
-      "retryDelivery -> server/services/context.ts#getSessionContext"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requirePermission(core.administer)",
-      "assertCanManageCompanyScope",
-      "activation tenant-target scope predicate",
-      "privileged MFA",
-      "authentication cookie",
-      "session validation",
-      "live context resolution"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "permission denial leaves activation delivery state unchanged",
-      "invalid or stale session cannot authorize protected mutation"
-    ]
-  },
-  {
-    "id": "admin/authentication/page.tsx#revokeSessions",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/authentication.ts#assertTrustedServerActionOrigin",
-      "server/services/authenticationAdmin.ts#revokeAuthenticationSessions",
-      "server/services/context.ts#getSessionContext"
-    ],
-    "callChains": [
-      "revokeSessions -> server/services/authentication.ts#assertTrustedServerActionOrigin",
-      "revokeSessions -> server/services/authenticationAdmin.ts#revokeAuthenticationSessions",
-      "revokeSessions -> server/services/context.ts#getSessionContext"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "requirePermission(core.administer)",
-      "assertCanManageCompanyScope",
-      "targetUserIdsForCompany",
-      "self-revocation guard",
-      "assertPrivilegedMfaForAction",
-      "authentication cookie",
-      "session validation",
-      "live context resolution"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-ADMIN-HIGH-RISK-SURFACES-LIVE-PERMISSION-DENIED-NO-MUTATION",
-      "AUTHZ-ADMIN-TARGET-OUTSIDE-COMPANY-DENIED-NO-MUTATION",
-      "AUTHZ-ADMIN-SOD-SELF-REVIEW-AND-LIFECYCLE-DENIAL-NO-MUTATION",
-      "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "self-administration, foreign-company target, and revoked-permission denials leave sessions unchanged",
-      "invalid or stale session cannot authorize protected mutation"
     ]
   },
   {
@@ -16622,6 +16469,27 @@
     ]
   },
   {
+    "id": "server/services/authenticationAdmin.ts#getAuthRecoveryRequest",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/authenticationAdmin.ts#issueAuthenticationActivation",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
@@ -16708,7 +16576,49 @@
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
   },
   {
+    "id": "server/services/authenticationAdmin.ts#listAuthRecoveryRequestPage",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
     "id": "server/services/authenticationAdmin.ts#listAuthRecoveryRequests",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/authenticationAdmin.ts#listAuthRecoveryTargetCatalog",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "permissions.coreAdminister",
     "scopeDimensions": [
