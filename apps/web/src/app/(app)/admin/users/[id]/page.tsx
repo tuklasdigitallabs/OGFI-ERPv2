@@ -254,7 +254,7 @@ export default async function CoreAdminUserDetailPage({
     assignedRolePageSize: 25,
     scopeRequestPage: Number.isFinite(scopeRequestPageValue) ? scopeRequestPageValue : 1,
     scopeRequestPageSize: Number.isFinite(scopeRequestPageSizeValue) ? scopeRequestPageSizeValue : 25,
-    ...(section === "requests" ? { requestKind } : {}),
+    requestKind: section === "requests" ? requestKind : "none",
     roleRequestPage: Number.isFinite(roleRequestPageValue) ? roleRequestPageValue : 1,
     roleRequestPageSize: Number.isFinite(roleRequestPageSizeValue) ? roleRequestPageSizeValue : 25,
     ...(scopeRequestStatusValue && ["PENDING", "APPROVED", "REJECTED"].includes(scopeRequestStatusValue)

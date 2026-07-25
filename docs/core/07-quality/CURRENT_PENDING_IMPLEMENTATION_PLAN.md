@@ -856,3 +856,8 @@ Update this register only when implementation state, release scope, a confirmed 
 ### DEC-0163 Administration User Access tab isolation — July 25, 2026
 - User Access now renders Overview, Roles, Scopes, Requests, and Audit as mutually exclusive URL-backed visible sections. Overview retains identity/status, role summary, and effective permissions; Roles and Scopes retain their bounded registers and contextual actions; Requests and Audit remain the dedicated DEC-0161/0162 workspaces.
 - Evidence: Core Admin tests 34/34, web TypeScript, lint, production build, and diff checks pass. Full removal of non-active-section server reads, PostgreSQL query-plan/no-query authorization evidence, responsive browser, hosted recovery, and UAT remain open; Administration and Phase I are not complete.
+
+### DEC-0164 Administration User Access bounded request reads — July 25, 2026
+- Non-Requests sections now pass `requestKind: "none"`, skipping both controlled-request count/list queries; Requests scope and role sections continue to load only their selected dataset. Existing callers without a kind retain compatibility behavior.
+- Corrected Audit predicate composition so exact actor scoping survives free-text search and cannot leak another same-company actor’s event.
+- Evidence: Core Admin tests 34/34, web TypeScript, lint, production build, and diff checks pass. Query-count/isolation, PostgreSQL, responsive browser, hosted recovery, and UAT remain open; role/scope/catalog non-active reads remain a separate follow-up.

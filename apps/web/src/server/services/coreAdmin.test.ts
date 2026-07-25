@@ -554,8 +554,9 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("roleRequestPageSize");
     expect(serviceSource).toContain("scopeRequestTotal");
     expect(serviceSource).toContain("roleRequestTotal");
-    expect(serviceSource).toContain("const loadScopeRequests = options.requestKind !== \"role\"");
-    expect(serviceSource).toContain("const loadRoleRequests = options.requestKind !== \"scope\"");
+    expect(serviceSource).toContain("const loadScopeRequests = options.requestKind === undefined || options.requestKind === \"scope\"");
+    expect(serviceSource).toContain("const loadRoleRequests = options.requestKind === undefined || options.requestKind === \"role\"");
+    expect(detailPageSource).toContain('requestKind: section === "requests" ? requestKind : "none"');
     expect(serviceSource).toContain('orderBy: [{ createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("highRiskScopeRequestPage");
     expect(serviceSource).toContain("sensitiveRoleRequestPage");
@@ -593,6 +594,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("actorUserId");
     expect(serviceSource).toContain("assertTargetUserInCurrentCompany(session, userId)");
     expect(serviceSource).toContain("const existingAnd = Array.isArray(where.AND)");
+    expect(serviceSource).toContain("where.AND = [...existingAnd, { OR: queryConditions }]");
     expect(detailPageSource).toContain('section === "audit"');
     expect(detailPageSource).toContain("auditCursor");
     expect(detailPageSource).toContain('name="auditQuery"');

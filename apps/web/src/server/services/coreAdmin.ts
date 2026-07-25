@@ -1943,7 +1943,7 @@ export async function getCoreAdminUserDetail(
     scopeRequestPage?: number;
     scopeRequestPageSize?: number;
     scopeRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
-    requestKind?: "scope" | "role";
+    requestKind?: "scope" | "role" | "none";
     roleRequestPage?: number;
     roleRequestPageSize?: number;
     roleRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
@@ -2064,8 +2064,8 @@ export async function getCoreAdminUserDetail(
       ? { status: options.roleRequestStatus }
       : { status: { in: ["PENDING", "APPROVED", "REJECTED"] } }),
   };
-  const loadScopeRequests = options.requestKind !== "role";
-  const loadRoleRequests = options.requestKind !== "scope";
+  const loadScopeRequests = options.requestKind === undefined || options.requestKind === "scope";
+  const loadRoleRequests = options.requestKind === undefined || options.requestKind === "role";
   const [scopeRequestTotal, highRiskScopeRequests, roleRequestTotal, sensitiveRoleRequests] =
     await Promise.all([
       loadScopeRequests ? prisma.highRiskScopeRequest.count({ where: scopeRequestWhere }) : Promise.resolve(0),
@@ -4666,7 +4666,14 @@ async function resolveCoreAdminAuditWhere(
       ...(occurredBefore ? { lt: occurredBefore } : {}),
     };
   }
-  if (queryConditions.length > 0) where.AND = [{ OR: queryConditions }];
+  if (queryConditions.length > 0) {
+    const existingAnd = Array.isArray(where.AND)
+      ? where.AND
+      : where.AND
+        ? [where.AND]
+        : [];
+    where.AND = [...existingAnd, { OR: queryConditions }];
+  }
   return { where, normalized, canViewTenantAudit };
 }
 
