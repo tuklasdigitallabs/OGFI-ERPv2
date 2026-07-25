@@ -35,7 +35,7 @@ The user opens the link, creates and confirms a password that meets the displaye
 
 ## Recover An Existing Account
 
-1. Open `Admin` → `Authentication` → `Recovery`, then use the bounded filters or paging to find the request. To create a request, select an existing account with an active local identity.
+1. Open `Admin` → `Authentication` → `Recovery`, then use the bounded filters or paging to find the request. To create a request, search the bounded eligible-account choices and select an existing account with an active local identity.
 2. Choose `Password / credentials only` or `Password and lost MFA device`.
 3. Enter the identity-verification reason and evidence reference.
 4. Select `Request recovery review`.
@@ -54,6 +54,7 @@ The user opens the link, creates and confirms a password that meets the displaye
 
 - Direct activation is only for users without an active local identity. Existing accounts must use controlled recovery.
 - Recovery requests cannot be created for an account without an active local identity; use the Activation section for first-time setup.
+- If a search or UTC date filter is invalid or too broad, OGFI shows no records until you correct it; it does not silently broaden the result set.
 - The requesting administrator cannot review the same recovery request, and the target user cannot request or review their own recovery.
 - Activation links are secrets. They are not shown to administrators and must not be copied into tickets, public chat, screenshots, or the MFA evidence register.
 - A failed delivery does not expose the link. Correct the approved SMTP transport or account email and use the controlled retry action before expiry.

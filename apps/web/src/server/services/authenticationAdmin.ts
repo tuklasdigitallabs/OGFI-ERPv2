@@ -31,11 +31,12 @@ const reviewRecoverySchema = z.object({
 const recoveryPageInputSchema = z.object({
   page: z.number().int().min(1).max(10_000).default(1),
   pageSize: z.number().int().min(10).max(100).default(25),
-  query: z.string().trim().max(120).default(""),
+  query: z.string().trim().max(120).catch(""),
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
-  createdFrom: z.string().optional(),
-  createdTo: z.string().optional(),
+  createdFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
+  createdTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
 });
+const recoveryTargetCatalogSchema = z.object({ query: z.string().trim().max(120).catch(""), selectedUserId: z.string().uuid().optional() });
 
 async function assertCanManageAuthentication(session: SessionContext) {
   await requirePermission(session, permissions.coreAdminister);
@@ -317,6 +318,13 @@ export async function listAuthRecoveryRequests(session: SessionContext) {
 
 export async function listAuthRecoveryRequestPage(session: SessionContext, input: unknown = {}) {
   await assertCanManageAuthentication(session);
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const rawQuery = typeof raw.query === "string" ? raw.query.trim() : "";
+  const validDate = (v: unknown) => typeof v !== "string" || ( /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00.000Z`)) );
+  if (rawQuery.length > 120 || !validDate(raw.createdFrom) || !validDate(raw.createdTo) || (typeof raw.createdFrom === "string" && typeof raw.createdTo === "string" && raw.createdFrom > raw.createdTo)) {
+    const pageSize = typeof raw.pageSize === "number" && raw.pageSize >= 10 && raw.pageSize <= 100 ? raw.pageSize : 25;
+    return { items: [], page: 1, pageSize, totalItems: 0, totalPages: 1, invalidInput: true as const };
+  }
   const values = recoveryPageInputSchema.parse(input);
   const where = {
     tenantId: session.context.tenantId,
@@ -357,7 +365,34 @@ export async function listAuthRecoveryRequestPage(session: SessionContext, input
         reviewedByUser: { select: { displayName: true, email: true } },
       },
     });
-  return { items, page, pageSize: values.pageSize, totalItems, totalPages };
+  return { items, page, pageSize: values.pageSize, totalItems, totalPages, invalidInput: false as const };
+}
+
+export async function listAuthRecoveryTargetCatalog(session: SessionContext, input: unknown = {}) {
+  await assertCanManageAuthentication(session);
+  const rawQuery = input && typeof input === "object" && typeof (input as { query?: unknown }).query === "string" ? String((input as { query: string }).query).trim() : "";
+  if (rawQuery.length > 120) return { items: [], overflow: false, query: rawQuery.slice(0, 120), invalidInput: true as const };
+  const values = recoveryTargetCatalogSchema.parse(input);
+  const userIds = await targetUserIdsForCompany(session);
+  const users = await prisma.user.findMany({
+    where: {
+      id: { in: userIds }, tenantId: session.context.tenantId, status: "ACTIVE",
+      authIdentities: { some: { provider: "LOCAL", status: "ACTIVE" } },
+      ...(values.query ? { OR: [
+        { displayName: { contains: values.query, mode: "insensitive" as const } },
+        { email: { contains: values.query, mode: "insensitive" as const } },
+      ] } : {}),
+    },
+    orderBy: [{ displayName: "asc" }, { id: "asc" }],
+    take: 101,
+    select: { id: true, displayName: true, email: true },
+  });
+  const selected = values.selectedUserId && userIds.includes(values.selectedUserId) && !users.some((user) => user.id === values.selectedUserId)
+    ? await prisma.user.findFirst({ where: { id: values.selectedUserId, tenantId: session.context.tenantId, status: "ACTIVE", authIdentities: { some: { provider: "LOCAL", status: "ACTIVE" } } }, select: { id: true, displayName: true, email: true } })
+    : null;
+  const overflow = users.length > 100;
+  const items = (overflow ? users.slice(0, 100) : users).concat(selected && !users.some((user) => user.id === selected.id) ? [selected] : []);
+  return { items, overflow, query: values.query, invalidInput: false as const };
 }
 
 export async function getAuthRecoveryRequest(session: SessionContext, requestId: string) {
@@ -412,6 +447,8 @@ export async function requestAuthRecovery(
   try {
     return await prisma.$transaction(async (tx) => {
       await assertTargetUserInCompanyScope(tx, session, values.targetUserId);
+      const activeIdentity = await tx.authIdentity.findFirst({ where: { userId: values.targetUserId, provider: "LOCAL", status: "ACTIVE" }, select: { id: true } });
+      if (!activeIdentity) throw new Error("AUTH_RECOVERY_LOCAL_IDENTITY_REQUIRED");
       const saved = await tx.authRecoveryRequest.create({
         data: {
           tenantId: session.context.tenantId,
