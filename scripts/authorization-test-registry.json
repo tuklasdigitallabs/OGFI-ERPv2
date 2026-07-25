@@ -24,6 +24,11 @@
     "file": "apps/web/tests/authorizationRoutes.integration.test.ts",
     "evidence": "every discovered protected GET route executes with a real authenticated session whose live permissions deny access and returns no export bytes"
   },
+  "AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE": {
+    "kind": "authenticated-database-route",
+    "file": "apps/web/tests/authorizationRoutes.integration.test.ts",
+    "evidence": "Item Master and procurement lookup APIs deny missing live permissions, reject malformed input safely, and perform no audit mutation"
+  },
   "AUTHZ-SIGNOUT-ROUTE-001": {
     "kind": "authenticated-database-route",
     "file": "apps/web/tests/authorizationRoutes.integration.test.ts",

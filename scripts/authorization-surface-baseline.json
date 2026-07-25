@@ -3026,7 +3026,7 @@
     "denialContract": "401_AUTH_REQUIRED_OR_400_OPTION_INPUT_INVALID_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
     "riskTier": "HIGH",
     "executableTestIds": [
-      "AUTHZ-ROUTE-MATRIX-001"
+      "AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE"
     ],
     "delegatedServiceIds": [
       "server/services/context.ts#getSessionContext",
@@ -3068,7 +3068,7 @@
     "denialContract": "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
     "riskTier": "HIGH",
     "executableTestIds": [
-      "AUTHZ-ROUTE-MATRIX-001"
+      "AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE"
     ],
     "delegatedServiceIds": [
       "server/services/context.ts#getSessionContext",
@@ -3110,7 +3110,7 @@
     "denialContract": "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
     "riskTier": "HIGH",
     "executableTestIds": [
-      "AUTHZ-ROUTE-MATRIX-001"
+      "AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE"
     ],
     "delegatedServiceIds": [
       "server/services/context.ts#getSessionContext",

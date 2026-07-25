@@ -142,6 +142,28 @@ describe("protected route authorization matrix", () => {
     ).toBe(0);
   }, 30_000);
 
+  it("AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE", async () => {
+    const [{ GET: getItemOptions }, { GET: getApprovedRecommendations }, { GET: getDraftLookup }] = await Promise.all([
+      import("../src/app/api/items/option-catalog/route"),
+      import("../src/app/api/purchase-orders/approved-recommendations/route"),
+      import("../src/app/api/purchase-requests/draft-lookup/route"),
+    ]);
+    const before = await prisma.auditEvent.count({ where: { tenantId: ids.tenant } });
+    const itemDenied = await getItemOptions!(new Request("http://localhost/api/items/option-catalog?kind=item&query=ab"));
+    expect(itemDenied.status).toBe(403);
+    expect(await itemDenied.json()).toEqual({ code: "OPTION_LOOKUP_DENIED" });
+    const recommendationDenied = await getApprovedRecommendations!(new Request("http://localhost/api/purchase-orders/approved-recommendations"));
+    expect(recommendationDenied.status).toBe(403);
+    expect(await recommendationDenied.json()).toEqual({ code: "LOOKUP_DENIED" });
+    const draftDenied = await getDraftLookup!(new Request("http://localhost/api/purchase-requests/draft-lookup?kind=item&query=ab"));
+    expect(draftDenied.status).toBe(403);
+    expect(await draftDenied.json()).toEqual({ code: "LOOKUP_DENIED" });
+    const malformed = await getItemOptions!(new Request("http://localhost/api/items/option-catalog?kind=unknown"));
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toEqual({ code: "OPTION_INPUT_INVALID" });
+    expect(await prisma.auditEvent.count({ where: { tenantId: ids.tenant } })).toBe(before);
+  }, 30_000);
+
   it("AUTHZ-INVENTORY-RECONCILIATION-EXPORT-REQUIRES-BOTH-PERMISSIONS", async () => {
     const { GET } = await import(
       "../src/app/(app)/inventory/reconciliation/export/route"

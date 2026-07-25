@@ -26,3 +26,8 @@ live permission revocation. The PostgreSQL execution gate remains open because
 existing route-matrix test also does not execute `app/api/**`; dedicated API
 authorization/isolation/no-mutation evidence remains required before the
 authorization gate can pass.
+
+A dedicated lookup-route integration case now covers the three protected lookup
+APIs for live permission denial, malformed Item Master input, stable error
+contracts, and no audit mutation. It still requires the disposable PostgreSQL
+runner before it is release evidence.

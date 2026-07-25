@@ -1220,7 +1220,7 @@ export function buildAuthorizationSurfaceManifest() {
         guardChain: ["session", "domain-service", "service-authorization"],
         denialContract: "401_AUTH_REQUIRED_OR_400_OPTION_INPUT_INVALID_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
         method: "GET",
-        testIds: ["AUTHZ-ROUTE-MATRIX-001"],
+        testIds: ["AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE"],
       },
     ],
     [
@@ -1231,7 +1231,7 @@ export function buildAuthorizationSurfaceManifest() {
         guardChain: ["session", "route-authorization", "scoped-service-builder"],
         denialContract: "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
         method: "GET",
-        testIds: ["AUTHZ-ROUTE-MATRIX-001"],
+        testIds: ["AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE"],
       },
     ],
     [
@@ -1242,7 +1242,7 @@ export function buildAuthorizationSurfaceManifest() {
         guardChain: ["session", "route-authorization", "scoped-service-builder"],
         denialContract: "401_AUTH_REQUIRED_OR_403_PERMISSION_DENIED_OR_503_LOOKUP_UNAVAILABLE",
         method: "GET",
-        testIds: ["AUTHZ-ROUTE-MATRIX-001"],
+        testIds: ["AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE"],
       },
     ],
   ]);
@@ -1841,6 +1841,14 @@ export function authorizationBoundaryCoverageReport(manifest) {
               "app/api/evidence/uploads/content/route.ts#POST",
             ].includes(surface.id)
           ? !surface.executableTestIds.includes("AUTHZ-EVIDENCE-001")
+        : [
+              "app/api/items/option-catalog/route.ts#GET",
+              "app/api/purchase-orders/approved-recommendations/route.ts#GET",
+              "app/api/purchase-requests/draft-lookup/route.ts#GET",
+            ].includes(surface.id)
+          ? !surface.executableTestIds.includes(
+              "AUTHZ-API-LOOKUP-ROUTES-LIVE-PERMISSION-DENIAL-NO-DISCLOSURE",
+            )
         : surface.surfaceType === "EVIDENCE_DOWNLOAD"
         ? !surface.executableTestIds.includes("AUTHZ-EVIDENCE-001")
         : !surface.executableTestIds.includes("AUTHZ-ROUTE-MATRIX-001"),
