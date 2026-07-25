@@ -53,6 +53,11 @@ On the Core Administration home, use the URL-backed workspace tabs to open only
 the register you need. Inactive sections are not loaded in the current view;
 switch tabs when you need Users, Roles, Organization, Approval Rules, or Audit.
 
+In Item Master, use the URL-backed Items, Categories, UOMs, and Conversions
+tabs. The active register is the only register loaded, and its selected-record
+controls remain scoped to the selected company. Do not interpret an inactive
+tab's absent count as zero data.
+
 ## Common errors and recovery
 
 - Granting company-wide access to fix one missing record: assign the smallest correct scope.

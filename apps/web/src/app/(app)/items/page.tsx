@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Badge, Panel, PaginationBar } from "@ogfi/ui";
+import { Badge, Panel, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -270,6 +270,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const conversionPageValue = Number(Array.isArray(params.conversionPage) ? params.conversionPage[0] : params.conversionPage);
   const conversionPage = Number.isInteger(conversionPageValue) && conversionPageValue > 0 ? Math.min(conversionPageValue, 10_000) : 1;
   const masterData = await listItemMasterData(session, {
+    activeTab,
     query: itemQuery,
     status: itemStatus,
     page: itemPage,
@@ -283,16 +284,18 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
     conversionQuery,
     conversionPage
   });
-  const selectedItem = selectedItemId ? await getItemMasterRecord(session, selectedItemId).catch(() => null) : null;
-  const selectedCategory = selectedCategoryId ? await getItemCategoryRecord(session, selectedCategoryId).catch(() => null) : null;
-  const selectedUom = selectedUomId ? await getUomRecord(session, selectedUomId).catch(() => null) : null;
-  const selectedConversion = selectedConversionId ? await getItemUomConversionRecord(session, selectedConversionId).catch(() => null) : null;
+  const selectedItem = activeTab === "items" && selectedItemId ? await getItemMasterRecord(session, selectedItemId).catch(() => null) : null;
+  const selectedCategory = activeTab === "categories" && selectedCategoryId ? await getItemCategoryRecord(session, selectedCategoryId).catch(() => null) : null;
+  const selectedUom = activeTab === "uoms" && selectedUomId ? await getUomRecord(session, selectedUomId).catch(() => null) : null;
+  const selectedConversion = activeTab === "conversions" && selectedConversionId ? await getItemUomConversionRecord(session, selectedConversionId).catch(() => null) : null;
   const selectedCategoryIds = [...masterData.items.map((item) => item.itemCategoryId), ...(selectedItem ? [selectedItem.itemCategoryId] : [])];
   const selectedUomIds = [...masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id))), ...(selectedItem ? [selectedItem.baseUomId, selectedItem.purchaseUomId, selectedItem.issueUomId].filter((id): id is string => Boolean(id)) : [])];
-  const [categoryOptionCatalog, uomOptionCatalog] = await Promise.all([
-    listItemMasterOptionCatalog(session, { kind: "category", selectedIds: selectedCategoryIds, page: 1, pageSize: 100 }),
-    listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 })
-  ]);
+  const [categoryOptionCatalog, uomOptionCatalog] = activeTab === "items"
+    ? await Promise.all([
+        listItemMasterOptionCatalog(session, { kind: "category", selectedIds: selectedCategoryIds, page: 1, pageSize: 100 }),
+        listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 })
+      ])
+    : [{ options: [], total: 0, hasMore: false }, { options: [], total: 0, hasMore: false }];
   const activeItems = masterData.itemsPage.activeItems;
   const activeCategories = categoryOptionCatalog.options.filter((category) => category.status === "ACTIVE");
   const activeUoms = uomOptionCatalog.options.filter((uom) => uom.status === "ACTIVE");
@@ -349,46 +352,19 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
           <span>Master data</span>
         </div>
       </div>
-      <div className="mb-5 grid gap-4 md:grid-cols-4">
-        <Panel className="ogfi-detail-card min-w-0 overflow-hidden [&_*]:min-w-0 [&_button]:max-w-full [&_input]:w-full [&_select]:w-full [&_textarea]:w-full">
-          <p className="text-sm font-semibold text-slate-500">Items</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.itemsPage.totalItems}</p>
-        </Panel>
-        <Panel className="ogfi-detail-card min-w-0 overflow-hidden [&_*]:min-w-0 [&_button]:max-w-full [&_input]:w-full [&_select]:w-full [&_textarea]:w-full">
-          <p className="text-sm font-semibold text-slate-500">Active items</p>
-          <p className="mt-2 text-3xl font-bold text-emerald-700">{activeItems}</p>
-        </Panel>
-        <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Categories</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.categoriesPage.totalItems}</p>
-        </Panel>
-        <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">UOMs</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{masterData.uomsPage.totalItems}</p>
-        </Panel>
-      </div>
-
-      <div className="ogfi-data-surface mb-5 p-2">
-        <div className="grid gap-2 lg:grid-cols-4">
-          {itemMasterTabs.map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <a
-                key={tab.id}
-                className={
-                  active
-                    ? "rounded-xl bg-blue-50 px-4 py-3 text-blue-700 ring-1 ring-blue-100"
-                    : "rounded-xl px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-slate-950"
-                }
-                href={`/items?tab=${tab.id}`}
-              >
-                <span className="block text-sm font-bold">{tab.label}</span>
-                <span className="mt-1 block text-xs text-slate-500">{tab.detail}</span>
-              </a>
-            );
-          })}
-        </div>
-      </div>
+      <section className="mb-5 grid gap-3">
+        <WorkspaceTabs
+          ariaLabel="Item Master workspaces"
+          className="[&>a]:min-h-11 [&>span]:min-h-11"
+          items={itemMasterTabs.map((tab) => ({ label: tab.label, href: `/items?tab=${tab.id}`, active: activeTab === tab.id }))}
+        />
+        <p className="text-xs text-slate-500">Only the selected Item Master register and its required detail/catalog queries are loaded. Other registers are not loaded in this view.</p>
+      </section>
+      <Panel className="mb-5 border-slate-200 bg-slate-50">
+        <p className="text-sm font-semibold text-slate-700">Current workspace</p>
+        <p className="mt-1 text-lg font-bold text-slate-950">{itemMasterTabs.find((tab) => tab.id === activeTab)?.label}</p>
+        <p className="mt-1 text-sm text-slate-600">{activeTab === "items" ? `${masterData.itemsPage.totalItems} matching items; ${activeItems} active.` : activeTab === "categories" ? `${masterData.categoriesPage.totalItems} matching categories.` : activeTab === "uoms" ? `${masterData.uomsPage.totalItems} matching units of measure.` : `${masterData.conversionsPage.totalItems} matching conversions.`}</p>
+      </Panel>
 
       <div className="mb-5 flex flex-wrap justify-end gap-2">
         {activeTab === "items" ? (

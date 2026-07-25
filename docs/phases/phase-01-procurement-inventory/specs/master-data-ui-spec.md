@@ -43,6 +43,11 @@ Implementation note (`DEC-0143`): item edit and deactivation use a selected item
 action composer with context-preserving redirects. Base UOM changes after posted
 inventory movements require controlled migration and are rejected server-side.
 
+Implementation note (`DEC-0180`): Item Master tabs are URL-backed and use an
+active-tab projection. The selected register and only its required counts,
+selected record, and option catalogs are read; inactive registers are not
+hydrated. Authorization and mutations remain server-authoritative.
+
 Categories and UOMs use the same selected-record action pattern; repeated row
 controls are disabled with guidance to open the selected composer.
 

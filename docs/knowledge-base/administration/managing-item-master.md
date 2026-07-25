@@ -15,3 +15,8 @@ Select an item and choose Open controls to edit or deactivate it. The selected-i
 Categories and UOMs use the same selected-record controls. Row-level legacy controls explain that Open controls is the authoritative action location.
 
 Conversion edits use a selected conversion composer; item and UOM endpoints remain read-only within that edit surface, while factor, rounding rule, and reason are validated server-side.
+
+The four registers are URL-backed tabs. Only the active register and its
+required catalogs are loaded, so an inactive register's count or records are
+not shown as if they had been queried. Switch tabs to work with Categories,
+UOMs, or Conversions; the server still enforces company scope and permissions.

@@ -27,3 +27,8 @@ Release Board decision creation is now canonicalized to the dedicated Release Bo
 Release Board history now supports bounded inclusive UTC decision-date filters with preserved search, paging, selected-detail, and composer context.
 
 Core Administration now uses compact URL-backed workspace tabs and active-tab reads; inactive registers and option catalogs are not loaded in the current view.
+
+Item Master now uses the same compact URL-backed tabs and active-tab reads. The
+selected register loads only its required records, counts, selected context,
+and catalogs; existing company authorization and mutation controls remain
+server-authoritative.

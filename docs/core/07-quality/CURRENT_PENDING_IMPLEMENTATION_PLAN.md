@@ -934,3 +934,8 @@ Update this register only when implementation state, release scope, a confirmed 
 - The long Record UAT Evidence workflow now uses a shared workspace TaskSheet with 44px controls instead of a centered modal. It retains all evidence fields and preserves UAT filter/page context through normalized success and error redirects.
 - Existing selected-company/Core Admin Manage authorization, UTC/value/required-field validation, audit, and no-direct-gate-transition semantics remain authoritative; hidden context is navigation state only. Enablement selected review parity remains next.
 - Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
+
+### DEC-0180 Item Master active-tab projection and compact shell — July 25, 2026
+- Item Master now passes an allowlisted active-tab profile to its service. Items load only the item register and required catalogs; Categories, UOMs, and Conversions load only their selected register and counts, with selected-record reads scoped to the active tab.
+- The card-heavy register selector is replaced by shared URL-backed `WorkspaceTabs` with 44px targets and an explicit inactive-register disclosure. Existing company authorization, pagination, filters, selected composers, and mutation services remain authoritative.
+- Evidence: Item Master focused tests 9/9, web TypeScript, lint, production build, and diff checks pass. PostgreSQL no-query/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Master Data, Administration, and Phase I are not complete.

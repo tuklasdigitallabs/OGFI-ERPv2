@@ -81,6 +81,18 @@ describe("item master-data controls", () => {
     expect(source).toContain("values.selectedIds.length ? { id: { in: values.selectedIds } } : {}");
   });
 
+  test("Item Master uses an active-tab profile and compact URL-backed workspace tabs", () => {
+    const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
+    const page = readFileSync(path.resolve(__dirname, "../../app/(app)/items/page.tsx"), "utf8");
+    expect(source).toContain('activeTab: z.enum(["items", "categories", "uoms", "conversions"])');
+    expect(source).toContain("loadItems");
+    expect(source).toContain("loadCategories");
+    expect(source).toContain("loadUoms");
+    expect(source).toContain("loadConversions");
+    expect(page).toContain("<WorkspaceTabs");
+    expect(page).toContain("Only the selected Item Master register and its required detail/catalog queries are loaded");
+  });
+
   test("conversion reads fence all three related records to company scope", () => {
     const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
     expect(source).toContain("fromUom: {");
