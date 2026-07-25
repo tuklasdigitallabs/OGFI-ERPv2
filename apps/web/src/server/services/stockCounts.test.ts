@@ -12,6 +12,8 @@ import {
   assertStockCountAssignedActor,
   assertStockCountReviewerSegregation,
   assertStockCountAttemptLineParity,
+  selectStockCountReadLines,
+  STOCK_COUNT_ATTEMPT_READ_V1_ENABLED,
   buildStockCountExportRows,
   calculateCountVariance,
   canExposeStockCountProtectedFacts,
@@ -58,6 +60,17 @@ const dashboardSession = {
 };
 
 describe("stock count foundation rules", () => {
+  test("keeps attempt-authoritative reads disabled until external parity gates pass", () => {
+    expect(STOCK_COUNT_ATTEMPT_READ_V1_ENABLED).toBe(false);
+    const legacy = [{ lineNumber: 1 }];
+    const attempt = [{ lineNumber: 1 }];
+    expect(selectStockCountReadLines(legacy, attempt)).toBe(legacy);
+    expect(selectStockCountReadLines(legacy, attempt, true)).toBe(attempt);
+    expect(() => selectStockCountReadLines(legacy, null, true)).toThrow(
+      "STOCK_COUNT_ATTEMPT_LINE_PARITY_FAILED"
+    );
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockPrisma.userRoleAssignment.findMany.mockResolvedValue([]);

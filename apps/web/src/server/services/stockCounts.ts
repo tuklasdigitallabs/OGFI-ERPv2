@@ -589,6 +589,26 @@ export async function assertStockCountAttemptLineParity(
   }
 }
 
+/**
+ * Attempt-authoritative detail/export reads are prepared but disabled until
+ * disposable PostgreSQL parity, migration, concurrency, and redaction gates
+ * are accepted. When enabled, a missing attempt projection fails closed; it
+ * never silently falls back to mutable compatibility lines.
+ */
+export const STOCK_COUNT_ATTEMPT_READ_V1_ENABLED = false;
+
+export function selectStockCountReadLines<T extends { lineNumber: number }>(
+  legacyLines: T[],
+  attemptLines: T[] | null | undefined,
+  enabled = STOCK_COUNT_ATTEMPT_READ_V1_ENABLED
+) {
+  if (!enabled) return legacyLines;
+  if (!attemptLines) {
+    throw new Error("STOCK_COUNT_ATTEMPT_LINE_PARITY_FAILED");
+  }
+  return attemptLines;
+}
+
 type StockCountMyTaskItem = {
   taskId: string;
   recordId: string;
@@ -1005,6 +1025,14 @@ export async function buildStockCountExportRows(session: SessionContext) {
       currentAttempt: {
         select: {
           attemptNumber: true,
+          ...(STOCK_COUNT_ATTEMPT_READ_V1_ENABLED
+            ? {
+                lines: {
+                  orderBy: { lineNumber: "asc" },
+                  include: { item: true, uom: true, countedBy: true }
+                }
+              }
+            : {}),
           stockAdjustments: {
             orderBy: { createdAt: "desc" },
             take: 1,
@@ -1066,6 +1094,12 @@ export async function buildStockCountExportRows(session: SessionContext) {
 
   for (const count of counts) {
     await assertStockCountAttemptLineParity(session, count.id);
+    const readLines = selectStockCountReadLines(
+      count.lines,
+      STOCK_COUNT_ATTEMPT_READ_V1_ENABLED
+        ? (count.currentAttempt as { lines?: typeof count.lines } | null)?.lines
+        : undefined
+    );
     const canShowSystemQuantity = canExposeStockCountProtectedFacts(
       session,
       count
@@ -1089,12 +1123,12 @@ export async function buildStockCountExportRows(session: SessionContext) {
       canShowSystemQuantity ? adjustment?.status ?? "" : ""
     ];
 
-    if (count.lines.length === 0) {
+    if (readLines.length === 0) {
       rows.push([...sharedColumns, "", "", "", "", "", "", "", "", "", "", "", ""]);
       continue;
     }
 
-    for (const line of count.lines) {
+    for (const line of readLines) {
       rows.push([
         ...sharedColumns,
         line.lineNumber,
@@ -1140,6 +1174,14 @@ export async function getStockCount(session: SessionContext, id: string) {
           id: true,
           attemptNumber: true,
           status: true,
+          ...(STOCK_COUNT_ATTEMPT_READ_V1_ENABLED
+            ? {
+                lines: {
+                  orderBy: { lineNumber: "asc" },
+                  include: { item: true, uom: true, countedBy: true }
+                }
+              }
+            : {}),
           stockAdjustments: {
             orderBy: { createdAt: "desc" },
             take: 1,
@@ -1163,6 +1205,12 @@ export async function getStockCount(session: SessionContext, id: string) {
   }
 
   await assertStockCountAttemptLineParity(session, count.id);
+  const readLines = selectStockCountReadLines(
+    count.lines,
+    STOCK_COUNT_ATTEMPT_READ_V1_ENABLED
+      ? (count.currentAttempt as { lines?: typeof count.lines } | null)?.lines
+      : undefined
+  );
 
   const auditEvents = await prisma.auditEvent.findMany({
     where: {
@@ -1188,8 +1236,8 @@ export async function getStockCount(session: SessionContext, id: string) {
   const scheduledStartEligible = isStockCountScheduledStartEligible(
     count.scheduledDate
   );
-  const hasSnapshotLines = count.lines.length > 0;
-  const hasUncountedLines = count.lines.some(
+  const hasSnapshotLines = readLines.length > 0;
+  const hasUncountedLines = readLines.some(
     (line) => line.countedQuantityBaseUom === null
   );
 
@@ -1236,7 +1284,7 @@ export async function getStockCount(session: SessionContext, id: string) {
     hasUncountedLines,
     canReviewCurrentActor,
     canShowSystemQuantity,
-    lines: count.lines.map((line) => ({
+    lines: readLines.map((line) => ({
       id: line.id,
       lineNumber: line.lineNumber,
       itemCode: line.item.itemCode,
