@@ -185,6 +185,42 @@ function getMetadataText(
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function getAmendmentUnavailableReason({
+  canAmend,
+  status,
+  hasPendingAmendment,
+  hasPendingBalanceClosure,
+  hasDraftReceivingReport,
+  totalReceivedQty,
+}: {
+  canAmend: boolean;
+  status: string;
+  hasPendingAmendment: boolean;
+  hasPendingBalanceClosure: boolean;
+  hasDraftReceivingReport: boolean;
+  totalReceivedQty: number;
+}) {
+  if (!canAmend) {
+    return "Your current access does not include Purchase Order amendment requests. The server still rechecks authorization when an action is submitted.";
+  }
+  if (status !== "ISSUED") {
+    return "Amendments are available only for issued Purchase Orders that have not entered receiving.";
+  }
+  if (hasPendingAmendment) {
+    return "An amendment is already pending approval. Wait for that decision before requesting another change.";
+  }
+  if (hasPendingBalanceClosure) {
+    return "A remaining-balance closure is pending approval. Resolve that request before requesting an amendment.";
+  }
+  if (hasDraftReceivingReport) {
+    return "A receiving report exists for this Purchase Order. Post or clear receiving activity before requesting an amendment.";
+  }
+  if (totalReceivedQty > 0) {
+    return "Receiving activity has been posted for this Purchase Order, so amendment is unavailable.";
+  }
+  return "This Purchase Order cannot be amended in its current state. Review the latest status and activity before retrying.";
+}
+
 export default async function PurchaseOrderDetailPage({
   params,
   searchParams
@@ -254,6 +290,14 @@ export default async function PurchaseOrderDetailPage({
     canAmendPurchaseOrders;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(resolvedSearchParams);
+  const amendmentUnavailableReason = getAmendmentUnavailableReason({
+    canAmend: canAmendPurchaseOrders,
+    status: order.status,
+    hasPendingAmendment,
+    hasPendingBalanceClosure,
+    hasDraftReceivingReport,
+    totalReceivedQty,
+  });
 
   return (
     <AppShell
@@ -561,7 +605,12 @@ export default async function PurchaseOrderDetailPage({
               </div>
                 </form>
               </TaskSheet>
-            ) : null}
+            ) : (
+              <div className="basis-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="status">
+                <p className="font-semibold">Amendment unavailable</p>
+                <p className="mt-1">{amendmentUnavailableReason}</p>
+              </div>
+            )}
             {["DRAFT", "APPROVED", "ISSUED"].includes(order.status) &&
             canCancelPurchaseOrders ? (
               <EntryModal title="Cancel Purchase Order" triggerLabel="Cancel PO">

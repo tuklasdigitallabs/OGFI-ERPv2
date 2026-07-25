@@ -255,4 +255,10 @@ granting roles, with the same selected-company effective-user preview boundary.
 The route remains read-only; PostgreSQL isolation/query-plan, browser, hosted,
 and UAT evidence remain open.
 
+Purchase Order amendment detail now shows a truthful read-only explanation when
+an amendment cannot be requested, including permission, status, receiving, and
+pending-request reasons. Eligible orders retain the focused approval TaskSheet;
+validation and stale-state feedback states that no amendment was saved. Database,
+responsive-browser, hosted, and UAT gates remain open.
+
 Raise UAT defects, training gaps, permission issues, or release blockers through the assigned ERP implementation owner and the Phase 1.5 project tracker.

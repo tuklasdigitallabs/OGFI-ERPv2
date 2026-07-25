@@ -297,7 +297,7 @@ Permission/policy based:
 - Request Remaining Balance Closure
 - View receiving status
 
-Current implementation note: PO detail displays supplier/delivery details, item lines, totals, commercial terms from the selected quote/supplier records, source lineage, approval timeline, receiving progress, supplier issue history, balance closure history, attachment-status messaging, and audit history. Formal attachment upload/enforcement and amendment revisions remain future controlled workflows.
+Current implementation note: PO detail displays supplier/delivery details, item lines, totals, commercial terms from the selected quote/supplier records, source lineage, approval timeline, receiving progress, supplier issue history, balance closure history, attachment-status messaging, and audit history. The bounded issued/unreceived amendment TaskSheet is implemented; when unavailable, the detail surface explains the permission, status, receiving, or pending-request reason without implying that a hidden action is available. Formal attachment upload/enforcement and post-receiving amendment revisions remain future controlled workflows.
 
 Implemented issue/send note: supplier issue and re-send evidence uses controlled methods only: `Email`, `Printed copy`, `Supplier portal`, and `Manual handoff`.
 
