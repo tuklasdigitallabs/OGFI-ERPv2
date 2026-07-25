@@ -190,7 +190,7 @@ A permitted direct assignment becomes active, or a controlled request remains pe
 
 After a role or scope change, the target user's previous session may need to revalidate before the new access takes effect. Confirm access using the user's intended company and location context; do not test by broadening the user's scope.
 
-Permission Access detail is read-only. It shows tenant-global roles that grant one permission and bounded previews of active users who currently have effective scope in the selected company. It does not grant or change access; use the Roles & Permissions controls for authorized mutations. Search and page the granting-role list when a permission has many grants.
+Permission Access detail is read-only. It shows tenant-global roles that grant one permission and bounded previews of active users who currently have effective scope in the selected company (up to five previews per granting role). The Preview users shown number is not an exhaustive effective-user total. It does not grant or change access; use the Roles & Permissions controls for authorized mutations. Search and page the granting-role list when a permission has many grants.
 
 The Core Administration home uses compact URL-backed tabs. Open the workspace
 you need—Users & Access, Roles & Permissions, Organization Scope, Approval Rules,

@@ -2354,7 +2354,7 @@ export async function listCoreAdminUserScopePage(
   await assertTargetUserInCurrentCompany(session, userId);
   const pageSize = Math.min(100, Math.max(10, Math.floor(input.pageSize ?? 25)));
   const requestedPage = Math.max(1, Math.floor(input.page ?? 1));
-  const query = input.query?.trim() ?? "";
+  const query = input.query?.trim().slice(0, 120) ?? "";
   const type = ["COMPANY", "BRAND", "LOCATION", "DEPARTMENT", "PROJECT"].includes(input.scopeType ?? "") ? input.scopeType! : null;
   const scopeBase = Prisma.sql`
     WITH scoped AS (
@@ -4884,6 +4884,7 @@ export async function getCoreAdminPermissionDetail(
   const roles = await Promise.all(roleRows.map(async (rolePermission) => {
     const assignmentWhere = {
       roleId: rolePermission.role.id,
+      role: { tenantId: session.context.tenantId, status: "ACTIVE" as const },
       status: "ACTIVE" as const,
       startsAt: { lte: now },
       AND: [{ OR: [{ endsAt: null }, { endsAt: { gt: now } }] }],

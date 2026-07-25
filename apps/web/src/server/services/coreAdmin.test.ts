@@ -769,6 +769,7 @@ describe("core administration audit search wiring", () => {
     const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/permissions/[id]/page.tsx"), "utf8");
     expect(serviceSource).toContain("rolesPage");
     expect(serviceSource).toContain("rolePermission.findMany");
+    expect(serviceSource).toContain("input.query?.trim().slice(0, 120)");
     expect(serviceSource).toContain("assignedUserCount");
     expect(serviceSource).toContain("take: 5");
     expect(serviceSource).toContain("companyLocationIds");
@@ -776,7 +777,9 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).not.toContain("assignments: {\n                where: {\n                  status: \"ACTIVE\"");
     expect(pageSource).toContain("Search granting roles");
     expect(pageSource).toContain("PaginationBar");
-    expect(pageSource).toContain("Current-company effective users only");
+    expect(pageSource).toContain("Preview users shown on this page");
+    expect(pageSource).toContain("not an exhaustive effective-user total");
+    expect(pageSource).toContain("permission.rolesPage.totalRoles");
   });
 
   test("user access detail uses a bounded assigned-role contract", () => {

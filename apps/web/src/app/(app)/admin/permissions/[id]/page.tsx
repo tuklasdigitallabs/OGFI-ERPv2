@@ -42,10 +42,8 @@ export default async function CoreAdminPermissionDetailPage({
     redirect("/admin");
   }
 
-  const effectiveUserCount = new Set(
-    permission.roles.flatMap((role) =>
-      role.assignedUsers.map((user) => user.userId)
-    )
+  const previewUserCount = new Set(
+    permission.roles.flatMap((role) => role.assignedUsers.map((user) => user.userId))
   ).size;
 
   return (
@@ -86,11 +84,11 @@ export default async function CoreAdminPermissionDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Granting roles</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{permission.roles.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{permission.rolesPage.totalRoles}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
-          <p className="text-sm font-semibold text-slate-500">Effective users</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{effectiveUserCount}</p>
+          <p className="text-sm font-semibold text-slate-500">Preview users shown on this page</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{previewUserCount}</p>
         </Panel>
       </div>
 
@@ -123,14 +121,17 @@ export default async function CoreAdminPermissionDetailPage({
 
         <Panel className="ogfi-detail-card">
           <h2 className="text-lg font-bold text-slate-950">Roles Granting This Permission</h2>
-          <p className="mt-1 text-sm text-slate-500">Current-company effective users only; scope identifiers outside this company are not shown.</p>
+          <p className="mt-1 text-sm text-slate-500">Bounded current-company user previews only; each granting role on this page shows up to five users. This is not an exhaustive effective-user total.</p>
           <form method="get" className="mt-4 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-[1fr_auto]">
             <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3 text-sm" name="query" defaultValue={query} placeholder="Search role name or code" aria-label="Search granting roles" />
             <button className="min-h-11 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white">Search roles</button>
           </form>
           <div className="mt-4 divide-y divide-slate-100">
             {permission.roles.length === 0 ? (
-              <p className="py-4 text-sm text-slate-600">No active roles grant this permission.</p>
+              <div className="py-4 text-sm text-slate-600">
+                <p>{query ? "No roles match this search." : "No active roles grant this permission."}</p>
+                {query ? <ButtonLink href={`/admin/permissions/${permission.id}`} tone="ghost" className="mt-2 min-h-11">Clear role search</ButtonLink> : null}
+              </div>
             ) : (
               permission.roles.map((role) => (
                 <div key={role.id} data-testid="admin-permission-role-row" className="ogfi-list-row">
