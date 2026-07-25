@@ -17,6 +17,7 @@ The authorization manifest is fail-closed. Leaving a removed service declared ca
 
 - Authorization manifest: 20/20 tests pass.
 - Focused Administration/Overview/My Tasks regression: 93/93 tests pass.
+- Full non-database web suite: 1,334 tests pass across 123 files (301 skipped, one TODO).
 - Web lint, typecheck, production build, and `git diff --check` pass.
 - Disposable PostgreSQL authorization/no-query/isolation/query-plan/concurrency, responsive authenticated browser, hosted recovery/deployment, production-authenticated E2E, and UAT remain open.
 
