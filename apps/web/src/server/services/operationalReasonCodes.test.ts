@@ -17,7 +17,12 @@ describe("operational reason-code registry contract", () => {
     expect(service).toContain('take: values.pageSize');
     expect(service).toContain('{ id: "asc" }');
     expect(service).toContain("getOperationalReasonCodeDetail");
+    expect(service).toContain("updateMany");
+    expect(service).toContain('status: "ACTIVE"');
+    expect(service).toContain("transition.count !== 1");
     expect(page).toContain("PaginationBar");
+    expect(page).toContain("TaskSheet");
+    expect(page).toContain("Open details");
     expect(page).toContain("View details");
     expect(page).toContain("selectedReasonCodeId");
     expect(page).not.toContain("listOperationalReasonCodes(session)");

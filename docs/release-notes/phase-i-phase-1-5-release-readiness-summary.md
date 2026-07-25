@@ -121,8 +121,9 @@ Admin Audit CSV export now requires a bounded UTC date range and rejects oversiz
 requests explicitly instead of streaming an unbounded result or silently truncating.
 
 Reason Codes administration now uses bounded server pagination, selected-company
-filters, exact counts, and a selected-code detail summary while preserving the
-existing create/deactivate lifecycle.
+filters, exact counts, and a selected-code detail summary. Deactivation is a
+single URL-selected TaskSheet with preserved list context and an atomic expected-
+ACTIVE claim; history remains retained and concurrent/stale actions fail safely.
 
 Admin Settings now uses bounded server-side category/search pagination with exact
 matching totals while preserving audited policy override/reset behavior.

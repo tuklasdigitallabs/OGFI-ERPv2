@@ -173,7 +173,9 @@ for narrower review.
 Reason Codes maintenance is also company-scoped and paginated. Use the workflow,
 status, and search filters to find a code, open its detail summary, and deactivate
 an active code with a reason. Deactivation preserves historical references; there
-is no reactivation or hard-delete action in this workflow.
+is no reactivation or hard-delete action in this workflow. Open details before
+deactivation; OGFI rechecks the selected company and active state when saving, so
+a stale or already-handled code is safely rejected.
 
 - The target user, location, and access level match the actual operational need.
 - The evidence reference is traceable outside the ERP when needed.

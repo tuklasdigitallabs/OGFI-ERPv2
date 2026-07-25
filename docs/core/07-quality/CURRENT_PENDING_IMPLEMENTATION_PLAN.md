@@ -1005,3 +1005,8 @@ Update this register only when implementation state, release scope, a confirmed 
 - Replaced full privileged-user role/permission/enrollment hydration with effective company-scope derivation, deterministic bounded paging, exact database-derived status totals, bounded target options, search, and `NOT_RECORDED`/pending/verified/revoked filters. Future, expired, inactive, and foreign-tenant role/permission links are excluded.
 - Replaced repeated row actions with a separately authorized selected-record TaskSheet. Evidence recording is transactional with audit; verify/revoke use expected-status CAS while no-self and privileged-target checks remain server-authoritative.
 - Evidence: focused MFA test 1/1, web TypeScript, lint, and production build pass. PostgreSQL effective-date/isolation/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Administration and Phase I are not complete.
+
+### DEC-0196 Reason Codes selected deactivation composer — July 25, 2026
+- Reason Codes retains the DEC-0124 bounded selected-company register, while active rows now open one URL-selected TaskSheet for deactivation. Filter/search/page context is preserved and stale or foreign selections remain unavailable/read-only.
+- Deactivation now claims the expected `ACTIVE` state with a scoped atomic update before the audit event, preventing duplicate concurrent transitions while retaining historical references. Authentication Recovery is next.
+- Evidence: focused Reason Codes test, web TypeScript, lint, and production build pass. PostgreSQL authorization/concurrency/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Administration and Phase I are not complete.

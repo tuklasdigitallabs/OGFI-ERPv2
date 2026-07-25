@@ -363,9 +363,20 @@ export async function deactivateOperationalReasonCode(formData: FormData) {
       throw new Error("OPERATIONAL_REASON_CODE_NOT_ACTIVE");
     }
 
-    const updated = await tx.operationalReasonCode.update({
-      where: { id: existing.id },
+    const transition = await tx.operationalReasonCode.updateMany({
+      where: {
+        id: existing.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
       data: { status: "INACTIVE" }
+    });
+    if (transition.count !== 1) {
+      throw new Error("OPERATIONAL_REASON_CODE_NOT_ACTIVE");
+    }
+    const updated = await tx.operationalReasonCode.findUniqueOrThrow({
+      where: { id: existing.id }
     });
 
     await tx.auditEvent.create({

@@ -93,6 +93,7 @@ switch to Brands to review the full paginated brand register.
 - Treating GO / NO-GO reports as approval: they are evidence summaries and still need named Release Board decision records.
 - Treating evidence-register access as file access or hold authority: the register is metadata-only, and hold placement needs a separate permission plus current privileged MFA assurance.
 - Reading a CSV without checking the metadata rows: always confirm the report ID, selected scope, trust-gate mode, and source decision before using the data.
+- Deactivating a reason code: open the selected row’s details, confirm the workflow and code, enter the reason, and submit from the action sheet. If another administrator already handled it, refresh and do not retry by creating a replacement code.
 
 ## Completion check
 

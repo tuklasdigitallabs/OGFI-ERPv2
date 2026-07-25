@@ -1,10 +1,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { AlertTriangle, FileCheck2, Search, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, Search, SlidersHorizontal } from "lucide-react";
 import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -71,10 +72,19 @@ async function deactivateReasonCodeAction(formData: FormData) {
   try {
     await deactivateOperationalReasonCode(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/admin/reason-codes", error));
+    redirect(actionErrorRedirectPath(buildReasonCodeReturnPath(formData), error));
   }
   revalidatePath("/admin/reason-codes");
-  redirect("/admin/reason-codes");
+  redirect(buildReasonCodeReturnPath(formData));
+}
+
+function buildReasonCodeReturnPath(formData: FormData) {
+  const query = new URLSearchParams();
+  for (const key of ["workflow", "status", "q", "page", "pageSize"]) {
+    const value = formData.get(key);
+    if (typeof value === "string" && value) query.set(key, value);
+  }
+  return query.toString() ? `/admin/reason-codes?${query.toString()}` : "/admin/reason-codes";
 }
 
 export default async function AdminReasonCodesPage({
@@ -340,13 +350,14 @@ export default async function AdminReasonCodesPage({
           </div>
           {selectedReasonCode.notes ? <p className="mt-4 text-sm text-slate-700">{selectedReasonCode.notes}</p> : null}
           {selectedReasonCode.status === "ACTIVE" ? (
-            <EntryModal title={`Deactivate ${selectedReasonCode.code}`} triggerLabel="Deactivate" triggerClassName="mt-4 bg-rose-600 hover:bg-rose-700">
-              <form action={deactivateReasonCodeAction} className="ogfi-form-shell mt-4 grid gap-4">
+            <TaskSheet title={`Deactivate ${selectedReasonCode.code}`} defaultOpen description="Deactivation is a controlled, auditable action. The server rechecks company scope and active status before committing.">
+              <form action={deactivateReasonCodeAction} className="grid gap-4">
                 <input name="id" type="hidden" value={selectedReasonCode.id} />
+                {Array.from(reasonCodeContext.entries()).map(([key, value]) => <input key={key} name={key} type="hidden" value={value} />)}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reason" required /></label>
-                <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-rose-600 px-4 text-sm font-semibold text-white">Deactivate Reason Code</button>
+                <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-rose-600 px-4 text-sm font-semibold text-white">Deactivate Reason Code</button>
               </form>
-            </EntryModal>
+            </TaskSheet>
           ) : null}
         </section>
       ) : selectedReasonCodeId ? (
@@ -466,37 +477,7 @@ export default async function AdminReasonCodesPage({
                 </Badge>
                 {reason.status === "ACTIVE" ? (
                   <div className="flex justify-start lg:justify-end">
-                    <EntryModal
-                      title={`Deactivate ${reason.code}`}
-                      triggerLabel="Deactivate"
-                      triggerClassName="ogfi-mobile-action bg-white px-3 text-slate-700 ring-1 ring-slate-200 hover:bg-rose-50 hover:text-rose-700"
-                    >
-                      <form
-                        action={deactivateReasonCodeAction}
-                        className="ogfi-form-shell mt-4 grid gap-4"
-                      >
-                        <input name="id" type="hidden" value={reason.id} />
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="font-bold text-slate-950">{reason.label}</p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {workflowLabels[reason.workflow]} / {reason.code}
-                          </p>
-                        </div>
-                        <label className="grid gap-1 text-sm font-medium text-slate-700">
-                          Deactivation reason
-                          <textarea
-                            className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                            name="reason"
-                            placeholder="Explain why this code should no longer be available for new entries."
-                            required
-                          />
-                        </label>
-                        <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700">
-                          <FileCheck2 aria-hidden="true" className="h-4 w-4" />
-                          Deactivate Reason Code
-                        </button>
-                      </form>
-                    </EntryModal>
+                    <ButtonLink href={`/admin/reason-codes?${reasonCodeContext.toString()}&reasonCodeId=${reason.id}`} tone="ghost" className="ogfi-mobile-action min-h-10 text-xs">Open details</ButtonLink>
                   </div>
                 ) : (
                   <span className="text-sm text-slate-500">Retained history</span>
