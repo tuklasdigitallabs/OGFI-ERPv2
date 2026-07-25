@@ -78,6 +78,35 @@ The baseline policy is confirmed by `DEC-0036`. The exact configured values belo
 8. Data retention, privacy, and backup ownership.
 9. UAT signatories and authority to approve production go-live. The default Release Board model is confirmed by `DEC-0036`.
 10. Production evidence architecture is confirmed by `DEC-0046`, which supersedes `DEC-0045`: a dedicated internal minimal broker on the same Hostinger VPS exclusively owns the absolute private evidence mount and versioned AES-256-GCM evidence key; web, Caddy, and ClamAV receive no evidence mount; the application proxies bounded upload streams; the server issues opaque immutable keys/versions; PostgreSQL owns authorization, idempotency, quota, quarantine, compare-and-set release, and audit; private ClamAV `INSTREAM` scanning plus a bounded systemd timer operates without a post-response promise, Redis, or a queue; and only a conclusive `CLEAN` result for the exact version becomes available. Same-VPS storage is not WORM or Object Lock. Production activation remains open pending actual VPS size/utilization and headroom, evidence quota/high-water values, encryption-key custody/recovery, confirmation of Hostinger daily-backup entitlement/location/encryption/retention/restore granularity, approved RPO/RTO, retention/legal-hold policy, pinned ClamAV image/resources/signature freshness, and hosted paired database/evidence restore proof. External storage is reconsidered only when capacity, multi-host, stronger RPO/RTO, legal WORM, or tenant-scale triggers require a controlled copy-verify-cutover migration. Evidence capture remains hybrid: structured notes or verified external references plus private uploads where policy requires files; text alone does not satisfy high-risk evidence unless explicitly allowed by policy.
+
+## 6. Open Phase I purchasing dimension policy
+
+### OD-17 — Purchase Request Department and Cost Center requiredness and legacy treatment
+
+**Status:** Open — do not implement or infer silently.
+
+The purchasing workflow and UI specifications require every new Purchase Request to
+identify a department and cost center, but the current schema contains legacy rows
+with nullable dimensions and the current editor has no authorized option contract.
+Before production enforcement, the owner council must confirm:
+
+1. Whether both dimensions are required for every request type or conditionally
+   required by company, location, request type, budget, or policy.
+2. Whether Cost Center is independently selected or derived/validated from the
+   selected Department, including location/brand compatibility.
+3. How existing null-dimension drafts and historical submitted/approved requests
+   are labeled, edited, approved, exported, and backfilled without rewriting
+   immutable history.
+4. Whether approval-route matching, budget classification, list filters, reports,
+   and exports must include the dimensions before the fields become mandatory.
+5. Which effective user company/brand/location/department/cost-center scopes may
+   select each option and how revoked or expired assignments behave.
+
+Until this is confirmed, do not default values from session context, make database
+columns non-null, add a client-only selector, or present a read-only label as if the
+required workflow were complete. The implementation decision must include a
+transactional selected-scope lookup contract, pair validation, migration/backfill or
+legacy disclosure, approval/audit snapshot semantics, and UAT/training impact.
 11. Maximum eligible-recipient cardinality for role-assigned approval steps, when explicit user assignment is mandatory, and the safe operational response when the limit is exceeded. The current service filters live permission, scope, and segregation-of-duties conflicts, but no undocumented fixed cap may be hardcoded. Production configuration must bound notification fanout and user-row locking without stranding valid approval routes.
 
 12. **Stock-count recount recovery (`DEC-0061`, open):** Decide whether an approved-but-unposted generated `COUNT_VARIANCE` adjustment can be explicitly voided for a recount, including the required authority, reason/evidence, approval-instance termination, audit, and notification behavior; otherwise it remains a hard recount blocker. Decide whether a recount may retain its original cutoff only while the inventory-location movement freeze has remained continuously active. The safe default is: if movement occurred or no freeze was active, cancel/close the unposted count and begin a new count session with a new cutoff; a posted adjustment always requires the established full-document reversal before a new corrective count session. These rules must be confirmed before production enforcement or Count Variance activation.
