@@ -556,7 +556,7 @@ export default async function CoreAdminUserDetailPage({
               {user.permissionsPage.totalItems > 0 ? <PaginationBar page={user.permissionsPage.page} pageSize={user.permissionsPage.pageSize} totalItems={user.permissionsPage.totalItems} itemLabel="effective permissions" getPageHref={(nextPage) => `/admin/users/${user.id}?section=roles&permissionPage=${nextPage}${user.permissionsPage.query ? `&permissionQuery=${encodeURIComponent(user.permissionsPage.query)}` : ""}${user.rolesPage.page > 1 ? `&assignedRolePage=${user.rolesPage.page}` : ""}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`} /> : null}
             </>
           ) : user.permissionTotal > user.permissions.length ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500"><span>Showing {user.permissions.length} of {user.permissionTotal} effective permissions.</span><ButtonLink href={`/admin/users/${user.id}?section=roles&permissionPage=1`} tone="ghost" className="min-h-11 px-0 text-blue-700">Open effective permission list</ButtonLink></div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500"><span>Showing {user.permissions.length} of {user.permissionTotal} effective permissions.</span><ButtonLink href={`/admin/users/${user.id}?section=roles&permissionPage=1${user.rolesPage.page > 1 ? `&assignedRolePage=${user.rolesPage.page}` : ""}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`} tone="ghost" className="min-h-11 px-0 text-blue-700">Open effective permission list</ButtonLink></div>
           ) : null}
         </Panel>
 
