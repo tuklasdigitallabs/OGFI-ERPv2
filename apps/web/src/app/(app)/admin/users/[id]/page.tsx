@@ -65,26 +65,28 @@ async function approveHighRiskScopeRequest(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const returnPath = String(formData.get("returnPath") || `/admin/users/${targetUserId}`);
   try {
     await approveHighRiskUserLocationScopeRequest(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 async function rejectHighRiskScopeRequest(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const returnPath = String(formData.get("returnPath") || `/admin/users/${targetUserId}`);
   try {
     await rejectHighRiskUserLocationScopeRequest(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 async function requestSensitiveRole(formData: FormData) {
@@ -104,26 +106,28 @@ async function approveSensitiveRoleRequest(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const returnPath = String(formData.get("returnPath") || `/admin/users/${targetUserId}`);
   try {
     await approveSensitiveUserRoleRequest(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 async function rejectSensitiveRoleRequest(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const returnPath = String(formData.get("returnPath") || `/admin/users/${targetUserId}`);
   try {
     await rejectSensitiveUserRoleRequest(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 async function deactivateScope(formData: FormData) {
@@ -224,6 +228,11 @@ export default async function CoreAdminUserDetailPage({
   const scopeType = Array.isArray(resolvedSearchParams.scopeType) ? resolvedSearchParams.scopeType[0] : resolvedSearchParams.scopeType;
   const scopePageValue = Number.parseInt(String(resolvedSearchParams.scopePage ?? "1"), 10);
   const scopeActionId = Array.isArray(resolvedSearchParams.scopeActionId) ? resolvedSearchParams.scopeActionId[0] : resolvedSearchParams.scopeActionId;
+  const sectionValue = Array.isArray(resolvedSearchParams.section) ? resolvedSearchParams.section[0] : resolvedSearchParams.section;
+  const section = ["overview", "roles", "scopes", "requests", "audit"].includes(sectionValue ?? "") ? sectionValue! : "overview";
+  const requestKindValue = Array.isArray(resolvedSearchParams.requestKind) ? resolvedSearchParams.requestKind[0] : resolvedSearchParams.requestKind;
+  const requestKind = requestKindValue === "role" ? "role" : "scope";
+  const requestActionId = Array.isArray(resolvedSearchParams.requestActionId) ? resolvedSearchParams.requestActionId[0] : resolvedSearchParams.requestActionId;
   const scopeRequestStatusValue = Array.isArray(resolvedSearchParams.scopeRequestStatus)
     ? resolvedSearchParams.scopeRequestStatus[0]
     : resolvedSearchParams.scopeRequestStatus;
@@ -242,6 +251,7 @@ export default async function CoreAdminUserDetailPage({
     assignedRolePageSize: 25,
     scopeRequestPage: Number.isFinite(scopeRequestPageValue) ? scopeRequestPageValue : 1,
     scopeRequestPageSize: Number.isFinite(scopeRequestPageSizeValue) ? scopeRequestPageSizeValue : 25,
+    ...(section === "requests" ? { requestKind } : {}),
     roleRequestPage: Number.isFinite(roleRequestPageValue) ? roleRequestPageValue : 1,
     roleRequestPageSize: Number.isFinite(roleRequestPageSizeValue) ? roleRequestPageSizeValue : 25,
     ...(scopeRequestStatusValue && ["PENDING", "APPROVED", "REJECTED"].includes(scopeRequestStatusValue)
@@ -280,6 +290,13 @@ export default async function CoreAdminUserDetailPage({
   };
   const selectedScope = scopeActionId ? scopedUser.scopes.find((scope) => scope.id === scopeActionId) : null;
   const scopeReturnPath = `/admin/users/${id}?scopePage=${scopePage.page}${scopePage.query ? `&scopeQuery=${encodeURIComponent(scopePage.query)}` : ""}${scopePage.scopeType ? `&scopeType=${encodeURIComponent(scopePage.scopeType)}` : ""}`;
+  const requestReturnPath = `/admin/users/${id}?section=requests&requestKind=${requestKind}${requestActionId ? `&requestActionId=${encodeURIComponent(requestActionId)}` : ""}${scopeRequestStatusValue ? `&scopeRequestStatus=${encodeURIComponent(scopeRequestStatusValue)}` : ""}${roleRequestStatusValue ? `&roleRequestStatus=${encodeURIComponent(roleRequestStatusValue)}` : ""}${requestKind === "scope" ? `&scopeRequestPage=${user?.highRiskScopeRequestPage.page ?? 1}` : `&roleRequestPage=${user?.sensitiveRoleRequestPage.page ?? 1}`}`;
+  const selectedScopeRequest = requestKind === "scope" && requestActionId
+    ? scopedUser.highRiskScopeRequests.find((request) => request.id === requestActionId)
+    : null;
+  const selectedRoleRequest = requestKind === "role" && requestActionId
+    ? scopedUser.sensitiveRoleRequests.find((request) => request.id === requestActionId)
+    : null;
   const assignedLocationScopeIds = new Set(
     scopedUser.scopes
       .filter((scope) => scope.type === "LOCATION")
@@ -348,8 +365,23 @@ export default async function CoreAdminUserDetailPage({
           <p className="mt-2 text-3xl font-bold text-slate-950">{user.permissions.length}</p>
         </Panel>
       </div>
+      <nav aria-label="User access sections" className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-[var(--shadow-soft)]">
+        {[['overview', 'Overview'], ['roles', 'Roles'], ['scopes', 'Scopes'], ['requests', 'Requests'], ['audit', 'Audit']].map(([key, label]) => (
+          <ButtonLink key={key} href={`/admin/users/${user.id}?section=${key}`} tone={section === key ? "primary" : "ghost"} className="min-h-11">
+            {label}
+          </ButtonLink>
+        ))}
+      </nav>
 
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        {section === "requests" ? (
+          <div className="xl:col-span-2 flex flex-wrap items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-3">
+            <span className="text-sm font-semibold text-slate-700">Request type</span>
+            <ButtonLink href={`/admin/users/${user.id}?section=requests&requestKind=scope`} tone={requestKind === "scope" ? "primary" : "ghost"} className="min-h-11">Scope requests</ButtonLink>
+            <ButtonLink href={`/admin/users/${user.id}?section=requests&requestKind=role`} tone={requestKind === "role" ? "primary" : "ghost"} className="min-h-11">Role requests</ButtonLink>
+          </div>
+        ) : null}
+        {section !== "requests" ? <>
         <Panel className="ogfi-detail-card">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -570,8 +602,9 @@ export default async function CoreAdminUserDetailPage({
             )}
           </Panel>
         ) : null}
+        </> : null}
 
-        {user.canMutateScopes ? (
+        {section === "requests" && requestKind === "scope" && user.canMutateScopes ? (
           <Panel className="xl:col-span-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -587,6 +620,7 @@ export default async function CoreAdminUserDetailPage({
             </div>
 
             <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="section" value="requests" /><input type="hidden" name="requestKind" value="scope" />
               <input type="hidden" name="scopeRequestPage" value="1" />
               <input className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" name="scopeRequestStatus" defaultValue={scopeRequestStatusValue ?? ""} placeholder="Status: PENDING, APPROVED, or REJECTED" />
               <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter requests</button>
@@ -714,46 +748,9 @@ export default async function CoreAdminUserDetailPage({
                         ) : null}
                       </div>
                       {canReview ? (
-                        <div className="flex flex-wrap gap-2 lg:justify-end">
-                          <EntryModal title="Approve Controlled Scope" triggerLabel="Approve">
-                            <form action={approveHighRiskScopeRequest} className="ogfi-form-shell mt-4 grid gap-3">
-                              <input name="targetUserId" type="hidden" value={user.id} />
-                              <input name="requestId" type="hidden" value={request.id} />
-                              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                Approval reason
-                                <textarea
-                                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                                  name="reviewReason"
-                                  required
-                                />
-                              </label>
-                              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
-                                Approve Scope
-                              </button>
-                            </form>
-                          </EntryModal>
-                          <EntryModal
-                            title="Reject Controlled Scope"
-                            triggerLabel="Reject"
-                            triggerClassName="bg-red-600 hover:bg-red-700"
-                          >
-                            <form action={rejectHighRiskScopeRequest} className="ogfi-form-shell mt-4 grid gap-3">
-                              <input name="targetUserId" type="hidden" value={user.id} />
-                              <input name="requestId" type="hidden" value={request.id} />
-                              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                Rejection reason
-                                <textarea
-                                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                                  name="reviewReason"
-                                  required
-                                />
-                              </label>
-                              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 sm:w-fit">
-                                Reject Scope
-                              </button>
-                            </form>
-                          </EntryModal>
-                        </div>
+                        <ButtonLink href={`/admin/users/${user.id}?section=requests&requestKind=scope&requestActionId=${encodeURIComponent(request.id)}`} tone="ghost" className="min-h-11 self-start text-blue-700">
+                          Open review controls
+                        </ButtonLink>
                       ) : null}
                     </div>
                   );
@@ -769,7 +766,7 @@ export default async function CoreAdminUserDetailPage({
                 itemLabel="scope requests"
                 controlClassName="min-h-10"
                 getPageHref={(nextPage) => {
-                  const next = new URLSearchParams({ scopeRequestPage: String(nextPage), scopeRequestPageSize: String(user.highRiskScopeRequestPage.pageSize) });
+                  const next = new URLSearchParams({ section: "requests", requestKind: "scope", scopeRequestPage: String(nextPage), scopeRequestPageSize: String(user.highRiskScopeRequestPage.pageSize) });
                   if (scopeRequestStatusValue) next.set("scopeRequestStatus", scopeRequestStatusValue);
                   return `/admin/users/${user.id}?${next.toString()}`;
                 }}
@@ -778,7 +775,7 @@ export default async function CoreAdminUserDetailPage({
           </Panel>
         ) : null}
 
-        {user.canMutateRoles ? (
+        {section !== "requests" && user.canMutateRoles ? (
           <Panel className="xl:col-span-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -838,7 +835,7 @@ export default async function CoreAdminUserDetailPage({
           </Panel>
         ) : null}
 
-        {user.canMutateRoles ? (
+        {section === "requests" && requestKind === "role" && user.canMutateRoles ? (
           <Panel className="xl:col-span-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -854,6 +851,7 @@ export default async function CoreAdminUserDetailPage({
             </div>
 
             <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="section" value="requests" /><input type="hidden" name="requestKind" value="role" />
               <input type="hidden" name="roleRequestPage" value="1" />
               <input className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" name="roleRequestStatus" defaultValue={roleRequestStatusValue ?? ""} placeholder="Status: PENDING, APPROVED, or REJECTED" />
               <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter requests</button>
@@ -990,44 +988,7 @@ export default async function CoreAdminUserDetailPage({
                       </div>
                       {canReview ? (
                         <div className="flex flex-wrap gap-2 lg:justify-end">
-                          <EntryModal title="Approve Controlled Role" triggerLabel="Approve">
-                            <form action={approveSensitiveRoleRequest} className="ogfi-form-shell mt-4 grid gap-3">
-                              <input name="targetUserId" type="hidden" value={user.id} />
-                              <input name="requestId" type="hidden" value={request.id} />
-                              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                Approval reason
-                                <textarea
-                                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                                  name="reviewReason"
-                                  required
-                                />
-                              </label>
-                              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700 sm:w-fit">
-                                Approve Role
-                              </button>
-                            </form>
-                          </EntryModal>
-                          <EntryModal
-                            title="Reject Controlled Role"
-                            triggerLabel="Reject"
-                            triggerClassName="bg-red-600 hover:bg-red-700"
-                          >
-                            <form action={rejectSensitiveRoleRequest} className="ogfi-form-shell mt-4 grid gap-3">
-                              <input name="targetUserId" type="hidden" value={user.id} />
-                              <input name="requestId" type="hidden" value={request.id} />
-                              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                Rejection reason
-                                <textarea
-                                  className="min-h-24 rounded-md border border-slate-300 px-3 py-2"
-                                  name="reviewReason"
-                                  required
-                                />
-                              </label>
-                              <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 sm:w-fit">
-                                Reject Role
-                              </button>
-                            </form>
-                          </EntryModal>
+                          <ButtonLink href={`/admin/users/${user.id}?section=requests&requestKind=role&requestActionId=${encodeURIComponent(request.id)}`} tone="ghost" className="min-h-11 text-blue-700">Open review controls</ButtonLink>
                         </div>
                       ) : null}
                     </div>
@@ -1044,13 +1005,62 @@ export default async function CoreAdminUserDetailPage({
                 itemLabel="role requests"
                 controlClassName="min-h-10"
                 getPageHref={(nextPage) => {
-                  const next = new URLSearchParams({ roleRequestPage: String(nextPage), roleRequestPageSize: String(user.sensitiveRoleRequestPage.pageSize) });
+                  const next = new URLSearchParams({ section: "requests", requestKind: "role", roleRequestPage: String(nextPage), roleRequestPageSize: String(user.sensitiveRoleRequestPage.pageSize) });
                   if (roleRequestStatusValue) next.set("roleRequestStatus", roleRequestStatusValue);
                   return `/admin/users/${user.id}?${next.toString()}`;
                 }}
               />
             </div>
           </Panel>
+        ) : null}
+        {section === "requests" && requestActionId ? (
+          <EntryModal title="Review controlled request" triggerLabel={selectedScopeRequest || selectedRoleRequest ? "Selected request controls" : "Selected request unavailable"}>
+            {selectedScopeRequest ? (
+              <div className="mt-4 grid gap-4">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
+                  <p className="font-semibold text-slate-950">{selectedScopeRequest.locationName}</p>
+                  <p>{selectedScopeRequest.locationCode ?? "No code"} · {humanizeEnum(selectedScopeRequest.locationType)} · {humanizeEnum(selectedScopeRequest.accessLevel)}</p>
+                  <p className="mt-1">Requested by {selectedScopeRequest.requestedByName} on {selectedScopeRequest.createdAt.slice(0, 10)}. {selectedScopeRequest.riskLabel}</p>
+                  {selectedScopeRequest.reason ? <p className="mt-2">Reason: {selectedScopeRequest.reason}</p> : null}
+                  {selectedScopeRequest.evidenceReference ? <p className="mt-1">Evidence reference recorded.</p> : null}
+                </div>
+                {selectedScopeRequest.status === "PENDING" && selectedScopeRequest.requestedByUserId !== session.user.id && user.id !== session.user.id ? <>
+                  <form action={approveHighRiskScopeRequest} className="ogfi-form-shell grid gap-3">
+                    <input name="targetUserId" type="hidden" value={user.id} /><input name="requestId" type="hidden" value={selectedScopeRequest.id} /><input name="returnPath" type="hidden" value={requestReturnPath} />
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Approval reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reviewReason" required /></label>
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white sm:w-fit">Approve scope</button>
+                  </form>
+                  <form action={rejectHighRiskScopeRequest} className="ogfi-form-shell grid gap-3">
+                    <input name="targetUserId" type="hidden" value={user.id} /><input name="requestId" type="hidden" value={selectedScopeRequest.id} /><input name="returnPath" type="hidden" value={requestReturnPath} />
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Rejection reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reviewReason" required /></label>
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-bold text-white sm:w-fit">Reject scope</button>
+                  </form>
+                </> : <p className="text-sm text-amber-800">This request is historical or cannot be reviewed by the current actor. The server remains authoritative.</p>}
+              </div>
+            ) : selectedRoleRequest ? (
+              <div className="mt-4 grid gap-4">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
+                  <p className="font-semibold text-slate-950">{selectedRoleRequest.roleName}</p>
+                  <p>{selectedRoleRequest.roleCode} · {selectedRoleRequest.riskLabel}</p>
+                  <p className="mt-1">Requested by {selectedRoleRequest.requestedByName} on {selectedRoleRequest.createdAt.slice(0, 10)}.</p>
+                  {selectedRoleRequest.reason ? <p className="mt-2">Reason: {selectedRoleRequest.reason}</p> : null}
+                  {selectedRoleRequest.evidenceReference ? <p className="mt-1">Evidence reference recorded.</p> : null}
+                </div>
+                {selectedRoleRequest.status === "PENDING" && selectedRoleRequest.requestedByUserId !== session.user.id && user.id !== session.user.id ? <>
+                  <form action={approveSensitiveRoleRequest} className="ogfi-form-shell grid gap-3">
+                    <input name="targetUserId" type="hidden" value={user.id} /><input name="requestId" type="hidden" value={selectedRoleRequest.id} /><input name="returnPath" type="hidden" value={requestReturnPath} />
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Approval reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reviewReason" required /></label>
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white sm:w-fit">Approve role</button>
+                  </form>
+                  <form action={rejectSensitiveRoleRequest} className="ogfi-form-shell grid gap-3">
+                    <input name="targetUserId" type="hidden" value={user.id} /><input name="requestId" type="hidden" value={selectedRoleRequest.id} /><input name="returnPath" type="hidden" value={requestReturnPath} />
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Rejection reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reviewReason" required /></label>
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-bold text-white sm:w-fit">Reject role</button>
+                  </form>
+                </> : <p className="text-sm text-amber-800">This request is historical or cannot be reviewed by the current actor. The server remains authoritative.</p>}
+              </div>
+            ) : <p className="mt-4 text-sm text-amber-800">This request is no longer available in the current page. Refresh the request list before taking action.</p>}
+          </EntryModal>
         ) : null}
       </div>
 

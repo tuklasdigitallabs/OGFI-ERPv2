@@ -3,6 +3,7 @@
 Authorized administrator guidance for users, roles, scopes, local account activation and recovery, runtime security, controlled-evidence retention, release readiness, break-glass access, locations, supplier, and inventory master data.
 
 - [Managing User Access And Controlled Scopes](./managing-user-access-and-controlled-scopes.md)
+- [Reviewing User Access Requests](./reviewing-user-access-requests.md) — bounded scope/role request review and selected decision controls.
 - [Managing Release Readiness Gates](./managing-release-readiness-gates.md) — UAT, deployment, enablement, security counters, external-security proof references, and GO / NO-GO tracking.
 - [Managing Break-Glass Access](./managing-break-glass-access.md) — request, separate approval, expiry, revocation, post-review, and external security evidence boundaries.
 - [Activating And Recovering Local Accounts](./activating-and-recovering-local-accounts.md) — single-use activation links, controlled existing-account recovery, reviewer separation, and MFA reset.

@@ -554,6 +554,8 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("roleRequestPageSize");
     expect(serviceSource).toContain("scopeRequestTotal");
     expect(serviceSource).toContain("roleRequestTotal");
+    expect(serviceSource).toContain("const loadScopeRequests = options.requestKind !== \"role\"");
+    expect(serviceSource).toContain("const loadRoleRequests = options.requestKind !== \"scope\"");
     expect(serviceSource).toContain('orderBy: [{ createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("highRiskScopeRequestPage");
     expect(serviceSource).toContain("sensitiveRoleRequestPage");
@@ -561,6 +563,11 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain('name="roleRequestStatus"');
     expect(detailPageSource).toContain("Showing {user.highRiskScopeRequests.length} of");
     expect(detailPageSource).toContain("Showing {user.sensitiveRoleRequests.length} of");
+    expect(detailPageSource).toContain('section === "requests"');
+    expect(detailPageSource).toContain("requestKind");
+    expect(detailPageSource).toContain("requestActionId");
+    expect(detailPageSource).toContain("Review controlled request");
+    expect(detailPageSource).toContain("Open review controls");
   });
 
   test("request history redacts historical narrative and permission detail", () => {

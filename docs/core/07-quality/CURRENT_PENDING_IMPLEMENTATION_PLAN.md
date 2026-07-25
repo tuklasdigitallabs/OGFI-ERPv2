@@ -842,3 +842,8 @@ Update this register only when implementation state, release scope, a confirmed 
 ### DEC-0160 Production candidate validation — July 25, 2026
 - Next.js production build passes; web lint and TypeScript pass; Core Admin, Purchase Order, and module-preview focused suites pass (32/32, 36/36, and 16/16). The module-preview assertion now tracks the bounded Admin Settings page contract.
 - PostgreSQL/authorization integration suites remain gated by required disposable authorization/database sentinels; responsive browser, hosted recovery, and UAT evidence remain open.
+
+### DEC-0161 Administration User Access Requests subworkspace — July 25, 2026
+- Added URL-backed `Requests` navigation with separate scope/role request kinds. The detail service loads only the active request kind, preserving tenant/company/target-user predicates, status filtering, exact totals, deterministic ordering, and bounded paging.
+- Replaced repeated per-row approval/rejection modals with one selected-request composer. It preserves return context, shows pending-only narrative/evidence context, keeps historical rows read-only, and leaves existing authorization, MFA, segregation, CAS, and audit mutation services authoritative.
+- Evidence: Core Admin focused tests 32/32, web TypeScript, lint, and diff checks pass. PostgreSQL authorization/isolation/query-plan, responsive browser, hosted recovery, and UAT remain open; User Access Overview/Roles/Scopes/Audit information architecture and Administration are not complete.

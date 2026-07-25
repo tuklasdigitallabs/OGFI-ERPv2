@@ -1943,6 +1943,7 @@ export async function getCoreAdminUserDetail(
     scopeRequestPage?: number;
     scopeRequestPageSize?: number;
     scopeRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
+    requestKind?: "scope" | "role";
     roleRequestPage?: number;
     roleRequestPageSize?: number;
     roleRequestStatus?: "PENDING" | "APPROVED" | "REJECTED";
@@ -2070,31 +2071,37 @@ export async function getCoreAdminUserDetail(
       ? { status: options.roleRequestStatus }
       : { status: { in: ["PENDING", "APPROVED", "REJECTED"] } }),
   };
+  const loadScopeRequests = options.requestKind !== "role";
+  const loadRoleRequests = options.requestKind !== "scope";
   const [scopeRequestTotal, highRiskScopeRequests, roleRequestTotal, sensitiveRoleRequests] =
     await Promise.all([
-      prisma.highRiskScopeRequest.count({ where: scopeRequestWhere }),
-      prisma.highRiskScopeRequest.findMany({
-        where: scopeRequestWhere,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip: (scopeRequestPage - 1) * scopeRequestPageSize,
-        take: scopeRequestPageSize,
-      }),
-      prisma.sensitiveRoleRequest.count({ where: roleRequestWhere }),
-      prisma.sensitiveRoleRequest.findMany({
-        where: roleRequestWhere,
-        include: {
-          role: {
+      loadScopeRequests ? prisma.highRiskScopeRequest.count({ where: scopeRequestWhere }) : Promise.resolve(0),
+      loadScopeRequests
+        ? prisma.highRiskScopeRequest.findMany({
+            where: scopeRequestWhere,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            skip: (scopeRequestPage - 1) * scopeRequestPageSize,
+            take: scopeRequestPageSize,
+          })
+        : Promise.resolve([]),
+      loadRoleRequests ? prisma.sensitiveRoleRequest.count({ where: roleRequestWhere }) : Promise.resolve(0),
+      loadRoleRequests
+        ? prisma.sensitiveRoleRequest.findMany({
+            where: roleRequestWhere,
             include: {
-              permissions: {
-                include: { permission: true },
+              role: {
+                include: {
+                  permissions: {
+                    include: { permission: true },
+                  },
+                },
               },
             },
-          },
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip: (roleRequestPage - 1) * roleRequestPageSize,
-        take: roleRequestPageSize,
-      }),
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            skip: (roleRequestPage - 1) * roleRequestPageSize,
+            take: roleRequestPageSize,
+          })
+        : Promise.resolve([]),
     ]);
   const referencedLocationIds = Array.from(
     new Set([
