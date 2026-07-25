@@ -479,6 +479,9 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("RECORDED status");
     expect(pageSource).toContain("minLength={5}");
     expect(pageSource).toContain("selected evidence review panel");
+    expect(pageSource).toContain("Review selected deployment evidence");
+    expect(pageSource).toContain('data-testid="deployment-evidence-review-controls"');
+    expect(pageSource).toContain("deployment readiness counts");
   });
 
   test("UAT gates require evidence and decision notes for acceptance/default revision tracking", () => {

@@ -55,6 +55,8 @@ UAT rows do not perform review actions inline. Open a record and then its review
 
 Deployment evidence follows the same selected-record review pattern. The migration/backup/restore readiness counter only clears when each required evidence type is verified; monitoring/hypercare is tracked separately. A recorded or rejected item does not clear a deployment gate.
 
+For a recorded deployment item that was not created by you, choose **Open review controls** to review it in one focused sheet. Verify confirms the evidence and can contribute to the relevant readiness aggregate; Reject requires a reason. The action preserves the active deployment filters and page.
+
 Enablement evidence is reviewed from a selected record. Training readiness requires verified training signoff and the required known-limit/support-route confirmations (or their standalone verified evidence); KB and release-note readiness requires each of its three verified review types. Page filters do not change these aggregate checks.
 
 Enablement counters are calculated with scoped counts and evidence-type groups,

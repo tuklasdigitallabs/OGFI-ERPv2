@@ -11,3 +11,5 @@ Scope navigation and deactivation now preserve the Scopes tab, filters, and page
 Admin Settings now uses one selected-policy composer for Configure and Use Recommended actions, preserving registry context and keeping policy mutation/audit validation server-authoritative.
 
 Release Readiness UAT evidence review now uses one focused review sheet for Verify/Reject actions, with explicit status consequences and preserved filter/page context.
+
+Deployment Evidence review now uses the same focused Verify/Reject sheet, with migration/restore/monitoring readiness consequences and preserved registry context.
