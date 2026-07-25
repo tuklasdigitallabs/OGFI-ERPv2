@@ -94,7 +94,7 @@ export default async function CoreAdminRoleDetailPage({
   const actionFeedback = getActionFeedback(queryParams);
   const assignmentQuery = Array.isArray(queryParams.assignmentQuery) ? queryParams.assignmentQuery[0] : queryParams.assignmentQuery;
   const assignmentPageValue = Number.parseInt(String(Array.isArray(queryParams.assignmentPage) ? queryParams.assignmentPage[0] : queryParams.assignmentPage ?? "1"), 10);
-  const role = await getCoreAdminRoleDetail(session, id, { query: assignmentQuery, page: Number.isFinite(assignmentPageValue) ? assignmentPageValue : 1, pageSize: 25 });
+  const role = await getCoreAdminRoleDetail(session, id, { ...(assignmentQuery ? { query: assignmentQuery } : {}), page: Number.isFinite(assignmentPageValue) ? assignmentPageValue : 1, pageSize: 25 });
   if (!role) {
     redirect("/admin");
   }
