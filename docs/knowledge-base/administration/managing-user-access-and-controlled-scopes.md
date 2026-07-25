@@ -197,6 +197,11 @@ you need—Users & Access, Roles & Permissions, Organization Scope, Approval Rul
 or Audit Trail. Only the selected register and its required option catalogs are
 loaded; inactive sections are explicitly not loaded in the current view.
 
+Controlled Scope and Role Requests, including review actions, open in a focused
+task sheet with contained scrolling. Confirm the target user, requester,
+status, evidence indicator, and next action before approving or rejecting; the
+same server-side no-self-approval, MFA, scope, reason, and audit controls apply.
+
 ## Related Articles
 
 - [Activating And Recovering Local Accounts](./activating-and-recovering-local-accounts.md)

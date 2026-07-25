@@ -4,6 +4,7 @@ import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -55,13 +56,17 @@ async function requestHighRiskScope(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith(`/admin/users/${targetUserId}`)
+    ? submittedReturnPath
+    : `/admin/users/${targetUserId}?section=requests&requestKind=scope`;
   try {
     await requestHighRiskUserLocationScope(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 async function approveHighRiskScopeRequest(formData: FormData) {
@@ -96,13 +101,17 @@ async function requestSensitiveRole(formData: FormData) {
   "use server";
 
   const targetUserId = String(formData.get("targetUserId"));
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith(`/admin/users/${targetUserId}`)
+    ? submittedReturnPath
+    : `/admin/users/${targetUserId}?section=requests&requestKind=role`;
   try {
     await requestSensitiveUserRole(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/users/${targetUserId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/users/${targetUserId}`);
-  redirect(`/admin/users/${targetUserId}`);
+  redirect(returnPath);
 }
 
 async function approveSensitiveRoleRequest(formData: FormData) {
@@ -708,10 +717,12 @@ export default async function CoreAdminUserDetailPage({
                   scope request.
                 </p>
               ) : (
-                <EntryModal
+                <TaskSheet
                   title="Request Controlled Scope"
-                  triggerLabel="Request Controlled Scope"
-                  triggerClassName="bg-amber-600 hover:bg-amber-700"
+                  trigger={<button className="inline-flex min-h-11 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700">Request Controlled Scope</button>}
+                  size="default"
+                  bodyScroll="contained"
+                  description={`Controlled scope request for ${user.displayName} in the selected company. Evidence and a reason are required.`}
                 >
                   <form action={requestHighRiskScope} className="ogfi-form-shell mt-4 grid gap-3">
                     <input name="targetUserId" type="hidden" value={user.id} />
@@ -755,7 +766,7 @@ export default async function CoreAdminUserDetailPage({
                       Submit Controlled Request
                     </button>
                   </form>
-                </EntryModal>
+                </TaskSheet>
               )}
             </div>
 
@@ -939,10 +950,12 @@ export default async function CoreAdminUserDetailPage({
                   request.
                 </p>
               ) : (
-                <EntryModal
+                <TaskSheet
                   title="Request Controlled Role"
-                  triggerLabel="Request Controlled Role"
-                  triggerClassName="bg-amber-600 hover:bg-amber-700"
+                  trigger={<button className="inline-flex min-h-11 items-center justify-center rounded-md bg-amber-600 px-4 text-sm font-bold text-white hover:bg-amber-700">Request Controlled Role</button>}
+                  size="default"
+                  bodyScroll="contained"
+                  description={`Controlled role request for ${user.displayName}. Evidence, MFA, and a reason are required.`}
                 >
                   <form action={requestSensitiveRole} className="ogfi-form-shell mt-4 grid gap-3">
                     <input name="targetUserId" type="hidden" value={user.id} />
@@ -977,7 +990,7 @@ export default async function CoreAdminUserDetailPage({
                       Submit Controlled Role Request
                     </button>
                   </form>
-                </EntryModal>
+                </TaskSheet>
               )}
             </div>
 
@@ -1089,7 +1102,7 @@ export default async function CoreAdminUserDetailPage({
           </Panel>
         ) : null}
         {section === "requests" && requestActionId ? (
-          <EntryModal title="Review controlled request" triggerLabel={selectedScopeRequest || selectedRoleRequest ? "Selected request controls" : "Selected request unavailable"}>
+          <TaskSheet title="Review controlled request" defaultOpen size="default" bodyScroll="contained" description={`Review context for ${user.displayName} in the selected company. The server rechecks status, actor, scope, MFA, and segregation of duties.`}>
             {selectedScopeRequest ? (
               <div className="mt-4 grid gap-4">
                 <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700">
@@ -1135,7 +1148,7 @@ export default async function CoreAdminUserDetailPage({
                 </> : <p className="text-sm text-amber-800">This request is historical or cannot be reviewed by the current actor. The server remains authoritative.</p>}
               </div>
             ) : <p className="mt-4 text-sm text-amber-800">This request is no longer available in the current page. Refresh the request list before taking action.</p>}
-          </EntryModal>
+          </TaskSheet>
         ) : null}
       </div>
 

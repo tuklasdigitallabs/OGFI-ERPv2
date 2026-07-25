@@ -954,3 +954,12 @@ Update this register only when implementation state, release scope, a confirmed 
 - Supplier Audit now links to the real `/admin?tab=audit` workspace with an exact UUID `entityId` filter. Core Admin applies the entity predicate together with existing tenant/company/authorization predicates; cursor hashes, pagination, CSV export, and event-detail return links preserve the filter.
 - The handoff remains read-only and redacted; no supplier-local duplicate audit authority or procurement/inventory mutation was introduced. Invalid or foreign entity IDs cannot widen the result set.
 - Evidence: Core Admin and Supplier focused tests 39/39, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Supplier Master Data, Administration, and Phase I are not complete.
+
+### DEC-0184 Administration User Access controlled TaskSheets — July 25, 2026
+- Evidence-heavy controlled Scope Request, controlled Role Request, and selected request review now use contained-scroll `TaskSheet`s with 44px controls, explicit target/request/status/evidence context, stale/unavailable handling, and preserved request section/kind/page return context.
+- Existing server-side authorization, no-self-approval, MFA/SOD, pending-only CAS, reason/evidence, audit, and mutation semantics remain authoritative. Short assignment/deactivation forms remain separate.
+- Evidence: Core Admin focused tests 35/35, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Administration and Phase I are not complete.
+
+### DEC-0185 Core Administration duplicate Audit read cleanup — July 25, 2026
+- Removed the unused `recentAuditEvents` query from the active Audit overview profile; the bounded keyset Audit register is now the sole visible Audit read while the compatibility field returns an empty projection.
+- Evidence: Core Admin focused tests 35/35, web TypeScript, lint, production build, and diff checks pass. PostgreSQL no-query/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Administration and Phase I are not complete.

@@ -1336,7 +1336,6 @@ export async function getCoreAdminOverview(
   const [
     tenant,
     companies,
-    recentAuditEvents,
   ] = await Promise.all([
     prisma.tenant.findFirst({
       where: { id: session.context.tenantId },
@@ -1352,17 +1351,6 @@ export async function getCoreAdminOverview(
         id: session.context.companyId,
       },
       orderBy: { legalName: "asc" },
-    }) : Promise.resolve([]),
-    activeTab === "audit" ? prisma.auditEvent.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        OR: [{ companyId: session.context.companyId }, { companyId: null }],
-      },
-      include: {
-        actor: true,
-      },
-      orderBy: { occurredAt: "desc" },
-      take: 48,
     }) : Promise.resolve([]),
   ]);
 
@@ -1396,14 +1384,7 @@ export async function getCoreAdminOverview(
       stepSummary: rule.stepPreview.join(", "),
     })),
     approvalRulePage,
-    recentAuditEvents: recentAuditEvents.map((event) => ({
-      id: event.id,
-      eventType: event.eventType,
-      entityType: event.entityType,
-      entityId: event.entityId,
-      actorName: event.actor?.displayName ?? "System",
-      occurredAt: event.occurredAt.toISOString(),
-    })),
+    recentAuditEvents: [],
   };
 }
 

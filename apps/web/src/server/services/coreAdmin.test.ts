@@ -74,7 +74,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("activeTab === \"roles\"");
     expect(serviceSource).toContain("activeTab === \"organization\"");
     expect(serviceSource).toContain("activeTab === \"approval-rules\"");
-    expect(serviceSource).toContain("activeTab === \"audit\"");
+    expect(serviceSource).toContain("recentAuditEvents: []");
     expect(adminPageSource).toContain("<WorkspaceTabs");
     expect(adminPageSource).toContain("Only the selected workspace register and its required option catalogs are loaded");
     expect(adminPageSource).not.toContain("const workspaces = [");
@@ -99,10 +99,7 @@ describe("core administration audit search wiring", () => {
     expect(overviewSource).toContain(
       "assertCanManageCompanyScope(session, session.context.companyId)",
     );
-    expect(overviewSource).toContain("companyId: session.context.companyId");
-    expect(overviewSource).toContain(
-      "OR: [{ companyId: session.context.companyId }, { companyId: null }]",
-    );
+    expect(overviewSource).not.toContain("activeTab === \"audit\" ? prisma.auditEvent.findMany");
     expect(userDetailSource).toContain("assertTargetUserInCurrentCompany(session, userId)");
     expect(userDetailSource).toContain(
       "assertCanManageCompanyScope(session, session.context.companyId)",
@@ -457,6 +454,8 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("const resolved = await resolveCoreAdminAuditWhere(session, {});");
     expect(serviceSource).toContain('actorEmail: ""');
     expect(serviceSource).toContain('ipAddress: ""');
+    expect(serviceSource).not.toContain("activeTab === \"audit\" ? prisma.auditEvent.findMany");
+    expect(serviceSource).toContain("recentAuditEvents: []");
   });
 
   test("organization locations use a selected-company page contract and bounded active options", () => {
@@ -545,6 +544,14 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain('name="reason" minLength={5} required');
     expect(detailPageSource).toContain("This role assignment is no longer on the selected page");
     expect(detailPageSource).not.toContain('<EntryModal title="Deactivate Role"');
+    expect(detailPageSource).toContain("TaskSheet");
+    expect(detailPageSource).toContain("bodyScroll=\"contained\"");
+    expect(detailPageSource).toContain("Controlled scope request for");
+    expect(detailPageSource).toContain("Controlled role request for");
+    expect(detailPageSource).toContain("The server rechecks status, actor, scope, MFA, and segregation of duties.");
+    expect(detailPageSource).not.toContain('<EntryModal\n                  title="Request Controlled Scope"');
+    expect(detailPageSource).not.toContain('<EntryModal\n                  title="Request Controlled Role"');
+    expect(detailPageSource).not.toContain('<EntryModal title="Review controlled request"');
   });
 
   test("user detail assignment catalogs are bounded, searchable, and do not serialize role permissions", () => {

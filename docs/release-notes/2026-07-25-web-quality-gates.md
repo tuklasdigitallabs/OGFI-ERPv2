@@ -46,3 +46,8 @@ until a supplier-specific projection is approved.
 Supplier Audit handoff now reaches the real Admin Audit workspace and applies
 an exact selected-entity filter through paging, export, and event detail. The
 existing redacted, read-only audit authority remains unchanged.
+
+User Access controlled Scope/Role request creation and review now use contained
+TaskSheets with 44px controls and preserved request context. Core Administration
+also no longer performs a duplicate unused Audit read when the Audit tab is
+active.

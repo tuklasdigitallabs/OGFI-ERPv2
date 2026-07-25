@@ -71,6 +71,11 @@ From a Supplier's Audit tab, confirm that Admin Audit shows the selected
 Supplier Entity ID filter. Paging, export, and View Event must retain that
 filter; never rely on a broad entity-type search for one supplier.
 
+In User Access, use the controlled-request TaskSheet for Scope or Role request
+creation and review. Verify target user, company, requester, status, evidence,
+and reason before submitting; historical or self-requested records are not
+reviewable.
+
 ## Common errors and recovery
 
 - Granting company-wide access to fix one missing record: assign the smallest correct scope.
