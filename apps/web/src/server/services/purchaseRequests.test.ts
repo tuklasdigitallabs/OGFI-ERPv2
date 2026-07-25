@@ -257,6 +257,9 @@ describe("purchase request workflow controls", () => {
     expect(editorSource).toContain("Next UOMs");
     expect(editorSource).toContain("Next budgets");
     expect(serviceSource).toContain("const pageOptions = selected && !options.some");
+    expect(serviceSource).toContain("{ OR: [{ locationId: null }, { locationId: session.context.locationId }] }");
+    expect(serviceSource).toContain("where: { ...where, id: values.selectedId }");
+    expect(serviceSource).toContain("{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }");
     expect(editorSource).toContain("aria-busy={lookupLoading}");
     expect(editorSource).toContain("Retry lookups");
     expect(editorSource).toContain("min-h-11");

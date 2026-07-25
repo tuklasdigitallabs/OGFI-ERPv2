@@ -8,7 +8,6 @@ import {
 } from "./context";
 import {
   canUsePurchaseRequests,
-  getGrantedPermissionCodes,
   permissions,
   requirePermission,
 } from "./authorization";
@@ -1103,136 +1102,6 @@ export async function getPurchaseRequest(session: SessionContext, id: string) {
   return toPurchaseRequest(request, auditEvents, approvalActions);
 }
 
-export async function listPurchaseRequestDraftOptions(session: SessionContext) {
-  const permissionCodes = await getGrantedPermissionCodes(session);
-  if (!permissionCodes.includes(permissions.purchaseRequestCreate)) {
-    return {
-      items: [],
-      uoms: [],
-      budgetLines: [],
-    };
-  }
-
-  const [items, uoms, budgetLines] = await Promise.all([
-    prisma.item.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE",
-      },
-      include: {
-        baseUom: true,
-        purchaseUom: true,
-        issueUom: true,
-        uomConversions: {
-          include: {
-            fromUom: true,
-            toUom: true,
-          },
-        },
-      },
-      orderBy: { itemName: "asc" },
-    }),
-    prisma.uom.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE",
-      },
-      orderBy: { uomCode: "asc" },
-    }),
-    prisma.budgetLine.findMany({
-      where: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE",
-        budget: {
-          status: { in: ["ACTIVE", "PARTIALLY_RELEASED"] },
-        },
-        OR: [
-          { locationId: null },
-          { locationId: session.context.locationId },
-        ],
-        ...(session.context.brandId
-          ? {
-              AND: [
-                {
-                  OR: [
-                    { brandId: null },
-                    { brandId: session.context.brandId },
-                  ],
-                },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        budget: {
-          select: {
-            publicReference: true,
-            name: true,
-          },
-        },
-      },
-      orderBy: [{ code: "asc" }, { name: "asc" }],
-      take: 200,
-    }),
-  ]);
-
-  return {
-    items: items.map((item) => {
-      const itemUoms = new Map<
-        string,
-        { id: string; uomCode: string; uomName: string }
-      >();
-      const addUom = (
-        uom:
-          | {
-              id: string;
-              uomCode: string;
-              uomName: string;
-            }
-          | null,
-      ) => {
-        if (uom) {
-          itemUoms.set(uom.id, {
-            id: uom.id,
-            uomCode: uom.uomCode,
-            uomName: uom.uomName,
-          });
-        }
-      };
-      addUom(item.purchaseUom);
-      addUom(item.baseUom);
-      addUom(item.issueUom);
-      item.uomConversions.forEach((conversion) => {
-        addUom(conversion.fromUom);
-        addUom(conversion.toUom);
-      });
-
-      return {
-        id: item.id,
-        itemCode: item.itemCode,
-        itemName: item.itemName,
-        defaultUomId: item.purchaseUomId ?? item.baseUomId,
-        uoms: Array.from(itemUoms.values()).sort((left, right) =>
-          left.uomCode.localeCompare(right.uomCode),
-        ),
-      };
-    }),
-    uoms: uoms.map((uom) => ({
-      id: uom.id,
-      uomCode: uom.uomCode,
-      uomName: uom.uomName,
-    })),
-    budgetLines: budgetLines.map((line) => ({
-      id: line.id,
-      label: `${line.code} - ${line.name}`,
-      helper: `${line.budget.publicReference} / ${line.budget.name}`,
-    })),
-  };
-}
-
 const purchaseRequestDraftLookupInputSchema = z.object({
   kind: z.enum(["item", "uom", "budget"]),
   query: z.string().trim().max(120).default(""),
@@ -1323,20 +1192,20 @@ export async function searchPurchaseRequestDraftLookup(
     ? [{ code: { contains: values.query, mode: "insensitive" as const } }, { name: { contains: values.query, mode: "insensitive" as const } }, ...(values.selectedId ? [{ id: values.selectedId }] : [])]
     : values.selectedId ? [{ id: values.selectedId }] : undefined;
   const budgetScopeAnd = [
+    { OR: [{ locationId: null }, { locationId: session.context.locationId }] },
     ...(session.context.brandId ? [{ OR: [{ brandId: null }, { brandId: session.context.brandId }] }] : []),
     ...(budgetSearch ? [{ OR: budgetSearch }] : []),
   ];
   const where = {
     ...scope,
     budget: { is: { status: { in: activeBudgetStatuses } } },
-    OR: [{ locationId: null }, { locationId: session.context.locationId }],
     ...(budgetScopeAnd.length ? { AND: budgetScopeAnd } : {}),
   };
   const totalItems = await prisma.budgetLine.count({ where });
   const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
   const page = Math.min(values.page, totalPages);
   const options = await prisma.budgetLine.findMany({ where, select: { id: true, code: true, name: true, budget: { select: { publicReference: true, name: true } } }, orderBy: [{ code: "asc" }, { name: "asc" }, { id: "asc" }], skip: (page - 1) * values.pageSize, take: values.pageSize });
-  const selected = values.selectedId ? await prisma.budgetLine.findFirst({ where: { ...scope, id: values.selectedId, budget: { is: { status: { in: activeBudgetStatuses } } } }, select: { id: true, code: true, name: true, budget: { select: { publicReference: true, name: true } } } }) : null;
+  const selected = values.selectedId ? await prisma.budgetLine.findFirst({ where: { ...where, id: values.selectedId }, select: { id: true, code: true, name: true, budget: { select: { publicReference: true, name: true } } } }) : null;
   const pageOptions = selected && !options.some((line) => line.id === selected.id) ? [selected, ...options].slice(0, values.pageSize) : options;
   return { kind: values.kind, options: pageOptions, page, pageSize: values.pageSize, totalItems, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
 }

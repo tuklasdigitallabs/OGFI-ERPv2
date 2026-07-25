@@ -155,3 +155,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0212-ADMIN-ORGANIZATION-REGISTRY-PAGING.md` — stale-page clamping and narrow selected-company projections for Brand/Department/Location registries
 - `DEC-0213-ADMIN-APPROVAL-RULE-REGISTRY-PAGING.md` — filtered stale-page clamping for the bounded Approval Rules registry
 - `DEC-0214-ADMIN-ROLE-PERMISSION-INTEGRITY.md` — fail-closed Role Detail behavior for unsupported tenant permission links
+- `DEC-0215-PR-DRAFT-LOOKUP-SELECTED-SCOPE-HARDENING.md` — selected-location/brand budget-line retention and removal of the dead unbounded draft catalog
