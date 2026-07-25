@@ -30,6 +30,7 @@ import {
 } from "@/server/services/coreAdmin";
 import { getSessionContext } from "@/server/services/context";
 import { canExportCoreAdminAudit } from "@/server/services/exportAuthorization";
+import { parseDateOnlyUtc } from "@/server/services/projectDates";
 
 export const dynamic = "force-dynamic";
 
@@ -260,6 +261,13 @@ export default async function CoreAdministrationPage({
   const auditRequestId = getSearchParam(params, "requestId");
   const auditOccurredFrom = getSearchParam(params, "occurredFrom");
   const auditOccurredTo = getSearchParam(params, "occurredTo");
+  const auditFromDate = auditOccurredFrom ? parseDateOnlyUtc(auditOccurredFrom) : null;
+  const auditToDate = auditOccurredTo ? parseDateOnlyUtc(auditOccurredTo) : null;
+  const auditExportDateRangeReady = Boolean(
+    auditFromDate &&
+    auditToDate &&
+    auditToDate.getTime() >= auditFromDate.getTime()
+  );
   const auditPageSizeValue = Number.parseInt(getSearchParam(params, "auditPageSize") ?? "25", 10);
   const auditPageSize = Number.isFinite(auditPageSizeValue)
     ? Math.min(Math.max(auditPageSizeValue, 10), 100)
@@ -1231,10 +1239,14 @@ export default async function CoreAdministrationPage({
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge tone="info">Read-only</Badge>
-              {canExportAudit && auditEntityIdIsValid ? (
+              {canExportAudit && auditEntityIdIsValid && auditExportDateRangeReady ? (
                 <ButtonLink href={auditExportHref} tone="ghost" className="ogfi-chip">
                   Export CSV
                 </ButtonLink>
+              ) : canExportAudit && auditEntityIdIsValid ? (
+                <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-500" aria-disabled="true" title="Choose valid From and To dates to export">
+                  Choose From and To dates to export
+                </span>
               ) : null}
             </div>
           </div>

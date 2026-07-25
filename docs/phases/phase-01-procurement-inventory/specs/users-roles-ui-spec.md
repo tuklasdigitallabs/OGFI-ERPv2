@@ -70,6 +70,12 @@ tenant/company and bounded filter contract. The list uses deterministic keyset p
 projections suppress actor contact/IP fields and recursively redact credential, token,
 email, storage-key, and signed-URL fields without changing immutable audit rows.
 
+Implementation note (`DEC-0223`): the Audit Trail `Export CSV` link is shown only
+when both From and To filters are valid date-only values in non-reversed order. Until
+then, the page shows a disabled explanation to match the route's required date-range
+contract. The route remains authoritative for maximum span, row cap, authorization,
+scope, and export audit events.
+
 Implementation note (`DEC-0114`): Organization Scope now presents a server-owned
 selected-company Locations registry with URL-backed search, status/type filters, exact
 totals, deterministic name/ID ordering, and pagination. The initial-location selector

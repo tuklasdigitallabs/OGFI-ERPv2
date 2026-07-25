@@ -740,6 +740,17 @@ describe("core administration audit search wiring", () => {
     expect(policySource).toContain('"reporting.export.max_date_span_days"');
   });
 
+  test("audit export control explains the required date-range state before linking", () => {
+    const adminPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/page.tsx"),
+      "utf8",
+    );
+    expect(adminPageSource).toContain("auditExportDateRangeReady");
+    expect(adminPageSource).toContain("Choose From and To dates to export");
+    expect(adminPageSource).toContain('aria-disabled="true"');
+    expect(adminPageSource).toContain("parseDateOnlyUtc");
+  });
+
   test("Core Administration exposes truthful route loading and retryable error states", () => {
     const loadingSource = readFileSync(
       path.resolve(__dirname, "../../app/(app)/admin/loading.tsx"),
