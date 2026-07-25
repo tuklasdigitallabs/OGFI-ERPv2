@@ -19,8 +19,10 @@ drifting.
 
 ## Evidence and open gates
 
-The local manifest still reports four pre-existing high-risk service surfaces
-without boundary-cluster bindings (`coreAdmin` user audit page and three release
-readiness evidence pages). The existing route-matrix test also does not execute
-`app/api/**`; dedicated API authorization/isolation/no-mutation evidence remains
-required before the authorization gate can pass.
+The generated manifest now passes its 20/20 structural tests, and the admin
+platform integration case invokes the four previously unbound readers under
+live permission revocation. The PostgreSQL execution gate remains open because
+`DISPOSABLE_DATABASE_ADMIN_URL` is not configured in this environment. The
+existing route-matrix test also does not execute `app/api/**`; dedicated API
+authorization/isolation/no-mutation evidence remains required before the
+authorization gate can pass.

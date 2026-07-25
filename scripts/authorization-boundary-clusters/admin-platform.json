@@ -1601,6 +1601,38 @@
       "status": "COVERED"
     },
     {
+      "surfaceId": "server/services/coreAdmin.ts#listCoreAdminUserAuditEventPage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "target-user current-company membership", "bounded redacted actor projection"],
+      "caseIds": ["AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION"],
+      "noMutationControls": ["revoked tenant-role permission discloses no user audit records and leaves audit evidence unchanged"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#listDeploymentEvidencePage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["assertCanManageReleaseReadiness", "tenant/company predicate", "bounded validated paging"],
+      "caseIds": ["AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"],
+      "noMutationControls": ["revoked release permission discloses no deployment evidence and mutates no readiness gate"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#listEnablementEvidencePage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["assertCanManageReleaseReadiness", "tenant/company predicate", "bounded validated paging"],
+      "caseIds": ["AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"],
+      "noMutationControls": ["revoked release permission discloses no enablement evidence and mutates no readiness gate"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/releaseReadiness.ts#listUatEvidencePage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["assertCanManageReleaseReadiness", "tenant/company predicate", "bounded validated paging"],
+      "caseIds": ["AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"],
+      "noMutationControls": ["revoked release permission discloses no UAT evidence and mutates no readiness gate"],
+      "status": "COVERED"
+    },
+    {
       "surfaceId": "server/services/breakGlassAccess.ts#listBreakGlassAccessGrants",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": ["live core administrator permission", "company MANAGE scope", "guarded expiry mutation"],

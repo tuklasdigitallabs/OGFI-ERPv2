@@ -21109,8 +21109,25 @@
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "HIGH",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live core administrator permission",
+      "selected-company MANAGE scope",
+      "target-user current-company membership",
+      "bounded redacted actor projection"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-CORE-ADMIN-TENANT-AUDIT-READS-REQUIRE-TENANT-ROLE-PERMISSION"
+    ],
+    "noMutationControls": [
+      "revoked tenant-role permission discloses no user audit records and leaves audit evidence unchanged"
+    ]
   },
   {
     "id": "server/services/coreAdmin.ts#listCoreAdminUserPage",
@@ -34761,8 +34778,24 @@
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "HIGH",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "assertCanManageReleaseReadiness",
+      "tenant/company predicate",
+      "bounded validated paging"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "revoked release permission discloses no deployment evidence and mutates no readiness gate"
+    ]
   },
   {
     "id": "server/services/releaseReadiness.ts#listDeploymentEvidenceRecords",
@@ -34818,8 +34851,24 @@
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "HIGH",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "assertCanManageReleaseReadiness",
+      "tenant/company predicate",
+      "bounded validated paging"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "revoked release permission discloses no enablement evidence and mutates no readiness gate"
+    ]
   },
   {
     "id": "server/services/releaseReadiness.ts#listEnablementEvidenceRecords",
@@ -34959,8 +35008,24 @@
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
     "riskTier": "HIGH",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "assertCanManageReleaseReadiness",
+      "tenant/company predicate",
+      "bounded validated paging"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-RELEASE-LIVE-PERMISSION-REVOKED-DENIES-EXPORT-NO-MUTATION"
+    ],
+    "noMutationControls": [
+      "revoked release permission discloses no UAT evidence and mutates no readiness gate"
+    ]
   },
   {
     "id": "server/services/releaseReadiness.ts#listUatEvidenceRecords",

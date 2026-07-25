@@ -134,9 +134,13 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
   let getCoreAdminRoleDetail: typeof import("../src/server/services/coreAdmin").getCoreAdminRoleDetail;
   let getCoreAdminUserDetail: typeof import("../src/server/services/coreAdmin").getCoreAdminUserDetail;
   let listCoreAdminAuditEvents: typeof import("../src/server/services/coreAdmin").listCoreAdminAuditEvents;
+  let listCoreAdminUserAuditEventPage: typeof import("../src/server/services/coreAdmin").listCoreAdminUserAuditEventPage;
   let createDeploymentEvidenceRecord: typeof import("../src/server/services/releaseReadiness").createDeploymentEvidenceRecord;
   let createEnablementEvidenceRecord: typeof import("../src/server/services/releaseReadiness").createEnablementEvidenceRecord;
   let createUatEvidenceRecord: typeof import("../src/server/services/releaseReadiness").createUatEvidenceRecord;
+  let listDeploymentEvidencePage: typeof import("../src/server/services/releaseReadiness").listDeploymentEvidencePage;
+  let listEnablementEvidencePage: typeof import("../src/server/services/releaseReadiness").listEnablementEvidencePage;
+  let listUatEvidencePage: typeof import("../src/server/services/releaseReadiness").listUatEvidencePage;
   let createReleaseBoardDecision: typeof import("../src/server/services/releaseReadiness").createReleaseBoardDecision;
   let updateDeploymentEvidenceStatus: typeof import("../src/server/services/releaseReadiness").updateDeploymentEvidenceStatus;
   let updateEnablementEvidenceStatus: typeof import("../src/server/services/releaseReadiness").updateEnablementEvidenceStatus;
@@ -202,6 +206,7 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       getCoreAdminRoleDetail,
       getCoreAdminUserDetail,
       listCoreAdminAuditEvents,
+      listCoreAdminUserAuditEventPage,
       updateRolePermissions,
     } = await import("../src/server/services/coreAdmin"));
     ({ resetCompanyPolicySetting, updateCompanyPolicySetting } =
@@ -211,6 +216,9 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       createEnablementEvidenceRecord,
       createReleaseBoardDecision,
       createUatEvidenceRecord,
+      listDeploymentEvidencePage,
+      listEnablementEvidencePage,
+      listUatEvidencePage,
       updateDeploymentEvidenceStatus,
       updateEnablementEvidenceStatus,
       updateReleaseReadinessGate,
@@ -576,6 +584,15 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
     try {
       await expect(
         buildReleaseReadinessExportRows(staleSession),
+      ).rejects.toThrow("PERMISSION_DENIED");
+      await expect(
+        listDeploymentEvidencePage(staleSession, { pageSize: 10 }),
+      ).rejects.toThrow("PERMISSION_DENIED");
+      await expect(
+        listEnablementEvidencePage(staleSession, { pageSize: 10 }),
+      ).rejects.toThrow("PERMISSION_DENIED");
+      await expect(
+        listUatEvidencePage(staleSession, { pageSize: 10 }),
       ).rejects.toThrow("PERMISSION_DENIED");
       expect(
         await prisma.releaseReadinessGate.count({
@@ -1612,6 +1629,7 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
         id: tenantAuditId,
         tenantId: ids.tenantId,
         companyId: null,
+        actorUserId: ids.targetUserId,
         eventType: "authorization.tenant_audit_fixture",
         entityType: "AuthorizationFixture",
         entityId: randomUUID(),
@@ -1625,7 +1643,14 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
         await listCoreAdminAuditEvents(session, {
           eventType: "authorization.tenant_audit_fixture",
         })
-      ).map((event) => event.id),
+    ).map((event) => event.id),
+    ).toContain(tenantAuditId);
+    expect(
+      (
+        await listCoreAdminUserAuditEventPage(session, ids.targetUserId, {
+          pageSize: 10,
+        })
+      ).items.map((event) => event.id),
     ).toContain(tenantAuditId);
     await prisma.rolePermission.delete({
       where: {
@@ -1644,6 +1669,11 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
           eventType: "authorization.tenant_audit_fixture",
         }),
       ).toEqual([]);
+      await expect(
+        listCoreAdminUserAuditEventPage(session, ids.targetUserId, {
+          pageSize: 10,
+        }),
+      ).rejects.toThrow("PERMISSION_DENIED");
       expect(
         await prisma.auditEvent.findUnique({ where: { id: tenantAuditId } }),
       ).not.toBeNull();
