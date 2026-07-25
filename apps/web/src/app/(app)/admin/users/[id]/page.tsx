@@ -392,6 +392,7 @@ export default async function CoreAdminUserDetailPage({
           </div>
         ) : null}
         {section !== "requests" ? <>
+        {section === "overview" || section === "roles" ? <>
         <Panel className="ogfi-detail-card">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -448,7 +449,9 @@ export default async function CoreAdminUserDetailPage({
           </div>
           {user.rolesPage.totalItems > 0 ? <PaginationBar page={user.rolesPage.page} pageSize={user.rolesPage.pageSize} totalItems={user.rolesPage.totalItems} itemLabel="assigned roles" getPageHref={(nextPage) => `/admin/users/${user.id}?assignedRolePage=${nextPage}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`} /> : null}
         </Panel>
+        </> : null}
 
+        {section === "overview" || section === "roles" ? <>
         <Panel className="ogfi-detail-card">
           <h2 className="text-lg font-bold text-slate-950">Effective Permissions</h2>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -464,6 +467,8 @@ export default async function CoreAdminUserDetailPage({
           </div>
         </Panel>
 
+        </> : null}
+        {section === "scopes" ? <>
         <Panel className="ogfi-detail-card">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -522,6 +527,7 @@ export default async function CoreAdminUserDetailPage({
           </EntryModal> : null}
           {scopedUser.scopesPage.totalItems > 0 ? <PaginationBar page={scopedUser.scopesPage.page} pageSize={scopedUser.scopesPage.pageSize} totalItems={scopedUser.scopesPage.totalItems} itemLabel="scopes" getPageHref={(nextPage) => `/admin/users/${user.id}?scopePage=${nextPage}${scopedUser.scopesPage.query ? `&scopeQuery=${encodeURIComponent(scopedUser.scopesPage.query)}` : ""}${scopedUser.scopesPage.scopeType ? `&scopeType=${encodeURIComponent(scopedUser.scopesPage.scopeType)}` : ""}`} /> : null}
         </Panel>
+        </> : null}
 
         {section === "audit" ? (
           <Panel className="ogfi-detail-card xl:col-span-2">
@@ -553,7 +559,7 @@ export default async function CoreAdminUserDetailPage({
           </Panel>
         ) : null}
 
-        {user.canMutateScopes ? (
+        {section === "scopes" && user.canMutateScopes ? (
           <Panel className="xl:col-span-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>

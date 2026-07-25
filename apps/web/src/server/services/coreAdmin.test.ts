@@ -600,6 +600,18 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).not.toContain("user.auditEvents");
   });
 
+  test("user detail sections are mutually exclusive visible workspaces", () => {
+    const detailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),
+      "utf8",
+    );
+    expect(detailPageSource).toContain('section === "overview" || section === "roles"');
+    expect(detailPageSource).toContain('section === "scopes" ? <>');
+    expect(detailPageSource).toContain('section === "requests" && requestKind === "scope"');
+    expect(detailPageSource).toContain('section === "audit" ?');
+    expect(detailPageSource).toContain('aria-label="User access sections"');
+  });
+
   test("high-risk scope review revalidates target membership and claims pending CAS", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     expect(serviceSource).toContain('SELECT "id"');
