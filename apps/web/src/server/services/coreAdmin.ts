@@ -4086,15 +4086,12 @@ export async function getCoreAdminRoleDetail(
       }, new Map<string, { name: string; enabledCount: number; recommendedCount: number; permissions: typeof permissionRows }>())
       .values(),
   );
-  const addedFromRecommended = permissionRows.filter(
-    (permission) => permission.overrideState === "ADDED_FROM_RECOMMENDED",
-  ).length;
-  const removedFromRecommended = permissionRows.filter(
-    (permission) => permission.overrideState === "REMOVED_FROM_RECOMMENDED",
-  ).length;
-  const sensitiveEnabledCount = permissionRows.filter(
-    (permission) => permission.enabled && permission.sensitive,
-  ).length;
+  const addedFromRecommendedTotal = Array.from(currentPermissionCodes)
+    .filter((code) => !recommendedPermissionCodes.has(code)).length;
+  const removedFromRecommendedTotal = Array.from(recommendedPermissionCodes)
+    .filter((code) => !currentPermissionCodes.has(code)).length;
+  const sensitiveEnabledCount = Array.from(currentPermissionCodes)
+    .filter((code) => isSensitivePermissionCode(code)).length;
 
   return {
     id: role.id,
@@ -4104,8 +4101,8 @@ export async function getCoreAdminRoleDetail(
     systemRole: role.systemRole,
     recommendedLabel: getRecommendedRoleLabel(role.code),
     recommendedPermissionCount: recommendedPermissionCodes.size,
-    addedFromRecommended,
-    removedFromRecommended,
+    addedFromRecommended: addedFromRecommendedTotal,
+    removedFromRecommended: removedFromRecommendedTotal,
     sensitiveEnabledCount,
     hasRecommendedSet: recommendedPermissionCodes.size > 0,
     permissionGroups,

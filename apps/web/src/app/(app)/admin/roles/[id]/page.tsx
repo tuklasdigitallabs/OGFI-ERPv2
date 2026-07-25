@@ -24,13 +24,17 @@ async function updateRolePermissionsAction(formData: FormData) {
   "use server";
 
   const roleId = String(formData.get("roleId") ?? "");
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith(`/admin/roles/${roleId}`)
+    ? submittedReturnPath
+    : `/admin/roles/${roleId}`;
   try {
     await updateRolePermissions(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/admin/roles/${roleId}`, error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath(`/admin/roles/${roleId}`);
-  redirect(`/admin/roles/${roleId}`);
+  redirect(returnPath);
 }
 
 async function applyRecommendedRolePermissionsAction(formData: FormData) {
@@ -110,6 +114,7 @@ export default async function CoreAdminRoleDetailPage({
   if (!role) {
     redirect("/admin");
   }
+  const permissionReturnPath = `/admin/roles/${role.id}?permissionPage=${role.permissionPage.page}${role.permissionPage.query ? `&permissionQuery=${encodeURIComponent(role.permissionPage.query)}` : ""}${role.permissionPage.filter !== "ALL" ? `&permissionFilter=${role.permissionPage.filter}` : ""}${assignmentQuery ? `&assignmentQuery=${encodeURIComponent(assignmentQuery)}` : ""}${Number.isFinite(assignmentPageValue) && assignmentPageValue > 1 ? `&assignmentPage=${assignmentPageValue}` : ""}`;
 
   return (
     <AppShell
@@ -153,7 +158,7 @@ export default async function CoreAdminRoleDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Users</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{role.assignedUsers.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{role.assignedUsersPage.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Permissions</p>
@@ -211,9 +216,15 @@ export default async function CoreAdminRoleDetailPage({
           </form>
           <form action={updateRolePermissionsAction} className="mt-5">
             <input name="roleId" type="hidden" value={role.id} />
+            <input name="returnPath" type="hidden" value={permissionReturnPath} />
             {role.enabledPermissionCodes
               .filter((code) => !role.permissionGroups.some((group) => group.permissions.some((permission) => permission.code === code)))
               .map((code) => <input key={code} name="permissionCodes" type="hidden" value={code} />)}
+            {role.permissionPage.totalItems === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                No permissions match the current search or filter. Clear the filter to review the complete scoped permission catalog.
+              </div>
+            ) : null}
             <div className="space-y-4">
               {role.permissionGroups.map((group) => (
                 <section
@@ -390,7 +401,7 @@ export default async function CoreAdminRoleDetailPage({
               ))
             )}
           </div>
-          {role.assignedUsersPage.totalItems > 0 ? <PaginationBar page={role.assignedUsersPage.page} pageSize={role.assignedUsersPage.pageSize} totalItems={role.assignedUsersPage.totalItems} itemLabel="assigned users" getPageHref={(nextPage) => `/admin/roles/${role.id}?assignmentPage=${nextPage}${role.assignedUsersPage.query ? `&assignmentQuery=${encodeURIComponent(role.assignedUsersPage.query)}` : ""}`} /> : null}
+          {role.assignedUsersPage.totalItems > 0 ? <PaginationBar page={role.assignedUsersPage.page} pageSize={role.assignedUsersPage.pageSize} totalItems={role.assignedUsersPage.totalItems} itemLabel="assigned users" getPageHref={(nextPage) => `/admin/roles/${role.id}?assignmentPage=${nextPage}${role.assignedUsersPage.query ? `&assignmentQuery=${encodeURIComponent(role.assignedUsersPage.query)}` : ""}${role.permissionPage.page > 1 ? `&permissionPage=${role.permissionPage.page}` : ""}${role.permissionPage.query ? `&permissionQuery=${encodeURIComponent(role.permissionPage.query)}` : ""}${role.permissionPage.filter !== "ALL" ? `&permissionFilter=${role.permissionPage.filter}` : ""}`} /> : null}
         </Panel>
       </div>
 

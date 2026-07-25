@@ -837,6 +837,9 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain('itemLabel="permissions"');
     expect(pageSource).toContain("permissionPage");
     expect(pageSource).toContain("on this page");
+    expect(pageSource).toContain("role.assignedUsersPage.totalItems");
+    expect(pageSource).toContain("No permissions match the current search or filter");
+    expect(pageSource).toContain("permissionReturnPath");
     expect(pageSource).not.toContain('<button className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter</button>');
   });
 });
