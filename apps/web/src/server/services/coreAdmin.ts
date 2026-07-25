@@ -4730,20 +4730,74 @@ function toSafeJsonRecord(value: unknown) {
     : null;
 }
 
+const auditDetailMaxDepth = 8;
+const auditDetailMaxNodes = 500;
+const auditDetailMaxBytes = 64 * 1024;
+
+function toBoundedAuditJsonRecord(value: unknown) {
+  let nodes = 0;
+  let truncated = false;
+  const visit = (input: unknown, depth: number): unknown => {
+    if (depth > auditDetailMaxDepth || nodes >= auditDetailMaxNodes) {
+      truncated = true;
+      return "[TRUNCATED_POLICY_LIMIT]";
+    }
+    nodes += 1;
+    if (Array.isArray(input)) {
+      return input.map((item) => visit(item, depth + 1));
+    }
+    if (!input || typeof input !== "object") {
+      return input;
+    }
+    const output: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(input)) {
+      output[key] = auditSensitiveKey(key)
+        ? "[REDACTED]"
+        : visit(nested, depth + 1);
+    }
+    return output;
+  };
+  const visited = visit(value, 0);
+  let bounded = visited && typeof visited === "object" ? (visited as Record<string, unknown>) : null;
+  try {
+    if (Buffer.byteLength(JSON.stringify(bounded), "utf8") > auditDetailMaxBytes) {
+      truncated = true;
+      bounded = { "[TRUNCATED_POLICY_LIMIT]": "Audit payload exceeds the detail display budget." };
+    }
+  } catch {
+    truncated = true;
+    bounded = { "[TRUNCATED_POLICY_LIMIT]": "Audit payload could not be rendered within the detail budget." };
+  }
+  return { value: bounded, truncated };
+}
+
 export async function getCoreAdminAuditEventDetail(
   session: SessionContext,
   auditEventId: string,
 ) {
   const resolved = await resolveCoreAdminAuditWhere(session, {});
 
+  if (!isUuid(auditEventId)) {
+    return null;
+  }
+
   const event = await prisma.auditEvent.findFirst({
     where: {
       id: auditEventId,
       AND: [resolved.where],
     },
-    include: {
-      actor: true,
-      company: true,
+    select: {
+      id: true,
+      eventType: true,
+      entityType: true,
+      entityId: true,
+      occurredAt: true,
+      requestId: true,
+      beforeData: true,
+      afterData: true,
+      metadata: true,
+      actor: { select: { displayName: true, tenantId: true } },
+      company: { select: { tradingName: true, legalName: true, tenantId: true, timezone: true } },
     },
   });
 
@@ -4756,16 +4810,19 @@ export async function getCoreAdminAuditEventDetail(
     eventType: event.eventType,
     entityType: event.entityType,
     entityId: event.entityId,
-    actorName: event.actor?.displayName ?? "System",
+    actorName: event.actor?.tenantId === session.context.tenantId ? event.actor.displayName : "System",
     actorEmail: "",
     companyName:
-      event.company?.tradingName ?? event.company?.legalName ?? "Tenant-wide",
+      event.company?.tenantId === session.context.tenantId
+        ? event.company.tradingName ?? event.company.legalName ?? "Tenant-wide"
+        : "Tenant-wide",
+    timezone: event.company?.timezone ?? "Asia/Manila",
     occurredAt: event.occurredAt.toISOString(),
     requestId: event.requestId,
     ipAddress: "",
-    beforeData: toSafeJsonRecord(event.beforeData),
-    afterData: toSafeJsonRecord(event.afterData),
-    metadata: toSafeJsonRecord(event.metadata),
+    beforeData: toBoundedAuditJsonRecord(event.beforeData),
+    afterData: toBoundedAuditJsonRecord(event.afterData),
+    metadata: toBoundedAuditJsonRecord(event.metadata),
   };
 }
 

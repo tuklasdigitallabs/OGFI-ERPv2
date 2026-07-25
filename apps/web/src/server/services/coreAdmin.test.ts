@@ -922,4 +922,21 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("rule.auditPage.totalItems");
     expect(pageSource).toContain("rule.timezone");
   });
+
+  test("audit detail uses a tenant-safe bounded redacted projection", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/audit/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("getCoreAdminAuditEventDetail");
+    expect(serviceSource).toContain("if (!isUuid(auditEventId))");
+    expect(serviceSource).toContain("toBoundedAuditJsonRecord");
+    expect(serviceSource).toContain("auditDetailMaxDepth");
+    expect(serviceSource).toContain("auditDetailMaxNodes");
+    expect(serviceSource).toContain("auditDetailMaxBytes");
+    expect(serviceSource).toContain("actor: { select: { displayName: true, tenantId: true } }");
+    expect(serviceSource).toContain("company: { select: { tradingName: true, legalName: true, tenantId: true, timezone: true } }");
+    expect(pageSource).toContain("payload.truncated");
+    expect(pageSource).toContain("Partially shown due to the audit detail display budget");
+    expect(pageSource).toContain("max-h-96");
+    expect(pageSource).toContain("event.timezone");
+  });
 });

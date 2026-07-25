@@ -9,16 +9,19 @@ export const dynamic = "force-dynamic";
 
 function JsonPanel({
   title,
-  value
+  payload
 }: {
   title: string;
-  value: Record<string, unknown> | null;
+  payload: { value: Record<string, unknown> | null; truncated: boolean };
 }) {
   return (
     <Panel className="ogfi-detail-card">
       <h2 className="text-lg font-bold text-slate-950">{title}</h2>
-      <pre className="mt-4 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">
-        {JSON.stringify(value ?? {}, null, 2)}
+      {payload.truncated ? (
+        <p className="mt-2 text-sm text-amber-700">Partially shown due to the audit detail display budget; the immutable event was not changed.</p>
+      ) : null}
+      <pre className="mt-4 max-h-96 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">
+        {JSON.stringify(payload.value ?? {}, null, 2)}
       </pre>
     </Panel>
   );
@@ -124,7 +127,7 @@ export default async function CoreAdminAuditEventDetailPage({
             </div>
             <div>
               <dt className="font-medium text-slate-500">Occurred</dt>
-              <dd className="mt-1 font-semibold text-slate-950">{event.occurredAt}</dd>
+              <dd className="mt-1 font-semibold text-slate-950">{new Date(event.occurredAt).toLocaleString("en-PH", { timeZone: event.timezone })}</dd>
             </div>
             <div>
               <dt className="font-medium text-slate-500">Request ID</dt>
@@ -143,9 +146,9 @@ export default async function CoreAdminAuditEventDetailPage({
           </p>
         </Panel>
 
-        <JsonPanel title="Before Data (policy-redacted)" value={event.beforeData} />
-        <JsonPanel title="After Data (policy-redacted)" value={event.afterData} />
-        <JsonPanel title="Metadata (policy-redacted)" value={event.metadata} />
+        <JsonPanel title="Before Data (policy-redacted)" payload={event.beforeData} />
+        <JsonPanel title="After Data (policy-redacted)" payload={event.afterData} />
+        <JsonPanel title="Metadata (policy-redacted)" payload={event.metadata} />
       </div>
 
     </AppShell>
