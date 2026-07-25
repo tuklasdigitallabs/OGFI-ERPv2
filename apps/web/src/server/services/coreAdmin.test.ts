@@ -96,6 +96,19 @@ describe("core administration audit search wiring", () => {
     expect(adminPageSource).toContain("Selected company summary");
     expect(adminPageSource).toContain("Selected company: {session.context.companyName}");
     expect(adminPageSource).toContain("This is not a tenant-wide company directory.");
+    for (const functionName of [
+      "listCoreAdminLocationPageAuthorized",
+      "listCoreAdminBrandPageAuthorized",
+      "listCoreAdminDepartmentPageAuthorized",
+    ]) {
+      const start = serviceSource.indexOf(`async function ${functionName}`);
+      const end = serviceSource.indexOf("async function ", start + 10);
+      const source = serviceSource.slice(start, end === -1 ? undefined : end);
+      expect(source).toContain("const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));");
+      expect(source).toContain("const page = Math.min(values.page, pageCount);");
+      expect(source).toContain("skip: (page - 1) * values.pageSize");
+      expect(source).not.toContain("include: { company: true");
+    }
     expect(adminPageSource).toContain("label: \"Departments\"");
     expect(adminPageSource).not.toContain("const workspaces = [");
   });

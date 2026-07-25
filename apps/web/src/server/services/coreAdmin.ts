@@ -978,17 +978,30 @@ async function listCoreAdminLocationPageAuthorized(
         }
       : {}),
   };
-  const [totalItems, activeItems, locations] = await Promise.all([
+  const [totalItems, activeItems] = await Promise.all([
     prisma.location.count({ where }),
     prisma.location.count({ where: { ...where, status: "ACTIVE" } }),
-    prisma.location.findMany({
-      where,
-      include: { company: true, brand: true },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-      skip: (values.page - 1) * values.pageSize,
-      take: values.pageSize,
-    }),
   ]);
+  const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, pageCount);
+  const locations = await prisma.location.findMany({
+    where,
+    select: {
+      id: true,
+      companyId: true,
+      brandId: true,
+      code: true,
+      name: true,
+      locationType: true,
+      timezone: true,
+      status: true,
+      company: { select: { legalName: true, tradingName: true } },
+      brand: { select: { name: true } },
+    },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
   return {
     items: locations.map((location) => ({
       id: location.id,
@@ -1002,7 +1015,7 @@ async function listCoreAdminLocationPageAuthorized(
       timezone: location.timezone,
       status: location.status,
     })),
-    page: values.page,
+    page,
     pageSize: values.pageSize,
     totalItems,
     activeItems,
@@ -1065,17 +1078,26 @@ async function listCoreAdminBrandPageAuthorized(
         }
       : {}),
   };
-  const [totalItems, activeItems, brands] = await Promise.all([
+  const [totalItems, activeItems] = await Promise.all([
     prisma.brand.count({ where }),
     prisma.brand.count({ where: { ...where, status: "ACTIVE" } }),
-    prisma.brand.findMany({
-      where,
-      include: { company: true },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-      skip: (values.page - 1) * values.pageSize,
-      take: values.pageSize,
-    }),
   ]);
+  const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, pageCount);
+  const brands = await prisma.brand.findMany({
+    where,
+    select: {
+      id: true,
+      companyId: true,
+      code: true,
+      name: true,
+      status: true,
+      company: { select: { legalName: true, tradingName: true } },
+    },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
   return {
     items: brands.map((brand) => ({
       id: brand.id,
@@ -1085,7 +1107,7 @@ async function listCoreAdminBrandPageAuthorized(
       name: brand.name,
       status: brand.status,
     })),
-    page: values.page,
+    page,
     pageSize: values.pageSize,
     totalItems,
     activeItems,
@@ -1151,25 +1173,27 @@ async function listCoreAdminDepartmentPageAuthorized(
         }
       : {}),
   };
-  const [totalItems, activeItems, departments] = await Promise.all([
+  const [totalItems, activeItems] = await Promise.all([
     prisma.department.count({ where }),
     prisma.department.count({ where: { ...where, status: "ACTIVE" } }),
-    prisma.department.findMany({
-      where,
-      select: {
-        id: true,
-        companyId: true,
-        name: true,
-        code: true,
-        status: true,
-        company: { select: { legalName: true, tradingName: true } },
-        _count: { select: { budgets: true, budgetLines: true, costCenters: true } },
-      },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-      skip: (values.page - 1) * values.pageSize,
-      take: values.pageSize,
-    }),
   ]);
+  const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, pageCount);
+  const departments = await prisma.department.findMany({
+    where,
+    select: {
+      id: true,
+      companyId: true,
+      name: true,
+      code: true,
+      status: true,
+      company: { select: { legalName: true, tradingName: true } },
+      _count: { select: { budgets: true, budgetLines: true, costCenters: true } },
+    },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
   return {
     items: departments.map((department) => ({
       id: department.id,
@@ -1182,7 +1206,7 @@ async function listCoreAdminDepartmentPageAuthorized(
       budgetLineCount: department._count.budgetLines,
       costCenterCount: department._count.costCenters,
     })),
-    page: values.page,
+    page,
     pageSize: values.pageSize,
     totalItems,
     activeItems,
