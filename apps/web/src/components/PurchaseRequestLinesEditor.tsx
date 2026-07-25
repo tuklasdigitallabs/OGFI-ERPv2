@@ -32,9 +32,6 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState(false);
   const [lookupRetry, setLookupRetry] = useState(0);
-  const [itemOverflow, setItemOverflow] = useState(false);
-  const [uomOverflow, setUomOverflow] = useState(false);
-  const [budgetOverflow, setBudgetOverflow] = useState(false);
   const isEmergency = urgency === "Emergency";
   const selectedIndex = Math.max(0, lines.findIndex((line) => line.key === selectedKey));
   const selected = lines[selectedIndex] ?? lines[0]!;
@@ -46,7 +43,6 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
   useEffect(() => {
     if (itemQuery.trim().length < 2) {
       setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained ? [retained, ...initialItems.filter((item) => item.id !== retained.id)] : initialItems; });
-      setItemOverflow(false);
       setItemTotalPages(1);
       return;
     }
@@ -59,14 +55,13 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
         return response.json() as Promise<{ options: DraftItemOption[] }>;
       })
-      .then((result: { options: DraftItemOption[]; page?: number; totalPages?: number }) => { const options = result.options.map((item) => ({ ...item, uoms: [] })); setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained && !options.some((item) => item.id === retained.id) ? [retained, ...options] : options; }); setItemPage(result.page ?? itemPage); setItemTotalPages(result.totalPages ?? 1); setItemOverflow(false); setLookupMessage(options.length ? null : "No active catalog items match this search."); setLookupLoading(false); })
+      .then((result: { options: DraftItemOption[]; page?: number; totalPages?: number }) => { const options = result.options.map((item) => ({ ...item, uoms: [] })); setItemOptions((current) => { const retained = current.find((item) => item.id === selected.itemId); return retained && !options.some((item) => item.id === retained.id) ? [retained, ...options] : options; }); setItemPage(result.page ?? itemPage); setItemTotalPages(result.totalPages ?? 1); setLookupMessage(options.length ? null : "No active catalog items match this search."); setLookupLoading(false); })
       .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setLookupError(true); setLookupMessage("Item lookup is unavailable. Retry the search or contact an administrator."); });
     return () => controller.abort();
   }, [itemQuery, initialItems, selected.itemId, itemPage, lookupRetry]);
   useEffect(() => {
     if (!selected.itemId) {
       setUomOptions(initialUoms);
-      setUomOverflow(false);
       setUomTotalPages(1);
       return;
     }
@@ -78,14 +73,13 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
         return response.json() as Promise<{ options: DraftUomOption[] }>;
       })
-      .then((result: { options: DraftUomOption[]; page?: number; totalPages?: number }) => { setUomOptions(result.options); setUomPage(result.page ?? uomPage); setUomTotalPages(result.totalPages ?? 1); setUomOverflow(false); setLookupMessage(result.options.length ? null : "No valid UOMs are configured for this item."); setLookupLoading(false); })
+      .then((result: { options: DraftUomOption[]; page?: number; totalPages?: number }) => { setUomOptions(result.options); setUomPage(result.page ?? uomPage); setUomTotalPages(result.totalPages ?? 1); setLookupMessage(result.options.length ? null : "No valid UOMs are configured for this item."); setLookupLoading(false); })
       .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setLookupError(true); setUomOptions([]); setLookupMessage("No valid UOMs are available for this item. Choose another item or ask an administrator."); });
     return () => controller.abort();
   }, [selected.itemId, selected.uomId, uomQuery, uomPage, initialUoms, lookupRetry]);
   useEffect(() => {
     if (budgetQuery.trim().length < 2) {
       setBudgetOptions(initialBudgetLines);
-      setBudgetOverflow(false);
       setBudgetTotalPages(1);
       return;
     }
@@ -97,7 +91,7 @@ export function PurchaseRequestLinesEditor({ action, items: initialItems, uoms: 
         if (!response.ok) throw new Error("LOOKUP_UNAVAILABLE");
         return response.json() as Promise<{ options: Array<{ id: string; code: string; name: string; budget?: { publicReference: string; name: string } | null }>; page?: number; totalPages?: number }>;
       })
-      .then((result) => { const options = result.options.map((option) => ({ id: option.id, label: `${option.code} / ${option.name}`, helper: option.budget ? `${option.budget.publicReference} / ${option.budget.name}` : "" })); setBudgetOptions(options); setBudgetPage(result.page ?? budgetPage); setBudgetTotalPages(result.totalPages ?? 1); setBudgetOverflow(false); setLookupMessage(options.length ? null : "No active budget lines match this search."); setLookupLoading(false); })
+      .then((result) => { const options = result.options.map((option) => ({ id: option.id, label: `${option.code} / ${option.name}`, helper: option.budget ? `${option.budget.publicReference} / ${option.budget.name}` : "" })); setBudgetOptions(options); setBudgetPage(result.page ?? budgetPage); setBudgetTotalPages(result.totalPages ?? 1); setLookupMessage(options.length ? null : "No active budget lines match this search."); setLookupLoading(false); })
       .catch((error: unknown) => { if (error instanceof DOMException && error.name === "AbortError") return; setLookupLoading(false); setLookupError(true); setLookupMessage("Budget lookup is unavailable. You can leave budget classification for Finance."); });
     return () => controller.abort();
   }, [budgetQuery, initialBudgetLines, selected.budgetLineId, budgetPage, lookupRetry]);

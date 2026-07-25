@@ -834,3 +834,6 @@ Update this register only when implementation state, release scope, a confirmed 
 - The visible scope register now uses one URL-selected deactivation composer, preserves filter/page return context, enforces the service’s five-character reason minimum in the UI, and shows a safe stale-selection message when the selected row leaves the filtered page.
 - Evidence: Core Admin tests 32/32, web typecheck, and diff check pass. PostgreSQL isolation/query-plan execution, responsive browser, hosted recovery, and UAT remain open; Administration is not complete.
 - Scope rows now expose explicit CURRENT/FUTURE/EXPIRED effective-state labels and end dates from the bounded projection. Stale out-of-range page count parity and live PostgreSQL execution remain open gates.
+
+### DEC-0159 Web lint gate repair — July 25, 2026
+- Removed obsolete overflow state from the bounded Purchase Request line lookup editor. Web lint and TypeScript now both pass; focused Core Admin tests remain 32/32. Full browser, database, hosted, and UAT gates remain open.
