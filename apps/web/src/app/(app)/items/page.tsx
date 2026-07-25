@@ -550,7 +550,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
           title="Create Conversion"
           triggerLabel="Create Conversion"
         >
-          <ConversionCreateComposer action={createConversionAction} returnQuery={conversionQuery} returnPage={masterData.conversionsPage.page} returnId={selectedConversionId} />
+          <ConversionCreateComposer action={createConversionAction} returnQuery={conversionQuery} returnPage={masterData.conversionsPage.page} {...(selectedConversionId ? { returnId: selectedConversionId } : {})} />
         </EntryModal>
         ) : null}
       </div>

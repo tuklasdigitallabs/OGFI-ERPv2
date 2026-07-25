@@ -4945,8 +4945,8 @@ export async function getCoreAdminPermissionDetail(
   const page = Math.min(requestedPage, pageCount);
   const roleRows = await prisma.rolePermission.findMany({
     where: roleWhere,
-    select: { id: true, role: { select: { id: true, name: true, code: true, status: true } } },
-    orderBy: [{ role: { name: "asc" } }, { id: "asc" }],
+    include: { role: { select: { id: true, name: true, code: true, status: true } } },
+    orderBy: [{ role: { name: "asc" } }, { roleId: "asc" }],
     skip: (page - 1) * pageSize,
     take: pageSize,
   });

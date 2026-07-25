@@ -716,5 +716,9 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("scopeQuery");
     expect(pageSource).toContain("scopeType");
     expect(pageSource).toContain('itemLabel="scopes"');
+    expect(pageSource).toContain("scopeActionId");
+    expect(pageSource).toContain("Open scope controls");
+    expect(pageSource).toContain("minLength={5}");
+    expect(pageSource).toContain("returnPath");
   });
 });

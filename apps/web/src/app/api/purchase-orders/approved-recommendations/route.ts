@@ -13,7 +13,7 @@ export async function GET(request: Request) {
       query: url.searchParams.get("query") ?? "",
       page: Number(url.searchParams.get("page") ?? "1"),
       pageSize: Number(url.searchParams.get("pageSize") ?? "25"),
-      selectedId: url.searchParams.get("selectedId") || undefined,
+      ...(url.searchParams.get("selectedId") ? { selectedId: url.searchParams.get("selectedId")! } : {}),
     });
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

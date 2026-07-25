@@ -11,8 +11,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const selectedIds = url.searchParams.getAll("selectedId");
   try {
+    const rawKind = url.searchParams.get("kind") ?? "item";
+    if (!["item", "uom", "category"].includes(rawKind)) return NextResponse.json({ code: "OPTION_INPUT_INVALID" }, { status: 400 });
+    const kind = rawKind as "item" | "uom" | "category";
     const result = await listItemMasterOptionCatalog(session, {
-      kind: url.searchParams.get("kind") ?? "item",
+      kind,
       query: url.searchParams.get("query") ?? "",
       selectedIds,
       page: Number(url.searchParams.get("page") ?? "1"),

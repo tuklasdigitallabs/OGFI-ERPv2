@@ -463,7 +463,7 @@ export async function listQuoteRequests(
 
 export async function listQuoteRequestsPage(
   session: SessionContext,
-  options: { page?: number; pageSize?: number } = {}
+  options: { page?: number; pageSize?: number; query?: string; fromDate?: string; toDate?: string } = {}
 ) {
   await requirePermission(session, permissions.quoteManage);
   const pageSize = Math.min(Math.max(options.pageSize ?? 25, 1), 100);
@@ -471,7 +471,7 @@ export async function listQuoteRequestsPage(
   const totalItems = await prisma.purchaseRequest.count({ where: quoteRequestPageWhere(session, options) });
   const pageCount = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, pageCount);
-  const items = await listQuoteRequests(session, { page, pageSize, query: options.query, fromDate: options.fromDate, toDate: options.toDate });
+  const items = await listQuoteRequests(session, { page, pageSize, ...(options.query ? { query: options.query } : {}), ...(options.fromDate ? { fromDate: options.fromDate } : {}), ...(options.toDate ? { toDate: options.toDate } : {}) });
   return { items, totalItems, page, pageSize, pageCount, query: options.query?.trim() ?? "", fromDate: options.fromDate ?? "", toDate: options.toDate ?? "" };
 }
 
