@@ -323,7 +323,8 @@ export default async function CoreAdminUserDetailPage({
   const selectedScope = scopeActionId ? scopedUser.scopes.find((scope) => scope.id === scopeActionId) : null;
   const selectedRole = roleActionId ? user.roles.find((role) => role.assignmentId === roleActionId) : null;
   const roleReturnPath = `/admin/users/${id}?section=roles${user.rolesPage.page > 1 ? `&assignedRolePage=${user.rolesPage.page}` : ""}${user.rolesPage.query ? `&assignedRoleQuery=${encodeURIComponent(user.rolesPage.query)}` : ""}`;
-  const scopeReturnPath = `/admin/users/${id}?scopePage=${scopePage.page}${scopePage.query ? `&scopeQuery=${encodeURIComponent(scopePage.query)}` : ""}${scopePage.scopeType ? `&scopeType=${encodeURIComponent(scopePage.scopeType)}` : ""}`;
+  const buildScopeHref = (actionId?: string, page = scopePage.page) => `/admin/users/${id}?section=scopes&scopePage=${page}${scopePage.query ? `&scopeQuery=${encodeURIComponent(scopePage.query)}` : ""}${scopePage.scopeType ? `&scopeType=${encodeURIComponent(scopePage.scopeType)}` : ""}${actionId ? `&scopeActionId=${encodeURIComponent(actionId)}` : ""}`;
+  const scopeReturnPath = buildScopeHref();
   const requestReturnPath = `/admin/users/${id}?section=requests&requestKind=${requestKind}${requestActionId ? `&requestActionId=${encodeURIComponent(requestActionId)}` : ""}${scopeRequestStatusValue ? `&scopeRequestStatus=${encodeURIComponent(scopeRequestStatusValue)}` : ""}${roleRequestStatusValue ? `&roleRequestStatus=${encodeURIComponent(roleRequestStatusValue)}` : ""}${requestKind === "scope" ? `&scopeRequestPage=${user?.highRiskScopeRequestPage.page ?? 1}` : `&roleRequestPage=${user?.sensitiveRoleRequestPage.page ?? 1}`}`;
   const selectedScopeRequest = requestKind === "scope" && requestActionId
     ? scopedUser.highRiskScopeRequests.find((request) => request.id === requestActionId)
@@ -524,6 +525,7 @@ export default async function CoreAdminUserDetailPage({
             {user.canMutateScopes ? <Badge tone="warning">Mutable</Badge> : <Badge>Self protected</Badge>}
           </div>
           <form className="mt-4 grid gap-2 md:grid-cols-[1fr_12rem_auto]" method="get">
+            <input name="section" type="hidden" value="scopes" />
             <label className="grid gap-1 text-sm font-medium text-slate-700">Search scopes<input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="scopeQuery" defaultValue={scopedUser.scopesPage.query} placeholder="Name or code" /></label>
             <label className="grid gap-1 text-sm font-medium text-slate-700">Type<select className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="scopeType" defaultValue={scopedUser.scopesPage.scopeType ?? ""}><option value="">All types</option>{["COMPANY", "BRAND", "LOCATION", "DEPARTMENT", "PROJECT"].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
             <button className="mt-auto min-h-11 rounded-md bg-slate-800 px-4 text-sm font-semibold text-white" type="submit">Search</button>
@@ -560,7 +562,7 @@ export default async function CoreAdminUserDetailPage({
                     <p className="mt-1 text-xs text-slate-500">
                       {scope.riskLabel}
                     </p>
-                    <ButtonLink href={`${scopeReturnPath}&scopeActionId=${encodeURIComponent(scope.id)}`} tone="ghost" className="mt-3 min-h-11 px-0 text-sm text-blue-700">Open scope controls</ButtonLink>
+                    <ButtonLink href={buildScopeHref(scope.id)} tone="ghost" className="mt-3 min-h-11 px-0 text-sm text-blue-700">Open scope controls</ButtonLink>
                   </div>
                 </div>
               ))
@@ -571,7 +573,7 @@ export default async function CoreAdminUserDetailPage({
             <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{selectedScope.displayName}</p><p>{selectedScope.displayContext} · {humanizeEnum(selectedScope.type)} · {humanizeEnum(selectedScope.accessLevel)}</p><p className="mt-1">{selectedScope.riskLabel}. Deactivation is audited and rechecked when submitted.</p></div>
             {user.canMutateScopes && selectedScope.canMutate ? <form action={deactivateScope} className="ogfi-form-shell mt-4 grid gap-3"><input name="targetUserId" type="hidden" value={user.id} /><input name="assignmentId" type="hidden" value={selectedScope.id} /><input name="returnPath" type="hidden" value={scopeReturnPath} /><label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason<input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="reason" minLength={5} required /></label><button className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white sm:w-fit">Deactivate Scope</button></form> : <p className="mt-3 text-sm text-amber-800">This scope cannot be deactivated from the current user context. Live authorization and risk controls remain authoritative.</p>}
           </EntryModal> : null}
-          {scopedUser.scopesPage.totalItems > 0 ? <PaginationBar page={scopedUser.scopesPage.page} pageSize={scopedUser.scopesPage.pageSize} totalItems={scopedUser.scopesPage.totalItems} itemLabel="scopes" getPageHref={(nextPage) => `/admin/users/${user.id}?scopePage=${nextPage}${scopedUser.scopesPage.query ? `&scopeQuery=${encodeURIComponent(scopedUser.scopesPage.query)}` : ""}${scopedUser.scopesPage.scopeType ? `&scopeType=${encodeURIComponent(scopedUser.scopesPage.scopeType)}` : ""}`} /> : null}
+          {scopedUser.scopesPage.totalItems > 0 ? <PaginationBar page={scopedUser.scopesPage.page} pageSize={scopedUser.scopesPage.pageSize} totalItems={scopedUser.scopesPage.totalItems} itemLabel="scopes" getPageHref={(nextPage) => buildScopeHref(undefined, nextPage)} /> : null}
         </Panel>
         </> : null}
 

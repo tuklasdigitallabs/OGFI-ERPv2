@@ -879,3 +879,8 @@ Update this register only when implementation state, release scope, a confirmed 
 - Replaced repeated per-row role deactivation forms with one URL-selected role controls composer. Selection preserves the bounded assigned-role search/page context, shows role/status/consequence context, requires a five-character reason, and returns to the same filtered page after success or error.
 - Stale, filtered-out, or non-mutable selections are explicitly read-only; the existing server mutation remains authoritative for tenant/company scope, self-protection, sensitive-role and approval-rule restrictions, CAS/locking, privilege epoch, and audit.
 - Evidence: Core Admin focused tests 34/34, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT remain open; Administration and Phase I are not complete.
+
+### DEC-0169 Administration User Access scope URL continuity — July 25, 2026
+- Scope search, type filters, paging, selected controls, and deactivation return paths now use one canonical URL builder that retains `section=scopes` and active query/type/page context. Scope actions no longer fall back to Overview after navigation or mutation.
+- Selection remains bounded to the current page and all authorization, selected-company, reason, concurrency, self-protection, and audit controls remain server-authoritative.
+- Evidence: Core Admin focused tests 34/34, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT remain open; Administration and Phase I are not complete.

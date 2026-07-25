@@ -625,6 +625,11 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain('aria-label="User access sections"');
     expect(detailPageSource).toContain('section === "roles" && user.canMutateRoles');
     expect(detailPageSource).toContain("const loadScopePage =");
+    expect(detailPageSource).toContain("const buildScopeHref =");
+    expect(detailPageSource).toContain("/admin/users/${id}?section=scopes&scopePage=");
+    expect(detailPageSource).toContain('<input name="section" type="hidden" value="scopes" />');
+    expect(detailPageSource).toContain("buildScopeHref(scope.id)");
+    expect(detailPageSource).toContain("buildScopeHref(undefined, nextPage)");
     expect(detailPageSource).toContain("const loadRoleSurface = section === \"overview\" || section === \"roles\";");
     expect(detailPageSource).toContain('{loadRoleSurface ? user.roles.length : "—"}');
     expect(detailPageSource).toContain('{loadRoleSurface ? user.permissions.length : "—"}');

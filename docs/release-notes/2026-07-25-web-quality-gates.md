@@ -5,3 +5,5 @@ The web lint and TypeScript gates are green after removing obsolete client overf
 User Access now limits assigned-role and effective-permission reads to the Overview and Roles sections. Other sections show an unavailable marker for those summaries, while role Requests retains only the identifiers needed by its assignment catalog.
 
 The Roles section now uses one selected-role action composer with preserved search/page context and a required reason, replacing repeated deactivation forms in each row.
+
+Scope navigation and deactivation now preserve the Scopes tab, filters, and page context through search, paging, and action redirects.
