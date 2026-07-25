@@ -980,4 +980,7 @@ Update this register only when implementation state, release scope, a confirmed 
 
 ### DEC-0189 Supplier catalog category option paging — July 25, 2026
 - Replaced the unbounded supplier-category option read with a tenant/company/supplier-scoped, deterministically ordered, bounded service page. The Catalog UI preserves selected-category scope, exposes refinement and previous/next option controls, and keeps item-link pagination independent. No schema or public API migration is required; focused UI/type/test validation and PostgreSQL high-cardinality evidence remain part of the open shared gates.
+
+### DEC-0190 Supplier catalog option contract gate — July 25, 2026
+- Added executable supplier service/UI assertions for bounded category page size, refinement length, deterministic ordering, selected-category retention, option pagination controls, preserved URL context, and removal of the prior unbounded category-count materialization. Focused supplier tests, typecheck, lint, and production build pass; disposable PostgreSQL query-plan, responsive browser, hosted recovery, and UAT evidence remain open.
 - Current status is **Reopened — exact-candidate revalidation pending**. Disposable PostgreSQL permission/isolation/no-mutation execution, hosted exact-SHA build/database/manifest evidence, and accepted fixture browser evidence remain required. Production-mode `next start` E2E stays assigned to SPF-001/SPF-009.

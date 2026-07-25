@@ -95,4 +95,31 @@ describe("supplier master-data controls", () => {
     expect(page).toContain('name="selectedUomId"');
     expect(page).not.toContain("listSupplierItemLinkOptions");
   });
+
+  test("supplier catalog category options remain bounded and context-preserving", () => {
+    const service = readFileSync(path.resolve(__dirname, "suppliers.ts"), "utf8");
+    const page = readFileSync(path.resolve(__dirname, "../../app/(app)/suppliers/page.tsx"), "utf8");
+
+    expect(service).toContain("categoryQuery?: string");
+    expect(service).toContain("categoryPage?: number");
+    expect(service).toContain("categoryPageSize?: number");
+    expect(service).toContain("Math.min(Math.max(filters?.categoryPageSize ?? 25, 10), 100)");
+    expect(service).toContain("filters?.categoryQuery?.trim().slice(0, 120)");
+    expect(service).toContain('orderBy: [{ categoryName: "asc" }, { id: "asc" }]');
+    expect(service).toContain("skip: (categoryPage - 1) * categoryPageSize");
+    expect(service).toContain("take: categoryPageSize");
+    expect(service).toContain("categoryTotalCount");
+    expect(service).toContain("selectedCategoryWhere");
+    expect(service).toContain("selectedCategory && !categories.some");
+    expect(service).not.toContain('distinct: ["itemId"]');
+
+    expect(page).toContain('name="catalogCategoryQuery"');
+    expect(page).toContain('name="catalogCategory"');
+    expect(page).toContain("catalogCategoryPageHref");
+    expect(page).toContain("Previous category options");
+    expect(page).toContain("Next category options");
+    expect(page).toContain("min-h-11 items-center");
+    expect(page).toContain("catalogCategoryQuery");
+    expect(page).toContain("catalogCategoryPage");
+  });
 });
