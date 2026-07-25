@@ -5068,11 +5068,20 @@ export async function getCoreAdminPermissionDetail(
 export async function getCoreAdminCompanyDetail(
   session: SessionContext,
   companyId: string,
+  input: {
+    accessPage?: number;
+    accessPageSize?: number;
+    accessQuery?: string;
+  } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
   if (companyId !== session.context.companyId) {
+    return null;
+  }
+
+  if (!z.string().uuid().safeParse(companyId).success) {
     return null;
   }
 
@@ -5082,17 +5091,11 @@ export async function getCoreAdminCompanyDetail(
       tenantId: session.context.tenantId,
     },
     include: {
-      brands: {
-        orderBy: { name: "asc" },
-      },
-      locations: {
-        orderBy: { name: "asc" },
-      },
-      approvalRules: {
-        include: {
-          steps: true,
+      _count: {
+        select: {
+          brands: true,
+          locations: true,
         },
-        orderBy: [{ isActive: "desc" }, { priority: "asc" }],
       },
     },
   });
@@ -5101,26 +5104,38 @@ export async function getCoreAdminCompanyDetail(
     return null;
   }
 
-  const [companyScopeAssignments, purchaseRequests, auditEvents] =
+  const rawAccessPageSize = Number(input.accessPageSize ?? 25);
+  const rawAccessPage = Number(input.accessPage ?? 1);
+  const accessPageSize = Number.isFinite(rawAccessPageSize)
+    ? Math.min(100, Math.max(10, Math.floor(rawAccessPageSize)))
+    : 25;
+  const requestedAccessPage = Number.isFinite(rawAccessPage)
+    ? Math.min(100_000, Math.max(1, Math.floor(rawAccessPage)))
+    : 1;
+  const accessQuery = typeof input.accessQuery === "string" ? input.accessQuery.trim().slice(0, 120) : "";
+  const effectiveNow = new Date();
+  const accessWhere = {
+    scopeType: "COMPANY" as const,
+    scopeId: company.id,
+    status: "ACTIVE" as const,
+    startsAt: { lte: effectiveNow },
+    OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+    user: {
+      tenantId: session.context.tenantId,
+      status: "ACTIVE" as const,
+      ...(accessQuery
+        ? {
+            OR: [
+              { displayName: { contains: accessQuery, mode: "insensitive" as const } },
+              { email: { contains: accessQuery, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
+  };
+  const [companyScopeAssignmentTotal, purchaseRequests, auditEvents] =
     await Promise.all([
-      prisma.userScopeAssignment.findMany({
-        where: {
-          scopeType: "COMPANY",
-          scopeId: company.id,
-          status: "ACTIVE",
-        },
-        include: {
-          user: {
-            include: {
-              roleAssignments: {
-                where: { status: "ACTIVE" },
-                include: { role: true },
-              },
-            },
-          },
-        },
-        orderBy: { startsAt: "asc" },
-      }),
+      prisma.userScopeAssignment.count({ where: accessWhere }),
       prisma.purchaseRequest.findMany({
         where: {
           tenantId: session.context.tenantId,
@@ -5150,6 +5165,41 @@ export async function getCoreAdminCompanyDetail(
       }),
     ]);
 
+  const accessPageCount = Math.max(1, Math.ceil(companyScopeAssignmentTotal / accessPageSize));
+  const accessPage = Math.min(requestedAccessPage, accessPageCount);
+  const companyScopeAssignments = await prisma.userScopeAssignment.findMany({
+    where: accessWhere,
+    select: {
+      id: true,
+      userId: true,
+      startsAt: true,
+      accessLevel: true,
+      user: {
+        select: {
+          displayName: true,
+          email: true,
+          roleAssignments: {
+            where: {
+              status: "ACTIVE",
+              startsAt: { lte: effectiveNow },
+              OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+              role: {
+                status: "ACTIVE",
+                OR: [{ tenantId: null }, { tenantId: session.context.tenantId }],
+              },
+            },
+            select: { role: { select: { name: true } } },
+            orderBy: { startsAt: "asc" },
+            take: 8,
+          },
+        },
+      },
+    },
+    orderBy: [{ userId: "asc" }, { id: "asc" }],
+    skip: (accessPage - 1) * accessPageSize,
+    take: accessPageSize,
+  });
+
   return {
     id: company.id,
     legalName: company.legalName,
@@ -5159,26 +5209,15 @@ export async function getCoreAdminCompanyDetail(
     currencyCode: company.currencyCode,
     timezone: company.timezone,
     status: company.status,
-    brands: company.brands.map((brand) => ({
-      id: brand.id,
-      name: brand.name,
-      code: brand.code,
-      status: brand.status,
-    })),
-    locations: company.locations.map((location) => ({
-      id: location.id,
-      name: location.name,
-      code: location.code,
-      type: location.locationType,
-      status: location.status,
-    })),
-    approvalRules: company.approvalRules.map((rule) => ({
-      id: rule.id,
-      transactionType: rule.transactionType,
-      priority: rule.priority,
-      isActive: rule.isActive,
-      stepCount: rule.steps.length,
-    })),
+    brands: { totalItems: company._count.brands },
+    locations: { totalItems: company._count.locations },
+    assignedUsersPage: {
+      page: accessPage,
+      pageSize: accessPageSize,
+      totalItems: companyScopeAssignmentTotal,
+      totalPages: accessPageCount,
+      query: accessQuery,
+    },
     assignedUsers: companyScopeAssignments.map((assignment) => ({
       id: assignment.id,
       displayName: assignment.user.displayName,

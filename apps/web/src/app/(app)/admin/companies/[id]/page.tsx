@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
 import { AppShell } from "@/components/AppShell";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
 import { assertCanManageCompanyScope, getCoreAdminCompanyDetail } from "@/server/services/coreAdmin";
@@ -8,9 +8,11 @@ import { getSessionContext } from "@/server/services/context";
 export const dynamic = "force-dynamic";
 
 export default async function CoreAdminCompanyDetailPage({
-  params
+  params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const session = await getSessionContext();
   if (!session) {
@@ -32,7 +34,14 @@ export default async function CoreAdminCompanyDetailPage({
   }
 
   const { id } = await params;
-  const company = await getCoreAdminCompanyDetail(session, id);
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const accessPageValue = Number.parseInt(String(resolvedSearchParams.accessPage ?? "1"), 10);
+  const accessPageSizeValue = Number.parseInt(String(resolvedSearchParams.accessPageSize ?? "25"), 10);
+  const company = await getCoreAdminCompanyDetail(session, id, {
+    accessPage: Number.isFinite(accessPageValue) ? accessPageValue : 1,
+    accessPageSize: Number.isFinite(accessPageSizeValue) ? accessPageSizeValue : 25,
+    accessQuery: String(resolvedSearchParams.accessQuery ?? "").slice(0, 120),
+  });
   if (!company) {
     redirect("/admin");
   }
@@ -70,11 +79,11 @@ export default async function CoreAdminCompanyDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Brands</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{company.brands.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{company.brands.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Locations</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{company.locations.length}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{company.locations.totalItems}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Status</p>
@@ -117,8 +126,24 @@ export default async function CoreAdminCompanyDetailPage({
 
         <Panel className="ogfi-detail-card">
           <h2 className="text-lg font-bold text-slate-950">Company Access</h2>
+          <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <label className="sr-only" htmlFor="accessQuery">Search company access</label>
+            <input
+              id="accessQuery"
+              name="accessQuery"
+              defaultValue={company.assignedUsersPage.query}
+              placeholder="Search name or email"
+              maxLength={120}
+              className="min-h-11 flex-1 rounded-lg border border-slate-300 px-3 text-sm"
+            />
+            <input type="hidden" name="accessPage" value="1" />
+            <input type="hidden" name="accessPageSize" value={company.assignedUsersPage.pageSize} />
+            <ButtonLink href={`/admin/companies/${company.id}`} tone="secondary" className="min-h-11">Clear</ButtonLink>
+            <button type="submit" className="min-h-11 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white">Search</button>
+          </form>
+          <p className="mt-2 text-sm text-slate-500">Showing {company.assignedUsers.length} of {company.assignedUsersPage.totalItems} active company assignments.</p>
           {company.assignedUsers.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-600">No company-level assignments.</p>
+            <p className="mt-4 text-sm text-slate-600">{company.assignedUsersPage.query ? "No active company assignments match this search." : "No active company-level assignments."}</p>
           ) : (
             <div className="mt-4 divide-y divide-slate-100">
               {company.assignedUsers.map((assignment) => (
@@ -131,40 +156,29 @@ export default async function CoreAdminCompanyDetailPage({
                     <Badge tone="success">{assignment.accessLevel}</Badge>
                   </div>
                   <p className="mt-2 text-sm text-slate-600">
-                    {assignment.roles.join(", ") || "No role"} / assigned {assignment.startsAt}
+                    {assignment.roles.join(", ") || "No role"} / assigned {new Date(assignment.startsAt).toLocaleString("en-PH", { timeZone: company.timezone })}
                   </p>
                 </div>
               ))}
             </div>
           )}
+          {company.assignedUsersPage.totalItems > 0 ? (
+            <PaginationBar
+              page={company.assignedUsersPage.page}
+              pageSize={company.assignedUsersPage.pageSize}
+              totalItems={company.assignedUsersPage.totalItems}
+              itemLabel="active company assignments"
+              getPageHref={(nextPage) => `/admin/companies/${company.id}?accessPage=${nextPage}&accessPageSize=${company.assignedUsersPage.pageSize}${company.assignedUsersPage.query ? `&accessQuery=${encodeURIComponent(company.assignedUsersPage.query)}` : ""}`}
+            />
+          ) : null}
         </Panel>
 
         <Panel className="ogfi-detail-card">
           <h2 className="text-lg font-bold text-slate-950">Brands & Locations</h2>
           <div className="ogfi-form-shell mt-4 grid gap-3">
-            {company.brands.length === 0 && company.locations.length === 0 ? (
-              <p className="text-sm text-slate-600">No active brands or locations are configured.</p>
-            ) : (
-              <>
-                {company.brands.map((brand) => (
-                  <div key={brand.id} data-testid="admin-company-brand-row" className="ogfi-record-summary p-3">
-                    <p className="font-semibold text-slate-950">{brand.name}</p>
-                    <p className="text-xs text-slate-500">{brand.code}</p>
-                  </div>
-                ))}
-                {company.locations.map((location) => (
-                  <div key={location.id} data-testid="admin-company-location-row" className="ogfi-record-summary p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-950">{location.name}</p>
-                        <p className="text-xs text-slate-500">{location.code}</p>
-                      </div>
-                      <Badge tone="info">{location.type}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
+            <p className="text-sm text-slate-600">This summary does not hydrate the full registries.</p>
+            <p className="text-sm font-semibold text-slate-950">{company.brands.totalItems} brands / {company.locations.totalItems} locations</p>
+            <ButtonLink href="/admin?tab=organization&organizationSection=brands" tone="secondary" className="min-h-11">Open Organization Scope</ButtonLink>
           </div>
         </Panel>
 

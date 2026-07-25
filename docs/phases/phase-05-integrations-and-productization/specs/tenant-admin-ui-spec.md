@@ -39,6 +39,10 @@ Provide a role-aware workspace for tenant administration while preserving compan
 
 The UI is complete only when a first-time permitted user can identify the record, scope, status, next action, owner and material operational impact without leaving the record page.
 
+### Organization Scope — Company Context assigned access
+
+Company Context is a read-only selected-company drilldown. Its Company Access panel is an assignment-grain register of active, currently effective company assignments for active users in the current tenant. It reports exact request-time totals, supports URL-backed 10–100 row pages and bounded name/email search, renders assignment timestamps in the company timezone, and exposes explicit empty and filtered-empty states. Brands and Locations are summary counts with a handoff to the bounded Organization Scope registries; Approval Rules remain in their authoritative registry and are not silently hydrated here.
+
 ### Organization Scope — Location Context assigned access
 
 The selected-company Location Context detail is a read-only, server-authorized view. Its Assigned Access panel is an assignment-grain register: it shows active, currently effective location assignments for active users in the current tenant, with active/effective tenant or global role names as a bounded preview. The panel reports an exact request-time assignment total and uses URL-backed pages of 10–100 rows, deterministic `userId ASC, assignmentId ASC` ordering, stale-page clamping, truthful empty state, and shared responsive pagination controls. It does not grant, edit, or revoke access; those actions remain in the User Access workspace.

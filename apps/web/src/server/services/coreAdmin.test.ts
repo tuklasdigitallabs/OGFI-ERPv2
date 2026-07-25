@@ -882,4 +882,24 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("location.assignedUsersPage.totalItems");
     expect(pageSource).toContain("Showing {location.assignedUsers.length} of");
   });
+
+  test("company detail removes hidden relation hydration and bounds company access", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/companies/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("getCoreAdminCompanyDetail");
+    expect(serviceSource).toContain("companyScopeAssignmentTotal");
+    expect(serviceSource).toContain("assignedUsersPage");
+    expect(serviceSource).toContain("accessQuery");
+    expect(serviceSource).toContain("skip: (accessPage - 1) * accessPageSize");
+    expect(serviceSource).toContain("take: accessPageSize");
+    expect(serviceSource).toContain('orderBy: [{ userId: "asc" }, { id: "asc" }]');
+    expect(serviceSource).toContain('brands: true');
+    expect(serviceSource).not.toContain("approvalRules: {");
+    expect(pageSource).toContain('name="accessQuery"');
+    expect(pageSource).toContain('itemLabel="active company assignments"');
+    expect(pageSource).toContain("company.brands.totalItems");
+    expect(pageSource).toContain("Open Organization Scope");
+    expect(pageSource).not.toContain("company.brands.map");
+    expect(pageSource).not.toContain("company.locations.map");
+  });
 });
