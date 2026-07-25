@@ -5248,9 +5248,18 @@ export async function getCoreAdminPermissionDetail(
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const pageSize = Math.min(Math.max(input.pageSize ?? 25, 10), 100);
-  const requestedPage = Math.min(Math.max(input.page ?? 1, 1), 10_000);
-  const query = input.query?.trim() ?? "";
+  if (!z.string().uuid().safeParse(permissionId).success) {
+    return null;
+  }
+  const rawPageSize = Number(input.pageSize ?? 25);
+  const rawPage = Number(input.page ?? 1);
+  const pageSize = Number.isFinite(rawPageSize)
+    ? Math.min(Math.max(Math.floor(rawPageSize), 10), 100)
+    : 25;
+  const requestedPage = Number.isFinite(rawPage)
+    ? Math.min(Math.max(Math.floor(rawPage), 1), 10_000)
+    : 1;
+  const query = input.query?.trim().slice(0, 120) ?? "";
   const now = new Date();
   const companyLocations = await prisma.location.findMany({
     where: { tenantId: session.context.tenantId, companyId: session.context.companyId, status: "ACTIVE" },
@@ -5272,7 +5281,7 @@ export async function getCoreAdminPermissionDetail(
   const roleWhere = {
     permissionId: permission.id,
     role: {
-      tenantId: session.context.tenantId,
+      OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
       ...(query ? { OR: [{ name: { contains: query, mode: "insensitive" as const } }, { code: { contains: query, mode: "insensitive" as const } }] } : {}),
     },
   };
@@ -5281,7 +5290,7 @@ export async function getCoreAdminPermissionDetail(
   const page = Math.min(requestedPage, pageCount);
   const roleRows = await prisma.rolePermission.findMany({
     where: roleWhere,
-    include: { role: { select: { id: true, name: true, code: true, status: true } } },
+    include: { role: { select: { id: true, name: true, code: true, status: true, tenantId: true } } },
     orderBy: [{ role: { name: "asc" } }, { roleId: "asc" }],
     skip: (page - 1) * pageSize,
     take: pageSize,
@@ -5289,7 +5298,7 @@ export async function getCoreAdminPermissionDetail(
   const roles = await Promise.all(roleRows.map(async (rolePermission) => {
     const assignmentWhere = {
       roleId: rolePermission.role.id,
-      role: { tenantId: session.context.tenantId, status: "ACTIVE" as const },
+      role: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }], status: "ACTIVE" as const },
       status: "ACTIVE" as const,
       startsAt: { lte: now },
       AND: [{ OR: [{ endsAt: null }, { endsAt: { gt: now } }] }],
@@ -5319,6 +5328,7 @@ export async function getCoreAdminPermissionDetail(
       name: rolePermission.role.name,
       code: rolePermission.role.code,
       status: rolePermission.role.status,
+      provenance: rolePermission.role.tenantId === null ? "GLOBAL" : "TENANT",
       assignedUserCount,
       assignedUsers: assignments.map((assignment) => ({ id: assignment.id, userId: assignment.userId, displayName: assignment.user.displayName, email: assignment.user.email, scopes: assignment.user.scopeAssignments.map((scope) => ({ id: scope.id, type: scope.scopeType, accessLevel: scope.accessLevel })) })),
     };

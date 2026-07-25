@@ -129,7 +129,7 @@ export default async function CoreAdminPermissionDetailPage({
           <div className="mt-4 divide-y divide-slate-100">
             {permission.roles.length === 0 ? (
               <div className="py-4 text-sm text-slate-600">
-                <p>{query ? "No roles match this search." : "No active roles grant this permission."}</p>
+                <p>{query ? "No roles match this search." : "No roles grant this permission."}</p>
                 {query ? <ButtonLink href={`/admin/permissions/${permission.id}`} tone="ghost" className="mt-2 min-h-11">Clear role search</ButtonLink> : null}
               </div>
             ) : (
@@ -138,7 +138,7 @@ export default async function CoreAdminPermissionDetailPage({
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="font-semibold text-slate-950">{role.name}</p>
-                      <p className="text-xs text-slate-500">{role.code}</p>
+                      <p className="text-xs text-slate-500">{role.code} · {role.provenance === "GLOBAL" ? "Global role" : "Tenant role"}</p>
                     </div>
                     <Badge tone={role.status === "ACTIVE" ? "success" : "neutral"}>{role.status}</Badge>
                   </div>

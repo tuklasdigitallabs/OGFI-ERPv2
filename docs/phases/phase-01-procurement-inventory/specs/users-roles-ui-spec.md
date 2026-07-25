@@ -102,6 +102,9 @@ Implementation note (`DEC-0192`): Permission Access keeps the approved bounded
 per-role user-preview contract. Preview disclosures are collapsed by default,
 keyboard-accessible, and limited to five current-company previews per granting
 role on the current role page; they are not an exhaustive effective-user list.
+Granting roles include both tenant-local and tenant-global roles and visibly
+label their provenance; the route remains read-only and does not link global
+roles to tenant-owned mutation controls.
 
 Implementation note (`DEC-0191`): Role Detail permission review uses a bounded,
 URL-backed server matrix with code/action search and Sensitive, Overrides, and

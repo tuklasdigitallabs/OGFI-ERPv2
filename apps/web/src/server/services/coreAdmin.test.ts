@@ -1028,4 +1028,21 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("permissionIntegrityIssue");
     expect(pageSource).toContain("Approval is unavailable until the role-permission links are repaired");
   });
+
+  test("permission access preserves global-role provenance and bounded inputs", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/permissions/[id]/page.tsx"), "utf8");
+    const detailSource = serviceSource.slice(
+      serviceSource.indexOf("export async function getCoreAdminPermissionDetail"),
+      serviceSource.indexOf("export async function getCoreAdminCompanyDetail"),
+    );
+    expect(detailSource).toContain('z.string().uuid().safeParse(permissionId)');
+    expect(detailSource).toContain('OR: [{ tenantId: session.context.tenantId }, { tenantId: null }]');
+    expect(detailSource).toContain('query = input.query?.trim().slice(0, 120)');
+    expect(detailSource).toContain('provenance: rolePermission.role.tenantId === null ? "GLOBAL" : "TENANT"');
+    expect(detailSource).toContain('take: 5');
+    expect(pageSource).toContain("Global role");
+    expect(pageSource).toContain("No roles grant this permission.");
+    expect(pageSource).toContain("Read-only tenant-global role visibility");
+  });
 });

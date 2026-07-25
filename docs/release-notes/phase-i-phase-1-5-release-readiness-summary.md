@@ -250,4 +250,9 @@ visible integrity warning until repair; rejection remains available as
 non-granting cleanup. PostgreSQL corruption/race, browser, hosted, and UAT gates
 remain open.
 
+Permission Access now includes and labels both tenant-local and tenant-global
+granting roles, with the same selected-company effective-user preview boundary.
+The route remains read-only; PostgreSQL isolation/query-plan, browser, hosted,
+and UAT evidence remain open.
+
 Raise UAT defects, training gaps, permission issues, or release blockers through the assigned ERP implementation owner and the Phase 1.5 project tracker.
