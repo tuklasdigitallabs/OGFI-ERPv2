@@ -1243,29 +1243,31 @@ async function listCoreAdminApprovalRulePageAuthorized(
       ? { transactionType: { contains: query, mode: "insensitive" as const } }
       : {}),
   };
-  const [totalItems, activeItems, rules] = await Promise.all([
+  const [totalItems, activeItems] = await Promise.all([
     prisma.approvalRule.count({ where }),
     prisma.approvalRule.count({ where: { ...where, isActive: true } }),
-    prisma.approvalRule.findMany({
-      where,
-      select: {
-        id: true,
-        transactionType: true,
-        priority: true,
-        isActive: true,
-        company: { select: { legalName: true, tradingName: true } },
-        _count: { select: { steps: true } },
-        steps: {
-          orderBy: { stepOrder: "asc" },
-          take: 3,
-          select: { stepOrder: true, approverType: true },
-        },
-      },
-      orderBy: [{ isActive: "desc" }, { priority: "asc" }, { id: "asc" }],
-      skip: (values.page - 1) * values.pageSize,
-      take: values.pageSize,
-    }),
   ]);
+  const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, pageCount);
+  const rules = await prisma.approvalRule.findMany({
+    where,
+    select: {
+      id: true,
+      transactionType: true,
+      priority: true,
+      isActive: true,
+      company: { select: { legalName: true, tradingName: true } },
+      _count: { select: { steps: true } },
+      steps: {
+        orderBy: { stepOrder: "asc" },
+        take: 3,
+        select: { stepOrder: true, approverType: true },
+      },
+    },
+    orderBy: [{ isActive: "desc" }, { priority: "asc" }, { id: "asc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
   return {
     items: rules.map((rule) => ({
       id: rule.id,
@@ -1276,7 +1278,7 @@ async function listCoreAdminApprovalRulePageAuthorized(
       stepCount: rule._count.steps,
       stepPreview: rule.steps.map((step) => `Step ${step.stepOrder}: ${step.approverType}`),
     })),
-    page: values.page,
+    page,
     pageSize: values.pageSize,
     totalItems,
     activeItems,

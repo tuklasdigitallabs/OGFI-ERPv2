@@ -504,7 +504,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("listCoreAdminLocationOptionsAuthorized");
     expect(serviceSource).toContain("companyId: session.context.companyId");
     expect(serviceSource).toContain('orderBy: [{ name: "asc" }, { id: "asc" }]');
-    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("skip: (page - 1) * values.pageSize");
     expect(serviceSource).toContain("take: values.pageSize");
     expect(serviceSource).toContain("take: 100");
     expect(serviceSource).toContain("hasMore: totalItems > options.length");
@@ -521,7 +521,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("listCoreAdminBrandOptions");
     expect(serviceSource).toContain("companyId: session.context.companyId");
     expect(serviceSource).toContain('orderBy: [{ name: "asc" }, { id: "asc" }]');
-    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("skip: (page - 1) * values.pageSize");
     expect(serviceSource).toContain("take: values.pageSize");
     expect(serviceSource).toContain("hasMore: totalItems > options.length");
     expect(serviceSource).toContain("code: brand.code");
@@ -534,7 +534,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("listCoreAdminDepartmentPage");
     expect(serviceSource).toContain("companyId: session.context.companyId");
     expect(serviceSource).toContain('orderBy: [{ name: "asc" }, { id: "asc" }]');
-    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("skip: (page - 1) * values.pageSize");
     expect(serviceSource).toContain("take: values.pageSize");
     expect(serviceSource).toContain("budgetLines: true");
     expect(serviceSource).toContain("costCenters: true");
@@ -550,6 +550,9 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain('orderBy: [{ isActive: "desc" }, { priority: "asc" }, { id: "asc" }]');
     expect(serviceSource).toContain("take: 3");
     expect(serviceSource).toContain("_count: { select: { steps: true } }");
+    expect(serviceSource).toContain("const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));");
+    expect(serviceSource).toContain("const page = Math.min(values.page, pageCount);");
+    expect(serviceSource).toContain("skip: (page - 1) * values.pageSize");
     expect(serviceSource).toContain("stepPreview");
     expect(serviceSource).not.toContain("include: {\n        company: true,\n        steps:");
   });
@@ -948,7 +951,11 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain('orderBy: [{ stepOrder: "asc" }, { id: "asc" }]');
     expect(serviceSource).toContain('orderBy: [{ occurredAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("select: { id: true, code: true, name: true, status: true }");
-    expect(serviceSource).not.toContain("steps: {\n        orderBy: { stepOrder: \"asc\" }");
+    const detailSource = serviceSource.slice(
+      serviceSource.indexOf("export async function getCoreAdminApprovalRuleDetail"),
+      serviceSource.indexOf("export async function listCoreAdminRolePage"),
+    );
+    expect(detailSource).not.toContain("steps: {\n        orderBy: { stepOrder: \"asc\" }");
     expect(pageSource).toContain('itemLabel="approval steps"');
     expect(pageSource).toContain('itemLabel="audit events"');
     expect(pageSource).toContain("rule.stepsPage.totalItems");
