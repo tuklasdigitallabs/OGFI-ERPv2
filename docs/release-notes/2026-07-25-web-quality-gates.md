@@ -55,3 +55,8 @@ active.
 Organization Scope now uses nested URL-backed Companies, Brands, Departments,
 and Locations sections. Only the selected register and required catalog are
 loaded, reducing inactive-register reads and long mobile scroll surfaces.
+
+Protected Item Master and procurement lookup APIs now have explicit authorization
+manifest coverage and shared stable denial responses; malformed Item Master
+input returns a non-disclosing 400 response. Exact PostgreSQL/API execution and
+hosted release validation remain pending for the current candidate.
