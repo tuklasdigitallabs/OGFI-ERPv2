@@ -837,3 +837,7 @@ Update this register only when implementation state, release scope, a confirmed 
 
 ### DEC-0159 Web lint gate repair — July 25, 2026
 - Removed obsolete overflow state from the bounded Purchase Request line lookup editor. Web lint and TypeScript now both pass; focused Core Admin tests remain 32/32. Full browser, database, hosted, and UAT gates remain open.
+
+### DEC-0160 Production candidate validation — July 25, 2026
+- Next.js production build passes; web lint and TypeScript pass; Core Admin, Purchase Order, and module-preview focused suites pass (32/32, 36/36, and 16/16). The module-preview assertion now tracks the bounded Admin Settings page contract.
+- PostgreSQL/authorization integration suites remain gated by required disposable authorization/database sentinels; responsive browser, hosted recovery, and UAT evidence remain open.

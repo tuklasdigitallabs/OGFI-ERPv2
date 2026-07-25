@@ -104,7 +104,7 @@ describe("module preview navigation", () => {
         continue;
       }
       if (previewKey === "adminSettings") {
-        expect(readFileSync(filePath, "utf8")).toContain("listCompanyPolicySettings(session)");
+        expect(readFileSync(filePath, "utf8")).toContain("listCompanyPolicySettingPage(session");
         expect(readFileSync(filePath, "utf8")).toContain("updateCompanyPolicySetting(formData)");
         expect(readFileSync(filePath, "utf8")).not.toContain("renderModulePreview");
         continue;
