@@ -517,9 +517,13 @@ export default async function CoreAdminUserDetailPage({
               <p className="text-sm text-slate-600">No effective permissions from active roles.</p>
             ) : (
               user.permissions.map((permission) => (
-                <Badge key={permission.code} tone={permission.sensitive ? "warning" : "info"}>
-                  {permission.label}
-                </Badge>
+                permission.id ? (
+                  <ButtonLink key={permission.code} href={`/admin/permissions/${permission.id}`} tone="ghost" className="min-h-11 px-1">
+                    <Badge tone={permission.sensitive ? "warning" : "info"}>{permission.label}</Badge>
+                  </ButtonLink>
+                ) : (
+                  <Badge key={permission.code} tone={permission.sensitive ? "warning" : "info"}>{permission.label}</Badge>
+                )
               ))
             )}
           </div>

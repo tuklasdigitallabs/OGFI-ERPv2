@@ -214,6 +214,11 @@ task sheet with contained scrolling. Confirm the target user, requester,
 status, evidence indicator, and next action before approving or rejecting; the
 same server-side no-self-approval, MFA, scope, reason, and audit controls apply.
 
+The Effective Permissions panel is a bounded preview derived from currently effective active roles and assignments (including start/end dates). Select a permission label
+to open the read-only Permission Access detail route for its complete definition
+and granting-role context; the preview count is not an exhaustive replacement
+for that detail view.
+
 User Access assignment, request, and audit timestamps are displayed in the
 company operating timezone (`Asia/Manila` for the initial release). Pending
 controlled-role rows show a bounded permission preview (up to seven labels) and

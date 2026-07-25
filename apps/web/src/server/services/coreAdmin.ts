@@ -1979,20 +1979,23 @@ export async function getCoreAdminUserDetail(
     options.userAccessSection === "roles";
   const rolePageSize = Math.min(25, Math.max(10, Math.floor(options.assignedRolePageSize ?? options.rolePageSize ?? 25)));
   const assignedRoleQuery = (options.assignedRoleQuery ?? options.roleQuery)?.trim() ?? "";
+  const effectiveNow = new Date();
   const roleAssignmentWhere: Prisma.UserRoleAssignmentWhereInput = {
     userId: user.id,
     status: "ACTIVE",
-    role: { AND: [{ OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] }], ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
+    startsAt: { lte: effectiveNow },
+    OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }],
+    role: { AND: [{ status: "ACTIVE" }, { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] }], ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
   };
   const effectivePermissionWhere: Prisma.PermissionWhereInput = {
     OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
-    roles: { some: { role: { assignments: { some: { userId: user.id, status: "ACTIVE" } } } } },
+    roles: { some: { role: { status: "ACTIVE", assignments: { some: { userId: user.id, status: "ACTIVE", startsAt: { lte: effectiveNow }, OR: [{ endsAt: null }, { endsAt: { gt: effectiveNow } }] } } } } },
   };
   const [activeRoleCount, effectivePermissions] = await Promise.all([
     loadRoleSurface ? prisma.userRoleAssignment.count({ where: roleAssignmentWhere }) : Promise.resolve(0),
     loadRoleSurface ? prisma.permission.findMany({
       where: effectivePermissionWhere,
-      select: { code: true },
+      select: { id: true, code: true },
       orderBy: { code: "asc" },
       take: 13,
     }) : Promise.resolve([]),
@@ -2017,6 +2020,7 @@ export async function getCoreAdminUserDetail(
       effectivePermissions.map((permission) => permission.code),
     ),
   );
+  const permissionIdByCode = new Map(effectivePermissions.map((permission) => [permission.code, permission.id]));
   const roleQuery = options.roleQuery?.trim().toLowerCase() ?? "";
   const locationQuery = options.locationQuery?.trim().toLowerCase() ?? "";
   const scopeRequestPage = Math.min(Math.max(options.scopeRequestPage ?? 1, 1), 10_000);
@@ -2384,7 +2388,10 @@ export async function getCoreAdminUserDetail(
     },
     permissionCodes,
     permissionTotal: effectivePermissionTotal,
-    permissions: permissionCodes.map((code) => getPermissionPresentation(code)),
+    permissions: permissionCodes.map((code) => ({
+      id: permissionIdByCode.get(code) ?? null,
+      ...getPermissionPresentation(code),
+    })),
   };
 }
 
