@@ -244,4 +244,10 @@ and pagination controls with exact matching totals. This checkpoint does not clo
 the separate evidence, security aggregate, GO/NO-GO, browser, database, hosted, or
 UAT readiness gates.
 
+Controlled sensitive-role requests now fail closed when a role links to a
+permission outside the tenant-local/global catalog. Approval is withheld with a
+visible integrity warning until repair; rejection remains available as
+non-granting cleanup. PostgreSQL corruption/race, browser, hosted, and UAT gates
+remain open.
+
 Raise UAT defects, training gaps, permission issues, or release blockers through the assigned ERP implementation owner and the Phase 1.5 project tracker.

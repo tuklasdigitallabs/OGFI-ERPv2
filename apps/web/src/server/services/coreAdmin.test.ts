@@ -1016,4 +1016,16 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("role.endsAt");
     expect(pageSource).not.toContain("No active roles are assigned.");
   });
+
+  test("sensitive role requests fail closed on unsupported permission links", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const pageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"), "utf8");
+    expect(serviceSource).toContain("getSensitiveRolePermissionSnapshot");
+    expect(serviceSource).toContain('throw new Error("ROLE_PERMISSION_SCOPE_CORRUPTED")');
+    expect(serviceSource).toContain("tenantGlobalPermissionWhere(session.context.tenantId)");
+    expect(serviceSource).toContain("lockedPermissionSnapshot");
+    expect(serviceSource).toContain("select: { id: true, name: true, code: true }");
+    expect(pageSource).toContain("permissionIntegrityIssue");
+    expect(pageSource).toContain("Approval is unavailable until the role-permission links are repaired");
+  });
 });

@@ -239,6 +239,13 @@ the sensitive permission list. Assignment and request forms return to the
 selected section and page after submission so filters and review context are not
 silently lost.
 
+If a pending controlled-role request shows a permission-integrity warning, do not
+approve it. The role contains a permission link outside the current tenant-local
+or global catalog, so approval is disabled until an administrator repairs the
+role data through an approved correction path. Rejection remains available to
+close the unsafe request. The server repeats this check while locking the role,
+and never grants the role or records foreign permission codes in audit metadata.
+
 ## Related Articles
 
 - [Activating And Recovering Local Accounts](./activating-and-recovering-local-accounts.md)

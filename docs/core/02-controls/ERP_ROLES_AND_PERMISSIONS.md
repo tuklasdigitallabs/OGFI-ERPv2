@@ -428,6 +428,7 @@ Role changes should be controlled by an authorized administrator. Current implem
 - admin, approver, system, and sensitive-permission roles use a `SensitiveRoleRequest`;
 - a role with an active, effective assignee cannot be promoted by adding a sensitive permission; direct grants and role-permission changes serialize on the role so they cannot race around this safeguard;
 - role permissions cannot change while a sensitive-role request for that role is pending, and approval reloads the active role and its current permission set under the same role lock so the granted authority and audit evidence match what was approved;
+- sensitive-role request creation and approval fail closed when any `RolePermission` link points outside the current tenant-local/global permission catalog; the check is repeated after the role lock, unsupported links are not silently dropped, and rejection remains available as non-granting cleanup;
 - controlled role requests require reason and evidence reference;
 - the requester and target user cannot approve or reject the request;
 - local production approval requires recent session-bound runtime MFA and creates the `UserRoleAssignment` transactionally; external-provider modes may additionally retain verified provider evidence;

@@ -1103,6 +1103,11 @@ export default async function CoreAdminUserDetailPage({
                           {request.riskLabel}
                         </p>
                         <div className="mt-2 flex flex-wrap gap-2">
+                          {request.permissionIntegrityIssue ? (
+                            <span className="basis-full rounded-md border border-rose-200 bg-rose-50 p-2 text-xs font-semibold text-rose-800">
+                              Permission data needs administrator review. Review actions are unavailable until the role-permission links are repaired.
+                            </span>
+                          ) : null}
                           {request.permissionLabels.map((permission) => (
                             <Badge
                               key={permission.code}
@@ -1145,7 +1150,7 @@ export default async function CoreAdminUserDetailPage({
                           </p>
                         ) : null}
                       </div>
-                      {canReview ? (
+                      {canReview && !request.permissionIntegrityIssue ? (
                         <div className="flex flex-wrap gap-2 lg:justify-end">
                           <ButtonLink href={`/admin/users/${user.id}?section=requests&requestKind=role&requestActionId=${encodeURIComponent(request.id)}`} tone="ghost" className="min-h-11 text-blue-700">Open review controls</ButtonLink>
                         </div>
@@ -1205,13 +1210,14 @@ export default async function CoreAdminUserDetailPage({
                   <p className="mt-1">Requested by {selectedRoleRequest.requestedByName} on {formatUserAccessDate(selectedRoleRequest.createdAt)}.</p>
                   {selectedRoleRequest.reason ? <p className="mt-2">Reason: {selectedRoleRequest.reason}</p> : null}
                   {selectedRoleRequest.evidenceReference ? <p className="mt-1">Evidence reference recorded.</p> : null}
+                  {selectedRoleRequest.permissionIntegrityIssue ? <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 p-2 font-semibold text-rose-800">Permission data needs administrator review. Approval is unavailable until the role-permission links are repaired; rejection remains available to close the unsafe request.</p> : null}
                 </div>
                 {selectedRoleRequest.status === "PENDING" && selectedRoleRequest.requestedByUserId !== session.user.id && user.id !== session.user.id ? <>
-                  <form action={approveSensitiveRoleRequest} className="ogfi-form-shell grid gap-3">
+                  {!selectedRoleRequest.permissionIntegrityIssue ? <form action={approveSensitiveRoleRequest} className="ogfi-form-shell grid gap-3">
                     <input name="targetUserId" type="hidden" value={user.id} /><input name="requestId" type="hidden" value={selectedRoleRequest.id} /><input name="returnPath" type="hidden" value={requestReturnPath} />
                     <label className="grid gap-1 text-sm font-medium text-slate-700">Approval reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reviewReason" required /></label>
                     <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-bold text-white sm:w-fit">Approve role</button>
-                  </form>
+                  </form> : null}
                   <form action={rejectSensitiveRoleRequest} className="ogfi-form-shell grid gap-3">
                     <input name="targetUserId" type="hidden" value={user.id} /><input name="requestId" type="hidden" value={selectedRoleRequest.id} /><input name="returnPath" type="hidden" value={requestReturnPath} />
                     <label className="grid gap-1 text-sm font-medium text-slate-700">Rejection reason<textarea className="min-h-24 rounded-md border border-slate-300 px-3 py-2" name="reviewReason" required /></label>

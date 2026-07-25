@@ -530,6 +530,16 @@ export function isDirectlyAssignableRole(role: {
   return isAssignableNonSensitiveRole(role.code) || !role.systemRole;
 }
 
+function isDirectlyAssignableRoleWithPermissionCodes(
+  role: { code: string; systemRole: boolean },
+  permissionCodes: string[],
+) {
+  if (permissionCodes.some(isSensitivePermissionCode)) {
+    return false;
+  }
+  return isAssignableNonSensitiveRole(role.code) || !role.systemRole;
+}
+
 export function assertDirectRoleAssignmentAllowed(role: {
   code: string;
   systemRole: boolean;
@@ -552,20 +562,6 @@ function roleAssignmentRiskLabel(role: {
     return "Admin-controlled role";
   }
   return "Sensitive permissions require admin reason";
-}
-
-function sensitiveRoleRiskLabel(role: {
-  code: string;
-  systemRole: boolean;
-  permissions: Array<{ permission: { code: string } }>;
-}) {
-  if (role.systemRole) {
-    return "System/admin role requires controlled approval";
-  }
-  if (!isDirectlyAssignableRole(role)) {
-    return "Sensitive permissions require controlled approval";
-  }
-  return "Use quick role assignment";
 }
 
 export async function touchUserPrivilegeEpoch(
@@ -811,6 +807,25 @@ const coreAdminHighAccessPermissionCodes = [
 
 function tenantGlobalPermissionWhere(tenantId: string): Prisma.PermissionWhereInput {
   return { OR: [{ tenantId }, { tenantId: null }] };
+}
+
+async function getSensitiveRolePermissionSnapshot(
+  client: typeof prisma | TransactionClient,
+  roleId: string,
+  tenantId: string,
+) {
+  const [totalLinks, permissionsForRole] = await Promise.all([
+    client.rolePermission.count({ where: { roleId } }),
+    client.rolePermission.findMany({
+      where: { roleId, permission: tenantGlobalPermissionWhere(tenantId) },
+      select: { permission: { select: { code: true } } },
+      orderBy: { permission: { code: "asc" } },
+    }),
+  ]);
+  return {
+    permissionCodes: permissionsForRole.map((link) => link.permission.code),
+    permissionIntegrityIssue: totalLinks !== permissionsForRole.length,
+  };
 }
 
 export type CoreAdminRolePage = {
@@ -2202,10 +2217,11 @@ export async function getCoreAdminUserDetail(
               role: {
                 include: {
                 permissions: {
-                    orderBy: { permission: { code: "asc" } },
-                    take: 7,
-                    include: { permission: true },
-                  },
+                  where: { permission: tenantGlobalPermissionWhere(session.context.tenantId) },
+                  orderBy: { permission: { code: "asc" } },
+                  take: 7,
+                  select: { permission: { select: { code: true } } },
+                },
                   _count: { select: { permissions: true } },
                 },
               },
@@ -2233,9 +2249,10 @@ export async function getCoreAdminUserDetail(
         role: {
           include: {
             permissions: {
+              where: { permission: tenantGlobalPermissionWhere(session.context.tenantId) },
               orderBy: { permission: { code: "asc" } },
               take: 7,
-              include: { permission: true },
+              select: { permission: { select: { code: true } } },
             },
             _count: { select: { permissions: true } },
           },
@@ -2316,6 +2333,14 @@ export async function getCoreAdminUserDetail(
       requestUser.id,
       requestUser.displayName || requestUser.email,
     ]),
+  );
+  const sensitiveRolePermissionIntegrity = new Map(
+    await Promise.all(
+      Array.from(new Set(sensitiveRoleRequests.map((request) => request.roleId))).map(async (roleId) => [
+        roleId,
+        (await getSensitiveRolePermissionSnapshot(prisma, roleId, session.context.tenantId)).permissionIntegrityIssue,
+      ] as const),
+    ),
   );
   const allActiveLocationDisplay = new Map(
     [...referencedLocations, ...directLocationCatalog, ...controlledLocationCatalog].map((location) => [location.id, location]),
@@ -2442,6 +2467,7 @@ export async function getCoreAdminUserDetail(
               )
             : [],
           permissionTotal: reviewContextVisible ? request.role._count.permissions : 0,
+          permissionIntegrityIssue: sensitiveRolePermissionIntegrity.get(request.roleId) ?? false,
         };
       })(),
       id: request.id,
@@ -2592,9 +2618,7 @@ export async function createUserRoleAssignment(formData: FormData) {
       },
       include: {
         permissions: {
-          include: {
-            permission: true,
-          },
+          include: { permission: true },
         },
       },
     }),
@@ -2835,13 +2859,6 @@ export async function requestSensitiveUserRole(formData: FormData) {
         tenantId: session.context.tenantId,
         status: "ACTIVE",
       },
-      include: {
-        permissions: {
-          include: {
-            permission: true,
-          },
-        },
-      },
     }),
   ]);
 
@@ -2851,7 +2868,15 @@ export async function requestSensitiveUserRole(formData: FormData) {
   if (!role) {
     throw new Error("TARGET_ROLE_NOT_FOUND");
   }
-  if (isDirectlyAssignableRole(role)) {
+  const permissionSnapshot = await getSensitiveRolePermissionSnapshot(
+    prisma,
+    role.id,
+    session.context.tenantId,
+  );
+  if (permissionSnapshot.permissionIntegrityIssue) {
+    throw new Error("ROLE_PERMISSION_SCOPE_CORRUPTED");
+  }
+  if (isDirectlyAssignableRoleWithPermissionCodes(role, permissionSnapshot.permissionCodes)) {
     throw new Error("LOW_RISK_ROLE_USE_QUICK_ASSIGNMENT");
   }
   await assertCanManageCompanyScope(session, session.context.companyId);
@@ -2896,10 +2921,6 @@ export async function requestSensitiveUserRole(formData: FormData) {
     throw new Error("DUPLICATE_PENDING_SENSITIVE_ROLE_REQUEST");
   }
 
-  const permissionCodes = role.permissions.map(
-    (rolePermission) => rolePermission.permission.code,
-  );
-
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`
       SELECT "id"
@@ -2927,7 +2948,7 @@ export async function requestSensitiveUserRole(formData: FormData) {
           tenantId: session.context.tenantId,
           status: "ACTIVE",
         },
-        select: { id: true },
+        select: { id: true, name: true, code: true, systemRole: true },
       }),
       tx.userRoleAssignment.findFirst({
         where: {
@@ -2953,6 +2974,14 @@ export async function requestSensitiveUserRole(formData: FormData) {
     }
     if (!lockedRole) {
       throw new Error("TARGET_ROLE_NOT_FOUND");
+    }
+    const lockedPermissionSnapshot = await getSensitiveRolePermissionSnapshot(
+      tx,
+      lockedRole.id,
+      session.context.tenantId,
+    );
+    if (lockedPermissionSnapshot.permissionIntegrityIssue) {
+      throw new Error("ROLE_PERMISSION_SCOPE_CORRUPTED");
     }
     assertNoActiveDuplicateRole(lockedAssignment?.id);
     if (lockedPendingRequest) {
@@ -2992,8 +3021,10 @@ export async function requestSensitiveUserRole(formData: FormData) {
           targetUserEmail: targetUser.email,
           roleName: role.name,
           roleCode: role.code,
-          permissionCodes,
-          riskLabel: sensitiveRoleRiskLabel(role),
+          permissionCodes: lockedPermissionSnapshot.permissionCodes,
+          riskLabel: role.systemRole
+            ? "System/admin role requires controlled approval"
+            : "Sensitive permissions require controlled approval",
         },
       },
     });
@@ -3040,13 +3071,6 @@ export async function approveSensitiveUserRoleRequest(formData: FormData) {
         tenantId: session.context.tenantId,
         status: "ACTIVE",
       },
-      include: {
-        permissions: {
-          include: {
-            permission: true,
-          },
-        },
-      },
     }),
   ]);
   if (!targetUser) {
@@ -3055,7 +3079,15 @@ export async function approveSensitiveUserRoleRequest(formData: FormData) {
   if (!role) {
     throw new Error("TARGET_ROLE_NOT_FOUND");
   }
-  if (isDirectlyAssignableRole(role)) {
+  const permissionSnapshot = await getSensitiveRolePermissionSnapshot(
+    prisma,
+    role.id,
+    session.context.tenantId,
+  );
+  if (permissionSnapshot.permissionIntegrityIssue) {
+    throw new Error("ROLE_PERMISSION_SCOPE_CORRUPTED");
+  }
+  if (isDirectlyAssignableRoleWithPermissionCodes(role, permissionSnapshot.permissionCodes)) {
     throw new Error("LOW_RISK_ROLE_USE_QUICK_ASSIGNMENT");
   }
   await assertCanManageCompanyScope(session, session.context.companyId);
@@ -3092,21 +3124,23 @@ export async function approveSensitiveUserRoleRequest(formData: FormData) {
         tenantId: session.context.tenantId,
         status: "ACTIVE",
       },
-      include: {
-        permissions: {
-          include: { permission: true },
-        },
-      },
+      select: { id: true, name: true, code: true, systemRole: true },
     });
     if (!lockedRole) {
       throw new Error("TARGET_ROLE_NOT_FOUND");
     }
-    if (isDirectlyAssignableRole(lockedRole)) {
+    const lockedPermissionSnapshot = await getSensitiveRolePermissionSnapshot(
+      tx,
+      lockedRole.id,
+      session.context.tenantId,
+    );
+    if (lockedPermissionSnapshot.permissionIntegrityIssue) {
+      throw new Error("ROLE_PERMISSION_SCOPE_CORRUPTED");
+    }
+    if (isDirectlyAssignableRoleWithPermissionCodes(lockedRole, lockedPermissionSnapshot.permissionCodes)) {
       throw new Error("LOW_RISK_ROLE_USE_QUICK_ASSIGNMENT");
     }
-    const permissionCodes = lockedRole.permissions
-      .map((rolePermission) => rolePermission.permission.code)
-      .sort();
+    const permissionCodes = lockedPermissionSnapshot.permissionCodes;
     const claimed = await tx.sensitiveRoleRequest.updateMany({
       where: { id: request.id, status: "PENDING" },
       data: {
@@ -3230,13 +3264,7 @@ export async function rejectSensitiveUserRoleRequest(formData: FormData) {
       id: request.roleId,
       tenantId: session.context.tenantId,
     },
-    include: {
-      permissions: {
-        include: {
-          permission: true,
-        },
-      },
-    },
+    select: { id: true, name: true, code: true },
   });
   if (!role) {
     throw new Error("TARGET_ROLE_NOT_FOUND");
