@@ -360,25 +360,8 @@ export default async function CoreAdminUserDetailPage({
   const selectedRoleRequest = requestKind === "role" && requestActionId
     ? scopedUser.sensitiveRoleRequests.find((request) => request.id === requestActionId)
     : null;
-  const assignedLocationScopeIds = new Set(
-    scopedUser.scopes
-      .filter((scope) => scope.type === "LOCATION")
-      .map((scope) => scope.scopeId)
-  );
-  const availableLocations = scopedUser.assignableLocations.filter(
-    (location) =>
-      !assignedLocationScopeIds.has(location.id) && location.directAssignable
-  );
-  const pendingHighRiskLocationIds = new Set(
-    scopedUser.highRiskScopeRequests
-      .filter((request) => request.status === "PENDING")
-      .map((request) => request.locationId)
-  );
-  const requestableHighRiskLocations = scopedUser.assignableLocations.filter(
-    (location) =>
-      !assignedLocationScopeIds.has(location.id) &&
-      !pendingHighRiskLocationIds.has(location.id)
-  );
+  const availableLocations = scopedUser.assignableLocations;
+  const requestableHighRiskLocations = scopedUser.controlledLocationCatalog;
   const actionFeedback = getActionFeedback(resolvedSearchParams);
 
   return (
@@ -425,7 +408,7 @@ export default async function CoreAdminUserDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Permissions</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{loadRoleSurface ? user.permissions.length : "—"}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{loadRoleSurface ? user.permissionTotal : "—"}</p>
         </Panel>
       </div>
       <nav aria-label="User access sections" className="mb-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-[var(--shadow-soft)]">
@@ -540,6 +523,9 @@ export default async function CoreAdminUserDetailPage({
               ))
             )}
           </div>
+          {user.permissionTotal > user.permissions.length ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500"><span>Showing {user.permissions.length} of {user.permissionTotal} effective permissions.</span><ButtonLink href={`/admin/users/${user.id}?section=roles`} tone="ghost" className="min-h-11 px-0 text-blue-700">Review role permission details</ButtonLink></div>
+          ) : null}
         </Panel>
 
         </> : null}
@@ -645,13 +631,14 @@ export default async function CoreAdminUserDetailPage({
               <Badge tone="info">Role unchanged</Badge>
             </div>
             <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="section" value="scopes" />
               <input
                 className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
                 name="locationQuery"
                 defaultValue={locationQuery ?? ""}
                 placeholder="Find an active location by name or code"
               />
-              <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">
+              <button type="submit" className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">
                 Find locations
               </button>
             </form>
@@ -726,11 +713,21 @@ export default async function CoreAdminUserDetailPage({
             <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
               <input type="hidden" name="section" value="requests" /><input type="hidden" name="requestKind" value="scope" />
               <input type="hidden" name="scopeRequestPage" value="1" />
-              <input className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" name="scopeRequestStatus" defaultValue={scopeRequestStatusValue ?? ""} placeholder="Status: PENDING, APPROVED, or REJECTED" />
-              <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter requests</button>
+              {locationQuery ? <input type="hidden" name="locationQuery" value={locationQuery} /> : null}
+              <select className="min-h-11 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" name="scopeRequestStatus" defaultValue={scopeRequestStatusValue ?? ""}><option value="">All statuses</option><option value="PENDING">Pending</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option></select>
+              <button type="submit" className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter requests</button>
+            </form>
+            <form method="get" className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="section" value="requests" /><input type="hidden" name="requestKind" value="scope" /><input type="hidden" name="scopeRequestPage" value="1" />
+              {scopeRequestStatusValue ? <input type="hidden" name="scopeRequestStatus" value={scopeRequestStatusValue} /> : null}
+              <input className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" name="locationQuery" defaultValue={locationQuery ?? ""} placeholder="Find a high-risk location" />
+              <button type="submit" className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Find locations</button>
             </form>
 
             <div className="mt-4">
+              {user.controlledLocationCatalogHasMore ? (
+                <p className="mb-2 text-xs text-amber-700">More high-risk locations exist. Refine the location search to find a location outside this first 100-result catalog.</p>
+              ) : null}
               {requestableHighRiskLocations.length === 0 ? (
                 <p className="text-sm text-slate-600">
                   No unassigned active locations are available for controlled
@@ -794,9 +791,10 @@ export default async function CoreAdminUserDetailPage({
 
             <div className="mt-5 divide-y divide-slate-100">
               {user.highRiskScopeRequests.length === 0 ? (
-                <p className="py-4 text-sm text-slate-600">
-                  No controlled scope requests have been recorded for this user.
-                </p>
+                <div className="py-4 text-sm text-slate-600">
+                  <p>{scopeRequestStatusValue ? "No controlled scope requests match this status filter." : "No controlled scope requests have been recorded for this user."}</p>
+                  {scopeRequestStatusValue ? <ButtonLink href={`/admin/users/${user.id}?section=requests&requestKind=scope`} tone="ghost" className="mt-2 min-h-11 px-0 text-blue-700">Clear status filter</ButtonLink> : null}
+                </div>
               ) : (
                 user.highRiskScopeRequests.map((request) => {
                   const canReview =
@@ -879,6 +877,7 @@ export default async function CoreAdminUserDetailPage({
                 getPageHref={(nextPage) => {
                   const next = new URLSearchParams({ section: "requests", requestKind: "scope", scopeRequestPage: String(nextPage), scopeRequestPageSize: String(user.highRiskScopeRequestPage.pageSize) });
                   if (scopeRequestStatusValue) next.set("scopeRequestStatus", scopeRequestStatusValue);
+                  if (locationQuery) next.set("locationQuery", locationQuery);
                   return `/admin/users/${user.id}?${next.toString()}`;
                 }}
               />
@@ -898,13 +897,14 @@ export default async function CoreAdminUserDetailPage({
               <Badge tone="warning">Admin controlled</Badge>
             </div>
             <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="section" value="roles" />
               <input
                 className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
                 name="roleQuery"
                 defaultValue={roleQuery ?? ""}
                 placeholder="Find an active role by name or code"
               />
-              <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">
+              <button type="submit" className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">
                 Find roles
               </button>
             </form>
@@ -965,11 +965,21 @@ export default async function CoreAdminUserDetailPage({
             <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
               <input type="hidden" name="section" value="requests" /><input type="hidden" name="requestKind" value="role" />
               <input type="hidden" name="roleRequestPage" value="1" />
-              <input className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" name="roleRequestStatus" defaultValue={roleRequestStatusValue ?? ""} placeholder="Status: PENDING, APPROVED, or REJECTED" />
-              <button type="submit" className="min-h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter requests</button>
+              {roleQuery ? <input type="hidden" name="roleQuery" value={roleQuery} /> : null}
+              <select className="min-h-11 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" name="roleRequestStatus" defaultValue={roleRequestStatusValue ?? ""}><option value="">All statuses</option><option value="PENDING">Pending</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option></select>
+              <button type="submit" className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Filter requests</button>
+            </form>
+            <form method="get" className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="section" value="requests" /><input type="hidden" name="requestKind" value="role" /><input type="hidden" name="roleRequestPage" value="1" />
+              {roleRequestStatusValue ? <input type="hidden" name="roleRequestStatus" value={roleRequestStatusValue} /> : null}
+              <input className="min-h-10 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm" name="roleQuery" defaultValue={roleQuery ?? ""} placeholder="Find a controlled role" />
+              <button type="submit" className="min-h-11 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700">Find roles</button>
             </form>
 
             <div className="mt-4">
+              {user.requestableSensitiveRoleCatalogHasMore ? (
+                <p className="mb-2 text-xs text-amber-700">More controlled roles exist. Refine the role search to find a role outside this first 100-result catalog.</p>
+              ) : null}
               {user.requestableSensitiveRoles.length === 0 ? (
                 <p className="text-sm text-slate-600">
                   No unassigned sensitive roles are available for controlled
@@ -1024,9 +1034,10 @@ export default async function CoreAdminUserDetailPage({
 
             <div className="mt-5 divide-y divide-slate-100">
               {user.sensitiveRoleRequests.length === 0 ? (
-                <p className="py-4 text-sm text-slate-600">
-                  No controlled role requests have been recorded for this user.
-                </p>
+                <div className="py-4 text-sm text-slate-600">
+                  <p>{roleRequestStatusValue ? "No controlled role requests match this status filter." : "No controlled role requests have been recorded for this user."}</p>
+                  {roleRequestStatusValue ? <ButtonLink href={`/admin/users/${user.id}?section=requests&requestKind=role`} tone="ghost" className="mt-2 min-h-11 px-0 text-blue-700">Clear status filter</ButtonLink> : null}
+                </div>
               ) : (
                 user.sensitiveRoleRequests.map((request) => {
                   const canReview =
@@ -1069,9 +1080,9 @@ export default async function CoreAdminUserDetailPage({
                               {permission.label}
                             </Badge>
                           ))}
-                          {request.permissionLabels.length === 7 ? (
+                          {request.permissionTotal > request.permissionLabels.length ? (
                             <Badge tone="neutral" size="sm">
-                              Permission preview capped at 7
+                              Showing {request.permissionLabels.length} of {request.permissionTotal} permissions
                             </Badge>
                           ) : null}
                           {request.status !== "PENDING" ? (
@@ -1122,7 +1133,8 @@ export default async function CoreAdminUserDetailPage({
                 controlClassName="min-h-10"
                 getPageHref={(nextPage) => {
                   const next = new URLSearchParams({ section: "requests", requestKind: "role", roleRequestPage: String(nextPage), roleRequestPageSize: String(user.sensitiveRoleRequestPage.pageSize) });
-                  if (roleRequestStatusValue) next.set("roleRequestStatus", roleRequestStatusValue);
+                   if (roleRequestStatusValue) next.set("roleRequestStatus", roleRequestStatusValue);
+                   if (roleQuery) next.set("roleQuery", roleQuery);
                   return `/admin/users/${user.id}?${next.toString()}`;
                 }}
               />

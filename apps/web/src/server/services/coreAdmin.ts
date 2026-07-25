@@ -1977,10 +1977,6 @@ export async function getCoreAdminUserDetail(
     options.userAccessSection === undefined ||
     options.userAccessSection === "overview" ||
     options.userAccessSection === "roles";
-  const needsRoleCatalog =
-    options.userAccessSection === undefined ||
-    options.userAccessSection === "roles" ||
-    (options.userAccessSection === "requests" && options.requestKind === "role");
   const rolePageSize = Math.min(25, Math.max(10, Math.floor(options.assignedRolePageSize ?? options.rolePageSize ?? 25)));
   const assignedRoleQuery = (options.assignedRoleQuery ?? options.roleQuery)?.trim() ?? "";
   const roleAssignmentWhere: Prisma.UserRoleAssignmentWhereInput = {
@@ -1988,19 +1984,22 @@ export async function getCoreAdminUserDetail(
     status: "ACTIVE",
     role: { AND: [{ OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] }], ...(assignedRoleQuery ? { OR: [{ name: { contains: assignedRoleQuery, mode: "insensitive" } }, { code: { contains: assignedRoleQuery, mode: "insensitive" } }] } : {}) },
   };
-  const [activeRoleAssignmentIds, activeRoleCount, effectivePermissions] = await Promise.all([
-    loadRoleSurface || needsRoleCatalog
-      ? prisma.userRoleAssignment.findMany({
-          where: { userId: user.id, status: "ACTIVE", role: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] } },
-          select: { roleId: true },
-        })
-      : Promise.resolve([]),
+  const effectivePermissionWhere: Prisma.PermissionWhereInput = {
+    OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
+    roles: { some: { role: { assignments: { some: { userId: user.id, status: "ACTIVE" } } } } },
+  };
+  const [activeRoleCount, effectivePermissions] = await Promise.all([
     loadRoleSurface ? prisma.userRoleAssignment.count({ where: roleAssignmentWhere }) : Promise.resolve(0),
     loadRoleSurface ? prisma.permission.findMany({
-      where: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }], roles: { some: { role: { assignments: { some: { userId: user.id, status: "ACTIVE" } } } } } },
+      where: effectivePermissionWhere,
       select: { code: true },
+      orderBy: { code: "asc" },
+      take: 13,
     }) : Promise.resolve([]),
   ]);
+  const effectivePermissionTotal = loadRoleSurface
+    ? await prisma.permission.count({ where: effectivePermissionWhere })
+    : 0;
   const rolePageCount = Math.max(1, Math.ceil(activeRoleCount / rolePageSize));
   const rolePage = Math.min(Math.max(1, Math.floor(options.assignedRolePage ?? options.rolePage ?? 1)), rolePageCount);
   const roleAssignments = loadRoleSurface
@@ -2018,9 +2017,6 @@ export async function getCoreAdminUserDetail(
       effectivePermissions.map((permission) => permission.code),
     ),
   );
-  const assignedRoleIds = new Set(
-    activeRoleAssignmentIds.map((assignment) => assignment.roleId),
-  );
   const roleQuery = options.roleQuery?.trim().toLowerCase() ?? "";
   const locationQuery = options.locationQuery?.trim().toLowerCase() ?? "";
   const scopeRequestPage = Math.min(Math.max(options.scopeRequestPage ?? 1, 1), 10_000);
@@ -2035,36 +2031,60 @@ export async function getCoreAdminUserDetail(
     options.userAccessSection === undefined ||
     options.userAccessSection === "scopes" ||
     (options.userAccessSection === "requests" && options.requestKind === "scope");
-  const assignableRoleWhere: Prisma.RoleWhereInput = {
-      tenantId: session.context.tenantId,
-      status: "ACTIVE",
-      id: { notIn: Array.from(assignedRoleIds) },
-      ...(roleQuery
-        ? {
-            OR: [
-              { name: { contains: roleQuery, mode: "insensitive" as const } },
-              { code: { contains: roleQuery, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
-  };
-  const [assignableRoleTotal, assignableRoles] = await Promise.all([
-    loadRoleCatalog ? prisma.role.count({ where: assignableRoleWhere }) : Promise.resolve(0),
-    loadRoleCatalog ? prisma.role.findMany({
-      where: assignableRoleWhere,
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        systemRole: true,
-      permissions: {
-          select: { permission: { select: { code: true } } },
-        },
-      },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-      take: 100,
-    }) : Promise.resolve([]),
+  const sensitivePermissionCodes = Object.values(permissions).filter(isSensitivePermissionCode);
+  const roleCatalogBasePredicate = Prisma.sql`
+    FROM "Role" r
+    WHERE r."tenantId" = ${session.context.tenantId}
+      AND r.status = 'ACTIVE'
+      AND (${roleQuery} = '' OR r.name ILIKE '%' || ${roleQuery} || '%' OR r.code ILIKE '%' || ${roleQuery} || '%')
+      AND NOT EXISTS (
+        SELECT 1 FROM "UserRoleAssignment" ura
+        WHERE ura."roleId" = r.id AND ura."userId" = ${user.id} AND ura.status = 'ACTIVE'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM "SensitiveRoleRequest" srr
+        WHERE srr."roleId" = r.id AND srr."tenantId" = ${session.context.tenantId}
+          AND srr."companyId" = ${session.context.companyId}
+          AND srr."targetUserId" = ${user.id} AND srr.status = 'PENDING'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "ApprovalRuleStep" ars
+        JOIN "ApprovalRule" ar ON ar.id = ars."approvalRuleId"
+        WHERE ars."roleId" = r.id AND ar."tenantId" = ${session.context.tenantId} AND ar."isActive" = true
+      )
+  `;
+  const permissionSensitivePredicate = Prisma.sql`(
+    p.code IN (${Prisma.join(sensitivePermissionCodes)})
+    OR p.code ILIKE '%approve%'
+    OR p.code ILIKE '%post%'
+    OR p.code ILIKE '%reverse%'
+  )`;
+  const directRolePredicate = Prisma.sql`
+    AND (r.code IN (${Prisma.join(Array.from(assignableNonSensitiveRoleCodes))}) OR r."systemRole" = false)
+    AND NOT EXISTS (
+      SELECT 1 FROM "RolePermission" rp
+      JOIN "Permission" p ON p.id = rp."permissionId"
+      WHERE rp."roleId" = r.id AND ${permissionSensitivePredicate}
+    )
+  `;
+  const sensitiveRolePredicate = Prisma.sql`
+    AND (
+      (r."systemRole" = true AND r.code NOT IN (${Prisma.join(Array.from(assignableNonSensitiveRoleCodes))}))
+      OR EXISTS (
+        SELECT 1 FROM "RolePermission" rp
+        JOIN "Permission" p ON p.id = rp."permissionId"
+        WHERE rp."roleId" = r.id AND ${permissionSensitivePredicate}
+      )
+    )
+  `;
+  const [assignableRoleTotal, assignableRoles, sensitiveRoleTotal, sensitiveRoles] = await Promise.all([
+    loadRoleCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>`SELECT COUNT(*)::int AS "totalItems" ${roleCatalogBasePredicate} ${directRolePredicate}`.then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
+    loadRoleCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string; systemRole: boolean }>>`SELECT r.id, r.name, r.code, r."systemRole" ${roleCatalogBasePredicate} ${directRolePredicate} ORDER BY r.name ASC, r.id ASC LIMIT 100` : Promise.resolve([]),
+    loadRoleCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>`SELECT COUNT(*)::int AS "totalItems" ${roleCatalogBasePredicate} ${sensitiveRolePredicate}`.then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
+    loadRoleCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string; systemRole: boolean }>>`SELECT r.id, r.name, r.code, r."systemRole" ${roleCatalogBasePredicate} ${sensitiveRolePredicate} ORDER BY r.name ASC, r.id ASC LIMIT 100` : Promise.resolve([]),
   ]);
+  const requestableSensitiveRoleCatalogHasMore = sensitiveRoleTotal > sensitiveRoles.length;
   const scopeRequestWhere: Prisma.HighRiskScopeRequestWhereInput = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
@@ -2083,7 +2103,7 @@ export async function getCoreAdminUserDetail(
   };
   const loadScopeRequests = options.requestKind === undefined || options.requestKind === "scope";
   const loadRoleRequests = options.requestKind === undefined || options.requestKind === "role";
-  const [scopeRequestTotal, highRiskScopeRequests, roleRequestTotal, sensitiveRoleRequests] =
+  let [scopeRequestTotal, highRiskScopeRequests, roleRequestTotal, sensitiveRoleRequests] =
     await Promise.all([
       loadScopeRequests ? prisma.highRiskScopeRequest.count({ where: scopeRequestWhere }) : Promise.resolve(0),
       loadScopeRequests
@@ -2106,6 +2126,7 @@ export async function getCoreAdminUserDetail(
                     take: 7,
                     include: { permission: true },
                   },
+                  _count: { select: { permissions: true } },
                 },
               },
             },
@@ -2115,38 +2136,69 @@ export async function getCoreAdminUserDetail(
           })
         : Promise.resolve([]),
     ]);
+  const resolvedScopeRequestPage = Math.min(scopeRequestPage, Math.max(1, Math.ceil(scopeRequestTotal / scopeRequestPageSize)));
+  const resolvedRoleRequestPage = Math.min(roleRequestPage, Math.max(1, Math.ceil(roleRequestTotal / roleRequestPageSize)));
+  if (loadScopeRequests && resolvedScopeRequestPage !== scopeRequestPage) {
+    highRiskScopeRequests = await prisma.highRiskScopeRequest.findMany({
+      where: scopeRequestWhere,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (resolvedScopeRequestPage - 1) * scopeRequestPageSize,
+      take: scopeRequestPageSize,
+    });
+  }
+  if (loadRoleRequests && resolvedRoleRequestPage !== roleRequestPage) {
+    sensitiveRoleRequests = await prisma.sensitiveRoleRequest.findMany({
+      where: roleRequestWhere,
+      include: {
+        role: {
+          include: {
+            permissions: {
+              orderBy: { permission: { code: "asc" } },
+              take: 7,
+              include: { permission: true },
+            },
+            _count: { select: { permissions: true } },
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (resolvedRoleRequestPage - 1) * roleRequestPageSize,
+      take: roleRequestPageSize,
+    });
+  }
   const referencedLocationIds = Array.from(
     new Set([
       ...highRiskScopeRequests.map((request) => request.locationId),
     ]),
   );
-  const locationWhere: Prisma.LocationWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    status: "ACTIVE",
-    ...(locationQuery
-      ? {
-          OR: [
-            { name: { contains: locationQuery, mode: "insensitive" as const } },
-            { code: { contains: locationQuery, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
-  };
-  const [activeLocationTotal, activeLocationCatalog, referencedLocations] =
+  const highRiskLocationTypeValues = Array.from(highRiskLocationTypes);
+  const locationCatalogPredicate = Prisma.sql`
+    FROM "Location" l
+    WHERE l."tenantId" = ${session.context.tenantId}
+      AND l."companyId" = ${session.context.companyId}
+      AND l.status = 'ACTIVE'
+      AND (${locationQuery} = '' OR l.name ILIKE '%' || ${locationQuery} || '%' OR COALESCE(l.code, '') ILIKE '%' || ${locationQuery} || '%')
+      AND NOT EXISTS (
+        SELECT 1 FROM "UserScopeAssignment" usa
+        WHERE usa."userId" = ${user.id} AND usa.status = 'ACTIVE'
+          AND usa."scopeType" = 'LOCATION' AND usa."scopeId" = l.id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM "HighRiskScopeRequest" hrr
+        WHERE hrr."tenantId" = ${session.context.tenantId}
+          AND hrr."companyId" = ${session.context.companyId}
+          AND hrr."targetUserId" = ${user.id}
+          AND hrr."locationId" = l.id AND hrr.status = 'PENDING'
+      )
+  `;
+  const directLocationPredicate = Prisma.sql`${locationCatalogPredicate} AND l."locationType"::text NOT IN (${Prisma.join(highRiskLocationTypeValues)})`;
+  const controlledLocationPredicate = Prisma.sql`${locationCatalogPredicate} AND l."locationType"::text IN (${Prisma.join(highRiskLocationTypeValues)})`;
+  const [directLocationTotal, directLocationCatalog, controlledLocationTotal, controlledLocationCatalog, referencedLocations] =
     await Promise.all([
-      loadLocationCatalog ? prisma.location.count({ where: locationWhere }) : Promise.resolve(0),
-      loadLocationCatalog ? prisma.location.findMany({
-        where: locationWhere,
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          locationType: true,
-        },
-        orderBy: [{ name: "asc" }, { id: "asc" }],
-        take: 100,
-      }) : Promise.resolve([]),
+      loadLocationCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>`SELECT COUNT(*)::int AS "totalItems" ${directLocationPredicate}`.then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
+      loadLocationCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string | null; locationType: string }>>`SELECT l.id, l.name, l.code, l."locationType"::text AS "locationType" ${directLocationPredicate} ORDER BY l.name ASC, l.id ASC LIMIT 100` : Promise.resolve([]),
+      loadLocationCatalog ? prisma.$queryRaw<Array<{ totalItems: number }>>`SELECT COUNT(*)::int AS "totalItems" ${controlledLocationPredicate}`.then((rows) => rows[0]?.totalItems ?? 0) : Promise.resolve(0),
+      loadLocationCatalog ? prisma.$queryRaw<Array<{ id: string; name: string; code: string | null; locationType: string }>>`SELECT l.id, l.name, l.code, l."locationType"::text AS "locationType" ${controlledLocationPredicate} ORDER BY l.name ASC, l.id ASC LIMIT 100` : Promise.resolve([]),
       referencedLocationIds.length
         ? prisma.location.findMany({
             where: {
@@ -2186,14 +2238,8 @@ export async function getCoreAdminUserDetail(
     ]),
   );
   const allActiveLocationDisplay = new Map(
-    [...referencedLocations, ...activeLocationCatalog].map((location) => [location.id, location]),
+    [...referencedLocations, ...directLocationCatalog, ...controlledLocationCatalog].map((location) => [location.id, location]),
   );
-  const pendingSensitiveRoleIds = new Set(
-    sensitiveRoleRequests
-      .filter((request) => request.status === "PENDING")
-      .map((request) => request.roleId),
-  );
-
   return {
     id: user.id,
     displayName: user.displayName,
@@ -2218,7 +2264,7 @@ export async function getCoreAdminUserDetail(
       query: assignedRoleQuery,
     },
     scopes: [],
-    assignableLocations: activeLocationCatalog.map((location) => ({
+    assignableLocations: directLocationCatalog.map((location) => ({
       id: location.id,
       name: location.name,
       code: location.code,
@@ -2228,6 +2274,14 @@ export async function getCoreAdminUserDetail(
         locationType: location.locationType,
         accessLevel: "VIEW",
       }),
+    })),
+    controlledLocationCatalog: controlledLocationCatalog.map((location) => ({
+      id: location.id,
+      name: location.name,
+      code: location.code,
+      type: location.locationType,
+      assignmentEligibility: getLocationScopeRiskLabel(location),
+      directAssignable: false,
     })),
     highRiskScopeRequests: highRiskScopeRequests.map((request) => {
       const location = allActiveLocationDisplay.get(request.locationId);
@@ -2261,31 +2315,32 @@ export async function getCoreAdminUserDetail(
       };
     }),
     highRiskScopeRequestPage: {
-      page: scopeRequestPage,
+      page: resolvedScopeRequestPage,
       pageSize: scopeRequestPageSize,
       totalItems: scopeRequestTotal,
     },
     canMutateScopes: user.id !== session.user.id,
     canMutateRoles: user.id !== session.user.id,
     assignableRoles: assignableRoles
-      .filter((role) => isDirectlyAssignableRole(role))
       .map((role) => ({
         id: role.id,
         name: role.name,
         code: role.code,
-        assignmentEligibility: roleAssignmentRiskLabel(role),
+        assignmentEligibility: "Available for quick setup",
       })),
-    requestableSensitiveRoles: assignableRoles
-      .filter((role) => !isDirectlyAssignableRole(role))
-      .filter((role) => !pendingSensitiveRoleIds.has(role.id))
+    requestableSensitiveRoles: sensitiveRoles
       .map((role) => ({
         id: role.id,
         name: role.name,
         code: role.code,
-        assignmentEligibility: sensitiveRoleRiskLabel(role),
+        assignmentEligibility: role.systemRole
+          ? "System/admin role requires controlled approval"
+          : "Sensitive permissions require controlled approval",
       })),
-    assignableLocationCatalogHasMore: activeLocationTotal > activeLocationCatalog.length,
+    assignableLocationCatalogHasMore: directLocationTotal > directLocationCatalog.length,
+    controlledLocationCatalogHasMore: controlledLocationTotal > controlledLocationCatalog.length,
     assignableRoleCatalogHasMore: assignableRoleTotal > assignableRoles.length,
+    requestableSensitiveRoleCatalogHasMore,
     sensitiveRoleRequests: sensitiveRoleRequests.map((request) => ({
       ...(() => {
         const reviewContextVisible = request.status === "PENDING";
@@ -2300,6 +2355,7 @@ export async function getCoreAdminUserDetail(
                 getPermissionPresentation(rolePermission.permission.code),
               )
             : [],
+          permissionTotal: reviewContextVisible ? request.role._count.permissions : 0,
         };
       })(),
       id: request.id,
@@ -2317,14 +2373,17 @@ export async function getCoreAdminUserDetail(
       roleId: request.roleId,
       roleName: request.role.name,
       roleCode: request.role.code,
-      riskLabel: sensitiveRoleRiskLabel(request.role),
+      riskLabel: request.role.systemRole
+        ? "System/admin role requires controlled approval"
+        : "Sensitive permissions require controlled approval",
     })),
     sensitiveRoleRequestPage: {
-      page: roleRequestPage,
+      page: resolvedRoleRequestPage,
       pageSize: roleRequestPageSize,
       totalItems: roleRequestTotal,
     },
     permissionCodes,
+    permissionTotal: effectivePermissionTotal,
     permissions: permissionCodes.map((code) => getPermissionPresentation(code)),
   };
 }

@@ -46,10 +46,16 @@ authorized routing definition; the list does not grant mutation or approval
 authority.
 
 User-detail assignment pickers are bounded searchable catalogs. Location choices
-are active records in the selected company; role choices are active tenant-global
-roles. When more than 100 options match, refine the server-side search rather
-than assuming the first page is complete. Existing assigned or requested scope
-records remain visible in history even when they are no longer selectable.
+are active records in the selected company, separated into low-risk quick
+assignment and high-risk controlled-request choices; role choices are separated
+into quick non-sensitive roles and controlled sensitive/system roles. Active
+assignments and pending requests are removed server-side before the first 100
+options are returned. When more than 100 eligible options match, refine the
+server-side search rather than assuming the first page is complete. Existing
+assigned or requested records remain visible in history even when they are no
+longer selectable. Roles already used by an active approval rule are not offered
+for assignment or controlled request; the server rechecks that rule protection
+when the action is submitted.
 
 Controlled Scope Requests and Controlled Role Requests are separate paginated
 histories. Use the lifecycle status filter and page controls to review older

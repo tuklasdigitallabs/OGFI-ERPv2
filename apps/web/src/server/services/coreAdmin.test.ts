@@ -304,7 +304,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("assertDirectRoleAssignmentAllowed(role);");
     expect(deactivationSource).not.toContain("assertDirectRoleAssignmentAllowed");
     expect(deactivationSource).toContain("controlledRevocation: true");
-    expect(serviceSource).toContain(".filter((role) => isDirectlyAssignableRole(role))");
+    expect(serviceSource).toContain("const directRolePredicate");
     expect(serviceSource).toContain("createCoreAdminUser");
     expect(serviceSource).toContain("createUserRoleAssignment");
     expect(serviceSource).toContain("deactivateUserRoleAssignment");
@@ -322,7 +322,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("assertDirectLocationScopeAssignmentAllowed");
     expect(serviceSource).toContain("directScopeAssignment");
     expect(serviceSource).toContain("directScopeDeactivation");
-    expect(detailPageSource).toContain("location.directAssignable");
+    expect(serviceSource).toContain("directLocationPredicate");
     expect(detailPageSource).toContain("scope.canMutate");
     expect(detailPageSource).toContain("Manage-level scope requires controlled approval");
     expect(feedbackSource).toContain("HIGH_RISK_SCOPE_ASSIGNMENT_BLOCKED");
@@ -567,10 +567,16 @@ describe("core administration audit search wiring", () => {
       "utf8"
     );
     expect(serviceSource).toContain("assignableRoleTotal");
-    expect(serviceSource).toContain("activeLocationTotal");
+    expect(serviceSource).toContain("directLocationTotal");
+    expect(serviceSource).toContain("controlledLocationTotal");
     expect(serviceSource).toContain("take: 100");
     expect(serviceSource).toContain("assignableRoleCatalogHasMore");
+    expect(serviceSource).toContain("requestableSensitiveRoleCatalogHasMore");
     expect(serviceSource).toContain("assignableLocationCatalogHasMore");
+    expect(serviceSource).toContain("controlledLocationCatalogHasMore");
+    expect(serviceSource).toContain("NOT EXISTS (\n        SELECT 1 FROM \"UserScopeAssignment\"");
+    expect(serviceSource).toContain("NOT EXISTS (\n        SELECT 1 FROM \"HighRiskScopeRequest\"");
+    expect(serviceSource).toContain("permissionSensitivePredicate");
     expect(serviceSource).toContain("roleQuery");
     expect(serviceSource).toContain("locationQuery");
     expect(detailPageSource).toContain('name="locationQuery"');
@@ -578,6 +584,7 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain("More active locations exist");
     expect(detailPageSource).toContain("More active roles exist");
     expect(serviceSource).not.toContain("permissionCodes: role.permissions.map");
+    expect(serviceSource).toContain("permissionTotal");
   });
 
   test("user detail controlled request history uses bounded status-filtered pages", () => {
@@ -596,8 +603,7 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("const loadRoleCatalog =");
     expect(serviceSource).toContain("const loadLocationCatalog =");
     expect(serviceSource).toContain("const loadRoleSurface =");
-    expect(serviceSource).toContain("const needsRoleCatalog =");
-    expect(serviceSource).toContain("loadRoleSurface || needsRoleCatalog");
+    expect(serviceSource).toContain("resolvedScopeRequestPage");
     expect(serviceSource).toContain('orderBy: [{ createdAt: "desc" }, { id: "desc" }]');
     expect(serviceSource).toContain("highRiskScopeRequestPage");
     expect(serviceSource).toContain("sensitiveRoleRequestPage");
@@ -662,7 +668,7 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain("buildScopeHref(undefined, nextPage)");
     expect(detailPageSource).toContain("const loadRoleSurface = section === \"overview\" || section === \"roles\";");
     expect(detailPageSource).toContain('{loadRoleSurface ? user.rolesPage.totalItems : "—"}');
-    expect(detailPageSource).toContain('{loadRoleSurface ? user.permissions.length : "—"}');
+    expect(detailPageSource).toContain('{loadRoleSurface ? user.permissionTotal : "—"}');
     expect(detailPageSource).toContain('(section === \"requests\" && requestKind === \"scope\")');
   });
 

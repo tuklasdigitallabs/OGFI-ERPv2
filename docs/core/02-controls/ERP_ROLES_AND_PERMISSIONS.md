@@ -435,6 +435,14 @@ Role changes should be controlled by an authorized administrator. Current implem
 - approval writes audit history linked to `DEC-0036` and `DEC-0040`, increments the target user's privilege epoch, and revokes active application sessions so stale authority cannot survive;
 - external identity-provider invalidation follow-up is tracked only when an external provider is configured.
 
+User Access option catalogs are server-owned eligibility projections, not authority
+grants. Quick-assignment role and low-risk location catalogs exclude every active
+assignment and pending controlled request for the target before the bounded first
+100 results are returned; controlled role and high-risk location catalogs use their
+own predicates and exact totals. Search refinement is required when a catalog
+reports overflow. The mutation service rechecks the same target, scope, active
+assignment, pending-request, and sensitivity rules at commit time.
+
 Account activation and recovery remain Core Administration actions within company `MANAGE` scope. Initial activation may be issued for a user who has no local identity. Recovery for an existing identity requires one administrator to record the reason and identity-verification evidence and a different MFA-assured administrator to approve or reject it. The target user, requester, and reviewer separation rules are enforced by the service; recovery cannot grant roles or scopes.
 
 High-risk changes include:
