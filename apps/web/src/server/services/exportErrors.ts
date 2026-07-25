@@ -20,6 +20,7 @@ const validationErrorStatusByCode = new Map<string, number>([
   ["REPORT_EXPORT_DATE_RANGE_REQUIRED", 400],
   ["REPORT_EXPORT_DATE_RANGE_INVALID", 400],
   ["REPORT_EXPORT_DATE_RANGE_TOO_LARGE", 400],
+  ["REPORT_EXPORT_ENTITY_ID_INVALID", 400],
   ["PROJECT_EXPORT_RATE_LIMITED", 429]
 ]);
 const safeExportErrorCodePattern = /^[A-Z0-9_]+$/;
