@@ -4,7 +4,7 @@
 
 **Applies to:** New local identities and recovery of existing local accounts
 
-**Last verified against:** implemented Authentication workspace, 30-minute single-use activation, controlled recovery, session revocation, optional MFA reset, and audit events
+**Last verified against:** bounded Recovery queue, selected review actions, 30-minute single-use activation, controlled recovery, session revocation, optional MFA reset, and audit events
 
 ## Purpose
 
@@ -35,12 +35,12 @@ The user opens the link, creates and confirms a password that meets the displaye
 
 ## Recover An Existing Account
 
-1. Under `Controlled recovery`, select the existing account.
+1. Open `Admin` → `Authentication` → `Recovery`, then use the bounded filters or paging to find the request. To create a request, select an existing account with an active local identity.
 2. Choose `Password / credentials only` or `Password and lost MFA device`.
 3. Enter the identity-verification reason and evidence reference.
 4. Select `Request recovery review`.
-5. Have a different eligible administrator review the target, requester, recovery scope, reason, and evidence.
-6. The reviewer enters an independent review reason and selects `Approve and send link` or `Reject`.
+5. Open the selected request details. Have a different eligible administrator review the target, requester, recovery scope, reason, and evidence.
+6. The reviewer enters an independent review reason and selects `Approve and send link` or `Reject`. Approved and rejected requests remain visible as read-only history.
 7. If approved, the system sends the link directly to the target user's account email. If delivery fails, an MFA-assured administrator can retry it from `Activation delivery attention` before expiry.
 
 ## Expected Result
@@ -53,6 +53,7 @@ The user opens the link, creates and confirms a password that meets the displaye
 ## Controls And Warnings
 
 - Direct activation is only for users without an active local identity. Existing accounts must use controlled recovery.
+- Recovery requests cannot be created for an account without an active local identity; use the Activation section for first-time setup.
 - The requesting administrator cannot review the same recovery request, and the target user cannot request or review their own recovery.
 - Activation links are secrets. They are not shown to administrators and must not be copied into tickets, public chat, screenshots, or the MFA evidence register.
 - A failed delivery does not expose the link. Correct the approved SMTP transport or account email and use the controlled retry action before expiry.

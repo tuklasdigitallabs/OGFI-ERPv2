@@ -100,3 +100,4 @@
 | Session Invalidation bounded queue    | The server-paginated provider-follow-up register with exact filtered totals, UTC date/search filters, truthful company scope labels, and a selected pending-record completion action. |
 | Effective privileged MFA population | Users with active/effective selected-company scope and active/effective tenant/global roles granting at least one sensitive permission; future, expired, inactive, or foreign-tenant assignments are excluded. |
 | Reason-code selected deactivation | The focused, URL-selected action used to deactivate one active company-scoped reason code. The server atomically rechecks its ACTIVE state and records the audit before the list context is restored. |
+| Authentication Recovery bounded queue | The company-scoped, server-paginated recovery register with exact filtered totals, visible terminal history, and selected pending-review actions. |

@@ -28,6 +28,14 @@ const reviewRecoverySchema = z.object({
   requestId: z.string().uuid(),
   reason: z.string().trim().min(10).max(500),
 });
+const recoveryPageInputSchema = z.object({
+  page: z.number().int().min(1).max(10_000).default(1),
+  pageSize: z.number().int().min(10).max(100).default(25),
+  query: z.string().trim().max(120).default(""),
+  status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
+  createdFrom: z.string().optional(),
+  createdTo: z.string().optional(),
+});
 
 async function assertCanManageAuthentication(session: SessionContext) {
   await requirePermission(session, permissions.coreAdminister);
@@ -307,6 +315,68 @@ export async function listAuthRecoveryRequests(session: SessionContext) {
   });
 }
 
+export async function listAuthRecoveryRequestPage(session: SessionContext, input: unknown = {}) {
+  await assertCanManageAuthentication(session);
+  const values = recoveryPageInputSchema.parse(input);
+  const where = {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(values.status ? { status: values.status } : {}),
+    ...(values.query ? { OR: [
+      { reason: { contains: values.query, mode: "insensitive" as const } },
+      { evidenceReference: { contains: values.query, mode: "insensitive" as const } },
+      { targetUser: { OR: [
+        { displayName: { contains: values.query, mode: "insensitive" as const } },
+        { email: { contains: values.query, mode: "insensitive" as const } },
+      ] } },
+      { requestedByUser: { OR: [
+        { displayName: { contains: values.query, mode: "insensitive" as const } },
+        { email: { contains: values.query, mode: "insensitive" as const } },
+      ] } },
+    ] } : {}),
+    ...(values.createdFrom || values.createdTo ? { createdAt: {
+      ...(values.createdFrom ? { gte: new Date(`${values.createdFrom}T00:00:00.000Z`) } : {}),
+      ...(values.createdTo ? { lte: new Date(`${values.createdTo}T23:59:59.999Z`) } : {}),
+    } } : {}),
+  };
+  const totalItems = await prisma.authRecoveryRequest.count({ where });
+  const totalPages = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  const items = await prisma.authRecoveryRequest.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: (page - 1) * values.pageSize,
+      take: values.pageSize,
+      select: {
+        id: true, companyId: true, targetUserId: true, requestedByUserId: true,
+        status: true, resetPassword: true, resetMfa: true, reason: true,
+        evidenceReference: true, createdAt: true, reviewedAt: true,
+        reviewReason: true,
+        targetUser: { select: { displayName: true, email: true } },
+        requestedByUser: { select: { displayName: true, email: true } },
+        reviewedByUser: { select: { displayName: true, email: true } },
+      },
+    });
+  return { items, page, pageSize: values.pageSize, totalItems, totalPages };
+}
+
+export async function getAuthRecoveryRequest(session: SessionContext, requestId: string) {
+  await assertCanManageAuthentication(session);
+  const id = z.string().uuid().safeParse(requestId);
+  if (!id.success) return null;
+  return prisma.authRecoveryRequest.findFirst({
+    where: { id: id.data, tenantId: session.context.tenantId, companyId: session.context.companyId },
+    select: {
+      id: true, companyId: true, targetUserId: true, requestedByUserId: true,
+      status: true, resetPassword: true, resetMfa: true, reason: true,
+      evidenceReference: true, createdAt: true, reviewedAt: true, reviewReason: true,
+      targetUser: { select: { displayName: true, email: true } },
+      requestedByUser: { select: { displayName: true, email: true } },
+      reviewedByUser: { select: { displayName: true, email: true } },
+    },
+  });
+}
+
 export async function requestAuthRecovery(
   session: SessionContext,
   formData: FormData,
@@ -320,6 +390,8 @@ export async function requestAuthRecovery(
   if (!allowedUserIds.includes(values.targetUserId)) {
     throw new Error("AUTH_ACCOUNT_SCOPE_DENIED");
   }
+  const localIdentity = await prisma.authIdentity.findFirst({ where: { userId: values.targetUserId, provider: "LOCAL", status: "ACTIVE" }, select: { id: true } });
+  if (!localIdentity) throw new Error("AUTH_RECOVERY_LOCAL_IDENTITY_REQUIRED");
   await assertPrivilegedMfaForAction(session, {
     action: "REQUEST_ACCOUNT_RECOVERY",
     permissionCode: permissions.coreAdminister,
@@ -415,6 +487,11 @@ export async function approveAuthRecovery(
   });
   const result = await prisma.$transaction(async (tx) => {
     await assertTargetUserInCompanyScope(tx, session, request.targetUserId);
+    const localIdentity = await tx.authIdentity.findFirst({
+      where: { userId: request.targetUserId, provider: "LOCAL", status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (!localIdentity) throw new Error("AUTH_RECOVERY_LOCAL_IDENTITY_REQUIRED");
     const reviewed = await tx.authRecoveryRequest.updateMany({
       where: {
         id: request.id,

@@ -94,6 +94,7 @@ switch to Brands to review the full paginated brand register.
 - Treating evidence-register access as file access or hold authority: the register is metadata-only, and hold placement needs a separate permission plus current privileged MFA assurance.
 - Reading a CSV without checking the metadata rows: always confirm the report ID, selected scope, trust-gate mode, and source decision before using the data.
 - Deactivating a reason code: open the selected row’s details, confirm the workflow and code, enter the reason, and submit from the action sheet. If another administrator already handled it, refresh and do not retry by creating a replacement code.
+- Recovering an account: use Authentication → Recovery, page or filter the bounded queue, open one request, and have a different MFA-assured administrator approve or reject it. First-time identities belong in Activation; approved/rejected history is read-only.
 
 ## Completion check
 

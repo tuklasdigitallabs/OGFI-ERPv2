@@ -125,6 +125,11 @@ filters, exact counts, and a selected-code detail summary. Deactivation is a
 single URL-selected TaskSheet with preserved list context and an atomic expected-
 ACTIVE claim; history remains retained and concurrent/stale actions fail safely.
 
+Authentication Recovery now uses an active-section bounded queue with exact
+filtered paging, visible terminal history, and one selected review TaskSheet.
+Recovery requires an active local identity; first-time activation remains separate,
+and existing approval/rejection security controls remain server-authoritative.
+
 Admin Settings now uses bounded server-side category/search pagination with exact
 matching totals while preserving audited policy override/reset behavior.
 
