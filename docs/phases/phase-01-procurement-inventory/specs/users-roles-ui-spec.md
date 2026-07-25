@@ -79,6 +79,11 @@ selected-company scoped; roles are active tenant-global options. Overflow is
 disclosed and requires refinement, while existing referenced scopes remain
 visible as history even when they are not selectable.
 
+Implementation note (`DEC-0192`): Permission Access keeps the approved bounded
+per-role user-preview contract. Preview disclosures are collapsed by default,
+keyboard-accessible, and limited to five current-company previews per granting
+role on the current role page; they are not an exhaustive effective-user list.
+
 Implementation note (`DEC-0191`): Role Detail permission review uses a bounded,
 URL-backed server matrix with code/action search and Sensitive, Overrides, and
 Recommended Drift filters. The selected role's complete enabled-code set is

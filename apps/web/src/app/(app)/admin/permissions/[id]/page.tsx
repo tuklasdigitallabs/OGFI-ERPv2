@@ -144,25 +144,27 @@ export default async function CoreAdminPermissionDetailPage({
                   </div>
                   <div className="mt-3 grid gap-2">
                     {role.assignedUsers.length === 0 ? (
-                    <p className="text-sm text-slate-600">No current-company users currently receive this role.</p>
+                      <p className="text-sm text-slate-600">No current-company users currently receive this role.</p>
                     ) : (
-                      role.assignedUsers.map((user) => (
-                        <div
-                          key={user.id}
-                          data-testid="admin-permission-user-row"
-                          className="ogfi-record-summary p-3"
-                        >
-                          <p className="font-semibold text-slate-950">{user.displayName}</p>
-                          <p className="text-xs text-slate-500">{user.email}</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {user.scopes.map((scope) => (
-                              <Badge key={scope.id} tone="info">
-                                {scope.type} / {scope.accessLevel}
-                              </Badge>
-                            ))}
-                          </div>
+                      <details className="rounded-lg border border-slate-200 bg-slate-50">
+                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-slate-700">
+                          <span>Show up to {role.assignedUsers.length} user previews</span>
+                          <span className="text-xs font-normal text-slate-500">Current role page only</span>
+                        </summary>
+                        <div className="grid gap-2 border-t border-slate-200 p-3">
+                          {role.assignedUsers.map((user) => (
+                            <div key={user.id} data-testid="admin-permission-user-row" className="ogfi-record-summary p-3">
+                              <p className="font-semibold text-slate-950">{user.displayName}</p>
+                              <p className="text-xs text-slate-500">{user.email}</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {user.scopes.map((scope) => (
+                                  <Badge key={scope.id} tone="info">{scope.type} / {scope.accessLevel}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))
+                      </details>
                     )}
                   </div>
                   <p className="mt-2 text-xs text-slate-500">{role.assignedUserCount} current-company active user{role.assignedUserCount === 1 ? "" : "s"}; showing {role.assignedUsers.length} preview{role.assignedUsers.length === 1 ? "" : "s"}.</p>

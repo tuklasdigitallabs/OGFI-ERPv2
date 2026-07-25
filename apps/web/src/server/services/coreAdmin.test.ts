@@ -779,6 +779,9 @@ describe("core administration audit search wiring", () => {
     expect(pageSource).toContain("PaginationBar");
     expect(pageSource).toContain("Preview users shown on this page");
     expect(pageSource).toContain("not an exhaustive effective-user total");
+    expect(pageSource).toContain("Show up to {role.assignedUsers.length} user previews");
+    expect(pageSource).toContain("<details");
+    expect(pageSource).toContain("Current role page only");
     expect(pageSource).toContain("permission.rolesPage.totalRoles");
   });
 
