@@ -12,6 +12,7 @@ import { Badge, PaginationBar, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -1083,7 +1084,18 @@ export default async function AdminReadinessPage({
                   selectedUatEvidence.createdByUserId === session.user.id ? (
                     <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">Another authorized reviewer must verify or reject evidence recorded by you.</p>
                   ) : (
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <TaskSheet
+                      title="Review selected UAT evidence"
+                      description="Choose one audited outcome. The server rechecks company scope, creator self-review, and RECORDED status before changing the record."
+                      trigger="Open review controls"
+                      triggerClassName="min-h-11 bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+                      bodyScroll="contained"
+                    >
+                      <div className="grid gap-3" data-testid="uat-evidence-review-controls">
+                        <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-slate-700">
+                          <p className="font-bold text-slate-950">{selectedUatEvidence.title}</p>
+                          <p className="mt-1">Current status: {selectedUatEvidence.verificationStatus}. Verify confirms the evidence; reject records a reason and keeps it out of readiness counts.</p>
+                        </div>
                       <form action={updateUatEvidenceAction}>
                         <input name="evidenceId" type="hidden" value={selectedUatEvidence.id} />
                         <input name="status" type="hidden" value="VERIFIED" />
@@ -1095,10 +1107,11 @@ export default async function AdminReadinessPage({
                         <input name="evidenceId" type="hidden" value={selectedUatEvidence.id} />
                         <input name="status" type="hidden" value="REJECTED" />
                         <input name="uatQ" type="hidden" value={uatQuery} /><input name="uatEvidenceType" type="hidden" value={uatEvidenceType ?? ""} /><input name="uatResult" type="hidden" value={uatResult ?? ""} /><input name="uatVerificationStatus" type="hidden" value={uatVerificationStatus ?? ""} /><input name="uatWorkflowArea" type="hidden" value={uatWorkflowArea} /><input name="uatEnvironment" type="hidden" value={uatEnvironment} /><input name="uatPage" type="hidden" value={String(uatEvidencePage.page)} /><input name="uatPageSize" type="hidden" value={String(uatEvidencePage.pageSize)} />
-                        <input name="reason" className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Rejection reason (required)" minLength={5} required />
+                        <label className="grid gap-1 text-sm font-medium text-slate-700">Rejection reason<input name="reason" className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Explain why this evidence is not accepted" minLength={5} required /></label>
                         <button className="min-h-11 rounded-md border border-rose-200 bg-rose-50 px-3 text-sm font-semibold text-rose-800 hover:bg-rose-100">Reject evidence</button>
                       </form>
-                    </div>
+                      </div>
+                    </TaskSheet>
                   )
                 ) : null}
                 <a className="text-sm font-semibold text-blue-700 hover:underline" href={uatContextHref}>Close selected evidence</a>

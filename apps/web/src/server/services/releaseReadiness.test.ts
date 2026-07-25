@@ -465,6 +465,22 @@ describe("release readiness gates", () => {
     expect(pageSource).toContain("default revision");
   });
 
+  test("selected UAT evidence uses one focused review action sheet", () => {
+    const pageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/readiness/page.tsx"),
+      "utf8",
+    );
+    expect(pageSource).toContain("selectedUatEvidence");
+    expect(pageSource).toContain("<TaskSheet");
+    expect(pageSource).toContain("Review selected UAT evidence");
+    expect(pageSource).toContain('data-testid="uat-evidence-review-controls"');
+    expect(pageSource).toContain("Open review controls");
+    expect(pageSource).toContain("creator self-review");
+    expect(pageSource).toContain("RECORDED status");
+    expect(pageSource).toContain("minLength={5}");
+    expect(pageSource).toContain("selected evidence review panel");
+  });
+
   test("UAT gates require evidence and decision notes for acceptance/default revision tracking", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "releaseReadiness.ts"), "utf8");
     const feedbackSource = readFileSync(path.resolve(__dirname, "actionFeedback.ts"), "utf8");

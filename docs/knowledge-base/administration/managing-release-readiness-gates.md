@@ -47,9 +47,11 @@ The UAT evidence register is also paginated and shows an exact matching total fo
 
 Selecting a UAT evidence title opens a scoped detail panel with its type, workflow area, environment, result, tester, execution time, and evidence reference. If the record is outside the selected company or no longer available, the panel reports that it is unavailable without revealing whether another company has a matching ID.
 
+For a recorded item that was not created by you, choose **Open review controls** to open one focused review sheet. Verify confirms the evidence; Reject requires a reason of at least five characters. The sheet preserves the active filters and page after the action.
+
 The UAT summary counters are calculated from scoped aggregate checks across the register, not from the current page of rows. A filtered or paginated view therefore cannot make a missing evidence type appear ready.
 
-UAT rows do not perform review actions inline. Open a record to review it. Only a recorded item can be verified or rejected, and the person who recorded it cannot perform that review. Rejection requires a reason; verified and rejected records are retained as read-only history.
+UAT rows do not perform review actions inline. Open a record and then its review controls. Only a recorded item can be verified or rejected, and the person who recorded it cannot perform that review. Rejection requires a reason; verified and rejected records are retained as read-only history.
 
 Deployment evidence follows the same selected-record review pattern. The migration/backup/restore readiness counter only clears when each required evidence type is verified; monitoring/hypercare is tracked separately. A recorded or rejected item does not clear a deployment gate.
 
