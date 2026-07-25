@@ -851,29 +851,50 @@ async function listCoreAdminRolePageAuthorized(
   const highAccessPredicate: Prisma.RoleWhereInput = {
     permissions: {
       some: {
-        permission: { code: { in: coreAdminHighAccessPermissionCodes } },
+        permission: {
+          code: { in: coreAdminHighAccessPermissionCodes },
+          OR: [{ tenantId: session.context.tenantId }, { tenantId: null }],
+        },
       },
     },
   };
-  const [totalItems, activeItems, highAccessItems, roles] = await Promise.all([
+  const [totalItems, activeItems, highAccessItems] = await Promise.all([
     prisma.role.count({ where }),
     prisma.role.count({ where: { ...where, status: "ACTIVE" } }),
     prisma.role.count({ where: { ...where, ...highAccessPredicate } }),
-    prisma.role.findMany({
-      where,
-      include: {
-        permissions: {
-          take: 3,
-          orderBy: { permission: { code: "asc" } },
-          include: { permission: true },
-        },
-        _count: { select: { permissions: true } },
-      },
-      orderBy: [{ name: "asc" }, { id: "asc" }],
-      skip: (values.page - 1) * values.pageSize,
-      take: values.pageSize,
-    }),
   ]);
+  const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));
+  const page = Math.min(values.page, pageCount);
+  const roles = await prisma.role.findMany({
+    where,
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      systemRole: true,
+      status: true,
+      permissions: {
+        where: { permission: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] } },
+        take: 3,
+        orderBy: { permission: { code: "asc" } },
+        select: { permission: { select: { id: true, code: true } } },
+      },
+    },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    skip: (page - 1) * values.pageSize,
+    take: values.pageSize,
+  });
+  const permissionCounts = roles.length === 0
+    ? []
+    : await prisma.rolePermission.groupBy({
+        by: ["roleId"],
+        where: {
+          roleId: { in: roles.map((role) => role.id) },
+          permission: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] },
+        },
+        _count: { roleId: true },
+      });
+  const permissionCountByRoleId = new Map(permissionCounts.map((entry) => [entry.roleId, entry._count.roleId]));
   return {
     items: roles.map((role) => ({
       id: role.id,
@@ -883,14 +904,14 @@ async function listCoreAdminRolePageAuthorized(
       status: role.status,
       canAssignDirectly: isDirectlyAssignableRole(role),
       assignmentEligibility: roleAssignmentRiskLabel(role),
-      permissionCount: role._count.permissions,
+      permissionCount: permissionCountByRoleId.get(role.id) ?? 0,
       permissionPreview: role.permissions.map((rolePermission) => ({
         id: rolePermission.permission.id,
         code: rolePermission.permission.code,
         label: getPermissionPresentation(rolePermission.permission.code).label,
       })),
     })),
-    page: values.page,
+    page,
     pageSize: values.pageSize,
     totalItems,
     activeItems,

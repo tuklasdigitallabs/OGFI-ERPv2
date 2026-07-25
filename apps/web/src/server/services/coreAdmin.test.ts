@@ -149,7 +149,13 @@ describe("core administration audit search wiring", () => {
     expect(serviceSource).toContain("coreAdminRolePageInputSchema");
     expect(serviceSource).toContain("listCoreAdminRolePageAuthorized");
     expect(serviceSource).toContain('orderBy: [{ name: "asc" }, { id: "asc" }]');
-    expect(serviceSource).toContain("skip: (values.page - 1) * values.pageSize");
+    expect(serviceSource).toContain("const pageCount = Math.max(1, Math.ceil(totalItems / values.pageSize));");
+    expect(serviceSource).toContain("const page = Math.min(values.page, pageCount);");
+    expect(serviceSource).toContain("prisma.rolePermission.groupBy");
+    expect(serviceSource).toContain("permissionCountByRoleId");
+    expect(serviceSource).toContain('take: 3');
+    expect(serviceSource).toContain('permission: { OR: [{ tenantId: session.context.tenantId }, { tenantId: null }] }');
+    expect(serviceSource).toContain("skip: (page - 1) * values.pageSize");
     expect(serviceSource).toContain("permissionPreview");
     expect(serviceSource).toContain("listCoreAdminRoleOptionsAuthorized");
     expect(adminPageSource).toContain('name="roleQuery"');
