@@ -6,6 +6,7 @@ import { Badge, Panel, PaginationBar } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -88,14 +89,17 @@ async function createSupplierItemLinkAction(formData: FormData) {
 async function deactivateSupplierItemLinkAction(formData: FormData) {
   "use server";
 
+  const submittedReturnPath = formData.get("returnPath");
+  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith("/suppliers")
+    ? submittedReturnPath
+    : "/suppliers";
   try {
     await deactivateSupplierItemLink(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath("/suppliers", error));
+    redirect(actionErrorRedirectPath(returnPath, error));
   }
   revalidatePath("/suppliers");
-  const supplierId = formData.get("supplierId");
-  redirect(typeof supplierId === "string" ? `/suppliers?supplier=${supplierId}` : "/suppliers");
+  redirect(returnPath);
 }
 
 type SuppliersPageProps = {
@@ -153,6 +157,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const supplierAction = firstParam(params.supplierAction);
   const selectedSupplierId = firstParam(params.supplier);
   const linkAction = firstParam(params.linkAction) === "create" ? "create" : null;
+  const selectedSupplierItemLinkId = firstParam(params.selectedSupplierItemLinkId);
   const itemLinkQuery = firstParam(params.itemLinkQuery) ?? "";
   const itemLinkPage = Number(firstParam(params.itemLinkPage) ?? "1");
   const selectedItemId = firstParam(params.selectedItemId);
@@ -190,6 +195,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
       })
     : null;
   const selectedSupplier = selectedSupplierCatalog?.supplier ?? null;
+  const selectedSupplierItemLink = selectedSupplierCatalog?.itemLinks.find(
+    (link) => link.id === selectedSupplierItemLinkId
+  ) ?? null;
+  const selectedLinkAction = linkAction === null && selectedSupplierItemLinkId ? "deactivate" : null;
   const selectedSupplierLinkLookup =
     selectedSupplier?.status === "ACTIVE" && linkAction === "create"
       ? await getSupplierItemLinkLookup(session, selectedSupplier.id, {
@@ -244,6 +253,18 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     if (uomLinkQuery) nextParams.set("uomLinkQuery", uomLinkQuery);
     if (uomLinkPage > 1) nextParams.set("uomLinkPage", String(uomLinkPage));
     if (selectedUomId) nextParams.set("selectedUomId", selectedUomId);
+    return `/suppliers?${nextParams.toString()}`;
+  };
+  const supplierItemLinkActionHref = (supplierId: string, linkId?: string) => {
+    const nextParams = new URLSearchParams({ supplier: supplierId });
+    if (supplierQuery) nextParams.set("query", supplierQuery);
+    if (supplierStatus) nextParams.set("status", supplierStatus);
+    if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
+    if (catalogQuery) nextParams.set("catalogQuery", catalogQuery);
+    if (catalogStatus) nextParams.set("catalogStatus", catalogStatus);
+    if (catalogCategory) nextParams.set("catalogCategory", catalogCategory);
+    if (catalogPage > 1) nextParams.set("catalogPage", String(catalogPage));
+    if (linkId) nextParams.set("selectedSupplierItemLinkId", linkId);
     return `/suppliers?${nextParams.toString()}`;
   };
   const supplierLookupPageHref = (supplierId: string, kind: "item" | "uom", page: number) => {
@@ -629,6 +650,41 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               </div>
             ) : null}
 
+            {selectedLinkAction === "deactivate" ? (
+              <TaskSheet
+                title="Deactivate supplier-item link"
+                defaultOpen
+                size="default"
+                bodyScroll="contained"
+                description="This keeps history and prevents new sourcing from using the selected supplier-item link."
+              >
+                {selectedSupplierItemLink && selectedSupplierItemLink.status === "ACTIVE" ? (
+                  <form action={deactivateSupplierItemLinkAction} className="ogfi-form-shell grid gap-4">
+                    <input name="supplierItemLinkId" type="hidden" value={selectedSupplierItemLink.id} />
+                    <input name="returnPath" type="hidden" value={supplierItemLinkActionHref(selectedSupplier.id)} />
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <p className="font-semibold text-slate-950">{selectedSupplierItemLink.itemName}</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {selectedSupplierItemLink.itemCode} · {selectedSupplierItemLink.purchaseUomCode} · {selectedSupplierItemLink.status}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-600">Only this selected link is affected. The server rechecks supplier, company, tenant, and active status.</p>
+                    </div>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">
+                      Deactivation reason
+                      <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="reason" minLength={5} required />
+                    </label>
+                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
+                      Deactivate link
+                    </button>
+                  </form>
+                ) : (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    This link is unavailable in the current supplier, filter, or page context. Return to the catalog and select an active link.
+                  </p>
+                )}
+              </TaskSheet>
+            ) : null}
+
             {selectedSupplier.status === "ACTIVE" && !selectedSupplierLinkLookup ? (
               <div className="border-b border-slate-100 bg-blue-50/40 px-5 py-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -878,34 +934,12 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                         </td>
                         <td className="px-5 py-4">
                           {link.status === "ACTIVE" ? (
-                            <EntryModal
-                              title="Deactivate Supplier Item Link"
-                              triggerClassName="min-h-9 bg-white px-3 text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
-                              triggerLabel="Deactivate"
+                            <Link
+                              className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
+                              href={supplierItemLinkActionHref(selectedSupplier.id, link.id)}
                             >
-                              <form
-                                action={deactivateSupplierItemLinkAction}
-                                className="ogfi-form-shell mt-4 grid gap-3"
-                              >
-                                <input name="supplierId" type="hidden" value={selectedSupplier.id} />
-                                <input name="supplierItemLinkId" type="hidden" value={link.id} />
-                                <p className="text-sm text-slate-600">
-                                  This keeps history and prevents new sourcing from using this
-                                  supplier-item link.
-                                </p>
-                                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                                  Deactivation reason
-                                  <input
-                                    className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                    name="reason"
-                                    required
-                                  />
-                                </label>
-                                <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-slate-700 px-3 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
-                                  Deactivate Link
-                                </button>
-                              </form>
-                            </EntryModal>
+                              Open controls
+                            </Link>
                           ) : (
                             <span className="text-xs text-slate-500">Retained</span>
                           )}

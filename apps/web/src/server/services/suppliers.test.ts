@@ -78,6 +78,10 @@ describe("supplier master-data controls", () => {
     expect(page).toContain("The selected supplier is the only record affected.");
     expect(page).toContain("getSupplierItemLinkLookup");
     expect(page).toContain("supplierLookupPageHref");
+    expect(page).toContain("selectedSupplierItemLinkId");
+    expect(page).toContain("<TaskSheet");
+    expect(page).toContain("Only this selected link is affected");
+    expect(page).not.toContain('title="Deactivate Supplier Item Link"');
     expect(page).toContain('name="returnPath"');
     expect(page).toContain('name="selectedItemId"');
     expect(page).toContain('name="selectedUomId"');

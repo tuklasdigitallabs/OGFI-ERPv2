@@ -32,3 +32,8 @@ Item Master now uses the same compact URL-backed tabs and active-tab reads. The
 selected register loads only its required records, counts, selected context,
 and catalogs; existing company authorization and mutation controls remain
 server-authoritative.
+
+Supplier catalog item-link deactivation now uses one selected-record TaskSheet
+with preserved supplier/catalog filters and page context. Repeated row modals
+were removed; the existing scoped, reasoned, audited mutation remains the
+authority.

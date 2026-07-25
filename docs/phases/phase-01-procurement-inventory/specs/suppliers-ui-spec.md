@@ -77,3 +77,10 @@
 - Unapproved/blocked supplier behavior is enforced at PO selection.
 - Supplier documents/expiry statuses are visible to authorized users.
 - Supplier changes are auditable and scope aware.
+
+Implementation note (`DEC-0181`): active supplier-item catalog rows use one
+URL-selected action composer rather than repeated row deactivation forms. The
+composer preserves supplier/catalog filters and page context, shows the
+selected link, requires a reason, and treats stale or foreign selections as
+unavailable. Existing server authorization, active-link checks, audit, and
+history retention remain authoritative.

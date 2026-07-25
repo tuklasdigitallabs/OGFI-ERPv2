@@ -9,3 +9,10 @@ Supplier-item creation is available from a selected active supplier's catalog. S
 Select a supplier and choose Open controls to update accreditation or deactivate an active supplier. The action composer identifies the selected record; inactive suppliers show retained history instead of mutation controls.
 
 The register is still under production-readiness review for focused action composers and external database/browser evidence.
+
+In a supplier catalog, choose Open controls on an active item link to open the
+single deactivation action sheet. Confirm the item and purchase UOM, enter a
+reason of at least five characters, and submit. The current filters and page
+are preserved; if the link is stale, inactive, or outside the selected company,
+the sheet explains that no action is available. Deactivation retains history
+and does not change purchase orders or inventory.

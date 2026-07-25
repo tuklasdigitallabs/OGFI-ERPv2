@@ -58,6 +58,10 @@ tabs. The active register is the only register loaded, and its selected-record
 controls remain scoped to the selected company. Do not interpret an inactive
 tab's absent count as zero data.
 
+In a Supplier catalog, use the selected item-link Open controls action sheet to
+deactivate a link. Verify the supplier, item, UOM, and reason before submitting;
+the server preserves history and rechecks company scope and active status.
+
 ## Common errors and recovery
 
 - Granting company-wide access to fix one missing record: assign the smallest correct scope.
