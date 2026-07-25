@@ -299,6 +299,13 @@ Permission/policy based:
 
 Current implementation note: PO detail displays supplier/delivery details, item lines, totals, commercial terms from the selected quote/supplier records, source lineage, approval timeline, receiving progress, supplier issue history, balance closure history, attachment-status messaging, and audit history. The bounded issued/unreceived amendment TaskSheet is implemented; when unavailable, the detail surface explains the permission, status, receiving, or pending-request reason without implying that a hidden action is available. Formal attachment upload/enforcement and post-receiving amendment revisions remain future controlled workflows.
 
+Implementation note (`DEC-0224`): the amendment TaskSheet keeps reason, expected
+delivery, supplier-notice fields, and all line values in memory after a correctable
+validation error, with a safe retry message. Stale, receiving, or pending-state
+conflicts show a reload-current-PO action and disable resubmission until refresh;
+values are never persisted to URLs or browser storage. The server amendment service
+remains authoritative on every retry.
+
 Implemented issue/send note: supplier issue and re-send evidence uses controlled methods only: `Email`, `Printed copy`, `Supplier portal`, and `Manual handoff`.
 
 Implemented supplier-copy note: supplier copy is available only for `APPROVED`, `ISSUED`, `PARTIALLY_RECEIVED`, `FULLY_RECEIVED`, and `CLOSED` POs. It is blocked server-side for draft, pending, and cancelled POs. When supplier issue/re-send evidence exists, the copy shows method, recipient/reference, recorded timestamp, and recorder.

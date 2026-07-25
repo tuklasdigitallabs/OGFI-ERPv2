@@ -164,3 +164,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0221-AUTHENTICATION-DEFERRED-SURFACE-CONTRACT.md` — static protection for the explicitly deferred Authentication activation/delivery surfaces
 - `DEC-0222-STOCK-COUNT-ATTEMPT-READ-MAPPER.md` — disabled, fail-closed preparation for attempt-authoritative Stock Count detail/CSV reads
 - `DEC-0223-ADMIN-AUDIT-EXPORT-DATE-READY-STATE.md` — truthful Audit Trail export control when the required date range is missing or invalid
+- `DEC-0224-PO-AMENDMENT-DRAFT-RECOVERY.md` — in-memory Purchase Order amendment draft retention and stale-conflict reload behavior

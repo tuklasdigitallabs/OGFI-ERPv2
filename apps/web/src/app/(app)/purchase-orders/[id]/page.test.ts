@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 const source = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
+const sheetSource = readFileSync(
+  new URL("../../../../components/PurchaseOrderAmendmentSheet.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("Purchase Order amendment visible states", () => {
   test("explains why an amendment request is unavailable instead of hiding the surface", () => {
@@ -15,9 +19,21 @@ describe("Purchase Order amendment visible states", () => {
 
   test("retains server feedback and the focused TaskSheet for eligible amendments", () => {
     expect(source).toContain("getActionFeedback(resolvedSearchParams)");
-    expect(source).toContain("Request PO Amendment");
-    expect(source).toContain("Changes require approval and remain in the PO audit history.");
-    expect(source).toContain('size="workspace"');
-    expect(source).toContain("min-h-11");
+    expect(sheetSource).toContain("Request PO Amendment");
+    expect(sheetSource).toContain("Changes require approval and remain in the PO audit history.");
+    expect(sheetSource).toContain('size="workspace"');
+    expect(sheetSource).toContain("min-h-11");
+  });
+
+  test("preserves an in-memory draft on validation errors and blocks stale retries", () => {
+    expect(source).toContain("PurchaseOrderAmendmentSheet");
+    expect(sheetSource).toContain("useActionState");
+    expect(sheetSource).toContain("Your entered values remain in this sheet");
+    expect(sheetSource).toContain("Reload current PO");
+    expect(sheetSource).toContain('state.status === "conflict"');
+    expect(sheetSource).toContain("disabled={pending || state.status === \"conflict\"}");
+    expect(source).toContain("requestPurchaseOrderAmendment(formData)");
+    expect(source).toContain("revalidatePath(`/purchase-orders/${id}`)");
+    expect(source).toContain("PURCHASE_ORDER_RECEIVING_REPORT_BLOCKS_AMENDMENT");
   });
 });

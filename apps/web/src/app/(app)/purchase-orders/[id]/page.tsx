@@ -4,9 +4,13 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
-import { TaskSheet } from "@/components/TaskSheet";
+import {
+  PurchaseOrderAmendmentSheet,
+  type PurchaseOrderAmendmentActionState
+} from "@/components/PurchaseOrderAmendmentSheet";
 import {
   actionErrorRedirectPath,
+  getActionErrorCode,
   getActionFeedback
 } from "@/server/services/actionFeedback";
 import {
@@ -88,34 +92,52 @@ async function requestBalanceClosure(formData: FormData) {
   revalidatePath("/approvals");
 }
 
-async function requestAmendment(formData: FormData) {
+const amendmentConflictCodes = new Set([
+  "PURCHASE_ORDER_NOT_FOUND",
+  "PURCHASE_ORDER_AMENDMENT_ALREADY_PENDING",
+  "PURCHASE_ORDER_CLOSURE_BLOCKS_AMENDMENT",
+  "PURCHASE_ORDER_DELIVERY_LOCATION_INACTIVE",
+  "PURCHASE_ORDER_LINE_ACTIVITY_BLOCKS_AMENDMENT",
+  "PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT",
+  "PURCHASE_ORDER_RECEIVED_QUANTITY_BLOCKS_AMENDMENT",
+  "PURCHASE_ORDER_RECEIVING_REPORT_BLOCKS_AMENDMENT"
+]);
+
+async function requestAmendment(
+  _previousState: PurchaseOrderAmendmentActionState,
+  formData: FormData
+): Promise<PurchaseOrderAmendmentActionState> {
   "use server";
 
-  const id = String(formData.get("id"));
+  const id = String(formData.get("id") ?? "");
   const lineIds = formData.getAll("lineId").map(String);
   const orderedQtyValues = formData.getAll("orderedQty").map(String);
   const unitPriceValues = formData.getAll("unitPrice").map(String);
   const notesValues = formData.getAll("notes").map(String);
   formData.set(
     "proposedLines",
-    JSON.stringify(
-      lineIds.map((lineId, index) => ({
-        purchaseOrderLineId: lineId,
-        orderedQty: orderedQtyValues[index] ?? "",
-        unitPrice: unitPriceValues[index] ?? "",
-        notes: notesValues[index] ?? null
-      }))
-    )
+    JSON.stringify(lineIds.map((lineId, index) => ({
+      purchaseOrderLineId: lineId,
+      orderedQty: orderedQtyValues[index] ?? "",
+      unitPrice: unitPriceValues[index] ?? "",
+      notes: notesValues[index] ?? null
+    })))
   );
-
   try {
     await requestPurchaseOrderAmendment(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/purchase-orders/${id}`, error));
+    const code = getActionErrorCode(error);
+    const feedback = getActionFeedback({ error: code });
+    return {
+      status: amendmentConflictCodes.has(code) ? "conflict" : "error",
+      code,
+      message: feedback?.message ?? "The amendment was not saved. Review the form and try again."
+    };
   }
   revalidatePath(`/purchase-orders/${id}`);
   revalidatePath("/purchase-orders");
   revalidatePath("/approvals");
+  return { status: "success" };
 }
 
 function formatMoney(currencyCode: string, amount: number) {
@@ -503,108 +525,25 @@ export default async function PurchaseOrderDetailPage({
               </EntryModal>
             ) : null}
             {canRequestAmendment ? (
-              <TaskSheet title="Request PO Amendment" trigger={<span>Request Amendment</span>} triggerClassName="bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800" size="workspace" bodyScroll="contained" bodyClassName="p-0" header={<div className="rounded-lg border border-violet-100 bg-violet-50 p-3 text-sm text-slate-700"><p className="font-semibold text-slate-950">{order.publicReference} · {order.status}</p><p>{session.context.companyName} · {session.context.locationName} · {order.supplierName}</p><p className="mt-1">Changes require approval and remain in the PO audit history.</p></div>}>
-                <form action={requestAmendment} className="mt-4 grid gap-4">
-              <input name="id" type="hidden" value={order.id} />
-              <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
-                <label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">
-                  Amendment reason
-                  <textarea
-                    className="min-h-20 rounded-md border border-slate-300 px-3 py-2"
-                    name="reason"
-                    placeholder="Reason required for approval and audit"
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  Expected delivery
-                  <input
-                    className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
-                    defaultValue={order.expectedDeliveryDate}
-                    name="expectedDeliveryDate"
-                    type="date"
-                    required
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  Supplier notice reference
-                  <input
-                    className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
-                    name="supplierNoticeReference"
-                    placeholder="Email, ticket, or reference"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">
-                  If notice is unavailable, explain
-                  <input
-                    className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
-                    name="supplierNoticeUnavailableReason"
-                    placeholder="Why supplier notice is not available"
-                  />
-                </label>
-              </div>
-              <div className="overflow-x-auto rounded-lg border border-violet-100 bg-white">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Line</th>
-                      <th className="px-3 py-2 text-left">Qty</th>
-                      <th className="px-3 py-2 text-left">Unit price</th>
-                      <th className="px-3 py-2 text-left">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {order.lines.map((line) => (
-                      <tr key={line.id}>
-                        <td className="px-3 py-2">
-                          <input name="lineId" type="hidden" value={line.id} />
-                          <p className="font-semibold text-slate-950">
-                            {line.lineNumber}. {line.description}
-                          </p>
-                          <p className="text-xs text-slate-500">{line.uomCode}</p>
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            className="min-h-11 w-28 rounded-md border border-slate-300 px-3 py-2"
-                            defaultValue={line.orderedQty}
-                            min="0.000001"
-                            name="orderedQty"
-                            step="0.000001"
-                            type="number"
-                            required
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            className="min-h-11 w-32 rounded-md border border-slate-300 px-3 py-2"
-                            defaultValue={line.unitPrice}
-                            min="0"
-                            name="unitPrice"
-                            step="0.000001"
-                            type="number"
-                            required
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            className="min-h-11 min-w-48 rounded-md border border-slate-300 px-3 py-2"
-                            defaultValue={line.notes ?? ""}
-                            name="notes"
-                            placeholder="Optional line note"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex justify-end">
-                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800 sm:w-auto">
-                  Request Amendment
-                </button>
-              </div>
-                </form>
-              </TaskSheet>
+              <PurchaseOrderAmendmentSheet
+                orderId={order.id}
+                publicReference={order.publicReference}
+                status={order.status}
+                companyName={session.context.companyName}
+                locationName={session.context.locationName}
+                supplierName={order.supplierName}
+                expectedDeliveryDate={order.expectedDeliveryDate}
+                action={requestAmendment}
+                lines={order.lines.map((line) => ({
+                  id: line.id,
+                  lineNumber: line.lineNumber,
+                  description: line.description,
+                  uomCode: line.uomCode,
+                  orderedQty: String(line.orderedQty),
+                  unitPrice: String(line.unitPrice),
+                  notes: line.notes ?? ""
+                }))}
+              />
             ) : (
               <div className="basis-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="status">
                 <p className="font-semibold">Amendment unavailable</p>

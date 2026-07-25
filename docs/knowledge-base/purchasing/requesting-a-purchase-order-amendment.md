@@ -8,6 +8,9 @@ If Request Amendment is unavailable, the Purchase Order detail explains whether
 your permission is missing, the order is not issued, receiving activity exists,
 another amendment or balance closure is pending, or the order has already been
 received. These messages are read-only guidance; the server remains authoritative.
-Validation or stale-state errors appear in the page feedback banner and mean that
-no amendment was saved. Review the current PO and reopen the TaskSheet before
-retrying. A pending amendment pauses receiving until an approval decision.
+Validation errors now remain inside the open TaskSheet with the entered reason,
+notice fields, delivery date, and line values retained in memory so you can correct
+and retry. A stale, receiving, or pending-state conflict shows a `Reload current PO`
+action and disables resubmission until the current record is loaded; no automatic
+retry occurs. Values are not stored in the URL or browser storage. A pending
+amendment pauses receiving until an approval decision.
