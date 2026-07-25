@@ -138,3 +138,12 @@ Invited → Active → Temporarily Suspended / Expired → Inactive
 - Scope filtering changes immediately/according to effective date and is enforced in API/data access.
 - Access changes trigger audit event and notification where configured.
 - User list/export does not expose sensitive HR data beyond authorized scope.
+
+## 7. Core Administration navigation
+
+The Core Administration index uses URL-backed workspace tabs for Users & Access,
+Roles & Permissions, Organization Scope, Approval Rules, and Audit Trail. The
+selected tab loads only its server-owned register and required option catalogs;
+inactive sections are not queried or represented as zero-valued metrics. Filters,
+pagination, denied states, and create actions remain within the selected
+workspace context.

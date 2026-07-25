@@ -25,3 +25,5 @@ Deployment and Enablement evidence capture now uses the same mobile-safe TaskShe
 Release Board decision creation is now canonicalized to the dedicated Release Board workspace; the Readiness register no longer exposes a duplicate GO/NO-GO composer.
 
 Release Board history now supports bounded inclusive UTC decision-date filters with preserved search, paging, selected-detail, and composer context.
+
+Core Administration now uses compact URL-backed workspace tabs and active-tab reads; inactive registers and option catalogs are not loaded in the current view.

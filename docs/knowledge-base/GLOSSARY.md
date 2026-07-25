@@ -92,3 +92,4 @@
 | Bounded draft lookup                | A server-authorized, paginated search used during Purchase Request entry; it returns a safe page with exact totals and requires a narrower search when the result set overflows. |
 | Option catalog                      | A server-authorized, bounded list of active master-data choices with deterministic paging and selected-value retention; it never grants mutation authority. |
 | Approval Inbox unavailable           | A truthful feature-disabled state shown when normalized approval routing is not enabled. It does not mean there are zero pending approvals and does not grant an alternate approval path. |
+| Active-tab projection               | A Core Administration read profile that loads only the selected workspace register and required option catalogs; inactive sections are not queried or shown as zero-valued metrics. |

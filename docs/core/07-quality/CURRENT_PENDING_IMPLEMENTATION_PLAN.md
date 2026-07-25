@@ -920,6 +920,11 @@ Update this register only when implementation state, release scope, a confirmed 
 - Existing selected-company Core Administration Manage authorization, append-only decision semantics, deterministic ordering, and no-direct-gate-mutation behavior remain authoritative. Export and richer activity history remain later slices.
 - Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
 
+### DEC-0179 Core Administration active-tab projection and compact shell — July 25, 2026
+- Core Administration now passes an allowlisted active-tab profile to the overview service. Users, Roles, Organization, Approval Rules, and Audit load only the selected register and required option catalogs; inactive sections no longer hydrate their registries or audit events.
+- The card-heavy workspace selector is replaced by shared URL-backed `WorkspaceTabs` with 44px targets and an explicit inactive-view disclosure. Existing authorization, pagination, filters, create actions, and audit keyset service remain authoritative.
+- Evidence: Core Admin focused tests 35/35, web TypeScript, lint, production build, and diff checks pass. PostgreSQL no-query/query-plan, responsive browser, hosted recovery, and UAT evidence remain open; Administration and Phase I are not complete.
+
 ### DEC-0172 Administration Readiness selected Deployment review sheet — July 25, 2026
 - Selected Deployment Evidence Verify/Reject actions now use one focused TaskSheet with explicit migration/restore/rollback/monitoring readiness consequences, preserved filter/page context, 44px controls, and visible rejection-reason validation. Inline competing review forms were removed.
 - Existing selected-company authorization, creator self-review protection, `RECORDED` CAS, reason validation, audit, generic unavailable behavior, and no-direct-gate-mutation semantics remain server-authoritative.

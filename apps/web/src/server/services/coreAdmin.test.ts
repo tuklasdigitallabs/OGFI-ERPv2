@@ -66,6 +66,20 @@ describe("core administration audit search wiring", () => {
     expect(adminPageSource).toContain('name="userStatus"');
   });
 
+  test("Core Administration uses an active-tab read profile and compact URL-backed tabs", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const adminPageSource = readFileSync(path.resolve(__dirname, "../../app/(app)/admin/page.tsx"), "utf8");
+    expect(serviceSource).toContain("CoreAdminOverviewTab");
+    expect(serviceSource).toContain("activeTab === \"users\"");
+    expect(serviceSource).toContain("activeTab === \"roles\"");
+    expect(serviceSource).toContain("activeTab === \"organization\"");
+    expect(serviceSource).toContain("activeTab === \"approval-rules\"");
+    expect(serviceSource).toContain("activeTab === \"audit\"");
+    expect(adminPageSource).toContain("<WorkspaceTabs");
+    expect(adminPageSource).toContain("Only the selected workspace register and its required option catalogs are loaded");
+    expect(adminPageSource).not.toContain("const workspaces = [");
+  });
+
   test("administration reads enforce company authority and non-enumerating target checks", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     const companyCreationSource = serviceSource.slice(

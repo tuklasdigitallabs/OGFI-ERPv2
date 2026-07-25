@@ -191,6 +191,11 @@ After a role or scope change, the target user's previous session may need to rev
 
 Permission Access detail is read-only. It shows tenant-global roles that grant one permission and bounded previews of active users who currently have effective scope in the selected company. It does not grant or change access; use the Roles & Permissions controls for authorized mutations. Search and page the granting-role list when a permission has many grants.
 
+The Core Administration home uses compact URL-backed tabs. Open the workspace
+you need—Users & Access, Roles & Permissions, Organization Scope, Approval Rules,
+or Audit Trail. Only the selected register and its required option catalogs are
+loaded; inactive sections are explicitly not loaded in the current view.
+
 ## Related Articles
 
 - [Activating And Recovering Local Accounts](./activating-and-recovering-local-accounts.md)

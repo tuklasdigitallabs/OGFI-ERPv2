@@ -49,6 +49,10 @@ Troubleshoot a user who cannot see a warehouse and cannot approve a Purchase Req
 
 Then review a release-readiness security tab with one unresolved item. Decide whether the correct next step is to record ERP evidence, complete an external provider action, collect an external-security proof reference, or keep the gate blocked.
 
+On the Core Administration home, use the URL-backed workspace tabs to open only
+the register you need. Inactive sections are not loaded in the current view;
+switch tabs when you need Users, Roles, Organization, Approval Rules, or Audit.
+
 ## Common errors and recovery
 
 - Granting company-wide access to fix one missing record: assign the smallest correct scope.

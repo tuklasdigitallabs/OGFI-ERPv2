@@ -1,15 +1,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import {
-  Building2,
-  ClipboardCheck,
-  History,
-  KeyRound,
-  MapPin,
-  ShieldCheck,
-  Users
-} from "lucide-react";
-import { Badge, ButtonLink, PaginationBar, Panel } from "@ogfi/ui";
+import { MapPin, ShieldCheck } from "lucide-react";
+import { Badge, ButtonLink, PaginationBar, Panel, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -343,14 +335,14 @@ export default async function CoreAdministrationPage({
       ...(approvalRuleStatus && ["ACTIVE", "INACTIVE"].includes(approvalRuleStatus)
         ? { status: approvalRuleStatus as "ACTIVE" | "INACTIVE" }
         : {})
-    }),
-    listCoreAdminBrandOptions(session),
-    listCoreAdminLocationOptions(session),
-    listCoreAdminAuditEventPage(session, {
+    }, { activeTab }),
+    activeTab === "users" || activeTab === "organization" ? listCoreAdminBrandOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
+    activeTab === "users" || activeTab === "organization" ? listCoreAdminLocationOptions(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false }),
+    activeTab === "audit" ? listCoreAdminAuditEventPage(session, {
       ...auditFilters,
       pageSize: auditPageSize,
       ...(auditCursor ? { cursor: auditCursor } : {})
-    })
+    }) : Promise.resolve({ items: [], totalItems: 0, pageSize: auditPageSize, hasMore: false, nextCursor: null })
   ]);
   const auditEvents = auditPage.items;
   const auditFirstPageParams = new URLSearchParams(auditPageParams);
@@ -360,72 +352,8 @@ export default async function CoreAdministrationPage({
   const auditFirstPageHref = `/admin?${auditFirstPageParams.toString()}`;
   const auditNextPageHref = `/admin?${auditNextPageParams.toString()}`;
   const activeUsers = overview.userPage.activeItems;
-  const activeRoles = overview.rolePage.activeItems;
   const activeRules = overview.approvalRulePage.activeItems;
-  const companyLocations = overview.locationPage;
   const highAccessRoleCount = overview.rolePage.highAccessItems;
-
-  const workspaces = [
-    {
-      id: "users",
-      title: "Users & Access",
-      detail: "Assign roles and operating scope to people.",
-      metric: `${activeUsers}/${overview.userPage.totalItems}`,
-      metricLabel: "active users",
-      icon: Users,
-      href: "/admin?tab=users",
-      action: "Review users"
-    },
-    {
-      id: "roles",
-      title: "Roles & Permissions",
-      detail: "Apply recommended role sets or override toggles with audit.",
-      metric: `${activeRoles}/${overview.rolePage.totalItems}`,
-      metricLabel: "active roles",
-      icon: KeyRound,
-      href: "/admin?tab=roles",
-      action: "Configure roles"
-    },
-    {
-      id: "organization",
-      title: "Organization Scope",
-      detail: "Review companies, branches, warehouses, and location context.",
-      metric: `${companyLocations.activeItems}/${companyLocations.totalItems}`,
-      metricLabel: "locations in context",
-      icon: Building2,
-      href: "/admin?tab=organization",
-      action: "Review structure"
-    },
-    {
-      id: "approval-rules",
-      title: "Approval Rules",
-      detail: "Check approval routing for purchasing, inventory, and controls.",
-      metric: `${activeRules}/${overview.approvalRules.length}`,
-      metricLabel: "active rules",
-      icon: ClipboardCheck,
-      href: "/admin?tab=approval-rules",
-      action: "Review rules"
-    },
-    {
-      id: "audit",
-      title: "Audit Trail",
-      detail: "Search controlled changes and export scoped audit evidence.",
-      metric: `${auditEvents.length}`,
-      metricLabel: "matching events",
-      icon: History,
-      href: "/admin?tab=audit",
-      action: "Search audit"
-    }
-  ] satisfies Array<{
-    id: AdminTab;
-    title: string;
-    detail: string;
-    metric: string;
-    metricLabel: string;
-    icon: typeof Users;
-    href: string;
-    action: string;
-  }>;
 
   return (
     <AppShell
@@ -464,40 +392,19 @@ export default async function CoreAdministrationPage({
         </div>
       </section>
 
-      <section className="mb-5 grid gap-4 lg:grid-cols-5">
-        {workspaces.map((workspace) => {
-          const Icon = workspace.icon;
-          const isActive = activeTab === workspace.id;
-          return (
-            <a
-              key={workspace.id}
-              aria-current={isActive ? "page" : undefined}
-              className={`group rounded-2xl border p-4 shadow-[var(--shadow-soft)] transition hover:border-blue-200 hover:shadow-[var(--shadow-surface)] ${
-                isActive
-                  ? "border-blue-300 bg-blue-50/80 ring-2 ring-blue-100"
-                  : "border-slate-200 bg-white"
-              }`}
-              href={workspace.href}
-            >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-700">
-                <Icon aria-hidden="true" className="h-5 w-5" />
-              </span>
-              <p className="mt-4 text-sm font-semibold text-slate-500">
-                {workspace.metricLabel}
-              </p>
-              <p className="mt-1 text-2xl font-bold text-slate-950">
-                {workspace.metric}
-              </p>
-              <h3 className="mt-4 font-bold text-slate-950">{workspace.title}</h3>
-              <p className="mt-1 min-h-10 text-sm leading-5 text-slate-600">
-                {workspace.detail}
-              </p>
-              <span className="mt-4 inline-flex text-sm font-semibold text-blue-700 group-hover:text-blue-800">
-                {isActive ? "Current workspace" : workspace.action}
-              </span>
-            </a>
-          );
-        })}
+      <section className="mb-5 grid gap-3">
+        <WorkspaceTabs
+          ariaLabel="Core Administration workspaces"
+          className="[&>a]:min-h-11 [&>span]:min-h-11"
+          items={[
+            { label: "Users & Access", href: "/admin?tab=users", active: activeTab === "users" },
+            { label: "Roles & Permissions", href: "/admin?tab=roles", active: activeTab === "roles" },
+            { label: "Organization Scope", href: "/admin?tab=organization", active: activeTab === "organization" },
+            { label: "Approval Rules", href: "/admin?tab=approval-rules", active: activeTab === "approval-rules" },
+            { label: "Audit Trail", href: "/admin?tab=audit", active: activeTab === "audit" },
+          ]}
+        />
+        <p className="text-xs text-slate-500">Only the selected workspace register and its required option catalogs are loaded. Other sections are not loaded in this view.</p>
       </section>
 
       <div className="mt-5">

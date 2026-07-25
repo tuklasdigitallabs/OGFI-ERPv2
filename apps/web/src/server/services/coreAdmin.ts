@@ -1297,6 +1297,17 @@ export async function listCoreAdminApprovalRulePage(
   return listCoreAdminApprovalRulePageAuthorized(session, input);
 }
 
+export type CoreAdminOverviewTab = "users" | "roles" | "organization" | "approval-rules" | "audit";
+
+type CoreAdminRoleOptions = Awaited<ReturnType<typeof listCoreAdminRoleOptionsAuthorized>>;
+
+const emptyCoreAdminUserPage = (): CoreAdminUserPage => ({ items: [], page: 1, pageSize: 25, totalItems: 0, activeItems: 0 });
+const emptyCoreAdminRolePage = (): CoreAdminRolePage => ({ items: [], page: 1, pageSize: 25, totalItems: 0, activeItems: 0, highAccessItems: 0 });
+const emptyCoreAdminBrandPage = (): CoreAdminBrandPage => ({ items: [], page: 1, pageSize: 25, totalItems: 0, activeItems: 0 });
+const emptyCoreAdminLocationPage = (): CoreAdminLocationPage => ({ items: [], page: 1, pageSize: 25, totalItems: 0, activeItems: 0 });
+const emptyCoreAdminDepartmentPage = (): CoreAdminDepartmentPage => ({ items: [], page: 1, pageSize: 25, totalItems: 0, activeItems: 0 });
+const emptyCoreAdminApprovalRulePage = (): CoreAdminApprovalRulePage => ({ items: [], page: 1, pageSize: 25, totalItems: 0, activeItems: 0 });
+
 export async function getCoreAdminOverview(
   session: SessionContext,
   userPageInput: z.input<typeof coreAdminUserPageInputSchema> = {},
@@ -1305,19 +1316,21 @@ export async function getCoreAdminOverview(
   locationPageInput: z.input<typeof coreAdminLocationPageInputSchema> = {},
   departmentPageInput: z.input<typeof coreAdminDepartmentPageInputSchema> = {},
   approvalRulePageInput: z.input<typeof coreAdminApprovalRulePageInputSchema> = {},
+  options: { activeTab?: CoreAdminOverviewTab } = {},
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanAdministerTenantRoles(session);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
+  const activeTab = options.activeTab ?? "users";
   const [userPage, rolePage, roleOptions, brandPage, locationPage, departmentPage, approvalRulePage] = await Promise.all([
-    listCoreAdminUserPageAuthorized(session, userPageInput),
-    listCoreAdminRolePageAuthorized(session, rolePageInput),
-    listCoreAdminRoleOptionsAuthorized(session),
-    listCoreAdminBrandPageAuthorized(session, brandPageInput),
-    listCoreAdminLocationPageAuthorized(session, locationPageInput),
-    listCoreAdminDepartmentPageAuthorized(session, departmentPageInput),
-    listCoreAdminApprovalRulePageAuthorized(session, approvalRulePageInput),
+    activeTab === "users" ? listCoreAdminUserPageAuthorized(session, userPageInput) : Promise.resolve(emptyCoreAdminUserPage()),
+    activeTab === "roles" ? listCoreAdminRolePageAuthorized(session, rolePageInput) : Promise.resolve(emptyCoreAdminRolePage()),
+    activeTab === "users" ? listCoreAdminRoleOptionsAuthorized(session) : Promise.resolve({ items: [], totalItems: 0, hasMore: false } satisfies CoreAdminRoleOptions),
+    activeTab === "organization" ? listCoreAdminBrandPageAuthorized(session, brandPageInput) : Promise.resolve(emptyCoreAdminBrandPage()),
+    activeTab === "organization" ? listCoreAdminLocationPageAuthorized(session, locationPageInput) : Promise.resolve(emptyCoreAdminLocationPage()),
+    activeTab === "organization" ? listCoreAdminDepartmentPageAuthorized(session, departmentPageInput) : Promise.resolve(emptyCoreAdminDepartmentPage()),
+    activeTab === "approval-rules" ? listCoreAdminApprovalRulePageAuthorized(session, approvalRulePageInput) : Promise.resolve(emptyCoreAdminApprovalRulePage()),
   ]);
 
   const [
@@ -1333,14 +1346,14 @@ export async function getCoreAdminOverview(
         status: true,
       },
     }),
-    prisma.company.findMany({
+    activeTab === "organization" ? prisma.company.findMany({
       where: {
         tenantId: session.context.tenantId,
         id: session.context.companyId,
       },
       orderBy: { legalName: "asc" },
-    }),
-    prisma.auditEvent.findMany({
+    }) : Promise.resolve([]),
+    activeTab === "audit" ? prisma.auditEvent.findMany({
       where: {
         tenantId: session.context.tenantId,
         OR: [{ companyId: session.context.companyId }, { companyId: null }],
@@ -1350,7 +1363,7 @@ export async function getCoreAdminOverview(
       },
       orderBy: { occurredAt: "desc" },
       take: 48,
-    }),
+    }) : Promise.resolve([]),
   ]);
 
   return {
