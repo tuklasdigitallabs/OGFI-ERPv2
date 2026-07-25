@@ -583,6 +583,23 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain("Permission detail is available during pending review only.");
   });
 
+  test("user audit tab uses exact actor-scoped redacted keyset pages", () => {
+    const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
+    const detailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/admin/users/[id]/page.tsx"),
+      "utf8",
+    );
+    expect(serviceSource).toContain("listCoreAdminUserAuditEventPage");
+    expect(serviceSource).toContain("actorUserId");
+    expect(serviceSource).toContain("assertTargetUserInCurrentCompany(session, userId)");
+    expect(serviceSource).toContain("const existingAnd = Array.isArray(where.AND)");
+    expect(detailPageSource).toContain('section === "audit"');
+    expect(detailPageSource).toContain("auditCursor");
+    expect(detailPageSource).toContain('name="auditQuery"');
+    expect(detailPageSource).toContain("Open audit detail");
+    expect(detailPageSource).not.toContain("user.auditEvents");
+  });
+
   test("high-risk scope review revalidates target membership and claims pending CAS", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "coreAdmin.ts"), "utf8");
     expect(serviceSource).toContain('SELECT "id"');

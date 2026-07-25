@@ -1969,13 +1969,6 @@ export async function getCoreAdminUserDetail(
     },
     include: {
       roleAssignments: false,
-      auditEvents: {
-        where: {
-          OR: [{ companyId: session.context.companyId }, { companyId: null }],
-        },
-        orderBy: { occurredAt: "desc" },
-        take: 10,
-      },
     },
   });
 
@@ -2314,13 +2307,6 @@ export async function getCoreAdminUserDetail(
     },
     permissionCodes,
     permissions: permissionCodes.map((code) => getPermissionPresentation(code)),
-    auditEvents: user.auditEvents.map((event) => ({
-      id: event.id,
-      eventType: event.eventType,
-      entityType: event.entityType,
-      entityId: event.entityId,
-      occurredAt: event.occurredAt.toISOString(),
-    })),
   };
 }
 
@@ -4446,6 +4432,7 @@ const auditFilterInputSchema = z.object({
   occurredFrom: z.string().trim().max(40).optional(),
   occurredTo: z.string().trim().max(40).optional(),
   occurredBefore: z.string().trim().max(40).optional(),
+  actorUserId: z.string().uuid().optional(),
 });
 
 function auditSensitiveKey(key: string) {
@@ -4538,6 +4525,7 @@ export type CoreAdminAuditEventFilters = {
   occurredFrom?: string | undefined;
   occurredTo?: string | undefined;
   occurredBefore?: string | undefined;
+  actorUserId?: string | undefined;
 };
 
 export type CoreAdminAuditEventPageInput = CoreAdminAuditEventFilters &
@@ -4576,6 +4564,7 @@ function normalizeAuditFilters(filters: CoreAdminAuditEventFilters = {}) {
     occurredFrom: filters.occurredFrom?.trim() || undefined,
     occurredTo: filters.occurredTo?.trim() || undefined,
     occurredBefore: filters.occurredBefore?.trim() || undefined,
+    actorUserId: filters.actorUserId?.trim() || undefined,
   });
 }
 
@@ -4658,6 +4647,17 @@ async function resolveCoreAdminAuditWhere(
       { email: { contains: normalized.actor, mode: "insensitive" } },
     ] } };
   }
+  if (normalized.actorUserId) {
+    const existingAnd = Array.isArray(where.AND)
+      ? where.AND
+      : where.AND
+        ? [where.AND]
+        : [];
+    where.AND = [
+      ...existingAnd,
+      { actor: { is: { id: normalized.actorUserId } } },
+    ];
+  }
   if (normalized.requestId) where.requestId = { contains: normalized.requestId, mode: "insensitive" };
   if (occurredFrom || occurredTo || occurredBefore) {
     where.occurredAt = {
@@ -4727,6 +4727,15 @@ export async function listCoreAdminAuditEventPage(
     hasMore,
     nextCursor: hasMore ? encodeAuditCursor(filters, pageEvents[pageEvents.length - 1]!) : null,
   };
+}
+
+export async function listCoreAdminUserAuditEventPage(
+  session: SessionContext,
+  userId: string,
+  input: Omit<CoreAdminAuditEventPageInput, "actorUserId"> = {},
+) {
+  await assertTargetUserInCurrentCompany(session, userId);
+  return listCoreAdminAuditEventPage(session, { ...input, actorUserId: userId });
 }
 
 export async function listCoreAdminAuditEvents(

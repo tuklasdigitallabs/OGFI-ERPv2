@@ -18,6 +18,7 @@ import {
   deactivateUserRoleAssignment,
   deactivateUserScopeAssignment,
   getCoreAdminUserDetail,
+  listCoreAdminUserAuditEventPage,
   listCoreAdminUserScopePage,
   rejectHighRiskUserLocationScopeRequest,
   rejectSensitiveUserRoleRequest,
@@ -233,6 +234,8 @@ export default async function CoreAdminUserDetailPage({
   const requestKindValue = Array.isArray(resolvedSearchParams.requestKind) ? resolvedSearchParams.requestKind[0] : resolvedSearchParams.requestKind;
   const requestKind = requestKindValue === "role" ? "role" : "scope";
   const requestActionId = Array.isArray(resolvedSearchParams.requestActionId) ? resolvedSearchParams.requestActionId[0] : resolvedSearchParams.requestActionId;
+  const auditCursor = Array.isArray(resolvedSearchParams.auditCursor) ? resolvedSearchParams.auditCursor[0] : resolvedSearchParams.auditCursor;
+  const auditQuery = Array.isArray(resolvedSearchParams.auditQuery) ? resolvedSearchParams.auditQuery[0] : resolvedSearchParams.auditQuery;
   const scopeRequestStatusValue = Array.isArray(resolvedSearchParams.scopeRequestStatus)
     ? resolvedSearchParams.scopeRequestStatus[0]
     : resolvedSearchParams.scopeRequestStatus;
@@ -264,6 +267,13 @@ export default async function CoreAdminUserDetailPage({
   if (!user) {
     redirect("/admin");
   }
+  const auditPage = section === "audit"
+    ? await listCoreAdminUserAuditEventPage(session, id, {
+        ...(auditCursor ? { cursor: auditCursor } : {}),
+        ...(auditQuery ? { query: auditQuery } : {}),
+        pageSize: 25,
+      })
+    : null;
   const scopePage = await listCoreAdminUserScopePage(session, id, {
     ...(scopeQuery ? { query: scopeQuery } : {}),
     ...(scopeType ? { scopeType } : {}),
@@ -513,24 +523,35 @@ export default async function CoreAdminUserDetailPage({
           {scopedUser.scopesPage.totalItems > 0 ? <PaginationBar page={scopedUser.scopesPage.page} pageSize={scopedUser.scopesPage.pageSize} totalItems={scopedUser.scopesPage.totalItems} itemLabel="scopes" getPageHref={(nextPage) => `/admin/users/${user.id}?scopePage=${nextPage}${scopedUser.scopesPage.query ? `&scopeQuery=${encodeURIComponent(scopedUser.scopesPage.query)}` : ""}${scopedUser.scopesPage.scopeType ? `&scopeType=${encodeURIComponent(scopedUser.scopesPage.scopeType)}` : ""}`} /> : null}
         </Panel>
 
-        <Panel className="ogfi-detail-card">
-          <h2 className="text-lg font-bold text-slate-950">Actor Audit History</h2>
-          {user.auditEvents.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-600">No recent controlled actions by this user.</p>
-          ) : (
-            <div className="mt-4 divide-y divide-slate-100">
-              {user.auditEvents.map((event) => (
-                <div key={event.id} data-testid="admin-user-audit-row" className="ogfi-list-row">
-                  <p className="font-semibold text-slate-950">{event.eventType}</p>
-                  <p className="text-sm text-slate-600">
-                    {event.entityType} / {event.entityId}
-                  </p>
-                  <p className="text-xs text-slate-500">{event.occurredAt}</p>
-                </div>
-              ))}
+        {section === "audit" ? (
+          <Panel className="ogfi-detail-card xl:col-span-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Audit</h2>
+                <p className="text-sm text-slate-500">Read-only actor history for {user.displayName}; sensitive fields remain redacted.</p>
+              </div>
+              <Badge tone="info">Selected company</Badge>
             </div>
-          )}
-        </Panel>
+            <form method="get" className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input type="hidden" name="section" value="audit" />
+              <label className="grid flex-1 gap-1 text-sm font-medium text-slate-700">Search audit events<input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="auditQuery" defaultValue={auditQuery ?? ""} placeholder="Event, entity, or request ID" /></label>
+              <button className="min-h-11 self-end rounded-md bg-slate-800 px-4 text-sm font-semibold text-white" type="submit">Search</button>
+            </form>
+            {!auditPage || auditPage.items.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No matching audit events are available for this user and selected company.</p>
+            ) : (
+              <div className="mt-4 divide-y divide-slate-100">
+                {auditPage.items.map((event) => (
+                  <div key={event.id} data-testid="admin-user-audit-row" className="ogfi-list-row grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <div><p className="font-semibold text-slate-950">{event.eventType}</p><p className="text-sm text-slate-600">{event.entityType} / {event.entityId}</p><p className="text-xs text-slate-500">{event.occurredAt} · {event.companyName}</p></div>
+                    <ButtonLink href={`/admin/audit/${event.id}?returnTo=${encodeURIComponent(`/admin/users/${user.id}?section=audit${auditQuery ? `&auditQuery=${encodeURIComponent(auditQuery)}` : ""}`)}`} tone="ghost" className="min-h-11 self-start text-blue-700">Open audit detail</ButtonLink>
+                  </div>
+                ))}
+              </div>
+            )}
+            {auditPage ? <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between"><span>Showing {auditPage.items.length} of {auditPage.totalItems} audit events</span>{auditPage.hasMore ? <ButtonLink href={`/admin/users/${user.id}?section=audit&auditCursor=${encodeURIComponent(auditPage.nextCursor ?? "")}${auditQuery ? `&auditQuery=${encodeURIComponent(auditQuery)}` : ""}`} tone="secondary" className="min-h-11">Next page</ButtonLink> : <span>End of audit history</span>}</div> : null}
+          </Panel>
+        ) : null}
 
         {user.canMutateScopes ? (
           <Panel className="xl:col-span-2">
