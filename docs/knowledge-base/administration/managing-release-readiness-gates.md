@@ -61,6 +61,8 @@ Deployment and Enablement **Record Evidence** actions also open focused sheets. 
 
 Use **Open Release Board workspace** to record a GO/NO-GO decision. The dedicated workspace is the only decision composer; the Readiness register is a scoped, read-only register and decision-detail view.
 
+In Release Board history, use the From (UTC) and To (UTC) fields to narrow decisions by their recorded decision time. The range is inclusive and bounded; invalid ranges return no records rather than broadening the result.
+
 UAT rows do not perform review actions inline. Open a record and then its review controls. Only a recorded item can be verified or rejected, and the person who recorded it cannot perform that review. Rejection requires a reason; verified and rejected records are retained as read-only history.
 
 Deployment evidence follows the same selected-record review pattern. The migration/backup/restore readiness counter only clears when each required evidence type is verified; monitoring/hypercare is tracked separately. A recorded or rejected item does not clear a deployment gate.

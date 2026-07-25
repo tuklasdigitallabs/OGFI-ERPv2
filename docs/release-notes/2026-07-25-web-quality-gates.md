@@ -23,3 +23,5 @@ Readiness gate updates now use one selected-gate TaskSheet with preserved regist
 Deployment and Enablement evidence capture now uses the same mobile-safe TaskSheet pattern as UAT, preserving active filters and page context on save and validation errors.
 
 Release Board decision creation is now canonicalized to the dedicated Release Board workspace; the Readiness register no longer exposes a duplicate GO/NO-GO composer.
+
+Release Board history now supports bounded inclusive UTC decision-date filters with preserved search, paging, selected-detail, and composer context.

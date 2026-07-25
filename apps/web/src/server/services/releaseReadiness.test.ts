@@ -90,6 +90,8 @@ describe("release readiness gates", () => {
     expect(serviceSource).toContain("assertUatGateReadyEvidence");
     expect(serviceSource).toContain("listReleaseBoardDecisions");
     expect(serviceSource).toContain("listReleaseBoardDecisionPage");
+    expect(serviceSource).toContain("decidedFrom");
+    expect(serviceSource).toContain("decidedTo");
     expect(serviceSource).toContain("getReleaseBoardDecision");
     expect(serviceSource).toContain("getReleaseSecurityAttentionUser");
     expect(serviceSource).toContain("latest_authenticator");
@@ -114,6 +116,10 @@ describe("release readiness gates", () => {
     expect(pageSource).not.toContain('title="Record Release Board Decision"');
     expect(pageSource).not.toContain("createReleaseBoardDecisionAction");
     expect(pageSource).toContain("boardDecisionPageSize");
+    expect(releaseBoardSource).toContain("decidedFrom");
+    expect(releaseBoardSource).toContain("decidedTo");
+    expect(releaseBoardSource).toContain("decisionFilter");
+    expect(releaseBoardSource).toContain("filterError");
     expect(pageSource).toContain("Selected Release Board decision");
     expect(pageSource).toContain("Selected security attention");
     expect(pageSource).toContain("securityAttentionUserId");

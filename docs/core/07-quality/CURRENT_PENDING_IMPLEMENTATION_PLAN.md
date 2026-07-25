@@ -915,6 +915,11 @@ Update this register only when implementation state, release scope, a confirmed 
 - Dedicated Release Board authorization, readiness eligibility, UTC/required validation, append-only audit, and no-direct-gate-mutation semantics remain authoritative. Administrator training now points to the dedicated workspace.
 - Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
 
+### DEC-0178 Administration Release Board UTC date filters — July 25, 2026
+- Release Board history now supports inclusive UTC `decidedFrom`/`decidedTo` filters with strict date validation, reversed/over-366-day fail-safe handling, exact count/page parity, and preserved search/decision/page/page-size/selected-detail/create-action context.
+- Existing selected-company Core Administration Manage authorization, append-only decision semantics, deterministic ordering, and no-direct-gate-mutation behavior remain authoritative. Export and richer activity history remain later slices.
+- Evidence: Release Readiness focused tests 15/15, web TypeScript, lint, production build, and diff checks pass. PostgreSQL authorization/query-plan, responsive browser, hosted recovery, and UAT execution evidence remain open; Readiness, Administration, and Phase I are not complete.
+
 ### DEC-0172 Administration Readiness selected Deployment review sheet — July 25, 2026
 - Selected Deployment Evidence Verify/Reject actions now use one focused TaskSheet with explicit migration/restore/rollback/monitoring readiness consequences, preserved filter/page context, 44px controls, and visible rejection-reason validation. Inline competing review forms were removed.
 - Existing selected-company authorization, creator self-review protection, `RECORDED` CAS, reason validation, audit, generic unavailable behavior, and no-direct-gate-mutation semantics remain server-authoritative.

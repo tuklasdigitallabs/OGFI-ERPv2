@@ -1929,21 +1929,45 @@ export async function listReleaseBoardDecisions(session: SessionContext) {
   });
 }
 
+const utcDateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}, "Invalid UTC date");
+
 const releaseBoardDecisionPageInputSchema = z.object({
   query: z.string().trim().max(120).default(""),
   decision: z.enum(releaseBoardDecisions).optional(),
+  decidedFrom: utcDateOnlySchema.optional(),
+  decidedTo: utcDateOnlySchema.optional(),
   page: z.number().int().min(1).max(10_000).default(1),
   pageSize: z.number().int().min(10).max(100).default(10),
+}).superRefine((values, ctx) => {
+  if (values.decidedFrom && values.decidedTo) {
+    const from = Date.parse(`${values.decidedFrom}T00:00:00.000Z`);
+    const to = Date.parse(`${values.decidedTo}T23:59:59.999Z`);
+    if (to < from) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["decidedTo"], message: "Date range is reversed" });
+    if (to - from > 366 * 24 * 60 * 60 * 1000) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["decidedTo"], message: "Date range is too wide" });
+  }
 });
 
 export async function listReleaseBoardDecisionPage(session: SessionContext, input: z.input<typeof releaseBoardDecisionPageInputSchema> = {}) {
   await assertCanManageReleaseReadiness(session);
-  const values = releaseBoardDecisionPageInputSchema.parse(input);
+  const parsed = releaseBoardDecisionPageInputSchema.safeParse(input);
+  const pageSize = parsed.success ? parsed.data.pageSize : Math.min(Math.max(input.pageSize ?? 10, 10), 100);
+  if (!parsed.success) return { items: [], page: 1, pageSize, totalItems: 0, filterError: "Invalid or over-limit UTC date range." };
+  const values = parsed.data;
   const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+  const decidedAt = values.decidedFrom || values.decidedTo
+    ? {
+        ...(values.decidedFrom ? { gte: new Date(`${values.decidedFrom}T00:00:00.000Z`) } : {}),
+        ...(values.decidedTo ? { lte: new Date(`${values.decidedTo}T23:59:59.999Z`) } : {}),
+      }
+    : undefined;
   const where = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     ...(values.decision ? { decision: values.decision } : {}),
+    ...(decidedAt ? { decidedAt } : {}),
     ...(query ? { OR: [{ evidenceReference: query }, { decisionNote: query }] } : {}),
   };
   const totalItems = await prisma.releaseBoardDecision.count({ where });
@@ -1956,7 +1980,7 @@ export async function listReleaseBoardDecisionPage(session: SessionContext, inpu
     skip: (page - 1) * values.pageSize,
     take: values.pageSize,
   });
-  return { items, page, pageSize: values.pageSize, totalItems };
+  return { items, page, pageSize: values.pageSize, totalItems, filterError: null };
 }
 
 export async function getReleaseBoardDecision(session: SessionContext, decisionId: string) {
