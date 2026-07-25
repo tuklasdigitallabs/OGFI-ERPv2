@@ -98,3 +98,4 @@
 | Entity-scoped audit filter           | A UUID-validated, server-enforced Audit Trail predicate that narrows events to one authorized record and remains bound to cursor, export, and detail-return context. |
 | Break-Glass bounded queue             | The server-paginated emergency-access register. It exposes exact filtered totals, deterministic pages, and a selected-record action sheet; it is not an exhaustive unbounded catalog. |
 | Session Invalidation bounded queue    | The server-paginated provider-follow-up register with exact filtered totals, UTC date/search filters, truthful company scope labels, and a selected pending-record completion action. |
+| Effective privileged MFA population | Users with active/effective selected-company scope and active/effective tenant/global roles granting at least one sensitive permission; future, expired, inactive, or foreign-tenant assignments are excluded. |

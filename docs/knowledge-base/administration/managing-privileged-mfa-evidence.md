@@ -25,6 +25,7 @@ This legacy register does not enroll a user in local runtime MFA and does not sa
 ## Steps
 
 1. Open `MFA Enrollment`.
+   The register is server-paginated. Use the user search and evidence-status filter, then open one row for selected-record actions.
 2. Select `Record Evidence`.
 3. Choose the target privileged user.
 4. Enter the provider name.
@@ -42,6 +43,7 @@ The external-evidence record is `Verified`, with separate attesting and verifyin
 ## Controls And Warnings
 
 - The register includes users with sensitive permissions in the current company scope.
+- Privileged users are derived from effective company/location scope and effective active roles. Future, expired, inactive, or foreign-tenant assignments are excluded.
 - Evidence references must be plain text references, not uploaded files or runtime tokens.
 - The ERP does not store MFA secrets, recovery codes, passwords, device keys, or identity-provider tokens.
 - Every record, verification, and revocation writes audit history with `DEC-0036` metadata.

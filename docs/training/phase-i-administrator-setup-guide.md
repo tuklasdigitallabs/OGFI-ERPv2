@@ -30,6 +30,7 @@ By the end of this module, participants can:
 8. Open **Admin > Session Invalidation** and identify records still pending external provider completion.
 9. Open **Admin > Break-Glass Access** and explain the bounded queue filters, selected-record action sheet, request, separate approval, expiry, revocation, and post-review controls.
 10. Open **Admin > Session Invalidation** and demonstrate status/search/UTC date filters, tenant-wide versus selected-company labels, and completion only from a selected pending record with separate provider evidence.
+11. Open **Admin > MFA Enrollment** and demonstrate effective-population search/status filters, exact company totals, bounded target options, and selected-record Verify/Revoke actions. Reiterate that the register does not replace runtime MFA or external-provider enforcement.
 10. Open **Admin > Admin Settings**, use category/search/pagination to find a policy, and review recommended versus overridden DEC-0036 defaults.
 11. In **Purchasing controls**, explain the recommended approval bands: standard approval from PHP 10,000, high-value review from PHP 50,000, senior/executive review from PHP 200,000, emergency cap PHP 5,000, and 3 quotes from PHP 50,000 estimated request value when quotation comparison is required.
 12. In **Security and continuity**, explain the readable retention and backup/restore summaries, then show that raw JSON remains editable only through a reasoned audited override.

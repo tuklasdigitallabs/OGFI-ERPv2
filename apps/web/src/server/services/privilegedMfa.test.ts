@@ -35,6 +35,15 @@ describe("privileged MFA enrollment evidence controls", () => {
     expect(schemaSource).toContain("model PrivilegedMfaEnrollment");
     expect(migrationSource).toContain('CREATE TABLE "PrivilegedMfaEnrollment"');
     expect(serviceSource).toContain("isSensitivePermissionCode");
+    expect(serviceSource).toContain("privilegedMfaPageInputSchema");
+    expect(serviceSource).toContain("startsAt: { lte: now }");
+    expect(serviceSource).toContain('role: { status: "ACTIVE"');
+    expect(serviceSource).toContain('tenantId: session.context.tenantId');
+    expect(serviceSource).toContain("getMfaStatusPageIds");
+    expect(serviceSource).toContain("DISTINCT ON");
+    expect(serviceSource).toContain("updateMany");
+    expect(serviceSource).toContain("prisma.$transaction");
+    expect(serviceSource).not.toContain("include: {");
     expect(serviceSource).toContain("PRIVILEGED_MFA_SELF_ATTESTATION_BLOCKED");
     expect(serviceSource).toContain("PRIVILEGED_MFA_SELF_VERIFICATION_BLOCKED");
     expect(serviceSource).toContain("PRIVILEGED_MFA_TARGET_NOT_PRIVILEGED");
@@ -47,6 +56,10 @@ describe("privileged MFA enrollment evidence controls", () => {
     expect(pageSource).toContain("External IdP/provider or vault proof");
     expect(pageSource).toContain("Preflight ready for strict privileged MFA enforcement");
     expect(pageSource).toContain("Keep privileged MFA in warn/audit mode");
+    expect(pageSource).toContain("PaginationBar");
+    expect(pageSource).toContain("Evidence status");
+    expect(pageSource).toContain("TaskSheet");
+    expect(pageSource).toContain("Open details");
     expect(navSource).toContain("MFA Enrollment");
     expect(feedbackSource).toContain("PRIVILEGED_MFA_ENROLLMENT_NOT_FOUND");
   });
