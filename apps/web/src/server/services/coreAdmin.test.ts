@@ -615,6 +615,8 @@ describe("core administration audit search wiring", () => {
     expect(detailPageSource).toContain('section === "audit" ?');
     expect(detailPageSource).toContain('aria-label="User access sections"');
     expect(detailPageSource).toContain('section === "roles" && user.canMutateRoles');
+    expect(detailPageSource).toContain("const loadScopePage =");
+    expect(detailPageSource).toContain('(section === \"requests\" && requestKind === \"scope\")');
   });
 
   test("high-risk scope review revalidates target membership and claims pending CAS", () => {

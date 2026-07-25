@@ -279,12 +279,26 @@ export default async function CoreAdminUserDetailPage({
         pageSize: 25,
       })
     : null;
-  const scopePage = await listCoreAdminUserScopePage(session, id, {
-    ...(scopeQuery ? { query: scopeQuery } : {}),
-    ...(scopeType ? { scopeType } : {}),
-    page: Number.isFinite(scopePageValue) ? scopePageValue : 1,
-    pageSize: 25,
-  });
+  const loadScopePage =
+    section === "overview" ||
+    section === "scopes" ||
+    (section === "requests" && requestKind === "scope");
+  const scopePage = loadScopePage
+    ? await listCoreAdminUserScopePage(session, id, {
+        ...(scopeQuery ? { query: scopeQuery } : {}),
+        ...(scopeType ? { scopeType } : {}),
+        page: Number.isFinite(scopePageValue) ? scopePageValue : 1,
+        pageSize: 25,
+      })
+    : {
+        items: [],
+        page: 1,
+        pageSize: 25,
+        totalItems: 0,
+        totalPages: 1,
+        query: "",
+        scopeType: null,
+      };
   const scopedUser = {
     ...user,
     scopes: scopePage.items.map((item) => ({
@@ -373,7 +387,7 @@ export default async function CoreAdminUserDetailPage({
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Scopes</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{scopedUser.scopesPage.totalItems}</p>
+          <p className="mt-2 text-3xl font-bold text-slate-950">{loadScopePage ? scopedUser.scopesPage.totalItems : "—"}</p>
         </Panel>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Permissions</p>

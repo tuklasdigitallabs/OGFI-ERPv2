@@ -865,3 +865,7 @@ Update this register only when implementation state, release scope, a confirmed 
 ### DEC-0165 Administration User Access section-aware catalogs — July 25, 2026
 - Added an allowlisted section projection for assignment catalogs: Overview/Audit skip both, Roles loads roles, Scopes loads locations, and Requests loads only the catalog matching its selected kind. Omitted projection callers retain compatibility behavior. Assign Role is now visible only in Roles; selector surfaces remain section-specific.
 - Evidence: Core Admin tests 34/34, web TypeScript, lint, production build, and diff checks pass. Query-count/isolation, PostgreSQL, responsive browser, hosted recovery, and UAT remain open; scope-page and role-page reads remain a separate follow-up.
+
+### DEC-0166 Administration User Access scope-read selection — July 25, 2026
+- The page now invokes the bounded polymorphic scope projection only for Overview, Scopes, and scope Requests. Roles, role Requests, and Audit use an explicit empty projection and display an unavailable scope KPI marker instead of running an irrelevant scope read.
+- Evidence: Core Admin tests 34/34, web TypeScript, lint, production build, and diff checks pass. PostgreSQL query-count/isolation, responsive browser, hosted recovery, and UAT remain open; role-page/effective-permission shaping remains separate.
