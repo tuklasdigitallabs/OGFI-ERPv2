@@ -62,6 +62,11 @@ In a Supplier catalog, use the selected item-link Open controls action sheet to
 deactivate a link. Verify the supplier, item, UOM, and reason before submitting;
 the server preserves history and rechecks company scope and active status.
 
+Use the selected Supplier tabs to keep tasks separate: Overview for identity
+and next action, Catalog for item links, Accreditation for supplier review, and
+Audit to open the authoritative Admin Audit history. The tabs preserve supplier
+filters and page context.
+
 ## Common errors and recovery
 
 - Granting company-wide access to fix one missing record: assign the smallest correct scope.

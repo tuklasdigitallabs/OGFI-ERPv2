@@ -84,3 +84,9 @@ composer preserves supplier/catalog filters and page context, shows the
 selected link, requires a reason, and treats stale or foreign selections as
 unavailable. Existing server authorization, active-link checks, audit, and
 history retention remain authoritative.
+
+Implementation note (`DEC-0182`): a selected supplier uses URL-backed Overview,
+Catalog, Accreditation, and Audit sections. Only Catalog loads the paginated
+item-link register. Accreditation owns supplier review controls, while Audit
+is an explicit read-only handoff to the bounded Admin Audit workspace until a
+supplier-specific projection is approved; it does not render raw events.

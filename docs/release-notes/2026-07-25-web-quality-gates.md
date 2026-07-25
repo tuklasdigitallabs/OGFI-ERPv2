@@ -37,3 +37,8 @@ Supplier catalog item-link deactivation now uses one selected-record TaskSheet
 with preserved supplier/catalog filters and page context. Repeated row modals
 were removed; the existing scoped, reasoned, audited mutation remains the
 authority.
+
+Selected Supplier work is now split into URL-backed Overview, Catalog,
+Accreditation, and Audit sections. Catalog-only reads prevent inactive tabs
+from hydrating item links; Audit is a read-only handoff to bounded Admin Audit
+until a supplier-specific projection is approved.

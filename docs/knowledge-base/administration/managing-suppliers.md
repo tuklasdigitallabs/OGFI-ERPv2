@@ -16,3 +16,8 @@ reason of at least five characters, and submit. The current filters and page
 are preserved; if the link is stale, inactive, or outside the selected company,
 the sheet explains that no action is available. Deactivation retains history
 and does not change purchase orders or inventory.
+
+The selected supplier workspace has separate Overview, Catalog, Accreditation,
+and Audit tabs. Catalog loads the item-link register; Overview and
+Accreditation do not load catalog rows. Audit opens the authoritative bounded
+Admin Audit view rather than exposing raw event details in the supplier page.

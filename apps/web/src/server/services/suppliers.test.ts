@@ -81,6 +81,12 @@ describe("supplier master-data controls", () => {
     expect(page).toContain("selectedSupplierItemLinkId");
     expect(page).toContain("<TaskSheet");
     expect(page).toContain("Only this selected link is affected");
+    expect(page).toContain("WorkspaceTabs");
+    expect(page).toContain('label: "Overview"');
+    expect(page).toContain('label: "Catalog"');
+    expect(page).toContain('label: "Accreditation"');
+    expect(page).toContain('label: "Audit"');
+    expect(page).toContain('supplierTab === "catalog"');
     expect(page).not.toContain('title="Deactivate Supplier Item Link"');
     expect(page).toContain('name="returnPath"');
     expect(page).toContain('name="selectedItemId"');

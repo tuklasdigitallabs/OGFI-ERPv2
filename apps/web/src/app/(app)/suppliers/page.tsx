@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ExternalLink, PackageSearch, Search } from "lucide-react";
-import { Badge, Panel, PaginationBar } from "@ogfi/ui";
+import { Badge, Panel, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
@@ -156,6 +156,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const supplierPageValue = Number(firstParam(params.page) ?? "1");
   const supplierAction = firstParam(params.supplierAction);
   const selectedSupplierId = firstParam(params.supplier);
+  const supplierTabValue = firstParam(params.tab);
+  const supplierTab = supplierTabValue === "catalog" || supplierTabValue === "accreditation" || supplierTabValue === "audit"
+    ? supplierTabValue
+    : "overview";
   const linkAction = firstParam(params.linkAction) === "create" ? "create" : null;
   const selectedSupplierItemLinkId = firstParam(params.selectedSupplierItemLinkId);
   const itemLinkQuery = firstParam(params.itemLinkQuery) ?? "";
@@ -182,7 +186,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const catalogStatus = firstParam(params.catalogStatus);
   const catalogCategory = firstParam(params.catalogCategory);
   const catalogPage = Number(firstParam(params.catalogPage) ?? "1");
-  const selectedSupplierCatalog = selectedSupplierId
+  const selectedSupplierCatalog = selectedSupplierId && supplierTab === "catalog"
     ? await getSupplierCatalog(session, selectedSupplierId, {
         query: catalogQuery,
         status:
@@ -194,7 +198,9 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
         pageSize: 25
       })
     : null;
-  const selectedSupplier = selectedSupplierCatalog?.supplier ?? null;
+  const selectedSupplier = selectedSupplierCatalog?.supplier
+    ?? supplierData.suppliers.find((supplier) => supplier.id === selectedSupplierId)
+    ?? null;
   const selectedSupplierItemLink = selectedSupplierCatalog?.itemLinks.find(
     (link) => link.id === selectedSupplierItemLinkId
   ) ?? null;
@@ -214,6 +220,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const catalogBaseParams = new URLSearchParams();
   if (selectedSupplierId) {
     catalogBaseParams.set("supplier", selectedSupplierId);
+    catalogBaseParams.set("tab", "catalog");
   }
   if (catalogQuery) {
     catalogBaseParams.set("catalogQuery", catalogQuery);
@@ -231,6 +238,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   };
   const supplierActionHref = (supplierId: string, action?: "accreditation" | "deactivate") => {
     const nextParams = new URLSearchParams({ supplier: supplierId });
+    nextParams.set("tab", action === "accreditation" || action === "deactivate" ? "accreditation" : "overview");
     if (supplierQuery) nextParams.set("query", supplierQuery);
     if (supplierStatus) nextParams.set("status", supplierStatus);
     if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
@@ -239,7 +247,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     return `/suppliers?${nextParams.toString()}`;
   };
   const supplierLinkActionHref = (supplierId: string) => {
-    const nextParams = new URLSearchParams({ supplier: supplierId, linkAction: "create" });
+    const nextParams = new URLSearchParams({ supplier: supplierId, tab: "catalog", linkAction: "create" });
     if (supplierQuery) nextParams.set("query", supplierQuery);
     if (supplierStatus) nextParams.set("status", supplierStatus);
     if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
@@ -256,7 +264,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     return `/suppliers?${nextParams.toString()}`;
   };
   const supplierItemLinkActionHref = (supplierId: string, linkId?: string) => {
-    const nextParams = new URLSearchParams({ supplier: supplierId });
+    const nextParams = new URLSearchParams({ supplier: supplierId, tab: "catalog" });
     if (supplierQuery) nextParams.set("query", supplierQuery);
     if (supplierStatus) nextParams.set("status", supplierStatus);
     if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
@@ -265,6 +273,20 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     if (catalogCategory) nextParams.set("catalogCategory", catalogCategory);
     if (catalogPage > 1) nextParams.set("catalogPage", String(catalogPage));
     if (linkId) nextParams.set("selectedSupplierItemLinkId", linkId);
+    return `/suppliers?${nextParams.toString()}`;
+  };
+  const supplierWorkspaceHref = (supplierId: string, tab: "overview" | "catalog" | "accreditation" | "audit") => {
+    const nextParams = new URLSearchParams({ supplier: supplierId, tab });
+    if (supplierQuery) nextParams.set("query", supplierQuery);
+    if (supplierStatus) nextParams.set("status", supplierStatus);
+    if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
+    if (supplierPageValue > 1) nextParams.set("page", String(supplierPageValue));
+    if (tab === "catalog") {
+      if (catalogQuery) nextParams.set("catalogQuery", catalogQuery);
+      if (catalogStatus) nextParams.set("catalogStatus", catalogStatus);
+      if (catalogCategory) nextParams.set("catalogCategory", catalogCategory);
+      if (catalogPage > 1) nextParams.set("catalogPage", String(catalogPage));
+    }
     return `/suppliers?${nextParams.toString()}`;
   };
   const supplierLookupPageHref = (supplierId: string, kind: "item" | "uom", page: number) => {
@@ -586,7 +608,56 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             />
           ) : null}
         </section>
-        {selectedSupplierCatalog && selectedSupplier ? (
+        {selectedSupplier ? (
+          <section className="ogfi-data-surface">
+            <div className="ogfi-section-header">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">Selected supplier workspace</h2>
+                <p className="text-sm text-slate-500">{selectedSupplier.tradingName ?? selectedSupplier.legalName} · {selectedSupplier.supplierCode}</p>
+              </div>
+              <Link className="text-sm font-semibold text-blue-700 hover:underline" href="/suppliers">Close supplier</Link>
+            </div>
+            <WorkspaceTabs
+              items={[
+                { label: "Overview", href: supplierWorkspaceHref(selectedSupplier.id, "overview"), active: supplierTab === "overview" },
+                { label: "Catalog", href: supplierWorkspaceHref(selectedSupplier.id, "catalog"), active: supplierTab === "catalog" },
+                { label: "Accreditation", href: supplierWorkspaceHref(selectedSupplier.id, "accreditation"), active: supplierTab === "accreditation" },
+                { label: "Audit", href: supplierWorkspaceHref(selectedSupplier.id, "audit"), active: supplierTab === "audit" }
+              ]}
+            />
+            {supplierTab === "overview" ? (
+              <div className="grid gap-3 p-5 md:grid-cols-3">
+                <div><p className="text-xs font-bold uppercase text-slate-400">Lifecycle</p><p className="mt-1 font-semibold text-slate-900">{selectedSupplier.status}</p></div>
+                <div><p className="text-xs font-bold uppercase text-slate-400">Accreditation</p><p className="mt-1 font-semibold text-slate-900">{accreditationLabel(selectedSupplier.accreditationStatus)}</p></div>
+                <div><p className="text-xs font-bold uppercase text-slate-400">Next action</p><p className="mt-1 text-sm text-slate-700">{selectedSupplier.status === "ACTIVE" ? "Review catalog or accreditation controls" : "Retained history; no new sourcing"}</p></div>
+                <div><p className="text-xs font-bold uppercase text-slate-400">Primary contact</p><p className="mt-1 text-sm text-slate-700">{selectedSupplier.primaryContact?.name ?? "Not configured"}</p></div>
+                <div><p className="text-xs font-bold uppercase text-slate-400">Payment terms</p><p className="mt-1 text-sm text-slate-700">{selectedSupplier.paymentTerms ?? "Not configured"}</p></div>
+                <div><p className="text-xs font-bold uppercase text-slate-400">Catalog links</p><p className="mt-1 font-semibold text-slate-900">{"itemLinkCount" in selectedSupplier ? selectedSupplier.itemLinkCount : "Open Catalog"}</p></div>
+              </div>
+            ) : null}
+            {supplierTab === "audit" ? (
+              <div className="p-5 text-sm text-slate-700">
+                <p className="font-semibold text-slate-950">Supplier audit history is available in Admin Audit.</p>
+                <p className="mt-1">This read-only handoff does not expose raw event metadata here. Use the bounded, redacted Admin Audit workspace for the authoritative company-scoped history.</p>
+                <Link className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-4 font-semibold text-blue-700 hover:bg-slate-50" href={`/admin/audit?entityType=Supplier&entityId=${selectedSupplier.id}`}>Open Admin Audit</Link>
+              </div>
+            ) : null}
+            {supplierTab === "accreditation" && selectedSupplier.status === "ACTIVE" ? (
+              <div className="border-t border-slate-100 bg-blue-50/40 px-5 py-4">
+                <div className="mb-3"><h3 className="font-bold text-slate-950">Update supplier accreditation</h3><p className="text-sm text-slate-600">Only the selected supplier is affected.</p></div>
+                <form action={updateSupplierAccreditationAction} className="grid gap-3 md:grid-cols-[1fr_1fr_1.5fr_auto] md:items-end">
+                  <input name="supplierId" type="hidden" value={selectedSupplier.id} />
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Accreditation status<select className="min-h-11 rounded-md border border-slate-300 bg-white px-3" defaultValue={selectedSupplier.accreditationStatus} name="accreditationStatus" required><option value="PENDING_REVIEW">Pending review</option><option value="APPROVED">Approved</option><option value="SUSPENDED">Suspended</option><option value="BLOCKED">Blocked</option></select></label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Reason<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required /></label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-700">Evidence reference<input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="evidenceReference" /></label>
+                  <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-bold text-white">Save</button>
+                </form>
+                <Link className="mt-3 inline-flex text-sm font-semibold text-slate-700 hover:underline" href={supplierActionHref(selectedSupplier.id, "deactivate")}>Open supplier deactivation controls</Link>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+        {selectedSupplierCatalog && selectedSupplier && supplierTab === "catalog" ? (
           <section className="ogfi-data-surface">
             <div className="ogfi-section-header">
               <div>
