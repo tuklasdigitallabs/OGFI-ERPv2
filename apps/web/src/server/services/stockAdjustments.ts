@@ -25,6 +25,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import {
   listActiveOperationalReasonCodes,
   requireActiveOperationalReasonCode
@@ -1220,7 +1221,11 @@ export async function submitStockAdjustment(formData: FormData) {
     }
   });
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "StockAdjustment",
+  }, async (tx) => {
     const transactionType = adjustment.sourceStockCountSessionId
       ? "StockCountVarianceAdjustment"
       : "StockAdjustment";

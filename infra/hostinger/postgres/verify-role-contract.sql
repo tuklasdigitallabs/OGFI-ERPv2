@@ -142,6 +142,24 @@ BEGIN
       ('public.reject_approval_routing_backfill_evidence_mutation()'::regprocedure,
         'fa38c0296149be8cdc1f5f14d0eb7614', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)'::regprocedure,
+        'd4eb4612092f08e84f67332a54dc36a1', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.acquire_approval_routing_graph_barrier_shared()'::regprocedure,
+        '86624a49f8ca97a553c7ffe12777bab8', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_approval_routing_provenance_lineage()'::regprocedure,
+        '9a643535a72f125c5af4435ce705516a', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.reject_approval_routing_producer_evidence_mutation()'::regprocedure,
+        '32f3c8868d696963a51b7e35f06e5d53', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.reject_dormant_approval_routing_evidence_insert()'::regprocedure,
+        '4eabc880838e5beb85b44b2854d80d1c', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.reject_dormant_approval_routing_validator_execution()'::regprocedure,
+        '022f0d22da70afc7987d076bf268d815', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.enforce_authentication_throttle_window_transition()'::regprocedure,
         'e07a390bc1869b04a2fc6bbb067dc2aa', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
@@ -281,7 +299,9 @@ BEGIN
   FOREACH protected_table IN ARRAY ARRAY[
     'ApprovalRoutingBackfillRun',
     'ApprovalRoutingBackfillBatch',
-    'ApprovalRoutingBackfillBlockerObservation'
+    'ApprovalRoutingBackfillBlockerObservation',
+    'ApprovalRoutingProducerBarrierGeneration',
+    'ApprovalRoutingProducerProvenance'
   ]
   LOOP
     PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -373,6 +393,184 @@ BEGIN
     )
   ) THEN
     RAISE EXCEPTION 'Approval routing backfill ENABLE ALWAYS evidence trigger contract is incomplete';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('ApprovalInstance', '00_approval_producer_barrier_lock_trg', 31::smallint),
+      ('ApprovalInstanceStep', '00_approval_producer_barrier_lock_trg', 31::smallint),
+      ('ApprovalInstanceStepScopeGroup', '00_approval_producer_barrier_lock_trg', 31::smallint),
+      ('ApprovalInstanceStepScopeTarget', '00_approval_producer_barrier_lock_trg', 31::smallint),
+      ('ApprovalInstanceStepProhibitedActor', '00_approval_producer_barrier_lock_trg', 31::smallint),
+      ('ApprovalRoutingProducerProvenance', '00_approval_producer_barrier_lock_trg', 31::smallint)
+    ) AS expected(table_name, trigger_name, trigger_type)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.trigger_name
+        AND t.tgfoid = 'public.acquire_approval_routing_graph_barrier_shared()'::regprocedure
+        AND t.tgenabled = 'A'
+        AND t.tgtype = expected.trigger_type
+        AND NOT t.tgisinternal
+        AND NOT t.tgdeferrable
+        AND NOT t.tginitdeferred
+    )
+  ) THEN
+    RAISE EXCEPTION 'Approval producer barrier ENABLE ALWAYS graph-lock trigger contract is incomplete';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('ApprovalRoutingProducerBarrierGeneration', 'ApprovalGeneration_append_only_guard_trg', 26::smallint),
+      ('ApprovalRoutingProducerBarrierGeneration', 'ApprovalGeneration_truncate_guard_trg', 34::smallint),
+      ('ApprovalRoutingProducerProvenance', 'ApprovalProvenance_append_only_guard_trg', 26::smallint),
+      ('ApprovalRoutingProducerProvenance', 'ApprovalProvenance_truncate_guard_trg', 34::smallint)
+    ) AS expected(table_name, trigger_name, trigger_type)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.trigger_name
+        AND t.tgfoid = 'public.reject_approval_routing_producer_evidence_mutation()'::regprocedure
+        AND t.tgenabled = 'A'
+        AND t.tgtype = expected.trigger_type
+        AND NOT t.tgisinternal
+        AND NOT t.tgdeferrable
+        AND NOT t.tginitdeferred
+    )
+  ) THEN
+    RAISE EXCEPTION 'Approval producer barrier append-only trigger contract is incomplete';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('ApprovalRoutingProducerBarrierGeneration', 'ApprovalGeneration_dormant_insert_guard_trg'),
+      ('ApprovalRoutingProducerProvenance', 'ApprovalProvenance_dormant_insert_guard_trg')
+    ) AS expected(table_name, trigger_name)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.trigger_name
+        AND t.tgfoid = 'public.reject_dormant_approval_routing_evidence_insert()'::regprocedure
+        AND t.tgenabled = 'A'
+        AND t.tgtype = 6
+        AND NOT t.tgisinternal
+        AND NOT t.tgdeferrable
+        AND NOT t.tginitdeferred
+    )
+  ) THEN
+    RAISE EXCEPTION 'Approval producer barrier ENABLE ALWAYS dormant insert trigger contract is incomplete';
+  END IF;
+
+  IF verification_mode = 'owner' AND (
+    EXISTS (SELECT 1 FROM public."ApprovalRoutingProducerBarrierGeneration")
+    OR EXISTS (SELECT 1 FROM public."ApprovalRoutingProducerProvenance")
+  ) THEN
+    RAISE EXCEPTION 'Dormant approval producer barrier evidence relations are not empty';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger t
+    WHERE t.tgrelid = 'public."ApprovalRoutingProducerProvenance"'::regclass
+      AND t.tgname = 'ApprovalProvenance_lineage_guard_trg'
+      AND t.tgfoid = 'public.validate_approval_routing_provenance_lineage()'::regprocedure
+      AND t.tgenabled = 'A' AND t.tgtype = 7
+      AND NOT t.tgisinternal AND NOT t.tgdeferrable AND NOT t.tginitdeferred
+  ) THEN
+    RAISE EXCEPTION 'Approval producer provenance lineage trigger contract is incomplete';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('ApprovalInstance', 'ApprovalInstance_dormant_validator_trg'),
+      ('ApprovalInstanceStep', 'ApprovalStep_dormant_validator_trg'),
+      ('ApprovalInstanceStepScopeGroup', 'ApprovalScopeGroup_dormant_validator_trg'),
+      ('ApprovalInstanceStepScopeTarget', 'ApprovalScopeTarget_dormant_validator_trg'),
+      ('ApprovalInstanceStepProhibitedActor', 'ApprovalProhibitedActor_dormant_validator_trg'),
+      ('ApprovalRoutingProducerProvenance', 'ApprovalProvenance_dormant_validator_trg')
+    ) AS expected(table_name, trigger_name)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.trigger_name
+        AND t.tgfoid = 'public.reject_dormant_approval_routing_validator_execution()'::regprocedure
+        AND t.tgenabled = 'A' AND t.tgtype = 29
+        AND NOT t.tgisinternal AND t.tgdeferrable AND t.tginitdeferred
+        AND pg_get_expr(t.tgqual, t.tgrelid) = 'false'
+    )
+  ) THEN
+    RAISE EXCEPTION 'Approval producer barrier dormant deferred validator contract is incomplete';
+  END IF;
+
+  PERFORM 1
+  FROM pg_proc p
+  JOIN pg_language l ON l.oid = p.prolang
+  WHERE p.oid = 'public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)'::regprocedure
+    AND p.proowner = owner_oid
+    AND l.lanname = 'plpgsql'
+    AND NOT p.prosecdef
+    AND p.provolatile = 'v'
+    AND p.proconfig = ARRAY['search_path=pg_catalog, public']::text[]
+    AND position('APPROVAL_ROUTING_PRODUCER_BARRIER_SCOPE_INVALID' IN p.prosrc) > 0
+    AND position('APPROVAL_ROUTING_PRODUCER_FAMILY_UNSUPPORTED' IN p.prosrc) > 0
+    AND position('pg_try_advisory_xact_lock_shared' IN p.prosrc) > 0
+    AND position('APPROVAL_ROUTING_PRODUCER_BARRIER_RETRY' IN p.prosrc) > 0
+    AND position('40001' IN p.prosrc) > 0
+    AND has_function_privilege(runtime_role, p.oid, 'EXECUTE')
+    AND NOT EXISTS (
+      SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+      WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+    )
+    AND EXISTS (
+      SELECT 1 FROM aclexplode(p.proacl) acl
+      WHERE acl.grantee = runtime_oid
+        AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM aclexplode(p.proacl) acl
+      WHERE acl.grantee NOT IN (owner_oid, runtime_oid)
+    );
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Approval producer barrier shared-lock function contract is unsafe or incomplete';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('public.acquire_approval_routing_graph_barrier_shared()'::regprocedure),
+      ('public.validate_approval_routing_provenance_lineage()'::regprocedure),
+      ('public.reject_approval_routing_producer_evidence_mutation()'::regprocedure),
+      ('public.reject_dormant_approval_routing_evidence_insert()'::regprocedure),
+      ('public.reject_dormant_approval_routing_validator_execution()'::regprocedure)
+    ) AS internal(function_oid)
+    JOIN pg_proc p ON p.oid = internal.function_oid
+    WHERE has_function_privilege(runtime_role, internal.function_oid, 'EXECUTE')
+       OR EXISTS (
+         SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+         WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+       )
+  ) THEN
+    RAISE EXCEPTION 'Approval producer barrier internal routine is callable by runtime or PUBLIC';
   END IF;
 
   FOREACH protected_table IN ARRAY ARRAY[

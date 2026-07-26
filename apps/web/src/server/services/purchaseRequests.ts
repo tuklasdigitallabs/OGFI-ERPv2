@@ -19,6 +19,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
 import { getPurchasingControlPolicy } from "./policySettings";
 import { reverseBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
@@ -1491,7 +1492,11 @@ export async function submitPurchaseRequest(id: string) {
     throw new Error("INVALID_STATUS_TRANSITION");
   }
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PurchaseRequest",
+  }, async (tx) => {
     const claimed = await tx.purchaseRequest.updateMany({
       where: {
         id,

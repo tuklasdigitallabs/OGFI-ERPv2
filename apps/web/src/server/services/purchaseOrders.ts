@@ -19,6 +19,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import {
   assertSupplierStatusAllowedForPurchaseOrder,
   getPurchasingSupplierPolicy,
@@ -1778,7 +1779,11 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
     throw new Error("PURCHASE_ORDER_DELIVERY_LOCATION_INACTIVE");
   }
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PurchaseOrder",
+  }, async (tx) => {
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -2272,7 +2277,11 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
     pendingClosureCount: order.balanceClosures.length,
   });
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PurchaseOrderBalanceClosure",
+  }, async (tx) => {
     // Serialize competing closure requests on the authoritative PO row before
     // evaluating pending closures and creating the approval child record.
     await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${order.id} AND "tenantId" = ${session.context.tenantId} AND "companyId" = ${session.context.companyId} FOR UPDATE`;
@@ -2553,7 +2562,11 @@ export async function requestPurchaseOrderAmendment(formData: FormData) {
     pendingAmendmentCount: order.amendments.length,
   });
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PurchaseOrderAmendment",
+  }, async (tx) => {
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
         tenantId: session.context.tenantId,

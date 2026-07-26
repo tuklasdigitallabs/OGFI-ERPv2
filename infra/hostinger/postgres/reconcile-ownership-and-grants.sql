@@ -146,12 +146,14 @@ BEGIN
   END LOOP;
   -- DEC-0245 Option D keeps the orchestration executor non-operational until a
   -- separately governed maintenance-role boundary exists. Remove the blanket
-  -- runtime defaults above, including any stale column grants, from all three
-  -- orchestration tables.
+  -- runtime defaults above, including any stale column grants, from the three
+  -- orchestration tables and the dormant producer-barrier evidence relations.
   FOREACH protected_table IN ARRAY ARRAY[
     'ApprovalRoutingBackfillRun',
     'ApprovalRoutingBackfillBatch',
-    'ApprovalRoutingBackfillBlockerObservation'
+    'ApprovalRoutingBackfillBlockerObservation',
+    'ApprovalRoutingProducerBarrierGeneration',
+    'ApprovalRoutingProducerProvenance'
   ]
   LOOP
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
@@ -166,6 +168,13 @@ BEGIN
       EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM %I', column_name, protected_table, runtime_role);
     END LOOP;
   END LOOP;
+  IF to_regprocedure('public.acquire_approval_routing_producer_barrier_shared(uuid,uuid,text)') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.acquire_approval_routing_producer_barrier_shared(UUID, UUID, TEXT) FROM PUBLIC;
+    EXECUTE format(
+      'GRANT EXECUTE ON FUNCTION public.acquire_approval_routing_producer_barrier_shared(UUID, UUID, TEXT) TO %I',
+      runtime_role
+    );
+  END IF;
   FOREACH protected_table IN ARRAY ARRAY[
     'ControlledEvidencePolicyVersion',
     'ControlledEvidencePolicyActivationEvent'
@@ -280,6 +289,13 @@ BEGIN
   IF to_regprocedure('public.reject_protected_history_mutation()') IS NOT NULL THEN
     REVOKE ALL ON FUNCTION public.reject_protected_history_mutation() FROM PUBLIC;
     EXECUTE format('REVOKE ALL ON FUNCTION public.reject_protected_history_mutation() FROM %I', runtime_role);
+  END IF;
+  IF to_regprocedure('public.reject_dormant_approval_routing_evidence_insert()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.reject_dormant_approval_routing_evidence_insert() FROM PUBLIC;
+    EXECUTE format(
+      'REVOKE ALL ON FUNCTION public.reject_dormant_approval_routing_evidence_insert() FROM %I',
+      runtime_role
+    );
   END IF;
 END
 $reconcile$;

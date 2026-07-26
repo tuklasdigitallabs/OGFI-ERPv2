@@ -148,6 +148,10 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
   assert.match(reconcile, /DEC-0245 Option D keeps the orchestration executor non-operational/);
   assert.match(reconcile, /ApprovalRoutingBackfillBatch/);
   assert.match(reconcile, /ApprovalRoutingBackfillBlockerObservation/);
+  assert.match(reconcile, /ApprovalRoutingProducerBarrierGeneration/);
+  assert.match(reconcile, /ApprovalRoutingProducerProvenance/);
+  assert.match(reconcile, /GRANT EXECUTE ON FUNCTION public\.acquire_approval_routing_producer_barrier_shared\(UUID, UUID, TEXT\)/);
+  assert.match(reconcile, /REVOKE ALL ON FUNCTION public\.reject_dormant_approval_routing_evidence_insert\(\) FROM PUBLIC/);
   assert.doesNotMatch(reconcile, /GRANT SELECT, INSERT ON TABLE public\."ApprovalRoutingBackfillRun"/);
   assert.doesNotMatch(reconcile, /GRANT UPDATE \([^)]*\) ON TABLE public\."ApprovalRoutingBackfillRun"/);
   assert.match(reconcile, /AuthenticationThrottleWindow" FROM %I', column_name, runtime_role/);
@@ -170,6 +174,14 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
   assert.match(verify, /Web runtime has an effective column privilege on non-operational/);
   assert.match(verify, /ApprovalRoutingBackfillRun ENABLE ALWAYS transition guard is incomplete/);
   assert.match(verify, /Approval routing backfill ENABLE ALWAYS evidence trigger contract is incomplete/);
+  assert.match(verify, /Approval producer barrier ENABLE ALWAYS graph-lock trigger contract is incomplete/);
+  assert.match(verify, /Approval producer barrier append-only trigger contract is incomplete/);
+  assert.match(verify, /Approval producer barrier ENABLE ALWAYS dormant insert trigger contract is incomplete/);
+  assert.match(verify, /Dormant approval producer barrier evidence relations are not empty/);
+  assert.match(verify, /Approval producer provenance lineage trigger contract is incomplete/);
+  assert.match(verify, /Approval producer barrier dormant deferred validator contract is incomplete/);
+  assert.match(verify, /Approval producer barrier shared-lock function contract is unsafe or incomplete/);
+  assert.match(verify, /Approval producer barrier internal routine is callable by runtime or PUBLIC/);
   assert.match(verify, /validate_approval_routing_backfill_run_transition\(\)'::regprocedure/);
   assert.match(verify, /reject_approval_routing_backfill_evidence_mutation\(\)'::regprocedure/);
   assert.match(verify, /t\.tgfoid = expected\.function_oid/);

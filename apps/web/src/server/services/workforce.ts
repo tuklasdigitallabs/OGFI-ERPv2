@@ -17,6 +17,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import { assertLegacyApprovalDecisionAllowed } from "./approvalDecisionMode";
 import { terminatePendingApprovalForCancellation } from "./approvalCancellation";
 
@@ -2137,7 +2138,11 @@ export async function submitLeaveRequest(
   input: LeaveActionInput
 ) {
   await requirePermission(session, permissions.workforceManage);
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "EmployeeLeaveRequest",
+  }, async (tx) => {
     const request = await getScopedLeaveOrThrow(
       tx,
       session,
@@ -2531,7 +2536,11 @@ export async function submitOvertimeRecord(
   input: OvertimeActionInput
 ) {
   await requirePermission(session, permissions.workforceManage);
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "EmployeeOvertimeRecord",
+  }, async (tx) => {
     const record = await getScopedOvertimeOrThrow(
       tx,
       session,
@@ -2873,7 +2882,11 @@ export async function submitWorkforceSchedule(
   input: ScheduleActionInput
 ) {
   await requirePermission(session, permissions.workforceScheduleManage);
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "WorkforceSchedule",
+  }, async (tx) => {
     const schedule = await getScopedScheduleOrThrow(
       tx,
       session,
@@ -3291,7 +3304,11 @@ export async function reviewAttendanceImportBatch(
   input: AttendanceImportReviewInput
 ) {
   await requirePermission(session, permissions.workforceAttendanceImportManage);
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "AttendanceImportBatch",
+  }, async (tx) => {
     const batch = await getScopedAttendanceBatchOrThrow(
       tx,
       session,

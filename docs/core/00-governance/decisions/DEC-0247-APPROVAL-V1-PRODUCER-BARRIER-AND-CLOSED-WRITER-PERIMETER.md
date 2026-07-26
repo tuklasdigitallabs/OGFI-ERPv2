@@ -321,11 +321,54 @@ deployment and recovery evidence, and `DEC-0246` human authority pass review.
   all-18 semantic, flag-matrix, deployment, restore, and recovery evidence listed
   above. End-user UAT remains a separate activation prerequisite.
 
+### Current dormant implementation checkpoint
+
+The current implementation is a partial Option B foundation only. Additive
+migration `20260727150000_approval_routing_producer_barrier_dormant` creates two
+empty protected tables: DORMANT-only
+`ApprovalRoutingProducerBarrierGeneration` and append-only
+`ApprovalRoutingProducerProvenance`. The migration creates no generation,
+provenance, readiness, result, activation, approval, audit, or source row. No
+readiness/result/activation relation or routine exists.
+
+All exact 18 production producer entry points now use an outer transaction wrapper
+that acquires the company-scoped shared advisory transaction lock before invoking
+the producer body. Six `ENABLE ALWAYS` triggers acquire the same shared lock for
+registered-family mutations of `ApprovalInstance`, `ApprovalInstanceStep`,
+`ApprovalInstanceStepScopeGroup`, `ApprovalInstanceStepScopeTarget`,
+`ApprovalInstanceStepProhibitedActor`, and
+`ApprovalRoutingProducerProvenance`. The evidence tables reject insert, update,
+delete, and truncate through `ENABLE ALWAYS` schema guards, including for
+owner/replication-role sessions. The dormant provenance lineage guard remains in
+place for a later governed writer migration, but no actor can insert while this
+checkpoint remains dormant.
+
+This checkpoint does not implement source-table transition triggers, an active
+deferred complete-v1 and exact-provenance validator, provenance writes, the
+same-key exclusive activation/final-scan operation, or
+`V1_PRODUCER_BARRIER_READY`. Its six deferred validator triggers use `WHEN
+(false)` and are intentionally inert. Option C typed closed capabilities and zero
+runtime base approval-graph/provenance DML are still pending. Executed local
+evidence passes focused approval routing 74/74, exact 18-producer backend coverage
+204/204, database-schema coverage 6/6, role/migration tooling 8/8, and the
+authorization manifest 21/21. The full root suite passes 1,486 web tests with 313
+skipped and one todo across 141 passing and 12 skipped files, 48 database tests
+with 18 skipped, and one worker test. Root lint/typecheck, E2E typecheck, the
+isolated production build, secret review, release-tool self-test, and Prisma
+schema validation pass. Four PostgreSQL producer-barrier specifications are
+authored but skipped; the disposable runner failed closed with
+`DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`. PostgreSQL migration, contention, ACL,
+hosted role/deployment, backup/restore, and recovery execution remain uncredited.
+
+`APPROVAL_ROUTING_V1_ENABLED` remains false. `DEC-0246` human authority continues
+to block production activation and certification execution. This checkpoint
+cannot create a readiness result and cannot emit `DRAIN_CLEAN`.
+
 ## Follow-up actions
 
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
-| Implement dormant Option B barrier generations, automatic locks, deferred exact validator, and readiness result | Database and backend owners | Before producer-barrier readiness review | Pending |
+| Implement dormant Option B barrier generations, automatic locks, deferred exact validator, and readiness result | Database and backend owners | Before producer-barrier readiness review | In progress — empty DORMANT generation/provenance schema, all-18 outer shared-lock wrappers, and six graph/provenance shared-lock triggers authored; active validator, provenance writes, exclusive final scan, and readiness result pending |
 | Move all 18 producers behind Option C typed closed capabilities and remove runtime base graph/provenance DML | Database, backend, and security owners | Before production activation | Pending |
 | Execute the complete all-18 semantic, race, privilege, deployment, and recovery test matrix | QA, Database, Security, DevOps, and Release | Exact release candidate | Pending |
 | Confirm issuer, key custody, revocation, STOP, and recovery authority required by `DEC-0246` | Authorized human owner | Before production activation or certification execution | Blocked — human decision required |

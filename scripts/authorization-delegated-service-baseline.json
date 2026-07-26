@@ -1,5 +1,6 @@
 [
   "server/services/approvalCancellation.ts#terminatePendingApprovalForCancellation",
+  "server/services/approvalProducerBarrier.ts#withApprovalProducerTransaction",
   "server/services/approvalRouting.ts#activateApprovalStepWithEligibility",
   "server/services/approvalRouting.ts#configureApprovalStepRouting",
   "server/services/approvalRouting.ts#lockNormalizedApprovalLifecycleActors",

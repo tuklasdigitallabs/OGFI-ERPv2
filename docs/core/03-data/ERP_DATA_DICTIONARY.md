@@ -442,6 +442,26 @@ Lease and standalone orchestration evidence timestamps use `TIMESTAMPTZ(3)`. Cur
 
 Rollback cannot destructively remove committed evidence or convert routing v1 back to v0. Stop the runner, retain `APPROVAL_ROUTING_V1_ENABLED=false`, preserve run/batch/blocker/audit rows, and forward-repair under a compatible governed release. A later maintenance-role authority slice, producer barrier, all-18 writer proof, final clean passes, from-zero reconciliation, durable certification, Payment Request policy resolution, and explicit activation decision remain separate gates.
 
+### 7.6 Dormant Approval V1 Producer-Barrier Foundation (`DEC-0247`)
+
+| Entity | Required fields | Integrity and lifecycle notes |
+|---|---|---|
+| Approval Routing Producer Barrier Generation | `tenant_id`, `company_id`, positive `generation_number`, `state`, routing schema/mapping version and hash, capability version and hash, `release_identity`, database creation time | The current additive foundation permits only `DORMANT`. Tenant/company lineage and generation number are unique; `INSERT`, update, delete, and truncate are rejected by schema-level `ENABLE ALWAYS` guards, including for owner/replication-role sessions. Migration creates the empty relation and inserts no generation. There is no active, ready, certified, or failed state and no readiness/result/activation relation or routine in this checkpoint. |
+| Approval Routing Producer Provenance | `tenant_id`, `company_id`, `generation_id`, `approval_instance_id`, registered `document_type`, `document_id`, routing schema/mapping version and hash, capability version and hash, `release_identity`, database transaction ID, database creation time | Dormant evidence shape with exact tenant/company generation and Approval Instance lineage, one provenance row per scoped Approval Instance, a closed 18-family document-type set, and same-transaction lineage validation. Schema-level `ENABLE ALWAYS` guards reject `INSERT`, update, delete, and truncate for every role until a later governed writer migration replaces the insert denial. The current application writes no provenance row; the migration inserts none. Runtime base-table DML remains pending removal under Option C. |
+
+All 18 outer producer transactions acquire the same database-derived company
+shared advisory transaction lock before their producer bodies. Six `ENABLE
+ALWAYS` triggers apply the shared lock to registered-family Approval Instance,
+step, scope-group, scope-target, prohibited-actor, and provenance graph changes.
+The migration also installs six deferred validator trigger placeholders with a
+constant false predicate; they queue no validation and do not enforce complete-v1
+or exact descriptor provenance.
+
+Source-table transition triggers, active deferred validation, provenance writes,
+exclusive activation/final-scan locking, the Option C closed writer capability
+perimeter, and a `V1_PRODUCER_BARRIER_READY` result remain pending. The feature
+flag stays false and this schema cannot represent or emit `DRAIN_CLEAN`.
+
 ---
 
 ## 8. Purchasing Transaction Data

@@ -11,6 +11,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import { PURCHASE_REQUEST_MAX_LINES } from "../../lib/workflowLimits";
 import { getPurchasingControlPolicy } from "./policySettings";
 
@@ -986,7 +987,11 @@ export async function submitQuotationRecommendation(formData: FormData) {
     throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
   }
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "QuotationRecommendation",
+  }, async (tx) => {
     const claimed = await tx.quotationRecommendation.updateMany({
       where: {
         id: recommendation.id,

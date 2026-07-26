@@ -15,6 +15,7 @@ import {
   type NormalizedApprovalDecisionPreflight
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import { skipFutureApprovalStepsForTerminalDecision } from "./approvalTerminal";
 import { terminatePendingApprovalForCancellation } from "./approvalCancellation";
 import {
@@ -1635,7 +1636,11 @@ export async function requestPeriodCloseSensitiveActionApproval(
     "PERIOD_CLOSE_APPROVAL_EVIDENCE_REQUIRED"
   );
 
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun",
+  }, async (tx) => {
     const lockedRuns = await tx.$queryRaw<Array<{ id: string }>>`
       SELECT run.id
         FROM "FinanceCloseRun" run

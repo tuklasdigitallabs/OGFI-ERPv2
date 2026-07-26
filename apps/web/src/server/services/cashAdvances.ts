@@ -18,6 +18,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting"
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry"
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier"
 import {
   resolveEvidenceReadiness,
   type EvidenceCaptureMode,
@@ -1051,7 +1052,11 @@ export async function submitCashAdvanceForApproval(
   input: CashAdvanceActionInput
 ) {
   await requirePermission(session, permissions.financeCashAdvanceSubmit)
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "CashAdvanceRequest",
+  }, async (tx) => {
     const request = await getScopedCashAdvanceOrThrow(
       tx,
       session,

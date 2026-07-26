@@ -243,6 +243,35 @@ The role SQL under `infra/hostinger/postgres/` is packaging-neutral: it does not
 Keep `APPROVAL_ROUTING_V1_ENABLED=false` through migration, backfill, and evidence
 collection. Activation remains blocked.
 
+Migration `20260727150000_approval_routing_producer_barrier_dormant` is only a
+dormant DEC-0247 foundation. It creates empty DORMANT-generation and append-only
+provenance tables, wraps all 18 producer entry points with a company shared
+transaction lock, and installs six `ENABLE ALWAYS` graph/provenance lock triggers.
+It creates no evidence row, active validator, provenance writer, source-transition
+trigger, exclusive activation/final-scan operation, readiness/result relation or
+routine, `V1_PRODUCER_BARRIER_READY`, or `DRAIN_CLEAN`. The deferred validator
+triggers have a constant false predicate and are intentionally inert.
+
+Before and after migration or restore, prove that PUBLIC and the normal runtime
+have no table or column authority on
+`ApprovalRoutingProducerBarrierGeneration` and
+`ApprovalRoutingProducerProvenance`; runtime receives only non-grantable execution
+of the reviewed shared-lock function. Prove that the `ENABLE ALWAYS` dormant
+insert guards reject both tables even for the controlled owner/replication path.
+Attest the six lock triggers, insert/append-only guards, inert validator
+placeholders, routine owner/body/search path/ACL, exact
+18-family wrapper inventory, and zero rows in both new tables. Do not seed a
+generation or provenance row. Application rollback keeps the flag false and
+preserves the additive empty schema; any later evidence must be preserved and
+forward-repaired rather than dropped.
+
+Production activation additionally requires active source-transition guards,
+complete-v1 and exact-provenance validation, provenance writes, same-key exclusive
+final-scan serialization, the complete Option C typed writer/authenticity
+perimeter, executable PostgreSQL/concurrency/hosted/restore evidence, and the
+human authority required by `DEC-0246`. Until those gates pass, no operator or
+release process may claim producer-barrier readiness or a clean drain.
+
 The DEC-0245 executor is currently **NON-OPERATIONAL**. Hostinger role
 reconciliation gives the normal web runtime zero table and column privileges on
 `ApprovalRoutingBackfillRun`, `ApprovalRoutingBackfillBatch`, and

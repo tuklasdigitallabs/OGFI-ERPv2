@@ -4,6 +4,7 @@
   "testFiles": [
     "apps/web/src/server/services/authenticationThrottle.pg.test.ts",
     "apps/web/tests/approvalRoutingBackfill.integration.test.ts",
+    "apps/web/tests/approvalRoutingProducerBarrier.integration.test.ts",
     "apps/web/tests/authenticationDatabase.integration.test.ts",
     "apps/web/tests/authorizationDenials.integration.test.ts",
     "apps/web/tests/authorizationRoutes.integration.test.ts"
@@ -29,6 +30,13 @@
       "testName": "dry-runs without writes, applies atomically, rolls blockers back, and reruns idempotently",
       "kind": "DATABASE_INTEGRATION",
       "coveredControls": ["current eligible actor", "immutable routing snapshot", "atomic rollback", "idempotent audit"]
+    },
+    {
+      "id": "AUTHZ-APPROVAL-PRODUCER-BARRIER-SCOPE-LOCK",
+      "file": "apps/web/tests/approvalRoutingProducerBarrier.integration.test.ts",
+      "testName": "rejects invalid scope or family before invoking the producer body",
+      "kind": "POSTGRESQL_AUTHORIZATION_INTEGRATION",
+      "coveredControls": ["exact tenant/company scope", "closed producer family", "shared transaction lock before producer body", "no producer mutation after rejected admission"]
     },
     {
       "id": "AUTHZ-AUTH-PASSWORD-FINALIZATION-RACE",
@@ -69,6 +77,7 @@
   "boundaries": [
     {"surfaceId":"server/services/approvalRouting.ts#activateApprovalStepWithEligibility","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["live approval eligibility","prohibited actor exclusion","atomic activation"],"caseIds":["AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["no invalid step activation or notification"],"status":"COVERED"},
     {"surfaceId":"server/services/approvalRouting.ts#configureApprovalStepRouting","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["company routing scope","eligible actor proof","immutable snapshot"],"caseIds":["AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"],"noMutationControls":["blocked routing transaction rolls back"],"status":"COVERED"},
+    {"surfaceId":"server/services/approvalProducerBarrier.ts#withApprovalProducerTransaction","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["exact tenant/company database scope","closed 18-family registry","first-statement shared transaction lock"],"caseIds":["AUTHZ-APPROVAL-PRODUCER-BARRIER-SCOPE-LOCK"],"noMutationControls":["invalid scope or family never invokes the producer body"],"status":"COVERED"},
     {"surfaceId":"server/services/approvalRouting.ts#lockNormalizedApprovalLifecycleActors","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["sorted active-user lock","auth-session epoch revalidation","tenant scope"],"caseIds":["FIN-AUTHZ-CANCELLATION-001","FIN-AUTHZ-CANCELLATION-RACE-001"],"noMutationControls":["stale authority cannot mutate approval or source"],"status":"COVERED"},
     {"surfaceId":"server/services/approvalRouting.ts#lockNormalizedApprovalLifecycleGraph","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["tenant-company instance lock","ordered approval-step locks","pending graph fence"],"caseIds":["FIN-AUTHZ-CANCELLATION-001","FIN-AUTHZ-CANCELLATION-RACE-001"],"noMutationControls":["wrong-scope or stale graph cannot mutate approval or source"],"status":"COVERED"},
     {"surfaceId":"server/services/approvalRouting.ts#prepareNormalizedApprovalDecisionPreflight","classification":"INTERNAL_CALLER_PRECONDITION","adapterIds":["tenant/company routing lock","live actor and session revalidation","deterministic next-recipient anchor"],"caseIds":["AUTHZ-PI-GENERIC-APPROVAL-DISPATCH-MISSING-PERMISSION-NO-MUTATION"],"noMutationControls":["revoked or unassigned actor cannot mutate approval or source"],"status":"COVERED"},

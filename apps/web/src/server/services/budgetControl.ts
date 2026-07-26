@@ -22,6 +22,7 @@ import {
   normalizedApprovalRoutingEnabled,
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import { getBudgetSourceHookPolicy } from "./policySettings";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "destructive";
@@ -2230,7 +2231,11 @@ export async function submitBudgetRevisionForReview(
     throw new Error("PERMISSION_DENIED");
   }
   await requirePermission(session, permissions.financeBudgetManage);
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "BudgetRevision",
+  }, async (tx) => {
     const revision = await getScopedBudgetRevisionOrThrow(
       tx,
       session,

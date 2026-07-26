@@ -107,6 +107,19 @@ Install the authentication-throttle and authorization-denial health, cleanup, fi
 
 Keep `APPROVAL_ROUTING_V1_ENABLED=false` until the controlled migration, approval-routing database suite, dry-run and idempotent apply backfill, zero-blocker report, executable 18-document-type matrix, and authenticated production-mode role-scoped browser smoke test pass for the exact release. Record cutover evidence and an accountable rollback owner, then enable the flag and repeat approval-inbox/action smoke checks. Roll back by disabling the flag; preserve every routing snapshot, approval step, notification, and audit record.
 
+The DEC-0247 producer-barrier migration is currently dormant only. After migration
+and after restore, reconcile and verify zero PUBLIC/runtime table or column
+privileges on the empty DORMANT generation and protected provenance tables;
+attest the shared-lock routine, all six `ENABLE ALWAYS` graph/provenance lock
+triggers, and the `ENABLE ALWAYS` owner/replication-resistant insert denials on
+both evidence tables; confirm all 18 producer wrappers enter the shared lock
+first; and confirm both tables remain empty. The dormant deferred validator placeholders must remain
+inert. Do not seed evidence, execute certification, or report
+`V1_PRODUCER_BARRIER_READY` or `DRAIN_CLEAN`. Source-transition guards, active
+validation and provenance writes, exclusive final-scan locking, Option C, exact
+PostgreSQL/hosted/recovery proof, and `DEC-0246` human authority remain mandatory
+before activation.
+
 ---
 
 ## 6. Backup and recovery minimums

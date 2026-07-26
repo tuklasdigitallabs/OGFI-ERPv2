@@ -968,6 +968,8 @@ model Tenant {
   approvalRoutingBackfillRuns             ApprovalRoutingBackfillRun[]
   approvalRoutingBackfillBatches          ApprovalRoutingBackfillBatch[]
   approvalRoutingBackfillBlockers         ApprovalRoutingBackfillBlockerObservation[]
+  approvalRoutingProducerBarrierGenerations ApprovalRoutingProducerBarrierGeneration[]
+  approvalRoutingProducerProvenance       ApprovalRoutingProducerProvenance[]
   purchaseRequests                        PurchaseRequest[]
   purchaseRequestComments                 PurchaseRequestComment[]
   quotationRequests                       QuotationRequest[]
@@ -1145,6 +1147,8 @@ model Company {
   approvalRoutingBackfillRuns             ApprovalRoutingBackfillRun[]
   approvalRoutingBackfillBatches          ApprovalRoutingBackfillBatch[]
   approvalRoutingBackfillBlockers         ApprovalRoutingBackfillBlockerObservation[]
+  approvalRoutingProducerBarrierGenerations ApprovalRoutingProducerBarrierGeneration[]
+  approvalRoutingProducerProvenance       ApprovalRoutingProducerProvenance[]
   approvalStepScopeTargets                ApprovalInstanceStepScopeTarget[]
   purchaseRequests                        PurchaseRequest[]
   purchaseRequestComments                 PurchaseRequestComment[]
@@ -7158,6 +7162,7 @@ model ApprovalInstance {
   paymentRelease               PaymentRelease?
   controlledEvidenceQualifications ControlledEvidenceActionQualification[]
   routingBackfillBlockerObservations ApprovalRoutingBackfillBlockerObservation[]
+  routingProducerProvenance    ApprovalRoutingProducerProvenance?
 
   @@unique([id, tenantId, companyId], map: "ApprovalInstance_scope_key")
   @@index([tenantId, documentType, documentId])
@@ -7268,6 +7273,54 @@ model ApprovalRoutingBackfillBlockerObservation {
   @@unique([runId, passNo, approvalInstanceId, blockerCode], map: "ApprovalRoutingBackfillBlocker_retry_key")
   @@index([tenantId, companyId, runId, passNo, documentFamily], map: "ApprovalRoutingBackfillBlocker_run_family_idx")
   @@index([batchId, runId, tenantId, companyId], map: "ApprovalRoutingBackfillBlocker_batch_idx")
+}
+
+model ApprovalRoutingProducerBarrierGeneration {
+  id                    String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String                              @db.Uuid
+  companyId             String                              @db.Uuid
+  generationNumber      BigInt
+  state                 String                              @default("DORMANT") @db.VarChar(16)
+  routingSchemaVersion  Int                                 @default(1)
+  routingMappingVersion String                              @db.VarChar(64)
+  routingMappingHash    String                              @db.Char(64)
+  capabilityVersion     String                              @db.VarChar(64)
+  capabilityHash        String                              @db.Char(64)
+  releaseIdentity       String                              @db.VarChar(128)
+  createdAt             DateTime                            @default(now()) @db.Timestamptz(3)
+  tenant                Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company               Company                             @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ApprovalProducerBarrierGeneration_company_scope_fkey")
+  provenance            ApprovalRoutingProducerProvenance[]
+
+  @@unique([id, tenantId, companyId], map: "ApprovalProducerBarrierGeneration_scope_key")
+  @@unique([tenantId, companyId, generationNumber], map: "ApprovalProducerBarrierGeneration_number_key")
+  @@index([tenantId, companyId, createdAt], map: "ApprovalProducerBarrierGeneration_scope_created_idx")
+}
+
+model ApprovalRoutingProducerProvenance {
+  id                    String                                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId              String                                   @db.Uuid
+  companyId             String                                   @db.Uuid
+  generationId          String                                   @db.Uuid
+  approvalInstanceId    String                                   @db.Uuid
+  documentType          String                                   @db.VarChar(128)
+  documentId            String                                   @db.Uuid
+  routingSchemaVersion  Int                                      @default(1)
+  routingMappingVersion String                                   @db.VarChar(64)
+  routingMappingHash    String                                   @db.Char(64)
+  capabilityVersion     String                                   @db.VarChar(64)
+  capabilityHash        String                                   @db.Char(64)
+  releaseIdentity       String                                   @db.VarChar(128)
+  sourceTransactionId   Decimal                                  @default(dbgenerated("(pg_current_xact_id()::text)::numeric")) @db.Decimal(20, 0)
+  createdAt             DateTime                                 @default(now()) @db.Timestamptz(3)
+  tenant                Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company               Company                                  @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ApprovalProducerProvenance_company_scope_fkey")
+  generation            ApprovalRoutingProducerBarrierGeneration @relation(fields: [generationId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "ApprovalProducerProvenance_generation_scope_fkey")
+  approvalInstance      ApprovalInstance                         @relation(fields: [approvalInstanceId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "ApprovalProducerProvenance_instance_scope_fkey")
+
+  @@unique([approvalInstanceId, tenantId, companyId], map: "ApprovalProducerProvenance_instance_key")
+  @@index([generationId, tenantId, companyId], map: "ApprovalProducerProvenance_generation_idx")
+  @@index([tenantId, companyId, documentType, documentId], map: "ApprovalProducerProvenance_document_idx")
 }
 
 model ApprovalInstanceStep {

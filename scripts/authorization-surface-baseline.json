@@ -13874,6 +13874,43 @@
     ]
   },
   {
+    "id": "server/services/approvalProducerBarrier.ts#withApprovalProducerTransaction",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-PRODUCER-BARRIER-SCOPE-LOCK"
+    ],
+    "permissionSource": "REVIEWED_DELEGATION",
+    "boundaryClassifications": [
+      "INTERNAL_CALLER_PRECONDITION"
+    ],
+    "authorizationAdapterIds": [
+      "exact tenant/company database scope",
+      "closed 18-family registry",
+      "first-statement shared transaction lock"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-PRODUCER-BARRIER-SCOPE-LOCK"
+    ],
+    "noMutationControls": [
+      "invalid scope or family never invokes the producer body"
+    ]
+  },
+  {
     "id": "server/services/approvalRouting.ts#activateApprovalStepWithEligibility",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",

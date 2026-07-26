@@ -21,6 +21,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting"
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry"
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier"
 import {
   resolveEvidenceReadiness,
   type EvidenceCaptureMode,
@@ -1388,7 +1389,11 @@ export async function submitPettyCashRequest(
 ) {
   await requirePermission(session, permissions.financePettyCashSubmit)
   const evidenceReference = input.evidenceReference?.trim()
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PettyCashRequest",
+  }, async (tx) => {
     const request = await getScopedRequestOrThrow(
       tx,
       session,

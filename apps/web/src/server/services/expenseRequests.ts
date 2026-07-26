@@ -21,6 +21,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting"
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry"
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier"
 import {
   resolveEvidenceReadiness,
   type EvidenceCaptureMode,
@@ -1218,7 +1219,11 @@ export async function submitExpenseRequestForApproval(
   input: ExpenseRequestActionInput
 ) {
   await requirePermission(session, permissions.financeExpenseRequestSubmit)
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "ExpenseRequest",
+  }, async (tx) => {
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,

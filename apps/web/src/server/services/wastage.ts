@@ -20,6 +20,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting";
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry";
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier";
 import {
   listActiveOperationalReasonCodes,
   requireActiveOperationalReasonCode
@@ -1370,7 +1371,11 @@ export async function submitWastageReport(formData: FormData) {
     throw new Error("WASTAGE_EVIDENCE_REFERENCE_REQUIRED");
   }
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "WastageReport",
+  }, async (tx) => {
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
         tenantId: session.context.tenantId,

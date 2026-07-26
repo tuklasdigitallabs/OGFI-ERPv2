@@ -23,6 +23,7 @@ import {
   configureApprovalStepRouting
 } from "./approvalRouting"
 import { getApprovalRoutingPolicy } from "./approvalRoutingRegistry"
+import { withApprovalProducerTransaction } from "./approvalProducerBarrier"
 import {
   phase3EvidenceUploadBlockerId,
   resolveEvidenceReadiness,
@@ -4673,7 +4674,11 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
   const session = await requireSessionContext()
   await requirePermission(session, permissions.financePaymentRequestCreate)
 
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PaymentRequest",
+  }, async (tx) => {
     const request = await tx.paymentRequest.findFirst({
       where: {
         id: input.paymentRequestId,
@@ -5464,7 +5469,11 @@ export async function createPaymentReleaseDraft(
     }
   }
 
-  return prisma.$transaction(async (tx) => {
+  return withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PaymentRelease",
+  }, async (tx) => {
     const request = await tx.paymentRequest.findFirst({
       where: {
         id: input.paymentRequestId,
