@@ -77,6 +77,9 @@ describe("projects and operations database-backed authorization boundaries", () 
     branchForeignChildLineId: randomUUID(),
     foodSafetyLogId: randomUUID(),
     foodSafetyReadingId: randomUUID(),
+    foodForeignParentLogId: randomUUID(),
+    foodForeignParentReadingId: randomUUID(),
+    foodForeignChildReadingId: randomUUID(),
     operationalIncidentId: randomUUID(),
     maintenanceTicketId: randomUUID(),
     companyManageScopeId: randomUUID(),
@@ -1838,6 +1841,118 @@ describe("projects and operations database-backed authorization boundaries", () 
       });
       await prisma.rolePermission.deleteMany({
         where: { roleId: ids.roleId, permissionId: branchViewPermission.id },
+      });
+    }
+  });
+
+  it("AUTHZ-DEC-0237-FOOD-SAFETY-CRITICAL-PROFILE-RELATION-SCOPE-PARITY-NO-MUTATION", async () => {
+    const foodSafetyViewPermission = await prisma.permission.findUniqueOrThrow({
+      where: { code: permissions.foodSafetyView },
+      select: { id: true },
+    });
+    await prisma.rolePermission.create({
+      data: { roleId: ids.roleId, permissionId: foodSafetyViewPermission.id },
+    });
+    await prisma.foodSafetyLog.create({
+      data: {
+        id: ids.foodForeignParentLogId,
+        tenantId: ids.tenantId,
+        companyId: ids.adjacentCompanyId,
+        brandId: ids.adjacentBrandId,
+        locationId: ids.adjacentLocationId,
+        businessDate: new Date("2026-07-24T00:00:00.000Z"),
+        logType: `AUTHZ-FOREIGN-${suffix}`,
+        status: "CLOSED",
+        title: "Adjacent-scope critical food-safety log",
+        exceptionCount: 1,
+        readings: {
+          create: {
+            id: ids.foodForeignParentReadingId,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            brandId: ids.brandId,
+            locationId: ids.locationId,
+            lineNo: 1,
+            station: "Cold storage",
+            readingType: "TEMPERATURE",
+            result: "EXCEPTION",
+            severity: "CRITICAL",
+          },
+        },
+      },
+    });
+    await prisma.foodSafetyReading.create({
+      data: {
+        id: ids.foodForeignChildReadingId,
+        tenantId: ids.tenantId,
+        companyId: ids.adjacentCompanyId,
+        brandId: ids.adjacentBrandId,
+        locationId: ids.adjacentLocationId,
+        logId: ids.foodSafetyLogId,
+        lineNo: 2,
+        station: "Mismatched child scope",
+        readingType: "TEMPERATURE",
+        result: "EXCEPTION",
+        severity: "CRITICAL",
+      },
+    });
+
+    try {
+      const session = await getConfiguredContext(actorEmail);
+      const before = await prisma.foodSafetyLog.findMany({
+        where: { id: { in: [ids.foodSafetyLogId, ids.foodForeignParentLogId] } },
+        orderBy: { id: "asc" },
+        include: { readings: { orderBy: { lineNo: "asc" } } },
+      });
+
+      const [dashboard, profile, mismatchedChildSearch, detail] = await Promise.all([
+        foodSafety.getFoodSafetyDashboardRead(session),
+        foodSafety.listFoodSafetyLogPage(session, {}, {
+          dashboardProfile: "food-safety-critical-exceptions-v1",
+        }),
+        foodSafety.listFoodSafetyLogPage(session, {
+          q: "Mismatched child scope",
+        }, {
+          dashboardProfile: "food-safety-critical-exceptions-v1",
+        }),
+        foodSafety.getFoodSafetyLogSummary(session, ids.foodSafetyLogId),
+      ]);
+
+      expect(dashboard.severityCounts.CRITICAL).toBe(1);
+      expect(profile).toMatchObject({
+        dashboardProfile: "food-safety-critical-exceptions-v1",
+        signalTotal: 1,
+        totalItems: 1,
+        items: [{
+          id: ids.foodSafetyLogId,
+          criticalExceptionCount: 1,
+          readingCount: 1,
+        }],
+      });
+      expect(mismatchedChildSearch).toMatchObject({
+        signalTotal: 0,
+        totalItems: 0,
+        items: [],
+      });
+      expect(detail?.readings.map(({ id }) => id)).toEqual([
+        ids.foodSafetyReadingId,
+      ]);
+      expect(await prisma.foodSafetyLog.findMany({
+        where: { id: { in: [ids.foodSafetyLogId, ids.foodForeignParentLogId] } },
+        orderBy: { id: "asc" },
+        include: { readings: { orderBy: { lineNo: "asc" } } },
+      })).toEqual(before);
+    } finally {
+      await prisma.foodSafetyReading.deleteMany({
+        where: {
+          id: { in: [ids.foodForeignChildReadingId, ids.foodForeignParentReadingId] },
+        },
+      });
+      await prisma.foodSafetyLog.deleteMany({
+        where: { id: ids.foodForeignParentLogId },
+      });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: ids.roleId, permissionId: foodSafetyViewPermission.id },
       });
     }
   });

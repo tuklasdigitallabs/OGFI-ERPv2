@@ -20,9 +20,10 @@ severity, corrective action, evidence, correction, export, and audit context.
    result/severity, corrective action, and evidence reference.
 4. Review, return-for-correction, correction apply, and close action surfaces
    when the role and status permit them.
-5. Dashboard links use the allowlisted `food-safety-reviews-v1` and
-   `food-safety-exceptions-v1` read-only destinations and route onward to source
-   records instead of replacing source review actions.
+5. Dashboard links use the allowlisted `food-safety-reviews-v1`,
+   `food-safety-exceptions-v1`, and `food-safety-critical-exceptions-v1`
+   read-only destinations and route onward to source records instead of replacing
+   source review actions.
 
 ## Global UI Rules
 
@@ -53,12 +54,26 @@ severity, corrective action, evidence, correction, export, and audit context.
 - `food-safety-exceptions-v1` contains logs with `exceptionCount > 0` in every
   status. The card's summed exception readings and the destination's affected-log
   total remain distinct.
-- Unknown or stale profiles show a visible invalid state. Create and export are
-  hidden in profile mode. Detail and back navigation retain only canonical
-  profile/search/page context.
+- `food-safety-critical-exceptions-v1` contains retained readings with
+  `result = EXCEPTION` and `severity = CRITICAL` in every log status. It labels
+  the primary metric `Critical exception readings` and separately shows affected
+  logs; it does not imply current actionability.
+- Parent logs and child readings use exact relation-safe tenant, selected-company,
+  optional-brand, and selected-location predicates wherever reading membership,
+  projection, or search is evaluated. Bounded normalized search and server-owned
+  pagination may only narrow a profile; raw type, status, business date, and scope
+  cannot redefine it.
+- Unknown, duplicate, empty, stale, or invalid critical-profile parameters show a
+  visible invalid state. Create and ordinary export are hidden in that profile
+  mode. Detail and back navigation retain only canonical profile/search/page
+  context.
 - Dashboard and notification entries are visibility-only source links. Every
   detail action independently enforces current permission, scope, status, actor,
   and workflow-policy eligibility.
+- The critical profile suppresses standalone `Exception Review` and `Reviewed`
+  dashboard signals. The retained Reviews profile is the combined
+  `SUBMITTED` + `EXCEPTION_REVIEW` oversight population; all-severity Exceptions
+  remains unchanged.
 - The existing Phase II workflow policy catalog/live-service discrepancy remains
   open; profile labels and controls must not imply that it has been resolved.
 

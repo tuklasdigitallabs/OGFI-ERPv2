@@ -937,31 +937,12 @@ export function buildOperationalDashboardModel(
     metrics.push(
       {
         id: "food-safety-critical-count",
-        label: "Critical food-safety exceptions",
+        label: "Critical exception readings",
         displayValue: number(foodSafety.severityCounts.CRITICAL),
-        detail: "Critical food-safety reading exceptions in current scope",
-        href: "/food-safety",
+        detail: "Retained EXCEPTION + CRITICAL food-safety readings across all log statuses in selected scope",
+        href: foodSafetyDashboardProfileHref("food-safety-critical-exceptions-v1"),
         tone:
           foodSafety.severityCounts.CRITICAL > 0 ? "warning" : "success"
-      },
-      {
-        id: "food-safety-exception-review-count",
-        label: "Exception review logs",
-        displayValue: number(foodSafety.statusCounts.EXCEPTION_REVIEW),
-        detail: "Food-safety logs waiting for exception review",
-        href: "/food-safety",
-        tone:
-          foodSafety.statusCounts.EXCEPTION_REVIEW > 0
-            ? "warning"
-            : "success"
-      },
-      {
-        id: "food-safety-reviewed-count",
-        label: "Reviewed food-safety logs",
-        displayValue: number(foodSafety.statusCounts.REVIEWED),
-        detail: "Reviewed food-safety logs in current scope",
-        href: "/food-safety",
-        tone: "success"
       }
     );
 

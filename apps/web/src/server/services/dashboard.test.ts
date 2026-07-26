@@ -1103,9 +1103,7 @@ describe("operational dashboard model", () => {
     expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
       expect.arrayContaining([
         "branch-critical-exception-count",
-        "food-safety-critical-count",
-        "food-safety-exception-review-count",
-        "food-safety-reviewed-count"
+        "food-safety-critical-count"
       ])
     );
     expect(dashboard.metrics.find(({ id }) => id === "branch-critical-exception-count"))
@@ -1118,6 +1116,17 @@ describe("operational dashboard model", () => {
     );
     expect(dashboard.metrics).not.toContainEqual(
       expect.objectContaining({ id: "branch-reviewed-count" })
+    );
+    expect(dashboard.metrics.find(({ id }) => id === "food-safety-critical-count"))
+      .toMatchObject({
+        label: "Critical exception readings",
+        href: "/food-safety?dashboard=food-safety-critical-exceptions-v1"
+      });
+    expect(dashboard.metrics).not.toContainEqual(
+      expect.objectContaining({ id: "food-safety-exception-review-count" })
+    );
+    expect(dashboard.metrics).not.toContainEqual(
+      expect.objectContaining({ id: "food-safety-reviewed-count" })
     );
     expect(dashboard.metrics.find(({ id }) => id === "incident-critical-count")?.href)
       .toBe("/incidents?dashboard=incident-critical-v1");

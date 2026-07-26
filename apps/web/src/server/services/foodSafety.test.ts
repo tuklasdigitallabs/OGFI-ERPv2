@@ -15,6 +15,7 @@ import {
   listFoodSafetyLogPage,
   listFoodSafetyMyTaskPage,
   resolveFoodSafetyDashboardProfile,
+  resolveFoodSafetyDashboardParameters,
   resolveFoodSafetyDashboardRequest,
   resolveFoodSafetyProfileReturnTo,
   reviewFoodSafetyLog,
@@ -1032,6 +1033,14 @@ describe("Phase 2 food safety foundation", () => {
     expect(listPageSource).toContain("ActionFeedbackBanner");
     expect(listPageSource).toContain("action={createFoodSafetyLogAction}");
     expect(listPageSource).toContain("FoodSafetyReadingsEditor");
+    expect(listPageSource).toContain('"food-safety-critical-exceptions-v1"');
+    expect(listPageSource).toContain("Critical Exception Readings");
+    expect(listPageSource).toContain("retained EXCEPTION + CRITICAL reading(s)");
+    expect(listPageSource).toContain("lg:hidden");
+    expect(listPageSource).toContain("hidden overflow-x-auto lg:block");
+    expect(listPageSource).toContain("Reviewed by");
+    expect(listPageSource).toContain("Not reviewed");
+    expect(listPageSource).toContain("Dashboard parameters are invalid");
     expect(listPageSource).not.toContain("[1, 2, 3, 4, 5]");
     expect(listPageSource).not.toContain("foodSafetyLog.update");
   });
@@ -1127,13 +1136,35 @@ describe("Phase 2 food safety foundation", () => {
   it("resolves only versioned Food Safety dashboard profiles and canonical navigation", () => {
     expect(resolveFoodSafetyDashboardProfile("food-safety-exceptions-v1")).toBe("food-safety-exceptions-v1");
     expect(resolveFoodSafetyDashboardProfile("food-safety-reviews-v1")).toBe("food-safety-reviews-v1");
+    expect(resolveFoodSafetyDashboardProfile("food-safety-critical-exceptions-v1")).toBe("food-safety-critical-exceptions-v1");
     expect(resolveFoodSafetyDashboardProfile("food-safety-reviews-v0")).toBeNull();
     expect(foodSafetyDashboardProfileHref("food-safety-reviews-v1")).toBe("/food-safety?dashboard=food-safety-reviews-v1");
     expect(resolveFoodSafetyDashboardRequest("food-safety-reviews-v0", "safe")).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
     expect(resolveFoodSafetyDashboardRequest("", "safe")).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
     expect(resolveFoodSafetyDashboardRequest(["food-safety-reviews-v1", "food-safety-reviews-v0"], "safe")).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
+    expect(resolveFoodSafetyDashboardRequest("food-safety-critical-exceptions-v1", ["one", "two"])).toEqual({ profile: "food-safety-critical-exceptions-v1", query: "", error: "SEARCH_DUPLICATE" });
     expect(resolveFoodSafetyDashboardRequest("food-safety-reviews-v1", "x".repeat(121))).toMatchObject({ profile: "food-safety-reviews-v1", error: "SEARCH_INVALID" });
     expect(foodSafetyDashboardProfilePageHref("food-safety-reviews-v1", { query: " Exception Review ", page: 2 })).toBe("/food-safety?dashboard=food-safety-reviews-v1&q=exception+review&page=2");
+  });
+
+  it("accepts only closed Food Safety dashboard-profile parameters", () => {
+    expect(resolveFoodSafetyDashboardParameters({
+      dashboard: "food-safety-critical-exceptions-v1",
+      q: "chiller",
+      page: "2"
+    }, "food-safety-critical-exceptions-v1")).toEqual({ page: 2, error: null });
+    expect(resolveFoodSafetyDashboardParameters({
+      dashboard: "food-safety-critical-exceptions-v1",
+      status: "CLOSED"
+    }, "food-safety-critical-exceptions-v1")).toEqual({ page: null, error: "PARAMETERS_INVALID" });
+    expect(resolveFoodSafetyDashboardParameters({
+      dashboard: "food-safety-critical-exceptions-v1",
+      page: ["1", "2"]
+    }, "food-safety-critical-exceptions-v1")).toEqual({ page: null, error: "PARAMETERS_INVALID" });
+    expect(resolveFoodSafetyDashboardParameters({
+      dashboard: "food-safety-critical-exceptions-v1",
+      page: "0"
+    }, "food-safety-critical-exceptions-v1")).toEqual({ page: null, error: "PARAMETERS_INVALID" });
   });
 
   it("accepts only canonical profile returns and safely encodes detail navigation", () => {
@@ -1165,6 +1196,87 @@ describe("Phase 2 food safety foundation", () => {
       companyId: session.context.companyId,
       locationId: session.context.locationId,
       status: { in: ["SUBMITTED", "EXCEPTION_REVIEW"] }
+    });
+    expect(foodSafetyDashboardProfileWhere(session as never, "food-safety-critical-exceptions-v1")).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      readings: {
+        some: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          brandId: session.context.brandId,
+          locationId: session.context.locationId,
+          result: "EXCEPTION",
+          severity: "CRITICAL"
+        }
+      }
+    });
+  });
+
+  it("keeps the critical-reading signal relation-safe and distinct from affected logs", async () => {
+    vi.clearAllMocks();
+    mockPrisma.foodSafetyLog.count.mockResolvedValue(1);
+    mockPrisma.foodSafetyReading.count.mockResolvedValue(2);
+    mockPrisma.foodSafetyLog.findMany.mockResolvedValue([{
+      id: "00000000-0000-4000-8000-000000000503",
+      title: "Cold holding verification",
+      businessDate: new Date("2026-07-26T00:00:00.000Z"),
+      logType: "TEMPERATURE",
+      status: "CLOSED",
+      recordedByUserId: null,
+      reviewedByUserId: null,
+      reviewedAt: null,
+      exceptionCount: 3,
+      location: { name: "SM North Edsa" },
+      readings: [
+        { id: "critical-1", result: "EXCEPTION", severity: "CRITICAL" },
+        { id: "high-1", result: "EXCEPTION", severity: "HIGH" }
+      ]
+    }]);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+
+    await expect(listFoodSafetyLogPage(session as never, {
+      q: "cold",
+      type: "SANITATION",
+      status: "DRAFT",
+      businessDate: "1900-01-01"
+    }, { dashboardProfile: "food-safety-critical-exceptions-v1" })).resolves.toMatchObject({
+      dashboardProfile: "food-safety-critical-exceptions-v1",
+      totalItems: 1,
+      signalTotal: 2,
+      items: [{ criticalExceptionCount: 1, readingCount: 2 }]
+    });
+
+    const logWhere = mockPrisma.foodSafetyLog.count.mock.calls[0]![0].where;
+    const readingWhere = mockPrisma.foodSafetyReading.count.mock.calls[0]![0].where;
+    expect(mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0].where).toEqual(logWhere);
+    expect(logWhere).toMatchObject({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      readings: { some: expect.objectContaining({ result: "EXCEPTION", severity: "CRITICAL" }) },
+      OR: expect.any(Array)
+    });
+    expect(logWhere).not.toHaveProperty("status");
+    expect(logWhere).not.toHaveProperty("logType");
+    expect(logWhere).not.toHaveProperty("businessDate");
+    expect(readingWhere).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      result: "EXCEPTION",
+      severity: "CRITICAL",
+      log: { is: logWhere }
+    });
+    expect(mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0].include.readings.where).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId
     });
   });
 
@@ -1222,5 +1334,28 @@ describe("Phase 2 food safety foundation", () => {
     );
     expect(mockPrisma.foodSafetyLog.count.mock.calls[1]![0].where).toEqual(foodSafetyDashboardProfileWhere(session as never, "food-safety-reviews-v1"));
     expect(mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0].where).toEqual(mockPrisma.foodSafetyLog.count.mock.calls[1]![0].where);
+    expect(mockPrisma.foodSafetyReading.count.mock.calls[1]![0].where).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      result: "EXCEPTION",
+      severity: "CRITICAL",
+      log: {
+        is: foodSafetyDashboardProfileWhere(
+          session as never,
+          "food-safety-critical-exceptions-v1"
+        )
+      }
+    });
+    expect(mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0].select.readings.where)
+      .toEqual(expect.objectContaining({
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        brandId: session.context.brandId,
+        locationId: session.context.locationId,
+        result: "EXCEPTION",
+        severity: "CRITICAL"
+      }));
   });
 });

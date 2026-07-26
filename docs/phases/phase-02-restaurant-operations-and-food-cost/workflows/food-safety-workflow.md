@@ -32,9 +32,10 @@ temperature, sanitation, and exception tracking. It includes:
   `RETURNED` to `SUBMITTED` transition for re-review;
 - controlled close from reviewed or exception-open records with required reason;
 - CSV export preserving list filters;
-- dashboard visibility through the read-only `food-safety-reviews-v1` and
-  `food-safety-exceptions-v1` profiles, plus notification visibility for
-  review-ready records, without performing review from those surfaces.
+- dashboard visibility through the read-only `food-safety-reviews-v1`,
+  `food-safety-exceptions-v1`, and `food-safety-critical-exceptions-v1`
+  profiles, plus notification visibility for review-ready records, without
+  performing review from those surfaces.
 
 Food-safety actions write audit events and `OperationalStatusTransition` rows
 with actor, scope, source entity, from/to status, reason/evidence where
@@ -81,13 +82,24 @@ Submitted → Exception Review / Reviewed → Closed
 - `food-safety-exceptions-v1` includes every scoped log with
   `exceptionCount > 0`, including terminal and historical statuses. Its card
   sums exception readings; the destination separately counts affected logs.
-- Both populations use the exact session tenant, selected company, optional
-  selected brand, and selected location. A normalized `q` of at most 120
-  characters may only narrow results. Raw type, status, and business date do
+- `food-safety-critical-exceptions-v1` includes retained readings with
+  `result = EXCEPTION` and `severity = CRITICAL` across every log status. Its
+  primary metric is a reading count, and the destination separately reports
+  affected logs; it is not an open-work or actor-actionable population.
+- All three profiles use exact relation-safe session tenant, selected company,
+  optional selected brand, and selected location predicates. Parent logs and child
+  readings must each satisfy duplicated scope where a reading contributes to
+  membership, projection, or search. Bounded normalized `q` and server-owned
+  paging may only narrow results. Raw type, status, business date, and scope do
   not alter profile membership.
-- Invalid or stale profile identifiers fail visibly. Create and export are not
-  available in profile mode. Record navigation preserves canonical profile-only
-  return context, and the source detail independently reauthorizes each action.
+- Invalid, duplicate, empty, stale, or unknown profile identifiers fail visibly.
+  Create and ordinary export are not available in profile mode. Record navigation
+  preserves canonical profile/search/page return context, and the source detail
+  independently reauthorizes each action.
+- The critical profile suppresses standalone `Exception Review` and `Reviewed`
+  dashboard signals. Reviews remains the combined `SUBMITTED` +
+  `EXCEPTION_REVIEW` oversight population, while all-severity Exceptions remains
+  unchanged.
 
 ## Non-Negotiable Controls
 

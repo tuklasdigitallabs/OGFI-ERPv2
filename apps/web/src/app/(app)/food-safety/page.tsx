@@ -22,6 +22,7 @@ import {
   foodSafetyLogDetailHref,
   getFoodSafetyDashboardRead,
   listFoodSafetyLogPage,
+  resolveFoodSafetyDashboardParameters,
   resolveFoodSafetyDashboardRequest
 } from "@/server/services/foodSafety";
 
@@ -132,7 +133,7 @@ export default async function FoodSafetyPage({
   const profileParam = params.dashboard;
   const dashboardRequest = resolveFoodSafetyDashboardRequest(
     profileParam,
-    getSearchParam(params, "q")
+    params.q
   );
   const dashboardProfile = dashboardRequest.profile;
   if (dashboardRequest.error === "PROFILE_INVALID") {
@@ -178,6 +179,51 @@ export default async function FoodSafetyPage({
       </AppShell>
     );
   }
+  if (dashboardRequest.error === "SEARCH_DUPLICATE" && dashboardProfile) {
+    return (
+      <AppShell
+        session={session}
+        title="Food Safety dashboard view unavailable"
+        subtitle="The requested dashboard search is invalid"
+        activeNav="food-safety"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Use one search value"
+            description="This dashboard profile accepts one optional Search value. Clear the duplicate parameters before trying again."
+          />
+          <div className="mt-4 flex justify-center">
+            <ButtonLink href={foodSafetyDashboardProfileHref(dashboardProfile)} className="min-h-11">Clear search</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  const dashboardParameters = resolveFoodSafetyDashboardParameters(
+    params,
+    dashboardProfile
+  );
+  if (dashboardParameters.error && dashboardProfile) {
+    return (
+      <AppShell
+        session={session}
+        title="Food Safety dashboard view unavailable"
+        subtitle="The requested dashboard parameters are invalid"
+        activeNav="food-safety"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Dashboard parameters are invalid"
+            description="This dashboard profile accepts only one profile, one optional Search value, and one positive page number. Raw status, type, date, scope, and duplicate parameters cannot redefine it."
+          />
+          <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+            <ButtonLink href={foodSafetyDashboardProfileHref(dashboardProfile)} className="min-h-11">Open unfiltered profile</ButtonLink>
+            <ButtonLink href="/dashboard" tone="secondary" className="min-h-11">Back to Overview</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
   const dashboardRead = await getFoodSafetyDashboardRead(session);
   const businessDate = getSearchParam(params, "businessDate") ?? "";
   const logTypeFilter = normalizeOption(getSearchParam(params, "type"), logTypeOptions);
@@ -192,7 +238,9 @@ export default async function FoodSafetyPage({
         status: statusFilter
       } : {})
     }, {
-      page: normalizePage(getSearchParam(params, "page")),
+      page: dashboardProfile
+        ? dashboardParameters.page ?? 1
+        : normalizePage(getSearchParam(params, "page")),
       pageSize: PAGE_SIZE,
       ...(dashboardProfile ? { dashboardProfile } : {})
     });
@@ -225,7 +273,9 @@ export default async function FoodSafetyPage({
     foodSafetyLogDetailHref(logId, pageHref(workspace.page));
   const profileTitle = dashboardProfile === "food-safety-exceptions-v1"
     ? "Food Safety Exceptions"
-    : "Food Safety Reviews";
+    : dashboardProfile === "food-safety-critical-exceptions-v1"
+      ? "Critical Exception Readings"
+      : "Food Safety Reviews";
   const hasListFilters = Boolean(
     query ||
     (!dashboardProfile && (
@@ -254,6 +304,10 @@ export default async function FoodSafetyPage({
           {dashboardProfile === "food-safety-exceptions-v1" ? (
             <p className="mt-1">
               This read-only oversight view contains {workspace.signalTotal ?? 0} exception reading(s) across {workspace.totalItems} affected log(s) in the selected scope. The dashboard card counts exception readings; the register pages affected source logs.
+            </p>
+          ) : dashboardProfile === "food-safety-critical-exceptions-v1" ? (
+            <p className="mt-1">
+              This read-only oversight view contains {workspace.signalTotal ?? 0} retained EXCEPTION + CRITICAL reading(s) across {workspace.totalItems} affected log(s) in the selected scope. It includes all log statuses and is not an unresolved-action count, compliance result, or historical snapshot.
             </p>
           ) : (
             <p className="mt-1">
@@ -286,7 +340,7 @@ export default async function FoodSafetyPage({
         </div>
       </div>
 
-      <div className="mb-5 grid gap-4 md:grid-cols-5">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Business date</p>
           <p className="mt-2 text-xl font-bold text-slate-950">
@@ -332,9 +386,21 @@ export default async function FoodSafetyPage({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={dashboard.criticalExceptions > 0 ? "destructive" : "info"}>
-              {dashboard.reviewedLogs} reviewed logs
-            </Badge>
+            {dashboardProfile === "food-safety-critical-exceptions-v1" ? (
+              <Badge tone={(workspace.signalTotal ?? 0) > 0 ? "destructive" : "success"}>
+                {workspace.signalTotal ?? 0} critical exception readings
+              </Badge>
+            ) : dashboardProfile === "food-safety-exceptions-v1" ? (
+              <Badge tone={(workspace.signalTotal ?? 0) > 0 ? "warning" : "success"}>
+                {workspace.signalTotal ?? 0} exception readings
+              </Badge>
+            ) : dashboardProfile === "food-safety-reviews-v1" ? (
+              <Badge tone={workspace.totalItems > 0 ? "warning" : "success"}>
+                {workspace.totalItems} review logs
+              </Badge>
+            ) : (
+              <Badge tone="success">{dashboard.reviewedLogs} reviewed logs</Badge>
+            )}
             {canCreate && !dashboardProfile ? (
               <TaskSheet
                 title="Record Food-Safety Log"
@@ -439,6 +505,8 @@ export default async function FoodSafetyPage({
                   ? "No logs with exception readings in this scope"
                   : dashboardProfile === "food-safety-reviews-v1"
                     ? "No submitted or exception-review logs in this scope"
+                    : dashboardProfile === "food-safety-critical-exceptions-v1"
+                      ? "No retained critical exception readings in this scope"
                     : "No food-safety logs yet"}
             </p>
             <p className="mt-1 text-sm text-slate-600">
@@ -471,8 +539,17 @@ export default async function FoodSafetyPage({
                   </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <div><dt className="text-xs font-semibold uppercase text-slate-500">Readings</dt><dd className="font-bold text-slate-950">{log.readingCount ?? log.readings.length}</dd></div>
-                    <div><dt className="text-xs font-semibold uppercase text-slate-500">Exceptions</dt><dd className="font-bold text-slate-950">{log.exceptionCount}</dd></div>
-                    <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Reviewer</dt><dd className="font-semibold text-slate-700">{log.reviewedByName ?? "Pending review"}</dd></div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-slate-500">
+                        {dashboardProfile === "food-safety-critical-exceptions-v1" ? "Critical readings" : "Exceptions"}
+                      </dt>
+                      <dd className="font-bold text-slate-950">
+                        {dashboardProfile === "food-safety-critical-exceptions-v1"
+                          ? log.criticalExceptionCount ?? 0
+                          : log.exceptionCount}
+                      </dd>
+                    </div>
+                    <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Reviewed by</dt><dd className="font-semibold text-slate-700">{log.reviewedByName ?? "Not reviewed"}</dd></div>
                   </dl>
                   <ButtonLink href={detailHref(log.id)} tone="secondary" className="min-h-11 justify-center font-bold">Open Source Log</ButtonLink>
                 </article>
@@ -499,7 +576,9 @@ export default async function FoodSafetyPage({
                       <div className="min-w-0">
                         <h3 className="font-bold text-slate-950">{log.title}</h3>
                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                          {log.readingCount ?? log.readings.length} reading(s)
+                          {dashboardProfile === "food-safety-critical-exceptions-v1"
+                            ? `${log.criticalExceptionCount ?? 0} critical exception reading(s) / ${log.exceptionCount} total exception(s)`
+                            : `${log.readingCount ?? log.readings.length} reading(s)`}
                         </p>
                       </div>
                       <p className="font-semibold text-slate-800">{log.businessDate}</p>
@@ -516,7 +595,7 @@ export default async function FoodSafetyPage({
                         {log.recordedByName ?? "Not recorded"}
                       </p>
                       <p className="truncate font-semibold text-slate-700">
-                        {log.reviewedByName ?? "Pending review"}
+                        {log.reviewedByName ?? "Not reviewed"}
                       </p>
                       <ButtonLink
                         href={detailHref(log.id)}
