@@ -364,12 +364,52 @@ hosted role/deployment, backup/restore, and recovery execution remain uncredited
 to block production activation and certification execution. This checkpoint
 cannot create a readiness result and cannot emit `DRAIN_CLEAN`.
 
+### Current Option C C0 contract-only checkpoint
+
+The Decision Chair approved only the immediate C0 discovery and drift-control
+checkpoint. Independent challenge review treated any executable or positively
+granted writer in C0 as a blocking scope and authority defect. Accordingly, C0
+adds exactly 18 deeply frozen, non-executable dormant discovery contracts and a
+complete inventory of current application-runtime and controlled-tooling approval-
+graph mutation paths. The family partition is seven canonical families, ten
+specialized families, and one Finance Close family. Contract version
+`dec-0247-c0.dormant-discovery.3` is bound to SHA-256 digest
+`9f8e115a0baef11fab2ce1ebd213251551216e7b1720b610b36de6cb25392c61`.
+
+The regression guard uses TypeScript AST inspection for Prisma direct and nested
+relation mutations, import/export/require/dynamic-import checks that keep the C0
+modules transitively test-only, and comment-normalized raw-SQL scanning for the
+six protected graph/provenance relations. Any new or changed runtime or tooling
+writer must therefore fail the closed inventory until it is deliberately reviewed
+and classified. The manifest records required future family-specific source,
+scope, permission, routing, concurrency, stable-error, replay, and identity-
+lifecycle design facts, but proposed capability signatures remain deliberately
+unset and grant no authority.
+
+C0 creates no database routine, migration, role, grant, graph or provenance write,
+readiness result, certification operation, or activation path. It does not remove
+the ordinary runtime role's current base approval-graph DML, so the actual Option
+C database writer perimeter remains open and production activation remains
+blocked. Focused C0 guard coverage passes 10/10, focused approval-routing coverage
+passes 84/84, and root typecheck, lint, the isolated production build, secret
+review, release-tool self-test, and diff hygiene pass.
+The full root suite passes 1,496 web tests with 313 skipped and one todo across 142
+passing and 12 skipped files, 48 database tests with 18 skipped, and one worker
+test; the UI package has no test files and exits successfully. Independent final
+Database, Security, and QA review
+returned **GO only for this C0 source checkpoint, C0/H0/M0/L0**. Requested Code
+Spark and exact GPT-5.4 reviewers were unavailable; the closest permitted GPT-5.6
+specialist fallbacks were used without relaxing a gate. Enablement assessed no
+knowledge-base, release-note, training, or glossary change because C0 is
+non-executable and changes no user-visible behavior. `DEC-0246` human authority
+remains locked and unchanged.
+
 ## Follow-up actions
 
 | Action | Owner | Due / trigger | Status |
 |---|---|---|---|
 | Implement dormant Option B barrier generations, automatic locks, deferred exact validator, and readiness result | Database and backend owners | Before producer-barrier readiness review | In progress — empty DORMANT generation/provenance schema, all-18 outer shared-lock wrappers, and six graph/provenance shared-lock triggers authored; active validator, provenance writes, exclusive final scan, and readiness result pending |
-| Move all 18 producers behind Option C typed closed capabilities and remove runtime base graph/provenance DML | Database, backend, and security owners | Before production activation | Pending |
+| Move all 18 producers behind Option C typed closed capabilities and remove runtime base graph/provenance DML | Database, backend, and security owners | Before production activation | In progress — C0 pins the exact 18 dormant discovery contracts and closed mutation inventory only; executable typed capabilities, database routines/grants, and removal of runtime base graph/provenance DML remain pending |
 | Execute the complete all-18 semantic, race, privilege, deployment, and recovery test matrix | QA, Database, Security, DevOps, and Release | Exact release candidate | Pending |
 | Confirm issuer, key custody, revocation, STOP, and recovery authority required by `DEC-0246` | Authorized human owner | Before production activation or certification execution | Blocked — human decision required |
 | Assess Dunong handoff if a visible retry or maintenance state is introduced | Product and enablement owners | Before user exposure | Not required for dormant implementation |
@@ -389,6 +429,13 @@ cannot create a readiness result and cannot emit `DRAIN_CLEAN`.
   family routing registry and canonical family inputs.
 - `apps/web/src/server/services/approvalRouting.ts` — current v0-to-complete-v1
   configuration, eligibility, activation, and runtime-readiness behavior.
+- `apps/web/src/server/services/approvalProducerCapabilityManifest.ts` and
+  `approvalGraphMutationInventory.ts` — C0 non-executable family contracts,
+  canonical/specialized/Finance Close partition, and closed runtime/tooling
+  mutation inventory.
+- `apps/web/src/server/services/approvalProducerCapabilityManifest.test.ts` —
+  C0 digest, transitive test-only boundary, AST/raw-SQL drift, and exact-inventory
+  regression gate.
 - Production producer inventory and independent Database, Architecture, Security,
   QA, Product/Operations/Release, and Software Audit deliberation supplied to the
   Decision Chair on 2026-07-27.
