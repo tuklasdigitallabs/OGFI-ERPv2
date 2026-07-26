@@ -61,6 +61,8 @@ re-enter prices, quantities, notes, and evidence context after a correctable err
 - Preserve validation-error values and show a safe retry message.
 - Distinguish stale/receiving conflicts from correctable validation errors.
 - Keep the dirty-discard confirmation and mobile-sized controls.
+- Treat header edits and line-only quantity, price, or note edits as dirty so the
+  discard confirmation cannot be bypassed.
 - Never place amendment prices, reasons, notice references, or line values in URLs,
   local storage, logs, or analytics.
 
@@ -69,8 +71,11 @@ re-enter prices, quantities, notes, and evidence context after a correctable err
 - Independent Architecture and Product reviews recommended the bounded slice with
   High confidence; requested Spark/GPT-5.4 models were unavailable, so the closest
   permitted GPT-5.6 fallback was used and recorded.
+- Independent corrective review rejected an initially broad static assertion that
+  could false-pass, then returned GO after the contract isolated `updateLine`,
+  required its own dirty transition, and bound all three editable line fields to it.
 - Focused Purchase Order service coverage passes 36/36; amendment visible-surface
-  coverage passes 3/3; web typecheck, lint, production build, full non-database
-  regression (1,339 passed, 301 skipped, one todo), and authorization manifest
+  coverage passes 4/4; web typecheck, lint, production build, full non-database
+  regression (1,340 passed, 301 skipped, one todo), and authorization manifest
   coverage pass. PostgreSQL CAS/no-mutation, responsive browser, hosted, E2E, and
   UAT gates remain open.

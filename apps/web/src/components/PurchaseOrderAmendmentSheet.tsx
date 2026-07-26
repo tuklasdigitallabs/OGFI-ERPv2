@@ -78,6 +78,20 @@ export function PurchaseOrderAmendmentSheet({
     setDirty(true);
   };
 
+  const updateLine = (
+    index: number,
+    key: "orderedQty" | "unitPrice" | "notes",
+    value: string
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, lineIndex) =>
+        lineIndex === index ? { ...line, [key]: value } : line
+      )
+    }));
+    setDirty(true);
+  };
+
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) {
@@ -105,6 +119,7 @@ export function PurchaseOrderAmendmentSheet({
       bodyScroll="contained"
       bodyClassName="p-0"
       dirty={dirty}
+      onDirtyChange={setDirty}
       pending={pending}
       header={
         <div className="rounded-lg border border-violet-100 bg-violet-50 p-3 text-sm text-slate-700">
@@ -156,9 +171,9 @@ export function PurchaseOrderAmendmentSheet({
               {draft.lines.map((line, index) => (
                 <tr key={line.id}>
                   <td className="px-3 py-2"><input name="lineId" type="hidden" value={line.id} readOnly /><p className="font-semibold text-slate-950">{line.lineNumber}. {line.description}</p><p className="text-xs text-slate-500">{line.uomCode}</p></td>
-                  <td className="px-3 py-2"><input className="min-h-11 w-28 rounded-md border border-slate-300 px-3 py-2" name="orderedQty" value={line.orderedQty} onChange={(event) => setDraft((current) => ({ ...current, lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, orderedQty: event.target.value } : item) }))} min="0.000001" step="0.000001" type="number" required /></td>
-                  <td className="px-3 py-2"><input className="min-h-11 w-32 rounded-md border border-slate-300 px-3 py-2" name="unitPrice" value={line.unitPrice} onChange={(event) => setDraft((current) => ({ ...current, lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, unitPrice: event.target.value } : item) }))} min="0" step="0.000001" type="number" required /></td>
-                  <td className="px-3 py-2"><input className="min-h-11 min-w-48 rounded-md border border-slate-300 px-3 py-2" name="notes" value={line.notes} onChange={(event) => setDraft((current) => ({ ...current, lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, notes: event.target.value } : item) }))} placeholder="Optional line note" /></td>
+                  <td className="px-3 py-2"><input className="min-h-11 w-28 rounded-md border border-slate-300 px-3 py-2" name="orderedQty" value={line.orderedQty} onChange={(event) => updateLine(index, "orderedQty", event.target.value)} min="0.000001" step="0.000001" type="number" required /></td>
+                  <td className="px-3 py-2"><input className="min-h-11 w-32 rounded-md border border-slate-300 px-3 py-2" name="unitPrice" value={line.unitPrice} onChange={(event) => updateLine(index, "unitPrice", event.target.value)} min="0" step="0.000001" type="number" required /></td>
+                  <td className="px-3 py-2"><input className="min-h-11 min-w-48 rounded-md border border-slate-300 px-3 py-2" name="notes" value={line.notes} onChange={(event) => updateLine(index, "notes", event.target.value)} placeholder="Optional line note" /></td>
                 </tr>
               ))}
             </tbody>

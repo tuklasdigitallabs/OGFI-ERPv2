@@ -36,4 +36,18 @@ describe("Purchase Order amendment visible states", () => {
     expect(source).toContain("revalidatePath(`/purchase-orders/${id}`)");
     expect(source).toContain("PURCHASE_ORDER_RECEIVING_REPORT_BLOCKS_AMENDMENT");
   });
+
+  test("tracks header and line-only edits for discard protection", () => {
+    const updateLineSource = sheetSource.slice(
+      sheetSource.indexOf("const updateLine"),
+      sheetSource.indexOf("const handleOpenChange"),
+    );
+
+    expect(sheetSource).toContain("const updateDraft");
+    expect(updateLineSource).toContain("setDirty(true)");
+    expect(sheetSource).toContain("onDirtyChange={setDirty}");
+    expect(sheetSource).toContain('updateLine(index, "orderedQty", event.target.value)');
+    expect(sheetSource).toContain('updateLine(index, "unitPrice", event.target.value)');
+    expect(sheetSource).toContain('updateLine(index, "notes", event.target.value)');
+  });
 });
