@@ -1856,6 +1856,10 @@ describe("projects and operations database-backed authorization boundaries", () 
         () => foodSafety.buildFoodSafetyExportRows(session),
       ],
       [
+        "food safety log page",
+        () => foodSafety.listFoodSafetyLogPage(session),
+      ],
+      [
         "incident create",
         () => incidents.createOperationalIncident(new FormData()),
       ],

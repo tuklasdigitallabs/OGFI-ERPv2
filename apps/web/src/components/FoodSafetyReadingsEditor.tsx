@@ -10,6 +10,7 @@ type FoodSafetyReadingsEditorProps = {
   severityOptions: readonly string[];
   formId: string;
   logId?: string;
+  returnTo?: string;
   initialReadings?: readonly FoodSafetyReading[];
 };
 
@@ -81,6 +82,7 @@ export function FoodSafetyReadingsEditor({
   severityOptions,
   formId,
   logId,
+  returnTo,
   initialReadings
 }: FoodSafetyReadingsEditorProps) {
   const isCorrection = Boolean(logId && initialReadings);
@@ -148,6 +150,7 @@ export function FoodSafetyReadingsEditor({
   return (
     <form action={action} className="flex h-full min-h-0 flex-col" id={formId} onSubmit={submit}>
       {logId ? <input name="logId" type="hidden" value={logId} /> : null}
+      {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
       {readingFields.flatMap((field) => readings.map((reading, index) => (
         <input
           key={`${field}-${reading.key}`}

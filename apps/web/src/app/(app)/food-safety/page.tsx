@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, EmptyState, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { FoodSafetyReadingsEditor } from "@/components/FoodSafetyReadingsEditor";
@@ -17,8 +17,12 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportFoodSafety } from "@/server/services/exportAuthorization";
 import {
   createFoodSafetyLog,
+  foodSafetyDashboardProfileHref,
+  foodSafetyDashboardProfilePageHref,
+  foodSafetyLogDetailHref,
   getFoodSafetyDashboardRead,
-  listFoodSafetyLogPage
+  listFoodSafetyLogPage,
+  resolveFoodSafetyDashboardRequest
 } from "@/server/services/foodSafety";
 
 export const dynamic = "force-dynamic";
@@ -122,12 +126,59 @@ export default async function FoodSafetyPage({
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
-  const dashboardRead = await getFoodSafetyDashboardRead(session);
   const canExport = canExportFoodSafety(session);
   const canCreate = session.permissionCodes.includes(permissions.foodSafetyCreate);
   const params = searchParams ? await searchParams : {};
+  const profileParam = params.dashboard;
+  const dashboardRequest = resolveFoodSafetyDashboardRequest(
+    profileParam,
+    getSearchParam(params, "q")
+  );
+  const dashboardProfile = dashboardRequest.profile;
+  if (dashboardRequest.error === "PROFILE_INVALID") {
+    return (
+      <AppShell
+        session={session}
+        title="Food Safety dashboard view unavailable"
+        subtitle="The requested dashboard profile is unsupported or retired"
+        activeNav="food-safety"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Dashboard view unavailable"
+            description="This dashboard link cannot be opened safely. Return to Overview for a current Food Safety card, or deliberately open the full Food Safety workspace."
+          />
+          <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+            <ButtonLink href="/dashboard" className="min-h-11">Back to Overview</ButtonLink>
+            <ButtonLink href="/food-safety" tone="secondary" className="min-h-11">Open full workspace</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
   const feedback = getActionFeedback(params);
-  const query = (getSearchParam(params, "q") ?? "").trim().toLowerCase();
+  const query = dashboardRequest.query;
+  if (dashboardRequest.error === "SEARCH_INVALID" && dashboardProfile) {
+    return (
+      <AppShell
+        session={session}
+        title="Food Safety dashboard view unavailable"
+        subtitle="The requested dashboard search is invalid"
+        activeNav="food-safety"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Search is too long"
+            description="Dashboard-view search is limited to 120 characters. Return to the unfiltered view and try a shorter log, recorder, reviewer, station, action, or evidence search."
+          />
+          <div className="mt-4 flex justify-center">
+            <ButtonLink href={foodSafetyDashboardProfileHref(dashboardProfile)} className="min-h-11">Clear search</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  const dashboardRead = await getFoodSafetyDashboardRead(session);
   const businessDate = getSearchParam(params, "businessDate") ?? "";
   const logTypeFilter = normalizeOption(getSearchParam(params, "type"), logTypeOptions);
   const statusFilter = normalizeOption(getSearchParam(params, "status"), statusOptions);
@@ -135,10 +186,16 @@ export default async function FoodSafetyPage({
   try {
     workspace = await listFoodSafetyLogPage(session, {
       q: query,
-      businessDate,
-      type: logTypeFilter,
-      status: statusFilter
-    }, { page: normalizePage(getSearchParam(params, "page")), pageSize: PAGE_SIZE });
+      ...(!dashboardProfile ? {
+        businessDate,
+        type: logTypeFilter,
+        status: statusFilter
+      } : {})
+    }, {
+      page: normalizePage(getSearchParam(params, "page")),
+      pageSize: PAGE_SIZE,
+      ...(dashboardProfile ? { dashboardProfile } : {})
+    });
   } catch (error) {
     redirect(actionErrorRedirectPath("/food-safety", error));
   }
@@ -155,14 +212,26 @@ export default async function FoodSafetyPage({
     logs: workspace.items
   };
   const paginatedLogs = workspace.items;
-  const pageHref = (page: number) =>
-    buildQueryHref("/food-safety", {
-      q: getSearchParam(params, "q"),
-      businessDate,
-      type: logTypeFilter !== "ALL" ? logTypeFilter : undefined,
-      status: statusFilter !== "ALL" ? statusFilter : undefined,
-      page: page > 1 ? String(page) : undefined
-    });
+  const pageHref = (page: number) => dashboardProfile
+    ? foodSafetyDashboardProfilePageHref(dashboardProfile, { query, page })
+    : buildQueryHref("/food-safety", {
+        q: getSearchParam(params, "q"),
+        businessDate,
+        type: logTypeFilter !== "ALL" ? logTypeFilter : undefined,
+        status: statusFilter !== "ALL" ? statusFilter : undefined,
+        page: page > 1 ? String(page) : undefined
+      });
+  const detailHref = (logId: string) =>
+    foodSafetyLogDetailHref(logId, pageHref(workspace.page));
+  const profileTitle = dashboardProfile === "food-safety-exceptions-v1"
+    ? "Food Safety Exceptions"
+    : "Food Safety Reviews";
+  const hasListFilters = Boolean(
+    query ||
+    (!dashboardProfile && (
+      businessDate || logTypeFilter !== "ALL" || statusFilter !== "ALL"
+    ))
+  );
 
   return (
     <AppShell
@@ -172,6 +241,33 @@ export default async function FoodSafetyPage({
       activeNav="food-safety"
     >
       <ActionFeedbackBanner feedback={feedback} />
+      {dashboardProfile ? (
+        <section className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950 shadow-[var(--shadow-soft)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="info">Dashboard profile</Badge>
+            <Badge tone="neutral">{session.context.companyName}</Badge>
+            {session.context.brandId ? <Badge tone="neutral">{session.context.brandName}</Badge> : null}
+            <Badge tone="neutral">{session.context.locationName}</Badge>
+            <Badge tone="neutral">All dates</Badge>
+          </div>
+          <h2 className="mt-3 text-lg font-bold text-slate-950">{profileTitle}</h2>
+          {dashboardProfile === "food-safety-exceptions-v1" ? (
+            <p className="mt-1">
+              This read-only oversight view contains {workspace.signalTotal ?? 0} exception reading(s) across {workspace.totalItems} affected log(s) in the selected scope. The dashboard card counts exception readings; the register pages affected source logs.
+            </p>
+          ) : (
+            <p className="mt-1">
+              This read-only oversight view contains all {workspace.totalItems} submitted or exception-review log(s) in the selected scope. It is not a personal task queue.
+            </p>
+          )}
+          <p className="mt-1 text-blue-900/80">
+            Opening a source log does not grant review, correction, or close authority. Detail actions independently recheck current role, scope, status, actor lineage, and segregation rules.
+          </p>
+          <ButtonLink href="/food-safety" tone="secondary" className="mt-3 min-h-11">
+            Exit dashboard view
+          </ButtonLink>
+        </section>
+      ) : null}
       <div className="ogfi-coordination-cue mb-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -227,18 +323,19 @@ export default async function FoodSafetyPage({
         <div className="ogfi-section-header">
           <div>
             <h2 className="text-lg font-bold text-slate-950">
-              Food Safety Logbook
+              {dashboardProfile ? profileTitle : "Food Safety Logbook"}
             </h2>
             <p className="text-sm text-slate-500">
-              {dashboard.locationName} / temperature, sanitation, and corrective
-              action source records.
+              {dashboardProfile
+                ? `${dashboard.locationName} / server-owned read-only dashboard destination.`
+                : `${dashboard.locationName} / temperature, sanitation, and corrective action source records.`}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={dashboard.criticalExceptions > 0 ? "destructive" : "info"}>
               {dashboard.reviewedLogs} reviewed logs
             </Badge>
-            {canCreate ? (
+            {canCreate && !dashboardProfile ? (
               <TaskSheet
                 title="Record Food-Safety Log"
                 description="Capture temperature, sanitation, opening, or closing readings. Exceptions remain controlled source-record follow-up."
@@ -258,7 +355,7 @@ export default async function FoodSafetyPage({
                 />
               </TaskSheet>
             ) : null}
-            {canExport ? (
+            {canExport ? (!dashboardProfile ? (
               <ButtonLink
                 href={buildQueryHref("/food-safety/export", {
                   q: query || null,
@@ -271,33 +368,34 @@ export default async function FoodSafetyPage({
               >
                 Export Food-Safety CSV
               </ButtonLink>
-            ) : null}
+            ) : null) : null}
           </div>
         </div>
 
-        <form className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[1fr_11rem_12rem_12rem_auto] md:items-end">
+        <form className={`grid gap-3 border-b border-slate-100 p-4 ${dashboardProfile ? "md:grid-cols-[1fr_auto]" : "md:grid-cols-[1fr_11rem_12rem_12rem_auto]"} md:items-end`}>
+          {dashboardProfile ? <input name="dashboard" type="hidden" value={dashboardProfile} /> : null}
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Search
             <input
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
               defaultValue={getSearchParam(params, "q") ?? ""}
               name="q"
               placeholder="Log, station, recorder, reviewer, action, evidence"
             />
           </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          {!dashboardProfile ? <label className="grid gap-1 text-sm font-medium text-slate-700">
             Business date
             <input
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
               defaultValue={businessDate}
               name="businessDate"
               type="date"
             />
-          </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          </label> : null}
+          {!dashboardProfile ? <label className="grid gap-1 text-sm font-medium text-slate-700">
             Type
             <select
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
               defaultValue={logTypeFilter}
               name="type"
             >
@@ -307,11 +405,11 @@ export default async function FoodSafetyPage({
                 </option>
               ))}
             </select>
-          </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          </label> : null}
+          {!dashboardProfile ? <label className="grid gap-1 text-sm font-medium text-slate-700">
             Status
             <select
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
               defaultValue={statusFilter}
               name="status"
             >
@@ -321,12 +419,12 @@ export default async function FoodSafetyPage({
                 </option>
               ))}
             </select>
-          </label>
+          </label> : null}
           <div className="flex gap-2">
-            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+            <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
               Apply
             </button>
-            <ButtonLink href="/food-safety" tone="ghost" className="min-h-10">
+            <ButtonLink href={dashboardProfile ? foodSafetyDashboardProfileHref(dashboardProfile) : "/food-safety"} tone="ghost" className="min-h-11">
               Clear
             </ButtonLink>
           </div>
@@ -334,10 +432,23 @@ export default async function FoodSafetyPage({
 
         {workspace.totalItems === 0 ? (
           <div className="ogfi-empty-state">
-            <p className="font-semibold text-slate-900">No food-safety logs yet</p>
+            <p className="font-semibold text-slate-900">
+              {hasListFilters
+                ? "No food-safety logs match the current filters"
+                : dashboardProfile === "food-safety-exceptions-v1"
+                  ? "No logs with exception readings in this scope"
+                  : dashboardProfile === "food-safety-reviews-v1"
+                    ? "No submitted or exception-review logs in this scope"
+                    : "No food-safety logs yet"}
+            </p>
             <p className="mt-1 text-sm text-slate-600">
-              Create or seed temperature and sanitation logs before reviewing
-              compliance status.
+              {hasListFilters
+                ? dashboardProfile
+                  ? "Adjust or clear the search without changing this dashboard profile."
+                  : "Adjust search, business date, type, or status to widen this Food Safety register."
+                : dashboardProfile
+                  ? "Return to Overview for the current dashboard state or exit this profile to open the full Food Safety workspace."
+                  : "Create or seed temperature and sanitation logs before reviewing compliance status."}
             </p>
           </div>
         ) : workspace.items.length === 0 ? (
@@ -351,7 +462,7 @@ export default async function FoodSafetyPage({
           </div>
         ) : (
           <>
-            <div className="divide-y divide-slate-100 md:hidden">
+            <div className="divide-y divide-slate-100 lg:hidden">
               {paginatedLogs.map((log) => (
                 <article key={log.id} className="grid gap-3 px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
@@ -363,11 +474,11 @@ export default async function FoodSafetyPage({
                     <div><dt className="text-xs font-semibold uppercase text-slate-500">Exceptions</dt><dd className="font-bold text-slate-950">{log.exceptionCount}</dd></div>
                     <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Reviewer</dt><dd className="font-semibold text-slate-700">{log.reviewedByName ?? "Pending review"}</dd></div>
                   </dl>
-                  <ButtonLink href={`/food-safety/${log.id}`} tone="secondary" className="min-h-10 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100">View Detail</ButtonLink>
+                  <ButtonLink href={detailHref(log.id)} tone="secondary" className="min-h-11 justify-center font-bold">Open Source Log</ButtonLink>
                 </article>
               ))}
             </div>
-            <div className="hidden overflow-x-auto md:block">
+            <div className="hidden overflow-x-auto lg:block">
               <div className="min-w-[62rem]">
                 <div className="grid grid-cols-[1.7fr_8rem_8rem_8rem_8rem_10rem_10rem_8rem] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase text-slate-500">
                   <span>Log</span>
@@ -408,11 +519,11 @@ export default async function FoodSafetyPage({
                         {log.reviewedByName ?? "Pending review"}
                       </p>
                       <ButtonLink
-                        href={`/food-safety/${log.id}`}
+                        href={detailHref(log.id)}
                         tone="secondary"
-                        className="min-h-10 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100"
+                        className="min-h-11 justify-center font-bold"
                       >
-                        View Detail
+                        Open Source Log
                       </ButtonLink>
                     </div>
                   ))}
@@ -430,7 +541,7 @@ export default async function FoodSafetyPage({
                       Previous
                     </ButtonLink>
                   ) : (
-                    <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
+                    <span className="inline-flex min-h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
                       Previous
                     </span>
                   )}
@@ -442,7 +553,7 @@ export default async function FoodSafetyPage({
                       Next
                     </ButtonLink>
                   ) : (
-                    <span className="inline-flex min-h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
+                    <span className="inline-flex min-h-11 items-center rounded-md border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-400">
                       Next
                     </span>
                   )}

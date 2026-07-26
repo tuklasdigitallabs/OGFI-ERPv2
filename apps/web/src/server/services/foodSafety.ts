@@ -106,6 +106,7 @@ export type FoodSafetyDashboardRead = {
   reviewedLogs: number;
   totalReadings: number;
   exceptionCount: number;
+  reviewReadyLogCount: number;
   statusCounts: FoodSafetyStatusCounts;
   severityCounts: FoodSafetySeverityCounts;
   reviewCandidates: FoodSafetyDashboardCandidate[];
@@ -119,12 +120,110 @@ export type FoodSafetyExportFilters = {
   businessDate?: string;
 };
 
+export const foodSafetyDashboardProfiles = [
+  "food-safety-exceptions-v1",
+  "food-safety-reviews-v1"
+] as const;
+
+export type FoodSafetyDashboardProfile =
+  (typeof foodSafetyDashboardProfiles)[number];
+
+export function resolveFoodSafetyDashboardProfile(
+  value: string | null | undefined
+): FoodSafetyDashboardProfile | null {
+  return foodSafetyDashboardProfiles.includes(value as FoodSafetyDashboardProfile)
+    ? (value as FoodSafetyDashboardProfile)
+    : null;
+}
+
+export function foodSafetyDashboardProfileHref(
+  profile: FoodSafetyDashboardProfile
+) {
+  return `/food-safety?dashboard=${profile}`;
+}
+
+export type FoodSafetyDashboardRequestError =
+  | "PROFILE_INVALID"
+  | "SEARCH_INVALID";
+
+export function resolveFoodSafetyDashboardRequest(
+  profileValue: string | string[] | null | undefined,
+  queryValue: string | null | undefined
+) {
+  if (Array.isArray(profileValue)) {
+    return { profile: null, query: "", error: "PROFILE_INVALID" as const };
+  }
+  const profile = resolveFoodSafetyDashboardProfile(profileValue);
+  if (profileValue !== null && profileValue !== undefined && !profile) {
+    return { profile: null, query: "", error: "PROFILE_INVALID" as const };
+  }
+  const query = normalizedFilterText(queryValue ?? undefined);
+  if (profile && query.length > 120) {
+    return { profile, query, error: "SEARCH_INVALID" as const };
+  }
+  return { profile, query, error: null };
+}
+
+export function foodSafetyDashboardProfilePageHref(
+  profile: FoodSafetyDashboardProfile,
+  input: { query?: string | null; page?: number } = {}
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  const query = normalizedFilterText(input.query ?? undefined);
+  if (query) params.set("q", query);
+  if (Number.isInteger(input.page) && (input.page ?? 1) > 1) {
+    params.set("page", String(input.page));
+  }
+  return `/food-safety?${params.toString()}`;
+}
+
+export function resolveFoodSafetyProfileReturnTo(value: unknown) {
+  if (typeof value !== "string" || value.includes("\\") || value.includes("#")) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value, "https://ogfi.invalid");
+  } catch {
+    return null;
+  }
+  if (
+    parsed.origin !== "https://ogfi.invalid" ||
+    parsed.pathname !== "/food-safety" ||
+    [...parsed.searchParams.keys()].some(
+      (key) => !["dashboard", "q", "page"].includes(key)
+    ) ||
+    [...parsed.searchParams.keys()].some(
+      (key, index, keys) => keys.indexOf(key) !== index
+    )
+  ) {
+    return null;
+  }
+  const profile = resolveFoodSafetyDashboardProfile(
+    parsed.searchParams.get("dashboard")
+  );
+  const query = normalizedFilterText(parsed.searchParams.get("q") ?? undefined);
+  const pageValue = parsed.searchParams.get("page");
+  const page = pageValue === null ? 1 : Number(pageValue);
+  if (!profile || query.length > 120 || !Number.isSafeInteger(page) || page < 1) {
+    return null;
+  }
+  const canonical = foodSafetyDashboardProfilePageHref(profile, { query, page });
+  return value === canonical ? canonical : null;
+}
+
+export function foodSafetyLogDetailHref(logId: string, returnTo: string | null) {
+  return `/food-safety/${logId}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`;
+}
+
 export type FoodSafetyLogPage = {
   items: FoodSafetyLogSummary[];
   page: number;
   pageSize: number;
   totalItems: number;
   totalPages: number;
+  dashboardProfile: FoodSafetyDashboardProfile | null;
+  signalTotal: number | null;
 };
 
 export type FoodSafetyMyTaskPage = {
@@ -144,6 +243,27 @@ export type FoodSafetyMyTaskPage = {
 };
 
 const reviewableFoodSafetyStatuses = ["SUBMITTED", "EXCEPTION_REVIEW"] as const;
+
+function foodSafetyScopeWhere(
+  session: SessionContext
+): Prisma.FoodSafetyLogWhereInput {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId
+  };
+}
+
+export function foodSafetyDashboardProfileWhere(
+  session: SessionContext,
+  profile: FoodSafetyDashboardProfile
+): Prisma.FoodSafetyLogWhereInput {
+  const scope = foodSafetyScopeWhere(session);
+  return profile === "food-safety-exceptions-v1"
+    ? { ...scope, exceptionCount: { gt: 0 } }
+    : { ...scope, status: { in: [...reviewableFoodSafetyStatuses] } };
+}
 const closeableFoodSafetyStatuses = ["REVIEWED", "EXCEPTION_OPEN"] as const;
 const foodSafetyLogTypes = ["TEMPERATURE", "SANITATION", "OPENING", "CLOSING"] as const;
 const foodSafetyReadingResults = ["PASS", "EXCEPTION", "NOT_APPLICABLE"] as const;
@@ -442,7 +562,11 @@ export function filterFoodSafetyLogs(
 export async function listFoodSafetyLogPage(
   session: SessionContext,
   filters: FoodSafetyExportFilters = {},
-  input: { page?: number; pageSize?: number } = {}
+  input: {
+    page?: number;
+    pageSize?: number;
+    dashboardProfile?: FoodSafetyDashboardProfile;
+  } = {}
 ): Promise<FoodSafetyLogPage> {
   assertFoodSafetyAccess(session);
   const rawPageSize = input.pageSize ?? 25;
@@ -452,9 +576,19 @@ export async function listFoodSafetyLogPage(
   const rawPage = input.page ?? 1;
   const requestedPage = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
   const query = normalizedFilterText(filters.q);
-  const logType = filters.type && filters.type !== "ALL" ? filters.type : null;
-  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
-  const businessDate = filters.businessDate?.trim() || null;
+  const dashboardProfile = input.dashboardProfile ?? null;
+  if (
+    dashboardProfile !== null &&
+    !resolveFoodSafetyDashboardProfile(dashboardProfile)
+  ) {
+    throw new Error("FOOD_SAFETY_DASHBOARD_PROFILE_INVALID");
+  }
+  if (dashboardProfile && query.length > 120) {
+    throw new Error("FOOD_SAFETY_DASHBOARD_SEARCH_INVALID");
+  }
+  const logType = !dashboardProfile && filters.type && filters.type !== "ALL" ? filters.type : null;
+  const status = !dashboardProfile && filters.status && filters.status !== "ALL" ? filters.status : null;
+  const businessDate = !dashboardProfile ? filters.businessDate?.trim() || null : null;
   const date = businessDate ? parseDateOnlyUtc(businessDate) : null;
   if (businessDate && !date) {
     throw new Error("FOOD_SAFETY_BUSINESS_DATE_INVALID");
@@ -472,10 +606,9 @@ export async function listFoodSafetyLogPage(
       })
     : [];
   const where: Prisma.FoodSafetyLogWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-    locationId: session.context.locationId,
+    ...(dashboardProfile
+      ? foodSafetyDashboardProfileWhere(session, dashboardProfile)
+      : foodSafetyScopeWhere(session)),
     ...(logType ? { logType } : {}),
     ...(status ? { status } : {}),
     ...(date ? { businessDate: date } : {}),
@@ -499,7 +632,15 @@ export async function listFoodSafetyLogPage(
         }
       : {})
   };
-  const totalItems = await prisma.foodSafetyLog.count({ where });
+  const [totalItems, signalAggregate] = await Promise.all([
+    prisma.foodSafetyLog.count({ where }),
+    dashboardProfile === "food-safety-exceptions-v1"
+      ? prisma.foodSafetyLog.aggregate({
+          where,
+          _sum: { exceptionCount: true }
+        })
+      : Promise.resolve(null)
+  ]);
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, totalPages);
   const rows = await prisma.foodSafetyLog.findMany({
@@ -530,7 +671,20 @@ export async function listFoodSafetyLogPage(
     readingCount: log.readings.length,
     readings: []
   }));
-  return { items, page, pageSize, totalItems, totalPages };
+  return {
+    items,
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    dashboardProfile,
+    signalTotal:
+      dashboardProfile === "food-safety-exceptions-v1"
+        ? signalAggregate?._sum.exceptionCount ?? 0
+        : dashboardProfile === "food-safety-reviews-v1"
+          ? totalItems
+          : null
+  };
 }
 
 export async function getFoodSafetyDashboard(
@@ -658,22 +812,25 @@ export async function getFoodSafetyDashboardRead(
 ): Promise<FoodSafetyDashboardRead> {
   assertFoodSafetyAccess(session);
 
-  const where: Prisma.FoodSafetyLogWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-    locationId: session.context.locationId
-  };
+  const where = foodSafetyScopeWhere(session);
+  const reviewProfileWhere = foodSafetyDashboardProfileWhere(
+    session,
+    "food-safety-reviews-v1"
+  );
+  const exceptionProfileWhere = foodSafetyDashboardProfileWhere(
+    session,
+    "food-safety-exceptions-v1"
+  );
   const scopedReadingWhere = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
     locationId: session.context.locationId
   };
-  const [summary, statusRows, totalLogs, latestLog, totalReadings, criticalExceptions, reviewRows, exceptionRows] =
+  const [summary, statusRows, totalLogs, reviewReadyLogCount, latestLog, totalReadings, criticalExceptions, reviewRows, exceptionRows] =
     await Promise.all([
       prisma.foodSafetyLog.aggregate({
-        where,
+        where: exceptionProfileWhere,
         _sum: { exceptionCount: true }
       }),
       prisma.foodSafetyLog.groupBy({
@@ -682,13 +839,14 @@ export async function getFoodSafetyDashboardRead(
         _count: { _all: true }
       }),
       prisma.foodSafetyLog.count({ where }),
+      prisma.foodSafetyLog.count({ where: reviewProfileWhere }),
       prisma.foodSafetyLog.findFirst({ where, orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }], select: { businessDate: true } }),
       prisma.foodSafetyReading.count({ where: scopedReadingWhere }),
       prisma.foodSafetyReading.count({
         where: { ...scopedReadingWhere, result: "EXCEPTION", severity: "CRITICAL" }
       }),
       prisma.foodSafetyLog.findMany({
-        where: { ...where, status: { in: [...reviewableFoodSafetyStatuses] } },
+        where: reviewProfileWhere,
         orderBy: [{ businessDate: "desc" }, { logType: "asc" }],
         take: 3,
         select: {
@@ -706,7 +864,7 @@ export async function getFoodSafetyDashboardRead(
         }
       }),
       prisma.foodSafetyLog.findMany({
-        where: { ...where, exceptionCount: { gt: 0 } },
+        where: exceptionProfileWhere,
         orderBy: [{ businessDate: "desc" }, { logType: "asc" }],
         take: 3,
         select: {
@@ -747,6 +905,7 @@ export async function getFoodSafetyDashboardRead(
     reviewedLogs: statusCounts.REVIEWED + statusCounts.CLOSED,
     totalReadings,
     exceptionCount: summary._sum.exceptionCount ?? 0,
+    reviewReadyLogCount,
     statusCounts,
     severityCounts: { ...emptySeverityCounts(), CRITICAL: criticalExceptions },
     reviewCandidates: reviewRows.map(toCandidate),

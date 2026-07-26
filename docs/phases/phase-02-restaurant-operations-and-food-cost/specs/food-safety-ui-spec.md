@@ -1,6 +1,6 @@
 # OGFI ERP — Phase II UI Specification: Food Safety and Compliance
 
-**Status:** Implemented for food-safety queue, detail, create modal, review, return-for-correction, correction apply, close, export, dashboard source links, and review-reminder visibility
+**Status:** Implemented for food-safety queue, detail, create modal, review, return-for-correction, correction apply, close, export, versioned dashboard destinations, and review-reminder visibility
 **Visual standard:** Modern SaaS UI with restaurant-grade operational control
 
 ## Screen Purpose
@@ -20,8 +20,9 @@ severity, corrective action, evidence, correction, export, and audit context.
    result/severity, corrective action, and evidence reference.
 4. Review, return-for-correction, correction apply, and close action surfaces
    when the role and status permit them.
-5. Dashboard/report links route to source records instead of replacing source
-   review actions.
+5. Dashboard links use the allowlisted `food-safety-reviews-v1` and
+   `food-safety-exceptions-v1` read-only destinations and route onward to source
+   records instead of replacing source review actions.
 
 ## Global UI Rules
 
@@ -43,7 +44,23 @@ severity, corrective action, evidence, correction, export, and audit context.
 - Denied or unavailable actions are hidden by server-side permission and status
   checks.
 - Export keeps the same filter contract as the queue.
-- Dashboard and notification entries are visibility-only source links.
+- Dashboard profiles use the exact session tenant, selected company, optional
+  selected brand, and selected location predicates. Raw log type, status, and
+  business-date parameters cannot widen or redefine either population; a
+  normalized maximum-120-character search may only narrow it.
+- `food-safety-reviews-v1` contains the complete scoped `SUBMITTED` plus
+  `EXCEPTION_REVIEW` oversight population without implying actor-actionable work.
+- `food-safety-exceptions-v1` contains logs with `exceptionCount > 0` in every
+  status. The card's summed exception readings and the destination's affected-log
+  total remain distinct.
+- Unknown or stale profiles show a visible invalid state. Create and export are
+  hidden in profile mode. Detail and back navigation retain only canonical
+  profile/search/page context.
+- Dashboard and notification entries are visibility-only source links. Every
+  detail action independently enforces current permission, scope, status, actor,
+  and workflow-policy eligibility.
+- The existing Phase II workflow policy catalog/live-service discrepancy remains
+  open; profile labels and controls must not imply that it has been resolved.
 
 ## Acceptance Criteria
 

@@ -19,9 +19,11 @@ import { getSessionContext } from "@/server/services/context";
 import {
   applyFoodSafetyLogCorrection,
   closeFoodSafetyLog,
+  foodSafetyLogDetailHref,
   getFoodSafetyLogSummary,
   returnFoodSafetyLogForCorrection,
-  reviewFoodSafetyLog
+  reviewFoodSafetyLog,
+  resolveFoodSafetyProfileReturnTo
 } from "@/server/services/foodSafety";
 
 export const dynamic = "force-dynamic";
@@ -33,52 +35,56 @@ async function reviewFoodSafetyLogAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("logId"));
+  const returnTo = resolveFoodSafetyProfileReturnTo(formData.get("returnTo"));
   let logId: string;
   try {
     logId = await reviewFoodSafetyLog(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/food-safety/${id}`, error));
+    redirect(actionErrorRedirectPath(foodSafetyLogDetailHref(id, returnTo), error));
   }
-  redirect(`/food-safety/${logId}`);
+  redirect(foodSafetyLogDetailHref(logId, returnTo));
 }
 
 async function closeFoodSafetyLogAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("logId"));
+  const returnTo = resolveFoodSafetyProfileReturnTo(formData.get("returnTo"));
   let logId: string;
   try {
     logId = await closeFoodSafetyLog(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/food-safety/${id}`, error));
+    redirect(actionErrorRedirectPath(foodSafetyLogDetailHref(id, returnTo), error));
   }
-  redirect(`/food-safety/${logId}`);
+  redirect(foodSafetyLogDetailHref(logId, returnTo));
 }
 
 async function returnFoodSafetyLogAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("logId"));
+  const returnTo = resolveFoodSafetyProfileReturnTo(formData.get("returnTo"));
   let logId: string;
   try {
     logId = await returnFoodSafetyLogForCorrection(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/food-safety/${id}`, error));
+    redirect(actionErrorRedirectPath(foodSafetyLogDetailHref(id, returnTo), error));
   }
-  redirect(`/food-safety/${logId}`);
+  redirect(foodSafetyLogDetailHref(logId, returnTo));
 }
 
 async function applyFoodSafetyLogCorrectionAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("logId"));
+  const returnTo = resolveFoodSafetyProfileReturnTo(formData.get("returnTo"));
   let logId: string;
   try {
     logId = await applyFoodSafetyLogCorrection(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/food-safety/${id}`, error));
+    redirect(actionErrorRedirectPath(foodSafetyLogDetailHref(id, returnTo), error));
   }
-  redirect(`/food-safety/${logId}`);
+  redirect(foodSafetyLogDetailHref(logId, returnTo));
 }
 
 function badgeToneFor(status: string, severity?: string) {
@@ -154,7 +160,13 @@ export default async function FoodSafetyLogDetailPage({
     log.status === "RETURNED";
   const today = new Date().toISOString().slice(0, 10);
   const defaultOutcome = log.exceptionCount > 0 ? "EXCEPTION_OPEN" : "REVIEWED";
-  const actionFeedback = getActionFeedback(searchParams ? await searchParams : {});
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const returnTo = resolveFoodSafetyProfileReturnTo(
+    Array.isArray(resolvedSearchParams.returnTo)
+      ? resolvedSearchParams.returnTo[0]
+      : resolvedSearchParams.returnTo
+  );
+  const actionFeedback = getActionFeedback(resolvedSearchParams);
 
   return (
     <AppShell
@@ -181,7 +193,7 @@ export default async function FoodSafetyLogDetailPage({
         )}
       </section>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <ButtonLink href="/food-safety" tone="ghost" className="ogfi-chip">
+        <ButtonLink href={returnTo ?? "/food-safety"} tone="ghost" className="ogfi-chip min-h-11">
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to Food Safety
         </ButtonLink>
@@ -196,6 +208,7 @@ export default async function FoodSafetyLogDetailPage({
                 className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2"
               >
                 <input name="logId" type="hidden" value={log.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Review date
                   <input
@@ -244,6 +257,7 @@ export default async function FoodSafetyLogDetailPage({
                 className="ogfi-form-shell mt-4 grid gap-3"
               >
                 <input name="logId" type="hidden" value={log.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Correction reason
                   <textarea
@@ -285,6 +299,7 @@ export default async function FoodSafetyLogDetailPage({
                 formId="correct-food-safety-log"
                 initialReadings={log.readings}
                 logId={log.id}
+                {...(returnTo ? { returnTo } : {})}
                 logTypeOptions={[]}
                 resultOptions={foodSafetyReadingResults}
                 severityOptions={foodSafetyReadingSeverities}
@@ -298,6 +313,7 @@ export default async function FoodSafetyLogDetailPage({
                 className="ogfi-form-shell mt-4 grid gap-3"
               >
                 <input name="logId" type="hidden" value={log.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Close reason
                   <textarea

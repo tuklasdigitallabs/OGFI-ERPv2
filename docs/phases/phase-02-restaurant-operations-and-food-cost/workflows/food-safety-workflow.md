@@ -1,6 +1,6 @@
 # OGFI ERP — Phase II Workflow: Food Safety and Compliance
 
-**Status:** Implemented for food-safety log create, review, return-for-correction, correction apply, close, filter, export, dashboard, and notification-reminder visibility
+**Status:** Implemented for food-safety log create, review, return-for-correction, correction apply, close, filter, export, versioned dashboard destinations, and notification-reminder visibility
 **Purpose:** Capture temperature, sanitation, checklists, non-conformance and corrective action records.
 
 ## Business Outcome
@@ -32,8 +32,9 @@ temperature, sanitation, and exception tracking. It includes:
   `RETURNED` to `SUBMITTED` transition for re-review;
 - controlled close from reviewed or exception-open records with required reason;
 - CSV export preserving list filters;
-- dashboard and notification visibility for review-ready food-safety records
-  without performing review from the dashboard.
+- dashboard visibility through the read-only `food-safety-reviews-v1` and
+  `food-safety-exceptions-v1` profiles, plus notification visibility for
+  review-ready records, without performing review from those surfaces.
 
 Food-safety actions write audit events and `OperationalStatusTransition` rows
 with actor, scope, source entity, from/to status, reason/evidence where
@@ -72,6 +73,22 @@ Submitted → Exception Review / Reviewed → Closed
 10. Reports and UAT scenarios: covered by the Phase II UAT scenarios and
     Restaurant Ops export/report specs.
 
+## Dashboard Profile Contract
+
+- `food-safety-reviews-v1` includes every scoped `SUBMITTED` and
+  `EXCEPTION_REVIEW` log as an oversight population. It does not assert that the
+  current actor can review or return every row.
+- `food-safety-exceptions-v1` includes every scoped log with
+  `exceptionCount > 0`, including terminal and historical statuses. Its card
+  sums exception readings; the destination separately counts affected logs.
+- Both populations use the exact session tenant, selected company, optional
+  selected brand, and selected location. A normalized `q` of at most 120
+  characters may only narrow results. Raw type, status, and business date do
+  not alter profile membership.
+- Invalid or stale profile identifiers fail visibly. Create and export are not
+  available in profile mode. Record navigation preserves canonical profile-only
+  return context, and the source detail independently reauthorizes each action.
+
 ## Non-Negotiable Controls
 
 - No user may act outside assigned scope.
@@ -81,6 +98,12 @@ Submitted → Exception Review / Reviewed → Closed
 - Core document and security rules override this framework if a conflict exists.
 
 ## Open Decisions
+
+The version-controlled Phase II workflow policy catalog and the live Food Safety
+service currently differ in their review, return, close, and evidence contracts.
+`DEC-0227` does not resolve or normalize that discrepancy. Policy-owner confirmation
+and controlled catalog/service reconciliation remain required before the workflow
+may be called production-ready.
 
 Future expansion such as formal approval routes, escalation timers, attachment
 upload enforcement, terminal reopen, automatic wastage/incident creation, or

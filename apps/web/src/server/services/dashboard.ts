@@ -21,6 +21,7 @@ import {
   type BranchOperationsDashboardRead
 } from "./branchOperations";
 import {
+  foodSafetyDashboardProfileHref,
   getFoodSafetyDashboardRead,
   type FoodSafetyDashboard,
   type FoodSafetyDashboardRead
@@ -989,8 +990,9 @@ export function buildOperationalDashboardModel(
 
   if (source.foodSafety || source.foodSafetyDashboard) {
     const foodSafety = source.foodSafetyDashboard ?? source.foodSafety!;
-    const reviewReadyLogCount =
-      foodSafety.statusCounts.SUBMITTED + foodSafety.statusCounts.EXCEPTION_REVIEW;
+    const reviewReadyLogCount = source.foodSafetyDashboard
+      ? source.foodSafetyDashboard.reviewReadyLogCount
+      : foodSafety.statusCounts.SUBMITTED + foodSafety.statusCounts.EXCEPTION_REVIEW;
     const reviewReadyLogs = source.foodSafetyDashboard
       ? source.foodSafetyDashboard.reviewCandidates
       : source.foodSafety!.logs.filter((logSummary) =>
@@ -1000,16 +1002,16 @@ export function buildOperationalDashboardModel(
       id: "food-safety-exceptions",
       label: "Food Safety Exceptions",
       value: foodSafety.exceptionCount,
-      href: "/food-safety",
-      description: `${foodSafety.totalReadings} reading${foodSafety.totalReadings === 1 ? "" : "s"} checked`,
+      href: foodSafetyDashboardProfileHref("food-safety-exceptions-v1"),
+      description: `${foodSafety.exceptionCount} exception reading${foodSafety.exceptionCount === 1 ? "" : "s"} across affected logs`,
       tone: cardTone(foodSafety.exceptionCount)
     });
     cards.push({
       id: "food-safety-reviews",
       label: "Food Safety Reviews",
       value: reviewReadyLogCount,
-      href: "/food-safety",
-      description: "Submitted or exception-review logs",
+      href: foodSafetyDashboardProfileHref("food-safety-reviews-v1"),
+      description: "All submitted or exception-review logs in selected scope",
       tone: cardTone(reviewReadyLogCount)
     });
     metrics.push(

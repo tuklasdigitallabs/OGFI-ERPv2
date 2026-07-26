@@ -504,6 +504,14 @@
       "status": "COVERED"
     },
     {
+      "surfaceId": "server/services/foodSafety.ts#listFoodSafetyLogPage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/foodSafety.ts#listFoodSafetyLogPage"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
       "surfaceId": "server/services/foodSafety.ts#applyFoodSafetyLogCorrection",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": [

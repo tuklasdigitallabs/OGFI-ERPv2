@@ -3,7 +3,7 @@
 **Audience / required role:** All operational users, managers, approvers, and project users  
 **Applies to:** Operations Dashboard, My Tasks, My Work, Approval Inbox, and Notifications
 **Related phase/module:** Phase I and Phase 1.5 / Operational Visibility  
-**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, and Checklist Reviews drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
+**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Checklist Reviews, Food Safety Exceptions, and Food Safety Reviews drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
 
 ## Purpose
 
@@ -29,15 +29,17 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 4. If `Dashboard source status` reports a partial response, open each unavailable source with `Open source` before deciding that no work or exception exists. A missing summary is not a zero result.
 5. Open `My Tasks` when you need the current paginated operational action queue. It presently includes your own draft Purchase Request submission, eligible draft Purchase Order submission or approved PO supplier-send actions, Transfer, Wastage, Stock Adjustment, draft Receiving Report posting, assigned first-pass Stock Count start, entry, or submission, eligible Branch Operations or Food Safety review and returned-record correction, eligible Incident resolution, and eligible Maintenance completion.
 6. Read the location, owner, timing, severity, status, and next-action labels before opening a source record.
-7. Select `Open` or `Open approvals` to continue in the relevant controlled workspace. The `Open POs`, `Open PRs`, `Transfer Follow-up`, `Receiving Follow-up`, `Checklist Exceptions`, and `Checklist Reviews` cards open closed source-list views for the selected scope.
+7. Select `Open` or `Open approvals` to continue in the relevant controlled workspace. The `Open POs`, `Open PRs`, `Transfer Follow-up`, `Receiving Follow-up`, `Checklist Exceptions`, `Checklist Reviews`, `Food Safety Exceptions`, and `Food Safety Reviews` cards open closed source-list views for the selected scope.
 8. Use `Checklist Exceptions` to inspect affected branch checklists. Its card value counts exception lines; the destination reports that value separately from the number of affected checklists.
 9. Use `Checklist Reviews` to inspect all scoped checklists in `SUBMITTED` or `MANAGER REVIEW`. This is an oversight view, not a list of work personally assigned to you.
-10. Open `Approval Inbox` to review assigned approval decisions.
-11. Open `My Work` for project tasks assigned to you.
-12. Open `Notifications` to review unread or actionable alerts.
-13. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
-14. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
-15. Mark notifications read or archive them after handling the related source record.
+10. Use `Food Safety Exceptions` to inspect affected logs. Its card value counts exception readings across scoped history; the destination reports that value separately from the number of affected logs.
+11. Use `Food Safety Reviews` to inspect all scoped logs in `SUBMITTED` or `EXCEPTION REVIEW`. This is an oversight view, not a list of work personally assigned to you.
+12. Open `Approval Inbox` to review assigned approval decisions.
+13. Open `My Work` for project tasks assigned to you.
+14. Open `Notifications` to review unread or actionable alerts.
+15. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
+16. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
+17. Mark notifications read or archive them after handling the related source record.
 
 ## Expected Result
 
@@ -61,6 +63,9 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - `Checklist Exceptions` opens a read-only Branch Operations profile containing checklists with exception lines in the selected scope. The dashboard card counts exception lines; the destination states both the exception-line total and affected-checklist total.
 - `Checklist Reviews` opens a read-only Branch Operations profile containing all scoped `SUBMITTED` and `MANAGER REVIEW` checklists. It is not filtered to the current user's personal tasks.
 - Both Branch Operations profiles preserve their selected scope and membership while allowing Search to narrow the list. Raw status, shift, or business-date values cannot widen them. An invalid or retired profile fails visibly, and checklist detail preserves the return path to the profile.
+- `Food Safety Exceptions` opens a read-only profile of logs with exception readings in the selected scope. The dashboard card counts exception readings across scoped history; the destination states both the reading total and affected-log total. The count does not say those readings are currently open or unresolved.
+- `Food Safety Reviews` opens a read-only profile containing all scoped `SUBMITTED` and `EXCEPTION REVIEW` logs. It is not filtered to the current user's personal tasks.
+- Both Food Safety profiles preserve their selected scope and membership while allowing Search to narrow the list. Raw status, log type, or business-date values cannot widen them; create and export controls remain hidden. An invalid or retired profile fails visibly, and log detail preserves the return path to the profile.
 - Approval Inbox shows records assigned to you or your active approval role.
 - My Work shows project tasks according to project visibility and assignment.
 - Notifications show scoped alerts and links to the related work where available.
@@ -77,6 +82,8 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - A dashboard drilldown narrows an already authorized source list. It does not grant access to a PO, PR, transfer, or Receiving Report; alter the selected scope; or permit changing the dashboard filter through the URL.
 - Branch Operations dashboard profiles do not grant review, correction, or closure authority. Checklist detail rechecks current permission, scope, status, actor lineage, and segregation rules before offering an action.
 - Do not compare the `Checklist Exceptions` card value directly with the number of checklist rows: the card counts exception lines, and one checklist can contain more than one exception line.
+- Food Safety dashboard profiles do not grant review, correction, or closure authority. Log detail rechecks current permission, scope, status, actor lineage, and segregation rules before offering an action.
+- Do not compare the `Food Safety Exceptions` card value directly with the number of log rows: the card counts exception readings, and one log can contain more than one exception reading.
 - `Today’s work` is a prioritized read-only view. Opening an item does not bypass the source record’s permission, status, or segregation-of-duties checks.
 - `My Tasks` is not a replacement for Approval Inbox or project `My Work`, and it does not yet include every operational source. Its signed page cursor only continues the current queue page; it does not grant access or action authority.
 - My Tasks currently exposes enrolled-module, priority, source-qualified status, and native due buckets (`Overdue`, `Due today`, `Upcoming`, and `No due date`). Due buckets query only Incident and Maintenance native due fields; required dates, business dates, and creation dates are not substituted. Filters remain bound while paging. Arbitrary location and assigned-by filters are not exposed; do not infer those meanings from a task's creator, reporter, opener, or submitter.
@@ -95,6 +102,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 ## Related Articles
 
 - [Review Branch Checklist Dashboard Profiles](../branch-operations/README.md)
+- [Review Food Safety Dashboard Profiles](../food-safety/README.md)
 - Why can't I see my branch, warehouse, or request?
 - Why can't I approve this request?
 - How to export a report

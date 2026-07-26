@@ -167,3 +167,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0224-PO-AMENDMENT-DRAFT-RECOVERY.md` — in-memory Purchase Order amendment draft retention and stale-conflict reload behavior
 - `DEC-0225-VERSIONED-COMPANY-APPROVAL-RULE-LIFECYCLE.md` — immutable company-scoped Approval Rule versions with bounded role-only route templates
 - `DEC-0226-BRANCH-OPERATIONS-DASHBOARD-PROFILES.md` — versioned server-owned checklist review and exception destinations with exact dashboard-population parity
+- `DEC-0227-FOOD-SAFETY-DASHBOARD-PROFILES.md` — versioned server-owned Food Safety review and all-status exception destinations with truthful reading/log grains

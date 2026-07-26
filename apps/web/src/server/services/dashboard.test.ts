@@ -1067,8 +1067,8 @@ describe("operational dashboard model", () => {
     ).toEqual([
       ["branch-checklist-exceptions", 1, "/branch-operations?dashboard=branch-checklist-exceptions-v1"],
       ["branch-checklist-reviews", 1, "/branch-operations?dashboard=branch-checklist-reviews-v1"],
-      ["food-safety-exceptions", 1, "/food-safety"],
-      ["food-safety-reviews", 1, "/food-safety"],
+      ["food-safety-exceptions", 1, "/food-safety?dashboard=food-safety-exceptions-v1"],
+      ["food-safety-reviews", 1, "/food-safety?dashboard=food-safety-reviews-v1"],
       ["open-operational-incidents", 1, "/incidents"],
       ["maintenance-follow-up", 1, "/maintenance"]
     ]);

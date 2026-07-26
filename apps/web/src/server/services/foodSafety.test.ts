@@ -7,7 +7,16 @@ import {
   closeFoodSafetyLog,
   createFoodSafetyLog,
   filterFoodSafetyLogs,
+  foodSafetyDashboardProfileHref,
+  foodSafetyDashboardProfilePageHref,
+  foodSafetyDashboardProfileWhere,
+  foodSafetyLogDetailHref,
+  getFoodSafetyDashboardRead,
+  listFoodSafetyLogPage,
   listFoodSafetyMyTaskPage,
+  resolveFoodSafetyDashboardProfile,
+  resolveFoodSafetyDashboardRequest,
+  resolveFoodSafetyProfileReturnTo,
   reviewFoodSafetyLog,
   returnFoodSafetyLogForCorrection,
   type FoodSafetyLogSummary
@@ -18,9 +27,18 @@ const mockPrisma = vi.hoisted(() => ({
   userRoleAssignment: {
     findMany: vi.fn()
   },
-  foodSafetyLog: {
-    count: vi.fn(),
+  user: {
     findMany: vi.fn()
+  },
+  foodSafetyLog: {
+    aggregate: vi.fn(),
+    count: vi.fn(),
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+    groupBy: vi.fn()
+  },
+  foodSafetyReading: {
+    count: vi.fn()
   }
 }));
 const mockContext = vi.hoisted(() => ({
@@ -1104,5 +1122,105 @@ describe("Phase 2 food safety foundation", () => {
         status: "ALL"
       }).map((log) => log.id)
     ).toEqual(["safety-1", "safety-2"]);
+  });
+
+  it("resolves only versioned Food Safety dashboard profiles and canonical navigation", () => {
+    expect(resolveFoodSafetyDashboardProfile("food-safety-exceptions-v1")).toBe("food-safety-exceptions-v1");
+    expect(resolveFoodSafetyDashboardProfile("food-safety-reviews-v1")).toBe("food-safety-reviews-v1");
+    expect(resolveFoodSafetyDashboardProfile("food-safety-reviews-v0")).toBeNull();
+    expect(foodSafetyDashboardProfileHref("food-safety-reviews-v1")).toBe("/food-safety?dashboard=food-safety-reviews-v1");
+    expect(resolveFoodSafetyDashboardRequest("food-safety-reviews-v0", "safe")).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
+    expect(resolveFoodSafetyDashboardRequest("", "safe")).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
+    expect(resolveFoodSafetyDashboardRequest(["food-safety-reviews-v1", "food-safety-reviews-v0"], "safe")).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
+    expect(resolveFoodSafetyDashboardRequest("food-safety-reviews-v1", "x".repeat(121))).toMatchObject({ profile: "food-safety-reviews-v1", error: "SEARCH_INVALID" });
+    expect(foodSafetyDashboardProfilePageHref("food-safety-reviews-v1", { query: " Exception Review ", page: 2 })).toBe("/food-safety?dashboard=food-safety-reviews-v1&q=exception+review&page=2");
+  });
+
+  it("accepts only canonical profile returns and safely encodes detail navigation", () => {
+    const safeReturn = "/food-safety?dashboard=food-safety-reviews-v1&q=exception+review&page=2";
+    expect(resolveFoodSafetyProfileReturnTo(safeReturn)).toBe(safeReturn);
+    for (const attack of [
+      "/food-safety",
+      "/food-safety?dashboard=food-safety-reviews-v0",
+      "/food-safety?dashboard=food-safety-reviews-v1&next=/admin",
+      "/food-safety?dashboard=food-safety-reviews-v1&dashboard=food-safety-exceptions-v1",
+      "//evil.test/food-safety?dashboard=food-safety-reviews-v1",
+      "https://ogfi.invalid/food-safety?dashboard=food-safety-reviews-v1",
+      "/food-safety?dashboard=food-safety-reviews-v1#evil",
+      "/food-safety?dashboard=food-safety-reviews-v1\\evil"
+    ]) expect(resolveFoodSafetyProfileReturnTo(attack)).toBeNull();
+    expect(foodSafetyLogDetailHref("log-1", safeReturn)).toBe(`/food-safety/log-1?returnTo=${encodeURIComponent(safeReturn)}`);
+  });
+
+  it("builds exact selected-scope predicates including nullable brand scope", () => {
+    expect(foodSafetyDashboardProfileWhere(session as never, "food-safety-exceptions-v1")).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      exceptionCount: { gt: 0 }
+    });
+    expect(foodSafetyDashboardProfileWhere({ ...session, context: { ...session.context, brandId: null } } as never, "food-safety-reviews-v1")).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      locationId: session.context.locationId,
+      status: { in: ["SUBMITTED", "EXCEPTION_REVIEW"] }
+    });
+  });
+
+  it("rejects invalid profile requests before any database query", async () => {
+    vi.clearAllMocks();
+    await expect(listFoodSafetyLogPage(session as never, {}, { dashboardProfile: "food-safety-reviews-v0" as never })).rejects.toThrow("FOOD_SAFETY_DASHBOARD_PROFILE_INVALID");
+    await expect(listFoodSafetyLogPage(session as never, {}, { dashboardProfile: "" as never })).rejects.toThrow("FOOD_SAFETY_DASHBOARD_PROFILE_INVALID");
+    await expect(listFoodSafetyLogPage(session as never, { q: "x".repeat(121) }, { dashboardProfile: "food-safety-reviews-v1" })).rejects.toThrow("FOOD_SAFETY_DASHBOARD_SEARCH_INVALID");
+    expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.foodSafetyLog.count).not.toHaveBeenCalled();
+    expect(mockPrisma.foodSafetyLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps raw filters from widening exception membership and preserves exception grain", async () => {
+    vi.clearAllMocks();
+    mockPrisma.foodSafetyLog.count.mockResolvedValue(1);
+    mockPrisma.foodSafetyLog.aggregate.mockResolvedValue({ _sum: { exceptionCount: 4 } });
+    mockPrisma.foodSafetyLog.findMany.mockResolvedValue([{ id: "00000000-0000-4000-8000-000000000501", title: "Opening temperature", businessDate: new Date("2026-07-26T00:00:00.000Z"), logType: "TEMPERATURE", status: "EXCEPTION_OPEN", recordedByUserId: null, reviewedByUserId: null, reviewedAt: null, exceptionCount: 4, location: { name: "SM North Edsa" }, readings: [] }]);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+    await expect(listFoodSafetyLogPage(session as never, { type: "CLOSING", status: "CLOSED", businessDate: "1900-01-01" }, { dashboardProfile: "food-safety-exceptions-v1" })).resolves.toMatchObject({ totalItems: 1, signalTotal: 4 });
+    const countWhere = mockPrisma.foodSafetyLog.count.mock.calls[0]![0].where;
+    const pageWhere = mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0].where;
+    expect(pageWhere).toEqual(countWhere);
+    expect(countWhere).toMatchObject({ tenantId: session.context.tenantId, companyId: session.context.companyId, brandId: session.context.brandId, locationId: session.context.locationId, exceptionCount: { gt: 0 } });
+    expect(countWhere).not.toHaveProperty("status");
+    expect(countWhere).not.toHaveProperty("logType");
+    expect(countWhere).not.toHaveProperty("businessDate");
+  });
+
+  it("keeps review count/list parity and clamps stable pagination", async () => {
+    vi.clearAllMocks();
+    mockPrisma.foodSafetyLog.count.mockResolvedValue(60);
+    mockPrisma.foodSafetyLog.findMany.mockResolvedValue([]);
+    await expect(listFoodSafetyLogPage(session as never, { type: "SANITATION", status: "CLOSED", businessDate: "1900-01-01" }, { dashboardProfile: "food-safety-reviews-v1", page: 99, pageSize: 25 })).resolves.toMatchObject({ page: 3, totalItems: 60, totalPages: 3, signalTotal: 60 });
+    const countWhere = mockPrisma.foodSafetyLog.count.mock.calls[0]![0].where;
+    const pageCall = mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0];
+    expect(pageCall.where).toEqual(countWhere);
+    expect(countWhere).toMatchObject({ status: { in: ["SUBMITTED", "EXCEPTION_REVIEW"] } });
+    expect(countWhere).not.toHaveProperty("logType");
+    expect(countWhere).not.toHaveProperty("businessDate");
+    expect(pageCall).toMatchObject({ skip: 50, take: 25, orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }] });
+  });
+
+  it("uses the shared review predicate for the exact dashboard count", async () => {
+    vi.clearAllMocks();
+    mockPrisma.foodSafetyLog.aggregate.mockResolvedValue({ _sum: { exceptionCount: 4 } });
+    mockPrisma.foodSafetyLog.groupBy.mockResolvedValue([]);
+    mockPrisma.foodSafetyLog.count.mockResolvedValueOnce(7).mockResolvedValueOnce(3);
+    mockPrisma.foodSafetyLog.findFirst.mockResolvedValue(null);
+    mockPrisma.foodSafetyReading.count.mockResolvedValue(0);
+    mockPrisma.foodSafetyLog.findMany.mockResolvedValue([]);
+    await expect(getFoodSafetyDashboardRead(session as never)).resolves.toMatchObject({ totalLogs: 7, reviewReadyLogCount: 3, exceptionCount: 4 });
+    expect(mockPrisma.foodSafetyLog.aggregate.mock.calls[0]![0].where).toEqual(
+      foodSafetyDashboardProfileWhere(session as never, "food-safety-exceptions-v1")
+    );
+    expect(mockPrisma.foodSafetyLog.count.mock.calls[1]![0].where).toEqual(foodSafetyDashboardProfileWhere(session as never, "food-safety-reviews-v1"));
+    expect(mockPrisma.foodSafetyLog.findMany.mock.calls[0]![0].where).toEqual(mockPrisma.foodSafetyLog.count.mock.calls[1]![0].where);
   });
 });
