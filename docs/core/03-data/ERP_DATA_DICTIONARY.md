@@ -577,6 +577,7 @@ Current Phase I scaffold implements the quantity-only inventory ledger foundatio
 | `lot_number`, `expiry_date`                                                                        |    Conditional | Part of identity where tracked. Future movement posting persists trimmed nonblank lot text or null; existing legacy balance rows are not rewritten. |
 | `reserved_quantity_base_uom`                                                                       |            Yes | Defaults to zero in Phase I.                    |
 | `last_movement_at`, `last_reconciled_at`, `status`                                                 | Yes / No / Yes | Status: active, quarantined, expired, inactive. |
+| `updated_at`                                                                                        |            Yes | Mutable cache lifecycle metadata. It is not authoritative inventory-event or movement occurrence time and must not drive recent-activity dashboard/report claims. |
 
 ### 9.5 Transfer Order and Line
 

@@ -1282,8 +1282,7 @@ describe("procurement and inventory authorization boundaries", () => {
           totalRows: 7,
           positiveRows: 2,
           zeroRows: 2,
-          lotExpiryTrackedRows: 5,
-          recentlyUpdatedRows: 5
+          lotExpiryTrackedRows: 5
         });
 
         const profilePage = await listInventoryBalancePage(

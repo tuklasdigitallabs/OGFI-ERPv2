@@ -37,7 +37,6 @@ const metricIcons = {
   "active-stock-rows": Boxes,
   "zero-stock-rows": AlertTriangle,
   "lot-expiry-data": Database,
-  "recent-stock-updates": ClipboardCheck,
   "sales-source": BarChart3,
   "inventory-value-source": Boxes
 };
@@ -692,7 +691,7 @@ function DashboardOverview({ dashboard }: { dashboard: DashboardData }) {
               View Inventory
             </ButtonLink>
           </div>
-          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 p-4 md:grid-cols-3">
             {dashboard.stockHealth.map((metric) => (
               <MetricCard key={metric.id} metric={metric} />
             ))}

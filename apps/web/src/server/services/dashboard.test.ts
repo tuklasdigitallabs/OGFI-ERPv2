@@ -156,8 +156,7 @@ describe("operational dashboard model", () => {
               totalRows: 0,
               positiveRows: 0,
               zeroRows: 0,
-              lotExpiryTrackedRows: 0,
-              recentlyUpdatedRows: 0
+              lotExpiryTrackedRows: 0
             }
           },
           dataAsOf: "2026-07-22T23:00:00.000Z"
@@ -229,6 +228,9 @@ describe("operational dashboard model", () => {
       id: "lot-expiry-data",
       detail: "Balance rows with a non-blank lot number or an expiry date",
       href: "/inventory?dashboard=lot-expiry-data-v1"
+    }));
+    expect(dashboard.stockHealth).not.toContainEqual(expect.objectContaining({
+      id: "recent-stock-updates"
     }));
     expect(dashboard.sourceObservations[0]).toMatchObject({
       id: "inventory-balances",

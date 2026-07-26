@@ -80,6 +80,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - Notification history follows the company and location currently selected in the header. Changing company or location does not expose or allow read/archive changes to alerts from another scope, and revoked scope access removes that history from the current view.
 - Manual reminder scans show scanned/reminder counts and create notifications only for records the user is already authorized to see.
 - Food Cost is intentionally not summarized on Overview while its business-date, missing-valuation, and status definitions are under review. If authorized, open `Food Cost Analysis` from its neutral source-workspace link and verify the selected date and evidence there.
+- Overview does not show an `Updated this week` or recent stock-updates total. A balance row's update time is mutable cache metadata and does not provide a reliable inventory-movement activity measure or an exact dashboard drilldown. Authorized users can still open ordinary `Inventory → Stock Balances` and `Inventory → Ledger` under their existing permissions.
 
 ## Important Controls And Warnings
 
@@ -109,6 +110,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - When the dashboard says the approval preview is unavailable, do not infer a zero-approval result. `Approval Inbox` is also unavailable while normalized routing is disabled and exposes no complete queue or action path. `Scan Approvals` may create current-user reminders for eligible due or overdue work, but those links remain unavailable and the scan does not disclose every pending approval. Follow the workflow owner for release guidance; there is no hidden legacy action queue and the unavailable state does not change who can approve a record.
 - Notifications are reminders or alerts; the source record remains the controlling record.
 - Restaurant Operations scans do not create new Food Cost exception notifications while the Food Cost definitions are under review. An older Food Cost notification remains part of history; its stored value or status is not a current trusted instruction, so verify current evidence in Food Cost Analysis before acting.
+- Do not interpret the absence of a recent stock-updates card as zero inventory activity. No movement-based replacement card or activity definition is currently approved; use the Inventory Ledger when your role and selected scope permit it.
 - `Scan Approvals` and `Scan Reminders` are manual in-app reminder tools. They do not approve, reject, post, receive, close, reverse, or escalate authority.
 - Project tasks may link to ERP records, but completing a task does not approve a PR/PO, receive stock, post inventory, or change finance records.
 - If a card or notification is missing, check location, permission, scope, and filters.

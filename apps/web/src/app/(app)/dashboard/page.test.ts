@@ -109,3 +109,11 @@ describe("DEC-0072 dashboard source observation presentation", () => {
     expect(loadingSource).toContain("xl:grid-cols-2");
   });
 });
+
+describe("DEC-0234 stock balance signal suppression", () => {
+  it("uses a balanced responsive three-profile strip without the cache-recency card", () => {
+    expect(source).toContain('className="grid gap-3 p-4 md:grid-cols-3"');
+    expect(source).not.toContain('"recent-stock-updates"');
+    expect(source).not.toContain("Updated this week");
+  });
+});

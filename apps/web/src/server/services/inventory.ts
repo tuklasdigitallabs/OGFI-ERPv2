@@ -140,7 +140,6 @@ export type InventoryBalanceDashboardRead = {
   positiveRows: number;
   zeroRows: number;
   lotExpiryTrackedRows: number;
-  recentlyUpdatedRows: number;
 };
 
 export const inventoryBalanceDashboardProfiles = [
@@ -1479,7 +1478,6 @@ export async function getInventoryBalanceDashboardRead(
 ): Promise<InventoryBalanceDashboardRead> {
   await requirePermission(session, permissions.inventoryBalanceView);
   const scope = inventoryBalanceDashboardScope(session);
-  const recentlyUpdatedAfter = new Date(Date.now() - 7 * 86_400_000);
   const [rows, positiveRows, zeroRows, lotExpiryTrackedRows] = await Promise.all([
     prisma.$queryRaw<InventoryBalanceDashboardRead[]>`
       SELECT COUNT(*)::integer AS "totalRows",
@@ -1487,10 +1485,7 @@ export async function getInventoryBalanceDashboardRead(
              COUNT(*) FILTER (WHERE balance."qtyOnHand" = 0)::integer AS "zeroRows",
              COUNT(*) FILTER (
                WHERE balance."lotNumber" IS NOT NULL OR balance."expiryDate" IS NOT NULL
-             )::integer AS "lotExpiryTrackedRows",
-             COUNT(*) FILTER (
-               WHERE balance."updatedAt" >= ${recentlyUpdatedAfter}
-             )::integer AS "recentlyUpdatedRows"
+             )::integer AS "lotExpiryTrackedRows"
         FROM "InventoryBalance" balance
         JOIN "InventoryLocation" inventory_location
           ON inventory_location."id" = balance."inventoryLocationId"
@@ -1529,8 +1524,7 @@ export async function getInventoryBalanceDashboardRead(
     totalRows: 0,
     positiveRows: 0,
     zeroRows: 0,
-    lotExpiryTrackedRows: 0,
-    recentlyUpdatedRows: 0
+    lotExpiryTrackedRows: 0
   };
   return { ...aggregate, positiveRows, zeroRows, lotExpiryTrackedRows };
 }

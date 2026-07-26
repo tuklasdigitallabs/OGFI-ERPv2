@@ -70,7 +70,7 @@ The interface must make the following immediately visible:
 4. Transfer status
 5. Count task status
 6. Variance / wastage exceptions
-7. Recent stock movements
+7. Recent stock movement signal — suppressed pending an approved immutable-movement profile
 
 ### Primary actions
 
@@ -79,6 +79,13 @@ The interface must make the following immediately visible:
 - Start Count
 - Submit Wastage
 - Review Exceptions
+
+`DEC-0234` suppresses the former Overview `Updated this week` / recent-stock-updates
+signal. `InventoryBalance.updatedAt` is mutable cache metadata and must not be shown
+as authoritative movement time or linked to generic `/inventory`. The Inventory
+Ledger remains the independently authorized movement history. No replacement recent-
+activity profile is approved until occurrence timestamp, rolling/calendar period,
+week/timezone boundary, movement/document grain, and ledger permission are confirmed.
 
 ### Action queue priority
 

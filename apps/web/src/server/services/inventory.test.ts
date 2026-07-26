@@ -53,7 +53,9 @@ describe("inventory ledger foundation rules", () => {
     expect(source).toContain("await requirePermission(session, permissions.inventoryBalanceView)");
     expect(source).toContain('FROM "InventoryBalance" balance');
     expect(source).toContain('inventory_location."status" = \'ACTIVE\'');
+    expect(source).not.toContain("recentlyUpdatedRows");
     expect(dashboardSource).toContain("getInventoryBalanceDashboardRead(session)");
+    expect(dashboardSource).not.toContain("recent-stock-updates");
     expect(dashboardSource).not.toContain("listInventoryBalances(session)");
   });
 

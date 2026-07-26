@@ -871,14 +871,6 @@ export function buildOperationalDashboardModel(
         detail: "Balance rows with a non-blank lot number or an expiry date",
         href: inventoryBalanceDashboardProfileHref("lot-expiry-data-v1"),
         tone: inventoryBalanceDashboard.lotExpiryTrackedRows > 0 ? "info" : "neutral"
-      },
-      {
-        id: "recent-stock-updates",
-        label: "Updated this week",
-        displayValue: number(inventoryBalanceDashboard.recentlyUpdatedRows),
-        detail: "Inventory balances touched in the last 7 days",
-        href: "/inventory",
-        tone: inventoryBalanceDashboard.recentlyUpdatedRows > 0 ? "info" : "neutral"
       }
     );
   }
