@@ -3,13 +3,13 @@
 **Audience / required role:** Approvers, managers, operations, finance, and support administrators  
 **Applies to:** Purchase Requests, Purchase Orders, quotation recommendations, wastage reports, stock adjustments, and other approval-backed records  
 **Related phase/module:** Phase I / Approval Controls  
-**Last verified against:** implemented Approval Inbox, multi-step routing, live authority revalidation, assignment, scope, self-approval, outcome notifications, required remarks, and concurrent decision controls
+**Last verified against:** feature-disabled Approval Inbox state and implemented multi-step routing, live authority revalidation, assignment, scope, self-approval, outcome notifications, required remarks, and concurrent decision controls
 
 ## Purpose
 
 Use this article when an approval button is missing, an approval action fails, or a user cannot find an expected approval in `Approval Inbox`.
 
-If Approval Inbox says it is unavailable, normalized approval routing is disabled in the current environment. This is not a zero-approval result; no approval action is exposed until the documented routing, database, authorization, and release gates are accepted. Follow the assigned source-workflow owner’s instructions rather than retrying a hidden legacy queue.
+If Approval Inbox says it is unavailable, normalized approval routing is disabled in the current environment. This is not a zero-approval result; no approval action is exposed until the documented routing, database, authorization, and release gates are accepted. `Scan Approvals` may create a reminder for eligible due or overdue work, but its approval link remains unavailable and the scan is not a complete queue. Follow the assigned source-workflow owner’s instructions rather than retrying a hidden legacy action queue.
 
 Approval access is more specific than module access. A user must have the right permission, be assigned to the current approval step, have approval scope for the record location, and pass segregation-of-duties checks.
 
@@ -21,7 +21,7 @@ Approval access is more specific than module access. A user must have the right 
 
 ## Navigation Path
 
-`Approval Inbox -> Pending decisions -> Review`
+After normalized routing is activated: `Approval Inbox -> Pending decisions -> Review`
 
 ## Common Reasons
 
@@ -39,8 +39,8 @@ Approval access is more specific than module access. A user must have the right 
 
 ## Steps
 
-1. Open `Approval Inbox`.
-2. Confirm the record appears in `Pending decisions`.
+1. Open `Approval Inbox`. If it says it is unavailable, stop and follow the source-workflow owner’s release guidance.
+2. When the Inbox is available, confirm the record appears in `Pending decisions`.
 3. Open `Review`.
 4. Confirm the owner, location, current step, required date, item, quantity, amount, evidence, and policy flags.
 5. Use the correct action: approve, return for revision, or reject.
@@ -65,7 +65,7 @@ Approval access is more specific than module access. A user must have the right 
 - Do not change a requester, creator, or preparer just to bypass self-approval.
 - Do not bypass approval by directly editing the source record.
 - Return and reject require remarks so the next user has an auditable instruction.
-- An intermediate approval does not finalize the record. The source record remains pending approval, and the next eligible approver is notified.
+- An intermediate approval does not finalize the record. The source record remains pending approval. A direct-user next step may create one personal step-ready notification; a role-scoped step creates none and depends on the activated Inbox for complete actionable discovery. The manual due/overdue reminder scan is partial and non-actionable while the Inbox is unavailable.
 - A notification is a convenience signal, not approval authority. For a role-scoped step, current eligibility is determined from the active step plus live role, permission, scope, effective-date, active-resource, and prohibited-actor checks; an eligible item may be available without a personal notification after the controlled rollout is enabled.
 - Final approval, return, or rejection notifies the requester or responsible owner according to the source workflow.
 - Purchase Requests, Purchase Orders, quotation recommendations, Wastage Reports, and Stock Adjustments use the same current-step authority and concurrent-decision safeguards in the implemented approval flow.
@@ -75,7 +75,7 @@ Approval access is more specific than module access. A user must have the right 
 ## Expected Result
 
 - A still-valid assigned approver can complete the current decision once.
-- If more approval steps remain, the record stays pending and the next eligible approver receives the task notification.
+- If more approval steps remain, the record stays pending. A direct-user assignee may receive one task notification; a role-scoped assignee receives no personal notification and discovers the work through the Inbox only after activation.
 - If the route ends through final approval, return, or rejection, the requester or responsible owner receives the outcome notification.
 - A stale, reassigned, revoked, out-of-scope, duplicate, or losing concurrent action is denied without overwriting the accepted decision.
 

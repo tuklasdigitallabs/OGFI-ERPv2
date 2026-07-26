@@ -3,13 +3,15 @@
 **Audience / required role:** Assigned approvers, managers, operations, finance, and authorized users with scoped approval access  
 **Applies to:** Assigned approval queue and authorized company/location scope  
 **Related phase/module:** Phase I / Purchase Request Approvals  
-**Last verified against:** implemented Approval Inbox, multi-step Purchase Request approval, return, reject, assignment, live authority, notification, self-approval, scope, and audit controls
+**Last verified against:** feature-disabled Approval Inbox state and implemented multi-step Purchase Request approval, return, reject, assignment, live authority, notification, self-approval, scope, and audit controls
 
 ## Purpose
 
 Use this article to review a submitted Purchase Request and decide whether to approve it, return it for revision, or reject it.
 
 Approval actions must be made from the approval workflow with enough request context. A Purchase Request approval does not create a Purchase Order, receive stock, or update inventory.
+
+> **Current availability:** Normalized approval routing is not activated. When `Approval Inbox` shows `Approval Inbox unavailable`, it exposes neither a complete queue nor approval actions. `Scan Approvals` may create a current-user reminder for eligible due or overdue work, but its approval link remains unavailable and it does not list every pending approval. Do not interpret silence as zero pending approvals. Follow the workflow owner for release guidance; there is no hidden legacy action queue.
 
 ## Before You Start
 
@@ -21,12 +23,12 @@ Approval actions must be made from the approval workflow with enough request con
 
 ## Navigation Path
 
-`Approval Inbox -> Review`
+After normalized routing is activated: `Approval Inbox -> Review`
 
 ## Steps
 
-1. Open `Approval Inbox`.
-2. Review the `Pending decisions` list.
+1. Open `Approval Inbox`. If it shows `Approval Inbox unavailable`, stop and follow the workflow owner for release guidance.
+2. When the Inbox is available, review the `Pending decisions` list.
 3. Select `Review` for the Purchase Request.
 4. Confirm the requester, location, required date, quantity, UOM, line description, and justification.
 5. Review comments, evidence indicators, policy flags, and audit history where shown.
@@ -39,7 +41,7 @@ Approval actions must be made from the approval workflow with enough request con
 
 ## Expected Result
 
-- If another configured approval step remains, approving completes only your step. The Purchase Request stays `PENDING_APPROVAL`, the next step becomes current, and the next eligible approver receives an in-app notification.
+- If another configured approval step remains, approving completes only your step. The Purchase Request stays `PENDING_APPROVAL` and the next step becomes current. A direct-user assignee may receive one in-app notification; a role-scoped step creates no personal notification and depends on the activated Inbox for discovery.
 - If your step is the final configured step, approving moves the Purchase Request from `PENDING_APPROVAL` to `APPROVED` and notifies the requester.
 - Returning moves the request to `RETURNED` so the requester can reopen it as draft, correct it, and resubmit.
 - Rejecting moves the request to `REJECTED`.
@@ -49,7 +51,7 @@ Approval actions must be made from the approval workflow with enough request con
 ## Important Controls And Warnings
 
 - Approval permissions are not blanket approval authority. The approval engine assignment and scope checks still apply.
-- The server checks your current account status, session, permission, assignment, and approval scope again when it processes the decision. If your access or assignment changed after you opened the page, the action can be denied; refresh `Approval Inbox` instead of retrying from an old page.
+- The server checks your current account status, session, permission, assignment, and approval scope again when it processes the decision. If your access or assignment changed after you opened the page, the action can be denied; when the Inbox is available, refresh it instead of retrying from an old page.
 - Self-approval is blocked server-side.
 - Out-of-scope approval is blocked even if a link is opened directly.
 - Return and reject remarks are required so the requester has an auditable next step.
@@ -67,7 +69,7 @@ Approval actions must be made from the approval workflow with enough request con
 
 ## What Happens Next
 
-- After an intermediate approval, the next eligible approver continues the configured route from `Approval Inbox`.
+- After an intermediate approval, the next eligible approver continues the configured route from `Approval Inbox` once normalized routing is activated.
 - After final approval, the request becomes available to the authorized Purchasing workflow. Approval does not create a Purchase Order automatically.
 - After a return, the requester corrects the request and resubmits it.
 - After a rejection, the approval route ends and the requester can review the decision and remarks.

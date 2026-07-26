@@ -56,7 +56,7 @@ Low stock must not automatically create a PO. If warehouse stock is available, u
 - The system creates an approval instance using the configured Purchase Request approval rule.
 - Emergency requests show SLA status, captured support details, and estimated request value on the request and approval views.
 - After an emergency request reaches an approved, rejected, or cancelled outcome, an authorized reviewer can complete the emergency post-review with an outcome, reason, and evidence reference.
-- A direct-user assignee may receive one in-app approval notification. For a role-scoped first step, no personal notification is created; eligible approvers find the request in the live Approval Inbox. A notification is a convenience signal, not approval authority.
+- A direct-user assignee may receive one in-app step-ready notification. For a role-scoped first step, no personal step-ready notification is created. Eligible approvers will find the complete actionable queue in normalized `Approval Inbox` only after it is activated. While the Inbox is unavailable, `Scan Approvals` may create a current-user reminder for eligible due or overdue work, but it is partial and its approval link cannot be acted on. Follow the workflow owner for release guidance instead of treating silence as no pending work. A notification is a convenience signal, not approval authority.
 - Audit history records creation, submission, comments, cancellation, emergency post-review, and later approval actions.
 
 ## Status Guide

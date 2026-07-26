@@ -51,6 +51,42 @@ const families = [
 type InitialFamily = (typeof families)[number];
 type AssignmentMode = "DIRECT_USER" | "ROLE_SCOPED";
 
+const dec0078ConcurrencyFamilies = [
+  "PurchaseRequest",
+  "QuotationRecommendation",
+  "PurchaseOrderBalanceClosure",
+] as const satisfies readonly InitialFamily[];
+
+const dec0078ExpectedLoserError = {
+  PurchaseRequest: "INVALID_STATUS_TRANSITION",
+  QuotationRecommendation: "QUOTATION_RECOMMENDATION_ALREADY_SUBMITTED",
+  PurchaseOrderBalanceClosure: "PURCHASE_ORDER_CLOSURE_ALREADY_PENDING",
+} as const satisfies Record<(typeof dec0078ConcurrencyFamilies)[number], string>;
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+async function waitForBlockedPid(blockerPid: number, excludedPids: number[] = []) {
+  const deadline = Date.now() + 4_000;
+  while (Date.now() < deadline) {
+    const rows = await prisma.$queryRaw<Array<{ pid: number }>>`
+      SELECT activity.pid
+        FROM pg_stat_activity activity
+       WHERE activity.datname = current_database()
+         AND activity.pid <> pg_backend_pid()
+         AND ${blockerPid}::int = ANY(pg_blocking_pids(activity.pid))
+       ORDER BY activity.pid ASC
+    `;
+    const blocked = rows.find(({ pid }) => !excludedPids.includes(pid));
+    if (blocked) return blocked.pid;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`POSTGRES_BLOCKED_PID_NOT_OBSERVED:${blockerPid}`);
+}
+
 const approvalPermissionByFamily = {
   PurchaseRequest: permissions.purchaseRequestApprove,
   QuotationRecommendation: permissions.quoteApprove,
@@ -699,7 +735,7 @@ describe.skipIf(!runPg).sequential(
         [family, "ROLE_SCOPED"],
       ] as const),
     )(
-      "%s / %s preserves flag-off inbox visibility and bounded notification cardinality",
+      "%s / %s preserves flag-off live eligibility and bounded notification cardinality",
       async (family, assignmentMode) => {
         const fixture = await createInitialFixture(family, assignmentMode);
         await executeInitialSubmission(fixture);
@@ -835,6 +871,148 @@ describe.skipIf(!runPg).sequential(
           },
         })).toBe(1);
       },
+    );
+
+    test.each(dec0078ConcurrencyFamilies)(
+      "%s DEC-0078 concurrent initial activation has one complete winner for direct and role assignment",
+      async (family) => {
+        for (const assignmentMode of ["DIRECT_USER", "ROLE_SCOPED"] as const) {
+          const fixture = await createInitialFixture(family, assignmentMode);
+          const sourceLocked = deferred();
+          const releaseSource = deferred();
+          let blockerPid = 0;
+          const blocker = prisma.$transaction(async (tx) => {
+            [{ pid: blockerPid }] = await tx.$queryRaw<Array<{ pid: number }>>`
+              SELECT pg_backend_pid() AS pid
+            `;
+            if (family === "PurchaseRequest") {
+              await tx.$queryRaw`
+                SELECT request.id
+                  FROM "PurchaseRequest" request
+                 WHERE request.id = ${fixture.purchaseRequestId}::uuid
+                 FOR UPDATE
+              `;
+            } else if (family === "QuotationRecommendation") {
+              await tx.$queryRaw`
+                SELECT recommendation.id
+                  FROM "QuotationRecommendation" recommendation
+                 WHERE recommendation.id = ${fixture.recommendationId}::uuid
+                 FOR UPDATE
+              `;
+            } else {
+              await tx.$queryRaw`
+                SELECT purchase_order.id
+                  FROM "PurchaseOrder" purchase_order
+                 WHERE purchase_order.id = ${fixture.purchaseOrderId}::uuid
+                 FOR UPDATE
+              `;
+            }
+            sourceLocked.resolve();
+            await releaseSource.promise;
+          });
+          await sourceLocked.promise;
+
+          const firstSubmission = executeInitialSubmission(fixture);
+          let secondSubmission: ReturnType<typeof executeInitialSubmission> | undefined;
+          try {
+            const firstPid = await waitForBlockedPid(blockerPid);
+            secondSubmission = executeInitialSubmission(fixture);
+            await waitForBlockedPid(firstPid, [blockerPid]);
+          } finally {
+            releaseSource.resolve();
+          }
+          const [firstResult, secondResult, blockerResult] = await Promise.allSettled([
+            firstSubmission,
+            secondSubmission!,
+            blocker,
+          ]);
+          expect(blockerResult.status).toBe("fulfilled");
+          const results = [firstResult, secondResult];
+
+          expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+          expect(results.filter(({ status }) => status === "rejected")).toHaveLength(1);
+          const rejectedResult = results.find(({ status }) => status === "rejected");
+          expect(rejectedResult?.status).toBe("rejected");
+          if (rejectedResult?.status === "rejected") {
+            expect(rejectedResult.reason).toBeInstanceOf(Error);
+            expect((rejectedResult.reason as Error).message).toBe(
+              dec0078ExpectedLoserError[family],
+            );
+          }
+
+          expect(await sourceState(fixture)).toBe(
+            family === "PurchaseOrderBalanceClosure"
+              ? "PARTIALLY_RECEIVED:1"
+              : "PENDING_APPROVAL",
+          );
+
+          const approvals = await prisma.approvalInstance.findMany({
+            where: {
+              tenantId: fixture.tenantId,
+              companyId: fixture.companyId,
+              documentType: family,
+              status: "PENDING",
+            },
+            include: { steps: { orderBy: { stepOrder: "asc" } } },
+          });
+          expect(approvals).toHaveLength(1);
+          const approval = approvals[0]!;
+          expect(approval).toMatchObject({ currentStepOrder: 1 });
+          expect(approval.steps).toHaveLength(1);
+          expect(approval.steps[0]).toMatchObject({
+            stepOrder: 1,
+            status: "PENDING",
+            assignedUserId:
+              assignmentMode === "DIRECT_USER" ? fixture.approverUserId : null,
+          });
+          expect(approval.steps[0]?.activatedAt).toBeInstanceOf(Date);
+          if (assignmentMode === "ROLE_SCOPED") {
+            expect(approval.steps[0]?.assignedRoleId).not.toBeNull();
+          }
+
+          const notifications = await prisma.notification.findMany({
+            where: {
+              tenantId: fixture.tenantId,
+              companyId: fixture.companyId,
+              notificationType: "APPROVAL_STEP_READY",
+            },
+          });
+          if (assignmentMode === "DIRECT_USER") {
+            expect(notifications).toHaveLength(1);
+            expect(notifications[0]).toMatchObject({
+              recipientUserId: fixture.approverUserId,
+              recipientBasis: "assigned_user",
+              sourceEventKey: `approval:${approval.id}:step:1:ready`,
+            });
+          } else {
+            expect(notifications).toHaveLength(0);
+          }
+
+          const auditEvents = await prisma.auditEvent.findMany({
+            where: {
+              tenantId: fixture.tenantId,
+              companyId: fixture.companyId,
+            },
+            select: { eventType: true, entityId: true },
+          });
+          expect(auditEvents).toHaveLength(2);
+          expect(auditEvents).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+              eventType: "approval.step_activated",
+              entityId: approval.steps[0]!.id,
+            }),
+            expect.objectContaining({
+              eventType:
+                family === "PurchaseRequest"
+                  ? "purchase_request.submitted"
+                  : family === "QuotationRecommendation"
+                    ? "quotation_recommendation.submitted"
+                    : "purchase_order_balance_closure.requested",
+            }),
+          ]));
+        }
+      },
+      30_000,
     );
   },
 );

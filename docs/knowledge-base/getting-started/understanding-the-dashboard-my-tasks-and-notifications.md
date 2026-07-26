@@ -3,7 +3,7 @@
 **Audience / required role:** All operational users, managers, approvers, and project users  
 **Applies to:** Operations Dashboard, My Tasks, My Work, Approval Inbox, and Notifications
 **Related phase/module:** Phase I and Phase 1.5 / Operational Visibility  
-**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Checklist Reviews, Food Safety Exceptions, Food Safety Reviews, Incident drilldowns, and Maintenance drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
+**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Checklist Reviews, Food Safety Exceptions, Food Safety Reviews, Incident drilldowns, and Maintenance drilldowns; feature-disabled Approval Inbox; project My Work; and scoped in-app notifications
 
 ## Purpose
 
@@ -17,7 +17,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 |---|---|
 | `Operations Dashboard` | Read-only Phase I visibility from scoped source records. |
 | `My Tasks` | The paginated operational action queue currently enrolled for your selected scope. It opens the source record; it does not perform the action itself. It is not yet a complete cross-module filtered task list. |
-| `Approval Inbox` | Assigned approval decisions for controlled records. |
+| `Approval Inbox` | Assigned approval decisions after normalized routing is activated. It currently shows an unavailable state and no queue. |
 | `My Work` | Assigned project tracker work, task status, blockers, and due dates. |
 | `Notifications` | Scoped in-app alerts for approval assignments, due/overdue approval reminders, project work, risks, milestones, and project deadline reminders. |
 
@@ -36,10 +36,10 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 11. Use `Food Safety Reviews` to inspect all scoped logs in `SUBMITTED` or `EXCEPTION REVIEW`. This is an oversight view, not a list of work personally assigned to you.
 12. Use `Open Incidents`, `Critical incidents`, `Incident review`, or `Incident overdue` to inspect its fixed read-only Incident population. These are overlapping oversight lenses, not totals to add together.
 13. Use `Maintenance Follow-up`, `Critical maintenance`, `Pending vendor`, or `Maintenance overdue` to inspect its fixed read-only Maintenance population. These are overlapping oversight lenses, not totals to add together.
-14. Open `Approval Inbox` to review assigned approval decisions.
+14. Open `Approval Inbox` to check availability. If it is unavailable, it exposes no queue or actions; do not infer that there are no pending approvals.
 15. Open `My Work` for project tasks assigned to you.
 16. Open `Notifications` to review unread or actionable alerts.
-17. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
+17. If you are an approver, use `Scan Approvals` to create current-user reminders for eligible due or overdue approvals. While Approval Inbox is unavailable, this scan is only a partial reminder mechanism: its links cannot open an approval action and it does not provide a complete queue.
 18. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
 19. Mark notifications read or archive them after handling the related source record.
 
@@ -74,7 +74,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - The four Maintenance profiles are read-only, selected-scope lenses that may overlap. Follow-up includes `OPEN`, `IN_PROGRESS`, and `PENDING_VENDOR`; Critical includes every critical-priority ticket across all statuses, including completed and cancelled history; Pending Vendor includes all scoped `PENDING_VENDOR` tickets and is not a personal assignment queue; Overdue includes active tickets whose target due date is before its saved cutoff and whose completion date is empty.
 - Maintenance profile Search is bounded to 120 characters and only searches visible ticket fields within the fixed population. Raw status, priority, requested-date, or other values cannot redefine it. Create and export are unavailable, unsupported profile context fails visibly, and ticket detail and actions preserve a safe return to the same profile.
 - A Maintenance overdue link is not a historical snapshot. The due-date cutoff stays fixed in the saved link, while current status, completion, cancellation, and corrected target dates determine the rows now. Cancelled tickets are excluded; an older link offers a route to the current overdue cutoff.
-- Approval Inbox shows records assigned to you or your active approval role.
+- After normalized routing is activated, Approval Inbox shows records assigned to you or your active approval role. It currently shows an unavailable state instead of a queue.
 - My Work shows project tasks according to project visibility and assignment.
 - Notifications show scoped alerts and links to the related work where available.
 - Notification history follows the company and location currently selected in the header. Changing company or location does not expose or allow read/archive changes to alerts from another scope, and revoked scope access removes that history from the current view.
@@ -106,7 +106,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - A role-pooled My Tasks item means your role may perform the displayed action in the selected scope. Another authorized user may complete it first, so the source record always rechecks its current status and your authority when opened.
 - An assigned Stock Count task may be started, entered, or submitted only by its recorded counter. A future-scheduled count cannot be started early. Blind-count system quantities, variances, reviewer facts, adjustment links, and variance-bearing audit history stay hidden from the assigned counter, even when that user also holds review permission.
 - A Purchase Request draft may only be submitted by its recorded requester. The system does not treat location read access as authority to submit another person’s request; submission on behalf requires a separate approved delegation workflow.
-- When the dashboard says the approval preview is unavailable, open `Approval Inbox` to see and act on controlled approval work. This is not a zero-approval result and does not change who can approve a record.
+- When the dashboard says the approval preview is unavailable, do not infer a zero-approval result. `Approval Inbox` is also unavailable while normalized routing is disabled and exposes no complete queue or action path. `Scan Approvals` may create current-user reminders for eligible due or overdue work, but those links remain unavailable and the scan does not disclose every pending approval. Follow the workflow owner for release guidance; there is no hidden legacy action queue and the unavailable state does not change who can approve a record.
 - Notifications are reminders or alerts; the source record remains the controlling record.
 - Restaurant Operations scans do not create new Food Cost exception notifications while the Food Cost definitions are under review. An older Food Cost notification remains part of history; its stored value or status is not a current trusted instruction, so verify current evidence in Food Cost Analysis before acting.
 - `Scan Approvals` and `Scan Reminders` are manual in-app reminder tools. They do not approve, reject, post, receive, close, reverse, or escalate authority.
