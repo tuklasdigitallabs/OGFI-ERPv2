@@ -10,6 +10,7 @@ import {
   getActionFeedback
 } from "@/server/services/actionFeedback";
 import {
+  canUseIncidents,
   canUseMaintenance,
   getDefaultAppRoute,
   permissions
@@ -20,7 +21,9 @@ import {
   cancelMaintenanceTicket,
   completeMaintenanceTicket,
   correctMaintenanceTicket,
-  getMaintenanceTicketDetail
+  getMaintenanceTicketDetail,
+  maintenanceDetailHref,
+  resolveMaintenanceProfileReturnTo
 } from "@/server/services/maintenance";
 
 export const dynamic = "force-dynamic";
@@ -35,43 +38,51 @@ const maintenanceCategories = [
 ] as const;
 const maintenancePriorities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 
+function formReturnTo(formData: FormData) {
+  const values = formData.getAll("returnTo");
+  return resolveMaintenanceProfileReturnTo(values.length === 1 ? values[0] : values);
+}
+
 async function completeMaintenanceTicketAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("ticketId"));
+  const returnTo = formReturnTo(formData);
   let ticketId: string;
   try {
     ticketId = await completeMaintenanceTicket(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/maintenance/${id}`, error));
+    redirect(actionErrorRedirectPath(maintenanceDetailHref(id, returnTo), error));
   }
-  redirect(`/maintenance/${ticketId}`);
+  redirect(maintenanceDetailHref(ticketId, returnTo));
 }
 
 async function cancelMaintenanceTicketAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("ticketId"));
+  const returnTo = formReturnTo(formData);
   let ticketId: string;
   try {
     ticketId = await cancelMaintenanceTicket(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/maintenance/${id}`, error));
+    redirect(actionErrorRedirectPath(maintenanceDetailHref(id, returnTo), error));
   }
-  redirect(`/maintenance/${ticketId}`);
+  redirect(maintenanceDetailHref(ticketId, returnTo));
 }
 
 async function correctMaintenanceTicketAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("ticketId"));
+  const returnTo = formReturnTo(formData);
   let ticketId: string;
   try {
     ticketId = await correctMaintenanceTicket(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/maintenance/${id}`, error));
+    redirect(actionErrorRedirectPath(maintenanceDetailHref(id, returnTo), error));
   }
-  redirect(`/maintenance/${ticketId}`);
+  redirect(maintenanceDetailHref(ticketId, returnTo));
 }
 
 function badgeTone(status: string, priority?: string) {
@@ -87,8 +98,10 @@ function badgeTone(status: string, priority?: string) {
   return "info" as const;
 }
 
-function sourceIncidentHref(sourceIncidentId: string | null) {
-  return sourceIncidentId ? `/incidents/${sourceIncidentId}` : null;
+function sourceIncidentHref(sourceIncidentId: string | null, permissionCodes: string[]) {
+  return sourceIncidentId && canUseIncidents(permissionCodes)
+    ? `/incidents/${sourceIncidentId}`
+    : null;
 }
 
 export default async function MaintenanceDetailPage({
@@ -120,8 +133,10 @@ export default async function MaintenanceDetailPage({
     session.permissionCodes.includes(permissions.maintenanceCorrect) &&
     ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"].includes(ticket.status);
   const today = dateOnlyInTimeZone(new Date());
-  const actionFeedback = getActionFeedback(searchParams ? await searchParams : {});
-  const sourceHref = sourceIncidentHref(ticket.sourceIncidentId);
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const returnTo = resolveMaintenanceProfileReturnTo(resolvedSearchParams.returnTo);
+  const actionFeedback = getActionFeedback(resolvedSearchParams);
+  const sourceHref = sourceIncidentHref(ticket.sourceIncidentId, session.permissionCodes);
 
   return (
     <AppShell
@@ -132,7 +147,7 @@ export default async function MaintenanceDetailPage({
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <ButtonLink href="/maintenance" tone="ghost" className="ogfi-chip">
+        <ButtonLink href={returnTo ?? "/maintenance"} tone="ghost" className="ogfi-chip min-h-11">
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to Maintenance
         </ButtonLink>
@@ -148,7 +163,7 @@ export default async function MaintenanceDetailPage({
               title="Correct Maintenance Details"
               description={`Update ${ticket.ticketNumber} and record why the correction is required. Existing audit history is retained.`}
               trigger="Correct Details"
-              triggerClassName="border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              triggerClassName="min-h-11 border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               footer={
                 <button
                   className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto"
@@ -161,10 +176,11 @@ export default async function MaintenanceDetailPage({
             >
               <form
                 action={correctMaintenanceTicketAction}
-                className="ogfi-form-shell grid gap-3 md:grid-cols-2"
+                className="ogfi-form-shell grid gap-3 [&_input]:min-h-11 [&_select]:min-h-11 md:grid-cols-2"
                 id="correct-maintenance-ticket"
               >
                 <input name="ticketId" type="hidden" value={ticket.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Requested date
                   <input
@@ -305,12 +321,13 @@ export default async function MaintenanceDetailPage({
             </TaskSheet>
           ) : null}
           {canComplete ? (
-            <EntryModal title="Complete Maintenance Ticket" triggerLabel="Complete Ticket">
+            <EntryModal title="Complete Maintenance Ticket" triggerLabel="Complete Ticket" triggerClassName="min-h-11">
               <form
                 action={completeMaintenanceTicketAction}
-                className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2"
+                className="ogfi-form-shell mt-4 grid gap-3 [&_input]:min-h-11 md:grid-cols-2"
               >
                 <input name="ticketId" type="hidden" value={ticket.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Completed date
                   <input
@@ -351,7 +368,7 @@ export default async function MaintenanceDetailPage({
                     required
                   />
                 </label>
-                <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 md:col-span-2">
+                <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 md:col-span-2">
                   <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                   Complete Maintenance Ticket
                 </button>
@@ -359,12 +376,13 @@ export default async function MaintenanceDetailPage({
             </EntryModal>
           ) : null}
           {canComplete ? (
-            <EntryModal title="Cancel Maintenance Ticket" triggerLabel="Cancel Ticket">
+            <EntryModal title="Cancel Maintenance Ticket" triggerLabel="Cancel Ticket" triggerClassName="min-h-11">
               <form
                 action={cancelMaintenanceTicketAction}
                 className="ogfi-form-shell mt-4 grid gap-3"
               >
                 <input name="ticketId" type="hidden" value={ticket.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Cancellation reason
                   <textarea
@@ -375,7 +393,7 @@ export default async function MaintenanceDetailPage({
                     required
                   />
                 </label>
-                <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 hover:bg-red-100">
+                <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 hover:bg-red-100">
                   <XCircle aria-hidden="true" className="h-4 w-4" />
                   Cancel Ticket
                 </button>
@@ -416,7 +434,7 @@ export default async function MaintenanceDetailPage({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="info">{ticket.category.toLowerCase()}</Badge>
-              {ticket.sourceIncidentId ? (
+              {ticket.hasSourceIncident ? (
                 <Badge tone="info">Linked incident</Badge>
               ) : null}
             </div>
@@ -436,25 +454,29 @@ export default async function MaintenanceDetailPage({
               </p>
             </div>
 
-            {ticket.sourceIncidentId ? (
+            {ticket.hasSourceIncident ? (
               <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <p className="text-xs font-semibold uppercase text-blue-700">
                   Source incident (read-only reference)
                 </p>
-                <p className="mt-2 break-all text-sm font-semibold text-blue-950">
-                  {ticket.sourceIncidentId}
-                </p>
                 <p className="mt-1 text-xs text-blue-900/70">
-                  Read-only link. Completing this ticket does not resolve the incident.
+                  {sourceHref
+                    ? "Read-only link. Completing this ticket does not resolve the incident."
+                    : "Source Incident unavailable in current access. The linked record remains independently authorized."}
                 </p>
                 {sourceHref ? (
-                  <ButtonLink
-                    href={sourceHref}
-                    tone="ghost"
-                    className="ogfi-chip mt-3"
-                  >
-                    Open Source Incident
-                  </ButtonLink>
+                  <>
+                    <p className="mt-2 break-all text-sm font-semibold text-blue-950">
+                      {ticket.sourceIncidentId}
+                    </p>
+                    <ButtonLink
+                      href={sourceHref}
+                      tone="ghost"
+                      className="ogfi-chip mt-3 min-h-11"
+                    >
+                      Open Source Incident
+                    </ButtonLink>
+                  </>
                 ) : null}
               </div>
             ) : null}
@@ -553,9 +575,9 @@ export default async function MaintenanceDetailPage({
                         </p>
                       </div>
                       <ButtonLink
-                        href={`/maintenance/${historyTicket.id}`}
+                        href={maintenanceDetailHref(historyTicket.id, returnTo)}
                         tone="ghost"
-                        className="ogfi-chip"
+                        className="ogfi-chip min-h-11"
                       >
                         View Ticket
                       </ButtonLink>

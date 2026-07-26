@@ -1051,6 +1051,7 @@ describe("operational dashboard model", () => {
             hasReporter: true,
             reportedByCurrentUser: false,
             ownerName: "Maintenance Lead",
+            hasSourceIncident: false,
             sourceIncidentId: null,
             downtimeMinutes: 45,
             targetDueAt: null,
@@ -1070,7 +1071,7 @@ describe("operational dashboard model", () => {
       ["food-safety-exceptions", 1, "/food-safety?dashboard=food-safety-exceptions-v1"],
       ["food-safety-reviews", 1, "/food-safety?dashboard=food-safety-reviews-v1"],
       ["open-operational-incidents", 1, "/incidents?dashboard=incident-open-v1"],
-      ["maintenance-follow-up", 1, "/maintenance"]
+      ["maintenance-follow-up", 1, "/maintenance?dashboard=maintenance-follow-up-v1"]
     ]);
     expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
       expect.arrayContaining([
@@ -1088,6 +1089,12 @@ describe("operational dashboard model", () => {
       .toBe("/incidents?dashboard=incident-pending-review-v1");
     expect(dashboard.metrics.find(({ id }) => id === "incident-overdue-count")?.href)
       .toBe(`/incidents?dashboard=incident-overdue-v1&asOf=${dashboardOperationalDate(new Date().toISOString())}`);
+    expect(dashboard.metrics.find(({ id }) => id === "maintenance-critical-count")?.href)
+      .toBe("/maintenance?dashboard=maintenance-critical-v1");
+    expect(dashboard.metrics.find(({ id }) => id === "maintenance-vendor-count")?.href)
+      .toBe("/maintenance?dashboard=maintenance-pending-vendor-v1");
+    expect(dashboard.metrics.find(({ id }) => id === "maintenance-overdue-count")?.href)
+      .toBe(`/maintenance?dashboard=maintenance-overdue-v1&asOf=${dashboardOperationalDate(new Date().toISOString())}`);
     expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
       expect.arrayContaining([
         "incident-critical-count",
@@ -1116,7 +1123,7 @@ describe("operational dashboard model", () => {
       ["Food safety review", "Review food-safety log"],
       ["Food safety exception", "Acknowledge food-safety deviation"],
       ["Incident follow-up", "Review incident follow-up"],
-      ["Maintenance follow-up", "Update or complete ticket"]
+      ["Maintenance follow-up", "Review maintenance follow-up"]
     ]);
     expect(dashboard.sourceHealth).toEqual(
       expect.arrayContaining([

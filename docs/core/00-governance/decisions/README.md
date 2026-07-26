@@ -169,3 +169,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0226-BRANCH-OPERATIONS-DASHBOARD-PROFILES.md` — versioned server-owned checklist review and exception destinations with exact dashboard-population parity
 - `DEC-0227-FOOD-SAFETY-DASHBOARD-PROFILES.md` — versioned server-owned Food Safety review and all-status exception destinations with truthful reading/log grains
 - `DEC-0228-INCIDENT-DASHBOARD-PROFILES.md` — versioned server-owned open, all-status critical, pending-review oversight, and captured-cutoff overdue Incident destinations
+- `DEC-0229-MAINTENANCE-DASHBOARD-PROFILES.md` — versioned server-owned active follow-up, all-status critical, pending-vendor oversight, and active-only captured-cutoff overdue Maintenance destinations

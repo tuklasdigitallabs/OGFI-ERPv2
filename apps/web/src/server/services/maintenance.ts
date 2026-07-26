@@ -3,6 +3,7 @@ import { prisma, type Prisma } from "@ogfi/database";
 import { z } from "zod";
 import {
   assertPermissionAllowed,
+  canUseIncidents,
   canUseMaintenance,
   permissions,
   requirePermission
@@ -122,6 +123,7 @@ export type MaintenanceTicketSummary = {
   hasReporter: boolean;
   reportedByCurrentUser: boolean;
   ownerName: string | null;
+  hasSourceIncident: boolean;
   sourceIncidentId: string | null;
   downtimeMinutes: number | null;
   targetDueAt: string | null;
@@ -189,6 +191,7 @@ export type MaintenanceDashboardCandidate = {
 };
 
 export type MaintenanceDashboardRead = {
+  overdueAsOf: string;
   totalTickets: number;
   openTickets: number;
   criticalTickets: number;
@@ -206,13 +209,198 @@ export type MaintenanceExportFilters = {
   requestedAt?: string;
 };
 
+export const maintenanceDashboardProfiles = [
+  "maintenance-follow-up-v1",
+  "maintenance-critical-v1",
+  "maintenance-pending-vendor-v1",
+  "maintenance-overdue-v1"
+] as const;
+
+export type MaintenanceDashboardProfile =
+  (typeof maintenanceDashboardProfiles)[number];
+
+export function resolveMaintenanceDashboardProfile(
+  value: string | null | undefined
+): MaintenanceDashboardProfile | null {
+  return maintenanceDashboardProfiles.includes(value as MaintenanceDashboardProfile)
+    ? (value as MaintenanceDashboardProfile)
+    : null;
+}
+
+export function maintenanceDashboardProfileHref(
+  profile: MaintenanceDashboardProfile,
+  input: { asOf?: string | null } = {}
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  if (profile === "maintenance-overdue-v1" && input.asOf) {
+    params.set("asOf", input.asOf);
+  }
+  return `/maintenance?${params.toString()}`;
+}
+
+export type MaintenanceDashboardRequestError =
+  | "PROFILE_INVALID"
+  | "SEARCH_INVALID"
+  | "AS_OF_INVALID"
+  | "AS_OF_REQUIRED"
+  | "AS_OF_FUTURE";
+
+function currentMaintenanceOperatingDate() {
+  return dateOnlyInTimeZone(new Date());
+}
+
+export function resolveMaintenanceDashboardRequest(
+  profileValue: string | string[] | null | undefined,
+  queryValue: string | string[] | null | undefined,
+  asOfValue: string | string[] | null | undefined,
+  currentOperatingDate = currentMaintenanceOperatingDate()
+) {
+  if (Array.isArray(profileValue)) {
+    return { profile: null, query: "", asOf: null, error: "PROFILE_INVALID" as const };
+  }
+  const profile = resolveMaintenanceDashboardProfile(profileValue);
+  if (profileValue !== null && profileValue !== undefined && !profile) {
+    return { profile: null, query: "", asOf: null, error: "PROFILE_INVALID" as const };
+  }
+  if (Array.isArray(asOfValue)) {
+    return { profile, query: "", asOf: null, error: "AS_OF_INVALID" as const };
+  }
+  let asOf: string | null = null;
+  if (profile !== "maintenance-overdue-v1") {
+    if (asOfValue !== null && asOfValue !== undefined) {
+      return { profile, query: "", asOf: null, error: "AS_OF_INVALID" as const };
+    }
+  } else {
+    if (!asOfValue) {
+      return { profile, query: "", asOf: null, error: "AS_OF_REQUIRED" as const };
+    }
+    if (!parseDateOnlyUtc(asOfValue)) {
+      return { profile, query: "", asOf: null, error: "AS_OF_INVALID" as const };
+    }
+    if (asOfValue > currentOperatingDate) {
+      return { profile, query: "", asOf: null, error: "AS_OF_FUTURE" as const };
+    }
+    asOf = asOfValue;
+  }
+  if (Array.isArray(queryValue)) {
+    return { profile, query: "", asOf, error: "SEARCH_INVALID" as const };
+  }
+  const query = normalizedFilterText(queryValue ?? undefined);
+  if (profile && query.length > 120) {
+    return { profile, query, asOf, error: "SEARCH_INVALID" as const };
+  }
+  return { profile, query, asOf, error: null };
+}
+
+export function maintenanceDashboardProfilePageHref(
+  profile: MaintenanceDashboardProfile,
+  input: { query?: string | null; page?: number; asOf?: string | null } = {}
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  if (profile === "maintenance-overdue-v1" && input.asOf) {
+    params.set("asOf", input.asOf);
+  }
+  const query = normalizedFilterText(input.query ?? undefined);
+  if (query) params.set("q", query);
+  if (Number.isInteger(input.page) && (input.page ?? 1) > 1) {
+    params.set("page", String(input.page));
+  }
+  return `/maintenance?${params.toString()}`;
+}
+
+export function resolveMaintenanceProfileReturnTo(
+  value: unknown,
+  currentOperatingDate = currentMaintenanceOperatingDate()
+) {
+  if (typeof value !== "string" || value.includes("\\") || value.includes("#")) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value, "https://ogfi.invalid");
+  } catch {
+    return null;
+  }
+  if (
+    parsed.origin !== "https://ogfi.invalid" ||
+    parsed.pathname !== "/maintenance" ||
+    [...parsed.searchParams.keys()].some(
+      (key) => !["dashboard", "asOf", "q", "page"].includes(key)
+    ) ||
+    [...parsed.searchParams.keys()].some(
+      (key, index, keys) => keys.indexOf(key) !== index
+    )
+  ) {
+    return null;
+  }
+  const resolved = resolveMaintenanceDashboardRequest(
+    parsed.searchParams.get("dashboard"),
+    parsed.searchParams.get("q"),
+    parsed.searchParams.get("asOf"),
+    currentOperatingDate
+  );
+  const pageValue = parsed.searchParams.get("page");
+  const page = pageValue === null ? 1 : Number(pageValue);
+  if (resolved.error || !resolved.profile || !Number.isSafeInteger(page) || page < 1) {
+    return null;
+  }
+  const canonical = maintenanceDashboardProfilePageHref(resolved.profile, {
+    query: resolved.query,
+    page,
+    asOf: resolved.asOf
+  });
+  return value === canonical ? canonical : null;
+}
+
+export function maintenanceDetailHref(ticketId: string, returnTo: string | null) {
+  return `/maintenance/${ticketId}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`;
+}
+
 export type MaintenanceTicketPage = {
   items: MaintenanceTicketSummary[];
   page: number;
   pageSize: number;
   totalItems: number;
   totalPages: number;
+  dashboardProfile: MaintenanceDashboardProfile | null;
+  profileAsOf: string | null;
 };
+
+function maintenanceScopeWhere(
+  session: SessionContext
+): Prisma.MaintenanceTicketWhereInput {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    brandId: session.context.brandId || null,
+    locationId: session.context.locationId
+  };
+}
+
+export function maintenanceDashboardProfileWhere(
+  session: SessionContext,
+  profile: MaintenanceDashboardProfile,
+  asOf?: string | null
+): Prisma.MaintenanceTicketWhereInput {
+  const scope = maintenanceScopeWhere(session);
+  if (profile === "maintenance-follow-up-v1") {
+    return { ...scope, status: { in: [...completableMaintenanceStatuses] } };
+  }
+  if (profile === "maintenance-critical-v1") {
+    return { ...scope, priority: "CRITICAL" };
+  }
+  if (profile === "maintenance-pending-vendor-v1") {
+    return { ...scope, status: "PENDING_VENDOR" };
+  }
+  const cutoff = asOf ? parseDateOnlyUtc(asOf) : null;
+  if (!cutoff) throw new Error("MAINTENANCE_DASHBOARD_AS_OF_INVALID");
+  return {
+    ...scope,
+    targetDueAt: { lt: cutoff },
+    completedAt: null,
+    status: { in: [...completableMaintenanceStatuses] }
+  };
+}
 
 function assertMaintenanceAccess(session: SessionContext) {
   if (!canUseMaintenance(session.permissionCodes)) {
@@ -354,6 +542,7 @@ function summarizeMaintenanceTicket(
     ownerName: ticket.ownerUserId
       ? actorNameById.get(ticket.ownerUserId) ?? "Unknown user"
       : null,
+    hasSourceIncident: Boolean(ticket.sourceIncidentId),
     sourceIncidentId: ticket.sourceIncidentId,
     downtimeMinutes: ticket.downtimeMinutes,
     targetDueAt: dateOrNull(ticket.targetDueAt),
@@ -413,7 +602,12 @@ export function filterMaintenanceTickets(
 export async function listMaintenanceTicketPage(
   session: SessionContext,
   filters: MaintenanceExportFilters = {},
-  input: { page?: number; pageSize?: number } = {}
+  input: {
+    page?: number;
+    pageSize?: number;
+    dashboardProfile?: MaintenanceDashboardProfile;
+    asOf?: string;
+  } = {}
 ): Promise<MaintenanceTicketPage> {
   assertMaintenanceAccess(session);
   const rawPageSize = input.pageSize ?? 25;
@@ -421,41 +615,65 @@ export async function listMaintenanceTicketPage(
   const rawPage = input.page ?? 1;
   const requestedPage = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
   const query = normalizedFilterText(filters.q);
-  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
-  const priority = filters.priority && filters.priority !== "ALL" ? filters.priority : null;
-  const requestedAt = filters.requestedAt?.trim() || null;
+  const dashboardProfileValue = input.dashboardProfile;
+  const dashboardProfile = resolveMaintenanceDashboardProfile(dashboardProfileValue);
+  if (dashboardProfileValue !== undefined && !dashboardProfile) {
+    throw new Error("MAINTENANCE_DASHBOARD_PROFILE_INVALID");
+  }
+  if (dashboardProfile && query.length > 120) {
+    throw new Error("MAINTENANCE_DASHBOARD_SEARCH_INVALID");
+  }
+  const today = currentMaintenanceOperatingDate();
+  if (dashboardProfile === "maintenance-overdue-v1") {
+    if (!input.asOf) throw new Error("MAINTENANCE_DASHBOARD_AS_OF_REQUIRED");
+    if (!parseDateOnlyUtc(input.asOf)) throw new Error("MAINTENANCE_DASHBOARD_AS_OF_INVALID");
+    if (input.asOf > today) throw new Error("MAINTENANCE_DASHBOARD_AS_OF_FUTURE");
+  } else if (input.asOf !== undefined) {
+    throw new Error("MAINTENANCE_DASHBOARD_AS_OF_INVALID");
+  }
+  const status = !dashboardProfile && filters.status && filters.status !== "ALL" ? filters.status : null;
+  const priority = !dashboardProfile && filters.priority && filters.priority !== "ALL" ? filters.priority : null;
+  const requestedAt = !dashboardProfile ? filters.requestedAt?.trim() || null : null;
   const date = requestedAt ? parseDateOnlyUtc(requestedAt) : null;
   if (requestedAt && !date) throw new Error("MAINTENANCE_REQUESTED_AT_INVALID");
-  const sourceIncidentFilter = /^[0-9a-f-]{36}$/i.test(query) ? [{ sourceIncidentId: query }] : [];
+  const sourceIncidentFilter = !dashboardProfile && /^[0-9a-f-]{36}$/i.test(query) ? [{ sourceIncidentId: query }] : [];
   const actorMatches = query
     ? await prisma.user.findMany({
-        where: { tenantId: session.context.tenantId, OR: [
-          { displayName: { contains: query, mode: "insensitive" } },
-          { email: { contains: query, mode: "insensitive" } }
-        ] },
+        where: {
+          tenantId: session.context.tenantId,
+          ...(dashboardProfile
+            ? { displayName: { contains: query, mode: "insensitive" } }
+            : { OR: [
+                { displayName: { contains: query, mode: "insensitive" } },
+                { email: { contains: query, mode: "insensitive" } }
+              ] })
+        },
         select: { id: true }
       })
     : [];
   const where: Prisma.MaintenanceTicketWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    brandId: session.context.brandId || null,
-    locationId: session.context.locationId,
+    ...(dashboardProfile
+      ? maintenanceDashboardProfileWhere(session, dashboardProfile, input.asOf)
+      : maintenanceScopeWhere(session)),
     ...(status ? { status } : {}),
     ...(priority ? { priority } : {}),
     ...(date ? { requestedAt: date } : {}),
     ...(query ? { OR: [
       { ticketNumber: { contains: query, mode: "insensitive" } },
       { title: { contains: query, mode: "insensitive" } },
-      { description: { contains: query, mode: "insensitive" } },
       { category: { contains: query, mode: "insensitive" } },
       { assetName: { contains: query, mode: "insensitive" } },
       { assetArea: { contains: query, mode: "insensitive" } },
-      { correctiveAction: { contains: query, mode: "insensitive" } },
-      { evidenceReference: { contains: query, mode: "insensitive" } },
-      ...sourceIncidentFilter,
       { reportedByUserId: { in: actorMatches.map((row) => row.id) } },
-      { ownerUserId: { in: actorMatches.map((row) => row.id) } }
+      { ownerUserId: { in: actorMatches.map((row) => row.id) } },
+      ...(!dashboardProfile
+        ? [
+            { description: { contains: query, mode: "insensitive" as const } },
+            { correctiveAction: { contains: query, mode: "insensitive" as const } },
+            { evidenceReference: { contains: query, mode: "insensitive" as const } },
+            ...sourceIncidentFilter
+          ]
+        : [])
     ] } : {})
   };
   const totalItems = await prisma.maintenanceTicket.count({ where });
@@ -463,11 +681,30 @@ export async function listMaintenanceTicketPage(
   const page = Math.min(requestedPage, totalPages);
   const rows = await prisma.maintenanceTicket.findMany({
     where,
-    include: { location: true },
+    select: {
+      id: true, ticketNumber: true, requestedAt: true, category: true,
+      assetName: true, assetArea: true, priority: true, status: true,
+      title: true, description: !dashboardProfile,
+      location: { select: { name: true } }, reportedByUserId: true,
+      ownerUserId: true, sourceIncidentId: !dashboardProfile,
+      downtimeMinutes: !dashboardProfile, targetDueAt: true, completedAt: true,
+      correctiveAction: !dashboardProfile, evidenceReference: !dashboardProfile
+    },
     orderBy: [{ requestedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * pageSize,
     take: pageSize
   }) as MaintenanceTicketWithLocation[];
+  const profileSourceLinks = dashboardProfile && rows.length
+    ? await prisma.maintenanceTicket.findMany({
+        where: {
+          ...maintenanceScopeWhere(session),
+          id: { in: rows.map((row) => row.id) },
+          sourceIncidentId: { not: null }
+        },
+        select: { id: true }
+      })
+    : [];
+  const profileSourceLinkIds = new Set(profileSourceLinks.map((row) => row.id));
   const actorIds = Array.from(new Set(rows.flatMap((row) => [row.reportedByUserId, row.ownerUserId].filter((id): id is string => Boolean(id)))));
   const actors = actorIds.length ? await prisma.user.findMany({ where: { id: { in: actorIds }, tenantId: session.context.tenantId }, select: { id: true, displayName: true, email: true } }) : [];
   const names = userDisplayNameById(actors);
@@ -481,20 +718,26 @@ export async function listMaintenanceTicketPage(
     priority: ticket.priority,
     status: ticket.status,
     title: ticket.title,
-    description: ticket.description,
+    description: dashboardProfile ? "" : ticket.description,
     locationName: ticket.location.name,
     reportedByName: ticket.reportedByUserId ? names.get(ticket.reportedByUserId) ?? "Unknown user" : null,
     hasReporter: Boolean(ticket.reportedByUserId),
     reportedByCurrentUser: ticket.reportedByUserId === session.user.id,
     ownerName: ticket.ownerUserId ? names.get(ticket.ownerUserId) ?? "Unknown user" : null,
-    sourceIncidentId: ticket.sourceIncidentId,
-    downtimeMinutes: ticket.downtimeMinutes,
+    hasSourceIncident: dashboardProfile
+      ? profileSourceLinkIds.has(ticket.id)
+      : Boolean(ticket.sourceIncidentId),
+    sourceIncidentId: dashboardProfile ? null : ticket.sourceIncidentId,
+    downtimeMinutes: dashboardProfile ? null : ticket.downtimeMinutes,
     targetDueAt: dateOrNull(ticket.targetDueAt),
     completedAt: dateOrNull(ticket.completedAt),
-    correctiveAction: ticket.correctiveAction,
-    evidenceReference: ticket.evidenceReference
+    correctiveAction: dashboardProfile ? null : ticket.correctiveAction,
+    evidenceReference: dashboardProfile ? null : ticket.evidenceReference
   }));
-  return { items, page, pageSize, totalItems, totalPages };
+  return {
+    items, page, pageSize, totalItems, totalPages, dashboardProfile,
+    profileAsOf: dashboardProfile === "maintenance-overdue-v1" ? input.asOf ?? null : null
+  };
 }
 
 export async function getMaintenanceDashboard(
@@ -502,12 +745,7 @@ export async function getMaintenanceDashboard(
 ): Promise<MaintenanceDashboard> {
   assertMaintenanceAccess(session);
 
-  const where: Prisma.MaintenanceTicketWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId === "" ? {} : { brandId: session.context.brandId ?? null }),
-    locationId: session.context.locationId
-  };
+  const where = maintenanceScopeWhere(session);
   const tickets = await prisma.maintenanceTicket.findMany({
     where,
     include: maintenanceTicketInclude,
@@ -578,6 +816,9 @@ export async function getMaintenanceDashboard(
       (ticket) =>
         ticket.targetDueAt !== null &&
         ticket.completedAt === null &&
+        completableMaintenanceStatuses.includes(
+          ticket.status as (typeof completableMaintenanceStatuses)[number]
+        ) &&
         dateOrNull(ticket.targetDueAt)! < todayDate
     ).length,
     downtimeMinutes: tickets.reduce(
@@ -594,14 +835,22 @@ export async function getMaintenanceDashboardRead(
   session: SessionContext
 ): Promise<MaintenanceDashboardRead> {
   assertMaintenanceAccess(session);
-  const where: Prisma.MaintenanceTicketWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId === "" ? {} : { brandId: session.context.brandId ?? null }),
-    locationId: session.context.locationId
-  };
-  const todayDate = dateOnlyInTimeZone(new Date());
-  const [summary, statusRows, priorityRows, totalTickets, overdueTickets, candidates] = await Promise.all([
+  const where = maintenanceScopeWhere(session);
+  const todayDate = currentMaintenanceOperatingDate();
+  const followUpWhere = maintenanceDashboardProfileWhere(
+    session,
+    "maintenance-follow-up-v1"
+  );
+  const criticalWhere = maintenanceDashboardProfileWhere(
+    session,
+    "maintenance-critical-v1"
+  );
+  const overdueWhere = maintenanceDashboardProfileWhere(
+    session,
+    "maintenance-overdue-v1",
+    todayDate
+  );
+  const [summary, statusRows, priorityRows, totalTickets, openTickets, criticalTickets, overdueTickets, candidates] = await Promise.all([
     prisma.maintenanceTicket.aggregate({ where, _sum: { downtimeMinutes: true } }),
     prisma.maintenanceTicket.groupBy({
       by: ["status"],
@@ -614,15 +863,11 @@ export async function getMaintenanceDashboardRead(
       _count: { _all: true }
     }),
     prisma.maintenanceTicket.count({ where }),
-    prisma.maintenanceTicket.count({
-      where: {
-        ...where,
-        targetDueAt: { lt: new Date(`${todayDate}T00:00:00.000Z`) },
-        completedAt: null
-      }
-    }),
+    prisma.maintenanceTicket.count({ where: followUpWhere }),
+    prisma.maintenanceTicket.count({ where: criticalWhere }),
+    prisma.maintenanceTicket.count({ where: overdueWhere }),
     prisma.maintenanceTicket.findMany({
-      where: { ...where, status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] } },
+      where: followUpWhere,
       orderBy: [{ priority: "desc" }, { requestedAt: "desc" }],
       take: 3,
       select: {
@@ -672,9 +917,10 @@ export async function getMaintenanceDashboardRead(
   const ownerNameById = userDisplayNameById(owners);
 
   return {
+    overdueAsOf: todayDate,
     totalTickets,
-    openTickets: statusCounts.OPEN + statusCounts.IN_PROGRESS + statusCounts.PENDING_VENDOR,
-    criticalTickets: priorityCounts.CRITICAL,
+    openTickets,
+    criticalTickets,
     overdueTickets,
     downtimeMinutes: summary._sum.downtimeMinutes ?? 0,
     statusCounts,
@@ -905,6 +1151,18 @@ export async function getMaintenanceTicketDetail(
       })
     : [];
   const actorNameById = userDisplayNameById(actors);
+  const visibleSourceIncident = current.sourceIncidentId && canUseIncidents(session.permissionCodes)
+    ? await prisma.operationalIncident.findFirst({
+        where: {
+          id: current.sourceIncidentId,
+          tenantId: current.tenantId,
+          companyId: current.companyId,
+          brandId: current.brandId,
+          locationId: current.locationId
+        },
+        select: { id: true }
+      })
+    : null;
   const auditEvents = await prisma.auditEvent.findMany({
     where: {
       tenantId: current.tenantId,
@@ -916,11 +1174,14 @@ export async function getMaintenanceTicketDetail(
     select: { id: true, eventType: true, occurredAt: true, metadata: true }
   });
 
+  const currentSummary = summarizeMaintenanceTicket(current, actorNameById, session.user.id);
   return {
-    ...summarizeMaintenanceTicket(current, actorNameById, session.user.id),
-    history: history.map((ticket) =>
-      summarizeMaintenanceTicket(ticket, actorNameById, session.user.id)
-    ),
+    ...currentSummary,
+    sourceIncidentId: visibleSourceIncident?.id ?? null,
+    history: history.map((ticket) => ({
+      ...summarizeMaintenanceTicket(ticket, actorNameById, session.user.id),
+      sourceIncidentId: null
+    })),
     auditEvents: auditEvents.map((event) => ({
       ...event,
       occurredAt: event.occurredAt.toISOString()

@@ -48,6 +48,7 @@ vi.mock("@/server/services/exportErrors", () => {
     "FOOD_SAFETY_BUSINESS_DATE_INVALID",
     "INCIDENT_FILTER_DATE_INVALID",
     "INCIDENT_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED",
+    "MAINTENANCE_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED",
     "MAINTENANCE_REQUESTED_AT_FILTER_INVALID"
   ]);
   const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -383,6 +384,29 @@ describe("Phase 2 export route contracts", () => {
       reportId: "incident-corrective-actions",
       eventType: "report.export_failed",
       reasonCode: "INCIDENT_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED"
+    });
+  });
+
+  it("rejects Maintenance dashboard-profile exports before building broader ordinary rows", async () => {
+    const response = await maintenanceExportGET(
+      request("/maintenance/export?dashboard=maintenance-follow-up-v1")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "MAINTENANCE_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED"
+    });
+    expect(mockServices.buildMaintenanceExportRows).not.toHaveBeenCalled();
+    expect(mockServices.logOperationalExportAudit).toHaveBeenNthCalledWith(1, {
+      session,
+      reportId: "maintenance-sla-downtime",
+      eventType: "report.export_started"
+    });
+    expect(mockServices.logOperationalExportAudit).toHaveBeenNthCalledWith(2, {
+      session,
+      reportId: "maintenance-sla-downtime",
+      eventType: "report.export_failed",
+      reasonCode: "MAINTENANCE_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED"
     });
   });
 

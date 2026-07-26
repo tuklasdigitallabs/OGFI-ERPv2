@@ -264,7 +264,7 @@ describe("Incident dashboard profiles", () => {
   it("keeps profile count/list predicates identical, exact-null scoped, paged, and immune to raw facets", async () => {
     const nullBrandSession = {
       ...session,
-      context: { ...session.context, brandId: null, brandName: "All Brands" }
+      context: { ...session.context, brandId: "", brandName: "All Brands" }
     };
     mockPrisma.operationalIncident.count.mockResolvedValueOnce(26);
     const page = await listIncidentPage(

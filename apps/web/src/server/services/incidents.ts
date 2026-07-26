@@ -364,7 +364,7 @@ function incidentScopeWhere(
   return {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    brandId: session.context.brandId ?? null,
+    brandId: session.context.brandId || null,
     locationId: session.context.locationId
   };
 }

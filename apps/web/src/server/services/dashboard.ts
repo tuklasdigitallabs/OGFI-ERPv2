@@ -41,6 +41,7 @@ import {
 } from "./inventory";
 import {
   getMaintenanceDashboardRead,
+  maintenanceDashboardProfileHref,
   type MaintenanceDashboard,
   type MaintenanceDashboardRead
 } from "./maintenance";
@@ -1178,6 +1179,10 @@ export function buildOperationalDashboardModel(
 
   if (source.maintenance || source.maintenanceDashboard) {
     const maintenance = source.maintenanceDashboard ?? source.maintenance!;
+    const maintenanceOverdueAsOf =
+      "overdueAsOf" in maintenance
+        ? maintenance.overdueAsOf
+        : dashboardOperationalDate(new Date().toISOString())!;
     const openMaintenanceCount =
       maintenance.statusCounts.OPEN +
       maintenance.statusCounts.IN_PROGRESS +
@@ -1186,7 +1191,7 @@ export function buildOperationalDashboardModel(
       id: "maintenance-follow-up",
       label: "Maintenance Follow-up",
       value: openMaintenanceCount,
-      href: "/maintenance",
+      href: maintenanceDashboardProfileHref("maintenance-follow-up-v1"),
       description: `${maintenance.overdueTickets} overdue / ${maintenance.downtimeMinutes} downtime minutes`,
       tone: cardTone(openMaintenanceCount)
     });
@@ -1196,7 +1201,7 @@ export function buildOperationalDashboardModel(
         label: "Critical maintenance",
         displayValue: number(maintenance.priorityCounts.CRITICAL),
         detail: "Critical maintenance tickets in current scope",
-        href: "/maintenance",
+        href: maintenanceDashboardProfileHref("maintenance-critical-v1"),
         tone:
           maintenance.priorityCounts.CRITICAL > 0 ? "warning" : "success"
       },
@@ -1205,7 +1210,7 @@ export function buildOperationalDashboardModel(
         label: "Pending vendor",
         displayValue: number(maintenance.statusCounts.PENDING_VENDOR),
         detail: "Tickets waiting for vendor action",
-        href: "/maintenance",
+        href: maintenanceDashboardProfileHref("maintenance-pending-vendor-v1"),
         tone:
           maintenance.statusCounts.PENDING_VENDOR > 0
             ? "warning"
@@ -1216,7 +1221,9 @@ export function buildOperationalDashboardModel(
         label: "Maintenance overdue",
         displayValue: number(maintenance.overdueTickets),
         detail: "Tickets past target due date",
-        href: "/maintenance",
+        href: maintenanceDashboardProfileHref("maintenance-overdue-v1", {
+          asOf: maintenanceOverdueAsOf
+        }),
         tone: maintenance.overdueTickets > 0 ? "warning" : "success"
       }
     );
@@ -1240,8 +1247,8 @@ export function buildOperationalDashboardModel(
         tone: ticket.priority === "CRITICAL" ? "warning" : "info",
         nextAction:
           ticket.status === "PENDING_VENDOR"
-            ? "Follow up vendor"
-            : "Update or complete ticket",
+            ? "Review vendor-pending ticket"
+            : "Review maintenance follow-up",
         nextActor: ticket.ownerName ?? "Unassigned",
         priority:
           ticket.priority === "CRITICAL"

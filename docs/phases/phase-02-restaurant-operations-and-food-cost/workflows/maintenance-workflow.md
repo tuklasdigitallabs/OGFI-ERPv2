@@ -37,6 +37,7 @@ Non-terminal detail correction keeps the current status and records correction r
 9. Desktop detail/list actions with source-incident navigation and same-asset history
 10. Reports and UAT scenarios for create, correct, complete, cancel, filter, history, and export
 11. Role-pooled `My Tasks` completion for active tickets, ordered by native priority, target due date, and age
+12. Read-only dashboard destinations for active follow-up, all-status critical history, pending-vendor oversight, and captured-cutoff active overdue tickets
 
 ## Non-Negotiable Controls
 
@@ -48,7 +49,11 @@ Non-terminal detail correction keeps the current status and records correction r
 - Approval, financial, compliance or inventory-impacting actions must not be silently overwritten.
 - Free-text comments do not replace structured fields, reason codes or evidence where those are required.
 - Core document and security rules override this framework if a conflict exists.
+- Dashboard profiles are overlapping ticket-record lenses and are not additive. They grant no assignment, vendor, correction, completion, cancellation, or reopen authority.
+- Dashboard profile scope is exact for tenant, selected company, nullable selected brand, and selected location. Search is a maximum-120-character visible-metadata narrowing condition; profile mode cannot be widened by raw filters and cannot be exported.
+- `maintenance-overdue-v1` requires the captured non-future operating-date cutoff and includes only `OPEN`, `IN_PROGRESS`, or `PENDING_VENDOR` tickets with `targetDueAt` before the cutoff and `completedAt` null. It reads current records and is not a historical snapshot.
+- Source Incident ID is not disclosed in a profile list. Any source-Incident link shown on authoritative detail requires source permission, and the Incident destination independently reauthorizes.
 
 ## Open Decisions
 
-Use `../implementation/PHASE2_DECISION_REGISTER.md` for future expansion such as assignment workflow, terminal reopen, source-incident correction after creation, escalation routes, vendor workflows, or approval-backed maintenance closure.
+Use `../implementation/PHASE2_DECISION_REGISTER.md` for future expansion such as assignment workflow, terminal reopen, source-incident correction after creation, escalation routes, vendor workflows, or approval-backed maintenance closure. Core open decisions also retain assignment authority and reassignment, transitions into and out of vendor states, terminal-status/date integrity and recovery, and the authoritative operating-timezone policy; `DEC-0229` does not resolve them.

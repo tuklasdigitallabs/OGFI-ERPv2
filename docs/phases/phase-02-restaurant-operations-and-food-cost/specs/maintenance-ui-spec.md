@@ -36,8 +36,13 @@ The current implementation provides scoped maintenance list, create modal, detai
 - Related source-incident navigation without resolving or mutating the source incident
 - Same-location asset history on the detail view
 - CSV export preserving filters
+- Four read-only dashboard-profile destinations confirmed in `DEC-0229`: active Follow-up, all-status Critical history, Pending Vendor oversight, and captured-cutoff active Overdue
+- Profile search is limited to 120 normalized characters and visible ticket metadata; raw register filters cannot redefine a profile, create/export are hidden, and direct profile export is rejected
+- Profile navigation preserves canonical profile/search/page/applicable-cutoff context through detail and independently authorized actions
+- Overdue displays its `asOf` due-date cutoff and explains that current status, completion, cancellation, and corrected target dates can change the rows; it is not a historical snapshot
+- Profile rows omit source Incident ID, corrective-action narrative, evidence, downtime detail, and audit content. A source-Incident link is shown only on authorized detail and the target reauthorizes independently
 
-Future UI expansion should define assignment workflow, terminal reopen, richer audit timeline, source-incident correction, vendor workflows, and mobile-specific shortcut behavior before implementation.
+Future UI expansion should define assignment workflow, terminal reopen, richer audit timeline, source-incident correction, vendor workflows, and mobile-specific shortcut behavior before implementation. Assignment/reassignment authority, vendor-state transitions, terminal-status/date recovery, and authoritative operating-timezone policy remain open and must not be inferred from profile labels.
 
 ## Acceptance Criteria
 

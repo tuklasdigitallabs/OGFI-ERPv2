@@ -55,6 +55,9 @@ export async function GET(request: Request) {
       reportId: "maintenance-sla-downtime",
       eventType: "report.export_started"
     });
+    if (new URL(request.url).searchParams.has("dashboard")) {
+      throw new Error("MAINTENANCE_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED");
+    }
     const rows = await buildMaintenanceExportRows(session, getFilterParams(request));
     await logOperationalExportAudit({
       session,

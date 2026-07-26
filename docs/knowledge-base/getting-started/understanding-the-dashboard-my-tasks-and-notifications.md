@@ -3,7 +3,7 @@
 **Audience / required role:** All operational users, managers, approvers, and project users  
 **Applies to:** Operations Dashboard, My Tasks, My Work, Approval Inbox, and Notifications
 **Related phase/module:** Phase I and Phase 1.5 / Operational Visibility  
-**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Checklist Reviews, Food Safety Exceptions, Food Safety Reviews, and Incident drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
+**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Checklist Reviews, Food Safety Exceptions, Food Safety Reviews, Incident drilldowns, and Maintenance drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
 
 ## Purpose
 
@@ -35,12 +35,13 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 10. Use `Food Safety Exceptions` to inspect affected logs. Its card value counts exception readings across scoped history; the destination reports that value separately from the number of affected logs.
 11. Use `Food Safety Reviews` to inspect all scoped logs in `SUBMITTED` or `EXCEPTION REVIEW`. This is an oversight view, not a list of work personally assigned to you.
 12. Use `Open Incidents`, `Critical incidents`, `Incident review`, or `Incident overdue` to inspect its fixed read-only Incident population. These are overlapping oversight lenses, not totals to add together.
-13. Open `Approval Inbox` to review assigned approval decisions.
-14. Open `My Work` for project tasks assigned to you.
-15. Open `Notifications` to review unread or actionable alerts.
-16. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
-17. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
-18. Mark notifications read or archive them after handling the related source record.
+13. Use `Maintenance Follow-up`, `Critical maintenance`, `Pending vendor`, or `Maintenance overdue` to inspect its fixed read-only Maintenance population. These are overlapping oversight lenses, not totals to add together.
+14. Open `Approval Inbox` to review assigned approval decisions.
+15. Open `My Work` for project tasks assigned to you.
+16. Open `Notifications` to review unread or actionable alerts.
+17. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
+18. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
+19. Mark notifications read or archive them after handling the related source record.
 
 ## Expected Result
 
@@ -70,6 +71,9 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - The four Incident profiles are read-only, selected-scope lenses that may overlap. Open includes `OPEN`, `IN_PROGRESS`, and `PENDING_REVIEW`; Critical includes every critical incident across all statuses, including resolved and cancelled history; Incident Review includes all scoped `PENDING_REVIEW` incidents and is not a personal task queue; Overdue applies its saved due-date cutoff to current records.
 - Incident profile Search is bounded to 120 characters and can only narrow the fixed population. Raw status, severity, or incident-date values cannot redefine it. Create and export are unavailable, unsupported profile context fails visibly, and Incident detail and actions preserve a safe return to the same profile.
 - An Incident overdue link is not a historical snapshot. The due-date cutoff stays fixed in the saved link, while current status, resolution, cancellation, and corrected due dates determine the rows now. An older link offers a route to the current overdue cutoff.
+- The four Maintenance profiles are read-only, selected-scope lenses that may overlap. Follow-up includes `OPEN`, `IN_PROGRESS`, and `PENDING_VENDOR`; Critical includes every critical-priority ticket across all statuses, including completed and cancelled history; Pending Vendor includes all scoped `PENDING_VENDOR` tickets and is not a personal assignment queue; Overdue includes active tickets whose target due date is before its saved cutoff and whose completion date is empty.
+- Maintenance profile Search is bounded to 120 characters and only searches visible ticket fields within the fixed population. Raw status, priority, requested-date, or other values cannot redefine it. Create and export are unavailable, unsupported profile context fails visibly, and ticket detail and actions preserve a safe return to the same profile.
+- A Maintenance overdue link is not a historical snapshot. The due-date cutoff stays fixed in the saved link, while current status, completion, cancellation, and corrected target dates determine the rows now. Cancelled tickets are excluded; an older link offers a route to the current overdue cutoff.
 - Approval Inbox shows records assigned to you or your active approval role.
 - My Work shows project tasks according to project visibility and assignment.
 - Notifications show scoped alerts and links to the related work where available.
@@ -91,6 +95,9 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - Incident dashboard profiles do not grant create, correction, resolution, cancellation, assignment, or source-record authority. Incident detail and each command recheck the current permission, exact selected scope, record state, actor lineage, and segregation rules.
 - Do not add Incident card totals together: the same record can belong to several profiles. Critical is an all-status severity-history lens, and Pending Review is oversight rather than assigned work.
 - A related Incident source link is shown only when the user has the corresponding source-module permission, and the source destination reauthorizes access. A hidden or unavailable source link does not change the Incident record.
+- Maintenance dashboard profiles do not grant create, correction, completion, cancellation, assignment, vendor, or Incident authority. Ticket detail and each command recheck the current permission, exact selected scope, record state, reporter lineage, and segregation rules.
+- Do not add Maintenance card totals together: the same ticket can belong to several profiles. Critical is an all-status priority-history lens, and Pending Vendor is oversight rather than assigned work.
+- A source Incident link appears only with current Incident module access and an exact linked-record scope match, and the Incident destination reauthorizes access. Completing a Maintenance ticket does not resolve the linked Incident.
 - `Today’s work` is a prioritized read-only view. Opening an item does not bypass the source record’s permission, status, or segregation-of-duties checks.
 - `My Tasks` is not a replacement for Approval Inbox or project `My Work`, and it does not yet include every operational source. Its signed page cursor only continues the current queue page; it does not grant access or action authority.
 - My Tasks currently exposes enrolled-module, priority, source-qualified status, and native due buckets (`Overdue`, `Due today`, `Upcoming`, and `No due date`). Due buckets query only Incident and Maintenance native due fields; required dates, business dates, and creation dates are not substituted. Filters remain bound while paging. Arbitrary location and assigned-by filters are not exposed; do not infer those meanings from a task's creator, reporter, opener, or submitter.
@@ -111,6 +118,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - [Review Branch Checklist Dashboard Profiles](../branch-operations/README.md)
 - [Review Food Safety Dashboard Profiles](../food-safety/README.md)
 - [Review Incident Records And Dashboard Profiles](../incidents/README.md)
+- [Review Maintenance Tickets And Dashboard Profiles](../maintenance/README.md)
 - Why can't I see my branch, warehouse, or request?
 - Why can't I approve this request?
 - How to export a report

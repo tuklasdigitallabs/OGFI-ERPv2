@@ -11,8 +11,14 @@ import {
   getMaintenanceDashboard,
   getMaintenanceDashboardRead,
   getMaintenanceTicketDetail,
+  maintenanceDashboardProfileWhere,
+  maintenanceDashboardProfileHref,
+  maintenanceDashboardProfilePageHref,
+  maintenanceDetailHref,
   listMaintenanceTicketPage,
   listMaintenanceMyTaskPage,
+  resolveMaintenanceDashboardRequest,
+  resolveMaintenanceProfileReturnTo,
   type MaintenanceTicketSummary
 } from "./maintenance";
 
@@ -24,6 +30,9 @@ const mockPrisma = vi.hoisted(() => ({
     findFirst: vi.fn(),
     findMany: vi.fn(),
     groupBy: vi.fn()
+  },
+  operationalIncident: {
+    findFirst: vi.fn()
   },
   user: {
     findMany: vi.fn()
@@ -100,6 +109,248 @@ const session = {
     permissions.incidentView
   ]
 };
+
+describe("Maintenance dashboard profiles", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.maintenanceTicket.aggregate.mockResolvedValue({
+      _sum: { downtimeMinutes: null }
+    });
+    mockPrisma.maintenanceTicket.count.mockResolvedValue(0);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValue([]);
+    mockPrisma.maintenanceTicket.groupBy.mockResolvedValue([]);
+    mockPrisma.operationalIncident.findFirst.mockResolvedValue(null);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+  });
+
+  it("accepts only the four versioned profiles and validates the overdue cutoff", () => {
+    for (const profile of [
+      "maintenance-follow-up-v1",
+      "maintenance-critical-v1",
+      "maintenance-pending-vendor-v1"
+    ]) {
+      expect(resolveMaintenanceDashboardRequest(profile, undefined, undefined, "2026-07-26"))
+        .toEqual({ profile, query: "", asOf: null, error: null });
+    }
+    expect(resolveMaintenanceDashboardRequest("maintenance-overdue-v1", " Grill ", "2026-07-25", "2026-07-26"))
+      .toEqual({ profile: "maintenance-overdue-v1", query: "grill", asOf: "2026-07-25", error: null });
+    expect(resolveMaintenanceDashboardRequest("", undefined, undefined, "2026-07-26").error).toBe("PROFILE_INVALID");
+    expect(resolveMaintenanceDashboardRequest(["maintenance-follow-up-v1"], undefined, undefined, "2026-07-26").error).toBe("PROFILE_INVALID");
+    expect(resolveMaintenanceDashboardRequest("maintenance-follow-up-v1", ["a"], undefined, "2026-07-26").error).toBe("SEARCH_INVALID");
+    expect(resolveMaintenanceDashboardRequest("maintenance-overdue-v1", "x".repeat(121), "2026-07-25", "2026-07-26").error).toBe("SEARCH_INVALID");
+    expect(resolveMaintenanceDashboardRequest("maintenance-overdue-v1", undefined, undefined, "2026-07-26").error).toBe("AS_OF_REQUIRED");
+    expect(resolveMaintenanceDashboardRequest("maintenance-overdue-v1", undefined, "2026-02-30", "2026-07-26").error).toBe("AS_OF_INVALID");
+    expect(resolveMaintenanceDashboardRequest("maintenance-overdue-v1", undefined, "2026-07-27", "2026-07-26").error).toBe("AS_OF_FUTURE");
+    expect(resolveMaintenanceDashboardRequest("maintenance-follow-up-v1", undefined, "2026-07-25", "2026-07-26").error).toBe("AS_OF_INVALID");
+  });
+
+  it("builds strict canonical profile, pagination, return, and detail URLs", () => {
+    const canonical = maintenanceDashboardProfilePageHref("maintenance-overdue-v1", {
+      asOf: "2026-07-25", query: "grill", page: 2
+    });
+    expect(canonical).toBe("/maintenance?dashboard=maintenance-overdue-v1&asOf=2026-07-25&q=grill&page=2");
+    expect(maintenanceDashboardProfileHref("maintenance-follow-up-v1"))
+      .toBe("/maintenance?dashboard=maintenance-follow-up-v1");
+    expect(resolveMaintenanceProfileReturnTo(canonical, "2026-07-26")).toBe(canonical);
+    expect(resolveMaintenanceProfileReturnTo("/maintenance?q=grill&dashboard=maintenance-follow-up-v1", "2026-07-26")).toBeNull();
+    expect(resolveMaintenanceProfileReturnTo("/maintenance?dashboard=maintenance-follow-up-v1&dashboard=maintenance-critical-v1", "2026-07-26")).toBeNull();
+    expect(resolveMaintenanceProfileReturnTo([canonical, canonical], "2026-07-26")).toBeNull();
+    expect(resolveMaintenanceProfileReturnTo("https://evil.test/maintenance?dashboard=maintenance-follow-up-v1", "2026-07-26")).toBeNull();
+    expect(maintenanceDetailHref("ticket-1", canonical)).toBe(
+      `/maintenance/ticket-1?returnTo=${encodeURIComponent(canonical)}`
+    );
+  });
+
+  it("rejects invalid profile inputs before any query", async () => {
+    const cases = [
+      [{ dashboardProfile: "retired" as never }, {}],
+      [{ dashboardProfile: "" as never }, {}],
+      [{ dashboardProfile: "maintenance-follow-up-v1" as const }, { q: "x".repeat(121) }],
+      [{ dashboardProfile: "maintenance-overdue-v1" as const }, {}],
+      [{ dashboardProfile: "maintenance-overdue-v1" as const, asOf: "invalid" }, {}],
+      [{ dashboardProfile: "maintenance-overdue-v1" as const, asOf: "2999-01-01" }, {}],
+      [{ dashboardProfile: "maintenance-follow-up-v1" as const, asOf: "2026-07-25" }, {}]
+    ] as const;
+    for (const [input, filters] of cases) {
+      await expect(listMaintenanceTicketPage(session as never, filters, input)).rejects.toThrow();
+    }
+    expect(mockPrisma.maintenanceTicket.count).not.toHaveBeenCalled();
+    expect(mockPrisma.maintenanceTicket.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps exact-null scope, raw-facet immunity, bounded paging, and minimal profile projection", async () => {
+    const nullBrandSession = {
+      ...session,
+      context: { ...session.context, brandId: "", brandName: "All Brands" }
+    };
+    mockPrisma.maintenanceTicket.count.mockResolvedValueOnce(26);
+    mockPrisma.maintenanceTicket.findMany
+      .mockResolvedValueOnce([{
+      id: "profile-ticket-1",
+      ticketNumber: "MT-PROFILE-1",
+      requestedAt: new Date("2026-07-20T00:00:00.000Z"),
+      category: "EQUIPMENT",
+      assetName: "Grill 1",
+      assetArea: "Dining",
+      priority: "HIGH",
+      status: "OPEN",
+      title: "Igniter follow-up",
+      location: { name: "SM North Edsa" },
+      reportedByUserId: null,
+      ownerUserId: null,
+      sourceIncidentId: "00000000-0000-4000-8000-000000000901",
+      downtimeMinutes: 10,
+      targetDueAt: null,
+      completedAt: null
+      }])
+      .mockResolvedValueOnce([{ id: "profile-ticket-1" }]);
+    const page = await listMaintenanceTicketPage(
+      nullBrandSession as never,
+      { status: "CANCELLED", priority: "LOW", requestedAt: "2020-01-01" },
+      { dashboardProfile: "maintenance-follow-up-v1", page: 2, pageSize: 25 }
+    );
+    const countWhere = mockPrisma.maintenanceTicket.count.mock.calls[0]![0].where;
+    const listQuery = mockPrisma.maintenanceTicket.findMany.mock.calls[0]![0];
+    expect(countWhere).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: null,
+      locationId: session.context.locationId,
+      status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] }
+    });
+    expect(listQuery.where).toEqual(countWhere);
+    expect(listQuery).toMatchObject({ skip: 25, take: 25 });
+    expect(listQuery.select).toEqual(expect.objectContaining({
+      description: false,
+      correctiveAction: false,
+      evidenceReference: false,
+      sourceIncidentId: false,
+      downtimeMinutes: false
+    }));
+    expect(page).toMatchObject({ page: 2, totalItems: 26, totalPages: 2, dashboardProfile: "maintenance-follow-up-v1", profileAsOf: null });
+    expect(page.items[0]).toMatchObject({
+      hasSourceIncident: true,
+      sourceIncidentId: null,
+      downtimeMinutes: null,
+      description: "",
+      correctiveAction: null,
+      evidenceReference: null
+    });
+    expect(mockPrisma.maintenanceTicket.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        brandId: null,
+        locationId: session.context.locationId,
+        id: { in: ["profile-ticket-1"] },
+        sourceIncidentId: { not: null }
+      },
+      select: { id: true }
+    });
+  });
+
+  it("applies shared predicates and display-name-only actor search", async () => {
+    const cases = [
+      ["maintenance-critical-v1", undefined, { priority: "CRITICAL" }],
+      ["maintenance-pending-vendor-v1", undefined, { status: "PENDING_VENDOR" }],
+      ["maintenance-overdue-v1", "2026-07-25", {
+        targetDueAt: { lt: new Date("2026-07-25T00:00:00.000Z") },
+        completedAt: null,
+        status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] }
+      }]
+    ] as const;
+    for (const [dashboardProfile, asOf, predicate] of cases) {
+      vi.clearAllMocks();
+      mockPrisma.maintenanceTicket.count.mockResolvedValue(0);
+      mockPrisma.maintenanceTicket.findMany.mockResolvedValue([]);
+      mockPrisma.user.findMany.mockResolvedValue([{ id: "actor-1" }]);
+      await listMaintenanceTicketPage(session as never, { q: "owner" }, {
+        dashboardProfile,
+        ...(asOf ? { asOf } : {})
+      });
+      const where = mockPrisma.maintenanceTicket.count.mock.calls[0]![0].where;
+      expect(where).toMatchObject({
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        brandId: session.context.brandId,
+        locationId: session.context.locationId,
+        ...predicate
+      });
+      expect(mockPrisma.maintenanceTicket.findMany.mock.calls[0]![0].where).toEqual(where);
+      expect(where.OR).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ description: expect.anything() }),
+        expect.objectContaining({ correctiveAction: expect.anything() }),
+        expect.objectContaining({ evidenceReference: expect.anything() }),
+        expect.objectContaining({ sourceIncidentId: expect.anything() })
+      ]));
+      expect(mockPrisma.user.findMany.mock.calls[0]![0]).toEqual({
+        where: {
+          tenantId: session.context.tenantId,
+          displayName: { contains: "owner", mode: "insensitive" }
+        },
+        select: { id: true }
+      });
+    }
+  });
+
+  it("captures one cutoff and keeps dashboard/profile predicate parity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-26T01:00:00.000Z"));
+    mockPrisma.maintenanceTicket.groupBy
+      .mockResolvedValueOnce([{ status: "OPEN", _count: { _all: 2 } }])
+      .mockResolvedValueOnce([{ priority: "CRITICAL", _count: { _all: 3 } }]);
+    mockPrisma.maintenanceTicket.count
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(1);
+    const result = await getMaintenanceDashboardRead(session as never);
+    expect(result).toMatchObject({
+      overdueAsOf: "2026-07-26", totalTickets: 10,
+      openTickets: 2, criticalTickets: 3, overdueTickets: 1
+    });
+    expect(mockPrisma.maintenanceTicket.count.mock.calls.map(([query]) => query.where)).toEqual([
+      expect.objectContaining({ brandId: session.context.brandId }),
+      expect.objectContaining({ status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] } }),
+      expect.objectContaining({ priority: "CRITICAL" }),
+      expect.objectContaining({
+        targetDueAt: { lt: new Date("2026-07-26T00:00:00.000Z") },
+        completedAt: null,
+        status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] }
+      })
+    ]);
+    expect(mockPrisma.maintenanceTicket.findMany.mock.calls[0]![0].where)
+      .toEqual(mockPrisma.maintenanceTicket.count.mock.calls[1]![0].where);
+    vi.useRealTimers();
+  });
+
+  it("keeps saved overdue links current-record based and permits intentional profile overlap", () => {
+    const overdue = maintenanceDashboardProfileWhere(
+      session as never,
+      "maintenance-overdue-v1",
+      "2026-07-26"
+    );
+    expect(overdue).toEqual(expect.objectContaining({
+      targetDueAt: { lt: new Date("2026-07-26T00:00:00.000Z") },
+      completedAt: null,
+      status: { in: ["OPEN", "IN_PROGRESS", "PENDING_VENDOR"] }
+    }));
+    expect(overdue).not.toHaveProperty("createdAt");
+    expect(overdue).not.toHaveProperty("requestedAt");
+
+    const overlappingRecord = {
+      priority: "CRITICAL",
+      status: "PENDING_VENDOR",
+      completedAt: null,
+      targetDueAt: new Date("2026-07-25T23:59:59.999Z")
+    };
+    expect(overlappingRecord).toMatchObject({ priority: "CRITICAL", status: "PENDING_VENDOR", completedAt: null });
+    expect(overlappingRecord.targetDueAt.getTime()).toBeLessThan(
+      (overdue.targetDueAt as { lt: Date }).lt.getTime()
+    );
+  });
+});
 
 function maintenanceFormWithInvalidTargetDate() {
   const form = new FormData();
@@ -202,6 +453,7 @@ describe("Phase 2 maintenance foundation", () => {
       _sum: { downtimeMinutes: null }
     });
     mockPrisma.maintenanceTicket.groupBy.mockResolvedValue([]);
+    mockPrisma.operationalIncident.findFirst.mockResolvedValue(null);
     mockPrisma.user.findMany.mockResolvedValue([]);
   });
 
@@ -410,8 +662,8 @@ describe("Phase 2 maintenance foundation", () => {
   it("uses exact null-brand scope for dashboard, detail, history, and actor markers", async () => {
     const nullBrandSession = {
       ...session,
-      context: { ...session.context, brandId: null, brandName: null },
-      permissionCodes: [permissions.maintenanceView]
+      context: { ...session.context, brandId: "", brandName: null },
+      permissionCodes: [permissions.maintenanceView, permissions.incidentView]
     };
     const current = {
       id: "ticket-null-brand",
@@ -430,7 +682,7 @@ describe("Phase 2 maintenance foundation", () => {
       description: "Igniter requires independent maintenance review.",
       reportedByUserId: session.user.id,
       ownerUserId: null,
-      sourceIncidentId: null,
+      sourceIncidentId: "24000000-0000-4000-8000-000000000001",
       downtimeMinutes: 30,
       targetDueAt: null,
       completedAt: null,
@@ -458,6 +710,7 @@ describe("Phase 2 maintenance foundation", () => {
 
     mockPrisma.maintenanceTicket.findFirst.mockResolvedValueOnce(current);
     mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([]);
+    mockPrisma.operationalIncident.findFirst.mockResolvedValueOnce({ id: current.sourceIncidentId });
     const detail = await getMaintenanceTicketDetail(
       nullBrandSession as never,
       current.id
@@ -470,8 +723,87 @@ describe("Phase 2 maintenance foundation", () => {
     );
     expect(detail).toMatchObject({
       hasReporter: true,
-      reportedByCurrentUser: true
+      reportedByCurrentUser: true,
+      hasSourceIncident: true,
+      sourceIncidentId: current.sourceIncidentId
     });
+    expect(mockPrisma.operationalIncident.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: current.sourceIncidentId,
+        tenantId: current.tenantId,
+        companyId: current.companyId,
+        brandId: null,
+        locationId: current.locationId
+      },
+      select: { id: true }
+    });
+
+    mockPrisma.maintenanceTicket.findFirst.mockResolvedValueOnce(current);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([]);
+    mockPrisma.operationalIncident.findFirst.mockResolvedValueOnce(null);
+    await expect(getMaintenanceTicketDetail(nullBrandSession as never, current.id))
+      .resolves.toMatchObject({ hasSourceIncident: true, sourceIncidentId: null });
+  });
+
+  it("discloses a linked Incident only after permission and exact-scope reauthorization", async () => {
+    const sourceIncidentId = "24000000-0000-4000-8000-000000000001";
+    const current = {
+      id: "ticket-source-auth",
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      ticketNumber: "MT-SOURCE-1",
+      requestedAt: new Date("2026-07-20T00:00:00.000Z"),
+      category: "SAFETY",
+      assetName: "Dining exhaust",
+      assetArea: "Dining",
+      priority: "CRITICAL",
+      status: "OPEN",
+      title: "Investigate incident-linked exhaust fault",
+      description: "The exhaust fault requires a controlled maintenance follow-up.",
+      reportedByUserId: session.user.id,
+      ownerUserId: null,
+      sourceIncidentId,
+      downtimeMinutes: 15,
+      targetDueAt: new Date("2026-07-25T00:00:00.000Z"),
+      completedAt: null,
+      correctiveAction: null,
+      evidenceReference: null,
+      createdAt: new Date("2026-07-20T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-20T00:00:00.000Z"),
+      location: { name: session.context.locationName }
+    };
+    const history = { ...current, id: "ticket-source-history", ticketNumber: "MT-SOURCE-0", requestedAt: new Date("2026-07-19T00:00:00.000Z") };
+
+    mockPrisma.maintenanceTicket.findFirst.mockResolvedValueOnce(current);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([history]);
+    mockPrisma.operationalIncident.findFirst.mockResolvedValueOnce({ id: sourceIncidentId });
+    const resolveOnly = await getMaintenanceTicketDetail({
+      ...session,
+      permissionCodes: [permissions.maintenanceView, permissions.incidentResolve]
+    } as never, current.id);
+    expect(resolveOnly).toMatchObject({ hasSourceIncident: true, sourceIncidentId });
+    expect(resolveOnly?.history[0]).toMatchObject({ hasSourceIncident: true, sourceIncidentId: null });
+
+    const sourceLookups = mockPrisma.operationalIncident.findFirst.mock.calls.length;
+    mockPrisma.maintenanceTicket.findFirst.mockResolvedValueOnce(current);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([history]);
+    const noIncidentPermission = await getMaintenanceTicketDetail({
+      ...session,
+      permissionCodes: [permissions.maintenanceView]
+    } as never, current.id);
+    expect(noIncidentPermission).toMatchObject({ hasSourceIncident: true, sourceIncidentId: null });
+    expect(mockPrisma.operationalIncident.findFirst).toHaveBeenCalledTimes(sourceLookups);
+
+    mockPrisma.maintenanceTicket.findFirst.mockResolvedValueOnce(current);
+    mockPrisma.maintenanceTicket.findMany.mockResolvedValueOnce([history]);
+    mockPrisma.operationalIncident.findFirst.mockResolvedValueOnce(null);
+    const outOfScope = await getMaintenanceTicketDetail({
+      ...session,
+      permissionCodes: [permissions.maintenanceView, permissions.incidentCreate]
+    } as never, current.id);
+    expect(outOfScope).toMatchObject({ hasSourceIncident: true, sourceIncidentId: null });
   });
 
   it("rejects maintenance target dates before the request date before writing", async () => {
@@ -1374,7 +1706,43 @@ describe("Phase 2 maintenance foundation", () => {
     expect(detailPageSource).toContain("/incidents/${sourceIncidentId}");
     expect(detailPageSource).toContain("Source incident (read-only reference)");
     expect(detailPageSource).toContain("Open Source Incident");
+    expect(detailPageSource).toContain("canUseIncidents(permissionCodes)");
+    expect(detailPageSource).toContain('triggerClassName="min-h-11');
+    expect(detailPageSource).toContain('className="ogfi-chip mt-3 min-h-11"');
+    expect(detailPageSource).toContain('className="ogfi-chip min-h-11"');
+    expect(detailPageSource).toContain("values.length === 1 ? values[0] : values");
+    expect(detailPageSource).toContain("maintenanceDetailHref(id, returnTo)");
+    expect(detailPageSource).toContain("maintenanceDetailHref(ticketId, returnTo)");
     expect(detailPageSource).not.toContain("purchaseOrder.create");
+  });
+
+  it("keeps every Maintenance dashboard-profile visible surface read-only, canonical, responsive, and touch-safe", () => {
+    expect(listPageSource).toContain('dashboardProfile === "maintenance-follow-up-v1"');
+    expect(listPageSource).toContain('dashboardProfile === "maintenance-critical-v1"');
+    expect(listPageSource).toContain('dashboardProfile === "maintenance-pending-vendor-v1"');
+    expect(listPageSource).toContain('"Overdue Maintenance Tickets"');
+    expect(listPageSource).toContain("including completed and cancelled history");
+    expect(listPageSource).toContain("It is not a personal assignment queue");
+    expect(listPageSource).toContain("ticket status, completion, cancellation, and corrected target dates reflect current records; this is not a historical snapshot");
+    expect(listPageSource).toContain("Dashboard profiles are overlapping operational lenses; their counts must not be added together");
+    expect(listPageSource).toContain("{!dashboardProfile ? <div");
+    expect(listPageSource).toContain("{canCreate && !dashboardProfile ? (");
+    expect(listPageSource).toContain("{canExport ? (!dashboardProfile ? (");
+    expect(listPageSource).toContain('<input name="dashboard" type="hidden" value={dashboardProfile} />');
+    expect(listPageSource).toContain('<input name="asOf" type="hidden" value={dashboardRequest.asOf} />');
+    expect(listPageSource).toContain('name="q"');
+    expect(listPageSource).toContain("maintenanceDashboardProfilePageHref(dashboardProfile");
+    expect(listPageSource).toContain("maintenanceDetailHref(ticketId, pageHref(workspace.page))");
+    expect(listPageSource).toContain("xl:hidden");
+    expect(listPageSource).toContain("hidden overflow-x-auto xl:block");
+    expect(listPageSource).toContain('className="min-h-11"');
+
+    expect(detailPageSource.match(/name="returnTo"/g)?.length).toBe(3);
+    expect(detailPageSource).toContain("maintenanceDetailHref(historyTicket.id, returnTo)");
+    expect(detailPageSource).toContain("canUseIncidents(permissionCodes)");
+    expect(detailPageSource).toContain('triggerClassName="min-h-11');
+    expect(detailPageSource).toContain('className="ogfi-chip mt-3 min-h-11"');
+    expect(detailPageSource).toContain('className="ogfi-chip min-h-11"');
   });
 
   it("shows scoped same-location and same-asset maintenance history", () => {
@@ -1388,7 +1756,7 @@ describe("Phase 2 maintenance foundation", () => {
     expect(detailPageSource).toContain("historyTicket.downtimeMinutes");
     expect(detailPageSource).toContain("historyTicket.correctiveAction");
     expect(detailPageSource).toContain("historyTicket.evidenceReference");
-    expect(detailPageSource).toContain('href={`/maintenance/${historyTicket.id}`}');
+    expect(detailPageSource).toContain("maintenanceDetailHref(historyTicket.id, returnTo)");
   });
 
   it("provides maintenance queue search and filters without mutating source records", () => {
@@ -1432,6 +1800,13 @@ describe("Phase 2 maintenance foundation", () => {
     expect(listPageSource).toContain("Source");
     expect(listPageSource).toContain("No tickets match the filters");
     expect(listPageSource).toContain("getMaintenanceDashboardRead(session)");
+    expect(listPageSource).toContain("dashboardRequest.error");
+    expect(listPageSource).toContain("canUseIncidents(permissionCodes)");
+    expect(listPageSource).toContain("{canExport ? (!dashboardProfile ? (");
+    expect(listPageSource).toContain("{canCreate && !dashboardProfile ? (");
+    expect(listPageSource).toContain("{!dashboardProfile ? <Badge");
+    expect(listPageSource).toContain("xl:hidden");
+    expect(listPageSource).toContain("hidden overflow-x-auto xl:block");
     expect(listPageSource).not.toContain("maintenanceTicket.update");
     expect(serviceSource).not.toContain("operationalIncident.update");
   });
@@ -1454,6 +1829,7 @@ describe("Phase 2 maintenance foundation", () => {
         hasReporter: true,
         reportedByCurrentUser: false,
         ownerName: "Alyssa Tan",
+        hasSourceIncident: true,
         sourceIncidentId: "24000000-0000-4000-8000-000000000001",
         downtimeMinutes: 45,
         targetDueAt: "2026-07-03",
@@ -1477,6 +1853,7 @@ describe("Phase 2 maintenance foundation", () => {
         hasReporter: true,
         reportedByCurrentUser: false,
         ownerName: "Marco Santos",
+        hasSourceIncident: true,
         sourceIncidentId: "24000000-0000-4000-8000-000000000002",
         downtimeMinutes: 20,
         targetDueAt: "2026-07-04",
@@ -1500,6 +1877,7 @@ describe("Phase 2 maintenance foundation", () => {
         hasReporter: true,
         reportedByCurrentUser: false,
         ownerName: "Nico Valdez",
+        hasSourceIncident: false,
         sourceIncidentId: null,
         downtimeMinutes: 0,
         targetDueAt: null,

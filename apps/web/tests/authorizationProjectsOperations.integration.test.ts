@@ -1899,6 +1899,12 @@ describe("projects and operations database-backed authorization boundaries", () 
         "maintenance export",
         () => maintenance.buildMaintenanceExportRows(session),
       ],
+      [
+        "maintenance profile page",
+        () => maintenance.listMaintenanceTicketPage(session, {}, {
+          dashboardProfile: "maintenance-follow-up-v1",
+        }),
+      ],
       ["recipe create", () => recipes.createDraftRecipe(new FormData())],
       [
         "recipe revision",

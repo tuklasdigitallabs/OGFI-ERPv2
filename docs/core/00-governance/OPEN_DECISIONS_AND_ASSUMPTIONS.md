@@ -137,6 +137,20 @@ including migration, constraint, legacy-row disclosure, correction/recovery, and
 reporting behavior. `DEC-0228` intentionally preserves exact stored rows and grants
 no workflow authority; dashboard profiles must not silently normalize these gaps.
 
+17. **Maintenance lifecycle, ownership, and time reconciliation (`DEC-0229`, open):**
+Before a Maintenance production-readiness claim, confirm and reconcile: (a)
+assignment, owner, reassignment, and unassignment authority, required reasons, audit,
+and notifications; (b) vendor ownership and the authorized transitions into and out
+of `PENDING_VENDOR`, including escalation and return-to-work behavior; (c) whether
+and how `COMPLETED` or `CANCELLED` tickets may reopen, with recovery authority and
+history preservation; (d) invariants between terminal status, `completedAt`,
+completion actor, cancellation facts, and target dates, including migration,
+constraints, legacy-row disclosure, and correction/recovery; and (e) the
+authoritative company/user operating timezone, fallback, daylight-boundary, and
+policy-change behavior used for date-only dashboard cutoffs. `DEC-0229` deliberately
+uses an active-status whitelist for overdue work, preserves stored terminal history,
+and grants no workflow authority; profiles must not silently resolve these gaps.
+
 ## 6. Change request format
 
 Every policy change request should include:

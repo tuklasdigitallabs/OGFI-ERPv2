@@ -637,6 +637,16 @@
       "status": "COVERED"
     },
     {
+      "surfaceId": "server/services/maintenance.ts#listMaintenanceTicketPage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/maintenance.ts#listMaintenanceTicketPage"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
       "surfaceId": "server/services/maintenance.ts#cancelMaintenanceTicket",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": ["server/services/maintenance.ts#cancelMaintenanceTicket"],
