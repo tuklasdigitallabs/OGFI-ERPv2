@@ -34,6 +34,13 @@ const protectedTables = [
 const guardFunction = "public.reject_protected_history_mutation()";
 const denialBucketGuardFunction = "public.enforce_authorization_denial_bucket_update()";
 const throttleGuardFunction = "public.enforce_authentication_throttle_window_transition()";
+const approvalBackfillGuardFunction = "public.reject_approval_routing_backfill_evidence_mutation()";
+const approvalBackfillRunGuardFunction = "public.validate_approval_routing_backfill_run_transition()";
+const approvalBackfillTables = [
+  { name: "ApprovalRoutingBackfillRun", timestampColumn: "updatedAt", appendOnly: false },
+  { name: "ApprovalRoutingBackfillBatch", timestampColumn: "committedAt", appendOnly: true },
+  { name: "ApprovalRoutingBackfillBlockerObservation", timestampColumn: "observedAt", appendOnly: true },
+];
 
 const activeThrottleWindowProbeInsert = `INSERT INTO "AuthenticationThrottleWindow" (
   "attemptType", "dimensionType", "bucketKey", "keyVersion", "shardNumber",
@@ -102,6 +109,39 @@ export function runAppendOnlyContract(
     expectRejected(executePsql, psql, contract.runtime, `UPDATE "${table}" SET "${timestampColumn}" = "${timestampColumn}" WHERE false`, "permission denied", `runtime lacks UPDATE on ${table}`, checks);
     expectRejected(executePsql, psql, contract.runtime, `DELETE FROM "${table}" WHERE false`, "permission denied", `runtime lacks DELETE on ${table}`, checks);
     expectRejected(executePsql, psql, contract.runtime, `BEGIN; SET LOCAL lock_timeout='2s'; TRUNCATE TABLE "${table}" CASCADE; ROLLBACK`, "permission denied", `runtime lacks TRUNCATE on ${table}`, checks);
+  }
+
+  for (const { name: table, timestampColumn, appendOnly } of approvalBackfillTables) {
+    expectAllowed(
+      executePsql,
+      psql,
+      contract.runtime,
+      `SELECT 1 / CASE
+         WHEN NOT has_table_privilege(current_user, 'public."${table}"', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER,REFERENCES,MAINTAIN')
+          AND NOT EXISTS (
+            SELECT 1
+              FROM pg_attribute a
+             WHERE a.attrelid = 'public."${table}"'::regclass
+               AND a.attnum > 0 AND NOT a.attisdropped
+               AND (
+                 has_column_privilege(current_user, a.attrelid, a.attnum, 'SELECT')
+                 OR has_column_privilege(current_user, a.attrelid, a.attnum, 'INSERT')
+                 OR has_column_privilege(current_user, a.attrelid, a.attnum, 'UPDATE')
+                 OR has_column_privilege(current_user, a.attrelid, a.attnum, 'REFERENCES')
+               )
+          )
+         THEN 1 ELSE 0 END`,
+      `web runtime has zero table and column privileges on ${table}`,
+      checks,
+    );
+    expectRejected(executePsql, psql, contract.runtime, `SELECT count(*) FROM "${table}"`, "permission denied", `web runtime cannot SELECT ${table}`, checks);
+    expectRejected(executePsql, psql, contract.runtime, `INSERT INTO "${table}" DEFAULT VALUES`, "permission denied", `web runtime cannot INSERT ${table}`, checks);
+    expectRejected(executePsql, psql, contract.runtime, `UPDATE "${table}" SET "${timestampColumn}" = "${timestampColumn}" WHERE false`, "permission denied", `runtime lacks UPDATE on ${table}`, checks);
+    expectRejected(executePsql, psql, contract.runtime, `DELETE FROM "${table}" WHERE false`, "permission denied", `runtime lacks DELETE on ${table}`, checks);
+    expectRejected(executePsql, psql, contract.runtime, `BEGIN; TRUNCATE TABLE "${table}" CASCADE; ROLLBACK`, "permission denied", `runtime lacks TRUNCATE on ${table}`, checks);
+    if (appendOnly) {
+      expectRejected(executePsql, psql, contract.migration, `BEGIN; TRUNCATE TABLE "${table}" CASCADE; ROLLBACK`, ["is append-only; TRUNCATE is prohibited", "55000"], `owner rejects TRUNCATE on ${table}`, checks);
+    }
   }
 
   expectAllowed(psql, contract.runtime, `BEGIN; WITH inserted AS (INSERT INTO "AuditEvent" ("id","tenantId","companyId","actorUserId","eventType","entityType","entityId","occurredAt","metadata") SELECT gen_random_uuid(), c."tenantId", c."id", NULL, 'append_only.hosted_contract', 'HostedContract', gen_random_uuid(), now(), jsonb_build_object('sourceDecisionId','DEC-0049') FROM "Company" c ORDER BY c."id" LIMIT 1 RETURNING 1) SELECT 1 / count(*) FROM inserted; ROLLBACK`, "runtime can INSERT AuditEvent with rollback", checks);
@@ -225,9 +265,14 @@ export function runAppendOnlyContract(
   expectRejected(psql, contract.runtime, 'CREATE TEMP TABLE "ogfi_runtime_temp_probe" (id integer)', "permission denied", "runtime cannot create temporary tables", checks);
   expectRejected(psql, contract.runtime, 'ALTER TABLE "AuditEvent" DISABLE TRIGGER "AuditEvent_append_only_guard_trg"', "must be owner", "runtime cannot disable guard", checks);
   expectRejected(psql, contract.runtime, 'ALTER TABLE "AuthorizationDenialBucket" DISABLE TRIGGER "AuthorizationDenialBucket_10_update_integrity_trg"', "must be owner", "runtime cannot disable denial bucket guard", checks);
+  expectRejected(psql, contract.runtime, 'ALTER TABLE "ApprovalRoutingBackfillRun" DISABLE TRIGGER "ApprovalRoutingBackfillRun_transition_guard_trg"', "must be owner", "runtime cannot disable approval backfill run guard", checks);
+  expectRejected(psql, contract.runtime, 'ALTER TABLE "ApprovalRoutingBackfillBatch" DISABLE TRIGGER "ApprovalRoutingBackfillBatch_append_only_guard_trg"', "must be owner", "runtime cannot disable approval backfill evidence guards", checks);
+  expectRejected(psql, contract.runtime, 'ALTER TABLE "ApprovalRoutingBackfillBlockerObservation" DISABLE TRIGGER "ApprovalRoutingBackfillBlocker_append_only_guard_trg"', "must be owner", "runtime cannot disable approval backfill blocker guards", checks);
   expectRejected(psql, contract.runtime, `ALTER FUNCTION ${guardFunction} OWNER TO "${contract.roles.runtime}"`, "must be owner", "runtime cannot alter guard function", checks);
   expectRejected(psql, contract.runtime, `ALTER FUNCTION ${denialBucketGuardFunction} OWNER TO "${contract.roles.runtime}"`, "must be owner", "runtime cannot alter denial bucket guard function", checks);
   expectRejected(psql, contract.runtime, `ALTER FUNCTION ${throttleGuardFunction} OWNER TO "${contract.roles.runtime}"`, "must be owner", "runtime cannot alter throttle guard function", checks);
+  expectRejected(psql, contract.runtime, `ALTER FUNCTION ${approvalBackfillGuardFunction} OWNER TO "${contract.roles.runtime}"`, "must be owner", "runtime cannot alter approval backfill guard function", checks);
+  expectRejected(psql, contract.runtime, `ALTER FUNCTION ${approvalBackfillRunGuardFunction} OWNER TO "${contract.roles.runtime}"`, "must be owner", "runtime cannot alter approval backfill run function", checks);
   expectRejected(psql, contract.runtime, "SET session_replication_role = replica", "permission denied", "runtime cannot suppress triggers through replication mode", checks);
   return checks;
 }

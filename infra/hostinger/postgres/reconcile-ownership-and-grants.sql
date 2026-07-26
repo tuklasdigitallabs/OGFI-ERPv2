@@ -144,6 +144,28 @@ BEGIN
     END LOOP;
     EXECUTE format('GRANT SELECT, INSERT ON TABLE public.%I TO %I', protected_table, runtime_role);
   END LOOP;
+  -- DEC-0245 Option D keeps the orchestration executor non-operational until a
+  -- separately governed maintenance-role boundary exists. Remove the blanket
+  -- runtime defaults above, including any stale column grants, from all three
+  -- orchestration tables.
+  FOREACH protected_table IN ARRAY ARRAY[
+    'ApprovalRoutingBackfillRun',
+    'ApprovalRoutingBackfillBatch',
+    'ApprovalRoutingBackfillBlockerObservation'
+  ]
+  LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', protected_table);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', protected_table, runtime_role);
+    FOR column_name IN
+      SELECT a.attname
+      FROM pg_attribute a
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+    LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM PUBLIC', column_name, protected_table);
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM %I', column_name, protected_table, runtime_role);
+    END LOOP;
+  END LOOP;
   FOREACH protected_table IN ARRAY ARRAY[
     'ControlledEvidencePolicyVersion',
     'ControlledEvidencePolicyActivationEvent'

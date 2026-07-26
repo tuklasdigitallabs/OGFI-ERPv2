@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { prisma } from "@ogfi/database";
+import { describe, expect, test, vi } from "vitest";
 import {
+  runApprovalRoutingBackfill,
   scanApprovalRoutingKeysetPages,
   validateApprovalRoutingActivationAuditState,
   validateApprovalRoutingStructure,
@@ -132,10 +134,76 @@ describe("approval routing active-work backfill contract", () => {
     })).toThrow("MULTIPLE_PENDING_STEPS");
   });
 
-  test("defaults to dry-run and requires an explicit apply flag", () => {
-    expect(job).toContain('const apply = process.argv.includes("--apply")');
+  test("requires an explicit mode and start/resume operation", () => {
+    expect(job).toContain('const apply = args.includes("--apply")');
+    expect(job).toContain('"--dry-run"');
+    expect(job).toContain('"--start"');
+    expect(job).toContain('"--resume"');
+    expect(job).toContain('"--stop"');
+    expect(job).toContain("APPROVAL_ROUTING_BACKFILL_OPERATION_REQUIRED");
     expect(source).toContain("const apply = options.apply === true");
-    expect(source).toContain('mode: apply ? "APPLY" : "DRY_RUN"');
+    expect(source).toContain('if (!apply) return await runReadOnlyApprovalRoutingBackfill');
+  });
+
+  test("fails closed with dry-run mode for missing scope and invalid numeric options", async () => {
+    await expect(runApprovalRoutingBackfill({ apply: false })).resolves.toMatchObject({
+      mode: "DRY_RUN",
+      outcome: "INCOMPATIBLE",
+      reasonCode: "APPROVAL_ROUTING_BACKFILL_SCOPE_PAIR_REQUIRED",
+    });
+    await expect(runApprovalRoutingBackfill({
+      apply: false,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      companyId: "00000000-0000-4000-8000-000000000002",
+      batchSize: 0,
+    })).resolves.toMatchObject({
+      mode: "DRY_RUN",
+      outcome: "INCOMPATIBLE",
+      reasonCode: "APPROVAL_ROUTING_BACKFILL_BATCH_SIZE_INVALID",
+    });
+  });
+
+  test("projects documented dry-run database transients without swallowing unknown failures", async () => {
+    const transaction = vi.spyOn(prisma, "$transaction");
+    transaction.mockRejectedValueOnce({ code: "P2024" });
+    await expect(runApprovalRoutingBackfill({
+      apply: false,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      companyId: "00000000-0000-4000-8000-000000000002",
+    })).resolves.toMatchObject({
+      mode: "DRY_RUN",
+      outcome: "RETRYABLE",
+      reasonCode: "APPROVAL_ROUTING_BACKFILL_DATABASE_RETRYABLE",
+    });
+    transaction.mockRejectedValueOnce(new Error("UNKNOWN_BACKFILL_FAILURE"));
+    await expect(runApprovalRoutingBackfill({
+      apply: false,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      companyId: "00000000-0000-4000-8000-000000000002",
+    })).rejects.toThrow("UNKNOWN_BACKFILL_FAILURE");
+    transaction.mockRestore();
+  });
+
+  test("rejects apply before database access when normalized routing is enabled", async () => {
+    const prior = process.env.APPROVAL_ROUTING_V1_ENABLED;
+    process.env.APPROVAL_ROUTING_V1_ENABLED = "true";
+    try {
+      await expect(runApprovalRoutingBackfill({
+        apply: true,
+        tenantId: "00000000-0000-4000-8000-000000000001",
+        companyId: "00000000-0000-4000-8000-000000000002",
+      })).resolves.toMatchObject({
+        mode: "APPLY",
+        outcome: "INCOMPATIBLE",
+        reasonCode: "APPROVAL_ROUTING_BACKFILL_REQUIRES_ROUTING_DISABLED",
+      });
+    } finally {
+      if (prior === undefined) delete process.env.APPROVAL_ROUTING_V1_ENABLED;
+      else process.env.APPROVAL_ROUTING_V1_ENABLED = prior;
+    }
+    const durableStart = source.indexOf("async function runDurableApprovalRoutingBackfill");
+    expect(source.indexOf("APPROVAL_ROUTING_BACKFILL_REQUIRES_ROUTING_DISABLED", durableStart))
+      .toBeLessThan(source.indexOf("return prisma.$transaction", durableStart));
   });
 
   test("coordinates one bounded serializable transaction with per-instance savepoints", () => {
@@ -146,7 +214,7 @@ describe("approval routing active-work backfill contract", () => {
     expect(source).toContain("SAVEPOINT approval_routing_backfill_instance");
     expect(source).toContain("ROLLBACK TO SAVEPOINT approval_routing_backfill_instance");
     expect(source).toContain("RELEASE SAVEPOINT approval_routing_backfill_instance");
-    expect(source).toContain('id: { gt: afterId }');
+    expect(source).toContain('(\"createdAt\", id) > ($3::timestamp, $4::uuid)');
     expect(source).toContain("FOR UPDATE");
     expect(source).toContain("routingSchemaVersion: 0");
     expect(source).toContain("APPROVAL_ROUTING_BACKFILL_CAS_FAILED");
@@ -154,12 +222,67 @@ describe("approval routing active-work backfill contract", () => {
 
   test("rolls an instance back on any child, CAS, or audit failure", () => {
     expect(source).toContain(
-      "const inspected = await inspectOrApplyInstance(coordinator, row.id, true)",
+      "const inspected = await inspectOrApplyInstance(tx, row.id, true",
     );
-    expect(source).toContain("throw new BackfillDryRunRollback()");
     expect(source.indexOf("approvalInstanceStepScopeGroup.create"))
       .toBeLessThan(source.indexOf("await tx.auditEvent.create"));
     expect(source).toContain("ROLLBACK TO SAVEPOINT approval_routing_backfill_instance");
+    expect(source).toContain('if (!(error instanceof BackfillBlocker)) throw error');
+  });
+
+  test("binds authoritative runs and audits to exact immutable contracts", () => {
+    for (const identity of [
+      "routingSchemaVersion",
+      "routingMappingVersion",
+      "routingMappingHash",
+      "capabilityVersion",
+      "capabilityHash",
+      "releaseIdentity",
+      "requestHash",
+      "backfillRunId",
+    ]) expect(source).toContain(identity);
+    expect(source).toContain("APPROVAL_ROUTING_BACKFILL_CONTRACT_MISMATCH");
+    expect(source).toContain("APPROVAL_ROUTING_BACKFILL_START_REPLAY_MISMATCH");
+  });
+
+  test("uses database-time leases, monotonic fencing, and replay receipts", () => {
+    expect(source).toContain("clock_timestamp() + ($2 * INTERVAL '1 second')");
+    expect(source).toContain('"fencingToken" = "fencingToken" + 1');
+    expect(source).toContain('"leaseExpiresAt" <= clock_timestamp()');
+    expect(source).toContain("APPROVAL_ROUTING_BACKFILL_FENCE_LOST");
+    expect(source).toContain("loadReplayBatch");
+    expect(source).toContain("previousReceiptHash");
+  });
+
+  test("projects stable machine reasons and provides a fenced stop path", () => {
+    expect(source).toContain("reasonCode: string | null");
+    expect(source).toContain("APPROVAL_ROUTING_BACKFILL_DATABASE_RETRYABLE");
+    expect(source).toContain('operation === "STOP"');
+    expect(source).toContain('eventType: "approval.routing_backfill_stopped"');
+    expect(source).toContain('status = \'STOPPED\'');
+    expect(source).toContain('outcome: "STOPPED"');
+    expect(job).toContain("STOPPED: 0");
+    expect(job).toContain('requiredEnvironment("GITHUB_SHA")');
+    expect(job).not.toContain('requiredEnvironment("APPROVAL_ROUTING_BACKFILL_RELEASE_IDENTITY")');
+  });
+
+  test("keeps dry run genuinely read-only", () => {
+    expect(source).toContain('SET TRANSACTION READ ONLY');
+    expect(source).toContain("inspectOrApplyInstance(tx, row.id, false)");
+    const dryRunBody = source.slice(
+      source.indexOf("async function runReadOnlyApprovalRoutingBackfill"),
+      source.indexOf("function assertRunContract"),
+    );
+    expect(dryRunBody).not.toContain("INSERT INTO");
+    expect(dryRunBody).not.toContain("UPDATE \"");
+    expect(dryRunBody).not.toContain("SAVEPOINT");
+  });
+
+  test("does not expose a false clean state before barrier certification", () => {
+    expect(source).toContain('"DRAIN_CLEAN"');
+    expect(source).not.toContain('outcome = "DRAIN_CLEAN"');
+    expect(source).toContain('? "BARRIER_REQUIRED"');
+    expect(job).toContain("BARRIER_REQUIRED: 6");
   });
 
   test("blocks every confirmed unsafe legacy shape without guessing", () => {
@@ -182,17 +305,20 @@ describe("approval routing active-work backfill contract", () => {
   });
 
   test("preserves terminal rows and verifies v1 reruns for drift", () => {
-    expect(source).toContain('status: "PENDING"');
+    expect(source).toContain("status = 'PENDING'::\"ApprovalStatus\"");
     expect(source).toContain('return { state: "TERMINAL" as const }');
     expect(source).toContain(
       "verifyStepDescriptor(tx, { instance, step, expected, mode })",
     );
     expect(source).toContain('block("BACKFILL_AUDIT_DRIFT")');
+    expect(source).toContain("result.terminal = Number(batch.terminalCount)");
+    expect(source).toContain("result.terminal = terminal");
   });
 
   test("records one backfill event without synthetic activation or notifications", () => {
-    expect(source.match(/await tx\.auditEvent\.create/g)).toHaveLength(1);
+    expect(source.match(/await tx\.auditEvent\.create/g)).toHaveLength(2);
     expect(source).toContain('eventType: "approval.step_routing_backfilled"');
+    expect(source).toContain('eventType: "approval.routing_backfill_stopped"');
     expect(source.match(/eventType: "approval\.step_activated"/g)).toHaveLength(1);
     expect(source).not.toContain("notification.create");
     expect(source).toContain("actorUserId: null");

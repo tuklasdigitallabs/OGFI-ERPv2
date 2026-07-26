@@ -23,6 +23,22 @@ test("verifies owner guards, runtime least privilege, inserts, and escalation ne
   assert.ok(checks.includes("PASS | runtime can delete an expired throttle window with rollback"));
   assert.ok(checks.includes("PASS | runtime cannot truncate throttle windows"));
   assert.ok(checks.includes("PASS | runtime cannot disable throttle guards"));
+  assert.ok(checks.includes("PASS | web runtime has zero table and column privileges on ApprovalRoutingBackfillRun"));
+  assert.ok(checks.includes("PASS | web runtime has zero table and column privileges on ApprovalRoutingBackfillBatch"));
+  assert.ok(checks.includes("PASS | web runtime has zero table and column privileges on ApprovalRoutingBackfillBlockerObservation"));
+  assert.ok(checks.includes("PASS | web runtime cannot SELECT ApprovalRoutingBackfillRun"));
+  assert.ok(checks.includes("PASS | web runtime cannot INSERT ApprovalRoutingBackfillRun"));
+  assert.ok(checks.includes("PASS | web runtime cannot SELECT ApprovalRoutingBackfillBatch"));
+  assert.ok(checks.includes("PASS | web runtime cannot INSERT ApprovalRoutingBackfillBatch"));
+  assert.ok(checks.includes("PASS | web runtime cannot SELECT ApprovalRoutingBackfillBlockerObservation"));
+  assert.ok(checks.includes("PASS | web runtime cannot INSERT ApprovalRoutingBackfillBlockerObservation"));
+  assert.ok(checks.includes("PASS | runtime lacks TRUNCATE on ApprovalRoutingBackfillRun"));
+  assert.ok(checks.includes("PASS | owner rejects TRUNCATE on ApprovalRoutingBackfillBatch"));
+  assert.ok(checks.includes("PASS | owner rejects TRUNCATE on ApprovalRoutingBackfillBlockerObservation"));
+  assert.ok(checks.includes("PASS | runtime cannot disable approval backfill run guard"));
+  assert.ok(checks.includes("PASS | runtime cannot disable approval backfill evidence guards"));
+  assert.ok(checks.includes("PASS | runtime cannot disable approval backfill blocker guards"));
+  assert.ok(checks.includes("PASS | runtime cannot alter approval backfill run function"));
 });
 
 function fakePsql(connection, args) {
@@ -42,9 +58,12 @@ function fakePsql(connection, args) {
   if (/AuthenticationThrottleWindow/.test(sql) && /"requestCount"/.test(sql)) {
     return { status: 0, stdout: "", stderr: "" };
   }
+  if (/^SELECT count\(\*\) FROM "ApprovalRoutingBackfill/.test(sql)) {
+    return { status: 1, stdout: "", stderr: "ERROR: permission denied" };
+  }
   if (/SELECT count|WITH inserted|has_table_privilege/.test(sql)) return { status: 0, stdout: "", stderr: "" };
   if (connection.username === "ogfi_prod_migrator") {
-    const table = sql.match(/"(AuditEvent|ProjectActivityEvent|InventoryMovement|PettyCashApprovalStepIntent)"/)?.[1];
+    const table = sql.match(/"(AuditEvent|ProjectActivityEvent|InventoryMovement|PettyCashApprovalStepIntent|ApprovalRoutingBackfillBatch|ApprovalRoutingBackfillBlockerObservation)"/)?.[1];
     const operation = /^UPDATE/.test(sql) ? "UPDATE" : /^DELETE/.test(sql) ? "DELETE" : "TRUNCATE";
     const message = table === "PettyCashApprovalStepIntent"
       ? "PETTY_CASH_APPROVAL_INTENT_APPEND_ONLY"

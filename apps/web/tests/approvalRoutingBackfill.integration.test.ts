@@ -2,7 +2,16 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient, prisma } from "@ogfi/database";
 import { beforeAll, describe, expect, test } from "vitest";
 import { runApprovalRoutingBackfill } from "../src/server/services/approvalRoutingBackfill";
-import { supportedApprovalDocumentTypes } from "../src/server/services/approvalRoutingRegistry";
+import {
+  APPROVAL_ROUTING_MAPPING_HASH,
+  APPROVAL_ROUTING_MAPPING_VERSION,
+  supportedApprovalDocumentTypes,
+} from "../src/server/services/approvalRoutingRegistry";
+import { APPROVAL_ROUTING_SCHEMA_VERSION } from "../src/server/services/approvalRouting";
+import {
+  APPROVAL_DECISION_CAPABILITY_HASH,
+  APPROVAL_DECISION_CAPABILITY_VERSION,
+} from "../src/server/services/approvalDecisionCapabilities";
 import { getApprovalDetail } from "../src/server/services/approvals";
 import { startBudgetRevisionReview } from "../src/server/services/budgetControl";
 import type { SessionContext } from "../src/server/services/context";
@@ -20,6 +29,46 @@ type Fixture = {
 };
 
 let fixture: Fixture;
+
+const backfillContract = {
+  releaseIdentity: "approval-backfill-integration-test-release",
+  expectedRoutingSchemaVersion: APPROVAL_ROUTING_SCHEMA_VERSION,
+  expectedMappingVersion: APPROVAL_ROUTING_MAPPING_VERSION,
+  expectedMappingHash: APPROVAL_ROUTING_MAPPING_HASH,
+  expectedCapabilityVersion: APPROVAL_DECISION_CAPABILITY_VERSION,
+  expectedCapabilityHash: APPROVAL_DECISION_CAPABILITY_HASH,
+};
+
+function startApplyOptions(tenantId: string, companyId: string, batchSize = 100) {
+  const runId = randomUUID();
+  const requestId = randomUUID();
+  return {
+    apply: true as const,
+    operation: "START" as const,
+    tenantId,
+    companyId,
+    batchSize,
+    runId,
+    requestId,
+    idempotencyKey: randomUUID(),
+    leaseOwner: `test-worker-${randomUUID()}`,
+    operatorIdentity: "integration-test-release-operator",
+    authorizationReference: "DEC-0245-integration-test-authorization",
+    contract: backfillContract,
+  };
+}
+
+function resumeApplyOptions(
+  start: ReturnType<typeof startApplyOptions>,
+  requestId = randomUUID(),
+) {
+  return {
+    ...start,
+    operation: "RESUME" as const,
+    requestId,
+    idempotencyKey: undefined,
+  };
+}
 
 async function createLegacyPurchaseRequestApproval(input: {
   tenantId: string;
@@ -78,6 +127,7 @@ async function createLegacyPurchaseRequestApproval(input: {
 describe.skipIf(!runPg).sequential(
   "approval routing backfill PostgreSQL contract",
   () => {
+    let durableOptions: ReturnType<typeof startApplyOptions>;
     beforeAll(async () => {
       const tenantId = randomUUID();
       const companyId = randomUUID();
@@ -195,6 +245,23 @@ describe.skipIf(!runPg).sequential(
       };
     });
 
+    test("rejects a syntactically valid nonexistent company scope before creating a run", async () => {
+      const missingCompanyId = randomUUID();
+      const result = await runApprovalRoutingBackfill(
+        startApplyOptions(fixture.tenantId, missingCompanyId),
+      );
+      expect(result).toMatchObject({
+        mode: "APPLY",
+        outcome: "INCOMPATIBLE",
+        reasonCode: "APPROVAL_ROUTING_BACKFILL_SCOPE_NOT_FOUND",
+        scanned: 0,
+        terminal: 0,
+      });
+      expect(await prisma.approvalRoutingBackfillRun.count({
+        where: { tenantId: fixture.tenantId, companyId: missingCompanyId },
+      })).toBe(0);
+    });
+
     test("dry-runs without writes, applies atomically, rolls blockers back, and reruns idempotently", async () => {
       const dryRun = await runApprovalRoutingBackfill({
         tenantId: fixture.tenantId,
@@ -207,6 +274,7 @@ describe.skipIf(!runPg).sequential(
         eligible: 1,
         applied: 0,
         alreadyCurrent: 0,
+        terminal: 0,
         blockerCounts: { CURRENT_ELIGIBLE_ACTOR_MISSING: 1 },
         hasMore: false,
       });
@@ -231,19 +299,19 @@ describe.skipIf(!runPg).sequential(
         }),
       ).toBe(0);
 
-      const applied = await runApprovalRoutingBackfill({
-        tenantId: fixture.tenantId,
-        companyId: fixture.companyId,
-        apply: true,
-      });
+      const applyOptions = startApplyOptions(fixture.tenantId, fixture.companyId);
+      durableOptions = applyOptions;
+      const applied = await runApprovalRoutingBackfill(applyOptions);
       expect(applied).toMatchObject({
         mode: "APPLY",
+        outcome: "BLOCKED",
         scanned: 2,
         eligible: 1,
         applied: 1,
         alreadyCurrent: 0,
+        terminal: 0,
         blockerCounts: { CURRENT_ELIGIBLE_ACTOR_MISSING: 1 },
-        hasMore: false,
+        hasMore: true,
       });
       expect(
         await prisma.approvalInstanceStep.findUniqueOrThrow({
@@ -294,19 +362,19 @@ describe.skipIf(!runPg).sequential(
         }),
       ).toBe(0);
 
-      const rerun = await runApprovalRoutingBackfill({
-        tenantId: fixture.tenantId,
-        companyId: fixture.companyId,
-        apply: true,
-      });
+      const lostResponseReplay = await runApprovalRoutingBackfill(applyOptions);
+      expect(lostResponseReplay).toEqual(applied);
+      const rerun = await runApprovalRoutingBackfill(resumeApplyOptions(applyOptions));
       expect(rerun).toMatchObject({
         mode: "APPLY",
+        outcome: "BLOCKED",
         scanned: 2,
         eligible: 0,
         applied: 0,
         alreadyCurrent: 1,
+        terminal: 0,
         blockerCounts: { CURRENT_ELIGIBLE_ACTOR_MISSING: 1 },
-        hasMore: false,
+        hasMore: true,
       });
       expect(
         await prisma.auditEvent.count({
@@ -319,7 +387,7 @@ describe.skipIf(!runPg).sequential(
       ).toBe(1);
     });
 
-    test("rejects a concurrent worker while the transaction advisory lock is held", async () => {
+    test("returns retryable while the scoped transaction advisory lock is held", async () => {
       let signalLockAcquired!: () => void;
       let releaseLock!: () => void;
       const lockAcquired = new Promise<void>((resolve) => {
@@ -333,7 +401,7 @@ describe.skipIf(!runPg).sequential(
       });
       const holder = holderClient.$transaction(
         async (tx) => {
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('ogfi:approval-routing-backfill'))`;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('ogfi:approval-routing-backfill:' || ${fixture.tenantId}::text || ':' || ${fixture.companyId}::text, 0))`;
           signalLockAcquired();
           await lockRelease;
         },
@@ -341,18 +409,75 @@ describe.skipIf(!runPg).sequential(
       );
       await lockAcquired;
       try {
-        await expect(
-          runApprovalRoutingBackfill({
-            tenantId: fixture.tenantId,
-            companyId: fixture.companyId,
-            apply: false,
-          }),
-        ).rejects.toThrow("APPROVAL_ROUTING_BACKFILL_ALREADY_RUNNING");
+        await expect(runApprovalRoutingBackfill({
+          ...resumeApplyOptions(durableOptions),
+          leaseOwner: durableOptions.leaseOwner,
+        })).resolves.toMatchObject({ outcome: "RETRYABLE" });
       } finally {
         releaseLock();
         await holder;
         await holderClient.$disconnect();
       }
+      const leaseContendedStop = await runApprovalRoutingBackfill({
+        ...resumeApplyOptions(durableOptions),
+        operation: "STOP",
+        leaseOwner: `other-worker-${randomUUID()}`,
+      });
+      expect(leaseContendedStop).toMatchObject({
+        outcome: "RETRYABLE",
+        reasonCode: "APPROVAL_ROUTING_BACKFILL_LEASE_CONTENDED",
+      });
+      expect(await prisma.auditEvent.count({
+        where: {
+          tenantId: fixture.tenantId,
+          entityType: "ApprovalRoutingBackfillRun",
+          entityId: durableOptions.runId,
+          eventType: "approval.routing_backfill_stopped",
+        },
+      })).toBe(0);
+      expect(await prisma.approvalRoutingBackfillRun.findUniqueOrThrow({
+        where: { id: durableOptions.runId },
+        select: { status: true },
+      })).toEqual({ status: "BLOCKED" });
+    });
+
+    test("preserves blocker history while a remediated from-zero pass reaches the barrier", async () => {
+      await prisma.approvalInstanceStep.update({
+        where: { id: fixture.blockedStepId },
+        data: { assignedUserId: (
+          await prisma.approvalInstanceStep.findUniqueOrThrow({
+            where: { id: fixture.eligibleStepId },
+            select: { assignedUserId: true },
+          })
+        ).assignedUserId },
+      });
+      const reconciled = await runApprovalRoutingBackfill({
+        ...resumeApplyOptions(durableOptions),
+        leaseOwner: durableOptions.leaseOwner,
+      });
+      expect(reconciled).toMatchObject({
+        outcome: "BARRIER_REQUIRED",
+        passNo: 3,
+        scanned: 2,
+        applied: 1,
+        alreadyCurrent: 1,
+        blockers: [],
+        hasMore: false,
+      });
+      expect(await prisma.approvalRoutingBackfillBlockerObservation.count({
+        where: {
+          runId: durableOptions.runId,
+          approvalInstanceId: fixture.blockedInstanceId,
+          blockerCode: "CURRENT_ELIGIBLE_ACTOR_MISSING",
+        },
+      })).toBe(2);
+      expect(await prisma.auditEvent.count({
+        where: {
+          tenantId: fixture.tenantId,
+          entityId: fixture.blockedInstanceId,
+          eventType: "approval.step_routing_backfilled",
+        },
+      })).toBe(1);
     });
 
     test("keeps normalized step order immutable and indexes company readiness", async () => {
@@ -647,8 +772,9 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     const dryRun=await runApprovalRoutingBackfill({tenantId:ids.tenant,companyId:ids.company,apply:false,batchSize:100});
     expect(dryRun).toMatchObject({mode:"DRY_RUN",scanned:18,eligible:18,applied:0,alreadyCurrent:0,blockers:[],hasMore:false});
     expect(await prisma.approvalInstanceStepScopeGroup.count({where:{approvalInstanceStep:{approvalInstanceId:{in:instanceIds}}}})).toBe(0);
-    const applied=await runApprovalRoutingBackfill({tenantId:ids.tenant,companyId:ids.company,apply:true,batchSize:100});
-    expect(applied).toMatchObject({mode:"APPLY",scanned:18,eligible:18,applied:18,alreadyCurrent:0,blockers:[],hasMore:false});
+    const applyOptions = startApplyOptions(ids.tenant, ids.company);
+    const applied=await runApprovalRoutingBackfill(applyOptions);
+    expect(applied).toMatchObject({mode:"APPLY",outcome:"CONTINUE",scanned:18,eligible:18,applied:18,alreadyCurrent:0,blockers:[],hasMore:true});
     for (const expected of fixtures) {
       const instance=await prisma.approvalInstance.findFirstOrThrow({where:{tenantId:ids.tenant,documentType:expected.documentType},include:{steps:{include:{requiredPermission:true,scopeGroups:{include:{targets:true}},prohibitedActors:true}}}});
       const step=instance.steps[0]!;
@@ -660,9 +786,52 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
       expect(step.scopeGroups[0]?.targets.map(t=>({scopeType:t.scopeType,companyId:t.companyId,locationId:t.locationId})).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))).toEqual([...expected.targets].sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
       expect(step.prohibitedActors.map(a=>({userId:a.userId,reasonCode:a.reasonCode})).sort((a,b)=>a.userId.localeCompare(b.userId))).toEqual(expected.prohibited);
     }
-    const rerun=await runApprovalRoutingBackfill({tenantId:ids.tenant,companyId:ids.company,apply:true,batchSize:100});
-    expect(rerun).toMatchObject({mode:"APPLY",scanned:18,eligible:0,applied:0,alreadyCurrent:18,blockers:[],hasMore:false});
+    const rerun=await runApprovalRoutingBackfill(resumeApplyOptions(applyOptions));
+    expect(rerun).toMatchObject({mode:"APPLY",outcome:"BARRIER_REQUIRED",scanned:18,eligible:0,applied:0,alreadyCurrent:18,blockers:[],hasMore:false});
     expect(await prisma.auditEvent.count({where:{tenantId:ids.tenant,eventType:"approval.step_routing_backfilled",entityId:{in:instanceIds}}})).toBe(18);
+    const stopped = await runApprovalRoutingBackfill({
+      ...resumeApplyOptions(applyOptions),
+      operation: "STOP",
+      leaseOwner: applyOptions.leaseOwner,
+    });
+    expect(stopped).toMatchObject({
+      outcome: "STOPPED",
+      reasonCode: "APPROVAL_ROUTING_BACKFILL_RUN_STOPPED",
+    });
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: ids.tenant,
+        entityType: "ApprovalRoutingBackfillRun",
+        entityId: applyOptions.runId,
+        eventType: "approval.routing_backfill_stopped",
+      },
+    })).toBe(1);
+    const stopReplay = await runApprovalRoutingBackfill({
+      ...resumeApplyOptions(applyOptions),
+      operation: "STOP",
+      leaseOwner: applyOptions.leaseOwner,
+    });
+    expect(stopReplay).toMatchObject({ outcome: "STOPPED" });
+    expect(await prisma.auditEvent.count({
+      where: {
+        tenantId: ids.tenant,
+        entityType: "ApprovalRoutingBackfillRun",
+        entityId: applyOptions.runId,
+        eventType: "approval.routing_backfill_stopped",
+      },
+    })).toBe(1);
+    await expect(runApprovalRoutingBackfill({
+      ...resumeApplyOptions(applyOptions),
+      operation: "STOP",
+      leaseOwner: applyOptions.leaseOwner,
+      contract: { ...backfillContract, releaseIdentity: "wrong-release" },
+    })).resolves.toMatchObject({ outcome: "INCOMPATIBLE" });
+    await expect(runApprovalRoutingBackfill({
+      ...resumeApplyOptions(applyOptions),
+      operation: "STOP",
+      companyId: randomUUID(),
+      leaseOwner: applyOptions.leaseOwner,
+    })).resolves.toMatchObject({ outcome: "INCOMPATIBLE" });
   });
 
   test("hydrates an authorized detail for every supported document type", async () => {
@@ -926,9 +1095,10 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
     await createLegacyApproval("PurchaseRequest", id());
 
     const beforeSources = await Promise.all(sourceReaders.map((read) => read()));
-    const result = await runApprovalRoutingBackfill({ tenantId: ids.tenant, companyId: ids.company, apply: true, batchSize: 100 });
+    const result = await runApprovalRoutingBackfill(startApplyOptions(ids.tenant, ids.company));
     expect(result).toMatchObject({
       mode: "APPLY",
+      outcome: "BLOCKED",
       scanned: 27,
       eligible: 1,
       applied: 1,
@@ -941,7 +1111,7 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
         SOURCE_NOT_FOUND: 1,
         CURRENT_ELIGIBLE_ACTOR_MISSING: 1,
       },
-      hasMore: false,
+      hasMore: true,
     });
     expect(result.blockers).toHaveLength(8);
     expect(await Promise.all(sourceReaders.map((read) => read()))).toEqual(beforeSources);

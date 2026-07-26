@@ -130,6 +130,18 @@ BEGIN
       ('public.reject_immutable_approval_routing_child_mutation()'::regprocedure,
         'ea12e58f5dcf9c5025dccf29340ad3fb', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_approval_routing_backfill_run_transition()'::regprocedure,
+        'e3ac21ba2323d21d3734f0b2c11dc678', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_approval_routing_backfill_batch_commit()'::regprocedure,
+        '39bc2b5b61729ac364b5561484876d32', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.validate_approval_routing_backfill_blocker_insert()'::regprocedure,
+        'ba1b22a2c7fbab72d802955bdea33744', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
+      ('public.reject_approval_routing_backfill_evidence_mutation()'::regprocedure,
+        'fa38c0296149be8cdc1f5f14d0eb7614', 'plpgsql', false,
+        ARRAY['search_path=pg_catalog, public']::text[]),
       ('public.enforce_authentication_throttle_window_transition()'::regprocedure,
         'e07a390bc1869b04a2fc6bbb067dc2aa', 'plpgsql', false,
         ARRAY['search_path=pg_catalog, public']::text[]),
@@ -265,6 +277,103 @@ BEGIN
         AND (t.tgtype & 16) = 16 AND (t.tgtype & 32) = 32;
     IF NOT FOUND THEN RAISE EXCEPTION '% append-only trigger contract is incomplete', protected_table; END IF;
   END LOOP;
+
+  FOREACH protected_table IN ARRAY ARRAY[
+    'ApprovalRoutingBackfillRun',
+    'ApprovalRoutingBackfillBatch',
+    'ApprovalRoutingBackfillBlockerObservation'
+  ]
+  LOOP
+    PERFORM 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND c.relowner = owner_oid;
+    IF NOT FOUND THEN RAISE EXCEPTION '% ownership is unsafe', protected_table; END IF;
+    FOREACH destructive_privilege IN ARRAY ARRAY[
+      'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES', 'MAINTAIN'
+    ]
+    LOOP
+      IF has_table_privilege(runtime_role, format('public.%I', protected_table), destructive_privilege) THEN
+        RAISE EXCEPTION '% web-runtime privilege exists on non-operational %', destructive_privilege, protected_table;
+      END IF;
+    END LOOP;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace,
+        LATERAL aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) acl
+      WHERE n.nspname = 'public' AND c.relname = protected_table AND acl.grantee = 0
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC retains privileges on %', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_attribute a,
+        LATERAL aclexplode(a.attacl) acl
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND acl.grantee IN (0, runtime_oid)
+    ) THEN
+      RAISE EXCEPTION 'PUBLIC or runtime retains a column ACL on %', protected_table;
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM pg_attribute a
+      WHERE a.attrelid = format('public.%I', protected_table)::regclass
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND (
+          has_column_privilege(runtime_role, a.attrelid, a.attnum, 'SELECT')
+          OR has_column_privilege(runtime_role, a.attrelid, a.attnum, 'INSERT')
+          OR has_column_privilege(runtime_role, a.attrelid, a.attnum, 'UPDATE')
+          OR has_column_privilege(runtime_role, a.attrelid, a.attnum, 'REFERENCES')
+        )
+    ) THEN
+      RAISE EXCEPTION 'Web runtime has an effective column privilege on non-operational %', protected_table;
+    END IF;
+  END LOOP;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+    WHERE t.tgrelid = 'public."ApprovalRoutingBackfillRun"'::regclass
+      AND t.tgname = 'ApprovalRoutingBackfillRun_transition_guard_trg'
+      AND t.tgfoid = 'public.validate_approval_routing_backfill_run_transition()'::regprocedure
+      AND t.tgenabled = 'A' AND t.tgtype = 23
+      AND NOT t.tgisinternal AND NOT t.tgdeferrable AND NOT t.tginitdeferred
+  ) THEN
+    RAISE EXCEPTION 'ApprovalRoutingBackfillRun ENABLE ALWAYS transition guard is incomplete';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('ApprovalRoutingBackfillBatch', 'ApprovalRoutingBackfillBatch_commit_guard_trg',
+       5::smallint, true, true, 'public.validate_approval_routing_backfill_batch_commit()'::regprocedure),
+      ('ApprovalRoutingBackfillBatch', 'ApprovalRoutingBackfillBatch_append_only_guard_trg',
+       27::smallint, false, false, 'public.reject_approval_routing_backfill_evidence_mutation()'::regprocedure),
+      ('ApprovalRoutingBackfillBatch', 'ApprovalRoutingBackfillBatch_truncate_guard_trg',
+       34::smallint, false, false, 'public.reject_approval_routing_backfill_evidence_mutation()'::regprocedure),
+      ('ApprovalRoutingBackfillBlockerObservation', 'ApprovalRoutingBackfillBlocker_insert_guard_trg',
+       7::smallint, false, false, 'public.validate_approval_routing_backfill_blocker_insert()'::regprocedure),
+      ('ApprovalRoutingBackfillBlockerObservation', 'ApprovalRoutingBackfillBlocker_append_only_guard_trg',
+       27::smallint, false, false, 'public.reject_approval_routing_backfill_evidence_mutation()'::regprocedure),
+      ('ApprovalRoutingBackfillBlockerObservation', 'ApprovalRoutingBackfillBlocker_truncate_guard_trg',
+       34::smallint, false, false, 'public.reject_approval_routing_backfill_evidence_mutation()'::regprocedure)
+    ) AS expected(table_name, trigger_name, trigger_type, is_deferrable, is_deferred, function_oid)
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_class c ON c.oid = t.tgrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = expected.table_name
+        AND t.tgname = expected.trigger_name
+        AND t.tgfoid = expected.function_oid
+        AND t.tgenabled = 'A'
+        AND t.tgtype = expected.trigger_type
+        AND t.tgdeferrable = expected.is_deferrable
+        AND t.tginitdeferred = expected.is_deferred
+        AND NOT t.tgisinternal
+    )
+  ) THEN
+    RAISE EXCEPTION 'Approval routing backfill ENABLE ALWAYS evidence trigger contract is incomplete';
+  END IF;
 
   FOREACH protected_table IN ARRAY ARRAY[
     'ControlledEvidencePolicyVersion',

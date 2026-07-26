@@ -123,10 +123,24 @@ Do not allow edit/delete of completed approval events.
 ## 8. Current implementation boundary
 
 `DEC-0244` implements the shared capability/version/digest contract and the
-feature-disabled decision composer. `APPROVAL_ROUTING_V1_ENABLED` remains false.
-Production activation still requires a mapping-and-capability-bound resumable
-backfill/drain, exact-candidate PostgreSQL authorization and concurrency evidence,
-authenticated desktop/tablet/mobile verification, hosted deployment and recovery
-proof, UAT, and an explicit activation decision. While disabled, the public
-Approval Inbox fails closed rather than exposing a legacy or parallel approval
-queue.
+feature-disabled decision composer. `DEC-0245` adds the source foundation for a
+mapping-, capability-, release-, tenant-, and company-bound durable backfill with
+read-only assessment, fenced START/RESUME/STOP operations, and append-only
+batch/blocker evidence. It does not change any visible Approval action.
+`APPROVAL_ROUTING_V1_ENABLED` remains false.
+
+The executor is intentionally non-operational. The normal web runtime has zero
+privileges on its Run, Batch, and Blocker relations. No assessment or mutation may
+run until a separate dedicated maintenance role, root-controlled credential, and
+immutable operator/change/exact-release authority boundary is implemented and
+accepted. Operator identity, authorization-reference, and release-SHA environment
+values bind evidence only; they do not grant authority.
+
+The current orchestration can stop only at `BARRIER_REQUIRED`; it cannot emit
+`DRAIN_CLEAN`. Production activation still requires disposable and hosted
+PostgreSQL authorization/concurrency/no-write/recovery evidence, a separately
+implemented company producer barrier honored by all 18 source writers, final
+clean passes and from-zero reconciliation, durable certification, authenticated
+desktop/tablet/mobile verification, UAT, and an explicit activation decision.
+While disabled, the public Approval Inbox fails closed rather than exposing a
+legacy or parallel approval queue.

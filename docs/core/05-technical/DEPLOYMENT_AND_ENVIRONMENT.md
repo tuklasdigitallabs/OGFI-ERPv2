@@ -240,15 +240,68 @@ The role SQL under `infra/hostinger/postgres/` is packaging-neutral: it does not
 
 ### 5.2 Normalized approval-routing activation
 
-Keep `APPROVAL_ROUTING_V1_ENABLED=false` through migration, backfill, and evidence collection. Activation is allowed only for the exact reviewed release after all of the following pass against a populated restored candidate:
+Keep `APPROVAL_ROUTING_V1_ENABLED=false` through migration, backfill, and evidence
+collection. Activation remains blocked.
 
-1. run the controlled migration and `pnpm --filter @ogfi/web test:approval-routing:database:execute`;
-2. run the bounded backfill in dry-run mode with `pnpm approval-routing:backfill`, resolve every unsupported document type, missing subject, ambiguous route, prohibited/self approver, and scope blocker, then apply it idempotently with `pnpm approval-routing:backfill -- --apply`;
+The DEC-0245 executor is currently **NON-OPERATIONAL**. Hostinger role
+reconciliation gives the normal web runtime zero table and column privileges on
+`ApprovalRoutingBackfillRun`, `ApprovalRoutingBackfillBatch`, and
+`ApprovalRoutingBackfillBlockerObservation`. Do not run its dry-run, start,
+resume, apply, or stop commands with the web, migrator, or owner credential. The
+next required slice must create a dedicated non-member maintenance role, deliver
+its credential only through a root-controlled execution unit, and verify immutable
+operator, approved-change, exact-scope, and exact-release authority before any
+database session. Environment values such as `operatorIdentity`,
+`authorizationReference`, and `GITHUB_SHA` are request/evidence bindings, not
+authentication or authorization.
+
+Only after that authority slice and its independent denial review pass may the
+activation rehearsal continue. Activation is allowed only for the exact reviewed
+release after all of the following pass against a populated restored candidate:
+
+1. run the controlled migration and `pnpm --filter @ogfi/web test:approval-routing:database:execute` with the approved isolated roles;
+2. run the bounded read-only assessment explicitly with `pnpm approval-routing:backfill -- --dry-run` for one exact tenant/company; resolve every unsupported document type, missing subject, ambiguous route, prohibited/self approver, and scope blocker; then execute each authoritative page through the durable tenant/company run using `--apply --start` once and `--apply --resume` with a new request ID for each later page;
 3. prove the executable 18-document-type route, detail, and action matrix, including direct and role assignment, `ANY`/`ALL` permissions, effective-date and scope revocation, no-self-approval, due-soon ordering, page/count agreement, and concurrent action behavior;
 4. pass authenticated production-mode browser smoke tests with a role-eligible user who has no notification row, and confirm notifications remain advisory rather than authoritative;
 5. record the before/after counts, unresolved-blocker count of zero, exact release SHA, approver, and rollback owner before setting the flag to `true`.
 
-Rollback is the configuration-only return to `APPROVAL_ROUTING_V1_ENABLED=false` followed by the legacy-inbox smoke test. Do not delete routing snapshots, backfill results, approval steps, notifications, or audit history. A data repair or migration rollback requires a separate reviewed forward-fix plan.
+Every `APPLY` invocation requires explicit tenant, company, run, request, lease-owner,
+release-identity, routing-schema, mapping-version/hash, and capability-version/hash
+bindings; `START` additionally requires an idempotency key. These values bind
+evidence but do not establish operator, change, or release authority. The command
+processes
+at most one bounded Serializable page and reports distinct machine outcomes and
+stable, bounded reason codes without projecting raw database errors. Its result
+includes scanned, applied, already-current, terminal, and blocker counts;
+database checks require their exact reconciliation. `CONTINUE` requires another
+reviewed invocation. `BLOCKED`
+requires remediation and a later pass. `RETRYABLE` requires retry only after its
+cause is safe to retry. `INCOMPATIBLE` requires contract or operator correction.
+`BARRIER_REQUIRED` is the current maximum clean-pass outcome: it is not a drain
+certificate or activation approval. The source checkpoint cannot emit
+`DRAIN_CLEAN` until the separately reviewed company producer barrier, all-18
+writer proof, final reconciliation, and durable certification exist.
+
+Use `pnpm approval-routing:backfill -- --apply --stop` for a controlled abandoned-
+run recovery only after the maintenance authority boundary is operational and
+with the exact stored run contract and scope. APPLY and STOP refuse execution
+while normalized routing is enabled. STOP cannot
+pre-empt another owner's unexpired database-time lease; it fences an available or
+expired `TIMESTAMPTZ(3)` lease, appends and links an exact same-transaction stop
+audit, marks the run terminal, clears the lease, and preserves all prior evidence.
+The database accepts START only with the initial `ACTIVE`/fence/pass/batch shape,
+zero counters, null cursor/receipt/terminal evidence, exact company scope, and a
+bounded live lease; later status and checkpoint changes require their matching
+committed batch or exact STOP audit. Do not reuse a stopped run identity.
+
+Rollback is the configuration-only return to
+`APPROVAL_ROUTING_V1_ENABLED=false`, an authorized explicit stop if an operational
+run later exists, and the
+legacy-inbox smoke test. Do not delete routing snapshots, durable run/batch/blocker
+evidence, approval steps, notifications, or audit history. A data repair or
+migration rollback requires a separate reviewed forward-fix plan. Normalized
+routing remains disabled until a later explicit cutover decision; source
+implementation of durable orchestration does not close this activation gate.
 
 ---
 

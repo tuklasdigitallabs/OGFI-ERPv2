@@ -145,6 +145,11 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
   assert.match(reconcile, /ControlledEvidenceActionSelection/);
   assert.match(reconcile, /ControlledEvidencePolicyVersion/);
   assert.match(reconcile, /ControlledEvidencePolicyActivation/);
+  assert.match(reconcile, /DEC-0245 Option D keeps the orchestration executor non-operational/);
+  assert.match(reconcile, /ApprovalRoutingBackfillBatch/);
+  assert.match(reconcile, /ApprovalRoutingBackfillBlockerObservation/);
+  assert.doesNotMatch(reconcile, /GRANT SELECT, INSERT ON TABLE public\."ApprovalRoutingBackfillRun"/);
+  assert.doesNotMatch(reconcile, /GRANT UPDATE \([^)]*\) ON TABLE public\."ApprovalRoutingBackfillRun"/);
   assert.match(reconcile, /AuthenticationThrottleWindow" FROM %I', column_name, runtime_role/);
   assert.match(reconcile, /AuthLoginAttempt" FROM %I', column_name, runtime_role/);
   assert.match(reconcile, /GRANT UPDATE \("denialCount", "lastDeniedAt", "updatedAt", "finalizedAt", "finalAuditEventId"\)/);
@@ -161,6 +166,12 @@ test("role SQL fails closed for adversarial ACL, membership, ownership, and rout
   assert.match(verify, /AuthenticationThrottleControl operator CAS function semantics drifted/);
   assert.match(verify, /Approval routing child trigger semantics drifted/);
   assert.match(verify, /Approval routing child trigger function semantics drifted/);
+  assert.match(verify, /web-runtime privilege exists on non-operational/);
+  assert.match(verify, /Web runtime has an effective column privilege on non-operational/);
+  assert.match(verify, /ApprovalRoutingBackfillRun ENABLE ALWAYS transition guard is incomplete/);
+  assert.match(verify, /Approval routing backfill ENABLE ALWAYS evidence trigger contract is incomplete/);
+  assert.match(verify, /validate_approval_routing_backfill_run_transition\(\)'::regprocedure/);
+  assert.match(verify, /reject_approval_routing_backfill_evidence_mutation\(\)'::regprocedure/);
   assert.match(verify, /t\.tgfoid = expected\.function_oid/);
   assert.match(verify, /md5\(p\.prosrc\) <> expected\.source_md5/);
   assert.match(verify, /Reviewed control function semantics drifted/);

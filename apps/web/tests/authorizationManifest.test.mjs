@@ -13,6 +13,44 @@ import {
 } from "../../../scripts/release-authorization-manifest.mjs";
 
 describe("authorization surface manifest", () => {
+  it("limits non-operational approval-routing host-job metadata to its two entrypoints", () => {
+    const manifest = buildAuthorizationSurfaceManifest();
+    const ids = [
+      "server/services/approvalRoutingBackfill.ts#inspectApprovalRoutingReadiness",
+      "server/services/approvalRoutingBackfill.ts#runApprovalRoutingBackfill",
+    ];
+    const expectedMetadata = {
+      scopeDimensions: ["TENANT", "COMPANY"],
+      guardChain: [
+        "non-operational-host-job-foundation",
+        "exact-tenant-company-scope-precondition",
+        "runtime-database-role-zero-orchestration-privileges",
+        "approval-routing-feature-disabled-prerequisite",
+        "authority-adapter-pending",
+      ],
+      denialContract:
+        "RUNTIME_DATABASE_ROLE_DENIED_NO_ORCHESTRATION_DATA_OR_MUTATION",
+      permissionSource: "AUTHORITY_ADAPTER_PENDING",
+      boundaryClassifications: ["INTERNAL_CALLER_PRECONDITION"],
+      boundaryCaseIds: ["AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"],
+      executableTestIds: [
+        "BOUNDARY_CASE:AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC",
+      ],
+    };
+
+    expect(manifest.filter((surface) => ids.includes(surface.id))).toEqual(
+      ids.map((id) => expect.objectContaining({ id, ...expectedMetadata })),
+    );
+    expect(
+      manifest
+        .filter(
+          (surface) =>
+            surface.permissionSource === "AUTHORITY_ADAPTER_PENDING",
+        )
+        .map((surface) => surface.id),
+    ).toEqual(ids);
+  });
+
   it("maps direct and aliased service calls to canonical service IDs", () => {
     const known = new Set([
       "server/services/items.ts#createItem",

@@ -115,6 +115,28 @@ const reviewedServicePermissionOverrides = new Map([
   ["server/services/approvalRuleLifecycle.ts#reviseCoreAdminApprovalRuleVersion", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
 ]);
 
+const reviewedServiceAuthorizationMetadataOverrides = new Map([
+  ...[
+    "server/services/approvalRoutingBackfill.ts#inspectApprovalRoutingReadiness",
+    "server/services/approvalRoutingBackfill.ts#runApprovalRoutingBackfill",
+  ].map((serviceId) => [
+    serviceId,
+    {
+      dimensions: ["TENANT", "COMPANY"],
+      guardChain: [
+        "non-operational-host-job-foundation",
+        "exact-tenant-company-scope-precondition",
+        "runtime-database-role-zero-orchestration-privileges",
+        "approval-routing-feature-disabled-prerequisite",
+        "authority-adapter-pending",
+      ],
+      denialContract:
+        "RUNTIME_DATABASE_ROLE_DENIED_NO_ORCHESTRATION_DATA_OR_MUTATION",
+      permissionSource: "AUTHORITY_ADAPTER_PENDING",
+    },
+  ]),
+]);
+
 function isHighRiskSurfaceName(name) {
   return highRiskActionPattern.test(name) || highRiskDisclosurePattern.test(name);
 }
@@ -1450,6 +1472,8 @@ export function buildAuthorizationSurfaceManifest() {
       const functionSource = serviceEntrypoint.source;
       const serviceId = `${relativePath}#${functionName}`;
       const reviewedPermission = reviewedServicePermissionOverrides.get(serviceId);
+      const reviewedMetadata =
+        reviewedServiceAuthorizationMetadataOverrides.get(serviceId);
       const permissionNames = Array.from(
         new Set(serviceEntrypoint.permissionNames),
       ).filter((permissionName) => permissionSymbols.has(permissionName));
@@ -1466,15 +1490,15 @@ export function buildAuthorizationSurfaceManifest() {
               ? permissionNames.map((name) => `permissions.${name}`).join(" | ")
               : "DELEGATED_INTERNAL_GUARD"),
           permissionSource:
-            reviewedPermission
+            reviewedMetadata?.permissionSource ?? (reviewedPermission
               ? "REVIEWED_SERVICE_COMPOSITION"
               : permissionNames.length > 0
               ? "EXPLICIT_CATALOG_REFERENCE"
-              : "REVIEWED_DELEGATION",
-          dimensions: projectScoped
+              : "REVIEWED_DELEGATION"),
+          dimensions: reviewedMetadata?.dimensions ?? (projectScoped
             ? ["TENANT", "COMPANY", "PROJECT", "MEMBERSHIP", "RESTRICTED_PROJECT"]
-            : ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"],
-          guardChain: [
+            : ["TENANT", "COMPANY", "BRAND", "LOCATION", "DEPARTMENT"]),
+          guardChain: reviewedMetadata?.guardChain ?? [
             functionSource.includes("requireSessionContext")
               ? "session"
               : "session-delegated-by-caller",
@@ -1485,7 +1509,9 @@ export function buildAuthorizationSurfaceManifest() {
               ? "project-authorization"
               : "tenant-company-scope-query",
           ],
-          denialContract: "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+          denialContract:
+            reviewedMetadata?.denialContract ??
+            "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
           riskTier,
           testIds: [],
         }),

@@ -14194,34 +14194,39 @@
     "permission": "DELEGATED_INTERNAL_GUARD",
     "scopeDimensions": [
       "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
+      "COMPANY"
     ],
     "guardChain": [
-      "session-delegated-by-caller",
-      "service-policy-helper",
-      "tenant-company-scope-query"
+      "non-operational-host-job-foundation",
+      "exact-tenant-company-scope-precondition",
+      "runtime-database-role-zero-orchestration-privileges",
+      "approval-routing-feature-disabled-prerequisite",
+      "authority-adapter-pending"
     ],
-    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "denialContract": "RUNTIME_DATABASE_ROLE_DENIED_NO_ORCHESTRATION_DATA_OR_MUTATION",
     "riskTier": "HIGH",
     "executableTestIds": [
       "BOUNDARY_CASE:AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
     ],
-    "permissionSource": "REVIEWED_DELEGATION",
+    "permissionSource": "AUTHORITY_ADAPTER_PENDING",
     "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
+      "INTERNAL_CALLER_PRECONDITION"
     ],
     "authorizationAdapterIds": [
-      "tenant/company filter",
-      "read-only readiness"
+      "exact tenant/company scope precondition",
+      "runtime database role zero orchestration privileges",
+      "approval routing feature-disabled prerequisite",
+      "privileged authority adapter pending",
+      "true read-only inspection"
     ],
     "boundaryCaseIds": [
       "AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
     ],
     "noMutationControls": [
-      "dry run writes no routing or audit rows"
+      "dry run writes no routing or audit rows",
+      "runtime application role has zero approval-backfill orchestration privileges",
+      "operator identity and environment strings are trace metadata, not authority",
+      "host-job foundation remains non-operational until a privileged authority adapter is implemented"
     ]
   },
   {
@@ -14230,35 +14235,38 @@
     "permission": "DELEGATED_INTERNAL_GUARD",
     "scopeDimensions": [
       "TENANT",
-      "COMPANY",
-      "BRAND",
-      "LOCATION",
-      "DEPARTMENT"
+      "COMPANY"
     ],
     "guardChain": [
-      "session-delegated-by-caller",
-      "service-policy-helper",
-      "tenant-company-scope-query"
+      "non-operational-host-job-foundation",
+      "exact-tenant-company-scope-precondition",
+      "runtime-database-role-zero-orchestration-privileges",
+      "approval-routing-feature-disabled-prerequisite",
+      "authority-adapter-pending"
     ],
-    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "denialContract": "RUNTIME_DATABASE_ROLE_DENIED_NO_ORCHESTRATION_DATA_OR_MUTATION",
     "riskTier": "HIGH",
     "executableTestIds": [
       "BOUNDARY_CASE:AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
     ],
-    "permissionSource": "REVIEWED_DELEGATION",
+    "permissionSource": "AUTHORITY_ADAPTER_PENDING",
     "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
+      "INTERNAL_CALLER_PRECONDITION"
     ],
     "authorizationAdapterIds": [
-      "advisory lock",
-      "eligible actor revalidation",
-      "idempotent CAS"
+      "exact tenant/company scope precondition",
+      "runtime database role zero orchestration privileges",
+      "approval routing feature-disabled prerequisite",
+      "privileged authority adapter pending"
     ],
     "boundaryCaseIds": [
       "AUTHZ-APPROVAL-ROUTING-BACKFILL-ATOMIC"
     ],
     "noMutationControls": [
-      "blocked instance rolls back all routing children"
+      "blocked instance rolls back all routing children",
+      "runtime application role has zero approval-backfill orchestration privileges",
+      "operator identity and environment strings are trace metadata, not authority",
+      "host-job foundation remains non-operational until a privileged authority adapter is implemented"
     ]
   },
   {

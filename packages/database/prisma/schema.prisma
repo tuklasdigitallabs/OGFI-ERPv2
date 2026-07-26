@@ -965,6 +965,9 @@ model Tenant {
   approvalRules                           ApprovalRule[]
   approvalRuleLifecycleIntents            ApprovalRuleLifecycleIntent[]
   approvalInstances                       ApprovalInstance[]
+  approvalRoutingBackfillRuns             ApprovalRoutingBackfillRun[]
+  approvalRoutingBackfillBatches          ApprovalRoutingBackfillBatch[]
+  approvalRoutingBackfillBlockers         ApprovalRoutingBackfillBlockerObservation[]
   purchaseRequests                        PurchaseRequest[]
   purchaseRequestComments                 PurchaseRequestComment[]
   quotationRequests                       QuotationRequest[]
@@ -1139,6 +1142,9 @@ model Company {
   approvalRules                           ApprovalRule[]
   approvalRuleLifecycleIntents            ApprovalRuleLifecycleIntent[]
   approvalInstances                       ApprovalInstance[]
+  approvalRoutingBackfillRuns             ApprovalRoutingBackfillRun[]
+  approvalRoutingBackfillBatches          ApprovalRoutingBackfillBatch[]
+  approvalRoutingBackfillBlockers         ApprovalRoutingBackfillBlockerObservation[]
   approvalStepScopeTargets                ApprovalInstanceStepScopeTarget[]
   purchaseRequests                        PurchaseRequest[]
   purchaseRequestComments                 PurchaseRequestComment[]
@@ -7151,10 +7157,117 @@ model ApprovalInstance {
   pettyCashApprovalStepIntents PettyCashApprovalStepIntent[]
   paymentRelease               PaymentRelease?
   controlledEvidenceQualifications ControlledEvidenceActionQualification[]
+  routingBackfillBlockerObservations ApprovalRoutingBackfillBlockerObservation[]
 
   @@unique([id, tenantId, companyId], map: "ApprovalInstance_scope_key")
   @@index([tenantId, documentType, documentId])
   @@index([tenantId, companyId, status], map: "ApprovalInstance_tenantId_companyId_status_idx")
+}
+
+model ApprovalRoutingBackfillRun {
+  id                      String                                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String                                       @db.Uuid
+  companyId               String                                       @db.Uuid
+  mode                    String                                       @db.VarChar(16)
+  status                  String                                       @db.VarChar(32)
+  routingSchemaVersion    Int
+  routingMappingVersion   String                                       @db.VarChar(64)
+  routingMappingHash      String                                       @db.Char(64)
+  capabilityVersion       String                                       @db.VarChar(64)
+  capabilityHash          String                                       @db.Char(64)
+  releaseIdentity         String                                       @db.VarChar(128)
+  startRequestId          String                                       @db.VarChar(128)
+  idempotencyKey          String                                       @db.VarChar(128)
+  requestHash             String                                       @db.Char(64)
+  leaseOwner              String?                                      @db.VarChar(128)
+  leaseExpiresAt          DateTime?                                    @db.Timestamptz(3)
+  fencingToken            BigInt                                       @default(0)
+  currentPass             Int                                          @default(1)
+  lastCursorCreatedAt     DateTime?                                    @db.Timestamp(3)
+  lastCursorId            String?                                      @db.Uuid
+  nextBatchSequence       Int                                          @default(1)
+  previousReceiptHash     String?                                      @db.Char(64)
+  scannedCount            BigInt                                       @default(0)
+  eligibleCount           BigInt                                       @default(0)
+  appliedCount            BigInt                                       @default(0)
+  alreadyCurrentCount     BigInt                                       @default(0)
+  terminalCount           BigInt                                       @default(0)
+  blockerCount            BigInt                                       @default(0)
+  startedAt               DateTime                                     @default(now()) @db.Timestamptz(3)
+  completedAt             DateTime?                                    @db.Timestamptz(3)
+  stoppedAt               DateTime?                                    @db.Timestamptz(3)
+  stopAuditEventId        String?                                      @db.Uuid
+  createdAt               DateTime                                     @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                                     @updatedAt @db.Timestamptz(3)
+  tenant                  Tenant                                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company                 Company                                      @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ApprovalRoutingBackfillRun_company_scope_fkey")
+  batches                 ApprovalRoutingBackfillBatch[]
+  blockerObservations     ApprovalRoutingBackfillBlockerObservation[]
+  stopAuditEvent          AuditEvent?                                  @relation("ApprovalRoutingBackfillStopAudit", fields: [stopAuditEventId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([id, tenantId, companyId], map: "ApprovalRoutingBackfillRun_scope_key")
+  @@unique([stopAuditEventId, tenantId], map: "ApprovalRoutingBackfillRun_stop_audit_key")
+  @@unique([tenantId, companyId, startRequestId], map: "ApprovalRoutingBackfillRun_start_request_key")
+  @@unique([tenantId, companyId, idempotencyKey], map: "ApprovalRoutingBackfillRun_idempotency_key")
+  @@index([tenantId, companyId, status, createdAt], map: "ApprovalRoutingBackfillRun_scope_status_idx")
+}
+
+model ApprovalRoutingBackfillBatch {
+  id                  String                                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String                                       @db.Uuid
+  companyId           String                                       @db.Uuid
+  runId               String                                       @db.Uuid
+  requestId           String                                       @db.VarChar(128)
+  fencingToken        BigInt
+  passNo              Int
+  batchSequence       Int
+  cursorFromCreatedAt DateTime?                                    @db.Timestamp(3)
+  cursorFromId        String?                                      @db.Uuid
+  cursorToCreatedAt   DateTime?                                    @db.Timestamp(3)
+  cursorToId          String?                                      @db.Uuid
+  scannedCount        BigInt
+  eligibleCount       BigInt
+  appliedCount        BigInt
+  alreadyCurrentCount BigInt
+  terminalCount       BigInt
+  blockerCount        BigInt
+  hasMore             Boolean
+  outcome             String                                       @db.VarChar(32)
+  previousReceiptHash String?                                      @db.Char(64)
+  receiptHash         String                                       @db.Char(64)
+  committedAt         DateTime                                     @default(now()) @db.Timestamptz(3)
+  tenant              Tenant                                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company             Company                                      @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ApprovalRoutingBackfillBatch_company_scope_fkey")
+  run                 ApprovalRoutingBackfillRun                   @relation(fields: [runId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "ApprovalRoutingBackfillBatch_run_scope_fkey")
+  blockerObservations ApprovalRoutingBackfillBlockerObservation[]
+
+  @@unique([id, runId, tenantId, companyId], map: "ApprovalRoutingBackfillBatch_scope_key")
+  @@unique([runId, batchSequence], map: "ApprovalRoutingBackfillBatch_sequence_key")
+  @@unique([runId, requestId], map: "ApprovalRoutingBackfillBatch_request_key")
+  @@unique([runId, receiptHash], map: "ApprovalRoutingBackfillBatch_receipt_key")
+  @@index([tenantId, companyId, runId, passNo, batchSequence], map: "ApprovalRoutingBackfillBatch_run_pass_idx")
+}
+
+model ApprovalRoutingBackfillBlockerObservation {
+  id                 String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                        @db.Uuid
+  companyId          String                        @db.Uuid
+  runId              String                        @db.Uuid
+  batchId            String                        @db.Uuid
+  passNo             Int
+  approvalInstanceId String                        @db.Uuid
+  documentFamily     String                        @db.VarChar(128)
+  blockerCode        String                        @db.VarChar(64)
+  observedAt         DateTime                      @default(now()) @db.Timestamptz(3)
+  tenant             Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company            Company                       @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ApprovalRoutingBackfillBlocker_company_scope_fkey")
+  run                ApprovalRoutingBackfillRun    @relation(fields: [runId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "ApprovalRoutingBackfillBlocker_run_scope_fkey")
+  batch              ApprovalRoutingBackfillBatch  @relation(fields: [batchId, runId, tenantId, companyId], references: [id, runId, tenantId, companyId], onDelete: Restrict, map: "ApprovalRoutingBackfillBlocker_batch_scope_fkey")
+  approvalInstance   ApprovalInstance              @relation(fields: [approvalInstanceId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict, map: "ApprovalRoutingBackfillBlocker_instance_scope_fkey")
+
+  @@unique([runId, passNo, approvalInstanceId, blockerCode], map: "ApprovalRoutingBackfillBlocker_retry_key")
+  @@index([tenantId, companyId, runId, passNo, documentFamily], map: "ApprovalRoutingBackfillBlocker_run_family_idx")
+  @@index([batchId, runId, tenantId, companyId], map: "ApprovalRoutingBackfillBlocker_batch_idx")
 }
 
 model ApprovalInstanceStep {
@@ -7693,6 +7806,7 @@ model AuditEvent {
   actor             User?                      @relation(fields: [actorUserId], references: [id])
   firstDenialBucket AuthorizationDenialBucket? @relation("AuthorizationDenialFirstEvent")
   finalDenialBucket AuthorizationDenialBucket? @relation("AuthorizationDenialFinalEvent")
+  stoppedApprovalRoutingBackfillRun ApprovalRoutingBackfillRun? @relation("ApprovalRoutingBackfillStopAudit")
 
   @@unique([id, tenantId], map: "AuditEvent_id_tenantId_key")
   @@index([tenantId, entityType, entityId, occurredAt])
