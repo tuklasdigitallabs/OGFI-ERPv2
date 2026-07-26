@@ -14,6 +14,14 @@ const loadingSource = readFileSync(
   fileURLToPath(new URL("./loading.tsx", import.meta.url)),
   "utf8"
 );
+const globalStyleSource = readFileSync(
+  fileURLToPath(new URL("../../globals.css", import.meta.url)),
+  "utf8"
+);
+const reportSource = source.slice(
+  source.indexOf("function DashboardReports"),
+  source.indexOf("function DashboardNotifications")
+);
 
 describe("DEC-0071 dashboard presentation", () => {
   it("removes Food Cost analytical identifiers and claims from Overview", () => {
@@ -33,11 +41,74 @@ describe("DEC-0071 dashboard presentation", () => {
     expect(source).toContain("...(canOpenFoodCostAnalysis");
     expect(source).toContain('href: "/recipes/analysis"');
     expect(source).toContain("Source workspace");
-    expect(source).toContain('"Open source"');
+    expect(source).toContain('"Open source workspace"');
     expect(source).not.toContain("Recipes and Menu Costing");
     expect(source).not.toContain(
       'available: dashboard.metrics.some((metric) => metric.id === "restaurant-net-sales")'
     );
+  });
+});
+
+describe("DEC-0238 truthful operational source views", () => {
+  it("keeps the reports URL compatible while presenting a typed destination directory", () => {
+    expect(source).toContain('reports: "Source views"');
+    expect(source).toContain("Operational source views");
+    expect(source).toContain("Exact operational views");
+    expect(source).toContain("Source workspaces");
+    expect(source).toContain("Exact scoped view");
+    expect(source).toContain("Open exact view");
+    expect(source).toContain("Open source workspace");
+    expect(source).toContain("{destinations.length} destinations");
+    expect(source).toContain("No source destinations available");
+    expect(source).not.toContain("report views");
+    expect(source).not.toContain("Open report source");
+    expect(source).not.toContain("Data available");
+  });
+
+  it("keeps the longer source-view tab usable on narrow touch screens", () => {
+    expect(globalStyleSource).toMatch(/\.ogfi-tab-list\s*\{[^}]*overflow-x: auto;/s);
+    expect(globalStyleSource).toMatch(/\.ogfi-tab\s*\{[^}]*min-height: 2\.75rem;/s);
+    expect(globalStyleSource).toMatch(/\.ogfi-tab\s*\{[^}]*flex: 0 0 auto;/s);
+  });
+
+  it("uses authorized source enrollment and service-owned exact profile helpers", () => {
+    expect(source).toContain("dashboard.sourceObservations.map");
+    expect(source).toContain("return source ? [{ ...destination, source }] : []");
+    expect(source).toContain('receivingDashboardProfileHref("receiving-follow-up-v1")');
+    expect(source).toContain('transferDashboardProfileHref("transfer-follow-up-v1")');
+    expect(source).toContain('wastageDashboardProfileHref("wastage-exceptions-v1")');
+    expect(source).toContain(
+      'stockAdjustmentDashboardProfileHref("stock-adjustment-exceptions-v1")'
+    );
+    expect(source).toContain(
+      'branchOperationsDashboardProfileHref("branch-checklist-exceptions-v1")'
+    );
+    expect(source).toContain(
+      'foodSafetyDashboardProfileHref("food-safety-exceptions-v1")'
+    );
+    expect(source).toContain('incidentDashboardProfileHref("incident-open-v1")');
+    expect(source).toContain(
+      'maintenanceDashboardProfileHref("maintenance-follow-up-v1")'
+    );
+  });
+
+  it("splits controlled populations and removes unsupported semantic claims", () => {
+    expect(source).toContain('title: "Wastage Exceptions"');
+    expect(source).toContain('title: "Stock Adjustment Exceptions"');
+    expect(source).toContain('title: "Branch Checklist Exceptions"');
+    expect(source).toContain('title: "Open Incidents"');
+    expect(source).toContain('title: "Maintenance Follow-up"');
+    expect(source).not.toContain("Wastage and Adjustments");
+    expect(source).not.toContain("Branch Checklist Compliance");
+    expect(source).not.toContain("Incident Corrective Actions");
+    expect(source).not.toContain("Maintenance SLA and Downtime");
+  });
+
+  it("distinguishes dashboard read failure from zero records", () => {
+    expect(reportSource).toContain("Dashboard source");
+    expect(reportSource).toContain('? "available" : "unavailable"');
+    expect(reportSource).not.toContain("dashboard.cards.some");
+    expect(reportSource).not.toContain("dashboard.stockHealth.length > 0");
   });
 });
 

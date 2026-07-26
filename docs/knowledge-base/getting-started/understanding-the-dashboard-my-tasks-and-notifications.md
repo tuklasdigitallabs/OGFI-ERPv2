@@ -1,9 +1,9 @@
 # Understanding The Dashboard, My Tasks, And Notifications
 
 **Audience / required role:** All operational users, managers, approvers, and project users  
-**Applies to:** Operations Dashboard, My Tasks, My Work, Approval Inbox, and Notifications
+**Applies to:** Operations Dashboard, Source views, My Tasks, My Work, Approval Inbox, and Notifications
 **Related phase/module:** Phase I and Phase 1.5 / Operational Visibility  
-**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Critical exception lines, Checklist Reviews, Food Safety Exceptions, Critical exception readings, Food Safety Reviews, Incident drilldowns, and Maintenance drilldowns; feature-disabled Approval Inbox; project My Work; and scoped in-app notifications
+**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, authorized Operational source views, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Critical exception lines, Checklist Reviews, Food Safety Exceptions, Critical exception readings, Food Safety Reviews, Incident drilldowns, and Maintenance drilldowns; feature-disabled Approval Inbox; project My Work; and scoped in-app notifications
 
 ## Purpose
 
@@ -11,11 +11,22 @@ Use this article to understand where to look for pending work, operational excep
 
 Dashboard cards and notifications provide visibility. They do not replace the detailed source records and do not perform controlled actions by themselves.
 
+## Prerequisites
+
+- Sign in with an active company and location assignment.
+- Select the company and operating location you need to review.
+- Your role and current scope must allow the applicable dashboard source or source workspace.
+
+## Navigation Path
+
+`Overview` → `Source views`
+
 ## Main Areas
 
 | Area | Use it for |
 |---|---|
 | `Operations Dashboard` | Read-only Phase I visibility from scoped source records. |
+| `Source views` | Authorized navigation to exact scoped operational populations and ordinary source workspaces. It is not a catalog of new reports. |
 | `My Tasks` | The paginated operational action queue currently enrolled for your selected scope. It opens the source record; it does not perform the action itself. It is not yet a complete cross-module filtered task list. |
 | `Approval Inbox` | Assigned approval decisions after normalized routing is activated. It currently shows an unavailable state and no queue. |
 | `My Work` | Assigned project tracker work, task status, blockers, and due dates. |
@@ -27,25 +38,30 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 2. Open `Operations Dashboard` and review `Today’s work` first. It lists the highest-priority assigned approvals and operational exceptions visible in your selected scope.
 3. Read `Dashboard assembled` for the time this dashboard response was put together. Expand `Dashboard source status` to see whether each source the server authorized and attempted was available, and when that attempt was checked. These times are displayed in `Asia/Manila`.
 4. If `Dashboard source status` reports a partial response, open each unavailable source with `Open source` before deciding that no work or exception exists. A missing summary is not a zero result.
-5. Open `My Tasks` when you need the current paginated operational action queue. It presently includes your own draft Purchase Request submission, eligible draft Purchase Order submission or approved PO supplier-send actions, Transfer, Wastage, Stock Adjustment, draft Receiving Report posting, assigned first-pass Stock Count start, entry, or submission, eligible Branch Operations or Food Safety review and returned-record correction, eligible Incident resolution, and eligible Maintenance completion.
-6. Read the location, owner, timing, severity, status, and next-action labels before opening a source record.
-7. Select `Open` or `Open approvals` to continue in the relevant controlled workspace. The `Open POs`, `Open PRs`, `Transfer Follow-up`, `Receiving Follow-up`, `Checklist Exceptions`, `Critical exception lines`, `Checklist Reviews`, `Food Safety Exceptions`, `Critical exception readings`, and `Food Safety Reviews` signals open closed source-list views for the selected scope.
-8. Use `Checklist Exceptions` for all retained exception lines, or `Critical exception lines` for the severity-specific subset. Each destination reports its line total separately from the number of affected checklists.
-9. Use `Checklist Reviews` to inspect all scoped checklists in `SUBMITTED` or `MANAGER REVIEW`. This is an oversight view, not a list of work personally assigned to you.
-10. Use `Food Safety Exceptions` for all retained exception readings, or `Critical exception readings` for the retained `EXCEPTION` plus `CRITICAL` subset across every log status. Each destination reports its reading total separately from affected logs.
-11. Use `Food Safety Reviews` to inspect all scoped logs in `SUBMITTED` or `EXCEPTION REVIEW`. This is an oversight view, not a list of work personally assigned to you.
-12. Use `Open Incidents`, `Critical incidents`, `Incident review`, or `Incident overdue` to inspect its fixed read-only Incident population. These are overlapping oversight lenses, not totals to add together.
-13. Use `Maintenance Follow-up`, `Critical maintenance`, `Pending vendor`, or `Maintenance overdue` to inspect its fixed read-only Maintenance population. These are overlapping oversight lenses, not totals to add together.
-14. Open `Approval Inbox` to check availability. If it is unavailable, it exposes no queue or actions; do not infer that there are no pending approvals.
-15. Open `My Work` for project tasks assigned to you.
-16. Open `Notifications` to review unread or actionable alerts.
-17. If you are an approver, use `Scan Approvals` to create current-user reminders for eligible due or overdue approvals. While Approval Inbox is unavailable, this scan is only a partial reminder mechanism: its links cannot open an approval action and it does not provide a complete queue.
-18. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
-19. Mark notifications read or archive them after handling the related source record.
+5. Open `Source views` to see destinations allowed for your role and selected scope. Operational entries are enrolled only from dashboard sources the server authorized and attempted; Food Cost Analysis uses its separate access check. Destinations are grouped as `Exact operational views` or `Source workspaces`.
+6. Select `Open exact view` for a versioned, read-only population whose membership and selected operating scope are controlled by the server. Select `Open source workspace` for the ordinary authorized module, where no exact report population is implied.
+7. Read the destination's `Dashboard source available` or `Dashboard source unavailable` label where shown. `Unavailable` means the dashboard could not obtain that source summary for this response; it does not mean the exact view or source workspace has zero matching records. Opening the destination performs a new access and source read.
+8. Open `My Tasks` when you need the current paginated operational action queue. It presently includes your own draft Purchase Request submission, eligible draft Purchase Order submission or approved PO supplier-send actions, Transfer, Wastage, Stock Adjustment, draft Receiving Report posting, assigned first-pass Stock Count start, entry, or submission, eligible Branch Operations or Food Safety review and returned-record correction, eligible Incident resolution, and eligible Maintenance completion.
+9. Read the location, owner, timing, severity, status, and next-action labels before opening a source record.
+10. Select `Open` or `Open approvals` to continue in the relevant controlled workspace. The `Open POs`, `Open PRs`, `Transfer Follow-up`, `Receiving Follow-up`, `Checklist Exceptions`, `Critical exception lines`, `Checklist Reviews`, `Food Safety Exceptions`, `Critical exception readings`, and `Food Safety Reviews` signals open closed source-list views for the selected scope.
+11. Use `Checklist Exceptions` for all retained exception lines, or `Critical exception lines` for the severity-specific subset. Each destination reports its line total separately from the number of affected checklists.
+12. Use `Checklist Reviews` to inspect all scoped checklists in `SUBMITTED` or `MANAGER REVIEW`. This is an oversight view, not a list of work personally assigned to you.
+13. Use `Food Safety Exceptions` for all retained exception readings, or `Critical exception readings` for the retained `EXCEPTION` plus `CRITICAL` subset across every log status. Each destination reports its reading total separately from affected logs.
+14. Use `Food Safety Reviews` to inspect all scoped logs in `SUBMITTED` or `EXCEPTION REVIEW`. This is an oversight view, not a list of work personally assigned to you.
+15. Use `Open Incidents`, `Critical incidents`, `Incident review`, or `Incident overdue` to inspect its fixed read-only Incident population. These are overlapping oversight lenses, not totals to add together.
+16. Use `Maintenance Follow-up`, `Critical maintenance`, `Pending vendor`, or `Maintenance overdue` to inspect its fixed read-only Maintenance population. These are overlapping oversight lenses, not totals to add together.
+17. Open `Approval Inbox` to check availability. If it is unavailable, it exposes no queue or actions; do not infer that there are no pending approvals.
+18. Open `My Work` for project tasks assigned to you.
+19. Open `Notifications` to review unread or actionable alerts.
+20. If you are an approver, use `Scan Approvals` to create current-user reminders for eligible due or overdue approvals. While Approval Inbox is unavailable, this scan is only a partial reminder mechanism: its links cannot open an approval action and it does not provide a complete queue.
+21. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
+22. Mark notifications read or archive them after handling the related source record.
 
 ## Expected Result
 
 - The dashboard shows the selected scope, the response's `Dashboard assembled` time, and per-source status, followed by `Today’s work` and then KPI/supporting cards.
+- `Source views` shows only destinations allowed for the user's current role and selected scope. Operational entries require an authorized, attempted dashboard source, while Food Cost Analysis uses its separate access check. An absent destination does not disclose an unauthorized source and does not mean that source contains zero records.
+- An `Exact scoped view` opens a fixed, read-only operational population in the selected scope. A `Source workspace` opens the ordinary authorized module without claiming an exact report population.
 - `Dashboard assembled` and each source's `Checked` time describe this response's observation in `Asia/Manila`; they do not say when the underlying records last changed.
 - `Source data as of` appears only when that source supplies a documented, source-native as-of time. Its absence does not mean the source was unavailable.
 - A partial dashboard withholds affected totals or labels shown items as coming from available sources. It does not turn an unavailable source summary into zero.
@@ -59,7 +75,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - My Tasks orders critical before high, medium, and low priority. Within one priority, dated work appears by earliest due date before undated work, then by age. Due-state wording such as overdue or due today uses the company operating day; it does not change the signed page cursor's stable absolute-date order.
 - Dashboard cards show source-record counts and exceptions for your selected scope.
 - `Open POs` opens a paginated list of the same open PO lifecycle used by that dashboard count. Its CSV export uses that same list; use `Clear dashboard filter` to return to normal Purchase Order filtering.
-- Overview continues to show eligible overdue PO items in its exception work and the exact `Open POs` count/profile, but it does not show `PO commitment`, `Open PO exposure`, or `Received value` money cards. The Reports tab's `Purchase Order Register` link opens the source workspace and does not represent an aggregate-value report. Use the ordinary Purchase Orders and Receiving registers for authorized record-level currency and value details.
+- Overview continues to show eligible overdue PO items in its exception work and the exact `Open POs` count/profile, but it does not show `PO commitment`, `Open PO exposure`, or `Received value` money cards. The `Source views` tab's `Purchase Orders` destination opens the source workspace and does not represent an aggregate-value report. Use the ordinary Purchase Orders and Receiving registers for authorized record-level currency and value details.
 - `Open PRs` opens a paginated list of the same open PR lifecycle used by that dashboard count: Draft, Pending Approval, Approved, and Returned. Its CSV export uses that same list; use `Clear dashboard filter` to return to normal Purchase Request filtering.
 - `Transfer Follow-up` opens a paginated list of requested, dispatched, partially received, and disputed transfers where your selected location is either endpoint. Its CSV export uses that same list. The drilldown is read-only: use the controlled transfer record for any permitted dispatch, receipt, settlement, or reversal action.
 - `Receiving Follow-up` opens a searchable, paginated list of unposted drafts, posting receipts, active recorded discrepancies, and discrepancy-bearing reversals in progress at the selected receiving location. A row is labeled `Unposted draft`, `Posting in progress`, `Discrepancy recorded`, or `Reversal in progress`. The list and its CSV export share the same fixed population. It is a monitoring and navigation view, not a discrepancy-resolution queue; posting and reversal remain independently authorized actions on Receiving Report detail.
@@ -92,6 +108,8 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 
 - Dashboard cards are read-only and do not approve, post, receive, dispatch, or reverse records.
 - Dashboard source status is shown only for sources the server authorized and attempted for the selected scope. It does not reveal unauthorized sources or grant access to them.
+- A `Dashboard source unavailable` label is a dashboard-read failure, not a zero-record result. Zero results can be concluded only after an authorized destination loads successfully and shows no matching records for its fixed scope and population.
+- Exact scoped views and source workspaces are read-only navigation destinations on Overview. They do not grant create, approve, receive, dispatch, post, reverse, export, or other workflow authority.
 - Do not interpret `Dashboard assembled`, `Checked`, or `Source data as of` as `fresh`, `stale`, within SLA, or outside SLA. The dashboard makes no such freshness or service-level claim.
 - `Open source` leads to the authoritative source workspace. That workspace rechecks your current session, permission, scope, record status, and action authority; dashboard availability or a copied link is not an access token.
 - A dashboard drilldown narrows an already authorized source list. It does not grant access to a PO, PR, transfer, or Receiving Report; alter the selected scope; or permit changing the dashboard filter through the URL.
@@ -122,6 +140,10 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - `Scan Approvals` and `Scan Reminders` are manual in-app reminder tools. They do not approve, reject, post, receive, close, reverse, or escalate authority.
 - Project tasks may link to ERP records, but completing a task does not approve a PR/PO, receive stock, post inventory, or change finance records.
 - If a card or notification is missing, check location, permission, scope, and filters.
+
+## What Happens Next
+
+The selected destination rechecks your live session, role, company/location scope, and source-specific access. Review the loaded records and use only the actions offered by that source workspace; returning to Overview does not change record status, inventory, financial data, or audit history.
 
 ## Related Articles
 

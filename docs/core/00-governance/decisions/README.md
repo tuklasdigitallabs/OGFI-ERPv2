@@ -178,3 +178,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0235-SUPPRESS-PO-DASHBOARD-MONETARY-SIGNALS.md` — suppression of unauthoritative PO commitment/exposure/received-value signals while preserving open-count and overdue follow-up
 - `DEC-0236-BRANCH-CRITICAL-EXCEPTIONS-DASHBOARD-PROFILE.md` — all-status critical exception-line Branch Operations profile with affected-checklist context and suppression of ambiguous standalone Manager Review/Reviewed signals
 - `DEC-0237-FOOD-SAFETY-CRITICAL-EXCEPTIONS-DASHBOARD-PROFILE.md` — all-status critical exception-reading Food Safety profile with affected-log context and suppression of ambiguous standalone Exception Review/Reviewed signals
+- `DEC-0238-TRUTHFUL-OPERATIONAL-SOURCE-VIEWS.md` — compatible typed Overview Source views directory that distinguishes exact scoped populations from source workspaces without report or availability claims

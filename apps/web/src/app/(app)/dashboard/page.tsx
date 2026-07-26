@@ -21,8 +21,17 @@ import {
   getOperationalDashboard,
   type DashboardMetric,
   type DashboardQueueItem,
+  type DashboardSourceId,
   type DashboardSourceObservation
 } from "@/server/services/dashboard";
+import { branchOperationsDashboardProfileHref } from "@/server/services/branchOperations";
+import { foodSafetyDashboardProfileHref } from "@/server/services/foodSafety";
+import { incidentDashboardProfileHref } from "@/server/services/incidents";
+import { maintenanceDashboardProfileHref } from "@/server/services/maintenance";
+import { receivingDashboardProfileHref } from "@/server/services/receiving";
+import { stockAdjustmentDashboardProfileHref } from "@/server/services/stockAdjustments";
+import { transferDashboardProfileHref } from "@/server/services/transfers";
+import { wastageDashboardProfileHref } from "@/server/services/wastage";
 import { formatDashboardCheckedAt } from "./sourceObservation";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +47,12 @@ const metricIcons = {
 
 const dashboardViews = ["overview", "analytics", "reports", "notifications"] as const;
 type DashboardView = (typeof dashboardViews)[number];
+const dashboardViewLabels: Record<DashboardView, string> = {
+  overview: "Overview",
+  analytics: "Analytics",
+  reports: "Source views",
+  notifications: "Notifications"
+};
 const analyticsPanels = ["risk", "stock", "attention", "details"] as const;
 type AnalyticsPanel = (typeof analyticsPanels)[number];
 
@@ -844,128 +859,174 @@ function DashboardReports({
   canOpenFoodCostAnalysis: boolean;
   dashboard: DashboardData;
 }) {
-  const reports = [
-    {
-      title: "Inventory Balance Report",
-      detail: "Current on-hand stock by item, location, lot, expiry, and ledger status.",
+  type Destination = {
+    title: string;
+    detail: string;
+    href: string;
+    kind: "EXACT_VIEW" | "SOURCE_WORKSPACE";
+    source?: DashboardSourceObservation;
+  };
+
+  const sourceById = new Map(
+    dashboard.sourceObservations.map((source) => [source.id, source])
+  );
+  const fromSource = (
+    sourceId: DashboardSourceId,
+    destination: Omit<Destination, "source">
+  ): Destination[] => {
+    const source = sourceById.get(sourceId);
+    return source ? [{ ...destination, source }] : [];
+  };
+
+  const destinations: Destination[] = [
+    ...fromSource("inventory-balances", {
+      title: "Inventory Balances",
+      detail: "Open the authorized inventory workspace for balance and ledger source records.",
       href: "/inventory",
-      available: dashboard.stockHealth.length > 0
-    },
-    {
-      title: "Purchase Order Register",
-      detail: "Open the source workspace to review purchase orders by record, status, and currency.",
+      kind: "SOURCE_WORKSPACE"
+    }),
+    ...fromSource("purchase-orders", {
+      title: "Purchase Orders",
+      detail: "Open the authorized source workspace to review purchase-order records and status.",
       href: "/purchase-orders",
-      sourceWorkspace: true
-    },
-    {
+      kind: "SOURCE_WORKSPACE"
+    }),
+    ...fromSource("receiving", {
       title: "Receiving Follow-up",
       detail: "Unposted drafts, posting receipts, and active receiving discrepancies.",
-      href: "/receiving?dashboard=receiving-follow-up-v1",
-      available: dashboard.cards.some((card) => card.id === "receiving-follow-up")
-    },
-    {
+      href: receivingDashboardProfileHref("receiving-follow-up-v1"),
+      kind: "EXACT_VIEW"
+    }),
+    ...fromSource("transfers", {
       title: "Transfer Follow-up",
-      detail: "Warehouse-to-branch transfers awaiting dispatch, receipt, or discrepancy settlement.",
-      href: "/transfers",
-      available: dashboard.cards.some((card) => card.id === "transfer-follow-up")
-    },
-    {
-      title: "Wastage and Adjustments",
-      detail: "Controlled stock exceptions requiring approval, evidence, posting, or reversal.",
-      href: "/wastage",
-      available: dashboard.cards.some((card) => card.id === "wastage-exceptions")
-    },
+      detail: "Transfers awaiting dispatch, receipt, or discrepancy settlement.",
+      href: transferDashboardProfileHref("transfer-follow-up-v1"),
+      kind: "EXACT_VIEW"
+    }),
+    ...fromSource("wastage", {
+      title: "Wastage Exceptions",
+      detail: "Wastage records requiring controlled review, posting, correction, or reversal.",
+      href: wastageDashboardProfileHref("wastage-exceptions-v1"),
+      kind: "EXACT_VIEW"
+    }),
+    ...fromSource("stock-adjustments", {
+      title: "Stock Adjustment Exceptions",
+      detail: "Stock adjustments requiring controlled review, posting, correction, or reversal.",
+      href: stockAdjustmentDashboardProfileHref("stock-adjustment-exceptions-v1"),
+      kind: "EXACT_VIEW"
+    }),
     ...(dashboard.approvalQueueContract.availability === "AVAILABLE"
-      ? [{
-          title: "Approval Queue",
-          detail: "Pending approvals assigned by role, scope, approver eligibility, and status.",
+      ? fromSource("approvals", {
+          title: "Approval Inbox",
+          detail: "Open the authorized approval source workspace for the selected scope.",
           href: "/approvals",
-          available: true
-        }]
+          kind: "SOURCE_WORKSPACE"
+        })
       : []),
     ...(canOpenFoodCostAnalysis
-      ? [
-          {
-            title: "Food Cost Analysis",
-            detail:
-              "Open the source workspace to review its current evidence and trust notices.",
-            href: "/recipes/analysis",
-            sourceWorkspace: true
-          }
-        ]
+      ? [{
+          title: "Food Cost Analysis Source",
+          detail: "Review the source workspace, its current evidence, and its trust notices.",
+          href: "/recipes/analysis",
+          kind: "SOURCE_WORKSPACE" as const
+        }]
       : []),
-    {
-      title: "Branch Checklist Compliance",
-      detail: "Opening and closing checklists, exception counts, completion, and source detail.",
-      href: "/branch-operations",
-      available: dashboard.cards.some((card) => card.id === "branch-checklist-exceptions")
-    },
-    {
+    ...fromSource("branch-operations", {
+      title: "Branch Checklist Exceptions",
+      detail: "Checklist exception records across opening and closing operational logs.",
+      href: branchOperationsDashboardProfileHref("branch-checklist-exceptions-v1"),
+      kind: "EXACT_VIEW"
+    }),
+    ...fromSource("food-safety", {
       title: "Food Safety Exceptions",
-      detail: "Temperature, sanitation, corrective action, and evidence reading source records.",
-      href: "/food-safety",
-      available: dashboard.cards.some((card) => card.id === "food-safety-exceptions")
-    },
-    {
-      title: "Incident Corrective Actions",
-      detail: "Open incidents, severity, due dates, source links, corrective actions, and evidence.",
-      href: "/incidents",
-      available: dashboard.cards.some((card) => card.id === "open-operational-incidents")
-    },
-    {
-      title: "Maintenance SLA and Downtime",
-      detail: "Maintenance tickets, equipment, SLA risk, downtime, corrective actions, and evidence.",
-      href: "/maintenance",
-      available: dashboard.cards.some((card) => card.id === "maintenance-follow-up")
-    }
+      detail: "Exception readings and their affected Food Safety logs.",
+      href: foodSafetyDashboardProfileHref("food-safety-exceptions-v1"),
+      kind: "EXACT_VIEW"
+    }),
+    ...fromSource("incidents", {
+      title: "Open Incidents",
+      detail: "Incident records that remain open in the selected operating scope.",
+      href: incidentDashboardProfileHref("incident-open-v1"),
+      kind: "EXACT_VIEW"
+    }),
+    ...fromSource("maintenance", {
+      title: "Maintenance Follow-up",
+      detail: "Active maintenance tickets requiring operational follow-up.",
+      href: maintenanceDashboardProfileHref("maintenance-follow-up-v1"),
+      kind: "EXACT_VIEW"
+    })
   ];
+  const groups = [
+    {
+      title: "Exact operational views",
+      detail: "Versioned, read-only populations that preserve the selected operating scope.",
+      destinations: destinations.filter((destination) => destination.kind === "EXACT_VIEW")
+    },
+    {
+      title: "Source workspaces",
+      detail: "Authorized source modules without an implied report or record population.",
+      destinations: destinations.filter((destination) => destination.kind === "SOURCE_WORKSPACE")
+    }
+  ].filter((group) => group.destinations.length > 0);
 
   return (
     <section className="ogfi-data-surface">
       <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-950">Reports</h2>
+          <h2 className="text-lg font-bold text-slate-950">Operational source views</h2>
           <p className="text-sm text-slate-500">
-            Report shortcuts preserve the selected operating scope and open source modules.
+            Open exact scoped populations or their authoritative source workspaces.
           </p>
         </div>
-        <Badge tone="info" size="sm">{reports.length} report views</Badge>
+        <Badge tone="info" size="sm">{destinations.length} destinations</Badge>
       </div>
-      <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-        {reports.map((report) => (
-          <a
-            key={report.title}
-            className="rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-blue-200 hover:bg-blue-50/40"
-            href={report.href}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-700">
-                {report.title.includes("Safety") ? (
-                  <ShieldCheck aria-hidden="true" className="h-5 w-5" />
-                ) : report.title.includes("Maintenance") ? (
-                  <Wrench aria-hidden="true" className="h-5 w-5" />
-                ) : report.title.includes("Food") || report.title.includes("Recipes") ? (
-                  <Utensils aria-hidden="true" className="h-5 w-5" />
-                ) : (
-                  <FileText aria-hidden="true" className="h-5 w-5" />
-                )}
-              </span>
-              {"sourceWorkspace" in report ? (
-                <span className="text-xs font-semibold text-slate-500">
-                  Source workspace
-                </span>
-              ) : (
-                <Badge tone={report.available ? "success" : "neutral"} size="sm">
-                  {report.available ? "Data available" : "Ready"}
-                </Badge>
-              )}
+      <div className="grid gap-6 p-4">
+        {groups.length === 0 ? (
+          <EmptyDashboardState
+            title="No source destinations available"
+            detail="No operational source view is enrolled for your current role and selected scope."
+          />
+        ) : groups.map((group) => (
+          <section key={group.title} aria-labelledby={`source-view-${group.title.replaceAll(" ", "-").toLowerCase()}`}>
+            <h3 id={`source-view-${group.title.replaceAll(" ", "-").toLowerCase()}`} className="font-bold text-slate-950">{group.title}</h3>
+            <p className="mt-1 text-sm text-slate-500">{group.detail}</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {group.destinations.map((destination) => (
+                <a
+                  key={destination.title}
+                  className="min-h-11 rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-blue-200 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                  href={destination.href}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-700">
+                      {destination.title.includes("Safety") ? (
+                        <ShieldCheck aria-hidden="true" className="h-5 w-5" />
+                      ) : destination.title.includes("Maintenance") ? (
+                        <Wrench aria-hidden="true" className="h-5 w-5" />
+                      ) : destination.title.includes("Food") ? (
+                        <Utensils aria-hidden="true" className="h-5 w-5" />
+                      ) : (
+                        <FileText aria-hidden="true" className="h-5 w-5" />
+                      )}
+                    </span>
+                    <Badge tone="neutral" size="sm">
+                      {destination.kind === "EXACT_VIEW" ? "Exact scoped view" : "Source workspace"}
+                    </Badge>
+                  </div>
+                  <h4 className="mt-4 font-bold text-slate-950">{destination.title}</h4>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{destination.detail}</p>
+                  {destination.source ? (
+                    <p className={`mt-3 text-xs font-semibold ${destination.source.availability === "AVAILABLE" ? "text-emerald-700" : "text-amber-700"}`}>
+                      Dashboard source {destination.source.availability === "AVAILABLE" ? "available" : "unavailable"}
+                    </p>
+                  ) : null}
+                  <p className="mt-4 text-sm font-bold text-blue-700">
+                    {destination.kind === "EXACT_VIEW" ? "Open exact view" : "Open source workspace"}
+                  </p>
+                </a>
+              ))}
             </div>
-            <h3 className="mt-4 font-bold text-slate-950">{report.title}</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{report.detail}</p>
-            <p className="mt-4 text-sm font-bold text-blue-700">
-              {"sourceWorkspace" in report ? "Open source" : "Open report source"}
-            </p>
-          </a>
+          </section>
         ))}
       </div>
     </section>
@@ -1107,7 +1168,7 @@ export default async function DashboardPage({
                 className={activeView === view ? "ogfi-tab is-active" : "ogfi-tab"}
                 href={dashboardViewHref(view)}
               >
-                {view[0]!.toUpperCase() + view.slice(1)}
+                {dashboardViewLabels[view]}
               </a>
             ))}
           </div>

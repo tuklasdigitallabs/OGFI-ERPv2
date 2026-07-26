@@ -9,7 +9,7 @@
 - Overview no longer shows the `PO commitment`, `Open PO exposure`, or `Received value` cards.
 - Their broad lifecycle, currency, valuation, and reconciliation bases were not approved as authoritative, and their generic links did not open an exact matching population.
 - The exact `Open POs` record count and read-only profile remain available. Eligible overdue PO items also remain visible in Overview exception work.
-- The Reports tab now labels the ordinary source-workspace shortcut `Purchase Order Register`; it does not claim to report commitment, exposure, or a reconciled aggregate value.
+- The `Source views` tab labels the ordinary source-workspace destination `Purchase Orders`; it does not claim to report commitment, exposure, or a reconciled aggregate value.
 - Ordinary Purchase Order and Receiving registers remain available under their existing permissions and selected scope, with currency and value details kept on the relevant records.
 
 ## What You Need To Do

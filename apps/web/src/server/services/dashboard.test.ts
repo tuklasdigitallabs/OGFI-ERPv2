@@ -1207,11 +1207,17 @@ describe("operational dashboard model", () => {
     expect(serializedDashboard).not.toContain("/recipes/analysis");
   });
 
-  it("keeps incident and maintenance report shortcuts routed to their own sources", () => {
-    expect(dashboardPageSource).toContain("Incident Corrective Actions");
-    expect(dashboardPageSource).toContain('href: "/incidents"');
-    expect(dashboardPageSource).toContain("Maintenance SLA and Downtime");
-    expect(dashboardPageSource).toContain('href: "/maintenance"');
+  it("keeps incident and maintenance source views routed to their exact profiles", () => {
+    expect(dashboardPageSource).toContain('title: "Open Incidents"');
+    expect(dashboardPageSource).toContain(
+      'incidentDashboardProfileHref("incident-open-v1")'
+    );
+    expect(dashboardPageSource).toContain('title: "Maintenance Follow-up"');
+    expect(dashboardPageSource).toContain(
+      'maintenanceDashboardProfileHref("maintenance-follow-up-v1")'
+    );
+    expect(dashboardPageSource).not.toContain("Incident Corrective Actions");
+    expect(dashboardPageSource).not.toContain("Maintenance SLA and Downtime");
     expect(dashboardPageSource).toContain("item.nextAction ?? actionLabel");
     expect(dashboardPageSource).toContain("Assigned to: {item.nextActor}");
     expect(dashboardPageSource).not.toContain("Incidents and Maintenance");
