@@ -9746,9 +9746,11 @@
       "AUTHZ-ACTION-001"
     ],
     "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
       "server/services/items.ts#createItem"
     ],
     "callChains": [
+      "createItemAction -> server/services/authentication.ts#assertTrustedServerActionOrigin",
       "createItemAction -> server/services/items.ts#createItem"
     ],
     "boundaryClassifications": [

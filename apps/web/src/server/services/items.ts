@@ -359,51 +359,51 @@ export async function listItemMasterOptionCatalog(
   if (values.kind === "category") {
     const where = {
       ...scope,
-      ...(query
-        ? { OR: [{ categoryCode: query }, { categoryName: query }, ...(values.selectedIds.length ? [{ id: { in: values.selectedIds } }] : [])] }
-        : values.selectedIds.length ? { id: { in: values.selectedIds } } : {}),
-      AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
+      status: "ACTIVE" as const,
+      ...(query ? { OR: [{ categoryCode: query }, { categoryName: query }] } : {})
     };
     const total = await prisma.itemCategory.count({ where });
-    const rows = await prisma.itemCategory.findMany({ where, orderBy: [{ categoryName: "asc" }, { id: "asc" }], skip: (Math.min(values.page, Math.max(1, Math.ceil(total / values.pageSize))) - 1) * values.pageSize, take: values.pageSize });
+    const totalPages = Math.max(1, Math.ceil(total / values.pageSize));
+    const effectivePage = Math.min(values.page, totalPages);
+    const rows = await prisma.itemCategory.findMany({ where, orderBy: [{ categoryName: "asc" }, { id: "asc" }], skip: (effectivePage - 1) * values.pageSize, take: values.pageSize });
     const selected = values.selectedIds.length
       ? await prisma.itemCategory.findMany({ where: { ...scope, id: { in: values.selectedIds } }, orderBy: { categoryName: "asc" } })
       : [];
     const options = [...selected, ...rows.filter((row) => !selected.some((item) => item.id === row.id))].map((row) => ({ id: row.id, code: row.categoryCode, label: row.categoryName, status: row.status }));
-    return { kind: values.kind, options, page: values.page, pageSize: values.pageSize, total, hasMore: total > options.length };
+    return { kind: values.kind, options, page: effectivePage, pageSize: values.pageSize, total, hasMore: effectivePage < totalPages };
   }
 
   if (values.kind === "uom") {
     const where = {
       ...scope,
-      ...(query
-        ? { OR: [{ uomCode: query }, { uomName: query }, ...(values.selectedIds.length ? [{ id: { in: values.selectedIds } }] : [])] }
-        : values.selectedIds.length ? { id: { in: values.selectedIds } } : {}),
-      AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
+      status: "ACTIVE" as const,
+      ...(query ? { OR: [{ uomCode: query }, { uomName: query }] } : {})
     };
     const total = await prisma.uom.count({ where });
-    const rows = await prisma.uom.findMany({ where, orderBy: [{ uomCode: "asc" }, { id: "asc" }], skip: (Math.min(values.page, Math.max(1, Math.ceil(total / values.pageSize))) - 1) * values.pageSize, take: values.pageSize });
+    const totalPages = Math.max(1, Math.ceil(total / values.pageSize));
+    const effectivePage = Math.min(values.page, totalPages);
+    const rows = await prisma.uom.findMany({ where, orderBy: [{ uomCode: "asc" }, { id: "asc" }], skip: (effectivePage - 1) * values.pageSize, take: values.pageSize });
     const selected = values.selectedIds.length
       ? await prisma.uom.findMany({ where: { ...scope, id: { in: values.selectedIds } }, orderBy: { uomCode: "asc" } })
       : [];
     const options = [...selected, ...rows.filter((row) => !selected.some((item) => item.id === row.id))].map((row) => ({ id: row.id, code: row.uomCode, label: row.uomName, status: row.status }));
-    return { kind: values.kind, options, page: values.page, pageSize: values.pageSize, total, hasMore: total > options.length };
+    return { kind: values.kind, options, page: effectivePage, pageSize: values.pageSize, total, hasMore: effectivePage < totalPages };
   }
 
   const where = {
     ...scope,
-    ...(query
-      ? { OR: [{ itemCode: query }, { itemName: query }, ...(values.selectedIds.length ? [{ id: { in: values.selectedIds } }] : [])] }
-      : values.selectedIds.length ? { id: { in: values.selectedIds } } : {}),
-    AND: [{ OR: [{ status: "ACTIVE" as const }, { id: { in: values.selectedIds } }] }]
+    status: "ACTIVE" as const,
+    ...(query ? { OR: [{ itemCode: query }, { itemName: query }] } : {})
   };
   const total = await prisma.item.count({ where });
-  const rows = await prisma.item.findMany({ where, orderBy: [{ itemName: "asc" }, { id: "asc" }], skip: (Math.min(values.page, Math.max(1, Math.ceil(total / values.pageSize))) - 1) * values.pageSize, take: values.pageSize });
+  const totalPages = Math.max(1, Math.ceil(total / values.pageSize));
+  const effectivePage = Math.min(values.page, totalPages);
+  const rows = await prisma.item.findMany({ where, orderBy: [{ itemName: "asc" }, { id: "asc" }], skip: (effectivePage - 1) * values.pageSize, take: values.pageSize });
   const selected = values.selectedIds.length
     ? await prisma.item.findMany({ where: { ...scope, id: { in: values.selectedIds } }, orderBy: { itemName: "asc" } })
     : [];
   const options = [...selected, ...rows.filter((row) => !selected.some((item) => item.id === row.id))].map((row) => ({ id: row.id, code: row.itemCode, label: row.itemName, status: row.status }));
-  return { kind: values.kind, options, page: values.page, pageSize: values.pageSize, total, hasMore: total > options.length };
+  return { kind: values.kind, options, page: effectivePage, pageSize: values.pageSize, total, hasMore: effectivePage < totalPages };
 }
 
 export async function listItemMasterData(

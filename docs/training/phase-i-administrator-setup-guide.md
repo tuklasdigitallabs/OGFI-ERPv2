@@ -61,6 +61,16 @@ tabs. The active register is the only register loaded, and its selected-record
 controls remain scoped to the selected company. Do not interpret an inactive
 tab's absent count as zero data.
 
+In the Items tab, open `Create Item`. Demonstrate that Category, Base UOM,
+Purchase UOM, and Issue UOM have independent search and page controls. Select an
+active Category and required Base UOM; leave Purchase or Issue UOM at the explicit
+`None` choice when no separate unit applies. Show the lookup retry and no-match
+recovery guidance, then explain that a stale parent must be re-selected after the
+catalog refresh. Confirm that a rejected save retains the draft and that a
+successful save names the new Item while posting no stock movement. The current
+build requires Core Administrator access plus selected-company `MANAGE`; broader
+role-based Item Master access remains an unresolved policy gate.
+
 In a Supplier catalog, use the selected item-link Open controls action sheet to
 deactivate a link. Verify the supplier, item, UOM, and reason before submitting;
 the server preserves history and rechecks company scope and active status.
@@ -92,6 +102,8 @@ switch to Brands to review the full paginated brand register.
 - Marking a security gate ready because the ERP counter looks acceptable but the external MFA, identity-provider, vault, or break-glass proof reference has not been collected.
 - Treating GO / NO-GO reports as approval: they are evidence summaries and still need named Release Board decision records.
 - Treating evidence-register access as file access or hold authority: the register is metadata-only, and hold placement needs a separate permission plus current privileged MFA assurance.
+- Treating an optional Item UOM lookup as an automatic assignment: use the explicit `None` choice unless a separate Purchase or Issue UOM is required.
+- Retrying an Item save with a stale Category or UOM: refresh and re-select the unresolved active parent before submitting again.
 - Reading a CSV without checking the metadata rows: always confirm the report ID, selected scope, trust-gate mode, and source decision before using the data.
 - Deactivating a reason code: open the selected row’s details, confirm the workflow and code, enter the reason, and submit from the action sheet. If another administrator already handled it, refresh and do not retry by creating a replacement code.
 - Recovering an account: use Authentication → Recovery, page or filter the bounded queue, open one request, and have a different MFA-assured administrator approve or reject it. First-time identities belong in Activation; approved/rejected history is read-only.
@@ -101,4 +113,5 @@ switch to Brands to review the full paginated brand register.
 - Participant can diagnose a visibility or approval issue using role, permission, scope, status, assignment, and audit evidence without weakening controls.
 - Participant can explain DEC-0036 policy defaults, readable policy summaries, and reasoned overrides in Admin Settings.
 - Participant can verify export metadata before sharing or relying on CSV output.
+- Participant can create a governed Item with independent bounded selectors, explain optional `None`, recover from lookup or stale-parent errors, and confirm that creation does not post stock.
 - Participant can explain which release-readiness evidence belongs in the ERP register and which external-security proof references must remain in the approved provider or evidence repository.

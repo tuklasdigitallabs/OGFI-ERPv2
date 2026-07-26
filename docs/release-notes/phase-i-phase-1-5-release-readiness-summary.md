@@ -198,6 +198,21 @@ complete. The executable 8-test/16-race disposable-PostgreSQL matrix is authored
 and registered, but the runner still stops at its required database-administration
 URL gate; none of those races has PostgreSQL execution credit.
 
+Authorized Item creation no longer becomes unavailable merely because the active
+Category or UOM catalog contains more than 100 records. `Create Item` now opens a
+focused sheet with separate searchable, paginated selectors for Category, base
+UOM, purchase UOM, and issue UOM. Purchase and issue UOM may explicitly remain
+`None`. The sheet distinguishes an empty catalog from a search with no matches and
+provides retry guidance when a lookup is unavailable. If creation is rejected, the
+entered draft remains available for correction; when a Category or UOM became
+stale, refresh and select an active option before retrying. A successful create
+leaves a named confirmation and does not post stock movement. This locally closes
+the large-catalog create gap only; selected-Item editing, Supplier mobile layout,
+database/browser/hosted evidence, and wider Master Data readiness remain open. The
+current Core Administrator plus selected-company `MANAGE` gate also remains to be
+reconciled with the broader approved Item Master role matrix before role-based
+training sign-off.
+
 Category, UOM, and conversion edits now use selected-record composers with
 context-preserving redirects; repeated row mutation controls are disabled with
 clear guidance.

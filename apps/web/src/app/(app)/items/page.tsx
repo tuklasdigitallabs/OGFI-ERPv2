@@ -7,10 +7,19 @@ import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
 import { ConversionCreateComposer } from "@/components/ConversionCreateComposer";
 import {
+  ItemCreateComposer,
+  type ItemCreateActionState
+} from "@/components/ItemCreateComposer";
+import {
   actionErrorRedirectPath,
+  getActionErrorCode,
   getActionFeedback
 } from "@/server/services/actionFeedback";
-import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
+import {
+  getDefaultAppRoute,
+  permissions
+} from "@/server/services/authorization";
+import { assertTrustedServerActionOrigin } from "@/server/services/authentication";
 import { getSessionContext } from "@/server/services/context";
 import {
   createItem,
@@ -100,16 +109,32 @@ async function createUomAction(formData: FormData) {
   redirect("/items?tab=uoms");
 }
 
-async function createItemAction(formData: FormData) {
+async function createItemAction(
+  _previousState: ItemCreateActionState,
+  formData: FormData
+): Promise<ItemCreateActionState> {
   "use server";
 
   try {
-    await createItem(formData);
+    await assertTrustedServerActionOrigin();
+    const createdItem = await createItem(formData);
+    revalidatePath("/items");
+    return {
+      status: "success",
+      itemCode: createdItem.itemCode,
+      itemName: createdItem.itemName
+    };
   } catch (error) {
-    redirect(actionErrorRedirectPath("/items?tab=items", error));
+    const code = getActionErrorCode(error);
+    const feedback = getActionFeedback({ error: code });
+    return {
+      status: "error",
+      code,
+      message:
+        feedback?.message ??
+        "The item was not created. Review the form and try again."
+    };
   }
-  revalidatePath("/items");
-  redirect("/items?tab=items");
 }
 
 async function createConversionAction(formData: FormData) {
@@ -288,17 +313,17 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const selectedCategory = activeTab === "categories" && selectedCategoryId ? await getItemCategoryRecord(session, selectedCategoryId).catch(() => null) : null;
   const selectedUom = activeTab === "uoms" && selectedUomId ? await getUomRecord(session, selectedUomId).catch(() => null) : null;
   const selectedConversion = activeTab === "conversions" && selectedConversionId ? await getItemUomConversionRecord(session, selectedConversionId).catch(() => null) : null;
-  const selectedCategoryIds = [...masterData.items.map((item) => item.itemCategoryId), ...(selectedItem ? [selectedItem.itemCategoryId] : [])];
-  const selectedUomIds = [...masterData.items.flatMap((item) => [item.baseUomId, item.purchaseUomId, item.issueUomId].filter((id): id is string => Boolean(id))), ...(selectedItem ? [selectedItem.baseUomId, selectedItem.purchaseUomId, selectedItem.issueUomId].filter((id): id is string => Boolean(id)) : [])];
-  const [categoryOptionCatalog, uomOptionCatalog] = activeTab === "items"
+  const selectedCategoryIds = selectedItem ? [selectedItem.itemCategoryId] : [];
+  const selectedUomIds = selectedItem
+    ? [selectedItem.baseUomId, selectedItem.purchaseUomId, selectedItem.issueUomId].filter((id): id is string => Boolean(id))
+    : [];
+  const [categoryOptionCatalog, uomOptionCatalog] = activeTab === "items" && selectedItem
     ? await Promise.all([
         listItemMasterOptionCatalog(session, { kind: "category", selectedIds: selectedCategoryIds, page: 1, pageSize: 100 }),
         listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 })
       ])
     : [{ options: [], total: 0, hasMore: false }, { options: [], total: 0, hasMore: false }];
   const activeItems = masterData.itemsPage.activeItems;
-  const activeCategories = categoryOptionCatalog.options.filter((category) => category.status === "ACTIVE");
-  const activeUoms = uomOptionCatalog.options.filter((uom) => uom.status === "ACTIVE");
   const actionFeedback = getActionFeedback(params);
   const itemActionHref = (itemId?: string) => {
     const query = new URLSearchParams({ tab: "items", itemPage: String(masterData.itemsPage.page) });
@@ -368,102 +393,11 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
 
       <div className="mb-5 flex flex-wrap justify-end gap-2">
         {activeTab === "items" ? (
-        <EntryModal
-          title="Create Item"
-          triggerLabel="Create Item"
-          disabled={categoryOptionCatalog.hasMore || uomOptionCatalog.hasMore}
-          disabledReason="Item selectors exceed the current bounded option catalog; narrow the catalog or complete the selector migration before creating an item."
-        >
-          <form action={createItemAction} className="ogfi-form-shell mt-4 grid gap-3">
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Item code
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="itemCode" required />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Item name
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="itemName" required />
-              </label>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Category
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="itemCategoryId" required>
-                  {activeCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Item type
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="itemType" defaultValue="inventory" required>
-                  {itemTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Base UOM
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="baseUomId" required>
-                  {activeUoms.map((uom) => (
-                    <option key={uom.id} value={uom.id}>
-                      {uom.code}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Purchase UOM
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="purchaseUomId">
-                  <option value="">None</option>
-                  {activeUoms.map((uom) => (
-                    <option key={uom.id} value={uom.id}>
-                      {uom.code}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Issue UOM
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="issueUomId">
-                  <option value="">None</option>
-                  {activeUoms.map((uom) => (
-                    <option key={uom.id} value={uom.id}>
-                      {uom.code}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="grid gap-2 text-sm font-medium text-slate-700 md:grid-cols-2">
-              <label className="flex items-center gap-2">
-                <input name="trackInventory" type="checkbox" defaultChecked /> Track inventory
-              </label>
-              <label className="flex items-center gap-2">
-                <input name="trackExpiry" type="checkbox" /> Track expiry
-              </label>
-              <label className="flex items-center gap-2">
-                <input name="trackLot" type="checkbox" /> Track lot
-              </label>
-              <label className="flex items-center gap-2">
-                <input name="requiresReceivingInspection" type="checkbox" /> Receiving inspection
-              </label>
-            </div>
-            <label className="grid gap-1 text-sm font-medium text-slate-700">
-              Creation reason
-              <input className="rounded-md border border-slate-300 px-3 py-2" name="reason" minLength={5} required />
-            </label>
-            <button className="inline-flex ogfi-mobile-action items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Create Item
-            </button>
-          </form>
-        </EntryModal>
+          <ItemCreateComposer
+            action={createItemAction}
+            companyName={session.context.companyName}
+            itemTypes={itemTypes}
+          />
         ) : null}
         {activeTab === "categories" ? (
         <EntryModal title="Create Category" triggerLabel="Create Category">

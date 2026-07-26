@@ -62,6 +62,26 @@ integration sentinel, while the disposable runner still fails closed at
 claimed, and the race evidence gate remains open before Master Data can claim
 production readiness.
 
+Implementation note (`DEC-0240`): Item creation uses a workspace-sized `Create
+Item` TaskSheet instead of becoming unavailable when a Category or UOM catalog
+exceeds 100 records. Category, base UOM, purchase UOM, and issue UOM each have
+independent server-paged, searchable active company-scoped selectors. Each
+selector preserves its exact selected option additively outside the ordinary
+search page, rejects stale responses, and never silently selects a different valid
+ID. Purchase and issue UOM deliberately support `None`; failed or empty lookups do
+not imply an assignment. Required selections must resolve before submit.
+
+The composer distinguishes loading, lookup failure with retry, a company with no
+active authoritative options, and a search with no matches. Create submission is a
+trusted-origin Server Action and the server continues to enforce permissions,
+scope, duplicate code, active parents, and the `DEC-0239` lifecycle locks. A
+rejected submission keeps the draft and shows inline user-safe feedback; stale-
+parent outcomes refresh the selectors for explicit reselection. Success closes and
+resets the sheet, refreshes the registry, and leaves a persistent confirmation that
+names the created Item and states that no stock movement was posted. No schema,
+permission, lifecycle, workflow, inventory, reporting, or export behavior changes.
+The selected existing-Item TaskSheet remains a separate visible-surface follow-up.
+
 Implementation note (`DEC-0180`): Item Master tabs are URL-backed and use an
 active-tab projection. The selected register and only its required counts,
 selected record, and option catalogs are read; inactive registers are not
@@ -117,6 +137,10 @@ row edit controls are disabled with guidance and creation uses bounded selectors
 
 - Full master-data administration is desktop-first.
 - Mobile supports lookup, barcode/item search, and controlled request submission; avoid complex bulk editing on mobile.
+- Item creation uses a focused TaskSheet with contained scrolling, persistent
+  actions, 44-pixel-minimum controls, dirty-close protection, and vertically
+  stacked actions at narrow widths. Responsive-browser proof remains required
+  before Master Data production readiness.
 
 ## 7. Acceptance criteria
 

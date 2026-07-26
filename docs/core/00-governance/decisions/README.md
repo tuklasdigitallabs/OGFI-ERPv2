@@ -180,3 +180,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0237-FOOD-SAFETY-CRITICAL-EXCEPTIONS-DASHBOARD-PROFILE.md` — all-status critical exception-reading Food Safety profile with affected-log context and suppression of ambiguous standalone Exception Review/Reviewed signals
 - `DEC-0238-TRUTHFUL-OPERATIONAL-SOURCE-VIEWS.md` — compatible typed Overview Source views directory that distinguishes exact scoped populations from source workspaces without report or availability claims
 - `DEC-0239-ITEM-PARENT-LIFECYCLE-LOCKS.md` — shared scoped lifecycle locks that serialize Item create/edit with Item Category and UOM deactivation
+- `DEC-0240-ITEM-CREATE-LARGE-CATALOG-COMPOSER.md` — focused Create Item TaskSheet with four independent bounded, searchable, selected-retaining scoped selectors

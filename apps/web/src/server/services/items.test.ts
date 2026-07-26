@@ -132,9 +132,11 @@ describe("item master-data controls", () => {
     expect(source).toContain("listItemMasterOptionCatalog");
     expect(source).toContain('pageSize: z.number().int().min(10).max(100)');
     expect(source).toContain("selectedIds: z.array(z.string().uuid()).max(20)");
-    expect(source).toContain("hasMore: total > options.length");
+    expect(source).toContain("hasMore: effectivePage < totalPages");
+    expect(source).toContain("page: effectivePage");
     expect(source).toContain('status: \"ACTIVE\" as const');
-    expect(source).toContain("values.selectedIds.length ? { id: { in: values.selectedIds } } : {}");
+    expect(source).toContain("where: { ...scope, id: { in: values.selectedIds } }");
+    expect(source).not.toContain(": values.selectedIds.length ? { id: { in: values.selectedIds } } : {}");
   });
 
   test("Item Master uses an active-tab profile and compact URL-backed workspace tabs", () => {
@@ -172,7 +174,8 @@ describe("item master-data controls", () => {
     expect(page).toContain('name="itemType"');
     expect(page).toContain('name="uomType"');
     expect(page).toContain("listItemMasterOptionCatalog");
-    expect(page).toContain("categoryOptionCatalog.hasMore || uomOptionCatalog.hasMore");
+    expect(page).toContain("<ItemCreateComposer");
+    expect(page).not.toContain("categoryOptionCatalog.hasMore || uomOptionCatalog.hasMore");
     expect(page).toContain("ConversionCreateComposer");
     expect(page).not.toContain("itemOptionCatalog.hasMore || uomOptionCatalog.hasMore");
     expect(page).toContain("masterData.categoriesPage");
@@ -190,5 +193,65 @@ describe("item master-data controls", () => {
     expect(page).toContain("Selected conversion:");
     expect(page).toContain("returnConversionPage");
     expect(page).toContain("getItemUomConversionRecord");
+  });
+
+  test("item creation uses an uncapped focused composer with independent retained selectors", () => {
+    const page = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/items/page.tsx"),
+      "utf8"
+    );
+    const composer = readFileSync(
+      path.resolve(__dirname, "../../components/ItemCreateComposer.tsx"),
+      "utf8"
+    );
+    const createAction = page.slice(
+      page.indexOf("async function createItemAction"),
+      page.indexOf("async function createConversionAction")
+    );
+
+    expect(page).toContain("<ItemCreateComposer");
+    expect(page).not.toContain('disabledReason="Item selectors exceed');
+    expect(page).not.toContain("...masterData.items.map((item) => item.itemCategoryId)");
+    expect(page).toContain("const selectedCategoryIds = selectedItem ? [selectedItem.itemCategoryId] : []");
+    expect(page).toContain('activeTab === "items" && selectedItem');
+    expect(createAction).toContain("assertTrustedServerActionOrigin");
+    expect(createAction).toContain("getActionErrorCode");
+    expect(createAction).toContain('status: "success"');
+    expect(createAction).toContain("itemCode: createdItem.itemCode");
+
+    expect(composer).toContain("<TaskSheet");
+    expect(composer).toContain('footer={');
+    expect(composer).toContain('size="workspace"');
+    expect(composer).toContain("Governed item master");
+    expect(composer).toContain("No stock movement");
+    expect(composer).toContain("useActionState");
+    expect(composer).toContain("Your draft remains in this sheet");
+    expect(composer).toContain("router.refresh()");
+    expect(composer).toContain("Discard the information entered in this form?");
+    expect(composer).toContain(">Cancel</button>");
+
+    for (const independentState of [
+      'selectorName="category"',
+      'selectorName="baseUom"',
+      'selectorName="purchaseUom"',
+      'selectorName="issueUom"',
+      "setCategoryId",
+      "setBaseUomId",
+      "setPurchaseUomId",
+      "setIssueUomId"
+    ]) {
+      expect(composer).toContain(independentState);
+    }
+    expect(composer).toContain("useDebouncedValue(query, 250)");
+    expect(composer).toContain("createItemCatalogRequestController");
+    expect(composer).toContain("fetchItemMasterCatalog");
+    expect(composer).toContain("Selected:</span> {selectedOption.code} / {selectedOption.label}");
+    expect(composer).toContain('required ? `Select ${label.toLowerCase()}` : "None"');
+    expect(composer).toContain('const [categoryId, setCategoryId] = useState("")');
+    expect(composer).toContain('const [baseUomId, setBaseUomId] = useState("")');
+    expect(composer).toContain("!selectorReady.category");
+    expect(composer).toContain("!selectorReady.baseUom");
+    expect(composer).toContain("disabled={submitDisabled}");
+    expect(composer).toContain("min-h-11");
   });
 });
