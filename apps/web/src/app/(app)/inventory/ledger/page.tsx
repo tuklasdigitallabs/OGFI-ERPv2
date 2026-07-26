@@ -5,11 +5,13 @@ import { getDefaultAppRoute, permissions } from "@/server/services/authorization
 import { getSessionContext } from "@/server/services/context";
 import { canExportInventoryLedger } from "@/server/services/exportAuthorization";
 import {
+  inventoryBalanceDashboardProfileHref,
   inventoryDashboardProfileHref,
   getInventoryLedgerVarianceTracePage,
   listInventoryMovementPage,
   maxInventorySearchLength,
   normalizeInventoryMovementFilters,
+  resolveInventoryBalanceDashboardRequest,
   resolveInventoryDashboardProfile,
   type InventoryMovementFilters
 } from "@/server/services/inventory";
@@ -72,16 +74,43 @@ function exactTracePageHref(input: {
   return `/inventory/ledger?${params.toString()}`;
 }
 
-function reconciliationReturnHref(value: string | undefined) {
+function inventoryReturnContext(value: string | undefined) {
   if (!value) return null;
   try {
     const url = new URL(value, "https://ogfi.invalid");
-    if (
-      url.origin !== "https://ogfi.invalid" ||
-      url.pathname !== "/inventory/reconciliation"
-    ) {
+    if (url.origin !== "https://ogfi.invalid") {
       return null;
     }
+    if (url.pathname === "/inventory") {
+      const profileValues = url.searchParams.getAll("dashboard");
+      const queryValues = url.searchParams.getAll("q");
+      const pageValues = url.searchParams.getAll("page");
+      const allowedKeys = new Set(["dashboard", "q", "page"]);
+      if ([...url.searchParams.keys()].some((key) => !allowedKeys.has(key))) return null;
+      const request = resolveInventoryBalanceDashboardRequest(
+        profileValues.length === 1 ? profileValues[0] : profileValues,
+        queryValues.length === 0 ? undefined : queryValues.length === 1 ? queryValues[0] : queryValues
+      );
+      const pageValue = pageValues.length === 0 ? undefined : pageValues[0];
+      if (
+        request.error ||
+        !request.profile ||
+        pageValues.length > 1 ||
+        (pageValue !== undefined && !/^[1-9]\d*$/.test(pageValue))
+      ) {
+        return null;
+      }
+      const page = pageValue ? Number(pageValue) : 1;
+      if (!Number.isSafeInteger(page)) return null;
+      return {
+        href: inventoryBalanceDashboardProfileHref(request.profile, {
+          ...(request.query ? { query: request.query } : {}),
+          ...(page > 1 ? { page } : {})
+        }),
+        label: "Back to Positive Stock"
+      };
+    }
+    if (url.pathname !== "/inventory/reconciliation") return null;
     const profile = resolveInventoryDashboardProfile(
       url.searchParams.get("dashboard") ?? undefined
     );
@@ -90,10 +119,13 @@ function reconciliationReturnHref(value: string | undefined) {
     if (!profile || (query && query.length > maxInventorySearchLength)) {
       return null;
     }
-    return inventoryDashboardProfileHref(profile, {
-      ...(query ? { query } : {}),
-      ...(Number.isFinite(rawPage) && rawPage > 1 ? { page: rawPage } : {})
-    });
+    return {
+      href: inventoryDashboardProfileHref(profile, {
+        ...(query ? { query } : {}),
+        ...(Number.isFinite(rawPage) && rawPage > 1 ? { page: rawPage } : {})
+      }),
+      label: "Back to reconciliation"
+    };
   } catch {
     return null;
   }
@@ -114,7 +146,8 @@ export default async function InventoryLedgerPage({
   const params = searchParams ? await searchParams : {};
   const rawQuery = getSearchParam(params, "q");
   const normalizedQuery = rawQuery?.trim() || undefined;
-  const returnHref = reconciliationReturnHref(getSearchParam(params, "returnTo"));
+  const returnContext = inventoryReturnContext(getSearchParam(params, "returnTo"));
+  const returnHref = returnContext?.href ?? null;
   const rawTraceFilters = {
     inventoryLocationId: getSearchParam(params, "inventoryLocationId"),
     itemId: getSearchParam(params, "itemId"),
@@ -245,9 +278,9 @@ export default async function InventoryLedgerPage({
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Badge tone="info">{session.context.locationName}</Badge>
-            {isExactTrace && returnHref ? (
-              <ButtonLink href={returnHref} tone="secondary" className="min-h-11">
-                Back to reconciliation
+            {returnContext ? (
+              <ButtonLink href={returnContext.href} tone="secondary" className="min-h-11">
+                {returnContext.label}
               </ButtonLink>
             ) : null}
             {canExportLedger && !isExactTrace ? (

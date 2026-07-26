@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { TransactionClient } from "@ogfi/database";
+import { prisma, type TransactionClient } from "@ogfi/database";
 import { describe, expect, test, vi } from "vitest";
 import {
   assertInventoryMovementsNotFrozen,
@@ -10,19 +10,26 @@ import {
   calculateInventoryBalanceVariance,
   calculateBalanceQuantity,
   getInventoryBalanceReconciliationStatus,
+  inventoryBalanceDashboardProfileHref,
   inventoryDashboardProfileHref,
   inventoryBalanceDashboardScope,
+  inventoryPositiveStockProfileWhere,
   inventoryLedgerTraceHref,
   inventoryMovementListWhere,
   lockInventoryLocationForPosting,
   lockInventoryLocationsForPosting,
+  listInventoryBalancePage,
+  listInventoryPositiveStockProfileExportRows,
   normalizeInventoryBalanceFilters,
   normalizeInventoryMovementFilters,
   normalizeInventoryLotKey,
   postInventoryMovementInTransaction,
+  resolveInventoryBalanceDashboardProfile,
+  resolveInventoryBalanceDashboardRequest,
   resolveInventoryDashboardProfile
 } from "./inventory";
 import type { SessionContext } from "./context";
+import { permissions } from "./authorization";
 import { inventoryItemLotExpiryRequirements } from "./policySettings";
 
 describe("inventory ledger foundation rules", () => {
@@ -47,6 +54,144 @@ describe("inventory ledger foundation rules", () => {
     expect(source).toContain('inventory_location."status" = \'ACTIVE\'');
     expect(dashboardSource).toContain("getInventoryBalanceDashboardRead(session)");
     expect(dashboardSource).not.toContain("listInventoryBalances(session)");
+  });
+
+  test("resolves only the closed positive-stock profile and fixes its scoped predicate", () => {
+    const profileSession = {
+      user: { id: "user-1" },
+      context: {
+        tenantId: "tenant-1",
+        companyId: "company-1",
+        locationId: "location-1"
+      }
+    } as SessionContext;
+
+    expect(resolveInventoryBalanceDashboardProfile("positive-stock-v1"))
+      .toBe("positive-stock-v1");
+    expect(resolveInventoryBalanceDashboardProfile("positive-stock"))
+      .toBeNull();
+    expect(resolveInventoryBalanceDashboardRequest(["positive-stock-v1"], "rice"))
+      .toMatchObject({ error: "PROFILE_INVALID" });
+    expect(resolveInventoryBalanceDashboardRequest("positive-stock-v1", ["rice", "oil"]))
+      .toMatchObject({ error: "SEARCH_INVALID" });
+    expect(resolveInventoryBalanceDashboardRequest("positive-stock-v1", "  rice  "))
+      .toEqual({ profile: "positive-stock-v1", query: "rice", error: null });
+    expect(inventoryBalanceDashboardProfileHref("positive-stock-v1", {
+      page: 2,
+      query: "rice oil"
+    })).toBe("/inventory?dashboard=positive-stock-v1&q=rice+oil&page=2");
+    expect(inventoryPositiveStockProfileWhere(profileSession, " rice ")).toEqual({
+      tenantId: "tenant-1",
+      companyId: "company-1",
+      AND: [
+        {
+          inventoryLocation: {
+            tenantId: "tenant-1",
+            companyId: "company-1",
+            locationId: "location-1",
+            status: "ACTIVE",
+            location: { tenantId: "tenant-1", companyId: "company-1" }
+          }
+        },
+        {
+          item: {
+            tenantId: "tenant-1",
+            companyId: "company-1",
+            category: { tenantId: "tenant-1", companyId: "company-1" }
+          }
+        },
+        { baseUom: { tenantId: "tenant-1", companyId: "company-1" } },
+        { OR: expect.any(Array) }
+      ],
+      qtyOnHand: { gt: 0 }
+    });
+  });
+
+  test("locks profile paging to the canonical positive predicate", async () => {
+    const profileSession = {
+      user: { id: "user-1" },
+      context: {
+        tenantId: "tenant-1",
+        companyId: "company-1",
+        locationId: "location-1"
+      },
+      permissionCodes: [permissions.inventoryBalanceView]
+    } as SessionContext;
+    const roles = vi.spyOn(prisma.userRoleAssignment, "findMany").mockResolvedValue([{
+      role: {
+        permissions: [{
+          permission: { tenantId: "tenant-1", code: permissions.inventoryBalanceView }
+        }]
+      }
+    }] as never);
+    const count = vi.spyOn(prisma.inventoryBalance, "count")
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0);
+    const company = vi.spyOn(prisma.company, "findFirst")
+      .mockResolvedValue({ timezone: "Asia/Manila" } as never);
+    const findMany = vi.spyOn(prisma.inventoryBalance, "findMany")
+      .mockResolvedValue([]);
+    try {
+      await listInventoryBalancePage(
+        profileSession,
+        { query: "rice", tab: "expiring" },
+        { dashboardProfile: "positive-stock-v1", page: 1, pageSize: 10 }
+      );
+      const canonicalWhere = inventoryPositiveStockProfileWhere(profileSession, "rice");
+      expect(count.mock.calls[0]?.[0]).toEqual({ where: canonicalWhere });
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: canonicalWhere,
+        take: 10,
+        orderBy: expect.arrayContaining([{ id: "asc" }])
+      }));
+    } finally {
+      count.mockRestore();
+      company.mockRestore();
+      findMany.mockRestore();
+      roles.mockRestore();
+    }
+  });
+
+  test("preflights the positive-stock export cap and detects post-count growth", async () => {
+    const profileSession = {
+      user: { id: "user-1" },
+      context: {
+        tenantId: "tenant-1",
+        companyId: "company-1",
+        locationId: "location-1"
+      },
+      permissionCodes: [permissions.inventoryBalanceView]
+    } as SessionContext;
+    const roles = vi.spyOn(prisma.userRoleAssignment, "findMany").mockResolvedValue([{
+      role: {
+        permissions: [{
+          permission: { tenantId: "tenant-1", code: permissions.inventoryBalanceView }
+        }]
+      }
+    }] as never);
+    const count = vi.spyOn(prisma.inventoryBalance, "count");
+    const findMany = vi.spyOn(prisma.inventoryBalance, "findMany");
+    try {
+      count.mockResolvedValueOnce(2);
+      await expect(listInventoryPositiveStockProfileExportRows(profileSession, {
+        profile: "positive-stock-v1",
+        maxRows: 1
+      })).rejects.toThrow("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+      expect(findMany).not.toHaveBeenCalled();
+
+      count.mockResolvedValueOnce(1);
+      findMany.mockResolvedValueOnce([{}, {}] as never);
+      await expect(listInventoryPositiveStockProfileExportRows(profileSession, {
+        profile: "positive-stock-v1",
+        maxRows: 1
+      })).rejects.toThrow("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+      expect(findMany).toHaveBeenLastCalledWith(expect.objectContaining({ take: 2 }));
+    } finally {
+      count.mockRestore();
+      findMany.mockRestore();
+      roles.mockRestore();
+    }
   });
 
   test("inventory empty states match implemented posting sources", () => {

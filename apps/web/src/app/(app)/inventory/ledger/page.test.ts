@@ -23,8 +23,12 @@ describe("exact inventory ledger trace UI", () => {
     expect(source).toContain("No generic ledger search was substituted");
   });
 
-  it("reconstructs only a local closed-profile return link", () => {
+  it("reconstructs only local allowlisted closed-profile return links", () => {
+    expect(source).toContain('url.pathname === "/inventory"');
     expect(source).toContain('url.pathname !== "/inventory/reconciliation"');
+    expect(source).toContain("resolveInventoryBalanceDashboardRequest(");
+    expect(source).toContain("inventoryBalanceDashboardProfileHref(request.profile");
+    expect(source).toContain("Back to Positive Stock");
     expect(source).toContain("resolveInventoryDashboardProfile(");
     expect(source).toContain("inventoryDashboardProfileHref(profile");
   });

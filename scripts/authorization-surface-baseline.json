@@ -9425,14 +9425,18 @@
       "server/services/exportAudit.ts#buildReportCsvMetadata",
       "server/services/exportAudit.ts#logOperationalExportAudit",
       "server/services/exportAudit.ts#logOperationalExportFailure",
-      "server/services/inventory.ts#listInventoryBalances"
+      "server/services/inventory.ts#listInventoryBalances",
+      "server/services/inventory.ts#listInventoryPositiveStockProfileExportRows",
+      "server/services/policySettings.ts#getReportExportPolicy"
     ],
     "callChains": [
       "GET -> server/services/context.ts#getSessionContext",
       "GET -> server/services/exportAudit.ts#buildReportCsvMetadata",
       "GET -> server/services/exportAudit.ts#logOperationalExportAudit",
       "GET -> server/services/exportAudit.ts#logOperationalExportFailure",
-      "GET -> server/services/inventory.ts#listInventoryBalances"
+      "GET -> server/services/inventory.ts#listInventoryBalances",
+      "GET -> server/services/inventory.ts#listInventoryPositiveStockProfileExportRows",
+      "GET -> server/services/policySettings.ts#getReportExportPolicy"
     ],
     "boundaryClassifications": [
       "PUBLIC_BOUNDARY",
@@ -9445,13 +9449,18 @@
       "guarded-export-caller",
       "assertReportExportScopeFilters",
       "authorized operational export route",
-      "server/services/exportAudit.ts#logOperationalExportAudit"
+      "server/services/exportAudit.ts#logOperationalExportAudit",
+      "live-read-permission",
+      "tenant-company-selected-location-query",
+      "closed-positive-stock-profile",
+      "bounded-export"
     ],
     "boundaryCaseIds": [
       "AUTHZ-ADMIN-COOKIE-BOUNDARY-LIVE-PERMISSION-DENIED-NO-MUTATION",
       "FIN-AUTHZ-EXPORT-AUDIT-001",
       "FIN-AUTHZ-PERM-001",
-      "FIN-AUTHZ-RECORD-001"
+      "FIN-AUTHZ-RECORD-001",
+      "AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
     ],
     "noMutationControls": [
       "invalid or stale session cannot authorize protected mutation",
@@ -9459,7 +9468,8 @@
       "money",
       "inventory",
       "failure audit only after an authenticated authorized export attempt",
-      "no money or workflow mutation"
+      "no money or workflow mutation",
+      "read-only bounded export"
     ]
   },
   {
@@ -26791,9 +26801,26 @@
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-read-permission",
+      "tenant-company-selected-location-query",
+      "closed-positive-stock-profile",
+      "server-pagination"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
+    ],
+    "noMutationControls": [
+      "read-only balance page"
+    ]
   },
   {
     "id": "server/services/inventory.ts#listInventoryBalances",
@@ -26899,6 +26926,44 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+  },
+  {
+    "id": "server/services/inventory.ts#listInventoryPositiveStockProfileExportRows",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.inventoryBalanceView",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live-read-permission",
+      "tenant-company-selected-location-query",
+      "closed-positive-stock-profile",
+      "bounded-export"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES"
+    ],
+    "noMutationControls": [
+      "read-only bounded export"
+    ]
   },
   {
     "id": "server/services/inventory.ts#lockInventoryLocationForPosting",

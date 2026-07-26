@@ -35,6 +35,7 @@ import {
 import {
   getInventoryBalanceDashboardRead,
   getInventoryLedgerVarianceDashboardRead,
+  inventoryBalanceDashboardProfileHref,
   inventoryDashboardProfileHref,
   type InventoryBalanceDashboardRead,
   type InventoryLedgerVarianceDashboardRead
@@ -842,7 +843,7 @@ export function buildOperationalDashboardModel(
       label: "Stocked lines",
       displayValue: number(inventoryBalanceDashboard.positiveRows),
       detail: `${number(inventoryBalanceDashboard.totalRows)} balance row${inventoryBalanceDashboard.totalRows === 1 ? "" : "s"} tracked`,
-      href: "/inventory",
+      href: inventoryBalanceDashboardProfileHref("positive-stock-v1"),
       tone: inventoryBalanceDashboard.positiveRows > 0 ? "success" : "warning"
     });
 
@@ -852,7 +853,7 @@ export function buildOperationalDashboardModel(
         label: "Active stock rows",
         displayValue: number(inventoryBalanceDashboard.positiveRows),
         detail: "Rows with on-hand quantity above zero",
-        href: "/inventory",
+        href: inventoryBalanceDashboardProfileHref("positive-stock-v1"),
         tone: inventoryBalanceDashboard.positiveRows > 0 ? "success" : "warning"
       },
       {

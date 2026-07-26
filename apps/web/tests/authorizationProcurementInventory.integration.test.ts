@@ -5,6 +5,8 @@ import type { SessionContext } from "../src/server/services/context";
 import type { getOperationalDashboard as getOperationalDashboardType } from "../src/server/services/dashboard";
 import type {
   getInventoryBalanceDashboardRead as getInventoryBalanceDashboardReadType,
+  listInventoryBalancePage as listInventoryBalancePageType,
+  listInventoryPositiveStockProfileExportRows as listInventoryPositiveStockProfileExportRowsType,
   lockInventoryLocationForPosting as lockInventoryLocationForPostingType,
   lockInventoryLocationsForPosting as lockInventoryLocationsForPostingType,
   postInventoryMovement as postInventoryMovementType,
@@ -88,6 +90,8 @@ describe("procurement and inventory authorization boundaries", () => {
   let prisma: PrismaClient;
   let getOperationalDashboard: typeof getOperationalDashboardType;
   let getInventoryBalanceDashboardRead: typeof getInventoryBalanceDashboardReadType;
+  let listInventoryBalancePage: typeof listInventoryBalancePageType;
+  let listInventoryPositiveStockProfileExportRows: typeof listInventoryPositiveStockProfileExportRowsType;
   let lockInventoryLocationForPosting: typeof lockInventoryLocationForPostingType;
   let lockInventoryLocationsForPosting: typeof lockInventoryLocationsForPostingType;
   let postInventoryMovement: typeof postInventoryMovementType;
@@ -132,6 +136,8 @@ describe("procurement and inventory authorization boundaries", () => {
     ({ prisma } = await import("@ogfi/database"));
     ({
       getInventoryBalanceDashboardRead,
+      listInventoryBalancePage,
+      listInventoryPositiveStockProfileExportRows,
       lockInventoryLocationForPosting,
       lockInventoryLocationsForPosting,
       postInventoryMovement,
@@ -969,11 +975,19 @@ describe("procurement and inventory authorization boundaries", () => {
     await expect(getInventoryBalanceDashboardRead(session)).rejects.toThrow(
       "PERMISSION_DENIED"
     );
+    await expect(listInventoryBalancePage(session, {}, {
+      dashboardProfile: "positive-stock-v1"
+    })).rejects.toThrow("PERMISSION_DENIED");
+    await expect(listInventoryPositiveStockProfileExportRows(session, {
+      profile: "positive-stock-v1",
+      maxRows: 100
+    })).rejects.toThrow("PERMISSION_DENIED");
 
     const foreignUomId = randomUUID();
     const foreignCategoryId = randomUUID();
     const foreignItemId = randomUUID();
-    const balanceIds = Array.from({ length: 6 }, () => randomUUID());
+    const balanceIds = Array.from({ length: 9 }, () => randomUUID());
+    const inactiveInventoryLocationId = randomUUID();
     await prisma.uom.create({
       data: {
         id: foreignUomId,
@@ -1004,6 +1018,17 @@ describe("procurement and inventory authorization boundaries", () => {
         itemCategoryId: foreignCategoryId,
         itemType: "INVENTORY",
         baseUomId: foreignUomId
+      }
+    });
+    await prisma.inventoryLocation.create({
+      data: {
+        id: inactiveInventoryLocationId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        locationId: ids.locationId,
+        code: `AZI-INACTIVE-${suffix}`,
+        name: `Inactive Authorization Inventory Store ${suffix}`,
+        status: "INACTIVE"
       }
     });
 
@@ -1079,6 +1104,39 @@ describe("procurement and inventory authorization boundaries", () => {
             baseUomId: foreignUomId,
             qtyOnHand: 99,
             updatedAt: recent
+          },
+          {
+            id: balanceIds[6]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: inactiveInventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-INACTIVE-${suffix}`,
+            baseUomId: ids.uomId,
+            qtyOnHand: 88,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[7]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: foreignItemId,
+            lotKey: `DASH-MISMATCH-${suffix}`,
+            baseUomId: foreignUomId,
+            qtyOnHand: 77,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[8]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-NEGATIVE-${suffix}`,
+            baseUomId: ids.uomId,
+            qtyOnHand: -2,
+            updatedAt: recent
           }
         ]
       });
@@ -1086,21 +1144,41 @@ describe("procurement and inventory authorization boundaries", () => {
       const revokeBalancePermission = await grantPermission("inventory.balance.view");
 
       try {
-        await expect(getInventoryBalanceDashboardRead({
+        const beforeReadCounts = await Promise.all([
+          prisma.inventoryBalance.count({ where: { id: { in: balanceIds } } }),
+          prisma.auditEvent.count({ where: { tenantId: ids.tenantId } })
+        ]);
+        const authorizedSession = {
           ...session,
           permissionCodes: ["inventory.balance.view"]
-        })).resolves.toEqual({
-          totalRows: 3,
+        };
+        await expect(getInventoryBalanceDashboardRead(authorizedSession)).resolves.toEqual({
+          totalRows: 4,
           positiveRows: 2,
           zeroRows: 1,
           lotExpiryTrackedRows: 2,
-          recentlyUpdatedRows: 2
+          recentlyUpdatedRows: 3
         });
 
-        const dashboard = await getOperationalDashboard({
-          ...session,
-          permissionCodes: ["inventory.balance.view"]
-        });
+        const profilePage = await listInventoryBalancePage(
+          authorizedSession,
+          {},
+          { dashboardProfile: "positive-stock-v1", page: 1, pageSize: 10 }
+        );
+        expect(profilePage).toMatchObject({ totalItems: 2, page: 1, totalPages: 1 });
+        expect(profilePage.items).toHaveLength(2);
+        expect(profilePage.items.every((row) => row.qtyOnHand > 0)).toBe(true);
+
+        const profileExport = await listInventoryPositiveStockProfileExportRows(
+          authorizedSession,
+          { profile: "positive-stock-v1", maxRows: 100 }
+        );
+        expect(profileExport).toHaveLength(2);
+        expect(profileExport.map((row) => row.id).sort()).toEqual(
+          profilePage.items.map((row) => row.id).sort()
+        );
+
+        const dashboard = await getOperationalDashboard(authorizedSession);
         expect(dashboard.sourceObservations).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
@@ -1111,7 +1189,11 @@ describe("procurement and inventory authorization boundaries", () => {
         );
         expect(dashboard.metrics).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ id: "stocked-items", displayValue: "2" })
+            expect.objectContaining({
+              id: "stocked-items",
+              displayValue: "2",
+              href: "/inventory?dashboard=positive-stock-v1"
+            })
           ])
         );
         expect(dashboard.stockHealth).toEqual(
@@ -1119,6 +1201,10 @@ describe("procurement and inventory authorization boundaries", () => {
             expect.objectContaining({ id: "lot-expiry-coverage", displayValue: "2" })
           ])
         );
+        await expect(Promise.all([
+          prisma.inventoryBalance.count({ where: { id: { in: balanceIds } } }),
+          prisma.auditEvent.count({ where: { tenantId: ids.tenantId } })
+        ])).resolves.toEqual(beforeReadCounts);
       } finally {
         await revokeBalancePermission();
       }
@@ -1126,6 +1212,7 @@ describe("procurement and inventory authorization boundaries", () => {
       await prisma.inventoryBalance.deleteMany({
         where: { id: { in: balanceIds } }
       });
+      await prisma.inventoryLocation.delete({ where: { id: inactiveInventoryLocationId } });
       await prisma.item.delete({ where: { id: foreignItemId } });
       await prisma.itemCategory.delete({ where: { id: foreignCategoryId } });
       await prisma.uom.delete({ where: { id: foreignUomId } });

@@ -210,8 +210,16 @@ describe("operational dashboard model", () => {
     expect(JSON.stringify(source)).not.toContain("database password");
     const dashboard = buildOperationalDashboardModel(session, source);
     expect(dashboard.metrics).toContainEqual(
-      expect.objectContaining({ id: "stocked-items", displayValue: "0" })
+      expect.objectContaining({
+        id: "stocked-items",
+        displayValue: "0",
+        href: "/inventory?dashboard=positive-stock-v1"
+      })
     );
+    expect(dashboard.stockHealth).toContainEqual(expect.objectContaining({
+      id: "active-stock-rows",
+      href: "/inventory?dashboard=positive-stock-v1"
+    }));
     expect(dashboard.sourceObservations[0]).toMatchObject({
       id: "inventory-balances",
       availability: "AVAILABLE"

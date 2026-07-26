@@ -13,8 +13,10 @@ import { getSessionContext } from "@/server/services/context";
 import { canExportInventoryBalances } from "@/server/services/exportAuthorization";
 import {
   getInventoryBalanceReconciliation,
+  inventoryBalanceDashboardProfileHref,
   listInventoryBalancePage,
   maxInventorySearchLength,
+  resolveInventoryBalanceDashboardRequest,
   type InventoryBalanceFilters
 } from "@/server/services/inventory";
 import {
@@ -70,6 +72,21 @@ function inventoryHref(tab: InventoryTab, query: string | undefined, page = 1) {
   return nextQuery ? `/inventory?${nextQuery}` : "/inventory";
 }
 
+function inventoryLedgerHref(itemCode: string, returnHref?: string) {
+  const params = new URLSearchParams({ q: itemCode });
+  if (returnHref) params.set("returnTo", returnHref);
+  return `/inventory/ledger?${params.toString()}`;
+}
+
+function getStrictProfilePage(value: string | string[] | undefined) {
+  if (value === undefined) return 1;
+  if (Array.isArray(value) || !/^[1-9]\d*$/.test(value)) return null;
+  const page = Number(value);
+  return Number.isSafeInteger(page) ? page : null;
+}
+
+const profileQueryKeys = new Set(["dashboard", "q", "page"]);
+
 export default async function InventoryPage({ searchParams }: InventoryPageProps) {
   const session = await getSessionContext();
   if (!session) {
@@ -82,9 +99,43 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   const canExportInventory = canExportInventoryBalances(session);
 
   const params = searchParams ? await searchParams : {};
-  const activeTab = getInventoryTab(params);
-  const page = getPage(params);
-  const rawQuery = getSearchParam(params, "q");
+  const hasDashboardProfile = params.dashboard !== undefined;
+  const profileRequest = hasDashboardProfile
+    ? resolveInventoryBalanceDashboardRequest(params.dashboard, params.q)
+    : { profile: null, query: undefined, error: null };
+  const profilePage = hasDashboardProfile ? getStrictProfilePage(params.page) : null;
+  const hasProfileOverride = hasDashboardProfile && Object.keys(params).some(
+    (key) => !profileQueryKeys.has(key)
+  );
+  if (
+    hasDashboardProfile &&
+    (!profileRequest.profile || profileRequest.error || profilePage === null || hasProfileOverride)
+  ) {
+    return (
+      <AppShell
+        session={session}
+        title="Positive Stock profile unavailable"
+        subtitle="The requested dashboard destination is invalid or no longer supported"
+        activeNav="inventory"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Positive Stock profile cannot be opened safely"
+            description="Return to the dashboard and open the current Positive Stock link. No ordinary or broader stock-balance list was substituted."
+          />
+          <div className="mt-4 flex justify-center">
+            <ButtonLink href="/dashboard" className="min-h-11">
+              Back to Operations Dashboard
+            </ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  const dashboardProfile = profileRequest.profile;
+  const activeTab = dashboardProfile ? "positive" : getInventoryTab(params);
+  const page = dashboardProfile ? profilePage! : getPage(params);
+  const rawQuery = dashboardProfile ? profileRequest.query : getSearchParam(params, "q");
   const normalizedQuery = rawQuery?.trim() || undefined;
   const searchError =
     normalizedQuery && normalizedQuery.length > maxInventorySearchLength
@@ -95,16 +146,23 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
     tab: activeTab
   };
   const exportParams = new URLSearchParams();
+  if (dashboardProfile) {
+    exportParams.set("dashboard", dashboardProfile);
+  }
   if (filters.query) {
     exportParams.set("q", filters.query);
   }
   const exportHref = `/inventory/export${exportParams.size ? `?${exportParams}` : ""}`;
   const balancePage = searchError
     ? { items: [], totalItems: 0, positiveItems: 0, expiringItems: 0, page: 1, pageSize: PAGE_SIZE, totalPages: 1, timeZone: "Asia/Manila" }
-    : await listInventoryBalancePage(session, filters, { page, pageSize: PAGE_SIZE });
+    : await listInventoryBalancePage(session, filters, {
+        page,
+        pageSize: PAGE_SIZE,
+        ...(dashboardProfile ? { dashboardProfile } : {})
+      });
   const inventoryTimeZone = resolveInventoryTimeZone(balancePage.timeZone);
   const balances = balancePage.items;
-  const reconciliation = canViewLedger
+  const reconciliation = canViewLedger && !dashboardProfile
     ? await getInventoryBalanceReconciliation(session)
     : null;
   const totalLots = balancePage.totalItems;
@@ -116,9 +174,12 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   const emptyCopy =
     activeTab === "positive"
       ? {
-          title: "No positive stock balances found",
-          description:
-            "Positive balances will appear here after posted receiving or transfer receipt movements."
+          title: normalizedQuery
+            ? "No positive stock rows match this search"
+            : "No positive stock balances found",
+          description: normalizedQuery
+            ? "Clear or change the search to review the current positive-stock population."
+            : "Positive balances will appear here after posted receiving or transfer receipt movements."
         }
       : activeTab === "expiring"
         ? {
@@ -151,22 +212,41 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
           or reversal movements posted to the immutable ledger.
         </p>
       </div>
-      <div className="mb-5 grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+      {dashboardProfile ? (
+        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+          <strong>Positive Stock dashboard profile.</strong> This read-only view contains current balance rows above zero for the selected location. Search may only narrow that fixed population. It is a live inquiry, not a historical snapshot of the dashboard value.
+          <p className="mt-2">
+            CSV export uses this profile and search. If the configured synchronous row limit is exceeded, narrow Search and try again; no partial file is downloaded.
+          </p>
+        </div>
+      ) : null}
+      <div className={`mb-5 grid gap-4 ${dashboardProfile ? "md:grid-cols-2" : "md:grid-cols-3 xl:grid-cols-4"}`}>
         <Panel>
-          <p className="text-sm font-semibold text-slate-500">Balance rows</p>
+          <p className="text-sm font-semibold text-slate-500">
+            {dashboardProfile ? "Positive stock rows" : "Balance rows"}
+          </p>
           <p className="mt-2 text-3xl font-bold text-slate-950">{totalLots}</p>
-          <p className="mt-1 text-xs text-slate-500">Matching the current search and tab</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {dashboardProfile ? "Matching the fixed profile and current search" : "Matching the current search and tab"}
+          </p>
         </Panel>
-        <Panel>
+        {!dashboardProfile ? <Panel>
           <p className="text-sm font-semibold text-slate-500">Positive stock</p>
           <p className="mt-2 text-3xl font-bold text-emerald-700">
             {positiveBalances}
           </p>
-        </Panel>
-        <Panel>
+        </Panel> : null}
+        {!dashboardProfile ? <Panel>
           <p className="text-sm font-semibold text-slate-500">Expiring in 30 days</p>
           <p className="mt-2 text-3xl font-bold text-amber-700">{expiringLots}</p>
-        </Panel>
+        </Panel> : null}
+        {dashboardProfile ? (
+          <Panel>
+            <p className="text-sm font-semibold text-slate-500">Selected location</p>
+            <p className="mt-2 text-lg font-bold text-slate-950">{session.context.locationName}</p>
+            <p className="mt-1 text-xs text-slate-500">Current authorized scope</p>
+          </Panel>
+        ) : null}
         {reconciliation ? (
           <Panel>
             <p className="text-sm font-semibold text-slate-500">Ledger check</p>
@@ -188,7 +268,9 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       <section className="ogfi-data-surface">
         <div className="ogfi-section-header">
           <div>
-            <h2 className="text-lg font-bold text-slate-950">Current Location Stock</h2>
+            <h2 className="text-lg font-bold text-slate-950">
+              {dashboardProfile ? "Positive Stock" : "Current Location Stock"}
+            </h2>
             <p className="text-sm text-slate-500">
               Balances are derived from posted inventory movements
             </p>
@@ -198,7 +280,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
             {canExportInventory ? (
               <ButtonLink
                 href={exportHref}
-                className="min-h-9 bg-slate-100 text-blue-700 hover:bg-blue-50"
+                className="min-h-11 bg-slate-100 text-blue-700 hover:bg-blue-50"
               >
                 Export CSV
               </ButtonLink>
@@ -207,6 +289,9 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         </div>
 
         <form className="ogfi-filter-bar grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+          {dashboardProfile ? (
+            <input type="hidden" name="dashboard" value={dashboardProfile} />
+          ) : null}
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Search
             <input
@@ -217,15 +302,15 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
             />
           </label>
           <div className="flex items-end">
-            <button className="inline-flex min-h-10 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
+            <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 sm:w-auto">
               Apply
             </button>
           </div>
           <div className="flex items-end">
             <ButtonLink
-              href="/inventory"
+              href={dashboardProfile ? inventoryBalanceDashboardProfileHref(dashboardProfile) : "/inventory"}
               tone="secondary"
-              className="min-h-10 w-full border border-slate-300 bg-white px-4 font-bold !text-slate-800 shadow-sm hover:border-slate-400 hover:bg-slate-50 sm:w-auto"
+              className="min-h-11 w-full border border-slate-300 bg-white px-4 font-bold !text-slate-800 shadow-sm hover:border-slate-400 hover:bg-slate-50 sm:w-auto"
             >
               Clear
             </ButtonLink>
@@ -236,7 +321,14 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
             {searchError}
           </div>
         ) : null}
-        <div className="border-b border-slate-100 p-4">
+        {dashboardProfile ? (
+          <div className="flex flex-col gap-3 border-b border-blue-100 bg-blue-50/60 p-4 text-sm text-blue-950 sm:flex-row sm:items-center sm:justify-between">
+            <p>Only current positive balance rows are included; ordinary tabs and filters cannot redefine this dashboard profile.</p>
+            <ButtonLink href="/inventory" tone="secondary" className="min-h-11 shrink-0">
+              Open all stock balances
+            </ButtonLink>
+          </div>
+        ) : <div className="border-b border-slate-100 p-4">
           <WorkspaceTabs
             items={[
               {
@@ -259,7 +351,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
               }
             ]}
           />
-        </div>
+        </div>}
 
         {visibleBalances.length === 0 ? (
           <div className="p-5">
@@ -289,21 +381,40 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                     </p>
                   </div>
                   <p className="font-semibold text-slate-900">
+                    <span className="font-medium text-slate-500 md:hidden">On hand: </span>
                     {balance.qtyOnHand} {balance.baseUomCode}
                   </p>
-                  <p className="text-slate-600">{balance.lotNumber ?? "Untracked"}</p>
-                  <p className="text-slate-600">{balance.expiryDate ?? "None"}</p>
-                  <p className="text-slate-600">{balance.inventoryLocationName}</p>
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-500 md:hidden">Lot: </span>
+                    {balance.lotNumber ?? "Untracked"}
+                  </p>
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-500 md:hidden">Expiry: </span>
+                    {balance.expiryDate ?? "None"}
+                  </p>
+                  <p className="text-slate-600">
+                    <span className="font-medium text-slate-500 md:hidden">Storage: </span>
+                    {balance.inventoryLocationName}
+                  </p>
                   <p className="text-xs text-slate-500">
+                    <span className="font-medium md:hidden">Updated: </span>
                     {formatInventoryUpdatedDate(balance.updatedAt, inventoryTimeZone)} / v{balance.version}
                     <span className="block">{inventoryTimeZone}</span>
                   </p>
                   {canViewLedger ? (
                     <ButtonLink
-                      href={`/inventory/ledger?q=${encodeURIComponent(balance.itemCode)}`}
+                      href={inventoryLedgerHref(
+                        balance.itemCode,
+                        dashboardProfile
+                          ? inventoryBalanceDashboardProfileHref(dashboardProfile, {
+                              page: safePage,
+                              query: filters.query
+                            })
+                          : undefined
+                      )}
                       tone="secondary"
                       size="sm"
-                      className="min-h-10 w-full whitespace-nowrap border border-blue-200 bg-blue-50 px-3 text-xs font-bold !text-blue-800 shadow-sm hover:border-blue-300 hover:bg-blue-100"
+                      className="min-h-11 w-full whitespace-nowrap border border-blue-200 bg-blue-50 px-3 text-xs font-bold !text-blue-800 shadow-sm hover:border-blue-300 hover:bg-blue-100"
                     >
                       View Ledger
                     </ButtonLink>
@@ -322,7 +433,12 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
             totalItems={balancePage.totalItems}
             itemLabel="balance rows"
             getPageHref={(nextPage) =>
-              inventoryHref(activeTab, filters.query, nextPage)
+              dashboardProfile
+                ? inventoryBalanceDashboardProfileHref(dashboardProfile, {
+                    page: nextPage,
+                    query: filters.query
+                  })
+                : inventoryHref(activeTab, filters.query, nextPage)
             }
           />
         ) : null}

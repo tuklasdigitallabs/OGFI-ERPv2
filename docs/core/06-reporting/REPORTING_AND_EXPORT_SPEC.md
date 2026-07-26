@@ -93,6 +93,7 @@ Current implementation note: `/reports` is a permission-gated report catalog ove
 - Include report title, generated-by, generated-at, timezone, filters, and page/scope metadata in exports.
 - Large exports should run as a background job and notify the requester when ready.
 - Until the approved background-job and expiring-download infrastructure exists, synchronous Admin Audit CSV export requires a valid UTC From/To range and enforces the configurable `reporting.export.max_date_span_days` (default 31, safety ceiling 366) and `reporting.export.max_rows` (default 10,000, safety ceiling 100,000). Over-limit requests fail with a truthful 413 response and no partial file; asynchronous delivery remains future hardening.
+- The `positive-stock-v1` Inventory dashboard-profile CSV is a current selected-location, row-grain balance export. It shares the profile's active-Inventory-Location and `qtyOnHand > 0` predicate plus optional bounded search, uses deterministic ordering, and enforces the configured `reporting.export.max_rows` through an exact count preflight and a `maxRows + 1` fetch guard. Either over-limit check returns a truthful `413` with no partial file. The file identifies the profile and filter; redacted audit metadata records the profile, configured cap, outcome, and completed row count without storing the search text or row payload.
 - Sensitive exports must be time-limited download links and should not be delivered through unprotected channels.
 - PDF is for formal summaries, not a replacement for transaction-level Excel analysis.
 
