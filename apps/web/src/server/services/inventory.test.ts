@@ -11,7 +11,6 @@ import {
   calculateBalanceQuantity,
   getInventoryBalanceReconciliationStatus,
   inventoryBalanceDashboardProfileHref,
-  inventoryBalanceDashboardProfileWhere,
   inventoryDashboardProfileHref,
   inventoryBalanceDashboardScope,
   inventoryPositiveStockProfileWhere,
@@ -72,6 +71,8 @@ describe("inventory ledger foundation rules", () => {
       .toBe("positive-stock-v1");
     expect(resolveInventoryBalanceDashboardProfile("zero-stock-v1"))
       .toBe("zero-stock-v1");
+    expect(resolveInventoryBalanceDashboardProfile("lot-expiry-data-v1"))
+      .toBe("lot-expiry-data-v1");
     expect(resolveInventoryBalanceDashboardProfile("positive-stock"))
       .toBeNull();
     expect(resolveInventoryBalanceDashboardRequest(["positive-stock-v1"], "rice"))
@@ -112,10 +113,8 @@ describe("inventory ledger foundation rules", () => {
     expect(inventoryZeroStockProfileWhere(profileSession)).toEqual(
       expect.objectContaining({ qtyOnHand: { equals: 0 } })
     );
-    expect(inventoryBalanceDashboardProfileWhere(
-      profileSession,
-      "zero-stock-v1"
-    )).toEqual(inventoryZeroStockProfileWhere(profileSession));
+    expect(inventoryBalanceDashboardProfileHref("lot-expiry-data-v1"))
+      .toBe("/inventory?dashboard=lot-expiry-data-v1");
   });
 
   test("locks profile paging to the canonical positive predicate", async () => {
@@ -207,6 +206,94 @@ describe("inventory ledger foundation rules", () => {
     }
   });
 
+  test("uses one static normalized lot-or-expiry SQL contract for profile paging", async () => {
+    const profileSession = {
+      user: { id: "user-1" },
+      context: {
+        tenantId: "00000000-0000-4000-8000-000000000010",
+        companyId: "00000000-0000-4000-8000-000000000020",
+        locationId: "00000000-0000-4000-8000-000000000030"
+      },
+      permissionCodes: [permissions.inventoryBalanceView]
+    } as SessionContext;
+    const roles = vi.spyOn(prisma.userRoleAssignment, "findMany").mockResolvedValue([{
+      role: {
+        permissions: [{
+          permission: {
+            tenantId: profileSession.context.tenantId,
+            code: permissions.inventoryBalanceView
+          }
+        }]
+      }
+    }] as never);
+    const raw = vi.spyOn(prisma, "$queryRaw")
+      .mockResolvedValueOnce([{ count: 1n }] as never)
+      .mockResolvedValueOnce([{ id: "00000000-0000-4000-8000-000000000040" }] as never);
+    const company = vi.spyOn(prisma.company, "findFirst")
+      .mockResolvedValue({ timezone: "Asia/Manila" } as never);
+    const findMany = vi.spyOn(prisma.inventoryBalance, "findMany")
+      .mockResolvedValue([]);
+    try {
+      await listInventoryBalancePage(
+        profileSession,
+        { query: "rice" },
+        { dashboardProfile: "lot-expiry-data-v1", page: 1, pageSize: 10 }
+      );
+      const countSql = raw.mock.calls[0]?.[0] as { strings?: string[] };
+      const pageSql = raw.mock.calls[1]?.[0] as { strings?: string[] };
+      for (const query of [countSql, pageSql]) {
+        const sql = query.strings?.join("") ?? "";
+        expect(sql).toContain('NULLIF(BTRIM(balance."lotNumber"), \'\') IS NOT NULL');
+        expect(sql).toContain('inventory_location."status" = \'ACTIVE\'');
+        expect(sql).toContain('item."tenantId"');
+      }
+      expect(pageSql.strings?.join("")).toContain('ORDER BY item."itemName" ASC');
+      const hydrationWhere = findMany.mock.calls[0]?.[0]?.where;
+      expect(hydrationWhere).toEqual({
+        AND: [
+          expect.objectContaining({
+            tenantId: profileSession.context.tenantId,
+            companyId: profileSession.context.companyId,
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                inventoryLocation: expect.objectContaining({
+                  tenantId: profileSession.context.tenantId,
+                  companyId: profileSession.context.companyId,
+                  locationId: profileSession.context.locationId,
+                  status: "ACTIVE"
+                })
+              }),
+              expect.objectContaining({
+                item: expect.objectContaining({
+                  tenantId: profileSession.context.tenantId,
+                  companyId: profileSession.context.companyId
+                })
+              }),
+              expect.objectContaining({
+                baseUom: expect.objectContaining({
+                  tenantId: profileSession.context.tenantId,
+                  companyId: profileSession.context.companyId
+                })
+              })
+            ])
+          }),
+          { id: { in: ["00000000-0000-4000-8000-000000000040"] } },
+          {
+            OR: [
+              { lotNumber: { not: null } },
+              { expiryDate: { not: null } }
+            ]
+          }
+        ]
+      });
+    } finally {
+      raw.mockRestore();
+      company.mockRestore();
+      findMany.mockRestore();
+      roles.mockRestore();
+    }
+  });
+
   test("preflights the positive-stock export cap and detects post-count growth", async () => {
     const profileSession = {
       user: { id: "user-1" },
@@ -243,6 +330,50 @@ describe("inventory ledger foundation rules", () => {
       expect(findMany).toHaveBeenLastCalledWith(expect.objectContaining({ take: 2 }));
     } finally {
       count.mockRestore();
+      findMany.mockRestore();
+      roles.mockRestore();
+    }
+  });
+
+  test("preflights and race-guards the lot-or-expiry-data export", async () => {
+    const profileSession = {
+      user: { id: "user-1" },
+      context: {
+        tenantId: "00000000-0000-4000-8000-000000000010",
+        companyId: "00000000-0000-4000-8000-000000000020",
+        locationId: "00000000-0000-4000-8000-000000000030"
+      },
+      permissionCodes: [permissions.inventoryBalanceView]
+    } as SessionContext;
+    const roles = vi.spyOn(prisma.userRoleAssignment, "findMany").mockResolvedValue([{
+      role: {
+        permissions: [{
+          permission: {
+            tenantId: profileSession.context.tenantId,
+            code: permissions.inventoryBalanceView
+          }
+        }]
+      }
+    }] as never);
+    const raw = vi.spyOn(prisma, "$queryRaw");
+    const findMany = vi.spyOn(prisma.inventoryBalance, "findMany");
+    try {
+      raw.mockResolvedValueOnce([{ count: 2n }] as never);
+      await expect(listInventoryBalanceDashboardProfileExportRows(profileSession, {
+        profile: "lot-expiry-data-v1",
+        maxRows: 1
+      })).rejects.toThrow("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+      expect(raw).toHaveBeenCalledTimes(1);
+
+      raw.mockResolvedValueOnce([{ count: 1n }] as never)
+        .mockResolvedValueOnce([{ id: "id-1" }, { id: "id-2" }] as never);
+      await expect(listInventoryBalanceDashboardProfileExportRows(profileSession, {
+        profile: "lot-expiry-data-v1",
+        maxRows: 1
+      })).rejects.toThrow("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+      expect(findMany).not.toHaveBeenCalled();
+    } finally {
+      raw.mockRestore();
       findMany.mockRestore();
       roles.mockRestore();
     }
@@ -315,6 +446,9 @@ describe("inventory ledger foundation rules", () => {
     expect(
       normalizeInventoryLotKey(" LOT-001 ", new Date("2026-06-29T10:30:00.000Z"))
     ).toBe("LOT-001|2026-06-29");
+    const source = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
+    expect(source).toContain("const normalizedLotNumber = input.lotNumber?.trim() || null");
+    expect(source).toContain("lotNumber: normalizedLotNumber");
   });
 
   test("lot and expiry requirements include configurable DEC-0036 category policy", () => {
@@ -729,6 +863,117 @@ describe("inventory-location posting serialization", () => {
       lockInventoryLocationForPosting(tx, session, locationA)
     ).resolves.toBeDefined();
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  test("normalizes future posted lots while preserving legacy balance metadata on update", async () => {
+    const policy = vi.spyOn(prisma.companyPolicySetting, "findUnique")
+      .mockResolvedValue(null);
+    const itemId = "00000000-0000-4000-8000-000000000050";
+    const baseUomId = "00000000-0000-4000-8000-000000000060";
+
+    async function postWithLot(lotNumber: string, sourceEventKey: string) {
+      const movementCreate = vi.fn().mockImplementation(async ({ data }) => ({
+        id: `movement-${sourceEventKey}`,
+        ...data
+      }));
+      const balanceUpsert = vi.fn().mockResolvedValue({});
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([{ id: locationA }]),
+        inventoryMovement: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          create: movementCreate
+        },
+        inventoryLocation: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: locationA,
+            locationId: session.context.locationId
+          })
+        },
+        item: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: itemId,
+            baseUomId,
+            trackInventory: true,
+            trackLot: false,
+            trackExpiry: false,
+            category: { categoryCode: "DRY_GOODS" }
+          })
+        },
+        itemUomConversion: { findFirst: vi.fn() },
+        stockCountSession: { findFirst: vi.fn().mockResolvedValue(null) },
+        inventoryBalance: {
+          upsert: balanceUpsert,
+          updateMany: vi.fn()
+        }
+      } as unknown as TransactionClient;
+      const lock = await lockInventoryLocationForPosting(
+        tx,
+        session,
+        locationA
+      );
+      await postInventoryMovementInTransaction(tx, session, lock, {
+        inventoryLocationId: locationA,
+        itemId,
+        movementType: "RECEIPT_IN",
+        occurredAt: new Date("2026-07-26T00:00:00.000Z"),
+        enteredQuantity: 1,
+        enteredUomId: baseUomId,
+        quantityDeltaBaseUom: 1,
+        sourceDocumentType: "TestReceipt",
+        sourceDocumentId: "00000000-0000-4000-8000-000000000070",
+        sourceEventKey,
+        lotNumber
+      });
+      return { movementCreate, balanceUpsert };
+    }
+
+    try {
+      const trimmed = await postWithLot(" LOT-1 ", "trimmed-lot");
+      expect(trimmed.movementCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ lotNumber: "LOT-1" })
+      }));
+      expect(trimmed.balanceUpsert).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          inventoryLocationId_itemId_lotKey: {
+            inventoryLocationId: locationA,
+            itemId,
+            lotKey: "LOT-1|NOEXP"
+          }
+        },
+        create: expect.objectContaining({
+          lotNumber: "LOT-1",
+          lotKey: "LOT-1|NOEXP"
+        }),
+        update: {
+          qtyOnHand: { increment: 1 },
+          version: { increment: 1 }
+        }
+      }));
+
+      const blank = await postWithLot("   ", "blank-lot");
+      expect(blank.movementCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ lotNumber: null })
+      }));
+      expect(blank.balanceUpsert).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          inventoryLocationId_itemId_lotKey: {
+            inventoryLocationId: locationA,
+            itemId,
+            lotKey: "NOLOT|NOEXP"
+          }
+        },
+        create: expect.objectContaining({
+          lotNumber: null,
+          lotKey: "NOLOT|NOEXP"
+        }),
+        update: {
+          qtyOnHand: { increment: 1 },
+          version: { increment: 1 }
+        }
+      }));
+    } finally {
+      policy.mockRestore();
+    }
   });
 
   test("posting rejects a lock from another transaction or incomplete set", async () => {

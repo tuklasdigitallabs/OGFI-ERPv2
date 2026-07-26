@@ -30,6 +30,7 @@ describe("exact inventory ledger trace UI", () => {
     expect(source).toContain("inventoryBalanceDashboardProfileHref(request.profile");
     expect(source).toContain("Back to Positive Stock");
     expect(source).toContain("Back to Zero Stock Rows");
+    expect(source).toContain("Back to Lot or Expiry Data");
     expect(source).toContain("resolveInventoryDashboardProfile(");
     expect(source).toContain("inventoryDashboardProfileHref(profile");
   });

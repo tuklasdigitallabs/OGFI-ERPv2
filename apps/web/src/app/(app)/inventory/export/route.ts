@@ -21,6 +21,22 @@ import { getReportExportPolicy } from "@/server/services/policySettings";
 
 export const dynamic = "force-dynamic";
 
+function inventoryProfileExportName(profile: string) {
+  switch (profile) {
+    case "positive-stock-v1":
+      return { filename: "positive-stock.csv", allRowsLabel: "All positive stock rows" };
+    case "zero-stock-v1":
+      return { filename: "zero-stock-rows.csv", allRowsLabel: "All zero stock rows" };
+    case "lot-expiry-data-v1":
+      return {
+        filename: "lot-expiry-data-rows.csv",
+        allRowsLabel: "All rows with lot or expiry data"
+      };
+    default:
+      throw new Error("INVENTORY_BALANCE_DASHBOARD_PROFILE_UNSUPPORTED");
+  }
+}
+
 function inventoryBalanceCsvRows(
   balances: Awaited<ReturnType<typeof listInventoryBalances>>
 ) {
@@ -114,6 +130,7 @@ export async function GET(request: Request) {
       dashboardProfile: profileRequest.profile,
       maxRows: exportPolicy.maxRows
     };
+    const exportName = inventoryProfileExportName(profileRequest.profile);
     try {
       await logOperationalExportAudit({
         session,
@@ -135,9 +152,7 @@ export async function GET(request: Request) {
       });
       return csvExportResponse(
         inventoryBalanceCsvRows(balances),
-        profileRequest.profile === "positive-stock-v1"
-          ? "positive-stock.csv"
-          : "zero-stock-rows.csv",
+        exportName.filename,
         {
           metadata: await buildReportCsvMetadata({
             session,
@@ -146,10 +161,7 @@ export async function GET(request: Request) {
               ["Dashboard Profile", profileRequest.profile],
               [
                 "Search",
-                profileRequest.query ||
-                  (profileRequest.profile === "positive-stock-v1"
-                    ? "All positive stock rows"
-                    : "All zero stock rows")
+                profileRequest.query || exportName.allRowsLabel
               ],
               ["Maximum Rows", exportPolicy.maxRows]
             ]

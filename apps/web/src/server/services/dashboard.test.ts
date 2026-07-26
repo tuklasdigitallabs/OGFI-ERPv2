@@ -225,6 +225,11 @@ describe("operational dashboard model", () => {
       detail: "Existing balance rows with on-hand quantity exactly zero",
       href: "/inventory?dashboard=zero-stock-v1"
     }));
+    expect(dashboard.stockHealth).toContainEqual(expect.objectContaining({
+      id: "lot-expiry-data",
+      detail: "Balance rows with a non-blank lot number or an expiry date",
+      href: "/inventory?dashboard=lot-expiry-data-v1"
+    }));
     expect(dashboard.sourceObservations[0]).toMatchObject({
       id: "inventory-balances",
       availability: "AVAILABLE"

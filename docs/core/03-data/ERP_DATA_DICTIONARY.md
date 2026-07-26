@@ -563,7 +563,7 @@ Posted movement records are immutable.
 
 Current Phase I scaffold implements the quantity-only inventory ledger foundation through inventory locations, immutable inventory movement records, and a balance cache keyed by inventory location, item, and normalized lot/expiry key. It stores source document lineage and idempotency keys and currently posts receiving, receiving-reversal, transfer dispatch, transfer receipt, transfer-receipt reversal, wastage, wastage-reversal, stock-adjustment, count-generated stock-adjustment, and stock-adjustment-reversal movements through controlled workflow services. Inventory movement posting is blocked for an inventory location while an active stock count with movement freeze is in progress, submitted, or in recount for that same location. It does not implement authoritative valuation, GL posting, opening-balance cutover, direct `COUNT_VARIANCE_*` posting, dispatch reversal workflows, or partial receipt-line reversal workflows yet.
 | `unit_cost_base_uom`, `value_delta` | No | Cost reference. |
-| `lot_number`, `expiry_date` | Conditional | Per item control. |
+| `lot_number`, `expiry_date` | Conditional | Per item control. Future `postInventoryMovement` writes normalize lot text to trimmed nonblank text or null for the movement and matching balance key; existing legacy rows are not rewritten. |
 | `posted_by_user_id`, `posting_status` | Yes | Posted / reversed. |
 | `reversal_of_movement_id`, `remarks` | No | Correction traceability. |
 
@@ -574,7 +574,7 @@ Current Phase I scaffold implements the quantity-only inventory ledger foundatio
 | Field                                                                                              |       Required | Notes                                           |
 | -------------------------------------------------------------------------------------------------- | -------------: | ----------------------------------------------- |
 | `company_id`, `item_id`, `location_id`, `on_hand_quantity_base_uom`, `available_quantity_base_uom` |            Yes | Cache must reconcile to ledger.                 |
-| `lot_number`, `expiry_date`                                                                        |    Conditional | Part of identity where tracked.                 |
+| `lot_number`, `expiry_date`                                                                        |    Conditional | Part of identity where tracked. Future movement posting persists trimmed nonblank lot text or null; existing legacy balance rows are not rewritten. |
 | `reserved_quantity_base_uom`                                                                       |            Yes | Defaults to zero in Phase I.                    |
 | `last_movement_at`, `last_reconciled_at`, `status`                                                 | Yes / No / Yes | Status: active, quarantined, expired, inactive. |
 

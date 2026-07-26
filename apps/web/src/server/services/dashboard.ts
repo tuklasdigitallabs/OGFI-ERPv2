@@ -865,11 +865,11 @@ export function buildOperationalDashboardModel(
         tone: inventoryBalanceDashboard.zeroRows > 0 ? "warning" : "success"
       },
       {
-        id: "lot-expiry-coverage",
-        label: "Lot / expiry tracked",
+        id: "lot-expiry-data",
+        label: "Rows with lot or expiry data",
         displayValue: number(inventoryBalanceDashboard.lotExpiryTrackedRows),
-        detail: "Rows carrying lot or expiry accountability",
-        href: "/inventory",
+        detail: "Balance rows with a non-blank lot number or an expiry date",
+        href: inventoryBalanceDashboardProfileHref("lot-expiry-data-v1"),
         tone: inventoryBalanceDashboard.lotExpiryTrackedRows > 0 ? "info" : "neutral"
       },
       {

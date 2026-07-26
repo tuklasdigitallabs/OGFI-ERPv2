@@ -36,7 +36,7 @@ vi.mock("@/server/services/inventory", () => ({
   ) => {
     if (
       typeof profileValue !== "string" ||
-      !["positive-stock-v1", "zero-stock-v1"].includes(profileValue)
+      !["positive-stock-v1", "zero-stock-v1", "lot-expiry-data-v1"].includes(profileValue)
     ) {
       return { profile: null, query: "", error: "PROFILE_INVALID" };
     }
@@ -147,6 +147,24 @@ describe("positive-stock profile export route", () => {
       extra: expect.arrayContaining([
         ["Dashboard Profile", "zero-stock-v1"],
         ["Search", "All zero stock rows"]
+      ])
+    }));
+  });
+
+  test("exports the lot-or-expiry-data profile with truthful metadata", async () => {
+    const response = await GET(new Request(
+      "https://erp.test/inventory/export?dashboard=lot-expiry-data-v1"
+    ));
+
+    expect(await response.text()).toBe("lot-expiry-data-rows.csv");
+    expect(mocks.listProfile).toHaveBeenCalledWith(session, {
+      profile: "lot-expiry-data-v1",
+      maxRows: 100
+    });
+    expect(mocks.buildMetadata).toHaveBeenCalledWith(expect.objectContaining({
+      extra: expect.arrayContaining([
+        ["Dashboard Profile", "lot-expiry-data-v1"],
+        ["Search", "All rows with lot or expiry data"]
       ])
     }));
   });

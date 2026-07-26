@@ -110,7 +110,9 @@ function inventoryReturnContext(value: string | undefined) {
         label:
           request.profile === "positive-stock-v1"
             ? "Back to Positive Stock"
-            : "Back to Zero Stock Rows"
+            : request.profile === "zero-stock-v1"
+              ? "Back to Zero Stock Rows"
+              : "Back to Lot or Expiry Data"
       };
     }
     if (url.pathname !== "/inventory/reconciliation") return null;

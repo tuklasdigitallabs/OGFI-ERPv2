@@ -32,17 +32,23 @@ describe("closed stock-balance dashboard profile UI", () => {
     expect(source).toContain("dashboardProfile ? (");
     expect(source).toContain("Only current positive balance rows are included");
     expect(source).toContain("Only existing balance rows at exactly zero are included");
+    expect(source).toContain("Only rows with a non-blank lot number or an expiry date are included");
     expect(source).toContain("not a historical snapshot of the dashboard value or an automatic replenishment queue");
+    expect(source).toContain("does not measure tracking-policy compliance or complete traceability");
   });
 
   it("provides profile-aware empty, loading, error, and accessible control states", () => {
     expect(source).toContain("No positive stock rows match this search");
     expect(source).toContain("No zero stock rows match this search");
     expect(source).toContain("This does not confirm that every catalog item is stocked");
+    expect(source).toContain("No rows with lot or expiry data match this search");
+    expect(source).toContain('dashboardProfile === "lot-expiry-data-v1" ? "Not recorded"');
     expect(source).toContain("narrow Search and try again; no partial file is downloaded");
     expect(source).not.toContain('className="min-h-9');
     expect(source).not.toContain('className="min-h-10');
     expect(source).toContain('controlClassName="min-h-11"');
+    expect(source).toContain('className="min-h-11 rounded-md border border-slate-300 px-3 py-2"');
+    expect(source).toContain('balance.lotNumber?.trim() || "Not recorded"');
     for (const label of ["On hand: ", "Lot: ", "Expiry: ", "Storage: ", "Updated: "]) {
       expect(source).toContain(label);
     }

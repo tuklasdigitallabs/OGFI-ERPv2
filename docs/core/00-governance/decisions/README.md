@@ -173,3 +173,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0230-MY-TASKS-BOUNDED-SOURCE-SETTLEMENT.md` — bounded My Tasks source deadlines, retained admission, redacted telemetry, and fail-closed partial-page semantics
 - `DEC-0231-POSITIVE-STOCK-DASHBOARD-PROFILE.md` — closed selected-scope active-location positive-stock profile with exact dashboard/list/export parity and bounded no-truncation export
 - `DEC-0232-ZERO-STOCK-DASHBOARD-PROFILE.md` — closed existing-balance-row zero-stock profile with truthful row grain, exact dashboard/list/export parity, and bounded no-truncation export
+- `DEC-0233-LOT-EXPIRY-DATA-DASHBOARD-PROFILE.md` — closed lot-or-expiry data-presence profile with trim-aware row membership, static parameterized SQL, bounded export, and no compliance claim

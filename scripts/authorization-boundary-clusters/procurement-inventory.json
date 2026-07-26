@@ -24,7 +24,7 @@
       "file": "apps/web/tests/authorizationProcurementInventory.integration.test.ts",
       "testName": "AUTHZ-PI-DASHBOARD-INVENTORY-AGGREGATE-SCOPE-AND-VALUES",
       "kind": "REAL_POSTGRESQL_READ_BOUNDARY",
-      "coveredControls": ["live read permission", "tenant", "company", "selected active location", "exact aggregate values", "positive-stock dashboard/list/export parity", "zero-row exclusion", "cross-scope non-disclosure", "read-only no mutation"]
+      "coveredControls": ["live read permission", "tenant", "company", "selected active location", "exact aggregate values", "positive-stock dashboard/list/export parity", "zero-stock dashboard/list/export parity", "lot-or-expiry-data dashboard/list/export parity", "blank-lot exclusion", "cross-scope non-disclosure", "read-only no mutation"]
     },
     {
       "id": "AUTHZ-PI-INVENTORY-IN-TRANSACTION-WRONG-LOCATION-ROLLBACK",

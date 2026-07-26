@@ -145,7 +145,8 @@ export type InventoryBalanceDashboardRead = {
 
 export const inventoryBalanceDashboardProfiles = [
   "positive-stock-v1",
-  "zero-stock-v1"
+  "zero-stock-v1",
+  "lot-expiry-data-v1"
 ] as const;
 export type InventoryBalanceDashboardProfile =
   (typeof inventoryBalanceDashboardProfiles)[number];
@@ -626,7 +627,8 @@ export async function postInventoryMovementInTransaction(
     activeFrozenCountId: activeFrozenCount?.id ?? null
   });
 
-  const lotKey = normalizeInventoryLotKey(input.lotNumber, input.expiryDate);
+  const normalizedLotNumber = input.lotNumber?.trim() || null;
+  const lotKey = normalizeInventoryLotKey(normalizedLotNumber, input.expiryDate);
 
   const movement = await tx.inventoryMovement.create({
     data: {
@@ -641,7 +643,7 @@ export async function postInventoryMovementInTransaction(
       enteredUomId: input.enteredUomId,
       quantityDeltaBaseUom: input.quantityDeltaBaseUom,
       baseUomId: item.baseUomId,
-      lotNumber: input.lotNumber ?? null,
+      lotNumber: normalizedLotNumber,
       expiryDate: input.expiryDate ?? null,
       unitCost: input.unitCost ?? null,
       totalCost: input.totalCost ?? null,
@@ -671,7 +673,7 @@ export async function postInventoryMovementInTransaction(
         inventoryLocationId: input.inventoryLocationId,
         itemId: input.itemId,
         lotKey,
-        lotNumber: input.lotNumber ?? null,
+        lotNumber: normalizedLotNumber,
         expiryDate: input.expiryDate ?? null,
         baseUomId: item.baseUomId,
         qtyOnHand: input.quantityDeltaBaseUom,
@@ -1150,6 +1152,107 @@ function scopedInventoryBalanceWhere(
   };
 }
 
+function inventoryLotExpiryDataSql(
+  session: SessionContext,
+  query?: string
+) {
+  const normalizedQuery = normalizeInventorySearchQuery(query);
+  const searchPattern = normalizedQuery
+    ? `%${normalizedQuery.replace(/[\\%_]/g, "\\$&")}%`
+    : null;
+  const searchSql = searchPattern
+    ? Prisma.sql`
+        AND (
+          item."itemCode" ILIKE ${searchPattern} ESCAPE '\\'
+          OR item."itemName" ILIKE ${searchPattern} ESCAPE '\\'
+          OR inventory_location."name" ILIKE ${searchPattern} ESCAPE '\\'
+          OR balance."lotNumber" ILIKE ${searchPattern} ESCAPE '\\'
+        )`
+    : Prisma.empty;
+  return Prisma.sql`
+      FROM "InventoryBalance" balance
+      JOIN "InventoryLocation" inventory_location
+        ON inventory_location."id" = balance."inventoryLocationId"
+       AND inventory_location."tenantId" = ${session.context.tenantId}::uuid
+       AND inventory_location."companyId" = ${session.context.companyId}::uuid
+      JOIN "Location" location
+        ON location."id" = inventory_location."locationId"
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+      JOIN "Item" item
+        ON item."id" = balance."itemId"
+       AND item."tenantId" = ${session.context.tenantId}::uuid
+       AND item."companyId" = ${session.context.companyId}::uuid
+      JOIN "ItemCategory" category
+        ON category."id" = item."itemCategoryId"
+       AND category."tenantId" = ${session.context.tenantId}::uuid
+       AND category."companyId" = ${session.context.companyId}::uuid
+      JOIN "Uom" base_uom
+        ON base_uom."id" = balance."baseUomId"
+       AND base_uom."tenantId" = ${session.context.tenantId}::uuid
+       AND base_uom."companyId" = ${session.context.companyId}::uuid
+     WHERE balance."tenantId" = ${session.context.tenantId}::uuid
+       AND balance."companyId" = ${session.context.companyId}::uuid
+       AND inventory_location."locationId" = ${session.context.locationId}::uuid
+       AND inventory_location."status" = 'ACTIVE'
+       AND (
+         NULLIF(BTRIM(balance."lotNumber"), '') IS NOT NULL
+         OR balance."expiryDate" IS NOT NULL
+       )
+       ${searchSql}`;
+}
+
+async function countInventoryLotExpiryDataProfile(
+  session: SessionContext,
+  query?: string
+) {
+  const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS count
+    ${inventoryLotExpiryDataSql(session, query)}`);
+  return Number(rows[0]?.count ?? 0n);
+}
+
+async function listInventoryLotExpiryDataProfileIds(
+  session: SessionContext,
+  input: { query?: string; skip: number; take: number }
+) {
+  return prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT balance."id" AS id
+    ${inventoryLotExpiryDataSql(session, input.query)}
+    ORDER BY item."itemName" ASC,
+             inventory_location."name" ASC,
+             balance."expiryDate" ASC,
+             balance."id" ASC
+    OFFSET ${input.skip}
+    LIMIT ${input.take}`);
+}
+
+async function loadInventoryBalanceRecords(
+  session: SessionContext,
+  ids: string[]
+) {
+  if (ids.length === 0) return [];
+  const balances = await prisma.inventoryBalance.findMany({
+    where: {
+      AND: [
+        scopedInventoryBalanceWhere(session, undefined),
+        { id: { in: ids } },
+        {
+          OR: [
+            { lotNumber: { not: null } },
+            { expiryDate: { not: null } }
+          ]
+        }
+      ]
+    },
+    include: inventoryBalanceInclude,
+    orderBy: inventoryBalanceOrderBy
+  });
+  return balances.filter(
+    (balance) => Boolean(balance.lotNumber?.trim()) || balance.expiryDate !== null
+  );
+}
+
 export function inventoryPositiveStockProfileWhere(
   session: SessionContext,
   query?: string
@@ -1172,7 +1275,7 @@ export function inventoryZeroStockProfileWhere(
   };
 }
 
-export function inventoryBalanceDashboardProfileWhere(
+function inventoryBalancePrismaDashboardProfileWhere(
   session: SessionContext,
   profile: InventoryBalanceDashboardProfile,
   query?: string
@@ -1182,6 +1285,8 @@ export function inventoryBalanceDashboardProfileWhere(
       return inventoryPositiveStockProfileWhere(session, query);
     case "zero-stock-v1":
       return inventoryZeroStockProfileWhere(session, query);
+    case "lot-expiry-data-v1":
+      throw new Error("INVENTORY_BALANCE_DASHBOARD_PROFILE_RAW_QUERY_REQUIRED");
   }
 }
 
@@ -1235,10 +1340,43 @@ export async function listInventoryBalancePage(
   }
   const pageSize = Math.min(50, Math.max(1, Math.trunc(input.pageSize ?? 10)));
   const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  if (input.dashboardProfile === "lot-expiry-data-v1") {
+    const [totalItems, company] = await Promise.all([
+      countInventoryLotExpiryDataProfile(session, normalized.query),
+      prisma.company.findFirst({
+        where: {
+          id: session.context.companyId,
+          tenantId: session.context.tenantId
+        },
+        select: { timezone: true }
+      })
+    ]);
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const idRows = await listInventoryLotExpiryDataProfileIds(session, {
+      ...(normalized.query ? { query: normalized.query } : {}),
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    });
+    const balances = await loadInventoryBalanceRecords(
+      session,
+      idRows.map((row) => row.id)
+    );
+    return {
+      items: balances.map(mapInventoryBalance),
+      totalItems,
+      positiveItems: 0,
+      expiringItems: 0,
+      page,
+      pageSize,
+      totalPages,
+      timeZone: company?.timezone ?? "Asia/Manila"
+    };
+  }
   const expiryCutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const baseWhere = scopedInventoryBalanceWhere(session, normalized.query);
   const where = input.dashboardProfile
-    ? inventoryBalanceDashboardProfileWhere(
+    ? inventoryBalancePrismaDashboardProfileWhere(
         session,
         input.dashboardProfile,
         normalized.query
@@ -1296,7 +1434,26 @@ export async function listInventoryBalanceDashboardProfileExportRows(
   if (!Number.isInteger(input.maxRows) || input.maxRows < 1) {
     throw new Error("INVENTORY_BALANCE_EXPORT_MAX_ROWS_INVALID");
   }
-  const where = inventoryBalanceDashboardProfileWhere(
+  if (input.profile === "lot-expiry-data-v1") {
+    const totalItems = await countInventoryLotExpiryDataProfile(session, input.query);
+    if (totalItems > input.maxRows) {
+      throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+    }
+    const idRows = await listInventoryLotExpiryDataProfileIds(session, {
+      ...(input.query ? { query: input.query } : {}),
+      skip: 0,
+      take: input.maxRows + 1
+    });
+    if (idRows.length > input.maxRows) {
+      throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
+    }
+    const balances = await loadInventoryBalanceRecords(
+      session,
+      idRows.map((row) => row.id)
+    );
+    return balances.map(mapInventoryBalance);
+  }
+  const where = inventoryBalancePrismaDashboardProfileWhere(
     session,
     input.profile,
     input.query
@@ -1323,7 +1480,7 @@ export async function getInventoryBalanceDashboardRead(
   await requirePermission(session, permissions.inventoryBalanceView);
   const scope = inventoryBalanceDashboardScope(session);
   const recentlyUpdatedAfter = new Date(Date.now() - 7 * 86_400_000);
-  const [rows, positiveRows, zeroRows] = await Promise.all([
+  const [rows, positiveRows, zeroRows, lotExpiryTrackedRows] = await Promise.all([
     prisma.$queryRaw<InventoryBalanceDashboardRead[]>`
       SELECT COUNT(*)::integer AS "totalRows",
              COUNT(*) FILTER (WHERE balance."qtyOnHand" > 0)::integer AS "positiveRows",
@@ -1364,7 +1521,8 @@ export async function getInventoryBalanceDashboardRead(
     }),
     prisma.inventoryBalance.count({
       where: inventoryZeroStockProfileWhere(session)
-    })
+    }),
+    countInventoryLotExpiryDataProfile(session)
   ]);
 
   const aggregate = rows[0] ?? {
@@ -1374,7 +1532,7 @@ export async function getInventoryBalanceDashboardRead(
     lotExpiryTrackedRows: 0,
     recentlyUpdatedRows: 0
   };
-  return { ...aggregate, positiveRows, zeroRows };
+  return { ...aggregate, positiveRows, zeroRows, lotExpiryTrackedRows };
 }
 
 export function inventoryBalanceDashboardScope(

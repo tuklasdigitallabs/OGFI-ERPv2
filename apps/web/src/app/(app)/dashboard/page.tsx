@@ -36,7 +36,7 @@ const metricIcons = {
   "stocked-items": Boxes,
   "active-stock-rows": Boxes,
   "zero-stock-rows": AlertTriangle,
-  "lot-expiry-coverage": Database,
+  "lot-expiry-data": Database,
   "recent-stock-updates": ClipboardCheck,
   "sales-source": BarChart3,
   "inventory-value-source": Boxes
@@ -679,15 +679,15 @@ function DashboardOverview({ dashboard }: { dashboard: DashboardData }) {
         <section className="ogfi-data-surface mb-5">
           <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">Stock Health</h2>
+              <h2 className="text-lg font-bold text-slate-950">Stock balance signals</h2>
               <p className="text-sm text-slate-500">
-                Inventory balance coverage for the selected location
+                Current balance-row signals for the selected location
               </p>
             </div>
             <ButtonLink
               href="/inventory"
               tone="secondary"
-              className="min-h-10 text-blue-700 hover:bg-blue-50"
+              className="min-h-11 text-blue-700 hover:bg-blue-50"
             >
               View Inventory
             </ButtonLink>
@@ -738,8 +738,8 @@ function DashboardAnalytics({
     },
     {
       id: "stock",
-      label: "Stock Health",
-      detail: "Inventory coverage signals"
+      label: "Stock balance signals",
+      detail: "Current balance-row signals"
     },
     {
       id: "attention",
@@ -787,7 +787,7 @@ function DashboardAnalytics({
 
       {activePanel === "stock" ? (
         <AnalyticsBarPanel
-          title="Stock Health Coverage"
+          title="Stock balance signals"
           detail="Visual stock balance signals for the current location and authorized inventory scope."
           rows={stockRows}
         />

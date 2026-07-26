@@ -119,6 +119,21 @@ function dashboardProfileCopy(profile: InventoryBalanceDashboardProfile) {
         emptySearchDescription:
           "Clear or change the search to review the current zero-stock population."
       };
+    case "lot-expiry-data-v1":
+      return {
+        title: "Rows with Lot or Expiry Data",
+        rowLabel: "Rows with lot or expiry data",
+        banner:
+          "This read-only view contains current balance rows with a non-blank lot number or an expiry date for the selected location. Positive, zero, and negative quantities are included.",
+        population:
+          "Only rows with a non-blank lot number or an expiry date are included; this does not measure tracking-policy compliance or complete traceability",
+        emptyTitle: "No balance rows have lot or expiry data",
+        emptySearchTitle: "No rows with lot or expiry data match this search",
+        emptyDescription:
+          "No current balance row in this location has either field recorded. This does not indicate whether tracking is required.",
+        emptySearchDescription:
+          "Clear or change the search to review the current lot-or-expiry-data population."
+      };
   }
 }
 
@@ -337,7 +352,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Search
             <input
-              className="rounded-md border border-slate-300 px-3 py-2"
+              className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
               defaultValue={rawQuery}
               name="q"
               placeholder="Item, code, lot, storage location"
@@ -422,17 +437,19 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                       {balance.itemCode} / {balance.categoryName}
                     </p>
                   </div>
-                  <p className="font-semibold text-slate-900">
+                  <p className={`font-semibold ${balance.qtyOnHand < 0 ? "text-rose-700" : "text-slate-900"}`}>
                     <span className="font-medium text-slate-500 md:hidden">On hand: </span>
                     {balance.qtyOnHand} {balance.baseUomCode}
                   </p>
                   <p className="text-slate-600">
                     <span className="font-medium text-slate-500 md:hidden">Lot: </span>
-                    {balance.lotNumber ?? "Untracked"}
+                    {dashboardProfile === "lot-expiry-data-v1"
+                      ? balance.lotNumber?.trim() || "Not recorded"
+                      : balance.lotNumber ?? "Untracked"}
                   </p>
                   <p className="text-slate-600">
                     <span className="font-medium text-slate-500 md:hidden">Expiry: </span>
-                    {balance.expiryDate ?? "None"}
+                    {balance.expiryDate ?? (dashboardProfile === "lot-expiry-data-v1" ? "Not recorded" : "None")}
                   </p>
                   <p className="text-slate-600">
                     <span className="font-medium text-slate-500 md:hidden">Storage: </span>

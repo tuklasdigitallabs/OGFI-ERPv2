@@ -997,11 +997,18 @@ describe("procurement and inventory authorization boundaries", () => {
       profile: "zero-stock-v1",
       maxRows: 100
     })).rejects.toThrow("PERMISSION_DENIED");
+    await expect(listInventoryBalancePage(staleCachedSession, {}, {
+      dashboardProfile: "lot-expiry-data-v1"
+    })).rejects.toThrow("PERMISSION_DENIED");
+    await expect(listInventoryBalanceDashboardProfileExportRows(staleCachedSession, {
+      profile: "lot-expiry-data-v1",
+      maxRows: 100
+    })).rejects.toThrow("PERMISSION_DENIED");
 
     const foreignUomId = randomUUID();
     const foreignCategoryId = randomUUID();
     const foreignItemId = randomUUID();
-    const balanceIds = Array.from({ length: 15 }, () => randomUUID());
+    const balanceIds = Array.from({ length: 17 }, () => randomUUID());
     const inactiveInventoryLocationId = randomUUID();
     await prisma.uom.create({
       data: {
@@ -1059,6 +1066,8 @@ describe("procurement and inventory authorization boundaries", () => {
             inventoryLocationId: ids.inventoryLocationId,
             itemId: ids.itemId,
             lotKey: `DASH-NOLOT-${suffix}`,
+            lotNumber: `BOTH-${suffix}`,
+            expiryDate: new Date("2027-02-01T00:00:00.000Z"),
             baseUomId: ids.uomId,
             qtyOnHand: 5,
             updatedAt: recent
@@ -1149,6 +1158,7 @@ describe("procurement and inventory authorization boundaries", () => {
             inventoryLocationId: ids.inventoryLocationId,
             itemId: ids.itemId,
             lotKey: `DASH-NEGATIVE-${suffix}`,
+            lotNumber: `NEG-${suffix}`,
             baseUomId: ids.uomId,
             qtyOnHand: -2,
             updatedAt: recent
@@ -1171,6 +1181,7 @@ describe("procurement and inventory authorization boundaries", () => {
             inventoryLocationId: ids.adjacentInventoryLocationId,
             itemId: ids.itemId,
             lotKey: `DASH-ZERO-ADJ-LOC-${suffix}`,
+            lotNumber: `ADJ-LOC-${suffix}`,
             baseUomId: ids.uomId,
             qtyOnHand: 0,
             updatedAt: recent
@@ -1182,6 +1193,7 @@ describe("procurement and inventory authorization boundaries", () => {
             inventoryLocationId: ids.adjacentCompanyInventoryLocationId,
             itemId: ids.adjacentCompanyItemId,
             lotKey: `DASH-ZERO-ADJ-COMP-${suffix}`,
+            lotNumber: `ADJ-COMP-${suffix}`,
             baseUomId: ids.adjacentCompanyUomId,
             qtyOnHand: 0,
             updatedAt: recent
@@ -1193,6 +1205,7 @@ describe("procurement and inventory authorization boundaries", () => {
             inventoryLocationId: ids.foreignInventoryLocationId,
             itemId: foreignItemId,
             lotKey: `DASH-ZERO-FOREIGN-${suffix}`,
+            lotNumber: `FOREIGN-${suffix}`,
             baseUomId: foreignUomId,
             qtyOnHand: 0,
             updatedAt: recent
@@ -1204,6 +1217,7 @@ describe("procurement and inventory authorization boundaries", () => {
             inventoryLocationId: inactiveInventoryLocationId,
             itemId: ids.itemId,
             lotKey: `DASH-ZERO-INACTIVE-${suffix}`,
+            lotNumber: `INACTIVE-${suffix}`,
             baseUomId: ids.uomId,
             qtyOnHand: 0,
             updatedAt: recent
@@ -1215,8 +1229,34 @@ describe("procurement and inventory authorization boundaries", () => {
             inventoryLocationId: ids.inventoryLocationId,
             itemId: foreignItemId,
             lotKey: `DASH-ZERO-MISMATCH-${suffix}`,
+            lotNumber: `MISMATCH-${suffix}`,
             baseUomId: foreignUomId,
             qtyOnHand: 0,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[15]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-BLANK-LOT-${suffix}`,
+            lotNumber: "   ",
+            baseUomId: ids.uomId,
+            qtyOnHand: -1,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[16]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-BLANK-LOT-EXPIRY-${suffix}`,
+            lotNumber: "   ",
+            expiryDate: new Date("2027-03-01T00:00:00.000Z"),
+            baseUomId: ids.uomId,
+            qtyOnHand: -1,
             updatedAt: recent
           }
         ]
@@ -1239,11 +1279,11 @@ describe("procurement and inventory authorization boundaries", () => {
           permissionCodes: ["inventory.balance.view"]
         };
         await expect(getInventoryBalanceDashboardRead(authorizedSession)).resolves.toEqual({
-          totalRows: 5,
+          totalRows: 7,
           positiveRows: 2,
           zeroRows: 2,
-          lotExpiryTrackedRows: 2,
-          recentlyUpdatedRows: 3
+          lotExpiryTrackedRows: 5,
+          recentlyUpdatedRows: 5
         });
 
         const profilePage = await listInventoryBalancePage(
@@ -1281,6 +1321,24 @@ describe("procurement and inventory authorization boundaries", () => {
           zeroProfilePage.items.map((row) => row.id).sort()
         );
 
+        const lotExpiryProfilePage = await listInventoryBalancePage(
+          authorizedSession,
+          {},
+          { dashboardProfile: "lot-expiry-data-v1", page: 1, pageSize: 10 }
+        );
+        expect(lotExpiryProfilePage).toMatchObject({ totalItems: 5, page: 1, totalPages: 1 });
+        expect(lotExpiryProfilePage.items.map((row) => row.id).sort()).toEqual(
+          [balanceIds[0]!, balanceIds[1]!, balanceIds[2]!, balanceIds[8]!, balanceIds[16]!].sort()
+        );
+
+        const lotExpiryProfileExport = await listInventoryBalanceDashboardProfileExportRows(
+          authorizedSession,
+          { profile: "lot-expiry-data-v1", maxRows: 100 }
+        );
+        expect(lotExpiryProfileExport.map((row) => row.id).sort()).toEqual(
+          lotExpiryProfilePage.items.map((row) => row.id).sort()
+        );
+
         const dashboard = await getOperationalDashboard(authorizedSession);
         expect(dashboard.sourceObservations).toEqual(
           expect.arrayContaining([
@@ -1301,7 +1359,11 @@ describe("procurement and inventory authorization boundaries", () => {
         );
         expect(dashboard.stockHealth).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ id: "lot-expiry-coverage", displayValue: "2" }),
+            expect.objectContaining({
+              id: "lot-expiry-data",
+              displayValue: "5",
+              href: "/inventory?dashboard=lot-expiry-data-v1"
+            }),
             expect.objectContaining({
               id: "zero-stock-rows",
               displayValue: "2",
