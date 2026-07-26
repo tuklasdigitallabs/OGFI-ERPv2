@@ -94,7 +94,7 @@ The system should enforce these standard controls by default:
 | Receive transfer | Destination custodian confirms receipt; cannot be same user as dispatch unless controlled exception exists |
 | Submit wastage | Reporter may submit; approval/review follows value/rule threshold |
 | Post stock adjustment | Requires authorized approval; requester and poster separation is configurable by risk tier |
-| Change approval rule | Admin access plus audit event; no silent change |
+| Change approval rule | `core.administer`, `core.tenant_role_administer`, active/effective selected-company `MANAGE`, fresh runtime MFA in local authentication or verified privileged-MFA evidence under external authentication, immutable successor version, reason, idempotency/concurrency protection, and atomic audit; tenant-wide and legacy named-user rules are read-only in the current composer |
 | Change low-risk user scope | Administrator access plus audit event |
 | Administer role catalog or direct role assignment | Tenant-level `core.tenant_role_administer`; target-user actions also require active/effective selected-company membership; audit event required |
 | Change high-risk scope | Controlled `HighRiskScopeRequest`, reason, evidence, separate reviewer, privileged MFA guard, audit, and session invalidation |

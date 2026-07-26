@@ -98,6 +98,18 @@ pagination. Rows show active state, priority, exact step count, and at most the
 first three step/approver-type labels; full routing remains on the authorized
 rule detail route.
 
+Implementation note (`DEC-0225`): Approval Rules adds a bounded company-owned
+lifecycle composer. Create and Revise build complete inactive immutable versions;
+Activate performs an audited route-slot replacement; Deactivate requires an explicit
+reason and warns that future submissions will fail until another valid version is
+active. The composer exposes only supported transaction types, the default or
+Purchase Request emergency template, and ordered role steps. Tenant-wide rules,
+legacy named-user rules, arbitrary filter JSON, thresholds, groups, parallel steps,
+delegation, and escalation are visibly read-only or unavailable with an explanation.
+Every mutation rechecks Core Administration, tenant-role authority, selected-company
+Manage scope, fresh runtime MFA in local authentication or verified privileged-MFA
+evidence under external authentication, role eligibility, idempotency, and concurrency.
+
 Implementation note (`DEC-0118`): User-detail role and location assignment
 pickers are bounded, searchable option catalogs. Locations are active and
 selected-company scoped; roles are active tenant-global options. Overflow is

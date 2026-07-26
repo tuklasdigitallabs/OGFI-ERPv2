@@ -3,6 +3,7 @@ import { prisma } from "@ogfi/database";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { permissions } from "../src/server/services/authorization";
 import type { SessionContext } from "../src/server/services/context";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 import {
   assertDisposableAuthorizationDatabaseConfigured,
   assertDisposableAuthorizationDatabaseMarker,
@@ -314,7 +315,7 @@ async function createInitialFixture(
       },
     ],
   });
-  await prisma.approvalRule.create({
+  await createSealedApprovalRuleFixture(prisma, {
     data: {
       id: ids.ruleId,
       tenantId: ids.tenantId,

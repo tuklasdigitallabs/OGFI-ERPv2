@@ -7,6 +7,7 @@ import { approvePurchaseRequest, rejectPurchaseRequest, returnPurchaseRequest } 
 import { configureApprovalStepRouting, listEligibleApprovalStepPage } from "../src/server/services/approvalRouting";
 import { approvalRoutingPolicies } from "../src/server/services/approvalRoutingRegistry";
 import { runApprovalRoutingBackfill } from "../src/server/services/approvalRoutingBackfill";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 
 const mockContext = vi.hoisted(() => ({ requireSessionContext: vi.fn() }));
 vi.mock("../src/server/services/context", async () => {
@@ -46,7 +47,7 @@ async function createScenario(actorCount = 1, stepCount = 1, configureRouting = 
     const scopeAssignment = await prisma.userScopeAssignment.create({ data: { userId, scopeType: "LOCATION", scopeId: ids.location, accessLevel: "APPROVE", startsAt: new Date(Date.now() - 60_000) }, select: { id: true } });
     actors.push({ userId, roleAssignmentId: roleAssignment.id, scopeAssignmentId: scopeAssignment.id, session: { user: { id: userId, email, displayName: `Action Approver ${index + 1}`, role: "Approver" }, context: { tenantId: ids.tenant, companyId: ids.company, companyName: `Action Company ${suffix}`, brandId: ids.brand, brandName: `Action Brand ${suffix}`, locationId: ids.location, locationName: `Action Location ${suffix}`, locationType: "BRANCH" }, authorizedLocations: [], permissionCodes: [permissions.purchaseRequestApprove] } });
   }
-  await prisma.approvalRule.create({ data: { id: ids.rule, tenantId: ids.tenant, companyId: ids.company, transactionType: `PURCHASE_REQUEST_ACTION_${suffix}`, priority: 1 } });
+  await createSealedApprovalRuleFixture(prisma, { data: { id: ids.rule, tenantId: ids.tenant, companyId: ids.company, transactionType: `PURCHASE_REQUEST_ACTION_${suffix}`, priority: 1 } });
   await prisma.purchaseRequest.create({ data: { id: ids.request, publicReference: `PR-ACT-${suffix}`, tenantId: ids.tenant, companyId: ids.company, requestLocationId: ids.location, requesterUserId: ids.requester, requiredDate: dueAt, urgency: "NORMAL", justification: "Approval action concurrency evidence", status: "PENDING_APPROVAL", currentApprovalStep: 1 } });
   await prisma.approvalInstance.create({ data: { id: ids.approval, tenantId: ids.tenant, companyId: ids.company, documentType: "PurchaseRequest", documentId: ids.request, approvalRuleId: ids.rule, status: "PENDING", currentStepOrder: 1, steps: { create: { id: ids.step, stepOrder: 1, assignedRoleId: ids.role, status: "PENDING" } } } });
   const nextStepId = stepCount > 1 ? randomUUID() : null;

@@ -6,6 +6,7 @@ import { supportedApprovalDocumentTypes } from "../src/server/services/approvalR
 import { getApprovalDetail } from "../src/server/services/approvals";
 import { startBudgetRevisionReview } from "../src/server/services/budgetControl";
 import type { SessionContext } from "../src/server/services/context";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 
 const runPg = process.env.RUN_APPROVAL_ROUTING_PG_TESTS === "true";
 
@@ -154,7 +155,7 @@ describe.skipIf(!runPg).sequential(
           accessLevel: "APPROVE",
         },
       });
-      await prisma.approvalRule.create({
+      await createSealedApprovalRuleFixture(prisma, {
         data: {
           id: approvalRuleId,
           tenantId,
@@ -570,7 +571,7 @@ describe.skipIf(!runPg).sequential("approval routing backfill 18-type PostgreSQL
       { userId: ids.approver, scopeType: "LOCATION", scopeId: ids.location, accessLevel: "APPROVE" },
       { userId: ids.approver, scopeType: "LOCATION", scopeId: ids.secondLocation, accessLevel: "APPROVE" },
     ] });
-    await prisma.approvalRule.create({ data: { id: ids.rule, tenantId: ids.tenant, companyId: ids.company, transactionType: "APPROVAL_BREADTH", priority: 1 } });
+    await createSealedApprovalRuleFixture(prisma, { data: { id: ids.rule, tenantId: ids.tenant, companyId: ids.company, transactionType: "APPROVAL_BREADTH", priority: 1 } });
     await prisma.supplier.create({ data: { id: ids.supplier, tenantId: ids.tenant, companyId: ids.company, supplierCode: `AB-S-${suffix}`, legalName: "Breadth Supplier" } });
     await prisma.fiscalYear.create({ data: { id: ids.fiscalYear, tenantId: ids.tenant, companyId: ids.company, code: `AB-FY-${suffix}`, name: "Breadth FY", startDate: new Date("2026-01-01Z"), endDate: new Date("2026-12-31Z") } });
     await prisma.accountingPeriod.create({ data: { id: ids.period, tenantId: ids.tenant, companyId: ids.company, fiscalYearId: ids.fiscalYear, periodNumber: 7, code: `AB-P-${suffix}`, name: "Breadth Period", startDate: new Date("2026-07-01Z"), endDate: new Date("2026-07-31Z") } });

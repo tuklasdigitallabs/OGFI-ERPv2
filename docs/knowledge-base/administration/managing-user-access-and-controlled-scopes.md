@@ -50,8 +50,11 @@ summaries; employee-assignment impact is deferred.
 Approval Rules is also paginated. It includes rules for the selected company
 and tenant-wide rules, shows bounded transaction-type/status filters, and keeps
 only a capped first-three-step preview in the list. Open View Rule for the full
-authorized routing definition; the list does not grant mutation or approval
-authority.
+authorized routing definition. Authorized administrators may create, revise,
+activate, or deactivate company-owned immutable versions through the focused
+composer; tenant-wide and legacy named-user versions explain why they remain
+read-only. These controls configure future routing and never grant transaction
+approval authority.
 
 User-detail assignment pickers are bounded searchable catalogs. Location choices
 are active records in the selected company, separated into low-risk quick

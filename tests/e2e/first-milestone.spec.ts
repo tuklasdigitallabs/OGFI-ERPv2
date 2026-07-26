@@ -145,6 +145,14 @@ test("non-admin users cannot open core administration", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "User Access" })).not.toBeVisible();
 
+  await page.goto("/admin/approval-rules/new");
+  await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create Approval Rule" })).not.toBeVisible();
+
+  await page.goto("/admin/approval-rules/00000000-0000-4000-8000-000000000010/revise");
+  await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Revise Approval Rule" })).not.toBeVisible();
+
   await page.goto("/suppliers");
   await expect(page.getByRole("heading", { name: "Company Overview" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Suppliers" })).not.toBeVisible();

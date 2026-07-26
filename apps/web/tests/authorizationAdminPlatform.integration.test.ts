@@ -19,6 +19,7 @@ import {
   clearAuthenticatedRequest,
   configureAuthenticatedRequest,
 } from "./authenticatedRequestHarness";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 
 const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(
   process.env,
@@ -1503,7 +1504,7 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
   it("AUTHZ-CORE-ADMIN-DETAIL-READS-ENFORCE-COMPANY-AND-TENANT-ROLE-SCOPE", async () => {
     const session = await getConfiguredContext(actorEmail);
     const adjacentRuleId = randomUUID();
-    await prisma.approvalRule.create({
+    await createSealedApprovalRuleFixture(prisma, {
       data: {
         id: adjacentRuleId,
         tenantId: ids.tenantId,
@@ -1543,7 +1544,6 @@ describe("admin and platform authorization boundaries against PostgreSQL", () =>
       await prisma.rolePermission.create({
         data: { roleId: ids.roleId, permissionId: tenantRoleAdminPermissionId },
       });
-      await prisma.approvalRule.delete({ where: { id: adjacentRuleId } });
     }
   });
 

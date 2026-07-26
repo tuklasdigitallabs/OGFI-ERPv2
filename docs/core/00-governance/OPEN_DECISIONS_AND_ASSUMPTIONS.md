@@ -115,6 +115,16 @@ legacy disclosure, approval/audit snapshot semantics, and UAT/training impact.
 
 14. **Purchase Request submission on behalf:** The current controlled default is requester-only submission, reopening, and cancellation. Decide whether a purchasing, manager, or delegated user may submit a draft for its identified requester, and if so define a distinct authority, scope, requester acknowledgment or reason/evidence, actor/requester display, approval segregation, audit, notification, expiry, and revocation rules. Read access or the generic submit permission must not be treated as delegation.
 
+15. **Approval Rule expansion beyond `DEC-0225`:** Confirm the authority and
+cross-company audit model for tenant-wide rule mutation; the named approver, backup,
+executive-signatory, expiry, and replacement policy; and shared runtime semantics for
+amount, budget, brand, location, department, category, supplier, effective-date,
+parallel/group, delegation, and escalation predicates. Until confirmed and implemented
+through one tested matcher, the Administration composer remains company-scoped,
+role-only, sequential, and limited to the server-owned default and Purchase Request
+emergency route templates. Active legacy `USER` routes must be explicitly inventoried
+and reconciled; they are never silently converted or grandfathered by a migration.
+
 ## 6. Change request format
 
 Every policy change request should include:

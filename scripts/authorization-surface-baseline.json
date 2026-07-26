@@ -307,9 +307,217 @@
     ]
   },
   {
+    "id": "admin/approval-rules/[id]/page.tsx#activateRuleAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/approvalRuleLifecycle.ts#activateCoreAdminApprovalRuleVersion",
+      "server/services/approvalRuleLifecycle.ts#deactivateCoreAdminApprovalRuleVersion"
+    ],
+    "callChains": [
+      "activateRuleAction -> runLifecycleAction -> server/services/approvalRuleLifecycle.ts#activateCoreAdminApprovalRuleVersion",
+      "activateRuleAction -> runLifecycleAction -> server/services/approvalRuleLifecycle.ts#deactivateCoreAdminApprovalRuleVersion"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "strict privileged MFA",
+      "company lock and active-slot CAS",
+      "company lock and lifecycle CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "denied, stale, or conflicting activation changes no active route, lifecycle intent, or lifecycle audit",
+      "denied, stale, or conflicting deactivation changes no active route, lifecycle intent, or lifecycle audit"
+    ]
+  },
+  {
+    "id": "admin/approval-rules/[id]/page.tsx#deactivateRuleAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/approvalRuleLifecycle.ts#activateCoreAdminApprovalRuleVersion",
+      "server/services/approvalRuleLifecycle.ts#deactivateCoreAdminApprovalRuleVersion"
+    ],
+    "callChains": [
+      "deactivateRuleAction -> runLifecycleAction -> server/services/approvalRuleLifecycle.ts#activateCoreAdminApprovalRuleVersion",
+      "deactivateRuleAction -> runLifecycleAction -> server/services/approvalRuleLifecycle.ts#deactivateCoreAdminApprovalRuleVersion"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "strict privileged MFA",
+      "company lock and active-slot CAS",
+      "company lock and lifecycle CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "denied, stale, or conflicting activation changes no active route, lifecycle intent, or lifecycle audit",
+      "denied, stale, or conflicting deactivation changes no active route, lifecycle intent, or lifecycle audit"
+    ]
+  },
+  {
     "id": "admin/approval-rules/[id]/page.tsx#page",
     "surfaceType": "PAGE",
     "permission": "core.administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "admin/approval-rules/[id]/revise/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "core.administer AND core.tenant_role_administer",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "server-service-query"
+    ],
+    "denialContract": "SIGN_IN_OR_NON_DISCLOSING_PAGE",
+    "riskTier": "STANDARD",
+    "executableTestIds": [
+      "AUTHZ-DEEPLINK-001"
+    ]
+  },
+  {
+    "id": "admin/approval-rules/[id]/revise/page.tsx#reviseRuleAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/approvalRuleLifecycle.ts#reviseCoreAdminApprovalRuleVersion"
+    ],
+    "callChains": [
+      "reviseRuleAction -> server/services/approvalRuleLifecycle.ts#reviseCoreAdminApprovalRuleVersion"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "strict privileged MFA",
+      "immutable lineage and lifecycle CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "denied or stale revision writes no successor, step, lifecycle intent, or lifecycle audit and does not alter the predecessor definition"
+    ]
+  },
+  {
+    "id": "admin/approval-rules/new/page.tsx#createRuleAction",
+    "surfaceType": "SERVER_ACTION",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY"
+    ],
+    "guardChain": [
+      "authenticated-app-layout",
+      "domain-service",
+      "service-authorization"
+    ],
+    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "AUTHZ-ACTION-001"
+    ],
+    "delegatedServiceIds": [
+      "server/services/approvalRuleLifecycle.ts#createCoreAdminApprovalRuleVersion"
+    ],
+    "callChains": [
+      "createRuleAction -> server/services/approvalRuleLifecycle.ts#createCoreAdminApprovalRuleVersion"
+    ],
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "strict privileged MFA",
+      "company lock and serializable transaction"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "denied, stale, cross-scope, or replay-conflicting create writes no rule, step, lifecycle intent, or lifecycle audit"
+    ]
+  },
+  {
+    "id": "admin/approval-rules/new/page.tsx#page",
+    "surfaceType": "PAGE",
+    "permission": "core.administer AND core.tenant_role_administer",
     "scopeDimensions": [
       "TENANT",
       "COMPANY"
@@ -14056,6 +14264,238 @@
     "riskTier": "STANDARD",
     "executableTestIds": [],
     "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/approvalRuleLifecycle.ts#activateCoreAdminApprovalRuleVersion",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister AND permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "permissionSource": "REVIEWED_SERVICE_COMPOSITION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "strict privileged MFA",
+      "company lock and active-slot CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "denied, stale, or conflicting activation changes no active route, lifecycle intent, or lifecycle audit"
+    ]
+  },
+  {
+    "id": "server/services/approvalRuleLifecycle.ts#createCoreAdminApprovalRuleVersion",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister AND permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "permissionSource": "REVIEWED_SERVICE_COMPOSITION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "strict privileged MFA",
+      "company lock and serializable transaction"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "denied, stale, cross-scope, or replay-conflicting create writes no rule, step, lifecycle intent, or lifecycle audit"
+    ]
+  },
+  {
+    "id": "server/services/approvalRuleLifecycle.ts#deactivateCoreAdminApprovalRuleVersion",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister AND permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "permissionSource": "REVIEWED_SERVICE_COMPOSITION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "strict privileged MFA",
+      "company lock and lifecycle CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "denied, stale, or conflicting deactivation changes no active route, lifecycle intent, or lifecycle audit"
+    ]
+  },
+  {
+    "id": "server/services/approvalRuleLifecycle.ts#getApprovalRuleVersionForComposer",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister AND permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "permissionSource": "REVIEWED_SERVICE_COMPOSITION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "exact tenant/company rule predicate",
+      "bounded immutable step projection"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "revoked permission or scope discloses no approval definition, role target, active slot, or successor and creates no lifecycle mutation"
+    ]
+  },
+  {
+    "id": "server/services/approvalRuleLifecycle.ts#listApprovalRuleComposerOptions",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister AND permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "permissionSource": "REVIEWED_SERVICE_COMPOSITION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "bounded active tenant/global role catalog",
+      "server-owned transaction and route catalog"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "revoked permission or scope discloses no administrative role catalog and creates no lifecycle mutation"
+    ]
+  },
+  {
+    "id": "server/services/approvalRuleLifecycle.ts#reviseCoreAdminApprovalRuleVersion",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "permissions.coreAdminister AND permissions.tenantRoleAdminister",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session",
+      "live-permission",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "permissionSource": "REVIEWED_SERVICE_COMPOSITION",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "requireSessionContext",
+      "live core and tenant-role permissions",
+      "selected-company MANAGE scope",
+      "strict privileged MFA",
+      "immutable lineage and lifecycle CAS"
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"
+    ],
+    "noMutationControls": [
+      "denied or stale revision writes no successor, step, lifecycle intent, or lifecycle audit and does not alter the predecessor definition"
+    ]
   },
   {
     "id": "server/services/approvals.ts#approveApproval",

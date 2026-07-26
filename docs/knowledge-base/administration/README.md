@@ -12,5 +12,6 @@ Authorized administrator guidance for users, roles, scopes, local account activa
 - [Managing Evidence Retention And Placing A Legal Hold](./managing-evidence-retention-and-legal-holds.md) — confidential company register, metadata-only review, view-only states, privileged-MFA hold placement, and preservation limits.
 - [Session Invalidation And Reauthentication](./session-invalidation-and-reauthentication.md) — user/admin application-session revocation, privilege-change reauthentication, and conditional external-provider follow-up.
 - [Configuring Policy Defaults](./configuring-policy-defaults.md)
+- [Configuring Approval Rules](./configuring-approval-rules.md) — immutable company versions, role-only ordered steps, controlled activation/deactivation, and intentional tenant-wide/named-user limits.
 
 Use the knowledge-base article template and follow the knowledge-base standard.

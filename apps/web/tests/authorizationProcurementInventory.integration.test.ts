@@ -19,6 +19,7 @@ import {
   clearAuthenticatedRequest,
   configureAuthenticatedRequest,
 } from "./authenticatedRequestHarness";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 
 const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(process.env);
 if (!process.env.DATABASE_URL) {
@@ -570,7 +571,7 @@ describe("procurement and inventory authorization boundaries", () => {
         purpose: "Authorization coverage",
       })),
     });
-    await prisma.approvalRule.create({
+    await createSealedApprovalRuleFixture(prisma, {
       data: {
         id: ids.approvalRuleId,
         tenantId: ids.tenantId,

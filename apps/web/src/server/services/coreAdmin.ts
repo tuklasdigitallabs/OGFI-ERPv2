@@ -7,6 +7,7 @@ import {
   requirePermission,
 } from "./authorization";
 import { recordAuthSessionInvalidation } from "./authInvalidation";
+import { approvalRuleCatalog } from "./approvalRuleCatalog";
 import { requireSessionContext, type SessionContext } from "./context";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
 import {
@@ -1236,6 +1237,8 @@ export type CoreAdminApprovalRulePage = {
   items: Array<{
     id: string;
     transactionType: string;
+    routeKey: string;
+    version: number;
     companyName: string;
     priority: number;
     isActive: boolean;
@@ -1256,11 +1259,12 @@ async function listCoreAdminApprovalRulePageAuthorized(
   const query = values.query.toLowerCase();
   const where: Prisma.ApprovalRuleWhereInput = {
     tenantId: session.context.tenantId,
+    transactionType: {
+      in: approvalRuleCatalog.map((entry) => entry.transactionType),
+      ...(query ? { contains: query, mode: "insensitive" as const } : {}),
+    },
     OR: [{ companyId: session.context.companyId }, { companyId: null }],
     ...(values.status ? { isActive: values.status === "ACTIVE" } : {}),
-    ...(query
-      ? { transactionType: { contains: query, mode: "insensitive" as const } }
-      : {}),
   };
   const [totalItems, activeItems] = await Promise.all([
     prisma.approvalRule.count({ where }),
@@ -1273,6 +1277,8 @@ async function listCoreAdminApprovalRulePageAuthorized(
     select: {
       id: true,
       transactionType: true,
+      routeKey: true,
+      version: true,
       priority: true,
       isActive: true,
       company: { select: { legalName: true, tradingName: true } },
@@ -1291,6 +1297,8 @@ async function listCoreAdminApprovalRulePageAuthorized(
     items: rules.map((rule) => ({
       id: rule.id,
       transactionType: rule.transactionType,
+      routeKey: rule.routeKey,
+      version: rule.version,
       companyName: rule.company?.tradingName ?? rule.company?.legalName ?? "Tenant-wide",
       priority: rule.priority,
       isActive: rule.isActive,
@@ -3945,9 +3953,15 @@ export async function getCoreAdminApprovalRuleDetail(
     select: {
       id: true,
       transactionType: true,
+      routeKey: true,
       scopeFilters: true,
       priority: true,
       isActive: true,
+      lineageId: true,
+      version: true,
+      lifecycleVersion: true,
+      supersedesRuleId: true,
+      updatedAt: true,
       createdAt: true,
       company: {
         select: { tradingName: true, legalName: true, timezone: true },
@@ -4019,11 +4033,17 @@ export async function getCoreAdminApprovalRuleDetail(
   return {
     id: rule.id,
     transactionType: rule.transactionType,
+    routeKey: rule.routeKey,
     companyName:
       rule.company?.tradingName ?? rule.company?.legalName ?? "Tenant-wide",
     timezone: rule.company?.timezone ?? "Asia/Manila",
     priority: rule.priority,
     isActive: rule.isActive,
+    lineageId: rule.lineageId,
+    version: rule.version,
+    lifecycleVersion: rule.lifecycleVersion,
+    supersedesRuleId: rule.supersedesRuleId,
+    updatedAt: rule.updatedAt.toISOString(),
     scopeFilters: rule.scopeFilters,
     createdAt: rule.createdAt.toISOString(),
     stepsPage: { page: stepsPage, pageSize: stepsPageSize, totalItems: stepTotal, totalPages: stepsPageCount },
@@ -4035,6 +4055,8 @@ export async function getCoreAdminApprovalRuleDetail(
         id: step.id,
         stepOrder: step.stepOrder,
         approverType: step.approverType,
+        roleId: step.roleId,
+        userId: step.userId,
         assigneeName: role?.name ?? user?.displayName ?? "Unassigned",
         assigneeCode: role?.code ?? user?.email ?? "",
         assigneeStatus: role?.status ?? user?.status ?? "MISSING",

@@ -11,6 +11,7 @@ import { cancelExpenseRequest } from "../src/server/services/expenseRequests";
 import { cancelPeriodCloseRun } from "../src/server/services/financePeriodClose";
 import { cancelPaymentRelease, cancelPaymentRequest } from "../src/server/services/finance";
 import { cancelPettyCashRequest } from "../src/server/services/pettyCash";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 import {
   cancelLeaveRequest,
   cancelOvertimeRecord,
@@ -382,7 +383,7 @@ async function createFixture(
   const createdSource = await createSource(item.family, sourceContext);
   const sourceId = typeof createdSource === "string" ? createdSource : createdSource.id;
   const relatedEntityIds = typeof createdSource === "string" ? [] : (createdSource.relatedEntityIds ?? []);
-  await prisma.approvalRule.create({ data: { id: ids.ruleId, tenantId: ids.tenantId, companyId: ids.companyId, transactionType: `CANCEL_${item.family}_${suffix}`, priority: 1 } });
+  await createSealedApprovalRuleFixture(prisma, { data: { id: ids.ruleId, tenantId: ids.tenantId, companyId: ids.companyId, transactionType: `CANCEL_${item.family}_${suffix}`, priority: 1 } });
   await prisma.approvalInstance.create({
     data: {
       id: ids.approvalId,

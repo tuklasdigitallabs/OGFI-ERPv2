@@ -9,6 +9,7 @@ import {
   assertDisposableAuthorizationDatabaseConfigured,
   assertDisposableAuthorizationDatabaseMarker,
 } from "./authorizationDatabaseSafety";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 
 const mockContext = vi.hoisted(() => ({
   requireSessionContext: vi.fn()
@@ -277,7 +278,7 @@ describe(`stock-adjustment final approval versus cancellation (${expectedDatabas
         }
       ]
     });
-    await prisma.approvalRule.create({
+    await createSealedApprovalRuleFixture(prisma, {
       data: {
         id: ids.approvalRule,
         tenantId: ids.tenant,

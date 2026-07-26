@@ -33,6 +33,7 @@ type PrivilegedMfaGuardInput = {
 type PrivilegedMfaGuardOptions = {
   transaction?: TransactionClient;
   deferDenialThrow?: boolean;
+  forceEnforcement?: boolean;
 };
 
 async function recordPrivilegedMfaDenial(
@@ -178,6 +179,7 @@ export async function assertPrivilegedMfaForAction(
     options.transaction,
   );
   const hardBlock =
+    options.forceEnforcement === true ||
     mode === "enforce_all_sensitive" ||
     (mode === "enforce_admin_security" &&
       (input.enforcementScope ?? "admin_security") === "admin_security");

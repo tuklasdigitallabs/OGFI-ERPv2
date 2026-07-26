@@ -9,6 +9,7 @@ import { approvalRoutingPolicies } from "../src/server/services/approvalRoutingR
 import { listNormalizedApprovalInboxPage } from "../src/server/services/approvals";
 import { inspectApprovalRoutingReadiness } from "../src/server/services/approvalRoutingBackfill";
 import type { SessionContext } from "../src/server/services/context";
+import { createSealedApprovalRuleFixture } from "./helpers/approvalRulePgFixtures";
 
 const runPg = process.env.RUN_APPROVAL_ROUTING_PG_TESTS === "true";
 const NOW = new Date("2026-07-22T04:00:00.000Z");
@@ -305,7 +306,7 @@ describe.skipIf(!runPg).sequential(
           },
         ],
       });
-      await prisma.approvalRule.create({
+      await createSealedApprovalRuleFixture(prisma, {
         data: {
           id: approvalRuleId,
           tenantId,
@@ -534,7 +535,7 @@ describe.skipIf(!runPg).sequential(
         label: "CUTOVER",
         scopeIds: [cutoverLocationId],
       });
-      const cutoverRule = await prisma.approvalRule.create({
+      const cutoverRule = await createSealedApprovalRuleFixture(prisma, {
         data: {
           tenantId,
           companyId: cutoverCompanyId,
@@ -654,7 +655,7 @@ describe.skipIf(!runPg).sequential(
         label: "BLOCKER",
         scopeIds: [blockerLocationId],
       });
-      const blockerRule = await prisma.approvalRule.create({
+      const blockerRule = await createSealedApprovalRuleFixture(prisma, {
         data: {
           tenantId: blockerTenantId,
           companyId: blockerCompanyId,

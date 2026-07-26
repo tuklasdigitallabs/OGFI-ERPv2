@@ -9654,10 +9654,12 @@ async function main() {
     ],
   });
 
-  await prisma.approvalRule.upsert({
+  await prisma.$transaction(async (approvalSeedTx) => {
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.approvalRuleId },
     create: {
       id: ids.approvalRuleId,
+      lineageId: ids.approvalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "PURCHASE_REQUEST",
@@ -9667,13 +9669,10 @@ async function main() {
         source: "local-demo-sample-data",
       },
     },
-    update: {
-      transactionType: "PURCHASE_REQUEST",
-      isActive: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.approvalRuleStepId },
     create: {
       id: ids.approvalRuleStepId,
@@ -9683,20 +9682,18 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.emergencyPurchaseRequestApprovalRuleId },
     create: {
       id: ids.emergencyPurchaseRequestApprovalRuleId,
+      lineageId: ids.emergencyPurchaseRequestApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "PURCHASE_REQUEST",
+      routeKey: "PR_EMERGENCY",
       priority: 50,
       isActive: true,
       scopeFilters: {
@@ -9705,19 +9702,10 @@ async function main() {
         emergency: true,
       },
     },
-    update: {
-      transactionType: "PURCHASE_REQUEST",
-      priority: 50,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        route: "emergency_purchase",
-        emergency: true,
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.emergencyPurchaseRequestApprovalRuleStepId },
     create: {
       id: ids.emergencyPurchaseRequestApprovalRuleStepId,
@@ -9727,17 +9715,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.quotationRecommendationApprovalRuleId },
     create: {
       id: ids.quotationRecommendationApprovalRuleId,
+      lineageId: ids.quotationRecommendationApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "QuotationRecommendation",
@@ -9749,19 +9734,10 @@ async function main() {
         appliesTo: "supplier_selection",
       },
     },
-    update: {
-      transactionType: "QuotationRecommendation",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        od04Pending: true,
-        appliesTo: "supplier_selection",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.quotationRecommendationApprovalRuleStepId },
     create: {
       id: ids.quotationRecommendationApprovalRuleStepId,
@@ -9771,19 +9747,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.quotationRecommendationApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.purchaseOrderApprovalRuleId },
     create: {
       id: ids.purchaseOrderApprovalRuleId,
+      lineageId: ids.purchaseOrderApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "PurchaseOrder",
@@ -9794,18 +9765,10 @@ async function main() {
         appliesTo: "po_approval",
       },
     },
-    update: {
-      transactionType: "PurchaseOrder",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "po_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.purchaseOrderApprovalRuleStepId },
     create: {
       id: ids.purchaseOrderApprovalRuleStepId,
@@ -9815,19 +9778,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.purchaseOrderApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.purchaseOrderBalanceClosureApprovalRuleId },
     create: {
       id: ids.purchaseOrderBalanceClosureApprovalRuleId,
+      lineageId: ids.purchaseOrderBalanceClosureApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "PurchaseOrderBalanceClosure",
@@ -9838,18 +9796,10 @@ async function main() {
         appliesTo: "po_remaining_balance_closure",
       },
     },
-    update: {
-      transactionType: "PurchaseOrderBalanceClosure",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "po_remaining_balance_closure",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.purchaseOrderBalanceClosureApprovalRuleStepId },
     create: {
       id: ids.purchaseOrderBalanceClosureApprovalRuleStepId,
@@ -9859,19 +9809,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.purchaseOrderBalanceClosureApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.purchaseOrderAmendmentApprovalRuleId },
     create: {
       id: ids.purchaseOrderAmendmentApprovalRuleId,
+      lineageId: ids.purchaseOrderAmendmentApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "PurchaseOrderAmendment",
@@ -9882,18 +9827,10 @@ async function main() {
         appliesTo: "issued_unreceived_po_amendment",
       },
     },
-    update: {
-      transactionType: "PurchaseOrderAmendment",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "issued_unreceived_po_amendment",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.purchaseOrderAmendmentApprovalRuleStepId },
     create: {
       id: ids.purchaseOrderAmendmentApprovalRuleStepId,
@@ -9903,19 +9840,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.purchaseOrderAmendmentApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.wastageApprovalRuleId },
     create: {
       id: ids.wastageApprovalRuleId,
+      lineageId: ids.wastageApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "WastageReport",
@@ -9926,18 +9858,10 @@ async function main() {
         appliesTo: "non_posting_wastage_approval",
       },
     },
-    update: {
-      transactionType: "WastageReport",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_wastage_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.wastageApprovalRuleStepId },
     create: {
       id: ids.wastageApprovalRuleStepId,
@@ -9947,19 +9871,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.wastageApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.stockAdjustmentApprovalRuleId },
     create: {
       id: ids.stockAdjustmentApprovalRuleId,
+      lineageId: ids.stockAdjustmentApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "StockAdjustment",
@@ -9970,18 +9889,10 @@ async function main() {
         appliesTo: "non_posting_stock_adjustment_approval",
       },
     },
-    update: {
-      transactionType: "StockAdjustment",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_stock_adjustment_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.stockAdjustmentApprovalRuleStepId },
     create: {
       id: ids.stockAdjustmentApprovalRuleStepId,
@@ -9991,19 +9902,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.stockAdjustmentApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.stockCountVarianceApprovalRuleId },
     create: {
       id: ids.stockCountVarianceApprovalRuleId,
+      lineageId: ids.stockCountVarianceApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "StockCountVarianceAdjustment",
@@ -10014,18 +9920,10 @@ async function main() {
         appliesTo: "count_variance_stock_adjustment_approval",
       },
     },
-    update: {
-      transactionType: "StockCountVarianceAdjustment",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "count_variance_stock_adjustment_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.stockCountVarianceApprovalRuleStepId },
     create: {
       id: ids.stockCountVarianceApprovalRuleStepId,
@@ -10035,19 +9933,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.stockCountVarianceApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.paymentRequestApprovalRuleId },
     create: {
       id: ids.paymentRequestApprovalRuleId,
+      lineageId: ids.paymentRequestApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "PaymentRequest",
@@ -10058,18 +9951,10 @@ async function main() {
         appliesTo: "non_posting_payment_request_approval",
       },
     },
-    update: {
-      transactionType: "PaymentRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_payment_request_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.paymentRequestApprovalRuleStepId },
     create: {
       id: ids.paymentRequestApprovalRuleStepId,
@@ -10079,19 +9964,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.paymentRequestApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.paymentReleaseApprovalRuleId },
     create: {
       id: ids.paymentReleaseApprovalRuleId,
+      lineageId: ids.paymentReleaseApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "PaymentRelease",
@@ -10102,18 +9982,10 @@ async function main() {
         appliesTo: "non_posting_payment_release_approval",
       },
     },
-    update: {
-      transactionType: "PaymentRelease",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_payment_release_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.paymentReleaseApprovalRuleStepId },
     create: {
       id: ids.paymentReleaseApprovalRuleStepId,
@@ -10123,19 +9995,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.paymentReleaseApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.budgetRevisionApprovalRuleId },
     create: {
       id: ids.budgetRevisionApprovalRuleId,
+      lineageId: ids.budgetRevisionApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "BudgetRevision",
@@ -10146,18 +10013,10 @@ async function main() {
         appliesTo: "non_posting_budget_revision_approval",
       },
     },
-    update: {
-      transactionType: "BudgetRevision",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_budget_revision_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.budgetRevisionApprovalRuleStepId },
     create: {
       id: ids.budgetRevisionApprovalRuleStepId,
@@ -10167,19 +10026,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.budgetRevisionApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.expenseRequestApprovalRuleId },
     create: {
       id: ids.expenseRequestApprovalRuleId,
+      lineageId: ids.expenseRequestApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "ExpenseRequest",
@@ -10190,18 +10044,10 @@ async function main() {
         appliesTo: "non_posting_expense_request_approval",
       },
     },
-    update: {
-      transactionType: "ExpenseRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_expense_request_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.expenseRequestApprovalRuleStepId },
     create: {
       id: ids.expenseRequestApprovalRuleStepId,
@@ -10211,19 +10057,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.expenseRequestApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.cashAdvanceApprovalRuleId },
     create: {
       id: ids.cashAdvanceApprovalRuleId,
+      lineageId: ids.cashAdvanceApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "CashAdvanceRequest",
@@ -10234,18 +10075,10 @@ async function main() {
         appliesTo: "non_posting_cash_advance_request_approval",
       },
     },
-    update: {
-      transactionType: "CashAdvanceRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_cash_advance_request_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.cashAdvanceApprovalRuleStepId },
     create: {
       id: ids.cashAdvanceApprovalRuleStepId,
@@ -10255,19 +10088,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.cashAdvanceApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.pettyCashApprovalRuleId },
     create: {
       id: ids.pettyCashApprovalRuleId,
+      lineageId: ids.pettyCashApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "PettyCashRequest",
@@ -10278,18 +10106,10 @@ async function main() {
         appliesTo: "non_posting_petty_cash_request_approval",
       },
     },
-    update: {
-      transactionType: "PettyCashRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_posting_petty_cash_request_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.pettyCashApprovalRuleStepId },
     create: {
       id: ids.pettyCashApprovalRuleStepId,
@@ -10299,19 +10119,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.pettyCashApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.workforceLeaveApprovalRuleId },
     create: {
       id: ids.workforceLeaveApprovalRuleId,
+      lineageId: ids.workforceLeaveApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "EmployeeLeaveRequest",
@@ -10322,18 +10137,10 @@ async function main() {
         appliesTo: "non_payroll_leave_approval",
       },
     },
-    update: {
-      transactionType: "EmployeeLeaveRequest",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_payroll_leave_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.workforceLeaveApprovalRuleStepId },
     create: {
       id: ids.workforceLeaveApprovalRuleStepId,
@@ -10343,19 +10150,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.workforceLeaveApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.workforceOvertimeApprovalRuleId },
     create: {
       id: ids.workforceOvertimeApprovalRuleId,
+      lineageId: ids.workforceOvertimeApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "EmployeeOvertimeRecord",
@@ -10366,18 +10168,10 @@ async function main() {
         appliesTo: "non_payroll_overtime_approval",
       },
     },
-    update: {
-      transactionType: "EmployeeOvertimeRecord",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_payroll_overtime_approval",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.workforceOvertimeApprovalRuleStepId },
     create: {
       id: ids.workforceOvertimeApprovalRuleStepId,
@@ -10387,19 +10181,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.workforceOvertimeApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.workforceScheduleApprovalRuleId },
     create: {
       id: ids.workforceScheduleApprovalRuleId,
+      lineageId: ids.workforceScheduleApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "WorkforceSchedule",
@@ -10410,18 +10199,10 @@ async function main() {
         appliesTo: "non_payroll_schedule_approval_before_publication",
       },
     },
-    update: {
-      transactionType: "WorkforceSchedule",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "non_payroll_schedule_approval_before_publication",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.workforceScheduleApprovalRuleStepId },
     create: {
       id: ids.workforceScheduleApprovalRuleStepId,
@@ -10431,19 +10212,14 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.workforceScheduleApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
 
-  await prisma.approvalRule.upsert({
+  await approvalSeedTx.approvalRule.upsert({
     where: { id: ids.attendanceImportApprovalRuleId },
     create: {
       id: ids.attendanceImportApprovalRuleId,
+      lineageId: ids.attendanceImportApprovalRuleId,
       tenantId: ids.tenantId,
       companyId: ids.companyId,
       transactionType: "AttendanceImportBatch",
@@ -10454,18 +10230,10 @@ async function main() {
         appliesTo: "exception_or_rejection_attendance_import_review",
       },
     },
-    update: {
-      transactionType: "AttendanceImportBatch",
-      priority: 100,
-      isActive: true,
-      scopeFilters: {
-        source: "local-demo-sample-data",
-        appliesTo: "exception_or_rejection_attendance_import_review",
-      },
-    },
+    update: {},
   });
 
-  await prisma.approvalRuleStep.upsert({
+  await approvalSeedTx.approvalRuleStep.upsert({
     where: { id: ids.attendanceImportApprovalRuleStepId },
     create: {
       id: ids.attendanceImportApprovalRuleStepId,
@@ -10475,14 +10243,35 @@ async function main() {
       roleId: ids.approverRoleId,
       required: true,
     },
-    update: {
-      approvalRuleId: ids.attendanceImportApprovalRuleId,
-      stepOrder: 1,
-      approverType: "ROLE",
-      roleId: ids.approverRoleId,
-      required: true,
-    },
+    update: {},
   });
+
+  const seededRuleIds = [
+    ids.approvalRuleId,
+    ids.emergencyPurchaseRequestApprovalRuleId,
+    ids.quotationRecommendationApprovalRuleId,
+    ids.purchaseOrderApprovalRuleId,
+    ids.purchaseOrderBalanceClosureApprovalRuleId,
+    ids.purchaseOrderAmendmentApprovalRuleId,
+    ids.wastageApprovalRuleId,
+    ids.stockAdjustmentApprovalRuleId,
+    ids.stockCountVarianceApprovalRuleId,
+    ids.paymentRequestApprovalRuleId,
+    ids.paymentReleaseApprovalRuleId,
+    ids.budgetRevisionApprovalRuleId,
+    ids.expenseRequestApprovalRuleId,
+    ids.cashAdvanceApprovalRuleId,
+    ids.pettyCashApprovalRuleId,
+    ids.workforceLeaveApprovalRuleId,
+    ids.workforceOvertimeApprovalRuleId,
+    ids.workforceScheduleApprovalRuleId,
+    ids.attendanceImportApprovalRuleId,
+  ];
+  await approvalSeedTx.approvalRule.updateMany({
+    where: { id: { in: seededRuleIds }, definitionSealed: false },
+    data: { definitionSealed: true },
+  });
+  }, { timeout: 30_000 });
 
   await prisma.wastagePolicy.upsert({
     where: { id: ids.wastagePolicyId },

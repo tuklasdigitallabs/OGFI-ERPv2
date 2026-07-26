@@ -149,6 +149,17 @@ Each approval step should support:
 - Delegated approver
 - Escalated approver
 
+Current Phase I administration boundary (`DEC-0225`): authorized administrators
+configure company-owned rules as immutable versions. A new rule or revision is
+inactive until an explicit, audited activation atomically replaces the active version
+for the same company, transaction type, and server-owned route template. The initial
+composer supports contiguous required sequential `ROLE` steps, the default route,
+and the existing Purchase Request emergency route only. It does not expose arbitrary
+condition JSON, named users, groups, parallel/optional steps, thresholds, effective
+dates, delegation, or escalation as working controls. Tenant-wide and legacy
+`USER`-targeted rules remain read-only pending the open policy decisions. Existing
+approval instances retain the exact rule version selected when they were submitted.
+
 ### 4.4 Approval outcomes
 
 | Outcome | Meaning | System effect |

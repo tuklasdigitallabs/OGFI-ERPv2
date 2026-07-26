@@ -7,6 +7,7 @@ import {
   approvalRoutingPolicies,
   type SupportedApprovalDocumentType,
 } from "../../src/server/services/approvalRoutingRegistry";
+import { createSealedApprovalRuleFixture } from "./approvalRulePgFixtures";
 
 export type ApprovalDecisionPgFixture = {
   tenantId: string;
@@ -204,7 +205,7 @@ export async function createApprovalDecisionPgFixture(input: {
           locationId: ids.locationId,
         }]
   );
-  await prisma.approvalRule.create({
+  await createSealedApprovalRuleFixture(prisma, {
     data: {
       id: ids.ruleId,
       tenantId: ids.tenantId,

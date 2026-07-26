@@ -963,6 +963,7 @@ model Tenant {
   uoms                                    Uom[]
   items                                   Item[]
   approvalRules                           ApprovalRule[]
+  approvalRuleLifecycleIntents            ApprovalRuleLifecycleIntent[]
   approvalInstances                       ApprovalInstance[]
   purchaseRequests                        PurchaseRequest[]
   purchaseRequestComments                 PurchaseRequestComment[]
@@ -1136,6 +1137,7 @@ model Company {
   uoms                                    Uom[]
   items                                   Item[]
   approvalRules                           ApprovalRule[]
+  approvalRuleLifecycleIntents            ApprovalRuleLifecycleIntent[]
   approvalInstances                       ApprovalInstance[]
   approvalStepScopeTargets                ApprovalInstanceStepScopeTarget[]
   purchaseRequests                        PurchaseRequest[]
@@ -7061,18 +7063,53 @@ model ReleaseBoardDecision {
 }
 
 model ApprovalRule {
-  id              String             @id @default(uuid()) @db.Uuid
-  tenantId        String             @db.Uuid
-  companyId       String?            @db.Uuid
-  transactionType String
-  scopeFilters    Json?
-  priority        Int                @default(100)
-  isActive        Boolean            @default(true)
-  createdAt       DateTime           @default(now())
-  tenant          Tenant             @relation(fields: [tenantId], references: [id])
-  company         Company?           @relation(fields: [companyId], references: [id])
-  steps           ApprovalRuleStep[]
-  instances       ApprovalInstance[]
+  id                     String                        @id @default(uuid()) @db.Uuid
+  tenantId               String                        @db.Uuid
+  companyId              String?                       @db.Uuid
+  transactionType        String
+  routeKey               String                        @default("DEFAULT")
+  scopeFilters           Json?
+  priority               Int                           @default(100)
+  isActive               Boolean                       @default(true)
+  lineageId              String                        @default(uuid()) @db.Uuid
+  version                Int                           @default(1)
+  supersedesRuleId       String?                       @db.Uuid
+  lifecycleVersion       Int                           @default(1)
+  idempotencyKey         String?                       @db.VarChar(128)
+  idempotencyRequestHash String?                       @db.Char(64)
+  definitionSealed       Boolean                       @default(false)
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
+  tenant                 Tenant                        @relation(fields: [tenantId], references: [id])
+  company                Company?                      @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ApprovalRule_company_scope_fkey")
+  supersedesRule         ApprovalRule?                 @relation("ApprovalRuleVersionLineage", fields: [supersedesRuleId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict)
+  successorRule          ApprovalRule?                 @relation("ApprovalRuleVersionLineage")
+  steps                  ApprovalRuleStep[]
+  instances              ApprovalInstance[]
+  lifecycleIntents       ApprovalRuleLifecycleIntent[]
+
+  @@unique([id, tenantId, companyId], map: "ApprovalRule_id_tenantId_companyId_key")
+  @@unique([supersedesRuleId, tenantId, companyId], map: "ApprovalRule_supersedesRuleId_tenantId_companyId_key")
+  @@unique([tenantId, lineageId, version], map: "ApprovalRule_lineage_version_key")
+  @@unique([tenantId, companyId, idempotencyKey], map: "ApprovalRule_scope_idempotency_key")
+  @@index([tenantId, companyId, transactionType, routeKey, isActive], map: "ApprovalRule_active_route_idx")
+}
+
+model ApprovalRuleLifecycleIntent {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @db.Uuid
+  companyId      String       @db.Uuid
+  approvalRuleId String       @db.Uuid
+  action         String
+  idempotencyKey String       @db.VarChar(128)
+  requestHash    String       @db.Char(64)
+  createdAt      DateTime     @default(now())
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  company        Company      @relation(fields: [companyId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "ApprovalRuleLifecycleIntent_company_scope_fkey")
+  approvalRule   ApprovalRule @relation(fields: [approvalRuleId, tenantId, companyId], references: [id, tenantId, companyId], onDelete: Restrict)
+
+  @@unique([tenantId, companyId, idempotencyKey], map: "ApprovalRuleLifecycleIntent_scope_idempotency_key")
+  @@index([tenantId, companyId, approvalRuleId, createdAt], map: "ApprovalRuleLifecycleIntent_rule_history_idx")
 }
 
 model ApprovalRuleStep {

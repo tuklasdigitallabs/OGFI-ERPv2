@@ -26,7 +26,7 @@
     "test:authorization-adapters": "node ../../scripts/run-disposable-postgres-tests.mjs authorization-adapters -- pnpm --dir apps/web test:authorization-adapters:execute",
     "test:authorization-adapters:execute": "vitest run tests/authorizationAdapter.integration.test.ts",
     "test:authorization-admin-platform": "node ../../scripts/run-disposable-postgres-tests.mjs authorization-admin-platform -- pnpm --dir apps/web test:authorization-admin-platform:execute",
-    "test:authorization-admin-platform:execute": "vitest run tests/authorizationAdminPlatform.integration.test.ts tests/authorizationCoreAdminRolePermissionConcurrency.integration.test.ts tests/authorizationCoreAdminUserAccess.integration.test.ts",
+    "test:authorization-admin-platform:execute": "vitest run --no-file-parallelism tests/authorizationAdminPlatform.integration.test.ts tests/authorizationCoreAdminRolePermissionConcurrency.integration.test.ts tests/authorizationCoreAdminUserAccess.integration.test.ts tests/approvalRuleLifecyclePg.integration.test.ts",
     "test:authorization-finance": "node ../../scripts/run-disposable-postgres-tests.mjs authorization-finance -- pnpm --dir apps/web test:authorization-finance:execute",
     "test:authorization-finance:execute": "vitest run tests/authorizationFinance.integration.test.ts",
     "test:authorization-procurement-inventory": "node ../../scripts/run-disposable-postgres-tests.mjs authorization-procurement-inventory -- pnpm --dir apps/web test:authorization-procurement-inventory:execute",

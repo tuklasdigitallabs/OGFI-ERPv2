@@ -76,6 +76,16 @@ const workspacePolicies = {
 
 const surfacePolicyOverrides = [
   {
+    prefix: "admin/approval-rules/new/",
+    permission: "core.administer AND core.tenant_role_administer",
+    dimensions: ["TENANT", "COMPANY"],
+  },
+  {
+    prefix: "admin/approval-rules/[id]/revise/",
+    permission: "core.administer AND core.tenant_role_administer",
+    dimensions: ["TENANT", "COMPANY"],
+  },
+  {
     prefix: "inventory/reconciliation/",
     permission: "inventory.balance.view AND inventory.ledger.view",
     dimensions: ["TENANT", "COMPANY", "LOCATION"],
@@ -90,13 +100,19 @@ const surfacePolicyOverrides = [
 const highRiskActionPattern =
   /^(activate|add|apply|approve|archive|assign|attest|begin|cancel|close|complete|create|deactivate|decide|delete|dispatch|end|execute|finalize|fulfill|grant|import|initiate|issue|link|lock|log|manage|mark|notify|post|publish|reassign|receive|record|reject|release|remove|reopen|request|resolve|retry|return|review|revoke|reverse|save|send|set|submit|transition|unlink|update|upload|upsert|verify|void|waive)/i;
 const highRiskDisclosurePattern =
-  /^(build.*export|download|export|getInventoryBalanceDashboardRead|getUnreadNotificationCount|listNotifications|list.*evidence|listProjectMemberOptions|listCoreAdminAuditEvents|getCoreAdmin(?:Overview|ApprovalRuleDetail|AuditEventDetail|CompanyDetail|LocationDetail|PermissionDetail|RoleDetail|UserDetail)|getReleaseSecurityEvidence)/i;
+  /^(build.*export|download|export|getApprovalRuleVersionForComposer|getInventoryBalanceDashboardRead|getUnreadNotificationCount|listApprovalRuleComposerOptions|listNotifications|list.*evidence|listProjectMemberOptions|listCoreAdminAuditEvents|getCoreAdmin(?:Overview|ApprovalRuleDetail|AuditEventDetail|CompanyDetail|LocationDetail|PermissionDetail|RoleDetail|UserDetail)|getReleaseSecurityEvidence)/i;
 const standardServiceEntrypointNames = new Set(["verifyPassword"]);
 const reviewedNonCallableServiceReexports = new Set([
   "server/services/expansionProjects.ts|./expansionProjectTypes|expansionProjectTypes|expansionProjectTypes",
 ]);
 const reviewedServicePermissionOverrides = new Map([
   ["server/services/myTasks.ts#getMyTasksPage", "SERVICE_ENFORCED"],
+  ["server/services/approvalRuleLifecycle.ts#activateCoreAdminApprovalRuleVersion", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
+  ["server/services/approvalRuleLifecycle.ts#createCoreAdminApprovalRuleVersion", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
+  ["server/services/approvalRuleLifecycle.ts#deactivateCoreAdminApprovalRuleVersion", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
+  ["server/services/approvalRuleLifecycle.ts#getApprovalRuleVersionForComposer", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
+  ["server/services/approvalRuleLifecycle.ts#listApprovalRuleComposerOptions", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
+  ["server/services/approvalRuleLifecycle.ts#reviseCoreAdminApprovalRuleVersion", "permissions.coreAdminister AND permissions.tenantRoleAdminister"],
 ]);
 
 function isHighRiskSurfaceName(name) {

@@ -1153,14 +1153,17 @@ export default async function CoreAdministrationPage({
 
         {activeTab === "approval-rules" ? (
         <Panel id="approval-rules" className="ogfi-detail-card">
-          <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-bold text-slate-950">Approval Rules</h2>
               <p className="text-sm text-slate-500">
                 Routing rules that control purchasing, inventory, and exception workflows.
               </p>
             </div>
-            <Badge tone="info">{activeRules} active</Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="info">{activeRules} active</Badge>
+              <ButtonLink href="/admin/approval-rules/new" tone="primary">Create Approval Rule</ButtonLink>
+            </div>
           </div>
           <form className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
             <input type="hidden" name="tab" value="approval-rules" />
@@ -1190,7 +1193,7 @@ export default async function CoreAdministrationPage({
                   </Badge>
                 </div>
                 <p className="mt-3 text-sm text-slate-600">
-                  Priority {rule.priority} · {rule.stepCount} step{rule.stepCount === 1 ? "" : "s"}
+                  {rule.routeKey.replaceAll("_", " ")} · Version {rule.version} · Priority {rule.priority} · {rule.stepCount} step{rule.stepCount === 1 ? "" : "s"}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   {rule.stepSummary || "No step preview available"}

@@ -158,6 +158,40 @@ const actionFeedbackMessages: Record<string, string> = {
   PURCHASE_ORDER_NOT_FOUND:
     "The selected Purchase Order is no longer available.",
   PERMISSION_DENIED: "You do not have permission to perform this action.",
+  APPROVAL_RULE_ACTIVE_VERSION_CONFLICT:
+    "The active rule for this route changed. Reload and review the current version before trying again.",
+  APPROVAL_RULE_AUTHORITY_STALE:
+    "Your administration authority changed. Sign in again before changing approval routing.",
+  APPROVAL_RULE_DUPLICATE_ROLE_STEP:
+    "Use each approval role only once in this sequential route.",
+  APPROVAL_RULE_IDEMPOTENCY_CONFLICT:
+    "This protected request key was already used with different approval-rule details. Reload before retrying.",
+  APPROVAL_RULE_LEGACY_USER_READ_ONLY:
+    "This historical rule contains a named-user or unsupported step and is read-only in the role-only composer.",
+  APPROVAL_RULE_NOT_FOUND:
+    "This approval rule is unavailable in the selected company.",
+  APPROVAL_RULE_ROLE_HAS_NO_SCOPED_APPROVER:
+    "One selected role has no active eligible member in the selected company.",
+  APPROVAL_RULE_ROLE_INELIGIBLE:
+    "One selected role is inactive, outside the tenant catalog, or missing the required approval permission.",
+  APPROVAL_RULE_ROUTE_ALREADY_EXISTS:
+    "A version lineage already exists for this company route. Open it and create a revision instead.",
+  APPROVAL_RULE_ROUTE_IMMUTABLE:
+    "A revision must keep the original transaction type and route template.",
+  APPROVAL_RULE_ROUTE_UNSUPPORTED:
+    "That route template is not supported for the selected transaction type.",
+  APPROVAL_RULE_STEPS_INVALID:
+    "Add between one and twenty complete approval-role steps.",
+  APPROVAL_RULE_STEP_ORDER_INVALID:
+    "Approval steps must be contiguous and begin at step one.",
+  APPROVAL_RULE_SUCCESSOR_EXISTS:
+    "This version already has a successor. Open the latest version before revising again.",
+  APPROVAL_RULE_TRANSACTION_TYPE_UNSUPPORTED:
+    "That transaction type is not connected to the bounded approval-rule composer.",
+  APPROVAL_RULE_TRANSITION_NOT_ALLOWED:
+    "This approval-rule version is already in the requested active state.",
+  APPROVAL_RULE_VERSION_CONFLICT:
+    "This rule version changed while you were working. Reload and review it before retrying.",
   PHASE2_WORKFLOW_TRANSITION_NOT_ALLOWED:
     "That workflow action is not available from the record's current status.",
   PHASE2_WORKFLOW_REASON_REQUIRED:

@@ -397,6 +397,20 @@ Current Phase I scaffold implements active supplier-to-item purchase UOM links, 
 | `sla_hours`, `escalation_rule_json`                                          |       No | Reminder and escalation.                                                                                     |
 | `delegation_allowed`                                                         |      Yes | Default true for normal approvers.                                                                           |
 
+Current implementation (`DEC-0225`) stores each company Approval Rule definition
+as an immutable version. `lineage_id` and `version` identify the chain;
+`supersedes_rule_id` links a successor; `route_key` identifies the server-owned
+active route slot; `lifecycle_version` and `updated_at` protect concurrent lifecycle
+actions; `definition_sealed` allows step insertion only inside the initial version-
+construction transaction; and the scoped idempotency key/hash protects retries.
+PostgreSQL rejects later definition/step changes and rule/step deletion, and permits
+at most one active rule for a tenant/company/transaction-type/route-key slot. New and
+revised versions contain contiguous required `ROLE` steps only and are created
+inactive. Activation/deactivation changes lifecycle state without rewriting the
+definition or any existing Approval Instance. The migration fails closed on duplicate
+active slots or active legacy `USER` steps; neither condition is auto-reconciled.
+Lifecycle intents are append-only and carry a composite tenant/company/rule reference.
+
 ### 7.3 Approval Instance and Action
 
 | Entity            | Required fields                                                                                                                 | Notes                                                                                                                |

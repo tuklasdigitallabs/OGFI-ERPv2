@@ -2,7 +2,8 @@
   "schemaVersion": 1,
   "cluster": "admin-platform",
   "testFiles": [
-    "apps/web/tests/authorizationAdminPlatform.integration.test.ts"
+    "apps/web/tests/authorizationAdminPlatform.integration.test.ts",
+    "apps/web/tests/approvalRuleLifecyclePg.integration.test.ts"
   ],
   "cases": [
     {
@@ -139,6 +140,21 @@
         "all admin-platform HIGH boundaries invoke real service guards",
         "live permission revocation",
         "exact business-table no-mutation"
+      ]
+    },
+    {
+      "id": "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY",
+      "file": "apps/web/tests/approvalRuleLifecyclePg.integration.test.ts",
+      "testName": "AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY",
+      "kind": "AUTHENTICATED_DATABASE_INTEGRATION",
+      "coveredControls": [
+        "live core and tenant-role permission revalidation",
+        "selected-company MANAGE scope revalidation",
+        "strict privileged-MFA enforcement",
+        "tenant/company route isolation",
+        "immutable sealed rule and step definitions",
+        "idempotent and compare-and-set lifecycle mutation",
+        "no lifecycle mutation on denied authority"
       ]
     },
     {
@@ -1550,6 +1566,54 @@
       "adapterIds": ["live core administrator permission", "selected-company MANAGE scope", "company-or-authorized-tenant rule predicate"],
       "caseIds": ["AUTHZ-CORE-ADMIN-DETAIL-READS-ENFORCE-COMPANY-AND-TENANT-ROLE-SCOPE"],
       "noMutationControls": ["foreign and nonexistent approval-rule ids disclose no rule, assignee, or audit data"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvalRuleLifecycle.ts#createCoreAdminApprovalRuleVersion",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "live core and tenant-role permissions", "selected-company MANAGE scope", "strict privileged MFA", "company lock and serializable transaction"],
+      "caseIds": ["AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"],
+      "noMutationControls": ["denied, stale, cross-scope, or replay-conflicting create writes no rule, step, lifecycle intent, or lifecycle audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvalRuleLifecycle.ts#reviseCoreAdminApprovalRuleVersion",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "live core and tenant-role permissions", "selected-company MANAGE scope", "strict privileged MFA", "immutable lineage and lifecycle CAS"],
+      "caseIds": ["AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"],
+      "noMutationControls": ["denied or stale revision writes no successor, step, lifecycle intent, or lifecycle audit and does not alter the predecessor definition"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvalRuleLifecycle.ts#activateCoreAdminApprovalRuleVersion",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "live core and tenant-role permissions", "selected-company MANAGE scope", "strict privileged MFA", "company lock and active-slot CAS"],
+      "caseIds": ["AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"],
+      "noMutationControls": ["denied, stale, or conflicting activation changes no active route, lifecycle intent, or lifecycle audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvalRuleLifecycle.ts#deactivateCoreAdminApprovalRuleVersion",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["requireSessionContext", "live core and tenant-role permissions", "selected-company MANAGE scope", "strict privileged MFA", "company lock and lifecycle CAS"],
+      "caseIds": ["AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"],
+      "noMutationControls": ["denied, stale, or conflicting deactivation changes no active route, lifecycle intent, or lifecycle audit"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvalRuleLifecycle.ts#getApprovalRuleVersionForComposer",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core and tenant-role permissions", "selected-company MANAGE scope", "exact tenant/company rule predicate", "bounded immutable step projection"],
+      "caseIds": ["AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"],
+      "noMutationControls": ["revoked permission or scope discloses no approval definition, role target, active slot, or successor and creates no lifecycle mutation"],
+      "status": "COVERED"
+    },
+    {
+      "surfaceId": "server/services/approvalRuleLifecycle.ts#listApprovalRuleComposerOptions",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["live core and tenant-role permissions", "selected-company MANAGE scope", "bounded active tenant/global role catalog", "server-owned transaction and route catalog"],
+      "caseIds": ["AUTHZ-APPROVAL-RULE-LIFECYCLE-LIVE-AUTHORITY-MFA-SCOPE-AND-IMMUTABILITY"],
+      "noMutationControls": ["revoked permission or scope discloses no administrative role catalog and creates no lifecycle mutation"],
       "status": "COVERED"
     },
     {
