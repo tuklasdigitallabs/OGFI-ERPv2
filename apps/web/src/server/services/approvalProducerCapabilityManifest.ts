@@ -6,7 +6,7 @@ import {
 } from "./approvalRoutingRegistry";
 
 export const APPROVAL_PRODUCER_CAPABILITY_VERSION =
-  "dec-0247-c0.dormant-discovery.3";
+  "dec-0247-c1.dormant-binary-observer-design.1";
 
 export const approvalProducerStableErrors = Object.freeze({
   barrierRetry: "APPROVAL_ROUTING_PRODUCER_BARRIER_RETRY",
@@ -558,6 +558,130 @@ const newChildIdentityDesign = {
   },
 } as const;
 
+const shadowObserverNames = {
+  PurchaseRequest: "approval_shadow.observe_purchase_request_v1",
+  QuotationRecommendation: "approval_shadow.observe_quotation_recommendation_v1",
+  PurchaseOrder: "approval_shadow.observe_purchase_order_v1",
+  PurchaseOrderBalanceClosure: "approval_shadow.observe_purchase_order_balance_closure_v1",
+  PurchaseOrderAmendment: "approval_shadow.observe_purchase_order_amendment_v1",
+  WastageReport: "approval_shadow.observe_wastage_report_v1",
+  StockAdjustment: "approval_shadow.observe_stock_adjustment_v1",
+  FinanceCloseRun: "approval_shadow.observe_finance_close_run_v1",
+  BudgetRevision: "approval_shadow.observe_budget_revision_v1",
+  ExpenseRequest: "approval_shadow.observe_expense_request_v1",
+  CashAdvanceRequest: "approval_shadow.observe_cash_advance_request_v1",
+  PettyCashRequest: "approval_shadow.observe_petty_cash_request_v1",
+  PaymentRequest: "approval_shadow.observe_payment_request_v1",
+  PaymentRelease: "approval_shadow.observe_payment_release_v1",
+  EmployeeLeaveRequest: "approval_shadow.observe_employee_leave_request_v1",
+  EmployeeOvertimeRecord: "approval_shadow.observe_employee_overtime_record_v1",
+  WorkforceSchedule: "approval_shadow.observe_workforce_schedule_v1",
+  AttendanceImportBatch: "approval_shadow.observe_attendance_import_batch_v1",
+} as const satisfies Record<SupportedApprovalDocumentType, string>;
+
+const shadowObserverLineage = {
+  PurchaseRequest: "PurchaseRequest only.",
+  QuotationRecommendation: "QuotationRecommendation through QuotationRequest to PurchaseRequest.",
+  PurchaseOrder: "PurchaseOrder through PurchaseRequest and QuotationRecommendation.",
+  PurchaseOrderBalanceClosure: "PurchaseOrderBalanceClosure through its parent PurchaseOrder, PurchaseRequest, and QuotationRecommendation.",
+  PurchaseOrderAmendment: "PurchaseOrderAmendment through its parent PurchaseOrder, PurchaseRequest, and QuotationRecommendation.",
+  WastageReport: "WastageReport through InventoryLocation.",
+  StockAdjustment: "StockAdjustment through InventoryLocation.",
+  FinanceCloseRun: "FinanceCloseRun through its company and pending sensitive-action config snapshot.",
+  BudgetRevision: "BudgetRevision through Budget and its distinct location-line scope.",
+  ExpenseRequest: "ExpenseRequest through its lines, source links, and controlled evidence facts.",
+  CashAdvanceRequest: "CashAdvanceRequest through its location, beneficiary, and configured source lineage.",
+  PettyCashRequest: "PettyCashRequest through PettyCashFund.",
+  PaymentRequest: "PaymentRequest through its lines and payable-source lineage.",
+  PaymentRelease: "PaymentRelease through PaymentRequest, BankAccount, and allocations.",
+  EmployeeLeaveRequest: "EmployeeLeaveRequest through employee and location facts.",
+  EmployeeOvertimeRecord: "EmployeeOvertimeRecord through employee and location facts.",
+  WorkforceSchedule: "WorkforceSchedule through schedule lines and location facts.",
+  AttendanceImportBatch: "AttendanceImportBatch through import lines, location, and review-branch facts.",
+} as const satisfies Record<SupportedApprovalDocumentType, string>;
+
+const postChildObserverDocumentTypes = new Set<SupportedApprovalDocumentType>([
+  "PurchaseOrderBalanceClosure",
+  "PurchaseOrderAmendment",
+  "PaymentRelease",
+]);
+
+const shadowObserverSignature =
+  "(p_tenant_id uuid, p_company_id uuid, p_approval_instance_id uuid)";
+
+const shadowObserverDesigns = Object.fromEntries(
+  supportedApprovalDocumentTypes.map((documentType) => [documentType, {
+    contractKind: "DORMANT_BINARY_SHADOW_OBSERVER_DESIGN" as const,
+    proposedName: shadowObserverNames[documentType],
+    signature: shadowObserverSignature,
+    parameters: [
+      "p_tenant_id",
+      "p_company_id",
+      "p_approval_instance_id",
+    ] as const,
+    parametersAreBindingsNotAuthority: true as const,
+    fixedDocumentType: documentType,
+    derivation: {
+      documentId: "Derived only from the bound ApprovalInstance.documentId.",
+      sourceRelation: requiredCapabilityDiscoveryFacts[documentType].sourceRelation,
+      parentLineage: shadowObserverLineage[documentType],
+      lifecycle: postChildObserverDocumentTypes.has(documentType)
+        ? "POST_CHILD_ONLY" as const
+        : "POST_SOURCE_ONLY" as const,
+    },
+    noMatchSemantics:
+      "Absent, wrong-scope, wrong-family, missing-source, ambiguous-source, lineage mismatch, and every other mismatch collapse identically.",
+    resultDesign: {
+      values: ["SHADOW_MATCH", "SHADOW_NO_MATCH"] as const,
+      authoritative: false as const,
+      payload: "NONE" as const,
+    },
+    futureRoutineRequirements: {
+      security: "SECURITY INVOKER" as const,
+      volatility: "STABLE" as const,
+      leakproof: false as const,
+      exposure: "PRIVATE_UNGRANTED" as const,
+      allowsDml: false as const,
+      acquiresLocks: false as const,
+      allowsDynamicSql: false as const,
+    },
+    executable: false as const,
+    sqlExists: false as const,
+    grantsAuthority: false as const,
+  }]),
+) as unknown as Record<SupportedApprovalDocumentType, Readonly<{
+  contractKind: "DORMANT_BINARY_SHADOW_OBSERVER_DESIGN";
+  proposedName: string;
+  signature: string;
+  parameters: readonly ["p_tenant_id", "p_company_id", "p_approval_instance_id"];
+  parametersAreBindingsNotAuthority: true;
+  fixedDocumentType: SupportedApprovalDocumentType;
+  derivation: Readonly<{
+    documentId: string;
+    sourceRelation: string;
+    parentLineage: string;
+    lifecycle: "POST_CHILD_ONLY" | "POST_SOURCE_ONLY";
+  }>;
+  noMatchSemantics: string;
+  resultDesign: Readonly<{
+    values: readonly ["SHADOW_MATCH", "SHADOW_NO_MATCH"];
+    authoritative: false;
+    payload: "NONE";
+  }>;
+  futureRoutineRequirements: Readonly<{
+    security: "SECURITY INVOKER";
+    volatility: "STABLE";
+    leakproof: false;
+    exposure: "PRIVATE_UNGRANTED";
+    allowsDml: false;
+    acquiresLocks: false;
+    allowsDynamicSql: false;
+  }>;
+  executable: false;
+  sqlExists: false;
+  grantsAuthority: false;
+}>>;
+
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);
   if (value && typeof value === "object") {
@@ -610,6 +734,7 @@ export const approvalProducerCapabilityManifest = deepFreeze(
           stableErrors: facts.stableErrors,
           idempotency: facts.idempotency,
         },
+        observerDesign: shadowObserverDesigns[documentType],
         identityLifecycle:
           documentType in newChildIdentityDesign
             ? newChildIdentityDesign[
@@ -644,6 +769,7 @@ export const approvalProducerCapabilityManifest = deepFreeze(
       stableErrors: readonly string[];
       idempotency: string;
     };
+    observerDesign: (typeof shadowObserverDesigns)[SupportedApprovalDocumentType];
     identityLifecycle: (typeof newChildIdentityDesign)[keyof typeof newChildIdentityDesign] | null;
   }>,
 );

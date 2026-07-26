@@ -523,11 +523,11 @@ function moduleReferences(file: string, source: string, target: string) {
   return references;
 }
 
-describe("DEC-0247 C0 dormant discovery contract", () => {
+describe("DEC-0247 C1-D dormant observer design contract", () => {
   test("pins a deeply frozen, non-executable exact 18-family manifest", () => {
-    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0247-c0.dormant-discovery.3");
+    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0247-c1.dormant-binary-observer-design.1");
     expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(
-      "9f8e115a0baef11fab2ce1ebd213251551216e7b1720b610b36de6cb25392c61",
+      "f692d28f5b5244dfaccffb1085ce2584e5588e0f56c79ad730d3d5a492a7f1cd",
     );
     expect(Object.isFrozen(approvalProducerCapabilityManifest)).toBe(true);
     expect(approvalProducerCapabilityContracts).toHaveLength(18);
@@ -549,6 +549,30 @@ describe("DEC-0247 C0 dormant discovery contract", () => {
       ...specializedApprovalDocumentTypes,
     ]);
 
+    const expectedObserverNames = {
+      PurchaseRequest: "approval_shadow.observe_purchase_request_v1",
+      QuotationRecommendation: "approval_shadow.observe_quotation_recommendation_v1",
+      PurchaseOrder: "approval_shadow.observe_purchase_order_v1",
+      PurchaseOrderBalanceClosure: "approval_shadow.observe_purchase_order_balance_closure_v1",
+      PurchaseOrderAmendment: "approval_shadow.observe_purchase_order_amendment_v1",
+      WastageReport: "approval_shadow.observe_wastage_report_v1",
+      StockAdjustment: "approval_shadow.observe_stock_adjustment_v1",
+      FinanceCloseRun: "approval_shadow.observe_finance_close_run_v1",
+      BudgetRevision: "approval_shadow.observe_budget_revision_v1",
+      ExpenseRequest: "approval_shadow.observe_expense_request_v1",
+      CashAdvanceRequest: "approval_shadow.observe_cash_advance_request_v1",
+      PettyCashRequest: "approval_shadow.observe_petty_cash_request_v1",
+      PaymentRequest: "approval_shadow.observe_payment_request_v1",
+      PaymentRelease: "approval_shadow.observe_payment_release_v1",
+      EmployeeLeaveRequest: "approval_shadow.observe_employee_leave_request_v1",
+      EmployeeOvertimeRecord: "approval_shadow.observe_employee_overtime_record_v1",
+      WorkforceSchedule: "approval_shadow.observe_workforce_schedule_v1",
+      AttendanceImportBatch: "approval_shadow.observe_attendance_import_batch_v1",
+    } as const;
+    expect(new Set(approvalProducerCapabilityContracts.map(
+      (contract) => contract.observerDesign.proposedName,
+    )).size).toBe(18);
+
     for (const contract of approvalProducerCapabilityContracts) {
       expect(contract.contractKind).toBe("DORMANT_DISCOVERY_CONTRACT");
       expect(contract.executable).toBe(false);
@@ -563,6 +587,45 @@ describe("DEC-0247 C0 dormant discovery contract", () => {
       expect(contract.requiredCapability.stableErrors).toEqual(expect.arrayContaining(Object.values(approvalProducerStableErrors)));
       expect(Object.isFrozen(contract.currentCompatibility)).toBe(true);
       expect(Object.isFrozen(contract.requiredCapability)).toBe(true);
+      expect(contract.observerDesign).toMatchObject({
+        contractKind: "DORMANT_BINARY_SHADOW_OBSERVER_DESIGN",
+        proposedName: expectedObserverNames[contract.documentType],
+        signature: "(p_tenant_id uuid, p_company_id uuid, p_approval_instance_id uuid)",
+        parameters: ["p_tenant_id", "p_company_id", "p_approval_instance_id"],
+        parametersAreBindingsNotAuthority: true,
+        fixedDocumentType: contract.documentType,
+        noMatchSemantics: expect.stringContaining("collapse identically"),
+        resultDesign: {
+          values: ["SHADOW_MATCH", "SHADOW_NO_MATCH"],
+          authoritative: false,
+          payload: "NONE",
+        },
+        futureRoutineRequirements: {
+          security: "SECURITY INVOKER",
+          volatility: "STABLE",
+          leakproof: false,
+          exposure: "PRIVATE_UNGRANTED",
+          allowsDml: false,
+          acquiresLocks: false,
+          allowsDynamicSql: false,
+        },
+        executable: false,
+        sqlExists: false,
+        grantsAuthority: false,
+      });
+      expect(contract.observerDesign.derivation).toMatchObject({
+        documentId: expect.stringContaining("ApprovalInstance.documentId"),
+        sourceRelation: contract.currentCompatibility.sourceRelation,
+        parentLineage: expect.any(String),
+      });
+      expect(contract.observerDesign.derivation.parentLineage.length).toBeGreaterThan(8);
+      expect(Object.keys(contract.observerDesign.resultDesign).sort()).toEqual([
+        "authoritative", "payload", "values",
+      ]);
+      expect(JSON.stringify(contract.observerDesign.resultDesign)).not.toMatch(
+        /identifier|reason|count|hash|readiness|evidence/i,
+      );
+      expect(Object.isFrozen(contract.observerDesign)).toBe(true);
     }
     expect(approvalProducerCapabilityManifest.PurchaseRequest.currentCompatibility.routingObserved.due).toContain("UTC midnight");
     expect(approvalProducerCapabilityManifest.BudgetRevision.currentCompatibility.transactionControl.replay).toBe("ABSENT");
@@ -572,7 +635,16 @@ describe("DEC-0247 C0 dormant discovery contract", () => {
     )).size).toBe(18);
     for (const family of ["PurchaseOrderBalanceClosure", "PurchaseOrderAmendment", "PaymentRelease"] as const) {
       expect(approvalProducerCapabilityManifest[family].identityLifecycle?.unresolvedRequiredDesign).toContain("Define");
+      expect(approvalProducerCapabilityManifest[family].observerDesign.derivation.lifecycle).toBe("POST_CHILD_ONLY");
     }
+    for (const family of supportedApprovalDocumentTypes.filter(
+      (documentType) => !["PurchaseOrderBalanceClosure", "PurchaseOrderAmendment", "PaymentRelease"].includes(documentType),
+    )) {
+      expect(approvalProducerCapabilityManifest[family].observerDesign.derivation.lifecycle).toBe("POST_SOURCE_ONLY");
+    }
+    expect(toolingFiles().filter((file) =>
+      readFileSync(path.join(repositoryRoot, file), "utf8").includes("approval_shadow.observe_"),
+    )).toEqual([]);
   });
 
   test("keeps the manifest and inventory transitively test-only", () => {
