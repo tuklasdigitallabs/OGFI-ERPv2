@@ -1183,15 +1183,29 @@ describe("operational dashboard model", () => {
       totalCount: null,
       displayedCount: 0,
       completeness: "PARTIAL",
-      unavailableDetail: expect.stringContaining("Approval Inbox"),
+      unavailableDetail: expect.stringContaining("Pending approval work may still exist"),
     });
+    expect(dashboard.approvalQueueContract.unavailableDetail).toContain(
+      "If available to your role",
+    );
+    expect(dashboard.approvalQueueContract.unavailableDetail).toContain(
+      "not a complete queue",
+    );
     const dashboardServiceSource = readFileSync(
       path.resolve(__dirname, "dashboard.ts"),
       "utf8",
     );
     expect(dashboardServiceSource).not.toContain("listPendingApprovals");
-    expect(dashboardPageSource).toContain("Approval preview is temporarily unavailable");
-    expect(dashboardPageSource).toContain("Open Approval Inbox");
+    expect(dashboardPageSource).toContain("Approval preview and queue are unavailable");
+    expect(dashboardPageSource).toContain(
+      'dashboard.approvalQueueContract.availability !== "UNAVAILABLE"',
+    );
+    expect(dashboardPageSource).toContain(
+      'dashboard.approvalQueueContract.availability === "AVAILABLE"',
+    );
+    expect(dashboardPageSource).toContain('source.id === "approvals"');
+    expect(dashboardPageSource).toContain("Queue unavailable");
+    expect(dashboardPageSource).not.toContain('actionLabel="Open Approval Inbox"');
   });
 
   it("uses the bounded Branch Operations read instead of the full checklist workspace read", () => {

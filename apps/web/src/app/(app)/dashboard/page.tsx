@@ -277,15 +277,25 @@ function SourceObservationList({
               </p>
             ) : null}
             {source.availability === "UNAVAILABLE" ? (
-              <p className="mt-1 text-xs">Source data was unavailable for this response.</p>
+              <p className="mt-1 text-xs">
+                {source.id === "approvals"
+                  ? "The approval queue is unavailable. Pending work may still exist."
+                  : "Source data was unavailable for this response."}
+              </p>
             ) : null}
           </div>
-          <a
-            className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-3 text-sm font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-            href={source.href}
-          >
-            Open source
-          </a>
+          {source.id === "approvals" && source.availability === "UNAVAILABLE" ? (
+            <span className="inline-flex min-h-11 shrink-0 items-center px-3 text-sm font-bold text-slate-500">
+              Queue unavailable
+            </span>
+          ) : (
+            <a
+              className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-3 text-sm font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+              href={source.href}
+            >
+              Open source
+            </a>
+          )}
         </li>
       ))}
     </ul>
@@ -501,7 +511,7 @@ function AnalyticsDonutPanel({
             </div>
             <p className="mt-1 text-sm text-blue-900/70">
               {approvals === null
-                ? "Use Approval Inbox while its controlled routing transition is active."
+                ? "Approval Inbox is unavailable. Pending work may still exist; if a reminder scan is available to your role, it covers only your eligible due or overdue work and remains non-actionable until activation."
                 : "Decisions assigned to the logged-in user and visible scope."}
             </p>
           </div>
@@ -558,17 +568,17 @@ function DashboardOverview({ dashboard }: { dashboard: DashboardData }) {
                 <h3 className="font-bold text-slate-950">Assigned approvals</h3>
                 <p className="text-sm text-slate-500">Only decisions you can act on are included.</p>
               </div>
-              <ButtonLink href="/approvals" tone="secondary" className="min-h-10 text-blue-700 hover:bg-blue-50">
-                Open approvals
-              </ButtonLink>
+              {dashboard.approvalQueueContract.availability !== "UNAVAILABLE" ? (
+                <ButtonLink href="/approvals" tone="secondary" className="min-h-11 text-blue-700 hover:bg-blue-50">
+                  Open approvals
+                </ButtonLink>
+              ) : null}
             </div>
             {dashboard.approvalQueueContract.availability === "UNAVAILABLE" ? (
               <div className="p-4">
                 <EmptyDashboardState
-                  title="Approval preview is temporarily unavailable"
-                  detail={dashboard.approvalQueueContract.unavailableDetail ?? "Use Approval Inbox for your controlled approval work."}
-                  actionHref="/approvals"
-                  actionLabel="Open Approval Inbox"
+                  title="Approval preview and queue are unavailable"
+                  detail={dashboard.approvalQueueContract.unavailableDetail ?? "Pending approval work may still exist. Follow your workflow owner's release guidance until the Approval Inbox is activated."}
                 />
               </div>
             ) : (
@@ -864,12 +874,14 @@ function DashboardReports({
       href: "/wastage",
       available: dashboard.cards.some((card) => card.id === "wastage-exceptions")
     },
-    {
-      title: "Approval Queue",
-      detail: "Pending approvals assigned by role, scope, approver eligibility, and status.",
-      href: "/approvals",
-      available: dashboard.approvalQueueContract.availability === "AVAILABLE"
-    },
+    ...(dashboard.approvalQueueContract.availability === "AVAILABLE"
+      ? [{
+          title: "Approval Queue",
+          detail: "Pending approvals assigned by role, scope, approver eligibility, and status.",
+          href: "/approvals",
+          available: true
+        }]
+      : []),
     ...(canOpenFoodCostAnalysis
       ? [
           {

@@ -1373,7 +1373,7 @@ export function buildOperationalDashboardModel(
       })
     );
     approvalQueueContract.unavailableDetail =
-      "Use Approval Inbox while approval-routing transition safeguards are active.";
+      "Approval preview and the Approval Inbox queue are unavailable while routing safeguards are active. Pending approval work may still exist. If available to your role, Scan Approvals in Notifications can create current-user reminders only for your eligible due or overdue work. It is not a complete queue, and its approval links remain unavailable until Inbox activation.";
   }
   const exceptionObservations = source.sourceObservations?.filter(
     (observation) => exceptionQueueContributorIds.has(observation.id)

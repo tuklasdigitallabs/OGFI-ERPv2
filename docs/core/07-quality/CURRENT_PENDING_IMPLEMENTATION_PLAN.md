@@ -1,6 +1,6 @@
 # OGFI ERP — Current Pending Implementation Plan
 
-**As of:** July 24, 2026
+**As of:** July 26, 2026
 **Status:** Active implementation register  
 **Scope:** Production-readiness implementation remaining outside formal user UAT execution and final owner signoff
 
@@ -775,6 +775,13 @@ Conversion edit now uses the selected conversion composer with scoped detail and
 - The reusable live PostgreSQL authorization regression is registered for the new PO and PR profile reads and proves a missing read permission must deny them without mutation when it executes. It could not be run locally in this checkpoint because `DISPOSABLE_DATABASE_ADMIN_URL` is not configured; run it on the disposable/hosted gate before production readiness is claimed.
 - Knowledge-base and glossary guidance now describes `Today’s work` as a read-only, scoped priority view. It does not claim that an item is complete, approved, posted, or otherwise changed merely because it appears on the overview.
 - Knowledge-base and glossary impact was assessed for this internal read-path hardening. No user-visible term, navigation, permission, or workflow changed, so their existing `Today’s work` guidance remains accurate without an additional edit.
+
+### Workspace 1 approval-unavailable surface correction — July 26, 2026
+
+- Overview now treats the flag-off approval source as an intentionally non-actionable unavailable surface. The approval source-status row, assigned-approvals header, unavailable queue state, and approval-alert summary no longer direct users to `Open approvals`, `Open Approval Inbox`, or a generic approval source that exposes no queue or actions. The available-state `Open approvals` action remains conditional and unchanged.
+- The unavailable state explicitly says pending work may still exist. It accurately describes `Scan Approvals` as a partial current-user reminder scan for eligible due or overdue work whose approval links remain unavailable until controlled Inbox activation. No approval read, list, count, notification, permission, scope, route, or decision authority changed; no legacy or parallel flag-off queue was added.
+- Focused dashboard model and presentation coverage passes 38/38. The complete non-database web suite passes 1,389 tests with 305 skipped and one existing TODO across 127 passed/11 skipped files; web and E2E typecheck, web lint, production build, secret review, and `git diff --check` pass. The source-of-truth dashboard UI specification, existing dashboard/approval knowledge-base guidance, and the user-facing release note are aligned. Requested Code Spark and exact GPT-5.4 specialists were unavailable, so the closest permitted GPT-5.6 fallbacks were used without relaxing any gate.
+- Workspace 1 and normalized-routing activation remain **NO-GO**. Independent reconciliation also identified a separate High production-availability gap: `My Tasks` awaits all source adapters without a bounded settlement contract, so one never-settling adapter can prevent the documented partial response. The Decision Chair applies that hard gate ahead of Positive Stock destination/export parity; its deadline, admission, late-settlement, telemetry, and database-cancellation posture require a confirmed material decision before implementation. Disposable PostgreSQL, authenticated responsive-browser, hosted recovery/deployment, production-authenticated E2E, Food Cost/Count Variance policy, and UAT gates remain open.
 
 ## 5. Workspace Completion Gate
 
