@@ -4,10 +4,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { permissions } from "./authorization";
 import {
   applyBranchOperationChecklistCorrection,
+  branchOperationsChecklistDetailHref,
+  branchOperationsDashboardProfileHref,
+  branchOperationsDashboardProfilePageHref,
+  branchOperationsDashboardProfileWhere,
   closeBranchOperationChecklist,
   createBranchOperationChecklist,
   filterBranchOperationChecklists,
+  getBranchOperationsDashboardRead,
+  listBranchOperationChecklistPage,
   listBranchOperationMyTaskPage,
+  resolveBranchOperationsDashboardProfile,
+  resolveBranchOperationsDashboardRequest,
+  resolveBranchOperationsReturnTo,
   reviewBranchOperationChecklist,
   returnBranchOperationChecklistForCorrection,
   type BranchOperationChecklistSummary
@@ -18,9 +27,18 @@ const mockPrisma = vi.hoisted(() => ({
   userRoleAssignment: {
     findMany: vi.fn()
   },
-  branchOperationalChecklist: {
-    count: vi.fn(),
+  user: {
     findMany: vi.fn()
+  },
+  branchOperationalChecklist: {
+    aggregate: vi.fn(),
+    count: vi.fn(),
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+    groupBy: vi.fn()
+  },
+  branchOperationalChecklistLine: {
+    count: vi.fn()
   }
 }));
 const mockContext = vi.hoisted(() => ({
@@ -970,6 +988,271 @@ describe("Phase 2 branch operations foundation", () => {
         status: "ALL"
       }).map((checklist) => checklist.id)
     ).toEqual(["checklist-1", "checklist-2"]);
+  });
+  it("resolves only versioned Branch Operations dashboard profiles", () => {
+    expect(resolveBranchOperationsDashboardProfile("branch-checklist-exceptions-v1")).toBe(
+      "branch-checklist-exceptions-v1"
+    );
+    expect(resolveBranchOperationsDashboardProfile("branch-checklist-reviews-v1")).toBe(
+      "branch-checklist-reviews-v1"
+    );
+    expect(resolveBranchOperationsDashboardProfile("branch-checklist-reviews-v0")).toBeNull();
+    expect(branchOperationsDashboardProfileHref("branch-checklist-reviews-v1")).toBe(
+      "/branch-operations?dashboard=branch-checklist-reviews-v1"
+    );
+  });
+
+  it("resolves dashboard request errors and preserves safe profile navigation", () => {
+    expect(
+      resolveBranchOperationsDashboardRequest("branch-checklist-reviews-v0", "safe")
+    ).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
+    expect(
+      resolveBranchOperationsDashboardRequest(
+        "branch-checklist-reviews-v1",
+        "x".repeat(121)
+      )
+    ).toMatchObject({
+      profile: "branch-checklist-reviews-v1",
+      error: "SEARCH_INVALID"
+    });
+    expect(
+      branchOperationsDashboardProfilePageHref("branch-checklist-reviews-v1", {
+        query: " Manager Review ",
+        page: 2
+      })
+    ).toBe(
+      "/branch-operations?dashboard=branch-checklist-reviews-v1&q=manager+review&page=2"
+    );
+    const safeReturn = "/branch-operations?dashboard=branch-checklist-reviews-v1&q=manager+review&page=2";
+    expect(resolveBranchOperationsReturnTo(safeReturn)).toBe(safeReturn);
+    expect(resolveBranchOperationsReturnTo("/branch-operations-evil?dashboard=x")).toBeNull();
+    expect(resolveBranchOperationsReturnTo("//branch-operations?dashboard=x")).toBeNull();
+    expect(resolveBranchOperationsReturnTo("/branch-operations?next=\\evil")).toBeNull();
+    expect(branchOperationsChecklistDetailHref("checklist-1", safeReturn)).toBe(
+      `/branch-operations/checklist-1?returnTo=${encodeURIComponent(safeReturn)}`
+    );
+  });
+
+  it("rejects an unsupported profile and overlong profile search at the service boundary", async () => {
+    await expect(
+      listBranchOperationChecklistPage(
+        session as never,
+        {},
+        { dashboardProfile: "branch-checklist-reviews-v0" as never }
+      )
+    ).rejects.toThrow("BRANCH_OPERATIONS_DASHBOARD_PROFILE_INVALID");
+    await expect(
+      listBranchOperationChecklistPage(
+        session as never,
+        { q: "x".repeat(121) },
+        { dashboardProfile: "branch-checklist-reviews-v1" }
+      )
+    ).rejects.toThrow("BRANCH_OPERATIONS_DASHBOARD_SEARCH_INVALID");
+    expect(mockPrisma.branchOperationalChecklist.count).not.toHaveBeenCalled();
+    expect(mockPrisma.branchOperationalChecklist.findMany).not.toHaveBeenCalled();
+  });
+
+  it("builds closed selected-scope predicates for exception and review profiles", () => {
+    expect(
+      branchOperationsDashboardProfileWhere(
+        session as never,
+        "branch-checklist-exceptions-v1"
+      )
+    ).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      exceptionCount: { gt: 0 }
+    });
+    expect(
+      branchOperationsDashboardProfileWhere(
+        session as never,
+        "branch-checklist-reviews-v1"
+      )
+    ).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      status: { in: ["SUBMITTED", "MANAGER_REVIEW"] }
+    });
+  });
+
+  it("keeps raw filters from widening an exception dashboard profile", async () => {
+    mockPrisma.branchOperationalChecklist.count.mockResolvedValue(1);
+    mockPrisma.branchOperationalChecklist.aggregate.mockResolvedValue({
+      _sum: { exceptionCount: 3 }
+    });
+    mockPrisma.branchOperationalChecklist.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000401",
+        checklistName: "Opening Readiness",
+        businessDate: new Date("2026-07-26T00:00:00.000Z"),
+        shiftType: "OPENING",
+        status: "EXCEPTION_OPEN",
+        openedByUserId: null,
+        submittedByUserId: null,
+        reviewedByUserId: null,
+        reviewedAt: null,
+        exceptionCount: 3,
+        completionPercent: 80,
+        location: { name: "SM North Edsa" },
+        lines: []
+      }
+    ]);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+
+    await expect(
+      listBranchOperationChecklistPage(
+        session as never,
+        {
+          status: "CLOSED",
+          shift: "CLOSING",
+          businessDate: "1900-01-01"
+        },
+        { dashboardProfile: "branch-checklist-exceptions-v1" }
+      )
+    ).resolves.toMatchObject({
+      dashboardProfile: "branch-checklist-exceptions-v1",
+      totalItems: 1,
+      signalTotal: 3
+    });
+
+    const countWhere = mockPrisma.branchOperationalChecklist.count.mock.calls[0]![0].where;
+    const pageWhere = mockPrisma.branchOperationalChecklist.findMany.mock.calls[0]![0].where;
+    expect(pageWhere).toEqual(countWhere);
+    expect(countWhere).toMatchObject({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      exceptionCount: { gt: 0 }
+    });
+    expect(countWhere).not.toHaveProperty("status");
+    expect(countWhere).not.toHaveProperty("shiftType");
+    expect(countWhere).not.toHaveProperty("businessDate");
+  });
+
+  it("keeps review membership exact and clamps paging without raw-filter widening", async () => {
+    mockPrisma.branchOperationalChecklist.count.mockResolvedValue(60);
+    mockPrisma.branchOperationalChecklist.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000402",
+        checklistName: "Closing Readiness",
+        businessDate: new Date("2026-07-26T00:00:00.000Z"),
+        shiftType: "CLOSING",
+        status: "MANAGER_REVIEW",
+        openedByUserId: null,
+        submittedByUserId: null,
+        reviewedByUserId: null,
+        reviewedAt: null,
+        exceptionCount: 0,
+        completionPercent: 100,
+        location: { name: "SM North Edsa" },
+        lines: []
+      }
+    ]);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+
+    await expect(
+      listBranchOperationChecklistPage(
+        session as never,
+        { status: "CLOSED", shift: "OPENING", businessDate: "1900-01-01" },
+        {
+          dashboardProfile: "branch-checklist-reviews-v1",
+          page: 99,
+          pageSize: 25
+        }
+      )
+    ).resolves.toMatchObject({
+      dashboardProfile: "branch-checklist-reviews-v1",
+      page: 3,
+      totalItems: 60,
+      totalPages: 3,
+      signalTotal: 60
+    });
+
+    const countWhere = mockPrisma.branchOperationalChecklist.count.mock.calls[0]![0].where;
+    const pageCall = mockPrisma.branchOperationalChecklist.findMany.mock.calls[0]![0];
+    expect(pageCall.where).toEqual(countWhere);
+    expect(countWhere).toMatchObject({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      status: { in: ["SUBMITTED", "MANAGER_REVIEW"] }
+    });
+    expect(countWhere).not.toHaveProperty("shiftType");
+    expect(countWhere).not.toHaveProperty("businessDate");
+    expect(pageCall).toMatchObject({
+      skip: 50,
+      take: 25,
+      orderBy: [
+        { businessDate: "desc" },
+        { createdAt: "desc" },
+        { id: "desc" }
+      ]
+    });
+  });
+
+  it("keeps base completion metrics separate from dashboard profile aggregates", async () => {
+    mockPrisma.branchOperationalChecklist.aggregate
+      .mockResolvedValueOnce({
+        _sum: { exceptionCount: 3 },
+        _avg: { completionPercent: 75 }
+      })
+      .mockResolvedValueOnce({ _sum: { exceptionCount: 3 } });
+    mockPrisma.branchOperationalChecklist.groupBy.mockResolvedValue([
+      { status: "SUBMITTED", _count: { _all: 2 } },
+      { status: "CLOSED", _count: { _all: 1 } }
+    ]);
+    mockPrisma.branchOperationalChecklist.count
+      .mockResolvedValueOnce(4)
+      .mockResolvedValueOnce(2);
+    mockPrisma.branchOperationalChecklist.findFirst.mockResolvedValue({
+      businessDate: new Date("2026-07-26T00:00:00.000Z")
+    });
+    mockPrisma.branchOperationalChecklistLine.count.mockResolvedValue(1);
+    mockPrisma.branchOperationalChecklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      getBranchOperationsDashboardRead(session as never)
+    ).resolves.toMatchObject({
+      totalChecklists: 4,
+      reviewReadyChecklistCount: 2,
+      openExceptions: 3,
+      averageCompletionPercent: 75
+    });
+
+    const [baseAggregate, exceptionAggregate] =
+      mockPrisma.branchOperationalChecklist.aggregate.mock.calls;
+    expect(baseAggregate?.[0].where).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId
+    });
+    expect(baseAggregate?.[0].where).not.toHaveProperty("exceptionCount");
+    expect(exceptionAggregate?.[0].where).toMatchObject({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      exceptionCount: { gt: 0 }
+    });
+  });
+
+  it("renders explicit metric-grain, no-widening, and return-context states", () => {
+    expect(listPageSource).toContain("Dashboard view unavailable");
+    expect(listPageSource).toContain("exception line(s) across");
+    expect(listPageSource).toContain("It is not a personal task queue");
+    expect(listPageSource).toContain("Opening a record does not grant review");
+    expect(listPageSource).toContain("detailHref(checklist.id)");
+    expect(detailPageSource).toContain("resolveBranchOperationsReturnTo");
+    expect(detailPageSource).toContain('name="returnTo"');
   });
 });
 

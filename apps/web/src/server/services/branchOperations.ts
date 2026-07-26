@@ -104,6 +104,7 @@ export type BranchOperationsDashboardRead = {
   totalChecklists: number;
   completedChecklists: number;
   openExceptions: number;
+  reviewReadyChecklistCount: number;
   statusCounts: BranchChecklistStatusCounts;
   severityCounts: BranchChecklistSeverityCounts;
   averageCompletionPercent: number;
@@ -118,12 +119,84 @@ export type BranchOperationsExportFilters = {
   businessDate?: string;
 };
 
+export const branchOperationsDashboardProfiles = [
+  "branch-checklist-exceptions-v1",
+  "branch-checklist-reviews-v1"
+] as const;
+
+export type BranchOperationsDashboardProfile =
+  (typeof branchOperationsDashboardProfiles)[number];
+
+export function resolveBranchOperationsDashboardProfile(
+  value: string | null | undefined
+): BranchOperationsDashboardProfile | null {
+  return branchOperationsDashboardProfiles.includes(
+    value as BranchOperationsDashboardProfile
+  )
+    ? (value as BranchOperationsDashboardProfile)
+    : null;
+}
+
+export function branchOperationsDashboardProfileHref(
+  profile: BranchOperationsDashboardProfile
+) {
+  return `/branch-operations?dashboard=${profile}`;
+}
+
+export type BranchOperationsDashboardRequestError =
+  | "PROFILE_INVALID"
+  | "SEARCH_INVALID";
+
+export function resolveBranchOperationsDashboardRequest(
+  profileValue: string | null | undefined,
+  queryValue: string | null | undefined
+) {
+  const profile = resolveBranchOperationsDashboardProfile(profileValue);
+  if (profileValue && !profile) {
+    return { profile: null, query: "", error: "PROFILE_INVALID" as const };
+  }
+  const query = normalizedFilterText(queryValue ?? undefined);
+  if (profile && query.length > 120) {
+    return { profile, query, error: "SEARCH_INVALID" as const };
+  }
+  return { profile, query, error: null };
+}
+
+export function branchOperationsDashboardProfilePageHref(
+  profile: BranchOperationsDashboardProfile,
+  input: { query?: string | null; page?: number } = {}
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  const query = normalizedFilterText(input.query ?? undefined);
+  if (query) params.set("q", query);
+  if ((input.page ?? 1) > 1) params.set("page", String(input.page));
+  return `/branch-operations?${params.toString()}`;
+}
+
+export function resolveBranchOperationsReturnTo(value: unknown) {
+  return typeof value === "string" &&
+    (value === "/branch-operations" || value.startsWith("/branch-operations?")) &&
+    !value.startsWith("//") &&
+    !value.includes("\\")
+    ? value
+    : null;
+}
+
+export function branchOperationsChecklistDetailHref(
+  checklistId: string,
+  returnTo: string | null
+) {
+  return `/branch-operations/${checklistId}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`;
+}
+
 export type BranchOperationChecklistPage = {
   items: BranchOperationChecklistSummary[];
   page: number;
   pageSize: number;
   totalItems: number;
   totalPages: number;
+  dashboardProfile: BranchOperationsDashboardProfile | null;
+  signalTotal: number | null;
 };
 
 export type BranchOperationMyTaskPage = {
@@ -146,6 +219,27 @@ const reviewableChecklistStatuses = [
   "SUBMITTED",
   "MANAGER_REVIEW"
 ] as const;
+
+function branchOperationsScopeWhere(
+  session: SessionContext
+): Prisma.BranchOperationalChecklistWhereInput {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId
+  };
+}
+
+export function branchOperationsDashboardProfileWhere(
+  session: SessionContext,
+  profile: BranchOperationsDashboardProfile
+): Prisma.BranchOperationalChecklistWhereInput {
+  const scope = branchOperationsScopeWhere(session);
+  return profile === "branch-checklist-exceptions-v1"
+    ? { ...scope, exceptionCount: { gt: 0 } }
+    : { ...scope, status: { in: [...reviewableChecklistStatuses] } };
+}
 const closeableChecklistStatuses = ["REVIEWED", "EXCEPTION_OPEN"] as const;
 const branchChecklistShiftTypes = ["OPENING", "CLOSING", "MIDSHIFT"] as const;
 const checklistLineResults = ["PASS", "EXCEPTION", "NOT_APPLICABLE"] as const;
@@ -414,7 +508,11 @@ export function filterBranchOperationChecklists(
 export async function listBranchOperationChecklistPage(
   session: SessionContext,
   filters: BranchOperationsExportFilters = {},
-  input: { page?: number; pageSize?: number } = {}
+  input: {
+    page?: number;
+    pageSize?: number;
+    dashboardProfile?: BranchOperationsDashboardProfile;
+  } = {}
 ): Promise<BranchOperationChecklistPage> {
   assertBranchOperationsAccess(session);
   const rawPageSize = input.pageSize ?? 25;
@@ -426,9 +524,16 @@ export async function listBranchOperationChecklistPage(
     ? Math.max(Math.floor(rawPage), 1)
     : 1;
   const query = normalizedFilterText(filters.q);
-  const shift = filters.shift && filters.shift !== "ALL" ? filters.shift : null;
-  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
-  const businessDate = filters.businessDate?.trim() || null;
+  const dashboardProfile = input.dashboardProfile ?? null;
+  if (dashboardProfile && !resolveBranchOperationsDashboardProfile(dashboardProfile)) {
+    throw new Error("BRANCH_OPERATIONS_DASHBOARD_PROFILE_INVALID");
+  }
+  if (dashboardProfile && query.length > 120) {
+    throw new Error("BRANCH_OPERATIONS_DASHBOARD_SEARCH_INVALID");
+  }
+  const shift = !dashboardProfile && filters.shift && filters.shift !== "ALL" ? filters.shift : null;
+  const status = !dashboardProfile && filters.status && filters.status !== "ALL" ? filters.status : null;
+  const businessDate = !dashboardProfile ? filters.businessDate?.trim() || null : null;
   const actorMatches = query
     ? await prisma.user.findMany({
         where: {
@@ -446,10 +551,9 @@ export async function listBranchOperationChecklistPage(
     throw new Error("BRANCH_OPERATIONS_BUSINESS_DATE_INVALID");
   }
   const where: Prisma.BranchOperationalChecklistWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-    locationId: session.context.locationId,
+    ...(dashboardProfile
+      ? branchOperationsDashboardProfileWhere(session, dashboardProfile)
+      : branchOperationsScopeWhere(session)),
     ...(shift ? { shiftType: shift } : {}),
     ...(status ? { status } : {}),
     ...(date ? { businessDate: date } : {}),
@@ -473,7 +577,15 @@ export async function listBranchOperationChecklistPage(
         }
       : {})
   };
-  const totalItems = await prisma.branchOperationalChecklist.count({ where });
+  const [totalItems, signalAggregate] = await Promise.all([
+    prisma.branchOperationalChecklist.count({ where }),
+    dashboardProfile === "branch-checklist-exceptions-v1"
+      ? prisma.branchOperationalChecklist.aggregate({
+          where,
+          _sum: { exceptionCount: true }
+        })
+      : Promise.resolve(null)
+  ]);
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const page = Math.min(requestedPage, totalPages);
   const rows = await prisma.branchOperationalChecklist.findMany({
@@ -504,7 +616,20 @@ export async function listBranchOperationChecklistPage(
     completionPercent: Number(checklist.completionPercent),
     lines: checklist.lines.map((line) => ({ id: line.id, lineNo: line.lineNo, area: line.area, checkName: line.checkName, expectedResult: line.expectedResult, result: line.result, severity: line.severity, evidenceReference: line.evidenceReference, notes: line.notes }))
   }));
-  return { items, page, pageSize, totalItems, totalPages };
+  return {
+    items,
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    dashboardProfile,
+    signalTotal:
+      dashboardProfile === "branch-checklist-exceptions-v1"
+        ? signalAggregate?._sum.exceptionCount ?? 0
+        : dashboardProfile === "branch-checklist-reviews-v1"
+          ? totalItems
+          : null
+  };
 }
 
 export async function getBranchOperationsDashboard(
@@ -512,12 +637,7 @@ export async function getBranchOperationsDashboard(
 ): Promise<BranchOperationsDashboard> {
   assertBranchOperationsAccess(session);
 
-  const where: Prisma.BranchOperationalChecklistWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-    locationId: session.context.locationId
-  };
+  const where = branchOperationsScopeWhere(session);
   const checklists = await prisma.branchOperationalChecklist.findMany({
     where,
     include: {
@@ -644,18 +764,25 @@ export async function getBranchOperationsDashboardRead(
 ): Promise<BranchOperationsDashboardRead> {
   assertBranchOperationsAccess(session);
 
-  const where: Prisma.BranchOperationalChecklistWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-    locationId: session.context.locationId
-  };
-  const [summary, statusRows, totalChecklists, latestChecklist, criticalExceptions, reviewRows, exceptionRows] =
+  const where = branchOperationsScopeWhere(session);
+  const reviewProfileWhere = branchOperationsDashboardProfileWhere(
+    session,
+    "branch-checklist-reviews-v1"
+  );
+  const exceptionProfileWhere = branchOperationsDashboardProfileWhere(
+    session,
+    "branch-checklist-exceptions-v1"
+  );
+  const [summary, exceptionSummary, statusRows, totalChecklists, reviewReadyChecklistCount, latestChecklist, criticalExceptions, reviewRows, exceptionRows] =
     await Promise.all([
       prisma.branchOperationalChecklist.aggregate({
         where,
         _sum: { exceptionCount: true },
         _avg: { completionPercent: true }
+      }),
+      prisma.branchOperationalChecklist.aggregate({
+        where: exceptionProfileWhere,
+        _sum: { exceptionCount: true }
       }),
       prisma.branchOperationalChecklist.groupBy({
         by: ["status"],
@@ -663,6 +790,7 @@ export async function getBranchOperationsDashboardRead(
         _count: { _all: true }
       }),
       prisma.branchOperationalChecklist.count({ where }),
+      prisma.branchOperationalChecklist.count({ where: reviewProfileWhere }),
       prisma.branchOperationalChecklist.findFirst({ where, orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }], select: { businessDate: true } }),
       prisma.branchOperationalChecklistLine.count({
         where: {
@@ -675,7 +803,7 @@ export async function getBranchOperationsDashboardRead(
         }
       }),
       prisma.branchOperationalChecklist.findMany({
-        where: { ...where, status: { in: [...reviewableChecklistStatuses] } },
+        where: reviewProfileWhere,
         orderBy: [{ businessDate: "desc" }, { shiftType: "asc" }],
         take: 3,
         select: {
@@ -693,7 +821,7 @@ export async function getBranchOperationsDashboardRead(
         }
       }),
       prisma.branchOperationalChecklist.findMany({
-        where: { ...where, exceptionCount: { gt: 0 } },
+        where: exceptionProfileWhere,
         orderBy: [{ businessDate: "desc" }, { shiftType: "asc" }],
         take: 3,
         select: {
@@ -731,9 +859,10 @@ export async function getBranchOperationsDashboardRead(
     locationName: session.context.locationName,
     businessDate: latestChecklist?.businessDate.toISOString().slice(0, 10) ?? null,
     totalChecklists,
+    reviewReadyChecklistCount,
     completedChecklists:
       statusCounts.SUBMITTED + statusCounts.REVIEWED + statusCounts.CLOSED,
-    openExceptions: summary._sum.exceptionCount ?? 0,
+    openExceptions: exceptionSummary._sum.exceptionCount ?? 0,
     statusCounts,
     severityCounts: {
       ...emptySeverityCounts(),

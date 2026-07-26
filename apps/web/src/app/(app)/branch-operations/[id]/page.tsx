@@ -17,10 +17,12 @@ import {
 } from "@/server/services/authorization";
 import {
   applyBranchOperationChecklistCorrection,
+  branchOperationsChecklistDetailHref,
   closeBranchOperationChecklist,
   getBranchOperationChecklistSummary,
   returnBranchOperationChecklistForCorrection,
-  reviewBranchOperationChecklist
+  reviewBranchOperationChecklist,
+  resolveBranchOperationsReturnTo
 } from "@/server/services/branchOperations";
 import { getSessionContext } from "@/server/services/context";
 
@@ -33,52 +35,56 @@ async function reviewBranchOperationChecklistAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("checklistId"));
+  const returnTo = resolveBranchOperationsReturnTo(formData.get("returnTo"));
   let checklistId: string;
   try {
     checklistId = await reviewBranchOperationChecklist(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/branch-operations/${id}`, error));
+    redirect(actionErrorRedirectPath(branchOperationsChecklistDetailHref(id, returnTo), error));
   }
-  redirect(`/branch-operations/${checklistId}`);
+  redirect(branchOperationsChecklistDetailHref(checklistId, returnTo));
 }
 
 async function closeBranchOperationChecklistAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("checklistId"));
+  const returnTo = resolveBranchOperationsReturnTo(formData.get("returnTo"));
   let checklistId: string;
   try {
     checklistId = await closeBranchOperationChecklist(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/branch-operations/${id}`, error));
+    redirect(actionErrorRedirectPath(branchOperationsChecklistDetailHref(id, returnTo), error));
   }
-  redirect(`/branch-operations/${checklistId}`);
+  redirect(branchOperationsChecklistDetailHref(checklistId, returnTo));
 }
 
 async function returnBranchOperationChecklistAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("checklistId"));
+  const returnTo = resolveBranchOperationsReturnTo(formData.get("returnTo"));
   let checklistId: string;
   try {
     checklistId = await returnBranchOperationChecklistForCorrection(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/branch-operations/${id}`, error));
+    redirect(actionErrorRedirectPath(branchOperationsChecklistDetailHref(id, returnTo), error));
   }
-  redirect(`/branch-operations/${checklistId}`);
+  redirect(branchOperationsChecklistDetailHref(checklistId, returnTo));
 }
 
 async function applyBranchOperationChecklistCorrectionAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("checklistId"));
+  const returnTo = resolveBranchOperationsReturnTo(formData.get("returnTo"));
   let checklistId: string;
   try {
     checklistId = await applyBranchOperationChecklistCorrection(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/branch-operations/${id}`, error));
+    redirect(actionErrorRedirectPath(branchOperationsChecklistDetailHref(id, returnTo), error));
   }
-  redirect(`/branch-operations/${checklistId}`);
+  redirect(branchOperationsChecklistDetailHref(checklistId, returnTo));
 }
 
 function statusTone(status: string) {
@@ -152,7 +158,13 @@ export default async function BranchOperationChecklistDetailPage({
   const today = new Date().toISOString().slice(0, 10);
   const defaultOutcome =
     checklist.exceptionCount > 0 ? "EXCEPTION_OPEN" : "REVIEWED";
-  const actionFeedback = getActionFeedback(searchParams ? await searchParams : {});
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const returnTo = resolveBranchOperationsReturnTo(
+    Array.isArray(resolvedSearchParams.returnTo)
+      ? resolvedSearchParams.returnTo[0]
+      : resolvedSearchParams.returnTo
+  );
+  const actionFeedback = getActionFeedback(resolvedSearchParams);
 
   return (
     <AppShell
@@ -163,7 +175,7 @@ export default async function BranchOperationChecklistDetailPage({
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <ButtonLink href="/branch-operations" tone="ghost" className="ogfi-chip">
+        <ButtonLink href={returnTo ?? "/branch-operations"} tone="ghost" className="ogfi-chip">
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to Branch Operations
         </ButtonLink>
@@ -178,6 +190,7 @@ export default async function BranchOperationChecklistDetailPage({
                 className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2"
               >
                 <input name="checklistId" type="hidden" value={checklist.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Review date
                   <input
@@ -229,6 +242,7 @@ export default async function BranchOperationChecklistDetailPage({
                 className="ogfi-form-shell mt-4 grid gap-3"
               >
                 <input name="checklistId" type="hidden" value={checklist.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Correction reason
                   <textarea
@@ -276,6 +290,7 @@ export default async function BranchOperationChecklistDetailPage({
               <BranchChecklistLinesEditor
                 action={applyBranchOperationChecklistCorrectionAction}
                 checklistId={checklist.id}
+                {...(returnTo ? { returnTo } : {})}
                 formId="correct-branch-checklist"
                 initialLines={checklist.lines}
                 resultOptions={checklistLineResults}
@@ -291,6 +306,7 @@ export default async function BranchOperationChecklistDetailPage({
                 className="ogfi-form-shell mt-4 grid gap-3"
               >
                 <input name="checklistId" type="hidden" value={checklist.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Close reason
                   <textarea

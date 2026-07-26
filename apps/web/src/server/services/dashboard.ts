@@ -15,6 +15,7 @@ import {
 import { type ApprovalQueueItem } from "./approvals";
 import type { SessionContext } from "./context";
 import {
+  branchOperationsDashboardProfileHref,
   getBranchOperationsDashboardRead,
   type BranchOperationsDashboard,
   type BranchOperationsDashboardRead
@@ -881,8 +882,10 @@ export function buildOperationalDashboardModel(
   if (source.branchOperations || source.branchOperationsDashboard) {
     const branchOperations = source.branchOperationsDashboard ?? source.branchOperations!;
     const reviewReadyChecklistCount =
-      branchOperations.statusCounts.SUBMITTED +
-      branchOperations.statusCounts.MANAGER_REVIEW;
+      "reviewReadyChecklistCount" in branchOperations
+        ? branchOperations.reviewReadyChecklistCount
+        : branchOperations.statusCounts.SUBMITTED +
+          branchOperations.statusCounts.MANAGER_REVIEW;
     const reviewReadyChecklists = source.branchOperationsDashboard
       ? source.branchOperationsDashboard.reviewCandidates
       : source.branchOperations!.checklists.filter(
@@ -893,16 +896,16 @@ export function buildOperationalDashboardModel(
       id: "branch-checklist-exceptions",
       label: "Checklist Exceptions",
       value: branchOperations.openExceptions,
-      href: "/branch-operations",
-      description: `${branchOperations.averageCompletionPercent.toFixed(0)}% average completion`,
+      href: branchOperationsDashboardProfileHref("branch-checklist-exceptions-v1"),
+      description: `Exception lines / ${branchOperations.averageCompletionPercent.toFixed(0)}% average completion`,
       tone: cardTone(branchOperations.openExceptions)
     });
     cards.push({
       id: "branch-checklist-reviews",
       label: "Checklist Reviews",
       value: reviewReadyChecklistCount,
-      href: "/branch-operations",
-      description: "Submitted or manager-review checklists",
+      href: branchOperationsDashboardProfileHref("branch-checklist-reviews-v1"),
+      description: "All scoped submitted or manager-review checklists",
       tone: cardTone(reviewReadyChecklistCount)
     });
     metrics.push(

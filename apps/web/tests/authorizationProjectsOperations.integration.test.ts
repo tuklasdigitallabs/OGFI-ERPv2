@@ -1828,6 +1828,10 @@ describe("projects and operations database-backed authorization boundaries", () 
         () => branchOperations.buildBranchOperationsExportRows(session),
       ],
       [
+        "branch checklist page",
+        () => branchOperations.listBranchOperationChecklistPage(session),
+      ],
+      [
         "food safety create",
         () => foodSafety.createFoodSafetyLog(new FormData()),
       ],

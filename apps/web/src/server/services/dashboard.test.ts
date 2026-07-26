@@ -1065,8 +1065,8 @@ describe("operational dashboard model", () => {
     expect(
       dashboard.cards.map((card) => [card.id, card.value, card.href])
     ).toEqual([
-      ["branch-checklist-exceptions", 1, "/branch-operations"],
-      ["branch-checklist-reviews", 1, "/branch-operations"],
+      ["branch-checklist-exceptions", 1, "/branch-operations?dashboard=branch-checklist-exceptions-v1"],
+      ["branch-checklist-reviews", 1, "/branch-operations?dashboard=branch-checklist-reviews-v1"],
       ["food-safety-exceptions", 1, "/food-safety"],
       ["food-safety-reviews", 1, "/food-safety"],
       ["open-operational-incidents", 1, "/incidents"],

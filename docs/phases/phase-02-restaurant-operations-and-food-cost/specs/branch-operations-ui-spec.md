@@ -1,6 +1,6 @@
 # OGFI ERP — Phase II UI Specification: Branch Operations
 
-**Status:** Implemented for checklist queue, detail, create modal, review, return-for-correction, correction apply, close, export, dashboard source links, and review-reminder visibility
+**Status:** Implemented for checklist queue, detail, create modal, review, return-for-correction, correction apply, close, export, versioned dashboard destinations, and review-reminder visibility
 **Visual standard:** Modern SaaS UI with restaurant-grade operational control
 
 ## Screen Purpose
@@ -19,8 +19,9 @@ status, evidence, correction, export, and audit context.
    checklist lines.
 4. Review, return-for-correction, correction apply, and close action surfaces
    when the role and status permit them.
-5. Dashboard/report links route to source records instead of replacing source
-   review actions.
+5. Dashboard/report links use the allowlisted `branch-checklist-reviews-v1` and
+   `branch-checklist-exceptions-v1` read-only destinations and route onward to
+   source records instead of replacing source review actions.
 
 ## Global UI Rules
 
@@ -41,7 +42,21 @@ status, evidence, correction, export, and audit context.
 - Denied or unavailable actions are hidden by server-side permission and status
   checks.
 - Export keeps the same filter contract as the queue.
-- Dashboard and notification entries are visibility-only source links.
+- Dashboard profiles reuse the exact selected tenant, company, optional brand,
+  and location predicates used by the dashboard source read. Raw status, shift,
+  and business-date parameters cannot widen or redefine either population;
+  bounded search may only narrow it.
+- `branch-checklist-reviews-v1` contains all scoped `SUBMITTED` and
+  `MANAGER_REVIEW` checklists. Its total is explicitly management oversight, not
+  an actor-actionable task count.
+- `branch-checklist-exceptions-v1` counts exception lines and separately reports
+  affected checklist rows.
+- Unknown or stale profile identifiers produce a visible invalid state instead
+  of falling back to the ordinary register. Profile, search, page, and return
+  context persist through record detail and back navigation.
+- Dashboard and notification entries are visibility-only source links. Every
+  detail action independently enforces current permission, scope, status, and
+  actor eligibility.
 
 ## Acceptance Criteria
 

@@ -5,12 +5,12 @@ import { BRANCH_CHECKLIST_MAX_LINES } from "@/lib/workflowLimits";
 
 type ChecklistLine = { id: string; lineNo: number; area: string; checkName: string; expectedResult: string; result: string; severity: string; evidenceReference: string | null; notes: string | null };
 type DraftLine = { key: number; area: string; checkName: string; expectedResult: string; result: string; severity: string; evidenceReference: string; notes: string };
-type Props = { action: (formData: FormData) => void | Promise<void>; shiftOptions: readonly string[]; resultOptions: readonly string[]; severityOptions: readonly string[]; formId: string; checklistId?: string; initialLines?: readonly ChecklistLine[] };
+type Props = { action: (formData: FormData) => void | Promise<void>; shiftOptions: readonly string[]; resultOptions: readonly string[]; severityOptions: readonly string[]; formId: string; checklistId?: string; initialLines?: readonly ChecklistLine[]; returnTo?: string };
 
 function emptyLine(key: number): DraftLine { return { key, area: "", checkName: "", expectedResult: "", result: "PASS", severity: "NORMAL", evidenceReference: "", notes: "" }; }
 function initialLine(line: ChecklistLine): DraftLine { return { key: line.lineNo, area: line.area, checkName: line.checkName, expectedResult: line.expectedResult, result: line.result, severity: line.severity, evidenceReference: line.evidenceReference ?? "", notes: line.notes ?? "" }; }
 
-export function BranchChecklistLinesEditor({ action, shiftOptions, resultOptions, severityOptions, formId, checklistId, initialLines }: Props) {
+export function BranchChecklistLinesEditor({ action, shiftOptions, resultOptions, severityOptions, formId, checklistId, initialLines, returnTo }: Props) {
   const isCorrection = Boolean(checklistId && initialLines);
   const [lines, setLines] = useState<DraftLine[]>(() => initialLines?.map(initialLine) ?? [emptyLine(1)]);
   const [selectedKey, setSelectedKey] = useState(() => initialLines?.[0]?.lineNo ?? 1);
@@ -29,6 +29,7 @@ export function BranchChecklistLinesEditor({ action, shiftOptions, resultOptions
   const input = "min-h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950";
   return <form action={action} className="flex h-full min-h-0 flex-col" id={formId} onSubmit={submit}>
     {checklistId ? <input name="checklistId" type="hidden" value={checklistId} /> : null}
+    {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
     {lines.map((line, index) => <input key={line.key} type="hidden" name={`line.${index + 1}.area`} value={line.area} readOnly />)}
     {lines.map((line, index) => <input key={`check-${line.key}`} type="hidden" name={`line.${index + 1}.checkName`} value={line.checkName} readOnly />)}
     {lines.map((line, index) => <input key={`expected-${line.key}`} type="hidden" name={`line.${index + 1}.expectedResult`} value={line.expectedResult} readOnly />)}

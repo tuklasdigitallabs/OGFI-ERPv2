@@ -221,6 +221,16 @@
   ],
   "boundaries": [
     {
+      "surfaceId": "server/services/branchOperations.ts#listBranchOperationChecklistPage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": [
+        "server/services/branchOperations.ts#listBranchOperationChecklistPage"
+      ],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
       "surfaceId": "server/services/branchOperations.ts#buildBranchOperationsExportRows",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": [
