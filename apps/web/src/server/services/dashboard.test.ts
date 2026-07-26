@@ -1103,12 +1103,21 @@ describe("operational dashboard model", () => {
     expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
       expect.arrayContaining([
         "branch-critical-exception-count",
-        "branch-manager-review-count",
-        "branch-reviewed-count",
         "food-safety-critical-count",
         "food-safety-exception-review-count",
         "food-safety-reviewed-count"
       ])
+    );
+    expect(dashboard.metrics.find(({ id }) => id === "branch-critical-exception-count"))
+      .toMatchObject({
+        label: "Critical exception lines",
+        href: "/branch-operations?dashboard=branch-checklist-critical-exceptions-v1"
+      });
+    expect(dashboard.metrics).not.toContainEqual(
+      expect.objectContaining({ id: "branch-manager-review-count" })
+    );
+    expect(dashboard.metrics).not.toContainEqual(
+      expect.objectContaining({ id: "branch-reviewed-count" })
     );
     expect(dashboard.metrics.find(({ id }) => id === "incident-critical-count")?.href)
       .toBe("/incidents?dashboard=incident-critical-v1");
@@ -1292,6 +1301,39 @@ describe("operational dashboard model", () => {
     );
     expect(dashboard.sourceHealth.find((metric) => metric.id === "dashboard-source-unavailable-receiving")?.detail)
       .not.toContain("Error");
+  });
+
+  it("keeps an unavailable Branch Operations source recoverable at its workspace", () => {
+    const branchSession = {
+      ...session,
+      permissionCodes: ["restaurant.branch_operations.view"]
+    };
+    const descriptor = getOperationalDashboardSourceDescriptors(branchSession)
+      .find(({ id }) => id === "branch-operations");
+
+    expect(descriptor).toMatchObject({
+      label: "Branch operations",
+      href: "/branch-operations"
+    });
+
+    const dashboard = buildOperationalDashboardModel(branchSession, {
+      unavailableSources: [{
+        id: "branch-operations",
+        label: descriptor!.label,
+        href: descriptor!.href
+      }]
+    });
+
+    expect(dashboard.metrics).not.toContainEqual(
+      expect.objectContaining({ id: "branch-critical-exception-count" })
+    );
+    expect(dashboard.sourceHealth).toContainEqual(
+      expect.objectContaining({
+        id: "dashboard-source-unavailable-branch-operations",
+        displayValue: "Unavailable",
+        href: "/branch-operations"
+      })
+    );
   });
 
   it("withholds composite totals and reports contributor provenance when a source is unavailable", () => {

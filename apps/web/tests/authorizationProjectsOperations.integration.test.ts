@@ -72,6 +72,9 @@ describe("projects and operations database-backed authorization boundaries", () 
     legacyFoodCostNotificationId: randomUUID(),
     branchChecklistId: randomUUID(),
     branchChecklistLineId: randomUUID(),
+    branchForeignParentChecklistId: randomUUID(),
+    branchForeignParentLineId: randomUUID(),
+    branchForeignChildLineId: randomUUID(),
     foodSafetyLogId: randomUUID(),
     foodSafetyReadingId: randomUUID(),
     operationalIncidentId: randomUUID(),
@@ -1710,6 +1713,131 @@ describe("projects and operations database-backed authorization boundaries", () 
           roleId: ids.roleId,
           permissionId: { in: permissionRows.map(({ id }) => id) },
         },
+      });
+    }
+  });
+
+  it("AUTHZ-DEC-0236-BRANCH-CRITICAL-PROFILE-RELATION-SCOPE-PARITY-NO-MUTATION", async () => {
+    const branchViewPermission = await prisma.permission.findUniqueOrThrow({
+      where: { code: permissions.branchOperationsView },
+      select: { id: true },
+    });
+    await prisma.rolePermission.create({
+      data: { roleId: ids.roleId, permissionId: branchViewPermission.id },
+    });
+    await prisma.branchOperationalChecklist.create({
+      data: {
+        id: ids.branchForeignParentChecklistId,
+        tenantId: ids.tenantId,
+        companyId: ids.adjacentCompanyId,
+        brandId: ids.adjacentBrandId,
+        locationId: ids.adjacentLocationId,
+        businessDate: new Date("2026-07-24T00:00:00.000Z"),
+        shiftType: `AUTHZ-FOREIGN-${suffix}`,
+        status: "CLOSED",
+        checklistName: "Adjacent-scope critical checklist",
+        exceptionCount: 1,
+        completionPercent: 100,
+        lines: {
+          create: {
+            id: ids.branchForeignParentLineId,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            brandId: ids.brandId,
+            locationId: ids.locationId,
+            lineNo: 1,
+            area: "Kitchen",
+            checkName: "Mismatched parent scope",
+            expectedResult: "PASS",
+            result: "EXCEPTION",
+            severity: "CRITICAL",
+          },
+        },
+      },
+    });
+    await prisma.branchOperationalChecklistLine.create({
+      data: {
+        id: ids.branchForeignChildLineId,
+        tenantId: ids.tenantId,
+        companyId: ids.adjacentCompanyId,
+        brandId: ids.adjacentBrandId,
+        locationId: ids.adjacentLocationId,
+        checklistId: ids.branchChecklistId,
+        lineNo: 2,
+        area: "Kitchen",
+        checkName: "Mismatched child scope",
+        expectedResult: "PASS",
+        result: "EXCEPTION",
+        severity: "CRITICAL",
+      },
+    });
+
+    try {
+      const session = await getConfiguredContext(actorEmail);
+      const before = await prisma.branchOperationalChecklist.findMany({
+        where: {
+          id: { in: [ids.branchChecklistId, ids.branchForeignParentChecklistId] },
+        },
+        orderBy: { id: "asc" },
+        include: { lines: { orderBy: { lineNo: "asc" } } },
+      });
+
+      const [dashboard, profile, mismatchedChildSearch, detail] = await Promise.all([
+        branchOperations.getBranchOperationsDashboardRead(session),
+        branchOperations.listBranchOperationChecklistPage(
+          session,
+          {},
+          { dashboardProfile: "branch-checklist-critical-exceptions-v1" },
+        ),
+        branchOperations.listBranchOperationChecklistPage(
+          session,
+          { q: "Mismatched child scope" },
+          { dashboardProfile: "branch-checklist-critical-exceptions-v1" },
+        ),
+        branchOperations.getBranchOperationChecklistSummary(
+          session,
+          ids.branchChecklistId,
+        ),
+      ]);
+
+      expect(dashboard.severityCounts.CRITICAL).toBe(1);
+      expect(profile).toMatchObject({
+        dashboardProfile: "branch-checklist-critical-exceptions-v1",
+        signalTotal: 1,
+        totalItems: 1,
+      });
+      expect(profile.items.map(({ id }) => id)).toEqual([ids.branchChecklistId]);
+      expect(profile.items[0]?.lines.map(({ id }) => id)).toEqual([
+        ids.branchChecklistLineId,
+      ]);
+      expect(mismatchedChildSearch).toMatchObject({
+        signalTotal: 0,
+        totalItems: 0,
+        items: [],
+      });
+      expect(detail?.lines.map(({ id }) => id)).toEqual([
+        ids.branchChecklistLineId,
+      ]);
+      expect(
+        await prisma.branchOperationalChecklist.findMany({
+          where: {
+            id: { in: [ids.branchChecklistId, ids.branchForeignParentChecklistId] },
+          },
+          orderBy: { id: "asc" },
+          include: { lines: { orderBy: { lineNo: "asc" } } },
+        }),
+      ).toEqual(before);
+    } finally {
+      await prisma.branchOperationalChecklistLine.deleteMany({
+        where: {
+          id: { in: [ids.branchForeignChildLineId, ids.branchForeignParentLineId] },
+        },
+      });
+      await prisma.branchOperationalChecklist.deleteMany({
+        where: { id: ids.branchForeignParentChecklistId },
+      });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: ids.roleId, permissionId: branchViewPermission.id },
       });
     }
   });

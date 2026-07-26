@@ -175,7 +175,7 @@ export default async function BranchOperationChecklistDetailPage({
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <ButtonLink href={returnTo ?? "/branch-operations"} tone="ghost" className="ogfi-chip">
+        <ButtonLink href={returnTo ?? "/branch-operations"} tone="ghost" className="ogfi-chip min-h-11">
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to Branch Operations
         </ButtonLink>

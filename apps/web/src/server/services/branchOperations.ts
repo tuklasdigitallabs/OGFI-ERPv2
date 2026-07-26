@@ -121,7 +121,8 @@ export type BranchOperationsExportFilters = {
 
 export const branchOperationsDashboardProfiles = [
   "branch-checklist-exceptions-v1",
-  "branch-checklist-reviews-v1"
+  "branch-checklist-reviews-v1",
+  "branch-checklist-critical-exceptions-v1"
 ] as const;
 
 export type BranchOperationsDashboardProfile =
@@ -145,21 +146,54 @@ export function branchOperationsDashboardProfileHref(
 
 export type BranchOperationsDashboardRequestError =
   | "PROFILE_INVALID"
-  | "SEARCH_INVALID";
+  | "SEARCH_INVALID"
+  | "SEARCH_DUPLICATE";
 
 export function resolveBranchOperationsDashboardRequest(
-  profileValue: string | null | undefined,
-  queryValue: string | null | undefined
+  profileValue: string | string[] | null | undefined,
+  queryValue: string | string[] | null | undefined
 ) {
-  const profile = resolveBranchOperationsDashboardProfile(profileValue);
-  if (profileValue && !profile) {
+  if (Array.isArray(profileValue)) {
     return { profile: null, query: "", error: "PROFILE_INVALID" as const };
+  }
+  const profile = resolveBranchOperationsDashboardProfile(profileValue);
+  if (profileValue !== null && profileValue !== undefined && !profile) {
+    return { profile: null, query: "", error: "PROFILE_INVALID" as const };
+  }
+  if (Array.isArray(queryValue)) {
+    return { profile, query: "", error: "SEARCH_DUPLICATE" as const };
   }
   const query = normalizedFilterText(queryValue ?? undefined);
   if (profile && query.length > 120) {
     return { profile, query, error: "SEARCH_INVALID" as const };
   }
   return { profile, query, error: null };
+}
+
+export function resolveBranchOperationsDashboardParameters(
+  params: Record<string, string | string[] | undefined>,
+  profile: BranchOperationsDashboardProfile | null
+) {
+  if (!profile) return { page: null, error: null };
+
+  const allowedKeys = new Set(["dashboard", "q", "page"]);
+  if (
+    Object.entries(params).some(
+      ([key, value]) => value !== undefined && !allowedKeys.has(key)
+    )
+  ) {
+    return { page: null, error: "PARAMETERS_INVALID" as const };
+  }
+
+  const rawPage = params.page;
+  if (rawPage === undefined) return { page: 1, error: null };
+  if (Array.isArray(rawPage) || !/^[1-9]\d*$/.test(rawPage)) {
+    return { page: null, error: "PARAMETERS_INVALID" as const };
+  }
+  const page = Number(rawPage);
+  return Number.isSafeInteger(page)
+    ? { page, error: null }
+    : { page: null, error: "PARAMETERS_INVALID" as const };
 }
 
 export function branchOperationsDashboardProfilePageHref(
@@ -231,14 +265,43 @@ function branchOperationsScopeWhere(
   };
 }
 
+function branchOperationsLineScopeWhere(
+  session: SessionContext
+): Prisma.BranchOperationalChecklistLineWhereInput {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
+    locationId: session.context.locationId
+  };
+}
+
+function branchOperationsCriticalLineWhere(
+  session: SessionContext
+): Prisma.BranchOperationalChecklistLineWhereInput {
+  return {
+    ...branchOperationsLineScopeWhere(session),
+    result: "EXCEPTION",
+    severity: "CRITICAL"
+  };
+}
+
 export function branchOperationsDashboardProfileWhere(
   session: SessionContext,
   profile: BranchOperationsDashboardProfile
 ): Prisma.BranchOperationalChecklistWhereInput {
   const scope = branchOperationsScopeWhere(session);
-  return profile === "branch-checklist-exceptions-v1"
-    ? { ...scope, exceptionCount: { gt: 0 } }
-    : { ...scope, status: { in: [...reviewableChecklistStatuses] } };
+  switch (profile) {
+    case "branch-checklist-exceptions-v1":
+      return { ...scope, exceptionCount: { gt: 0 } };
+    case "branch-checklist-reviews-v1":
+      return { ...scope, status: { in: [...reviewableChecklistStatuses] } };
+    case "branch-checklist-critical-exceptions-v1":
+      return {
+        ...scope,
+        lines: { some: branchOperationsCriticalLineWhere(session) }
+      };
+  }
 }
 const closeableChecklistStatuses = ["REVIEWED", "EXCEPTION_OPEN"] as const;
 const branchChecklistShiftTypes = ["OPENING", "CLOSING", "MIDSHIFT"] as const;
@@ -566,23 +629,34 @@ export async function listBranchOperationChecklistPage(
             { openedByUserId: { in: actorMatches.map((row) => row.id) } },
             { submittedByUserId: { in: actorMatches.map((row) => row.id) } },
             { reviewedByUserId: { in: actorMatches.map((row) => row.id) } },
-            { lines: { some: { OR: [
-              { area: { contains: query, mode: "insensitive" } },
-              { checkName: { contains: query, mode: "insensitive" } },
-              { expectedResult: { contains: query, mode: "insensitive" } },
-              { notes: { contains: query, mode: "insensitive" } },
-              { evidenceReference: { contains: query, mode: "insensitive" } }
-            ] } } }
+            { lines: { some: {
+              ...branchOperationsLineScopeWhere(session),
+              OR: [
+                { area: { contains: query, mode: "insensitive" } },
+                { checkName: { contains: query, mode: "insensitive" } },
+                { expectedResult: { contains: query, mode: "insensitive" } },
+                { notes: { contains: query, mode: "insensitive" } },
+                { evidenceReference: { contains: query, mode: "insensitive" } }
+              ]
+            } } }
           ]
         }
       : {})
   };
-  const [totalItems, signalAggregate] = await Promise.all([
+  const [totalItems, exceptionSignalAggregate, criticalSignalTotal] = await Promise.all([
     prisma.branchOperationalChecklist.count({ where }),
     dashboardProfile === "branch-checklist-exceptions-v1"
       ? prisma.branchOperationalChecklist.aggregate({
           where,
           _sum: { exceptionCount: true }
+        })
+      : Promise.resolve(null),
+    dashboardProfile === "branch-checklist-critical-exceptions-v1"
+      ? prisma.branchOperationalChecklistLine.count({
+          where: {
+            ...branchOperationsCriticalLineWhere(session),
+            checklist: { is: where }
+          }
         })
       : Promise.resolve(null)
   ]);
@@ -590,7 +664,13 @@ export async function listBranchOperationChecklistPage(
   const page = Math.min(requestedPage, totalPages);
   const rows = await prisma.branchOperationalChecklist.findMany({
     where,
-    include: { location: true, lines: { orderBy: { lineNo: "asc" } } },
+    include: {
+      location: true,
+      lines: {
+        where: branchOperationsLineScopeWhere(session),
+        orderBy: { lineNo: "asc" }
+      }
+    },
     orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * pageSize,
     take: pageSize
@@ -625,8 +705,10 @@ export async function listBranchOperationChecklistPage(
     dashboardProfile,
     signalTotal:
       dashboardProfile === "branch-checklist-exceptions-v1"
-        ? signalAggregate?._sum.exceptionCount ?? 0
-        : dashboardProfile === "branch-checklist-reviews-v1"
+        ? exceptionSignalAggregate?._sum.exceptionCount ?? 0
+        : dashboardProfile === "branch-checklist-critical-exceptions-v1"
+          ? criticalSignalTotal ?? 0
+          : dashboardProfile === "branch-checklist-reviews-v1"
           ? totalItems
           : null
   };
@@ -643,6 +725,7 @@ export async function getBranchOperationsDashboard(
     include: {
       location: true,
       lines: {
+        where: branchOperationsLineScopeWhere(session),
         orderBy: { lineNo: "asc" }
       }
     },
@@ -773,6 +856,10 @@ export async function getBranchOperationsDashboardRead(
     session,
     "branch-checklist-exceptions-v1"
   );
+  const criticalExceptionProfileWhere = branchOperationsDashboardProfileWhere(
+    session,
+    "branch-checklist-critical-exceptions-v1"
+  );
   const [summary, exceptionSummary, statusRows, totalChecklists, reviewReadyChecklistCount, latestChecklist, criticalExceptions, reviewRows, exceptionRows] =
     await Promise.all([
       prisma.branchOperationalChecklist.aggregate({
@@ -794,12 +881,8 @@ export async function getBranchOperationsDashboardRead(
       prisma.branchOperationalChecklist.findFirst({ where, orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }, { id: "desc" }], select: { businessDate: true } }),
       prisma.branchOperationalChecklistLine.count({
         where: {
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-          locationId: session.context.locationId,
-          result: "EXCEPTION",
-          severity: "CRITICAL"
+          ...branchOperationsCriticalLineWhere(session),
+          checklist: { is: criticalExceptionProfileWhere }
         }
       }),
       prisma.branchOperationalChecklist.findMany({
@@ -814,7 +897,7 @@ export async function getBranchOperationsDashboardRead(
           status: true,
           exceptionCount: true,
           lines: {
-            where: { result: "EXCEPTION", severity: "CRITICAL" },
+            where: branchOperationsCriticalLineWhere(session),
             select: { id: true },
             take: 1
           }
@@ -832,7 +915,7 @@ export async function getBranchOperationsDashboardRead(
           status: true,
           exceptionCount: true,
           lines: {
-            where: { result: "EXCEPTION", severity: "CRITICAL" },
+            where: branchOperationsCriticalLineWhere(session),
             select: { id: true },
             take: 1
           }
@@ -1324,7 +1407,12 @@ export async function applyBranchOperationChecklistCorrection(formData: FormData
         ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
         locationId: session.context.locationId
       },
-      include: { lines: { orderBy: { lineNo: "asc" } } }
+      include: {
+        lines: {
+          where: branchOperationsLineScopeWhere(session),
+          orderBy: { lineNo: "asc" }
+        }
+      }
     });
 
     if (!current) {
@@ -1386,7 +1474,12 @@ export async function applyBranchOperationChecklistCorrection(formData: FormData
 
     const updated = await tx.branchOperationalChecklist.findUniqueOrThrow({
       where: { id: current.id },
-      include: { lines: { orderBy: { lineNo: "asc" } } }
+      include: {
+        lines: {
+          where: branchOperationsLineScopeWhere(session),
+          orderBy: { lineNo: "asc" }
+        }
+      }
     });
     await tx.operationalCorrectionRecord.create({
       data: {

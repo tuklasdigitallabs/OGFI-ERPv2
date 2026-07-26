@@ -176,3 +176,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0233-LOT-EXPIRY-DATA-DASHBOARD-PROFILE.md` — closed lot-or-expiry data-presence profile with trim-aware row membership, static parameterized SQL, bounded export, and no compliance claim
 - `DEC-0234-SUPPRESS-BALANCE-CACHE-RECENCY-SIGNAL.md` — suppression of unauthoritative InventoryBalance cache recency pending a separately approved immutable-movement profile
 - `DEC-0235-SUPPRESS-PO-DASHBOARD-MONETARY-SIGNALS.md` — suppression of unauthoritative PO commitment/exposure/received-value signals while preserving open-count and overdue follow-up
+- `DEC-0236-BRANCH-CRITICAL-EXCEPTIONS-DASHBOARD-PROFILE.md` — all-status critical exception-line Branch Operations profile with affected-checklist context and suppression of ambiguous standalone Manager Review/Reviewed signals

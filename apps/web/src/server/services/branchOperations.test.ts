@@ -15,6 +15,7 @@ import {
   listBranchOperationChecklistPage,
   listBranchOperationMyTaskPage,
   resolveBranchOperationsDashboardProfile,
+  resolveBranchOperationsDashboardParameters,
   resolveBranchOperationsDashboardRequest,
   resolveBranchOperationsReturnTo,
   reviewBranchOperationChecklist,
@@ -996,9 +997,21 @@ describe("Phase 2 branch operations foundation", () => {
     expect(resolveBranchOperationsDashboardProfile("branch-checklist-reviews-v1")).toBe(
       "branch-checklist-reviews-v1"
     );
+    expect(
+      resolveBranchOperationsDashboardProfile(
+        "branch-checklist-critical-exceptions-v1"
+      )
+    ).toBe("branch-checklist-critical-exceptions-v1");
     expect(resolveBranchOperationsDashboardProfile("branch-checklist-reviews-v0")).toBeNull();
     expect(branchOperationsDashboardProfileHref("branch-checklist-reviews-v1")).toBe(
       "/branch-operations?dashboard=branch-checklist-reviews-v1"
+    );
+    expect(
+      branchOperationsDashboardProfileHref(
+        "branch-checklist-critical-exceptions-v1"
+      )
+    ).toBe(
+      "/branch-operations?dashboard=branch-checklist-critical-exceptions-v1"
     );
   });
 
@@ -1006,6 +1019,27 @@ describe("Phase 2 branch operations foundation", () => {
     expect(
       resolveBranchOperationsDashboardRequest("branch-checklist-reviews-v0", "safe")
     ).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
+    expect(resolveBranchOperationsDashboardRequest("", "safe")).toEqual({
+      profile: null,
+      query: "",
+      error: "PROFILE_INVALID"
+    });
+    expect(
+      resolveBranchOperationsDashboardRequest(
+        ["branch-checklist-reviews-v1", "branch-checklist-exceptions-v1"],
+        "safe"
+      )
+    ).toEqual({ profile: null, query: "", error: "PROFILE_INVALID" });
+    expect(
+      resolveBranchOperationsDashboardRequest(
+        "branch-checklist-critical-exceptions-v1",
+        ["one", "two"]
+      )
+    ).toEqual({
+      profile: "branch-checklist-critical-exceptions-v1",
+      query: "",
+      error: "SEARCH_DUPLICATE"
+    });
     expect(
       resolveBranchOperationsDashboardRequest(
         "branch-checklist-reviews-v1",
@@ -1031,6 +1065,46 @@ describe("Phase 2 branch operations foundation", () => {
     expect(branchOperationsChecklistDetailHref("checklist-1", safeReturn)).toBe(
       `/branch-operations/checklist-1?returnTo=${encodeURIComponent(safeReturn)}`
     );
+  });
+
+  it("accepts only closed dashboard-profile navigation parameters", () => {
+    expect(
+      resolveBranchOperationsDashboardParameters(
+        {
+          dashboard: "branch-checklist-critical-exceptions-v1",
+          q: "grill",
+          page: "2"
+        },
+        "branch-checklist-critical-exceptions-v1"
+      )
+    ).toEqual({ page: 2, error: null });
+    expect(
+      resolveBranchOperationsDashboardParameters(
+        {
+          dashboard: "branch-checklist-critical-exceptions-v1",
+          status: "CLOSED"
+        },
+        "branch-checklist-critical-exceptions-v1"
+      )
+    ).toEqual({ page: null, error: "PARAMETERS_INVALID" });
+    expect(
+      resolveBranchOperationsDashboardParameters(
+        {
+          dashboard: "branch-checklist-critical-exceptions-v1",
+          page: ["1", "2"]
+        },
+        "branch-checklist-critical-exceptions-v1"
+      )
+    ).toEqual({ page: null, error: "PARAMETERS_INVALID" });
+    expect(
+      resolveBranchOperationsDashboardParameters(
+        {
+          dashboard: "branch-checklist-critical-exceptions-v1",
+          page: "0"
+        },
+        "branch-checklist-critical-exceptions-v1"
+      )
+    ).toEqual({ page: null, error: "PARAMETERS_INVALID" });
   });
 
   it("rejects an unsupported profile and overlong profile search at the service boundary", async () => {
@@ -1076,6 +1150,147 @@ describe("Phase 2 branch operations foundation", () => {
       brandId: session.context.brandId,
       locationId: session.context.locationId,
       status: { in: ["SUBMITTED", "MANAGER_REVIEW"] }
+    });
+    expect(
+      branchOperationsDashboardProfileWhere(
+        session as never,
+        "branch-checklist-critical-exceptions-v1"
+      )
+    ).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      lines: {
+        some: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          brandId: session.context.brandId,
+          locationId: session.context.locationId,
+          result: "EXCEPTION",
+          severity: "CRITICAL"
+        }
+      }
+    });
+
+    const allBrandSession = {
+      ...session,
+      context: { ...session.context, brandId: null, brandName: "All Brands" }
+    };
+    expect(
+      branchOperationsDashboardProfileWhere(
+        allBrandSession as never,
+        "branch-checklist-critical-exceptions-v1"
+      )
+    ).not.toHaveProperty("brandId");
+    expect(
+      branchOperationsDashboardProfileWhere(
+        allBrandSession as never,
+        "branch-checklist-critical-exceptions-v1"
+      ).lines
+    ).toEqual({
+      some: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: session.context.locationId,
+        result: "EXCEPTION",
+        severity: "CRITICAL"
+      }
+    });
+  });
+
+  it("keeps the critical-line signal relation-safe and recomputes it for narrowed checklist membership", async () => {
+    mockPrisma.branchOperationalChecklist.count.mockResolvedValue(1);
+    mockPrisma.branchOperationalChecklistLine.count.mockResolvedValue(2);
+    mockPrisma.branchOperationalChecklist.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000403",
+        checklistName: "Grill opening readiness",
+        businessDate: new Date("2026-07-26T00:00:00.000Z"),
+        shiftType: "OPENING",
+        status: "CLOSED",
+        openedByUserId: null,
+        submittedByUserId: null,
+        reviewedByUserId: null,
+        reviewedAt: null,
+        exceptionCount: 3,
+        completionPercent: 100,
+        location: { name: "SM North Edsa" },
+        lines: []
+      }
+    ]);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+
+    await expect(
+      listBranchOperationChecklistPage(
+        session as never,
+        {
+          q: "grill",
+          status: "DRAFT",
+          shift: "CLOSING",
+          businessDate: "1900-01-01"
+        },
+        { dashboardProfile: "branch-checklist-critical-exceptions-v1" }
+      )
+    ).resolves.toMatchObject({
+      dashboardProfile: "branch-checklist-critical-exceptions-v1",
+      totalItems: 1,
+      signalTotal: 2
+    });
+
+    const checklistWhere = mockPrisma.branchOperationalChecklist.count.mock.calls[0]![0].where;
+    const lineWhere = mockPrisma.branchOperationalChecklistLine.count.mock.calls[0]![0].where;
+    expect(mockPrisma.branchOperationalChecklist.findMany.mock.calls[0]![0].where)
+      .toEqual(checklistWhere);
+    expect(mockPrisma.branchOperationalChecklist.findMany.mock.calls[0]![0].include.lines)
+      .toEqual({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          brandId: session.context.brandId,
+          locationId: session.context.locationId
+        },
+        orderBy: { lineNo: "asc" }
+      });
+    expect(checklistWhere).toMatchObject({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      lines: {
+        some: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          brandId: session.context.brandId,
+          locationId: session.context.locationId,
+          result: "EXCEPTION",
+          severity: "CRITICAL"
+        }
+      },
+      OR: expect.any(Array)
+    });
+    expect(checklistWhere).not.toHaveProperty("status");
+    expect(checklistWhere).not.toHaveProperty("shiftType");
+    expect(checklistWhere).not.toHaveProperty("businessDate");
+    expect(lineWhere).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: session.context.brandId,
+      locationId: session.context.locationId,
+      result: "EXCEPTION",
+      severity: "CRITICAL",
+      checklist: { is: checklistWhere }
+    });
+    expect(checklistWhere.OR).toContainEqual({
+      lines: {
+        some: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          brandId: session.context.brandId,
+          locationId: session.context.locationId,
+          OR: expect.any(Array)
+        }
+      }
     });
   });
 
@@ -1243,12 +1458,46 @@ describe("Phase 2 branch operations foundation", () => {
       locationId: session.context.locationId,
       exceptionCount: { gt: 0 }
     });
+    expect(mockPrisma.branchOperationalChecklistLine.count).toHaveBeenCalledWith({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        brandId: session.context.brandId,
+        locationId: session.context.locationId,
+        result: "EXCEPTION",
+        severity: "CRITICAL",
+        checklist: {
+          is: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            brandId: session.context.brandId,
+            locationId: session.context.locationId,
+            lines: {
+              some: {
+                tenantId: session.context.tenantId,
+                companyId: session.context.companyId,
+                brandId: session.context.brandId,
+                locationId: session.context.locationId,
+                result: "EXCEPTION",
+                severity: "CRITICAL"
+              }
+            }
+          }
+        }
+      }
+    });
   });
 
   it("renders explicit metric-grain, no-widening, and return-context states", () => {
     expect(listPageSource).toContain("Dashboard view unavailable");
     expect(listPageSource).toContain("exception line(s) across");
     expect(listPageSource).toContain("It is not a personal task queue");
+    expect(listPageSource).toContain("retained EXCEPTION + CRITICAL line(s) across");
+    expect(listPageSource).toContain("not an unresolved-action count or historical snapshot");
+    expect(listPageSource).toContain('className="divide-y divide-slate-100 lg:hidden"');
+    expect(listPageSource).toContain('className="hidden overflow-x-auto lg:block"');
+    expect(listPageSource).toContain("Reviewed by");
+    expect(listPageSource).not.toContain("Next reviewer");
     expect(listPageSource).toContain("Opening a record does not grant review");
     expect(listPageSource).toContain("detailHref(checklist.id)");
     expect(detailPageSource).toContain("resolveBranchOperationsReturnTo");

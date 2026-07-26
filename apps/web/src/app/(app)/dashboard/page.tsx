@@ -71,6 +71,7 @@ function analyticsPanelHref(panel: AnalyticsPanel) {
 
 function MetricCard({ metric }: { metric: DashboardMetric }) {
   const Icon = metricIcons[metric.id as keyof typeof metricIcons] ?? BarChart3;
+  const hasExactProfile = metric.href?.includes("dashboard=") ?? false;
   const body = (
     <Panel className="ogfi-metric-card h-full p-5">
       <div className="flex items-start justify-between gap-3">
@@ -89,10 +90,16 @@ function MetricCard({ metric }: { metric: DashboardMetric }) {
       <p className="mt-3 min-h-10 text-sm leading-6 text-slate-600">{metric.detail}</p>
       <div className="mt-3 flex items-center justify-between gap-2">
         <Badge tone={metric.tone} size="sm">
-          {metric.href ? "Drill-down ready" : "Source pending"}
+          {hasExactProfile
+            ? "Exact profile"
+            : metric.href
+              ? "Drill-down ready"
+              : "Source pending"}
         </Badge>
         {metric.href ? (
-          <span className="text-xs font-semibold text-blue-700">Open source</span>
+          <span className="text-xs font-semibold text-blue-700">
+            {hasExactProfile ? "View matching records" : "Open source"}
+          </span>
         ) : null}
       </div>
     </Panel>

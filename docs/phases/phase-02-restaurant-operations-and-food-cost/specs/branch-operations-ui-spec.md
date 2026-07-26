@@ -1,6 +1,6 @@
 # OGFI ERP — Phase II UI Specification: Branch Operations
 
-**Status:** Implemented for checklist queue, detail, create modal, review, return-for-correction, correction apply, close, export, versioned dashboard destinations, and review-reminder visibility
+**Status:** Existing checklist workflow, Reviews/Exceptions/Critical Exception Lines destinations, export, and reminder visibility implemented
 **Visual standard:** Modern SaaS UI with restaurant-grade operational control
 
 ## Screen Purpose
@@ -19,9 +19,10 @@ status, evidence, correction, export, and audit context.
    checklist lines.
 4. Review, return-for-correction, correction apply, and close action surfaces
    when the role and status permit them.
-5. Dashboard/report links use the allowlisted `branch-checklist-reviews-v1` and
-   `branch-checklist-exceptions-v1` read-only destinations and route onward to
-   source records instead of replacing source review actions.
+5. Dashboard/report links use the allowlisted `branch-checklist-reviews-v1`,
+   `branch-checklist-exceptions-v1`, and
+   `branch-checklist-critical-exceptions-v1` read-only destinations and route
+   onward to source records instead of replacing source review actions.
 
 ## Global UI Rules
 
@@ -51,12 +52,24 @@ status, evidence, correction, export, and audit context.
   an actor-actionable task count.
 - `branch-checklist-exceptions-v1` counts exception lines and separately reports
   affected checklist rows.
+- `branch-checklist-critical-exceptions-v1` counts retained lines whose result is
+  `EXCEPTION` and severity is `CRITICAL` across all checklist statuses. Its
+  destination separately reports the exact critical-line total and affected
+  checklist count; it is not an open-work or actor-actionable population.
+- The dashboard suppresses standalone `Manager Review` and `Reviewed` signals.
+  Manager Review is already included in the combined Reviews profile and is not
+  accurately described as `waiting`; Reviewed is intermediate, excludes `CLOSED`,
+  and has no confirmed period, owner, or close-policy reporting definition.
 - Unknown or stale profile identifiers produce a visible invalid state instead
   of falling back to the ordinary register. Profile, search, page, and return
   context persist through record detail and back navigation.
 - Dashboard and notification entries are visibility-only source links. Every
   detail action independently enforces current permission, scope, status, and
   actor eligibility.
+- Profile mode uses server-owned pagination and bounded narrowing search, renders
+  cards below the `lg` breakpoint, shows a selected-brand badge when a brand is
+  selected, and labels reviewer attribution `Reviewed by`. It does not expose
+  create or ordinary export controls.
 
 ## Acceptance Criteria
 

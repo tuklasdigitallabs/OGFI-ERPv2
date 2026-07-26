@@ -849,33 +849,16 @@ export function buildOperationalDashboardModel(
     metrics.push(
       {
         id: "branch-critical-exception-count",
-        label: "Critical checklist exceptions",
+        label: "Critical exception lines",
         displayValue: number(branchOperations.severityCounts.CRITICAL),
-        detail: "Critical branch checklist line exceptions in current scope",
-        href: "/branch-operations",
+        detail: "Retained EXCEPTION + CRITICAL lines across all checklist statuses in current scope",
+        href: branchOperationsDashboardProfileHref(
+          "branch-checklist-critical-exceptions-v1"
+        ),
         tone:
           branchOperations.severityCounts.CRITICAL > 0
             ? "warning"
             : "success"
-      },
-      {
-        id: "branch-manager-review-count",
-        label: "Manager review checklists",
-        displayValue: number(branchOperations.statusCounts.MANAGER_REVIEW),
-        detail: "Branch checklists waiting for manager review",
-        href: "/branch-operations",
-        tone:
-          branchOperations.statusCounts.MANAGER_REVIEW > 0
-            ? "warning"
-            : "success"
-      },
-      {
-        id: "branch-reviewed-count",
-        label: "Reviewed checklists",
-        displayValue: number(branchOperations.statusCounts.REVIEWED),
-        detail: "Reviewed branch checklists in current scope",
-        href: "/branch-operations",
-        tone: "success"
       }
     );
 
@@ -1770,7 +1753,7 @@ export function getOperationalDashboardSourceDescriptors(
       ? [{
           id: "branch-operations" as const,
           label: "Branch operations",
-          href: "/operations",
+          href: "/branch-operations",
           read: async () => ({
             patch: { branchOperationsDashboard: await getBranchOperationsDashboardRead(session) }
           })

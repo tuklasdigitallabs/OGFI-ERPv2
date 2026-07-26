@@ -72,6 +72,8 @@ No dashboard or report may invent a calculation that conflicts with transaction 
 - Food-safety close does not create incidents, post wastage, adjust stock, or mutate linked source records.
 - Dashboards must separately show review-ready branch checklists and food-safety logs without replacing the source review action in those modules.
 - Branch checklist and food-safety dashboards and CSV exports must expose source-level status and exception-severity counts so operational health cards use the same definitions as the source modules.
+- The Branch Operations `branch-checklist-critical-exceptions-v1` dashboard destination counts retained `EXCEPTION` + `CRITICAL` lines across every checklist status under exact relation-safe tenant, company, optional-brand, and location scope. It reports the exact critical-line total and distinct affected-checklist count separately, supports only bounded narrowing search and server-owned pagination, and grants no workflow or export authority.
+- Branch Operations reporting retains the combined `SUBMITTED` + `MANAGER_REVIEW` Reviews profile and suppresses standalone Manager Review and Reviewed dashboard signals. `REVIEWED` excludes `CLOSED` and is not a completion metric without a separately confirmed period, owner, and close-policy definition.
 - Restaurant-operations notification scans must include review-ready branch checklists and food-safety logs as source-linked reminders without performing review.
 
 ### Maintenance

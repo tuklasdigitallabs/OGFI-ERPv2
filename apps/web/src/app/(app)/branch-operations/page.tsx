@@ -20,6 +20,7 @@ import {
   branchOperationsDashboardProfilePageHref,
   getBranchOperationsDashboardRead,
   listBranchOperationChecklistPage,
+  resolveBranchOperationsDashboardParameters,
   resolveBranchOperationsDashboardRequest
 } from "@/server/services/branchOperations";
 import { getSessionContext } from "@/server/services/context";
@@ -122,10 +123,9 @@ export default async function BranchOperationsPage({
     permissions.branchOperationsCreate
   );
   const params = searchParams ? await searchParams : {};
-  const profileParam = getSearchParam(params, "dashboard");
   const dashboardRequest = resolveBranchOperationsDashboardRequest(
-    profileParam,
-    getSearchParam(params, "q")
+    params.dashboard,
+    params.q
   );
   const dashboardProfile = dashboardRequest.profile;
   if (dashboardRequest.error === "PROFILE_INVALID") {
@@ -142,8 +142,8 @@ export default async function BranchOperationsPage({
             description="This dashboard link cannot be opened safely. Return to Overview for a current Branch Operations card, or deliberately open the full Branch Operations workspace."
           />
           <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
-            <ButtonLink href="/dashboard">Back to Overview</ButtonLink>
-            <ButtonLink href="/branch-operations" tone="secondary">Open full workspace</ButtonLink>
+            <ButtonLink className="min-h-11" href="/dashboard">Back to Overview</ButtonLink>
+            <ButtonLink className="min-h-11" href="/branch-operations" tone="secondary">Open full workspace</ButtonLink>
           </div>
         </section>
       </AppShell>
@@ -165,7 +165,52 @@ export default async function BranchOperationsPage({
             description="Dashboard-view search is limited to 120 characters. Return to the unfiltered view and try a shorter checklist, actor, line, evidence, or note search."
           />
           <div className="mt-4 flex justify-center">
-            <ButtonLink href={branchOperationsDashboardProfileHref(dashboardProfile)}>Clear search</ButtonLink>
+            <ButtonLink className="min-h-11" href={branchOperationsDashboardProfileHref(dashboardProfile)}>Clear search</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  if (dashboardRequest.error === "SEARCH_DUPLICATE" && dashboardProfile) {
+    return (
+      <AppShell
+        session={session}
+        title="Branch Operations dashboard view unavailable"
+        subtitle="The requested dashboard search is invalid"
+        activeNav="branch-operations"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Use one search value"
+            description="This dashboard profile accepts one optional Search value. Clear the duplicate parameters before trying again."
+          />
+          <div className="mt-4 flex justify-center">
+            <ButtonLink className="min-h-11" href={branchOperationsDashboardProfileHref(dashboardProfile)}>Clear search</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  const dashboardParameters = resolveBranchOperationsDashboardParameters(
+    params,
+    dashboardProfile
+  );
+  if (dashboardParameters.error && dashboardProfile) {
+    return (
+      <AppShell
+        session={session}
+        title="Branch Operations dashboard view unavailable"
+        subtitle="The requested dashboard parameters are invalid"
+        activeNav="branch-operations"
+      >
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title="Dashboard parameters are invalid"
+            description="This dashboard profile accepts only one profile, one optional Search value, and one positive page number. Raw status, shift, date, scope, and duplicate parameters cannot redefine it."
+          />
+          <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+            <ButtonLink className="min-h-11" href={branchOperationsDashboardProfileHref(dashboardProfile)}>Open unfiltered profile</ButtonLink>
+            <ButtonLink className="min-h-11" href="/dashboard" tone="secondary">Back to Overview</ButtonLink>
           </div>
         </section>
       </AppShell>
@@ -183,7 +228,9 @@ export default async function BranchOperationsPage({
       status: statusFilter
     } : {})
   }, {
-    page: normalizePage(getSearchParam(params, "page")),
+    page: dashboardProfile
+      ? dashboardParameters.page ?? 1
+      : normalizePage(getSearchParam(params, "page")),
     pageSize: PAGE_SIZE,
     ...(dashboardProfile ? { dashboardProfile } : {})
   });
@@ -213,7 +260,9 @@ export default async function BranchOperationsPage({
     branchOperationsChecklistDetailHref(checklistId, pageHref(workspace.page));
   const profileTitle = dashboardProfile === "branch-checklist-exceptions-v1"
     ? "Checklist Exceptions"
-    : "Checklist Reviews";
+    : dashboardProfile === "branch-checklist-critical-exceptions-v1"
+      ? "Critical Exception Lines"
+      : "Checklist Reviews";
   const hasListFilters = Boolean(
     query ||
     (!dashboardProfile && (
@@ -234,12 +283,19 @@ export default async function BranchOperationsPage({
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="info">Dashboard profile</Badge>
             <Badge tone="neutral">{session.context.companyName}</Badge>
+            {session.context.brandId ? (
+              <Badge tone="neutral">{session.context.brandName}</Badge>
+            ) : null}
             <Badge tone="neutral">{session.context.locationName}</Badge>
           </div>
           <h2 className="mt-3 text-lg font-bold text-slate-950">{profileTitle}</h2>
           {dashboardProfile === "branch-checklist-exceptions-v1" ? (
             <p className="mt-1">
               This read-only oversight view contains {workspace.signalTotal ?? 0} exception line(s) across {workspace.totalItems} checklist(s) in the selected scope. The dashboard card counts exception lines; the register pages affected checklists.
+            </p>
+          ) : dashboardProfile === "branch-checklist-critical-exceptions-v1" ? (
+            <p className="mt-1">
+              This read-only oversight view contains {workspace.signalTotal ?? 0} retained EXCEPTION + CRITICAL line(s) across {workspace.totalItems} affected checklist(s) in the selected scope. It includes all checklist statuses and is not an unresolved-action count or historical snapshot.
             </p>
           ) : (
             <p className="mt-1">
@@ -272,7 +328,7 @@ export default async function BranchOperationsPage({
         </div>
       </div>
 
-      <div className="mb-5 grid gap-4 md:grid-cols-5">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Business date</p>
           <p className="mt-2 text-xl font-bold text-slate-950">
@@ -366,7 +422,7 @@ export default async function BranchOperationsPage({
           </div>
         </div>
 
-        <form className={`grid gap-3 border-b border-slate-100 p-4 ${dashboardProfile ? "md:grid-cols-[1fr_auto]" : "md:grid-cols-[1fr_11rem_12rem_12rem_auto]"} md:items-end`}>
+        <form className={`grid gap-3 border-b border-slate-100 p-4 ${dashboardProfile ? "sm:grid-cols-[1fr_auto]" : "sm:grid-cols-2 lg:grid-cols-[1fr_11rem_12rem_12rem_auto]"} lg:items-end`}>
           {dashboardProfile ? <input name="dashboard" type="hidden" value={dashboardProfile} /> : null}
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Search
@@ -433,6 +489,8 @@ export default async function BranchOperationsPage({
                 ? "No checklists with exceptions in this scope"
                 : dashboardProfile === "branch-checklist-reviews-v1"
                   ? "No submitted or manager-review checklists in this scope"
+                  : dashboardProfile === "branch-checklist-critical-exceptions-v1"
+                    ? "No retained critical exception lines in this scope"
                   : "No checklist records yet"}
             </p>
             <p className="mt-1 text-sm text-slate-600">
@@ -456,7 +514,7 @@ export default async function BranchOperationsPage({
           </div>
         ) : (
           <>
-            <div className="divide-y divide-slate-100 md:hidden">
+            <div className="divide-y divide-slate-100 lg:hidden">
               {paginatedChecklists.map((checklist) => (
                 <article key={checklist.id} className="grid gap-3 px-4 py-4">
                   <div className="flex items-start justify-between gap-3">
@@ -468,14 +526,23 @@ export default async function BranchOperationsPage({
                   </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <div><dt className="text-xs font-semibold uppercase text-slate-500">Progress</dt><dd className="font-bold text-slate-950">{checklist.completionPercent.toFixed(0)}%</dd></div>
-                    <div><dt className="text-xs font-semibold uppercase text-slate-500">Exceptions</dt><dd className="font-bold text-slate-950">{checklist.exceptionCount} / {checklist.lines.length}</dd></div>
-                    <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Next reviewer</dt><dd className="font-semibold text-slate-700">{checklist.reviewedByName ?? "Pending review"}</dd></div>
+                    <div>
+                      <dt className="text-xs font-semibold uppercase text-slate-500">
+                        {dashboardProfile === "branch-checklist-critical-exceptions-v1" ? "Critical lines" : "Exceptions"}
+                      </dt>
+                      <dd className="font-bold text-slate-950">
+                        {dashboardProfile === "branch-checklist-critical-exceptions-v1"
+                          ? checklist.lines.filter((line) => line.result === "EXCEPTION" && line.severity === "CRITICAL").length
+                          : checklist.exceptionCount} / {checklist.lines.length}
+                      </dd>
+                    </div>
+                    <div className="col-span-2"><dt className="text-xs font-semibold uppercase text-slate-500">Reviewed by</dt><dd className="font-semibold text-slate-700">{checklist.reviewedByName ?? "Not reviewed"}</dd></div>
                   </dl>
                   <ButtonLink href={detailHref(checklist.id)} tone="secondary" className="min-h-11 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100">View Detail</ButtonLink>
                 </article>
               ))}
             </div>
-            <div className="hidden overflow-x-auto md:block">
+            <div className="hidden overflow-x-auto lg:block">
               <div className="min-w-[62rem]">
                 <div className="grid grid-cols-[1.7fr_8rem_7rem_7rem_8rem_10rem_10rem_8rem] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase text-slate-500">
                   <span>Checklist</span>
@@ -496,7 +563,9 @@ export default async function BranchOperationsPage({
                       <div className="min-w-0">
                         <h3 className="font-bold text-slate-950">{checklist.checklistName}</h3>
                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                          {checklist.exceptionCount} exception(s) / {checklist.lines.length} line(s)
+                          {dashboardProfile === "branch-checklist-critical-exceptions-v1"
+                            ? `${checklist.lines.filter((line) => line.result === "EXCEPTION" && line.severity === "CRITICAL").length} critical exception line(s) / ${checklist.exceptionCount} total exception(s)`
+                            : `${checklist.exceptionCount} exception(s) / ${checklist.lines.length} line(s)`}
                         </p>
                       </div>
                       <p className="font-semibold text-slate-800">{checklist.businessDate}</p>
@@ -513,7 +582,7 @@ export default async function BranchOperationsPage({
                         {checklist.openedByName ?? "Not recorded"}
                       </p>
                       <p className="truncate font-semibold text-slate-700">
-                        {checklist.reviewedByName ?? "Pending review"}
+                        {checklist.reviewedByName ?? "Not reviewed"}
                       </p>
                       <ButtonLink
                         href={detailHref(checklist.id)}
