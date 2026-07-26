@@ -29,12 +29,15 @@ vi.mock("@/server/services/csv", () => ({
 }));
 vi.mock("@/server/services/inventory", () => ({
   listInventoryBalances: mocks.listOrdinary,
-  listInventoryPositiveStockProfileExportRows: mocks.listProfile,
+  listInventoryBalanceDashboardProfileExportRows: mocks.listProfile,
   resolveInventoryBalanceDashboardRequest: (
     profileValue: string | string[] | undefined,
     queryValue: string | string[] | undefined
   ) => {
-    if (typeof profileValue !== "string" || profileValue !== "positive-stock-v1") {
+    if (
+      typeof profileValue !== "string" ||
+      !["positive-stock-v1", "zero-stock-v1"].includes(profileValue)
+    ) {
       return { profile: null, query: "", error: "PROFILE_INVALID" };
     }
     if (Array.isArray(queryValue) || (queryValue?.trim().length ?? 0) > 120) {
@@ -128,5 +131,23 @@ describe("positive-stock profile export route", () => {
       }
     }));
     expect(JSON.stringify(mocks.audit.mock.calls)).not.toContain("rice");
+  });
+
+  test("exports the zero-stock profile with its exact filename and metadata", async () => {
+    const response = await GET(new Request(
+      "https://erp.test/inventory/export?dashboard=zero-stock-v1"
+    ));
+
+    expect(await response.text()).toBe("zero-stock-rows.csv");
+    expect(mocks.listProfile).toHaveBeenCalledWith(session, {
+      profile: "zero-stock-v1",
+      maxRows: 100
+    });
+    expect(mocks.buildMetadata).toHaveBeenCalledWith(expect.objectContaining({
+      extra: expect.arrayContaining([
+        ["Dashboard Profile", "zero-stock-v1"],
+        ["Search", "All zero stock rows"]
+      ])
+    }));
   });
 });

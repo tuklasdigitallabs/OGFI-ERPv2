@@ -143,7 +143,10 @@ export type InventoryBalanceDashboardRead = {
   recentlyUpdatedRows: number;
 };
 
-export const inventoryBalanceDashboardProfiles = ["positive-stock-v1"] as const;
+export const inventoryBalanceDashboardProfiles = [
+  "positive-stock-v1",
+  "zero-stock-v1"
+] as const;
 export type InventoryBalanceDashboardProfile =
   (typeof inventoryBalanceDashboardProfiles)[number];
 export type InventoryBalanceDashboardRequestError =
@@ -188,7 +191,11 @@ export function inventoryDashboardProfileHref(
 export function resolveInventoryBalanceDashboardProfile(
   value: string | undefined
 ): InventoryBalanceDashboardProfile | null {
-  return value === "positive-stock-v1" ? value : null;
+  return inventoryBalanceDashboardProfiles.includes(
+    value as InventoryBalanceDashboardProfile
+  )
+    ? (value as InventoryBalanceDashboardProfile)
+    : null;
 }
 
 export function resolveInventoryBalanceDashboardRequest(
@@ -1154,6 +1161,30 @@ export function inventoryPositiveStockProfileWhere(
   };
 }
 
+export function inventoryZeroStockProfileWhere(
+  session: SessionContext,
+  query?: string
+): Prisma.InventoryBalanceWhereInput {
+  const normalizedQuery = normalizeInventorySearchQuery(query);
+  return {
+    ...scopedInventoryBalanceWhere(session, normalizedQuery),
+    qtyOnHand: { equals: 0 }
+  };
+}
+
+export function inventoryBalanceDashboardProfileWhere(
+  session: SessionContext,
+  profile: InventoryBalanceDashboardProfile,
+  query?: string
+): Prisma.InventoryBalanceWhereInput {
+  switch (profile) {
+    case "positive-stock-v1":
+      return inventoryPositiveStockProfileWhere(session, query);
+    case "zero-stock-v1":
+      return inventoryZeroStockProfileWhere(session, query);
+  }
+}
+
 function ordinaryInventoryBalanceWhere(
   session: SessionContext,
   filters: InventoryBalanceFilters,
@@ -1207,7 +1238,11 @@ export async function listInventoryBalancePage(
   const expiryCutoff = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const baseWhere = scopedInventoryBalanceWhere(session, normalized.query);
   const where = input.dashboardProfile
-    ? inventoryPositiveStockProfileWhere(session, normalized.query)
+    ? inventoryBalanceDashboardProfileWhere(
+        session,
+        input.dashboardProfile,
+        normalized.query
+      )
     : ordinaryInventoryBalanceWhere(session, normalized, expiryCutoff);
   const [totalItems, company] = await Promise.all([
     prisma.inventoryBalance.count({ where }),
@@ -1246,7 +1281,7 @@ export async function listInventoryBalancePage(
   };
 }
 
-export async function listInventoryPositiveStockProfileExportRows(
+export async function listInventoryBalanceDashboardProfileExportRows(
   session: SessionContext,
   input: {
     profile: InventoryBalanceDashboardProfile;
@@ -1261,7 +1296,11 @@ export async function listInventoryPositiveStockProfileExportRows(
   if (!Number.isInteger(input.maxRows) || input.maxRows < 1) {
     throw new Error("INVENTORY_BALANCE_EXPORT_MAX_ROWS_INVALID");
   }
-  const where = inventoryPositiveStockProfileWhere(session, input.query);
+  const where = inventoryBalanceDashboardProfileWhere(
+    session,
+    input.profile,
+    input.query
+  );
   const totalItems = await prisma.inventoryBalance.count({ where });
   if (totalItems > input.maxRows) {
     throw new Error("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
@@ -1284,7 +1323,7 @@ export async function getInventoryBalanceDashboardRead(
   await requirePermission(session, permissions.inventoryBalanceView);
   const scope = inventoryBalanceDashboardScope(session);
   const recentlyUpdatedAfter = new Date(Date.now() - 7 * 86_400_000);
-  const [rows, positiveRows] = await Promise.all([
+  const [rows, positiveRows, zeroRows] = await Promise.all([
     prisma.$queryRaw<InventoryBalanceDashboardRead[]>`
       SELECT COUNT(*)::integer AS "totalRows",
              COUNT(*) FILTER (WHERE balance."qtyOnHand" > 0)::integer AS "positiveRows",
@@ -1322,6 +1361,9 @@ export async function getInventoryBalanceDashboardRead(
          AND inventory_location."status" = 'ACTIVE'`,
     prisma.inventoryBalance.count({
       where: inventoryPositiveStockProfileWhere(session)
+    }),
+    prisma.inventoryBalance.count({
+      where: inventoryZeroStockProfileWhere(session)
     })
   ]);
 
@@ -1332,7 +1374,7 @@ export async function getInventoryBalanceDashboardRead(
     lotExpiryTrackedRows: 0,
     recentlyUpdatedRows: 0
   };
-  return { ...aggregate, positiveRows };
+  return { ...aggregate, positiveRows, zeroRows };
 }
 
 export function inventoryBalanceDashboardScope(

@@ -17,6 +17,7 @@ import {
   listInventoryBalancePage,
   maxInventorySearchLength,
   resolveInventoryBalanceDashboardRequest,
+  type InventoryBalanceDashboardProfile,
   type InventoryBalanceFilters
 } from "@/server/services/inventory";
 import {
@@ -87,6 +88,40 @@ function getStrictProfilePage(value: string | string[] | undefined) {
 
 const profileQueryKeys = new Set(["dashboard", "q", "page"]);
 
+function dashboardProfileCopy(profile: InventoryBalanceDashboardProfile) {
+  switch (profile) {
+    case "positive-stock-v1":
+      return {
+        title: "Positive Stock",
+        rowLabel: "Positive stock rows",
+        banner:
+          "This read-only view contains current balance rows above zero for the selected location.",
+        population: "Only current positive balance rows are included",
+        emptyTitle: "No positive stock balances found",
+        emptySearchTitle: "No positive stock rows match this search",
+        emptyDescription:
+          "Positive balances will appear here after posted receiving or transfer receipt movements.",
+        emptySearchDescription:
+          "Clear or change the search to review the current positive-stock population."
+      };
+    case "zero-stock-v1":
+      return {
+        title: "Zero Stock Rows",
+        rowLabel: "Zero stock rows",
+        banner:
+          "This read-only view contains existing balance rows with on-hand quantity exactly zero for the selected location.",
+        population:
+          "Only existing balance rows at exactly zero are included; negative balances and catalog items without a balance row are excluded",
+        emptyTitle: "No zero stock rows at this location",
+        emptySearchTitle: "No zero stock rows match this search",
+        emptyDescription:
+          "Every existing balance row currently has a non-zero on-hand quantity. This does not confirm that every catalog item is stocked.",
+        emptySearchDescription:
+          "Clear or change the search to review the current zero-stock population."
+      };
+  }
+}
+
 export default async function InventoryPage({ searchParams }: InventoryPageProps) {
   const session = await getSessionContext();
   if (!session) {
@@ -114,14 +149,14 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
     return (
       <AppShell
         session={session}
-        title="Positive Stock profile unavailable"
+        title="Stock balance profile unavailable"
         subtitle="The requested dashboard destination is invalid or no longer supported"
         activeNav="inventory"
       >
         <section className="ogfi-data-surface p-5">
           <EmptyState
-            title="Positive Stock profile cannot be opened safely"
-            description="Return to the dashboard and open the current Positive Stock link. No ordinary or broader stock-balance list was substituted."
+            title="Stock balance profile cannot be opened safely"
+            description="Return to the dashboard and open the current stock-balance link. No ordinary or broader stock-balance list was substituted."
           />
           <div className="mt-4 flex justify-center">
             <ButtonLink href="/dashboard" className="min-h-11">
@@ -133,7 +168,8 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
     );
   }
   const dashboardProfile = profileRequest.profile;
-  const activeTab = dashboardProfile ? "positive" : getInventoryTab(params);
+  const profileCopy = dashboardProfile ? dashboardProfileCopy(dashboardProfile) : null;
+  const activeTab = dashboardProfile === "positive-stock-v1" ? "positive" : dashboardProfile ? "all" : getInventoryTab(params);
   const page = dashboardProfile ? profilePage! : getPage(params);
   const rawQuery = dashboardProfile ? profileRequest.query : getSearchParam(params, "q");
   const normalizedQuery = rawQuery?.trim() || undefined;
@@ -171,8 +207,14 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   const visibleBalances = balances;
   const safePage = balancePage.page;
   const pagedBalances = visibleBalances;
-  const emptyCopy =
-    activeTab === "positive"
+  const emptyCopy = profileCopy
+    ? {
+        title: normalizedQuery ? profileCopy.emptySearchTitle : profileCopy.emptyTitle,
+        description: normalizedQuery
+          ? profileCopy.emptySearchDescription
+          : profileCopy.emptyDescription
+      }
+    : activeTab === "positive"
       ? {
           title: normalizedQuery
             ? "No positive stock rows match this search"
@@ -214,7 +256,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       </div>
       {dashboardProfile ? (
         <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
-          <strong>Positive Stock dashboard profile.</strong> This read-only view contains current balance rows above zero for the selected location. Search may only narrow that fixed population. It is a live inquiry, not a historical snapshot of the dashboard value.
+          <strong>{profileCopy!.title} dashboard profile.</strong> {profileCopy!.banner} Search may only narrow that fixed population. It is a live inquiry, not a historical snapshot of the dashboard value or an automatic replenishment queue.
           <p className="mt-2">
             CSV export uses this profile and search. If the configured synchronous row limit is exceeded, narrow Search and try again; no partial file is downloaded.
           </p>
@@ -223,7 +265,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       <div className={`mb-5 grid gap-4 ${dashboardProfile ? "md:grid-cols-2" : "md:grid-cols-3 xl:grid-cols-4"}`}>
         <Panel>
           <p className="text-sm font-semibold text-slate-500">
-            {dashboardProfile ? "Positive stock rows" : "Balance rows"}
+            {profileCopy ? profileCopy.rowLabel : "Balance rows"}
           </p>
           <p className="mt-2 text-3xl font-bold text-slate-950">{totalLots}</p>
           <p className="mt-1 text-xs text-slate-500">
@@ -269,7 +311,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         <div className="ogfi-section-header">
           <div>
             <h2 className="text-lg font-bold text-slate-950">
-              {dashboardProfile ? "Positive Stock" : "Current Location Stock"}
+              {profileCopy ? profileCopy.title : "Current Location Stock"}
             </h2>
             <p className="text-sm text-slate-500">
               Balances are derived from posted inventory movements
@@ -323,7 +365,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         ) : null}
         {dashboardProfile ? (
           <div className="flex flex-col gap-3 border-b border-blue-100 bg-blue-50/60 p-4 text-sm text-blue-950 sm:flex-row sm:items-center sm:justify-between">
-            <p>Only current positive balance rows are included; ordinary tabs and filters cannot redefine this dashboard profile.</p>
+            <p>{profileCopy!.population}; ordinary tabs and filters cannot redefine this dashboard profile.</p>
             <ButtonLink href="/inventory" tone="secondary" className="min-h-11 shrink-0">
               Open all stock balances
             </ButtonLink>
@@ -432,6 +474,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
             pageSize={PAGE_SIZE}
             totalItems={balancePage.totalItems}
             itemLabel="balance rows"
+            controlClassName="min-h-11"
             getPageHref={(nextPage) =>
               dashboardProfile
                 ? inventoryBalanceDashboardProfileHref(dashboardProfile, {

@@ -6,7 +6,7 @@ import type { getOperationalDashboard as getOperationalDashboardType } from "../
 import type {
   getInventoryBalanceDashboardRead as getInventoryBalanceDashboardReadType,
   listInventoryBalancePage as listInventoryBalancePageType,
-  listInventoryPositiveStockProfileExportRows as listInventoryPositiveStockProfileExportRowsType,
+  listInventoryBalanceDashboardProfileExportRows as listInventoryBalanceDashboardProfileExportRowsType,
   lockInventoryLocationForPosting as lockInventoryLocationForPostingType,
   lockInventoryLocationsForPosting as lockInventoryLocationsForPostingType,
   postInventoryMovement as postInventoryMovementType,
@@ -91,7 +91,7 @@ describe("procurement and inventory authorization boundaries", () => {
   let getOperationalDashboard: typeof getOperationalDashboardType;
   let getInventoryBalanceDashboardRead: typeof getInventoryBalanceDashboardReadType;
   let listInventoryBalancePage: typeof listInventoryBalancePageType;
-  let listInventoryPositiveStockProfileExportRows: typeof listInventoryPositiveStockProfileExportRowsType;
+  let listInventoryBalanceDashboardProfileExportRows: typeof listInventoryBalanceDashboardProfileExportRowsType;
   let lockInventoryLocationForPosting: typeof lockInventoryLocationForPostingType;
   let lockInventoryLocationsForPosting: typeof lockInventoryLocationsForPostingType;
   let postInventoryMovement: typeof postInventoryMovementType;
@@ -137,7 +137,7 @@ describe("procurement and inventory authorization boundaries", () => {
     ({
       getInventoryBalanceDashboardRead,
       listInventoryBalancePage,
-      listInventoryPositiveStockProfileExportRows,
+      listInventoryBalanceDashboardProfileExportRows,
       lockInventoryLocationForPosting,
       lockInventoryLocationsForPosting,
       postInventoryMovement,
@@ -978,15 +978,30 @@ describe("procurement and inventory authorization boundaries", () => {
     await expect(listInventoryBalancePage(session, {}, {
       dashboardProfile: "positive-stock-v1"
     })).rejects.toThrow("PERMISSION_DENIED");
-    await expect(listInventoryPositiveStockProfileExportRows(session, {
+    await expect(listInventoryBalanceDashboardProfileExportRows(session, {
       profile: "positive-stock-v1",
+      maxRows: 100
+    })).rejects.toThrow("PERMISSION_DENIED");
+    await expect(listInventoryBalanceDashboardProfileExportRows(session, {
+      profile: "zero-stock-v1",
+      maxRows: 100
+    })).rejects.toThrow("PERMISSION_DENIED");
+    const staleCachedSession = {
+      ...session,
+      permissionCodes: ["inventory.balance.view"]
+    };
+    await expect(listInventoryBalancePage(staleCachedSession, {}, {
+      dashboardProfile: "zero-stock-v1"
+    })).rejects.toThrow("PERMISSION_DENIED");
+    await expect(listInventoryBalanceDashboardProfileExportRows(staleCachedSession, {
+      profile: "zero-stock-v1",
       maxRows: 100
     })).rejects.toThrow("PERMISSION_DENIED");
 
     const foreignUomId = randomUUID();
     const foreignCategoryId = randomUUID();
     const foreignItemId = randomUUID();
-    const balanceIds = Array.from({ length: 9 }, () => randomUUID());
+    const balanceIds = Array.from({ length: 15 }, () => randomUUID());
     const inactiveInventoryLocationId = randomUUID();
     await prisma.uom.create({
       data: {
@@ -1137,6 +1152,72 @@ describe("procurement and inventory authorization boundaries", () => {
             baseUomId: ids.uomId,
             qtyOnHand: -2,
             updatedAt: recent
+          },
+          {
+            id: balanceIds[9]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-ZERO-SECOND-${suffix}`,
+            baseUomId: ids.uomId,
+            qtyOnHand: 0,
+            updatedAt: old
+          },
+          {
+            id: balanceIds[10]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.adjacentInventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-ZERO-ADJ-LOC-${suffix}`,
+            baseUomId: ids.uomId,
+            qtyOnHand: 0,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[11]!,
+            tenantId: ids.tenantId,
+            companyId: ids.adjacentCompanyId,
+            inventoryLocationId: ids.adjacentCompanyInventoryLocationId,
+            itemId: ids.adjacentCompanyItemId,
+            lotKey: `DASH-ZERO-ADJ-COMP-${suffix}`,
+            baseUomId: ids.adjacentCompanyUomId,
+            qtyOnHand: 0,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[12]!,
+            tenantId: ids.foreignTenantId,
+            companyId: ids.foreignCompanyId,
+            inventoryLocationId: ids.foreignInventoryLocationId,
+            itemId: foreignItemId,
+            lotKey: `DASH-ZERO-FOREIGN-${suffix}`,
+            baseUomId: foreignUomId,
+            qtyOnHand: 0,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[13]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: inactiveInventoryLocationId,
+            itemId: ids.itemId,
+            lotKey: `DASH-ZERO-INACTIVE-${suffix}`,
+            baseUomId: ids.uomId,
+            qtyOnHand: 0,
+            updatedAt: recent
+          },
+          {
+            id: balanceIds[14]!,
+            tenantId: ids.tenantId,
+            companyId: ids.companyId,
+            inventoryLocationId: ids.inventoryLocationId,
+            itemId: foreignItemId,
+            lotKey: `DASH-ZERO-MISMATCH-${suffix}`,
+            baseUomId: foreignUomId,
+            qtyOnHand: 0,
+            updatedAt: recent
           }
         ]
       });
@@ -1144,8 +1225,13 @@ describe("procurement and inventory authorization boundaries", () => {
       const revokeBalancePermission = await grantPermission("inventory.balance.view");
 
       try {
-        const beforeReadCounts = await Promise.all([
-          prisma.inventoryBalance.count({ where: { id: { in: balanceIds } } }),
+        const beforeReadSnapshot = await Promise.all([
+          prisma.inventoryBalance.findMany({
+            where: { id: { in: balanceIds } },
+            select: { id: true, qtyOnHand: true, version: true },
+            orderBy: { id: "asc" }
+          }),
+          prisma.inventoryMovement.count({ where: { tenantId: ids.tenantId } }),
           prisma.auditEvent.count({ where: { tenantId: ids.tenantId } })
         ]);
         const authorizedSession = {
@@ -1153,9 +1239,9 @@ describe("procurement and inventory authorization boundaries", () => {
           permissionCodes: ["inventory.balance.view"]
         };
         await expect(getInventoryBalanceDashboardRead(authorizedSession)).resolves.toEqual({
-          totalRows: 4,
+          totalRows: 5,
           positiveRows: 2,
-          zeroRows: 1,
+          zeroRows: 2,
           lotExpiryTrackedRows: 2,
           recentlyUpdatedRows: 3
         });
@@ -1169,13 +1255,30 @@ describe("procurement and inventory authorization boundaries", () => {
         expect(profilePage.items).toHaveLength(2);
         expect(profilePage.items.every((row) => row.qtyOnHand > 0)).toBe(true);
 
-        const profileExport = await listInventoryPositiveStockProfileExportRows(
+        const profileExport = await listInventoryBalanceDashboardProfileExportRows(
           authorizedSession,
           { profile: "positive-stock-v1", maxRows: 100 }
         );
         expect(profileExport).toHaveLength(2);
         expect(profileExport.map((row) => row.id).sort()).toEqual(
           profilePage.items.map((row) => row.id).sort()
+        );
+
+        const zeroProfilePage = await listInventoryBalancePage(
+          authorizedSession,
+          {},
+          { dashboardProfile: "zero-stock-v1", page: 1, pageSize: 10 }
+        );
+        expect(zeroProfilePage).toMatchObject({ totalItems: 2, page: 1, totalPages: 1 });
+        expect(zeroProfilePage.items).toHaveLength(2);
+        expect(zeroProfilePage.items.every((row) => row.qtyOnHand === 0)).toBe(true);
+
+        const zeroProfileExport = await listInventoryBalanceDashboardProfileExportRows(
+          authorizedSession,
+          { profile: "zero-stock-v1", maxRows: 100 }
+        );
+        expect(zeroProfileExport.map((row) => row.id).sort()).toEqual(
+          zeroProfilePage.items.map((row) => row.id).sort()
         );
 
         const dashboard = await getOperationalDashboard(authorizedSession);
@@ -1198,13 +1301,23 @@ describe("procurement and inventory authorization boundaries", () => {
         );
         expect(dashboard.stockHealth).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ id: "lot-expiry-coverage", displayValue: "2" })
+            expect.objectContaining({ id: "lot-expiry-coverage", displayValue: "2" }),
+            expect.objectContaining({
+              id: "zero-stock-rows",
+              displayValue: "2",
+              href: "/inventory?dashboard=zero-stock-v1"
+            })
           ])
         );
         await expect(Promise.all([
-          prisma.inventoryBalance.count({ where: { id: { in: balanceIds } } }),
+          prisma.inventoryBalance.findMany({
+            where: { id: { in: balanceIds } },
+            select: { id: true, qtyOnHand: true, version: true },
+            orderBy: { id: "asc" }
+          }),
+          prisma.inventoryMovement.count({ where: { tenantId: ids.tenantId } }),
           prisma.auditEvent.count({ where: { tenantId: ids.tenantId } })
-        ])).resolves.toEqual(beforeReadCounts);
+        ])).resolves.toEqual(beforeReadSnapshot);
       } finally {
         await revokeBalancePermission();
       }

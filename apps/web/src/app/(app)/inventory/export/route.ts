@@ -12,7 +12,7 @@ import {
 } from "@/server/services/exportAudit";
 import { canExportInventoryBalances } from "@/server/services/exportAuthorization";
 import {
-  listInventoryPositiveStockProfileExportRows,
+  listInventoryBalanceDashboardProfileExportRows,
   listInventoryBalances,
   resolveInventoryBalanceDashboardRequest,
   type InventoryBalanceFilters
@@ -121,7 +121,7 @@ export async function GET(request: Request) {
         eventType: "report.export_started",
         metadata: auditMetadata
       });
-      const balances = await listInventoryPositiveStockProfileExportRows(session, {
+      const balances = await listInventoryBalanceDashboardProfileExportRows(session, {
         profile: profileRequest.profile,
         ...(profileRequest.query ? { query: profileRequest.query } : {}),
         maxRows: exportPolicy.maxRows
@@ -135,14 +135,22 @@ export async function GET(request: Request) {
       });
       return csvExportResponse(
         inventoryBalanceCsvRows(balances),
-        "positive-stock.csv",
+        profileRequest.profile === "positive-stock-v1"
+          ? "positive-stock.csv"
+          : "zero-stock-rows.csv",
         {
           metadata: await buildReportCsvMetadata({
             session,
             reportId: "stock-balances",
             extra: [
               ["Dashboard Profile", profileRequest.profile],
-              ["Search", profileRequest.query || "All positive stock rows"],
+              [
+                "Search",
+                profileRequest.query ||
+                  (profileRequest.profile === "positive-stock-v1"
+                    ? "All positive stock rows"
+                    : "All zero stock rows")
+              ],
               ["Maximum Rows", exportPolicy.maxRows]
             ]
           })

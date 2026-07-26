@@ -6,12 +6,12 @@ const source = readFileSync(fileURLToPath(new URL("./page.tsx", import.meta.url)
 const loadingSource = readFileSync(fileURLToPath(new URL("./loading.tsx", import.meta.url)), "utf8");
 const errorSource = readFileSync(fileURLToPath(new URL("./error.tsx", import.meta.url)), "utf8");
 
-describe("Positive Stock dashboard profile UI", () => {
+describe("closed stock-balance dashboard profile UI", () => {
   it("fails closed before the balance read for invalid or widening profile input", () => {
     expect(source).toContain("resolveInventoryBalanceDashboardRequest(params.dashboard, params.q)");
     expect(source).toContain('new Set(["dashboard", "q", "page"])');
     expect(source).toContain("!profileQueryKeys.has(key)");
-    expect(source).toContain("Positive Stock profile cannot be opened safely");
+    expect(source).toContain("Stock balance profile cannot be opened safely");
     expect(source.indexOf("!profileRequest.profile")).toBeLessThan(
       source.indexOf("await listInventoryBalancePage(session")
     );
@@ -31,13 +31,18 @@ describe("Positive Stock dashboard profile UI", () => {
     expect(source).toContain("Search may only narrow that fixed population");
     expect(source).toContain("dashboardProfile ? (");
     expect(source).toContain("Only current positive balance rows are included");
+    expect(source).toContain("Only existing balance rows at exactly zero are included");
+    expect(source).toContain("not a historical snapshot of the dashboard value or an automatic replenishment queue");
   });
 
   it("provides profile-aware empty, loading, error, and accessible control states", () => {
     expect(source).toContain("No positive stock rows match this search");
+    expect(source).toContain("No zero stock rows match this search");
+    expect(source).toContain("This does not confirm that every catalog item is stocked");
     expect(source).toContain("narrow Search and try again; no partial file is downloaded");
     expect(source).not.toContain('className="min-h-9');
     expect(source).not.toContain('className="min-h-10');
+    expect(source).toContain('controlClassName="min-h-11"');
     for (const label of ["On hand: ", "Lot: ", "Expiry: ", "Storage: ", "Updated: "]) {
       expect(source).toContain(label);
     }

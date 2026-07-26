@@ -172,3 +172,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0229-MAINTENANCE-DASHBOARD-PROFILES.md` — versioned server-owned active follow-up, all-status critical, pending-vendor oversight, and active-only captured-cutoff overdue Maintenance destinations
 - `DEC-0230-MY-TASKS-BOUNDED-SOURCE-SETTLEMENT.md` — bounded My Tasks source deadlines, retained admission, redacted telemetry, and fail-closed partial-page semantics
 - `DEC-0231-POSITIVE-STOCK-DASHBOARD-PROFILE.md` — closed selected-scope active-location positive-stock profile with exact dashboard/list/export parity and bounded no-truncation export
+- `DEC-0232-ZERO-STOCK-DASHBOARD-PROFILE.md` — closed existing-balance-row zero-stock profile with truthful row grain, exact dashboard/list/export parity, and bounded no-truncation export

@@ -11,15 +11,17 @@ import {
   calculateBalanceQuantity,
   getInventoryBalanceReconciliationStatus,
   inventoryBalanceDashboardProfileHref,
+  inventoryBalanceDashboardProfileWhere,
   inventoryDashboardProfileHref,
   inventoryBalanceDashboardScope,
   inventoryPositiveStockProfileWhere,
+  inventoryZeroStockProfileWhere,
   inventoryLedgerTraceHref,
   inventoryMovementListWhere,
   lockInventoryLocationForPosting,
   lockInventoryLocationsForPosting,
   listInventoryBalancePage,
-  listInventoryPositiveStockProfileExportRows,
+  listInventoryBalanceDashboardProfileExportRows,
   normalizeInventoryBalanceFilters,
   normalizeInventoryMovementFilters,
   normalizeInventoryLotKey,
@@ -56,7 +58,7 @@ describe("inventory ledger foundation rules", () => {
     expect(dashboardSource).not.toContain("listInventoryBalances(session)");
   });
 
-  test("resolves only the closed positive-stock profile and fixes its scoped predicate", () => {
+  test("resolves only closed stock profiles and fixes their scoped predicates", () => {
     const profileSession = {
       user: { id: "user-1" },
       context: {
@@ -68,6 +70,8 @@ describe("inventory ledger foundation rules", () => {
 
     expect(resolveInventoryBalanceDashboardProfile("positive-stock-v1"))
       .toBe("positive-stock-v1");
+    expect(resolveInventoryBalanceDashboardProfile("zero-stock-v1"))
+      .toBe("zero-stock-v1");
     expect(resolveInventoryBalanceDashboardProfile("positive-stock"))
       .toBeNull();
     expect(resolveInventoryBalanceDashboardRequest(["positive-stock-v1"], "rice"))
@@ -105,6 +109,13 @@ describe("inventory ledger foundation rules", () => {
       ],
       qtyOnHand: { gt: 0 }
     });
+    expect(inventoryZeroStockProfileWhere(profileSession)).toEqual(
+      expect.objectContaining({ qtyOnHand: { equals: 0 } })
+    );
+    expect(inventoryBalanceDashboardProfileWhere(
+      profileSession,
+      "zero-stock-v1"
+    )).toEqual(inventoryZeroStockProfileWhere(profileSession));
   });
 
   test("locks profile paging to the canonical positive predicate", async () => {
@@ -153,6 +164,49 @@ describe("inventory ledger foundation rules", () => {
     }
   });
 
+  test("dispatches zero-stock paging to exact zero membership", async () => {
+    const profileSession = {
+      user: { id: "user-1" },
+      context: {
+        tenantId: "tenant-1",
+        companyId: "company-1",
+        locationId: "location-1"
+      },
+      permissionCodes: [permissions.inventoryBalanceView]
+    } as SessionContext;
+    const roles = vi.spyOn(prisma.userRoleAssignment, "findMany").mockResolvedValue([{
+      role: {
+        permissions: [{
+          permission: { tenantId: "tenant-1", code: permissions.inventoryBalanceView }
+        }]
+      }
+    }] as never);
+    const count = vi.spyOn(prisma.inventoryBalance, "count").mockResolvedValue(0);
+    const company = vi.spyOn(prisma.company, "findFirst")
+      .mockResolvedValue({ timezone: "Asia/Manila" } as never);
+    const findMany = vi.spyOn(prisma.inventoryBalance, "findMany")
+      .mockResolvedValue([]);
+    try {
+      await listInventoryBalancePage(
+        profileSession,
+        { query: "rice", tab: "positive" },
+        { dashboardProfile: "zero-stock-v1", page: 1, pageSize: 10 }
+      );
+      const canonicalWhere = inventoryZeroStockProfileWhere(profileSession, "rice");
+      expect(count.mock.calls[0]?.[0]).toEqual({ where: canonicalWhere });
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: canonicalWhere,
+        take: 10,
+        orderBy: expect.arrayContaining([{ id: "asc" }])
+      }));
+    } finally {
+      count.mockRestore();
+      company.mockRestore();
+      findMany.mockRestore();
+      roles.mockRestore();
+    }
+  });
+
   test("preflights the positive-stock export cap and detects post-count growth", async () => {
     const profileSession = {
       user: { id: "user-1" },
@@ -174,7 +228,7 @@ describe("inventory ledger foundation rules", () => {
     const findMany = vi.spyOn(prisma.inventoryBalance, "findMany");
     try {
       count.mockResolvedValueOnce(2);
-      await expect(listInventoryPositiveStockProfileExportRows(profileSession, {
+      await expect(listInventoryBalanceDashboardProfileExportRows(profileSession, {
         profile: "positive-stock-v1",
         maxRows: 1
       })).rejects.toThrow("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");
@@ -182,7 +236,7 @@ describe("inventory ledger foundation rules", () => {
 
       count.mockResolvedValueOnce(1);
       findMany.mockResolvedValueOnce([{}, {}] as never);
-      await expect(listInventoryPositiveStockProfileExportRows(profileSession, {
+      await expect(listInventoryBalanceDashboardProfileExportRows(profileSession, {
         profile: "positive-stock-v1",
         maxRows: 1
       })).rejects.toThrow("REPORT_EXPORT_ROW_LIMIT_EXCEEDED");

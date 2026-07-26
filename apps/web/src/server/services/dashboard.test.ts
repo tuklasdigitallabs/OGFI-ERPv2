@@ -220,6 +220,11 @@ describe("operational dashboard model", () => {
       id: "active-stock-rows",
       href: "/inventory?dashboard=positive-stock-v1"
     }));
+    expect(dashboard.stockHealth).toContainEqual(expect.objectContaining({
+      id: "zero-stock-rows",
+      detail: "Existing balance rows with on-hand quantity exactly zero",
+      href: "/inventory?dashboard=zero-stock-v1"
+    }));
     expect(dashboard.sourceObservations[0]).toMatchObject({
       id: "inventory-balances",
       availability: "AVAILABLE"

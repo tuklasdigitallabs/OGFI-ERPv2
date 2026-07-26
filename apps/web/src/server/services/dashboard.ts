@@ -860,8 +860,8 @@ export function buildOperationalDashboardModel(
         id: "zero-stock-rows",
         label: "Zero stock rows",
         displayValue: number(inventoryBalanceDashboard.zeroRows),
-        detail: "Items configured but currently at zero",
-        href: "/inventory",
+        detail: "Existing balance rows with on-hand quantity exactly zero",
+        href: inventoryBalanceDashboardProfileHref("zero-stock-v1"),
         tone: inventoryBalanceDashboard.zeroRows > 0 ? "warning" : "success"
       },
       {

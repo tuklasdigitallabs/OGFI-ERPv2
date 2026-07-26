@@ -107,7 +107,10 @@ function inventoryReturnContext(value: string | undefined) {
           ...(request.query ? { query: request.query } : {}),
           ...(page > 1 ? { page } : {})
         }),
-        label: "Back to Positive Stock"
+        label:
+          request.profile === "positive-stock-v1"
+            ? "Back to Positive Stock"
+            : "Back to Zero Stock Rows"
       };
     }
     if (url.pathname !== "/inventory/reconciliation") return null;

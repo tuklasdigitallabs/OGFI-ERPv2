@@ -17,7 +17,7 @@ Use this article to view current stock on hand for the location selected in the 
 
 ## Navigation path
 
-`Inventory → Stock Balances`, or `Operations Dashboard → Positive Stock`
+`Inventory → Stock Balances`, `Operations Dashboard → Positive Stock`, or `Operations Dashboard → Zero stock rows`
 
 ## Steps
 
@@ -27,7 +27,12 @@ Use this article to view current stock on hand for the location selected in the 
 4. Use search to filter by item code, item name, lot, or storage location.
 5. Review on-hand quantity, base UOM, lot, expiry, storage location, last update, and balance version.
 
-When you open `Positive Stock` from the Operations Dashboard, the page enters a read-only dashboard profile. It contains only current balance rows above zero for the selected location. Search can narrow that population, and `Open all stock balances` deliberately returns to the ordinary Stock Balances workspace.
+When you open `Positive Stock` or `Zero stock rows` from the Operations Dashboard, the page enters a closed, read-only dashboard profile:
+
+- `Positive Stock` contains current balance rows above zero.
+- `Zero stock rows` contains existing balance rows whose on-hand quantity is exactly zero. Negative rows and catalog items that do not yet have a balance row are excluded. The count is for balance rows, not unique catalog items.
+
+Both profiles use the selected authorized location and active Inventory Location relationships. Search can narrow the fixed population, up to 120 characters. Select `Open all stock balances` to deliberately return to the broader Stock Balances workspace.
 
 [Screenshot placeholder: Stock Balances page showing current-location balance rows and search.]
 
@@ -40,15 +45,18 @@ When you open `Positive Stock` from the Operations Dashboard, the page enters a 
 - `Balance rows` shows the exact number matching the current search and selected tab, not only the rows on the visible page.
 - Updated dates use the selected company's displayed timezone. If it is not configured, the operational default is `Asia/Manila`.
 - `Export CSV` exports all matching current-location rows for the search, not just the visible page.
-- In the Positive Stock dashboard profile, list totals, pages, and CSV export use the same positive-row definition. The export fails visibly rather than downloading a partial file when the configured synchronous row limit is exceeded.
+- In either dashboard profile, the exact list total, pages, and CSV export use the same fixed row definition and current search.
+- CSV export appears only for export-authorized users. If the configured synchronous row limit is exceeded, narrow Search and try again; no partial file is downloaded.
 
 ## Important controls and warnings
 
 - Do not use Stock Balances to correct inventory. Corrections must go through approved receiving, transfer, count, wastage, adjustment, or reversal workflows.
+- Viewing, searching, paging, or exporting these rows requires no evidence and changes no document status, approval, inventory quantity, or financial value. Profile exports produce an aggregate operational audit event without storing the search text or row contents.
 - The page does not show all-company or all-location stock for ordinary posting users.
-- A zero or missing balance may mean there has not yet been a posted movement for that item/location.
-- Positive Stock is a live inquiry, not a saved dashboard snapshot. Posted movements can change its rows between opening the dashboard, the profile, and an export.
+- A missing balance row is not included in `Zero stock rows`; the profile is not an item-catalog completeness report. A zero balance does not automatically create or recommend a Purchase Request, Purchase Order, or Transfer Request.
+- Positive Stock and Zero stock rows are live inquiries, not saved dashboard snapshots. Posted movements can change their rows between opening the dashboard, the profile, and an export.
 - A copied dashboard-profile link does not grant stock-balance or export permission. Invalid, retired, duplicate, or widening profile inputs do not fall back to the broader balance list.
+- `View Ledger` appears only for separately authorized users. Opening it rechecks current ledger permission and location scope; the dashboard profile does not grant ledger access.
 
 ## What happens next
 
