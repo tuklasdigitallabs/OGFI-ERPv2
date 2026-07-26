@@ -2,9 +2,19 @@ export type ActionFeedback = {
   code: string;
   message: string;
   title: string;
+  tone?: "error" | "success";
+};
+
+const actionSuccessMessages: Record<string, string> = {
+  SUPPLIER_ITEM_LINK_CREATED:
+    "The supplier-item link was created and is now available in the selected supplier catalog.",
+  SUPPLIER_ITEM_LINK_DEACTIVATED:
+    "The supplier-item link was deactivated. Its history is retained and it is unavailable for new sourcing."
 };
 
 const actionFeedbackMessages: Record<string, string> = {
+  SUPPLIER_REFERENCE_PRICE_REQUIRED:
+    "Enter a reference unit price before setting its effective date.",
   EVIDENCE_LEGAL_HOLD_PLACED:
     "The preservation legal hold was placed and recorded in the audit history.",
   EVIDENCE_ATTACHMENT_NOT_FOUND:
@@ -1191,17 +1201,25 @@ export function actionErrorRedirectPath(pathname: string, error: unknown) {
 export function getActionFeedback(
   searchParams: Record<string, string | string[] | undefined>,
 ): ActionFeedback | null {
-  const rawCode = searchParams.error;
-  const code = Array.isArray(rawCode) ? rawCode[0] : rawCode;
-  if (!code || !safeActionCodePattern.test(code)) {
-    return null;
+  const rawErrorCode = searchParams.error;
+  const errorCode = Array.isArray(rawErrorCode) ? rawErrorCode[0] : rawErrorCode;
+  if (errorCode && safeActionCodePattern.test(errorCode)) {
+    return {
+      code: errorCode,
+      message:
+        actionFeedbackMessages[errorCode] ??
+        "The action could not be completed. Review the form and try again.",
+      title: "Action not completed"
+    };
   }
 
+  const rawSuccessCode = searchParams.success;
+  const successCode = Array.isArray(rawSuccessCode) ? rawSuccessCode[0] : rawSuccessCode;
+  if (!successCode || !safeActionCodePattern.test(successCode) || !actionSuccessMessages[successCode]) return null;
   return {
-    code,
-    message:
-      actionFeedbackMessages[code] ??
-      "The action could not be completed. Review the form and try again.",
-    title: "Action not completed",
+    code: successCode,
+    message: actionSuccessMessages[successCode],
+    title: "Action completed",
+    tone: "success"
   };
 }

@@ -54,6 +54,18 @@ async function signInAs(
   await expect(page.getByRole("heading", { name: landingHeading })).toBeVisible();
 }
 
+function visibleSupplierRecord(page: Page, text: string) {
+  return page
+    .locator('[data-testid="supplier-row"]:visible, [data-testid="supplier-card"]:visible')
+    .filter({ hasText: text });
+}
+
+function visibleSupplierCatalogRecord(page: Page, text: string) {
+  return page
+    .locator('tr:visible, [data-testid="supplier-catalog-card"]:visible')
+    .filter({ hasText: text });
+}
+
 async function createDraftPurchaseRequest(page: Page) {
   const dialog = page.getByRole("dialog", { name: "Create Draft PR" });
   await page
@@ -511,31 +523,24 @@ test("first milestone purchase request path works end to end", async ({
   ).toBeVisible();
   await page.goto("/suppliers");
   await expect(page.getByRole("heading", { name: "Suppliers" })).toBeVisible();
-  await expect(
-    page.getByTestId("supplier-row").filter({ hasText: seededSupplierCode })
-  ).toBeVisible();
+  await expect(visibleSupplierRecord(page, seededSupplierCode)).toBeVisible();
   const supplierCode = `E2E-${testInfo.project.name.toUpperCase()}-${Date.now()}`;
   const supplierDialog = await openEntryDialog(page, "Create Supplier");
   await page.getByLabel("Supplier code").fill(supplierCode);
   await page.getByLabel("Legal name").fill(`${marker} Supplier Legal`);
   await page.getByLabel("Trading name").fill(`${marker} Supplier`);
-  await page.getByLabel("Payment terms").fill("Net 15");
+  await expect(page.getByText("Payment terms: Restricted")).toBeVisible();
   await page.getByLabel("Primary contact").fill("E2E Contact");
   await page.getByLabel("Contact role").fill("Sales");
   await page.getByLabel("Contact email").fill("e2e-supplier@example.test");
   await page.getByLabel("Creation reason").fill(`E2E supplier setup for ${marker}`);
   await supplierDialog.getByRole("button", { name: "Create Supplier", exact: true }).click();
-  const supplierRow = page.getByTestId("supplier-row").filter({ hasText: supplierCode });
+  const supplierRow = visibleSupplierRecord(page, supplierCode);
   await expect(supplierRow).toBeVisible();
-  await supplierRow.getByRole("button", { name: "Deactivate", exact: true }).click();
-  const supplierDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Supplier" });
-  await supplierDeactivationDialog
-    .getByLabel("Deactivation reason")
-    .fill(`E2E supplier deactivation for ${marker}`);
-  await supplierDeactivationDialog
-    .getByRole("button", { name: "Deactivate Supplier", exact: true })
-    .click();
-  await expect(page.getByTestId("supplier-row").filter({ hasText: supplierCode }).getByText("INACTIVE")).toBeVisible();
+  await supplierRow.getByRole("link", { name: "Deactivate", exact: true }).click();
+  await page.getByLabel("Deactivation reason").fill(`E2E supplier deactivation for ${marker}`);
+  await page.getByRole("button", { name: "Deactivate supplier", exact: true }).click();
+  await expect(visibleSupplierRecord(page, supplierCode).getByText(/INACTIVE|Lifecycle inactive/)).toBeVisible();
   await page.goto("/items");
   await expect(page.getByRole("heading", { name: "Item Master" })).toBeVisible();
   await expect(
@@ -591,50 +596,43 @@ test("first milestone purchase request path works end to end", async ({
 
   await page.goto("/suppliers");
   await expect(page.getByRole("heading", { name: "Suppliers" })).toBeVisible();
-  const linkDialog = await openEntryDialog(page, "Link Supplier Item");
-  await page
-    .locator('select[name="supplierId"]')
-    .selectOption({ label: `${seededSupplierCode} / ${seededSupplierName}` });
-  await page.locator('select[name="itemId"]').selectOption({ label: `${itemName} / ${itemCode}` });
-  await page.locator('select[name="purchaseUomId"]').selectOption({ label: `${uomCode} / ${marker} Unit` });
+  const seededSupplierRow = visibleSupplierRecord(page, seededSupplierCode);
+  await seededSupplierRow.getByRole("link", { name: "View catalog" }).click();
+  await page.getByRole("link", { name: "Create supplier-item link" }).click();
+  const linkDialog = page.getByRole("dialog", { name: "Create supplier-item link" });
+  await expect(linkDialog).toBeVisible();
+  await linkDialog.getByLabel("Search item").fill(itemCode);
+  await linkDialog.getByLabel("Search purchase UOM").fill(uomCode);
+  await linkDialog.getByRole("button", { name: "Search lookups" }).click();
+  await linkDialog.locator('select[name="itemId"]').selectOption({ label: `${itemName} / ${itemCode}` });
+  await linkDialog.locator('select[name="purchaseUomId"]').selectOption({ label: `${uomCode} / ${marker} Unit` });
   const supplierSku = `SKU-${itemCode}`;
   await page.getByLabel("Supplier SKU").fill(supplierSku);
   await page.getByLabel("Supplier item name").fill(`${marker} Supplier Item`);
   await page.getByLabel("Lead days").fill("2");
-  await page.getByLabel("Rank").fill("1");
-  await page.getByLabel("MOQ").fill("1");
-  await page.getByLabel("Reference price").fill("12.5");
-  await page.getByLabel("Price effective from").fill("2026-07-01");
+  await page.getByLabel("Preferred rank").fill("1");
+  await page.getByLabel("Minimum order quantity").fill("1");
+  await expect(linkDialog.getByText("Reference price: Restricted")).toBeVisible();
   await page.getByLabel("Link reason").fill(`E2E supplier item link for ${marker}`);
-  await linkDialog.getByRole("button", { name: "Link Supplier Item", exact: true }).click();
-  await page
-    .getByTestId("supplier-row")
-    .filter({ hasText: seededSupplierCode })
-    .getByRole("link", { name: "View catalog" })
-    .click();
+  await linkDialog.getByRole("button", { name: "Link supplier item", exact: true }).click();
   await page.getByLabel("Search catalog").fill(supplierSku);
   await page.getByRole("button", { name: "Apply", exact: true }).click();
-  const supplierItemLinkRow = page
-    .getByRole("row")
-    .filter({ hasText: supplierSku });
+  const supplierItemLinkRow = visibleSupplierCatalogRecord(page, supplierSku);
   await expect(supplierItemLinkRow).toBeVisible();
-  await supplierItemLinkRow.getByRole("button", { name: "Deactivate", exact: true }).click();
+  await supplierItemLinkRow.getByRole("link", { name: "Open controls", exact: true }).click();
   const linkDeactivationDialog = page.getByRole("dialog", {
-    name: "Deactivate Supplier Item Link"
+    name: "Deactivate supplier-item link"
   });
   await linkDeactivationDialog
     .getByLabel("Deactivation reason")
     .fill(`E2E supplier item link deactivation for ${marker}`);
   await linkDeactivationDialog
-    .getByRole("button", { name: "Deactivate Link", exact: true })
+    .getByRole("button", { name: "Deactivate link", exact: true })
     .click();
   await page.getByLabel("Search catalog").fill(supplierSku);
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(
-    page
-      .getByRole("row")
-      .filter({ hasText: supplierSku })
-      .getByText("INACTIVE")
+    visibleSupplierCatalogRecord(page, supplierSku).getByText("INACTIVE")
   ).toBeVisible();
 
   await signInAs(

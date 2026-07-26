@@ -182,3 +182,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0239-ITEM-PARENT-LIFECYCLE-LOCKS.md` — shared scoped lifecycle locks that serialize Item creation with Item Category and UOM deactivation
 - `DEC-0240-ITEM-CREATE-LARGE-CATALOG-COMPOSER.md` — focused Create Item TaskSheet with four independent bounded, searchable, selected-retaining scoped selectors
 - `DEC-0241-ITEM-CONTROLLED-CORRECTION-TASKSHEET.md` — selected Item TaskSheet limited to audited name correction, with compare-and-swap protection and fail-closed governed lifecycle controls
+- `DEC-0242-SUPPLIER-CATALOG-CONFIDENTIALITY-AND-LIFECYCLE.md` — explicit additional Supplier confidential clearance, query-level commercial-field redaction, serialized lifecycle actions, and same-result responsive Catalog paging

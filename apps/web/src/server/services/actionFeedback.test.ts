@@ -268,6 +268,27 @@ describe("action feedback helpers", () => {
     });
   });
 
+  it("announces supplier catalog task success without exposing internal details", () => {
+    expect(getActionFeedback({ success: "SUPPLIER_ITEM_LINK_CREATED" })).toEqual({
+      code: "SUPPLIER_ITEM_LINK_CREATED",
+      message: "The supplier-item link was created and is now available in the selected supplier catalog.",
+      title: "Action completed",
+      tone: "success"
+    });
+    expect(getActionFeedback({ success: "SUPPLIER_ITEM_LINK_DEACTIVATED" })).toEqual(
+      expect.objectContaining({ title: "Action completed", tone: "success" })
+    );
+    expect(getActionFeedback({ success: "UNMAPPED_SUCCESS" })).toBeNull();
+  });
+
+  it("explains an incomplete supplier reference price", () => {
+    expect(getActionFeedback({ error: "SUPPLIER_REFERENCE_PRICE_REQUIRED" })).toEqual({
+      code: "SUPPLIER_REFERENCE_PRICE_REQUIRED",
+      message: "Enter a reference unit price before setting its effective date.",
+      title: "Action not completed"
+    });
+  });
+
   it("maps common operational service codes to specific feedback", () => {
     for (const code of mappedOperationalCodes) {
       expect(getActionFeedback({ error: code }), code).toEqual(

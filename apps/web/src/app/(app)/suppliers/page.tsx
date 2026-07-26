@@ -1,14 +1,19 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ExternalLink, PackageSearch, Search } from "lucide-react";
+import { ExternalLink, Search } from "lucide-react";
 import { Badge, Panel, PaginationBar, WorkspaceTabs } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
-import { TaskSheet } from "@/components/TaskSheet";
+import { UrlOwnedTaskSheet } from "@/components/UrlOwnedTaskSheet";
+import {
+  UrlOwnedActionTaskSheet,
+  type UrlOwnedActionState
+} from "@/components/UrlOwnedActionTaskSheet";
 import {
   actionErrorRedirectPath,
+  getActionErrorCode,
   getActionFeedback
 } from "@/server/services/actionFeedback";
 import { getDefaultAppRoute, permissions } from "@/server/services/authorization";
@@ -63,43 +68,48 @@ async function updateSupplierAccreditationAction(formData: FormData) {
   redirect(typeof supplierId === "string" ? `/suppliers?supplier=${supplierId}` : "/suppliers");
 }
 
-async function createSupplierItemLinkAction(formData: FormData) {
+async function createSupplierItemLinkAction(
+  _previousState: UrlOwnedActionState,
+  formData: FormData
+): Promise<UrlOwnedActionState> {
   "use server";
-
-  const submittedReturnPath = formData.get("returnPath");
-  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith("/suppliers")
-    ? submittedReturnPath
-    : "/suppliers";
-  const returnUrl = new URL(returnPath, "http://ogfi.local");
-  const submittedItemId = formData.get("itemId");
-  const submittedUomId = formData.get("purchaseUomId");
-  if (typeof submittedItemId === "string" && submittedItemId) returnUrl.searchParams.set("selectedItemId", submittedItemId);
-  if (typeof submittedUomId === "string" && submittedUomId) returnUrl.searchParams.set("selectedUomId", submittedUomId);
-  const contextualReturnPath = `${returnUrl.pathname}${returnUrl.search}`;
 
   try {
     await createSupplierItemLink(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(contextualReturnPath, error));
+    const code = getActionErrorCode(error);
+    return {
+      feedback: getActionFeedback({ error: code }),
+      status: "error"
+    };
   }
   revalidatePath("/suppliers");
-  redirect(contextualReturnPath);
+  return {
+    feedback: getActionFeedback({ success: "SUPPLIER_ITEM_LINK_CREATED" }),
+    status: "success"
+  };
 }
 
-async function deactivateSupplierItemLinkAction(formData: FormData) {
+async function deactivateSupplierItemLinkAction(
+  _previousState: UrlOwnedActionState,
+  formData: FormData
+): Promise<UrlOwnedActionState> {
   "use server";
 
-  const submittedReturnPath = formData.get("returnPath");
-  const returnPath = typeof submittedReturnPath === "string" && submittedReturnPath.startsWith("/suppliers")
-    ? submittedReturnPath
-    : "/suppliers";
   try {
     await deactivateSupplierItemLink(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(returnPath, error));
+    const code = getActionErrorCode(error);
+    return {
+      feedback: getActionFeedback({ error: code }),
+      status: "error"
+    };
   }
   revalidatePath("/suppliers");
-  redirect(returnPath);
+  return {
+    feedback: getActionFeedback({ success: "SUPPLIER_ITEM_LINK_DEACTIVATED" }),
+    status: "success"
+  };
 }
 
 type SuppliersPageProps = {
@@ -149,7 +159,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   }
 
   const params = searchParams ? await searchParams : {};
-  const actionFeedback = getActionFeedback(params);
+  const actionFeedback = getActionFeedback({ error: params.error });
   const supplierQuery = firstParam(params.query) ?? "";
   const supplierStatus = firstParam(params.status);
   const supplierAccreditationStatus = firstParam(params.accreditationStatus);
@@ -188,6 +198,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const catalogCategoryQuery = firstParam(params.catalogCategoryQuery) ?? "";
   const catalogCategoryPage = Number(firstParam(params.catalogCategoryPage) ?? "1");
   const catalogPage = Number(firstParam(params.catalogPage) ?? "1");
+  const hasSupplierFilters = Boolean(supplierQuery || supplierStatus || supplierAccreditationStatus);
   const selectedSupplierCatalog = selectedSupplierId && supplierTab === "catalog"
     ? await getSupplierCatalog(session, selectedSupplierId, {
         query: catalogQuery,
@@ -209,7 +220,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   const selectedSupplierItemLink = selectedSupplierCatalog?.itemLinks.find(
     (link) => link.id === selectedSupplierItemLinkId
   ) ?? null;
-  const selectedLinkAction = linkAction === null && selectedSupplierItemLinkId ? "deactivate" : null;
+  const selectedLinkAction =
+    selectedSupplier?.status === "ACTIVE" && linkAction === null && selectedSupplierItemLinkId
+      ? "deactivate"
+      : null;
   const selectedSupplierLinkLookup =
     selectedSupplier?.status === "ACTIVE" && linkAction === "create"
       ? await getSupplierItemLinkLookup(session, selectedSupplier.id, {
@@ -238,6 +252,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   }
   if (catalogCategoryQuery) catalogBaseParams.set("catalogCategoryQuery", catalogCategoryQuery);
   if (catalogCategoryPage > 1) catalogBaseParams.set("catalogCategoryPage", String(catalogCategoryPage));
+  if (supplierQuery) catalogBaseParams.set("query", supplierQuery);
+  if (supplierStatus) catalogBaseParams.set("status", supplierStatus);
+  if (supplierAccreditationStatus) catalogBaseParams.set("accreditationStatus", supplierAccreditationStatus);
+  if (supplierPageValue > 1) catalogBaseParams.set("page", String(supplierPageValue));
   const catalogPageHref = (page: number) => {
     const nextParams = new URLSearchParams(catalogBaseParams);
     nextParams.set("catalogPage", String(page));
@@ -249,6 +267,14 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     nextParams.set("catalogCategoryPage", String(page));
     return `/suppliers?${nextParams.toString()}`;
   };
+  const clearCatalogFiltersHref = () => {
+    const nextParams = new URLSearchParams({ supplier: selectedSupplierId ?? "", tab: "catalog" });
+    if (supplierQuery) nextParams.set("query", supplierQuery);
+    if (supplierStatus) nextParams.set("status", supplierStatus);
+    if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
+    if (supplierPageValue > 1) nextParams.set("page", String(supplierPageValue));
+    return `/suppliers?${nextParams.toString()}`;
+  };
   const supplierActionHref = (supplierId: string, action?: "accreditation" | "deactivate") => {
     const nextParams = new URLSearchParams({ supplier: supplierId });
     nextParams.set("tab", action === "accreditation" || action === "deactivate" ? "accreditation" : "overview");
@@ -258,6 +284,14 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     if (supplierPageValue > 1) nextParams.set("page", String(supplierPageValue));
     if (action) nextParams.set("supplierAction", action);
     return `/suppliers?${nextParams.toString()}`;
+  };
+  const supplierRegisterHref = () => {
+    const nextParams = new URLSearchParams();
+    if (supplierQuery) nextParams.set("query", supplierQuery);
+    if (supplierStatus) nextParams.set("status", supplierStatus);
+    if (supplierAccreditationStatus) nextParams.set("accreditationStatus", supplierAccreditationStatus);
+    if (supplierPageValue > 1) nextParams.set("page", String(supplierPageValue));
+    return nextParams.size ? `/suppliers?${nextParams.toString()}` : "/suppliers";
   };
   const supplierLinkActionHref = (supplierId: string) => {
     const nextParams = new URLSearchParams({ supplier: supplierId, tab: "catalog", linkAction: "create" });
@@ -323,7 +357,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
       activeNav="suppliers"
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
-      <div className="ogfi-coordination-cue">
+      <div className={selectedSupplier ? "ogfi-coordination-cue hidden lg:block" : "ogfi-coordination-cue"}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">
@@ -339,7 +373,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
           <span>Master data</span>
         </div>
       </div>
-      <div className="mb-5 grid gap-4 md:grid-cols-4">
+      <div className={selectedSupplier ? "mb-5 hidden gap-4 md:grid-cols-4 lg:grid" : "mb-5 grid gap-4 md:grid-cols-4"}>
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Suppliers</p>
           <p className="mt-2 text-3xl font-bold text-slate-950">{supplierData.suppliersPage.totalSuppliers}</p>
@@ -358,56 +392,60 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
         </Panel>
       </div>
 
-      <div className="mb-5 flex flex-wrap justify-end gap-2">
-        <EntryModal title="Create Supplier" triggerLabel="Create Supplier">
+      <div className={selectedSupplier ? "mb-5 hidden flex-wrap justify-end gap-2 lg:flex" : "mb-5 flex flex-wrap justify-end gap-2"}>
+        <EntryModal title="Create Supplier" triggerLabel="Create Supplier" triggerClassName="min-h-11">
           <form action={createSupplierAction} className="ogfi-form-shell mt-4 grid gap-3">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Supplier code
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="supplierCode" required />
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="supplierCode" required />
               </label>
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Legal name
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="legalName" required />
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="legalName" required />
               </label>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Trading name
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="tradingName" />
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="tradingName" />
               </label>
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Tax identifier
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="taxIdentifier" />
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="taxIdentifier" />
               </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Payment terms
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="paymentTerms" />
-              </label>
+              {supplierData.canViewSupplierConfidential ? (
+                <label className="grid gap-1 text-sm font-medium text-slate-700">
+                  Payment terms
+                  <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="paymentTerms" />
+                </label>
+              ) : (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600" role="status"><p className="font-semibold text-slate-800">Payment terms: Restricted</p><p className="mt-1 text-xs">Confidential supplier terms cannot be viewed or entered with the current permission.</p></div>
+              )}
             </div>
             <div className="grid gap-3 border-t border-slate-100 pt-3 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Primary contact
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="primaryContactName" />
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="primaryContactName" />
               </label>
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Contact role
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="primaryContactRole" />
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="primaryContactRole" />
               </label>
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Contact email
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="primaryContactEmail" type="email" />
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="primaryContactEmail" type="email" />
               </label>
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Contact phone
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="primaryContactPhone" />
+                <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="primaryContactPhone" />
               </label>
             </div>
             <label className="grid gap-1 text-sm font-medium text-slate-700">
               Creation reason
-              <input className="rounded-md border border-slate-300 px-3 py-2" name="reason" required />
+              <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="reason" required />
             </label>
-            <button className="inline-flex min-h-9 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+            <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
               Create Supplier
             </button>
           </form>
@@ -416,200 +454,75 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
         <div className="max-w-md rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-900" role="status">
           Link a supplier item from a selected supplier catalog. The global action is intentionally unavailable while the bounded lookup composer is used.
         </div>
-        {/*
-          <form action={createSupplierItemLinkAction} className="ogfi-form-shell mt-4 grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Supplier
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="supplierId" required>
-                  {linkOptions.suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.supplierCode} / {supplier.legalName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Item
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="itemId" required>
-                  {linkOptions.items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.itemName} / {item.itemCode}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Purchase UOM
-                <select className="rounded-md border border-slate-300 px-3 py-2" name="purchaseUomId" required>
-                  {linkOptions.uoms.map((uom) => (
-                    <option key={uom.id} value={uom.id}>
-                      {uom.uomCode} / {uom.uomName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Supplier SKU
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="supplierSku" />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Supplier item name
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="supplierItemName" />
-              </label>
-            </div>
-            <div className="grid gap-3 md:grid-cols-4">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Lead days
-                <input className="rounded-md border border-slate-300 px-3 py-2" min="0" name="leadTimeDays" type="number" />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Rank
-                <input className="rounded-md border border-slate-300 px-3 py-2" min="0" name="preferredRank" type="number" />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                MOQ
-                <input className="rounded-md border border-slate-300 px-3 py-2" min="0.000001" name="minOrderQty" step="0.000001" type="number" />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Reference price
-                <input className="rounded-md border border-slate-300 px-3 py-2" min="0.000001" name="unitPrice" step="0.000001" type="number" />
-              </label>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Price effective from
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="effectiveFrom" type="date" />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Link reason
-                <input className="rounded-md border border-slate-300 px-3 py-2" name="reason" required />
-              </label>
-            </div>
-            <button className="inline-flex min-h-10 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Link Supplier Item
-            </button>
-          </form>
-        */}
       </div>
 
-      <div className="space-y-4">
-        <section className="ogfi-data-surface">
+      <div className="flex flex-col gap-4">
+        <section className="ogfi-data-surface order-2 lg:order-1" data-testid="supplier-register-workspace">
           <div className="ogfi-section-header">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">Supplier Register</h2>
+              <h2 id="supplier-register-heading" className="text-lg font-bold text-slate-950" tabIndex={-1}>Supplier Register</h2>
               <p className="text-sm text-slate-500">
                 Company-scoped list with catalog health, not the full catalog
               </p>
             </div>
             <Badge tone="info">Master data</Badge>
           </div>
-          <div className="hidden grid-cols-[0.8fr_1.2fr_1fr_1.3fr_0.7fr_auto] gap-4 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-bold uppercase text-slate-400 md:grid">
-            <span>Code</span>
-            <span>Supplier</span>
-            <span>Primary contact</span>
-            <span>Catalog summary</span>
-            <span>Status</span>
-            <span>Control</span>
-          </div>
           <form method="get" className="grid gap-2 border-b border-slate-100 bg-slate-50 p-4 md:grid-cols-[1fr_180px_180px_auto]">
-            <input className="rounded-md border border-slate-300 px-3 py-2" name="query" defaultValue={supplierQuery} placeholder="Search supplier code or name" aria-label="Search suppliers" />
-            <select className="rounded-md border border-slate-300 px-3 py-2" name="status" defaultValue={supplierStatus ?? ""} aria-label="Filter supplier lifecycle">
+            <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="query" defaultValue={supplierQuery} placeholder="Search supplier code or name" aria-label="Search suppliers" />
+            <select className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="status" defaultValue={supplierStatus ?? ""} aria-label="Filter supplier lifecycle">
               <option value="">All lifecycle</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option>
             </select>
-            <select className="rounded-md border border-slate-300 px-3 py-2" name="accreditationStatus" defaultValue={supplierAccreditationStatus ?? ""} aria-label="Filter accreditation">
+            <select className="min-h-11 rounded-md border border-slate-300 px-3 py-2" name="accreditationStatus" defaultValue={supplierAccreditationStatus ?? ""} aria-label="Filter accreditation">
               <option value="">All accreditation</option><option value="PENDING_REVIEW">Pending review</option><option value="APPROVED">Approved</option><option value="SUSPENDED">Suspended</option><option value="BLOCKED">Blocked</option>
             </select>
-            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
+            <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
           </form>
           {suppliers.length === 0 ? (
             <div className="ogfi-empty-state">
-              <p className="font-semibold text-slate-900">No suppliers configured</p>
+              <p className="font-semibold text-slate-900">{hasSupplierFilters ? "No suppliers match the current filters" : "No suppliers configured"}</p>
               <p className="mt-1 text-sm text-slate-600">
-                Add active suppliers before quotation comparison and purchase orders are enabled.
+                {hasSupplierFilters
+                  ? "Clear or change the supplier filters to view other company-scoped records."
+                  : "Add active suppliers before quotation comparison and purchase orders are enabled."}
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {suppliers.map((supplier) => (
-                <div
-                  key={supplier.id}
-                  data-testid="supplier-row"
-                  className="ogfi-list-row grid gap-4 md:grid-cols-[0.8fr_1.2fr_1fr_1.3fr_0.7fr_auto] md:items-center"
-                >
-                  <div>
-                    <p className="font-bold text-slate-950">{supplier.supplierCode}</p>
-                    <p className="text-xs text-slate-500">{supplier.paymentTerms ?? "No terms configured"}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-800">{supplier.tradingName ?? supplier.legalName}</p>
-                    <p className="text-xs text-slate-500">{supplier.legalName}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700">
-                      {supplier.primaryContact?.name ?? "No primary contact"}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {supplier.primaryContact?.email ?? supplier.primaryContact?.phone ?? ""}
-                    </p>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-800">
-                        <PackageSearch aria-hidden="true" className="h-4 w-4" />
-                        {supplier.itemLinkCount} catalog item{supplier.itemLinkCount === 1 ? "" : "s"}
-                      </span>
-                      <Link
-                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-semibold text-slate-700 shadow-sm hover:border-blue-200 hover:text-blue-700"
-                        href={`/suppliers?supplier=${supplier.id}`}
-                      >
-                        View catalog
-                        <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
-                    {supplier.itemLinks.length === 0 ? (
-                      <p className="mt-2 text-xs text-slate-500">No catalog links yet.</p>
-                    ) : (
-                      <p className="mt-2 truncate text-xs text-slate-500">
-                        Preview:{" "}
-                        {supplier.itemLinks
-                          .map((link) => `${link.itemName} / ${link.purchaseUomCode}`)
-                          .join(", ")}
-                        {supplier.itemLinkCount > supplier.itemLinks.length ? "..." : ""}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Badge tone={accreditationTone(supplier.accreditationStatus)}>
-                      {accreditationLabel(supplier.accreditationStatus)}
-                    </Badge>
-                    <Badge tone={supplier.status === "ACTIVE" ? "success" : "neutral"}>
-                      {supplier.status === "ACTIVE" ? "Lifecycle active" : "Lifecycle inactive"}
-                    </Badge>
-                    {supplier.status === "ACTIVE" ? (
-                      <>
-                        <Link
-                          className="inline-flex min-h-9 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
-                          href={supplierActionHref(supplier.id, "accreditation")}
-                        >
-                          Open controls
-                        </Link>
-                        <Link
-                          className="inline-flex min-h-9 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
-                          href={supplierActionHref(supplier.id, "deactivate")}
-                        >
-                          Deactivate
-                        </Link>
-                      </>
-                    ) : (
-                      <span className="text-sm text-slate-500">Retained history</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <>
+              <div className="hidden lg:block">
+                <table className="w-full table-fixed text-left text-sm" data-testid="supplier-desktop-table">
+                  <thead className="border-b border-slate-100 bg-slate-50 text-xs font-bold uppercase text-slate-500">
+                    <tr><th className="w-[15%] px-4 py-3">Code / terms</th><th className="w-[18%] px-4 py-3">Supplier</th><th className="w-[17%] px-4 py-3">Primary contact</th><th className="w-[22%] px-4 py-3">Catalog summary</th><th className="w-[13%] px-4 py-3">Status</th><th className="w-[15%] px-4 py-3">Control</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {suppliers.map((supplier) => (
+                      <tr key={supplier.id} data-testid="supplier-row" className="align-top hover:bg-slate-50/70">
+                        <td className="break-words px-4 py-4"><p className="font-bold text-slate-950">{supplier.supplierCode}</p><p className="mt-1 text-xs text-slate-500">{supplierData.canViewSupplierConfidential ? supplier.paymentTerms ?? "Not configured" : "Restricted"}</p></td>
+                        <td className="break-words px-4 py-4"><p className="font-semibold text-slate-800">{supplier.tradingName ?? supplier.legalName}</p><p className="mt-1 text-xs text-slate-500">{supplier.legalName}</p></td>
+                        <td className="break-words px-4 py-4"><p className="font-medium text-slate-700">{supplier.primaryContact?.name ?? "No primary contact"}</p><p className="mt-1 text-xs text-slate-500">{supplier.primaryContact?.email ?? supplier.primaryContact?.phone ?? "Not configured"}</p></td>
+                        <td className="break-words px-4 py-4"><p className="font-semibold text-blue-800">{supplier.itemLinkCount} catalog item{supplier.itemLinkCount === 1 ? "" : "s"}</p><p className="mt-1 text-xs text-slate-500">{supplier.itemLinks.length ? `Preview: ${supplier.itemLinks.map((link) => `${link.itemName} / ${link.purchaseUomCode}`).join(", ")}${supplier.itemLinkCount > supplier.itemLinks.length ? "…" : ""}` : "No catalog links yet."}</p><Link className="mt-2 inline-flex min-h-11 items-center gap-1 font-semibold text-blue-700 hover:underline" href={supplierWorkspaceHref(supplier.id, "catalog")}>View catalog<ExternalLink aria-hidden="true" className="h-3.5 w-3.5" /></Link></td>
+                        <td className="px-4 py-4"><div className="flex flex-col items-start gap-2"><Badge tone={accreditationTone(supplier.accreditationStatus)}>{accreditationLabel(supplier.accreditationStatus)}</Badge><Badge tone={supplier.status === "ACTIVE" ? "success" : "neutral"}>{supplier.status === "ACTIVE" ? "Lifecycle active" : "Lifecycle inactive"}</Badge></div></td>
+                        <td className="px-4 py-4">{supplier.status === "ACTIVE" ? <div className="flex flex-col gap-2"><Link className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-3 font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50" href={supplierActionHref(supplier.id, "accreditation")}>Open controls</Link><Link className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-3 font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50" href={supplierActionHref(supplier.id, "deactivate")}>Deactivate</Link></div> : <p className="text-xs text-slate-500">Retained read-only history</p>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="grid gap-3 p-3 sm:grid-cols-2 lg:hidden" data-testid="supplier-responsive-cards">
+                {suppliers.map((supplier) => (
+                  <article key={supplier.id} data-testid="supplier-card" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="break-words text-base font-bold text-slate-950">{supplier.tradingName ?? supplier.legalName}</p><p className="mt-1 break-words text-xs text-slate-500">{supplier.supplierCode} · {supplier.legalName}</p></div><Badge tone={supplier.status === "ACTIVE" ? "success" : "neutral"}>{supplier.status}</Badge></div>
+                    <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 text-sm">
+                      <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Accreditation</dt><dd className="mt-1 break-words text-slate-800">{accreditationLabel(supplier.accreditationStatus)}</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Payment terms</dt><dd className="mt-1 break-words text-slate-800">{supplierData.canViewSupplierConfidential ? supplier.paymentTerms ?? "Not configured" : "Restricted"}</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Primary contact</dt><dd className="mt-1 break-words text-slate-800">{supplier.primaryContact?.name ?? "Not configured"}</dd><dd className="break-words text-xs text-slate-500">{supplier.primaryContact?.email ?? supplier.primaryContact?.phone ?? ""}</dd></div>
+                      <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Catalog</dt><dd className="mt-1 text-slate-800">{supplier.itemLinkCount} item{supplier.itemLinkCount === 1 ? "" : "s"}</dd></div>
+                    </dl>
+                    <p className="mt-4 break-words text-xs text-slate-500">{supplier.itemLinks.length ? `Preview: ${supplier.itemLinks.map((link) => `${link.itemName} / ${link.purchaseUomCode}`).join(", ")}${supplier.itemLinkCount > supplier.itemLinks.length ? "…" : ""}` : "No catalog links yet."}</p>
+                    <div className="mt-4 grid gap-2"><Link className="inline-flex min-h-11 items-center justify-center rounded-md border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700" href={supplierWorkspaceHref(supplier.id, "catalog")}>View catalog</Link>{supplier.status === "ACTIVE" ? <div className="grid grid-cols-2 gap-2"><Link className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700" href={supplierActionHref(supplier.id, "accreditation")}>Open controls</Link><Link className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700" href={supplierActionHref(supplier.id, "deactivate")}>Deactivate</Link></div> : <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">Inactive supplier retained as read-only history.</p>}</div>
+                  </article>
+                ))}
+              </div>
+            </>
           )}
           {supplierData.suppliersPage.totalSuppliers > 0 ? (
             <PaginationBar
@@ -628,15 +541,23 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
           ) : null}
         </section>
         {selectedSupplier ? (
-          <section className="ogfi-data-surface">
+          <section className="ogfi-data-surface order-1 lg:order-2" data-testid="selected-supplier-workspace">
             <div className="ogfi-section-header">
               <div>
                 <h2 className="text-lg font-bold text-slate-950">Selected supplier workspace</h2>
                 <p className="text-sm text-slate-500">{selectedSupplier.tradingName ?? selectedSupplier.legalName} · {selectedSupplier.supplierCode}</p>
               </div>
-              <Link className="text-sm font-semibold text-blue-700 hover:underline" href="/suppliers">Close supplier</Link>
+              <Link className="inline-flex min-h-11 items-center text-sm font-semibold text-blue-700 hover:underline" href={supplierRegisterHref()}>Close supplier</Link>
+            </div>
+            <div className="grid gap-3 border-b border-slate-100 bg-blue-50/40 px-4 py-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
+              <div><p className="text-xs font-bold uppercase text-blue-700">Company</p><p className="mt-1 break-words font-semibold text-slate-950">{session.context.companyName}</p></div>
+              <div><p className="text-xs font-bold uppercase text-blue-700">Supplier</p><p className="mt-1 break-words font-semibold text-slate-950">{selectedSupplier.supplierCode}</p></div>
+              <div><p className="text-xs font-bold uppercase text-blue-700">Scope</p><p className="mt-1 text-slate-700">Company-wide supplier master</p></div>
+              <div><p className="text-xs font-bold uppercase text-blue-700">Status</p><p className="mt-1 text-slate-700">{accreditationLabel(selectedSupplier.accreditationStatus)} · {selectedSupplier.status}</p></div>
+              <div><p className="text-xs font-bold uppercase text-blue-700">Next action</p><p className="mt-1 text-slate-700">{selectedSupplier.status === "ACTIVE" ? "Review catalog or accreditation" : "Read-only retained history"}</p></div>
             </div>
             <WorkspaceTabs
+              itemClassName="min-h-11"
               items={[
                 { label: "Overview", href: supplierWorkspaceHref(selectedSupplier.id, "overview"), active: supplierTab === "overview" },
                 { label: "Catalog", href: supplierWorkspaceHref(selectedSupplier.id, "catalog"), active: supplierTab === "catalog" },
@@ -650,7 +571,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 <div><p className="text-xs font-bold uppercase text-slate-400">Accreditation</p><p className="mt-1 font-semibold text-slate-900">{accreditationLabel(selectedSupplier.accreditationStatus)}</p></div>
                 <div><p className="text-xs font-bold uppercase text-slate-400">Next action</p><p className="mt-1 text-sm text-slate-700">{selectedSupplier.status === "ACTIVE" ? "Review catalog or accreditation controls" : "Retained history; no new sourcing"}</p></div>
                 <div><p className="text-xs font-bold uppercase text-slate-400">Primary contact</p><p className="mt-1 text-sm text-slate-700">{selectedSupplier.primaryContact?.name ?? "Not configured"}</p></div>
-                <div><p className="text-xs font-bold uppercase text-slate-400">Payment terms</p><p className="mt-1 text-sm text-slate-700">{selectedSupplier.paymentTerms ?? "Not configured"}</p></div>
+                <div><p className="text-xs font-bold uppercase text-slate-400">Payment terms</p><p className="mt-1 break-words text-sm text-slate-700">{supplierData.canViewSupplierConfidential ? selectedSupplier.paymentTerms ?? "Not configured" : "Restricted"}</p></div>
                 <div><p className="text-xs font-bold uppercase text-slate-400">Catalog links</p><p className="mt-1 font-semibold text-slate-900">{"itemLinkCount" in selectedSupplier ? selectedSupplier.itemLinkCount : "Open Catalog"}</p></div>
               </div>
             ) : null}
@@ -674,13 +595,19 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 <Link className="mt-3 inline-flex text-sm font-semibold text-slate-700 hover:underline" href={supplierActionHref(selectedSupplier.id, "deactivate")}>Open supplier deactivation controls</Link>
               </div>
             ) : null}
+            {supplierTab === "accreditation" && selectedSupplier.status !== "ACTIVE" ? (
+              <div className="border-t border-slate-100 bg-slate-50 p-5 text-sm text-slate-700" role="status">
+                <p className="font-semibold text-slate-950">Inactive supplier retained as read-only history.</p>
+                <p className="mt-1">Accreditation and lifecycle controls are unavailable because this supplier is inactive. Audit history remains available from the Audit tab.</p>
+              </div>
+            ) : null}
           </section>
         ) : null}
         {selectedSupplierCatalog && selectedSupplier && supplierTab === "catalog" ? (
-          <section className="ogfi-data-surface">
+          <section className="ogfi-data-surface order-1 lg:order-2" data-testid="supplier-catalog-workspace">
             <div className="ogfi-section-header">
               <div>
-                <h2 className="text-lg font-bold text-slate-950">
+                <h2 id="supplier-catalog-heading" className="text-lg font-bold text-slate-950" tabIndex={-1}>
                   {selectedSupplier.tradingName ?? selectedSupplier.legalName} Catalog
                 </h2>
                 <p className="text-sm text-slate-500">
@@ -688,8 +615,8 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 </p>
               </div>
               <Link
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-                href="/suppliers"
+                className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                href={supplierRegisterHref()}
               >
                 Close catalog
               </Link>
@@ -707,17 +634,17 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 <form action={updateSupplierAccreditationAction} className="grid gap-3 md:grid-cols-[1fr_1fr_1.5fr_auto] md:items-end">
                   <input name="supplierId" type="hidden" value={selectedSupplier.id} />
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Accreditation status
-                    <select className="min-h-10 rounded-md border border-slate-300 bg-white px-3" defaultValue={selectedSupplier.accreditationStatus} name="accreditationStatus" required>
+                    <select className="min-h-11 rounded-md border border-slate-300 bg-white px-3" defaultValue={selectedSupplier.accreditationStatus} name="accreditationStatus" required>
                       <option value="PENDING_REVIEW">Pending review</option><option value="APPROVED">Approved</option><option value="SUSPENDED">Suspended</option><option value="BLOCKED">Blocked</option>
                     </select>
                   </label>
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Reason
-                    <input className="min-h-10 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required />
+                    <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required />
                   </label>
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Evidence reference
-                    <input className="min-h-10 rounded-md border border-slate-300 bg-white px-3" name="evidenceReference" placeholder="Supplier file or review note" />
+                    <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="evidenceReference" placeholder="Supplier file or review note" />
                   </label>
-                  <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">Save</button>
+                  <button className="min-h-11 rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">Save</button>
                 </form>
               </div>
             ) : null}
@@ -733,25 +660,33 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 <form action={deactivateSupplierAction} className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
                   <input name="supplierId" type="hidden" value={selectedSupplier.id} />
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason
-                    <input className="min-h-10 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required />
+                    <input className="min-h-11 rounded-md border border-slate-300 bg-white px-3" name="reason" minLength={5} required />
                   </label>
-                  <button className="min-h-10 rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800">Deactivate supplier</button>
+                  <button className="min-h-11 rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800">Deactivate supplier</button>
                 </form>
               </div>
             ) : null}
 
             {selectedLinkAction === "deactivate" ? (
-              <TaskSheet
-                title="Deactivate supplier-item link"
-                defaultOpen
-                size="default"
-                bodyScroll="contained"
-                description="This keeps history and prevents new sourcing from using the selected supplier-item link."
-              >
-                {selectedSupplierItemLink && selectedSupplierItemLink.status === "ACTIVE" ? (
-                  <form action={deactivateSupplierItemLinkAction} className="ogfi-form-shell grid gap-4">
+              selectedSupplierItemLink && selectedSupplierItemLink.status === "ACTIVE" ? (
+                <UrlOwnedActionTaskSheet
+                  action={deactivateSupplierItemLinkAction}
+                  title="Deactivate supplier-item link"
+                  size="default"
+                  description="This keeps history and prevents new sourcing from using the selected supplier-item link."
+                  returnHref={supplierItemLinkActionHref(selectedSupplier.id)}
+                  focusTargetId={`supplier-link-control-${selectedSupplierItemLink.id}`}
+                  successFocusTargetId="supplier-catalog-heading"
+                  formId="deactivate-supplier-item-link-form"
+                  formClassName="ogfi-form-shell grid gap-4"
+                  submitLabel="Deactivate link"
+                  pendingSubmitLabel="Deactivating link…"
+                  pendingLiveMessage="Deactivating the selected supplier-item link…"
+                  draftStorageKey={`supplier-link-deactivate:${session.user.id}:${selectedSupplier.id}:${selectedSupplierItemLink.id}`}
+                  formChildren={(
+                    <>
+                    <input name="supplierId" type="hidden" value={selectedSupplier.id} />
                     <input name="supplierItemLinkId" type="hidden" value={selectedSupplierItemLink.id} />
-                    <input name="returnPath" type="hidden" value={supplierItemLinkActionHref(selectedSupplier.id)} />
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                       <p className="font-semibold text-slate-950">{selectedSupplierItemLink.itemName}</p>
                       <p className="mt-1 text-xs text-slate-600">
@@ -763,16 +698,23 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                       Deactivation reason
                       <input className="min-h-11 rounded-md border border-slate-300 px-3 py-2 text-sm" name="reason" minLength={5} required />
                     </label>
-                    <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800 sm:w-fit">
-                      Deactivate link
-                    </button>
-                  </form>
-                ) : (
+                    </>
+                  )}
+                />
+              ) : (
+                <UrlOwnedTaskSheet
+                  title="Deactivate supplier-item link"
+                  size="default"
+                  description="This keeps history and prevents new sourcing from using the selected supplier-item link."
+                  returnHref={supplierItemLinkActionHref(selectedSupplier.id)}
+                  focusTargetId="supplier-catalog-heading"
+                  cancelLabel="Return to catalog"
+                >
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     This link is unavailable in the current supplier, filter, or page context. Return to the catalog and select an active link.
                   </p>
-                )}
-              </TaskSheet>
+                </UrlOwnedTaskSheet>
+              )
             ) : null}
 
             {selectedSupplier.status === "ACTIVE" && !selectedSupplierLinkLookup ? (
@@ -782,7 +724,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                     <h3 className="font-bold text-slate-950">Link an item to this supplier</h3>
                     <p className="text-sm text-slate-600">Searchable item and purchase-UOM lookups are scoped to the selected company.</p>
                   </div>
-                  <Link className="min-h-10 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700" href={supplierLinkActionHref(selectedSupplier.id)}>
+                  <Link id="create-supplier-link-trigger" className="inline-flex min-h-11 items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700" href={supplierLinkActionHref(selectedSupplier.id)}>
                     Create supplier-item link
                   </Link>
                 </div>
@@ -790,16 +732,33 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             ) : null}
 
             {selectedSupplierLinkLookup ? (
-              <div className="border-b border-slate-100 bg-blue-50/40 px-5 py-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 className="font-bold text-slate-950">Create supplier-item link</h3>
-                    <p className="text-sm text-slate-600">Only the selected supplier is affected. Search and page through active master records.</p>
-                  </div>
-                  <Link className="text-sm font-semibold text-blue-700 hover:underline" href={supplierActionHref(selectedSupplier.id)}>Close composer</Link>
+              <UrlOwnedActionTaskSheet
+                action={createSupplierItemLinkAction}
+                title="Create supplier-item link"
+                description={`${session.context.companyName} · ${selectedSupplier.supplierCode} · ${selectedSupplier.tradingName ?? selectedSupplier.legalName}. Only this active supplier is affected.`}
+                returnHref={supplierItemLinkActionHref(selectedSupplier.id)}
+                focusTargetId="create-supplier-link-trigger"
+                size="workspace"
+                formId="create-supplier-item-link-form"
+                formClassName="mt-5 grid gap-3"
+                submitLabel="Link supplier item"
+                pendingSubmitLabel="Linking supplier item…"
+                pendingLiveMessage="Creating the selected supplier-item link…"
+                preserveSelectionParams={[
+                  { selectName: "itemId", paramName: "selectedItemId" },
+                  { selectName: "purchaseUomId", paramName: "selectedUomId" }
+                ]}
+                submitDisabled={selectedSupplierLinkLookup.items.options.length === 0 || selectedSupplierLinkLookup.uoms.options.length === 0}
+                draftStorageKey={`supplier-link-create:${session.user.id}:${selectedSupplier.id}`}
+                beforeForm={(
+                  <div className="grid gap-5">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-950">
+                  <p className="font-bold">Company-scoped link task</p>
+                  <p className="mt-1">Search and page through bounded active item and purchase-UOM records. Catalog and Supplier Register context remain unchanged when this task closes.</p>
                 </div>
                 <form method="get" className="mb-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
                   <input name="supplier" type="hidden" value={selectedSupplier.id} />
+                  <input name="tab" type="hidden" value="catalog" />
                   <input name="linkAction" type="hidden" value="create" />
                   {supplierQuery ? <input name="query" type="hidden" value={supplierQuery} /> : null}
                   {supplierStatus ? <input name="status" type="hidden" value={supplierStatus} /> : null}
@@ -808,21 +767,24 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   {catalogQuery ? <input name="catalogQuery" type="hidden" value={catalogQuery} /> : null}
                   {catalogStatus ? <input name="catalogStatus" type="hidden" value={catalogStatus} /> : null}
                   {catalogCategory ? <input name="catalogCategory" type="hidden" value={catalogCategory} /> : null}
-                  {/* Changing the refinement query intentionally resets category options to page one. */}
+                  {catalogCategoryQuery ? <input name="catalogCategoryQuery" type="hidden" value={catalogCategoryQuery} /> : null}
+                  {catalogCategoryPage > 1 ? <input name="catalogCategoryPage" type="hidden" value={catalogCategoryPage} /> : null}
                   {catalogPage > 1 ? <input name="catalogPage" type="hidden" value={catalogPage} /> : null}
                   {selectedItemId ? <input name="selectedItemId" type="hidden" value={selectedItemId} /> : null}
                   {selectedUomId ? <input name="selectedUomId" type="hidden" value={selectedUomId} /> : null}
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Search item
-                    <input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="itemLinkQuery" defaultValue={itemLinkQuery} placeholder="Item name or code" />
+                    <input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" name="itemLinkQuery" defaultValue={itemLinkQuery} placeholder="Item name or code" />
                   </label>
                   <label className="grid gap-1 text-sm font-medium text-slate-700">Search purchase UOM
-                    <input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="uomLinkQuery" defaultValue={uomLinkQuery} placeholder="UOM code or name" />
+                    <input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" name="uomLinkQuery" defaultValue={uomLinkQuery} placeholder="UOM code or name" />
                   </label>
-                  <button className="min-h-10 self-end rounded-lg bg-slate-700 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Search lookups</button>
+                  <button className="min-h-11 self-end rounded-lg bg-slate-700 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Search lookups</button>
                 </form>
-                <form action={createSupplierItemLinkAction} className="grid gap-3">
+                  </div>
+                )}
+                formChildren={(
+                  <>
                   <input name="supplierId" type="hidden" value={selectedSupplier.id} />
-                  <input name="returnPath" type="hidden" value={supplierLinkActionHref(selectedSupplier.id)} />
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="grid gap-1 text-sm font-medium text-slate-700">Item
                       <select className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" defaultValue={selectedItemId ?? ""} name="itemId" required>
@@ -838,31 +800,37 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                     </label>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">Supplier SKU<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="supplierSku" /></label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">Supplier item name<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="supplierItemName" /></label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">Lead days<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" min="0" name="leadTimeDays" type="number" /></label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">Preferred rank<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" min="0" name="preferredRank" type="number" /></label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">Minimum order quantity<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" min="0.000001" name="minOrderQty" step="0.000001" type="number" /></label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">Reference unit price<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" min="0.000001" name="unitPrice" step="0.000001" type="number" /></label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">Price effective from<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" name="effectiveFrom" type="date" /></label>
-                    <label className="grid gap-1 text-sm font-medium text-slate-700">Link reason<input className="min-h-10 rounded-lg border border-slate-300 bg-white px-3" minLength={5} name="reason" required /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Supplier SKU<input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" name="supplierSku" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Supplier item name<input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" name="supplierItemName" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Lead days<input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" min="0" name="leadTimeDays" type="number" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Preferred rank<input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" min="0" name="preferredRank" type="number" /></label>
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Minimum order quantity<input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" min="0.000001" name="minOrderQty" step="0.000001" type="number" /></label>
+                    {selectedSupplierCatalog.canViewSupplierConfidential ? (
+                      <>
+                        <label className="grid gap-1 text-sm font-medium text-slate-700">Reference unit price<input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" data-sensitive="true" min="0.000001" name="unitPrice" step="0.000001" type="number" /></label>
+                        <label className="grid gap-1 text-sm font-medium text-slate-700">Price effective from<input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" data-sensitive="true" name="effectiveFrom" type="date" /></label>
+                      </>
+                    ) : (
+                      <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-600 md:col-span-2" role="status"><p className="font-semibold text-slate-800">Reference price: Restricted</p><p className="mt-1 text-xs">Confidential supplier pricing cannot be viewed or entered with the current permission.</p></div>
+                    )}
+                    <label className="grid gap-1 text-sm font-medium text-slate-700">Link reason<input className="min-h-11 rounded-lg border border-slate-300 bg-white px-3" minLength={5} name="reason" required /></label>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
                     <span>Items: page {selectedSupplierLinkLookup.items.page} of {Math.max(1, Math.ceil(selectedSupplierLinkLookup.items.totalItems / selectedSupplierLinkLookup.items.pageSize))} ({selectedSupplierLinkLookup.items.totalItems} matches)</span>
                     <span className="flex gap-3">
-                      {selectedSupplierLinkLookup.items.hasPreviousPage ? <Link className="font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "item", selectedSupplierLinkLookup.items.page - 1)}>Previous items</Link> : null}
-                      {selectedSupplierLinkLookup.items.hasNextPage ? <Link className="font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "item", selectedSupplierLinkLookup.items.page + 1)}>Next items</Link> : null}
+                      {selectedSupplierLinkLookup.items.hasPreviousPage ? <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "item", selectedSupplierLinkLookup.items.page - 1)}>Previous items</Link> : null}
+                      {selectedSupplierLinkLookup.items.hasNextPage ? <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "item", selectedSupplierLinkLookup.items.page + 1)}>Next items</Link> : null}
                     </span>
                     <span>UOMs: page {selectedSupplierLinkLookup.uoms.page} of {Math.max(1, Math.ceil(selectedSupplierLinkLookup.uoms.totalItems / selectedSupplierLinkLookup.uoms.pageSize))} ({selectedSupplierLinkLookup.uoms.totalItems} matches)</span>
                     <span className="flex gap-3">
-                      {selectedSupplierLinkLookup.uoms.hasPreviousPage ? <Link className="font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "uom", selectedSupplierLinkLookup.uoms.page - 1)}>Previous UOMs</Link> : null}
-                      {selectedSupplierLinkLookup.uoms.hasNextPage ? <Link className="font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "uom", selectedSupplierLinkLookup.uoms.page + 1)}>Next UOMs</Link> : null}
+                      {selectedSupplierLinkLookup.uoms.hasPreviousPage ? <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "uom", selectedSupplierLinkLookup.uoms.page - 1)}>Previous UOMs</Link> : null}
+                      {selectedSupplierLinkLookup.uoms.hasNextPage ? <Link className="inline-flex min-h-11 items-center font-semibold text-blue-700 hover:underline" href={supplierLookupPageHref(selectedSupplier.id, "uom", selectedSupplierLinkLookup.uoms.page + 1)}>Next UOMs</Link> : null}
                     </span>
                   </div>
                   {selectedSupplierLinkLookup.items.options.length === 0 || selectedSupplierLinkLookup.uoms.options.length === 0 ? <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">No active item or purchase-UOM options match the current lookup. Adjust the searches before creating a link.</p> : null}
-                  <button disabled={selectedSupplierLinkLookup.items.options.length === 0 || selectedSupplierLinkLookup.uoms.options.length === 0} className="min-h-10 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Link supplier item</button>
-                </form>
-              </div>
+                  </>
+                )}
+              />
             ) : null}
 
             <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-4">
@@ -887,7 +855,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               <div className="rounded-xl border border-slate-200 bg-white p-4">
                 <p className="text-xs font-bold uppercase text-slate-400">Terms</p>
                 <p className="mt-2 text-sm font-bold text-slate-950">
-                  {selectedSupplier.paymentTerms ?? "Not configured"}
+                  {selectedSupplierCatalog.canViewSupplierConfidential ? selectedSupplier.paymentTerms ?? "Not configured" : "Restricted"}
                 </p>
               </div>
             </div>
@@ -897,6 +865,11 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               className="grid gap-3 border-b border-slate-100 px-5 py-4 lg:grid-cols-[1.5fr_0.8fr_1fr_auto]"
             >
               <input name="supplier" type="hidden" value={selectedSupplier.id} />
+              <input name="tab" type="hidden" value="catalog" />
+              {supplierQuery ? <input name="query" type="hidden" value={supplierQuery} /> : null}
+              {supplierStatus ? <input name="status" type="hidden" value={supplierStatus} /> : null}
+              {supplierAccreditationStatus ? <input name="accreditationStatus" type="hidden" value={supplierAccreditationStatus} /> : null}
+              {supplierPageValue > 1 ? <input name="page" type="hidden" value={supplierPageValue} /> : null}
               <label className="relative grid gap-1 text-sm font-medium text-slate-700">
                 Search catalog
                 <Search
@@ -904,7 +877,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   className="pointer-events-none absolute bottom-2.5 left-3 h-4 w-4 text-slate-400"
                 />
                 <input
-                  className="min-h-10 rounded-lg border border-slate-300 bg-white px-9 text-sm"
+                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-9 text-sm"
                   defaultValue={catalogQuery}
                   name="catalogQuery"
                   placeholder="Item, SKU, supplier item"
@@ -913,7 +886,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Status
                 <select
-                  className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm"
                   defaultValue={catalogStatus ?? "ALL"}
                   name="catalogStatus"
                 >
@@ -925,7 +898,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               <label className="grid gap-1 text-sm font-medium text-slate-700">
                 Category
                 <select
-                  className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm"
                   defaultValue={catalogCategory ?? ""}
                   name="catalogCategory"
                 >
@@ -937,7 +910,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   ))}
                 </select>
                 <input
-                  className="min-h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm"
                   defaultValue={catalogCategoryQuery}
                   name="catalogCategoryQuery"
                   placeholder="Refine category options"
@@ -950,20 +923,20 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 ) : null}
               </label>
               <div className="flex items-end gap-2">
-                <button className="inline-flex min-h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                <button className="inline-flex min-h-11 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
                   Apply
                 </button>
                 <Link
-                  className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-                  href={`/suppliers?supplier=${selectedSupplier.id}`}
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                  href={clearCatalogFiltersHref()}
                 >
-                  Reset
+                  Clear
                 </Link>
               </div>
             </form>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-[1100px] table-fixed text-left text-sm">
+            <div className="hidden lg:block">
+              <table className="w-full table-fixed text-left text-sm" data-testid="supplier-catalog-desktop-table">
                 <thead className="border-b border-slate-100 bg-slate-50 text-xs font-bold uppercase text-slate-400">
                   <tr>
                     <th className="w-[24%] px-5 py-3">Item</th>
@@ -979,24 +952,25 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   {selectedSupplierCatalog.itemLinks.length === 0 ? (
                     <tr>
                       <td className="px-5 py-8 text-center text-sm text-slate-500" colSpan={7}>
-                        No catalog links match the selected filters.
+                        <p className="font-semibold text-slate-950">{selectedSupplierCatalog.summary.totalCount === 0 ? "No catalog links configured" : "No catalog links match the current filters"}</p>
+                        <p className="mt-1">{selectedSupplierCatalog.summary.totalCount === 0 ? selectedSupplier.status === "ACTIVE" ? "Create the first supplier-item link for this active supplier." : "This inactive supplier has no catalog history. New links are unavailable." : "Clear or change the catalog filters to view other retained links."}</p>
                       </td>
                     </tr>
                   ) : (
                     selectedSupplierCatalog.itemLinks.map((link) => (
                       <tr key={link.id} className="align-top hover:bg-slate-50/70">
                         <td className="px-5 py-4">
-                          <p className="font-semibold text-slate-950">{link.itemName}</p>
-                          <p className="mt-1 text-xs text-slate-500">
+                          <p className="break-words font-semibold text-slate-950">{link.itemName}</p>
+                          <p className="mt-1 break-words text-xs text-slate-500">
                             {link.itemCode} / {link.categoryName}
                           </p>
                           {link.supplierItemName ? (
-                            <p className="mt-2 text-xs text-slate-500">
+                            <p className="mt-2 break-words text-xs text-slate-500">
                               Supplier name: {link.supplierItemName}
                             </p>
                           ) : null}
                         </td>
-                        <td className="px-5 py-4 text-slate-700">
+                        <td className="break-words px-5 py-4 text-slate-700">
                           {link.supplierSku ?? "Not set"}
                         </td>
                         <td className="px-5 py-4">
@@ -1014,7 +988,9 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                           </p>
                         </td>
                         <td className="px-5 py-4">
-                          {link.latestPrice ? (
+                          {!selectedSupplierCatalog.canViewSupplierConfidential ? (
+                            <span className="text-slate-500">Restricted</span>
+                          ) : link.latestPrice ? (
                             <>
                               <p className="font-semibold text-slate-800">
                                 {formatCurrency(
@@ -1036,8 +1012,9 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                           </Badge>
                         </td>
                         <td className="px-5 py-4">
-                          {link.status === "ACTIVE" ? (
+                          {selectedSupplier.status === "ACTIVE" && link.status === "ACTIVE" ? (
                             <Link
+                              data-focus-key={`supplier-link-control-${link.id}`}
                               className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-950"
                               href={supplierItemLinkActionHref(selectedSupplier.id, link.id)}
                             >
@@ -1054,15 +1031,35 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
               </table>
             </div>
 
+            <div className="grid gap-3 p-3 sm:grid-cols-2 lg:hidden" data-testid="supplier-catalog-responsive-cards">
+              {selectedSupplierCatalog.itemLinks.length === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600 sm:col-span-2" role="status">
+                  <p className="font-semibold text-slate-950">{selectedSupplierCatalog.summary.totalCount === 0 ? "No catalog links configured" : "No catalog links match the current filters"}</p>
+                  <p className="mt-1">{selectedSupplierCatalog.summary.totalCount === 0 ? selectedSupplier.status === "ACTIVE" ? "Create the first supplier-item link for this active supplier." : "This inactive supplier has no catalog history. New links are unavailable." : "Clear or change the catalog filters to view other retained links."}</p>
+                </div>
+              ) : selectedSupplierCatalog.itemLinks.map((link) => (
+                <article key={link.id} data-testid="supplier-catalog-card" className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><h3 className="break-words font-bold text-slate-950">{link.itemName}</h3><p className="mt-1 break-words text-xs text-slate-500">{link.itemCode} · {link.categoryName}</p></div><Badge tone={link.status === "ACTIVE" ? "success" : "neutral"}>{link.status}</Badge></div>
+                  {link.supplierItemName ? <p className="mt-3 break-words text-sm text-slate-700"><span className="font-semibold">Supplier name:</span> {link.supplierItemName}</p> : null}
+                  <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 text-sm">
+                    <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Supplier SKU</dt><dd className="mt-1 break-words text-slate-800">{link.supplierSku ?? "Not set"}</dd></div>
+                    <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">UOM / MOQ</dt><dd className="mt-1 break-words text-slate-800">{link.purchaseUomCode} / {link.minOrderQty ?? "Not set"}</dd></div>
+                    <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Lead / rank</dt><dd className="mt-1 break-words text-slate-800">{link.leadTimeDays ?? "No"} lead days / Rank {link.preferredRank ?? "not set"}</dd></div>
+                    <div className="min-w-0"><dt className="text-xs font-bold uppercase text-slate-500">Reference price</dt><dd className="mt-1 break-words text-slate-800">{!selectedSupplierCatalog.canViewSupplierConfidential ? "Restricted" : link.latestPrice ? `${formatCurrency(link.latestPrice.unitPrice, link.latestPrice.currencyCode)} · Effective ${link.latestPrice.effectiveFrom}` : "No reference price"}</dd></div>
+                  </dl>
+                  <div className="mt-4">{selectedSupplier.status === "ACTIVE" && link.status === "ACTIVE" ? <Link data-focus-key={`supplier-link-control-${link.id}`} className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700" href={supplierItemLinkActionHref(selectedSupplier.id, link.id)}>Open controls</Link> : <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">{selectedSupplier.status === "ACTIVE" ? "Inactive link retained as read-only history." : "Supplier and catalog links are retained as read-only history."}</p>}</div>
+                </article>
+              ))}
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4 text-sm text-slate-600">
               <span>
-                Page {selectedSupplierCatalog.page} / showing up to{" "}
-                {selectedSupplierCatalog.pageSize} catalog items
+                Showing {selectedSupplierCatalog.rangeStart}–{selectedSupplierCatalog.rangeEnd} of {selectedSupplierCatalog.filteredCount} filtered catalog items · Page {selectedSupplierCatalog.page} of {selectedSupplierCatalog.totalPages}
               </span>
               <div className="flex gap-2">
                 {selectedSupplierCatalog.hasPreviousPage ? (
                   <Link
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                    className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
                     href={catalogPageHref(selectedSupplierCatalog.page - 1)}
                   >
                     Previous
@@ -1070,7 +1067,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 ) : null}
                 {selectedSupplierCatalog.hasNextPage ? (
                   <Link
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                    className="inline-flex min-h-11 items-center rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
                     href={catalogPageHref(selectedSupplierCatalog.page + 1)}
                   >
                     Next

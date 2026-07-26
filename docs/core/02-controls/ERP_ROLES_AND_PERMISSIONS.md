@@ -104,6 +104,7 @@ Current Phase I scaffold permission keys for the PO foundation:
 | Permission key | Meaning |
 |---|---|
 | `core.tenant_role_administer` | Administer the tenant-owned role catalog and tenant-global role assignments. Required for role overview/details, role creation, direct grants/deactivation, sensitive-role request/review, role-permission updates, and onboarding when `initialRoleId` is supplied. For target-user actions, the target must also be an active/effective member of the operator's selected company. This permission does not make a role assignment company-bound or grant access to company business records. |
+| `purchasing.supplier_confidential.view` | Additional sensitive clearance for scoped Supplier payment terms and Supplier Catalog latest reference-price/currency/effective metadata. It grants no Supplier access by itself and does not grant create, edit, deactivate, accreditation, purchasing, approval, payment, or export authority. Nonblank writes to those fields require this clearance plus existing `core.administer` and selected-company `MANAGE`. |
 | `purchasing.purchase_order.view` | View scoped Purchase Orders and their PR/quote lineage. |
 | `purchasing.purchase_order.create` | Create a draft Purchase Order from an approved quotation recommendation. This does not grant submit, approval, issue/send, amendment, receiving, or inventory posting authority. |
 | `purchasing.purchase_order.submit` | Submit a scoped draft Purchase Order into the configured approval flow. This does not grant approval, issue/send, receiving, or inventory posting authority. |
@@ -308,6 +309,19 @@ Phase I covers the platform foundation, approvals, supplier master data, purchas
 | Auditor | V | V | V | V | V | V/X |
 
 **Control note:** Supplier banking/payment details, confidential cost fields, and approval matrix configuration must be separately permissioned under `View Confidential` and `Configure` privileges.
+
+Implementation note (`DEC-0242`): Supplier Master `V`, `C`, `E`, or `M` in the
+matrix does not include confidential commercial clearance. The separately
+sensitive `purchasing.supplier_confidential.view` permission is additional to the
+ordinary Supplier workspace permission and selected-company scope. It is not a
+default or recommended `CONFIGURED_ADMIN` grant. Only the existing superuser all-
+permission seed behavior includes it automatically. Without clearance, Supplier
+payment terms and latest Supplier Item reference-price/currency/effective metadata
+are omitted at query/projection level and shown as `Restricted`. A nonblank write
+to those fields requires the clearance plus existing `core.administer` and company
+`MANAGE`; the confidential permission alone never grants a Supplier read or write.
+This is the confirmed `DEC-0242` contract; its implementation evidence remains
+pending until the checkpoint is validated.
 
 ### 7.3 Purchase Requests and Purchase Orders
 

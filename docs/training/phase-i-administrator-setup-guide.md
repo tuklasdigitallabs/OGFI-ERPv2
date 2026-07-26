@@ -15,6 +15,7 @@ By the end of this module, participants can:
 - Review audit events and export permitted audit data.
 - Support evidence-reference practices without bypassing source-record controls.
 - Distinguish confidential evidence-register view access from privileged legal-hold placement.
+- Distinguish Supplier workspace authority from the additional `Supplier confidential access` clearance.
 - Review release-readiness gates, security counters, and external-security proof references without treating the ERP page as release approval.
 
 ## Demonstration flow
@@ -87,9 +88,49 @@ Explain that no request was recorded: Warehouse/Purchasing review, on-hand stock
 and open procurement/inventory transaction checks, and a replacement plan where
 required must be supported before Item deactivation can be released.
 
-In a Supplier catalog, use the selected item-link Open controls action sheet to
-deactivate a link. Verify the supplier, item, UOM, and reason before submitting;
-the server preserves history and rechecks company scope and active status.
+In **Suppliers**, explain that the current workspace still requires Core
+Administrator authority and selected-company `MANAGE` scope. Demonstrate the
+additional `Supplier confidential access` permission separately: it permits
+payment terms and latest reference-price details only after the ordinary Supplier
+and company gates pass. It is sensitive and is neither a default nor recommended
+grant for `CONFIGURED_ADMIN`. Never grant it merely to clear a **Restricted**
+label.
+
+Compare the same Supplier Catalog with and without confidential clearance. The
+uncleared view must show **Restricted** for payment terms and latest reference unit
+price, currency, and effective date, and must not expose the confidential inputs.
+Show that the user can still create an otherwise valid Supplier or Supplier Item
+link by leaving confidential values blank. Do not place confidential values in a
+reason, contact, or other ordinary field.
+
+Open the focused Supplier creation task, then a selected active Supplier's focused
+link-creation task. In the link task, page and search the active Item and purchase-
+UOM options, verify the exact selected Supplier/Item/UOM binding, and explain that
+creating the link is audited master-data work with no approval, Purchase Order,
+inventory movement, payment, or direct financial posting.
+
+Demonstrate a safe rejected link action. Confirm that every entered field remains
+in the open task, the error receives focus, and the user can correct and retry.
+While a request is pending, verify that close, cancel, and submit are unavailable
+and progress is announced. On success, verify the trusted confirmation, automatic
+close, and restored Catalog focus. Explain that a `success` URL value is never
+proof that a mutation occurred.
+Demonstrate that ordinary fields and selected Item/UOM values survive a lookup
+search or page change. Explain that confidential price/date values are deliberately
+not stored in the browser and must be rechecked after lookup navigation.
+
+Review the same filtered Catalog on a desktop-sized screen and a narrow screen.
+Confirm that the table and responsive cards represent the same server-paged result
+set, that mobile does not require horizontal table scrolling, and that the URL
+preserves the Supplier section, filters, pages, and selected task context.
+
+Use the selected Supplier or item-link deactivation task. Verify the Supplier and,
+for a link, the Item and purchase UOM before submitting the required reason. The
+server preserves history and rechecks the exact tenant, company, Supplier/link
+binding and active status. Explain concurrent handling in user terms: if another
+administrator completes the same deactivation first, refresh and review the
+retained inactive record; only the first valid action records the deactivation
+audit entry.
 
 Use the selected Supplier tabs to keep tasks separate: Overview for identity
 and next action, Catalog for item links, Accreditation for supplier review, and
@@ -121,6 +162,10 @@ switch to Brands to review the full paginated brand register.
 - Treating an optional Item UOM lookup as an automatic assignment: use the explicit `None` choice unless a separate Purchase or Issue UOM is required.
 - Retrying an Item save with a stale Category or UOM: refresh and re-select the unresolved active parent before submitting again.
 - Treating the disabled `Deactivate Item` control as a submitted request: no request is recorded; contact the company master-data owner and keep the Item Active.
+- Treating `Supplier confidential access` as Supplier authority: it reveals protected commercial fields only after ordinary Supplier authority and selected-company scope pass.
+- Granting Supplier confidential clearance to every configured administrator: it is sensitive and is not a default or recommended `CONFIGURED_ADMIN` permission.
+- Entering confidential Supplier terms into an ordinary field when the intended input is unavailable: leave the confidential values blank and use the approved access process instead.
+- Assuming a stale Supplier or link deactivation partly succeeded: refresh the preserved Catalog context and review the retained status; only one valid concurrent action records the deactivation audit event.
 - Trying to change an Item Category, type, UOM, or operational control through the name-correction sheet: these material fields are read-only and server-rejected pending governed owner approval and impact review.
 - Retrying a stale Item-name correction without review: return to the refreshed register, reopen the Item, and confirm the correction is still needed.
 - Reading a CSV without checking the metadata rows: always confirm the report ID, selected scope, trust-gate mode, and source decision before using the data.
@@ -134,4 +179,6 @@ switch to Brands to review the full paginated brand register.
 - Participant can verify export metadata before sharing or relying on CSV output.
 - Participant can create a governed Item with independent bounded selectors, explain optional `None`, recover from lookup or stale-parent errors, and confirm that creation does not post stock.
 - Participant can open Item details, perform a reasoned Active Item-name correction, use the authoritative audit handoff, recover from a stale correction, and explain why material changes, inactive/archived edits, and deactivation are unavailable.
+- Participant can explain Supplier confidential clearance as additional—not standalone—authority, demonstrate **Restricted** fields, and avoid recommending it to `CONFIGURED_ADMIN` by default.
+- Participant can create an ordinary Supplier Item link without confidential values, use the responsive URL-preserved Catalog, verify exact selected-record context, and explain retained history and one-winner deactivation audit behavior.
 - Participant can explain which release-readiness evidence belongs in the ERP register and which external-security proof references must remain in the approved provider or evidence repository.

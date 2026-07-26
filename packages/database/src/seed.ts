@@ -31,6 +31,7 @@ const ids = {
   tenantRoleAdministerPermissionId: "00000000-0000-4000-8000-000000000998",
   evidenceLegalHoldSetPermissionId: "00000000-0000-4000-8000-000000000995",
   evidenceRetentionViewPermissionId: "00000000-0000-4000-8000-000000000996",
+  supplierConfidentialViewPermissionId: "00000000-0000-4000-8000-000000000994",
   secondaryAdminUserId: "00000000-0000-4000-8000-000000000901",
   superUserId: "00000000-0000-4000-8000-000000000991",
   superRoleId: "00000000-0000-4000-8000-000000000992",
@@ -7662,6 +7663,24 @@ async function main() {
       action: "quote.approve",
     },
     update: {},
+  });
+
+  await prisma.permission.upsert({
+    where: { code: "purchasing.supplier_confidential.view" },
+    create: {
+      id: ids.supplierConfidentialViewPermissionId,
+      code: "purchasing.supplier_confidential.view",
+      module: "purchasing",
+      action: "supplier_confidential.view",
+      description:
+        "View and maintain supplier payment terms and reference prices within an authorized company scope.",
+    },
+    update: {
+      module: "purchasing",
+      action: "supplier_confidential.view",
+      description:
+        "View and maintain supplier payment terms and reference prices within an authorized company scope.",
+    },
   });
 
   await prisma.permission.upsert({

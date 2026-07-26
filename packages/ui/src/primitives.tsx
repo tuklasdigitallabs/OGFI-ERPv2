@@ -201,11 +201,13 @@ export function StatusBadge({
 export function WorkspaceTabs({
   items,
   ariaLabel = "Workspace sections",
-  className
+  className,
+  itemClassName
 }: {
   items: WorkspaceTabItem[];
   ariaLabel?: string;
   className?: string;
+  itemClassName?: string;
 }) {
   return (
     <nav
@@ -239,7 +241,8 @@ export function WorkspaceTabs({
           item.active
             ? "bg-[var(--color-bg-surface)] text-[var(--color-text-primary)] shadow-[var(--shadow-soft)]"
             : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-surface)] hover:text-[var(--color-text-primary)]",
-          item.disabled && "pointer-events-none opacity-55"
+          item.disabled && "pointer-events-none opacity-55",
+          itemClassName
         );
 
         if (item.disabled) {

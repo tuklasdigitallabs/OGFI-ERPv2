@@ -1693,7 +1693,11 @@ describe("procurement and inventory authorization boundaries", () => {
         id: "suppliers.deactivateSupplierItemLink",
         invoke: () =>
           suppliers.deactivateSupplierItemLink(
-            form({ supplierItemLinkId: randomUUID(), reason: "Authorization test" }),
+            form({
+              supplierId: randomUUID(),
+              supplierItemLinkId: randomUUID(),
+              reason: "Authorization test",
+            }),
           ),
       },
     ];

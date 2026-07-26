@@ -39,6 +39,28 @@ Implementation note (`DEC-0142`): supplier accreditation and deactivation use a
 selected supplier action composer in the catalog workspace; registry rows do not
 repeat the full mutation forms.
 
+Confirmed implementation contract (`DEC-0242`; validation pending): Supplier
+payment terms and the Catalog's latest reference-price, currency, and effective-
+date metadata require `purchasing.supplier_confidential.view` in addition to the
+ordinary scoped Supplier authority. Without clearance, protected values must be
+omitted before the UI projection and the surface must show `Restricted`. Nonblank
+confidential writes require the clearance plus existing `core.administer` and
+selected-company `MANAGE`; hidden or crafted input cannot bypass the server check.
+No default or recommended `CONFIGURED_ADMIN` grant is permitted.
+
+Supplier and Supplier Item link deactivation must lock the exact tenant/company-
+scoped `ACTIVE` record and use transactional compare-and-swap, producing only one
+winner and one audit event under concurrency. A selected link must remain bound to
+its exact Supplier, Item, and purchase UOM. Supplier/Catalog pages use bounded exact
+totals, deterministic business ordering plus an ID tie-breaker, clamped page state,
+exact ranges, and truthful true-empty versus filtered-empty states. Desktop table
+and mobile cards consume the same page and actions, preserve Supplier/Catalog URL,
+filter, pager, and selected-task context, use focused create/deactivate task modes
+and 44-pixel-minimum targets, and must not require horizontal mobile scrolling.
+This contract changes no supplier eligibility, accreditation, PO, receiving,
+inventory, payment, reporting, or export behavior. Implementation and browser/
+database validation remain open.
+
 Implementation note (`DEC-0143`, superseded in part by `DEC-0241`): the selected
 Item URL pattern and context-preserving return remain in use. The earlier broad
 edit/deactivation behavior is no longer current. Base UOM changes after posted
@@ -158,6 +180,17 @@ row edit controls are disabled with guidance and creation uses bounded selectors
 
 - Full master-data administration is desktop-first.
 - Mobile supports lookup, barcode/item search, and controlled request submission; avoid complex bulk editing on mobile.
+- Supplier Catalog mobile cards must represent the same server-owned page, ranges,
+  confidential-field state, and available focused actions as the desktop table;
+  do not use a separate client-filtered subset or horizontal table scrolling.
+- Supplier Item create/deactivate tasks must keep the complete bounded draft after
+  a recoverable server rejection, show and focus safe feedback inside the task,
+  disable close/cancel/submit while pending, announce trusted success, close, and
+  restore a stable Catalog focus target. URL parameters are not mutation-success
+  evidence.
+- Same-user, same-tab storage may retain bounded ordinary draft values and selected
+  lookup IDs. Supplier confidential controls must be excluded from browser storage
+  and retained only in the live task during trusted action-state rejection.
 - Item creation uses a focused TaskSheet with contained scrolling, persistent
   actions, 44-pixel-minimum controls, dirty-close protection, and vertically
   stacked actions at narrow widths. Responsive-browser proof remains required

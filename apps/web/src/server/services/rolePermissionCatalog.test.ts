@@ -41,6 +41,11 @@ describe("role permission catalog metadata", () => {
       group: "Evidence Governance",
       sensitive: true
     });
+    expect(getPermissionPresentation(permissions.supplierConfidentialView)).toMatchObject({
+      label: "View confidential supplier terms",
+      group: "Procurement",
+      sensitive: true
+    });
   });
 
   test("defines recommended defaults for configured roles", () => {
@@ -71,6 +76,9 @@ describe("role permission catalog metadata", () => {
     expect(getRecommendedPermissionCodesForRole("CONFIGURED_ADMIN")).toContain(
       permissions.coreAdminister
     );
+    expect(getRecommendedPermissionCodesForRole("CONFIGURED_ADMIN")).not.toContain(
+      permissions.supplierConfidentialView
+    );
     expect(getRecommendedPermissionCodesForRole("UNMAPPED_ROLE")).toEqual([]);
   });
 
@@ -92,6 +100,7 @@ describe("role permission catalog metadata", () => {
     expect(isSensitivePermissionCode(permissions.menuPriceDecide)).toBe(true);
     expect(isSensitivePermissionCode(permissions.evidenceLegalHoldSet)).toBe(true);
     expect(isSensitivePermissionCode(permissions.evidenceRetentionView)).toBe(true);
+    expect(isSensitivePermissionCode(permissions.supplierConfidentialView)).toBe(true);
     expect(isSensitivePermissionCode(permissions.inventoryBalanceView)).toBe(false);
   });
 

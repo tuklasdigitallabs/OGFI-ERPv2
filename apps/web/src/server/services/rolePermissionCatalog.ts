@@ -63,6 +63,12 @@ const permissionPresentations: Record<string, Omit<PermissionPresentation, "code
     group: "Approvals",
     sensitive: true
   },
+  [permissions.supplierConfidentialView]: {
+    label: "View confidential supplier terms",
+    description: "View and maintain supplier payment terms and reference prices within an authorized company scope.",
+    group: "Procurement",
+    sensitive: true
+  },
   [permissions.purchaseOrderView]: {
     label: "View purchase orders",
     description: "View scoped supplier commitments and receiving status.",
@@ -923,7 +929,9 @@ const recommendedRolePermissionCodes: Record<string, string[]> = {
     permissions.workforceScheduleView,
     permissions.workforceAttendanceImportView
   ],
-  CONFIGURED_ADMIN: Object.values(permissions)
+  CONFIGURED_ADMIN: Object.values(permissions).filter(
+    (permissionCode) => permissionCode !== permissions.supplierConfidentialView
+  )
 };
 
 function sentenceFromPermissionCode(code: string) {

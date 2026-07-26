@@ -77,6 +77,35 @@ claim invariant under `DEC-0122`.
 - this membership check constrains the eligible target and does not turn the tenant-global assignment into a company-scoped grant; and
 - all checks are server-enforced, with non-enumerating denial and no business mutation on failure.
 
+### 2.4 Supplier confidential commercial data
+
+`DEC-0242` defines `purchasing.supplier_confidential.view` as additional sensitive
+clearance for Supplier payment terms and the Supplier Catalog's latest reference-
+price, currency, and effective-date metadata.
+
+- It is evaluated only after ordinary Supplier read authority and exact selected-
+  company scope. It grants no Supplier access on its own.
+- Without the clearance, protected columns/relations must be omitted from the query or
+  service projection. The UI receives an explicit restricted marker, never the
+  original value for client-side hiding.
+- A nonblank write to a protected field requires the clearance plus existing
+  `core.administer` and active/effective selected-company `MANAGE`. Crafted input
+  fails before mutation or audit when clearance is absent.
+- The permission is not a default or recommended grant for `CONFIGURED_ADMIN`.
+  Only the existing superuser all-permission seed behavior may add it
+  automatically.
+- Supplier and Supplier Item link actions still resolve exact tenant/company/
+  Supplier/link bindings. Confidential clearance cannot substitute for record or
+  lifecycle authority.
+- Focused-task browser draft storage must be scoped to the authenticated user and
+  exact record. Confidential price/effective-date controls are never serialized
+  to browser storage; trusted action-state rejection retains them only in the live
+  task DOM.
+- Successful Supplier/link deactivation must lock the exact scoped `ACTIVE` Supplier first and
+  commits one status transition plus one audit event. Stale, concurrent-losing,
+  inactive, missing, foreign, or unauthorized attempts change neither source nor
+  audit history.
+
 ---
 
 ## 3. Segregation of duties baseline

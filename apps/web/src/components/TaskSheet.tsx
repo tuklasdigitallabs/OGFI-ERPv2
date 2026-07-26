@@ -17,7 +17,7 @@ type TaskSheetProps = {
   /** Optional content rendered below the title in the persistent header. */
   header?: ReactNode;
   /** Optional persistent action area. Use a form attribute when its controls submit a form in children. */
-  footer?: ReactNode;
+  footer?: ReactNode | ((controls: { pending: boolean; requestClose: () => void }) => ReactNode);
   description?: ReactNode;
   trigger?: ReactNode;
   triggerClassName?: string;
@@ -64,6 +64,7 @@ export function TaskSheet({
   const descriptionId = useId();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const sheetRef = useRef<HTMLElement | null>(null);
+  const closeRef = useRef<() => void>(() => undefined);
   const isOpen = open ?? uncontrolledOpen;
   const hasUnsavedChanges = dirty ?? isDirty;
   const isPending = pending || isSubmitting;
@@ -102,6 +103,10 @@ export function TaskSheet({
   }, [hasUnsavedChanges, isPending, onDirtyChange, setOpen]);
 
   useEffect(() => {
+    closeRef.current = close;
+  }, [close]);
+
+  useEffect(() => {
     if (!isOpen) {
       return;
     }
@@ -110,7 +115,7 @@ export function TaskSheet({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        close();
+        closeRef.current();
         return;
       }
 
@@ -151,7 +156,7 @@ export function TaskSheet({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [close, isOpen]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!pending) {
@@ -234,7 +239,7 @@ export function TaskSheet({
             </div>
             {footer ? (
               <footer className="sticky bottom-0 z-10 shrink-0 border-t border-slate-200 bg-white/95 px-4 py-4 backdrop-blur sm:px-6">
-                {footer}
+                {typeof footer === "function" ? footer({ pending: isPending, requestClose: close }) : footer}
               </footer>
             ) : null}
           </section>

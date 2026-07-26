@@ -182,6 +182,24 @@ The Supplier Register now supports company-scoped server search, lifecycle and
 accreditation filters, deterministic pagination, and exact matching totals. The
 selected supplier catalog remains the source for full item-link maintenance.
 
+The Supplier Catalog confidentiality and lifecycle checkpoint adds the sensitive
+`Supplier confidential access` clearance for payment terms and latest reference-
+price metadata. It is additional to existing Supplier authority and selected-
+company scope, and it is not a default or recommended `CONFIGURED_ADMIN` grant.
+Users without it see **Restricted** and cannot enter confidential values, but may
+create an otherwise authorized Supplier or link without those values. Catalog
+filters, pages, and focused create/deactivation context remain URL-preserved; the
+same result page is presented as a desktop table and responsive mobile cards.
+Inactive history is retained, and concurrent deactivation attempts admit one
+successful source change and audit event. Supplier deactivation also serializes
+against accreditation and link-creation writers. Focused link tasks preserve the
+full draft on recoverable error, use trusted Server Action result state, announce
+pending/success, prevent duplicate submission, and restore Catalog focus. This
+bounded checkpoint does not complete
+Supplier Master Data, the wider Master Data workspace, Workspace 3, or Phase I.
+Disposable-PostgreSQL, responsive-browser, hosted migration/recovery, and UAT
+evidence remain open.
+
 Supplier accreditation and deactivation now use a selected supplier action
 composer in the catalog workspace rather than repeating full forms in every row.
 

@@ -36574,7 +36574,7 @@
   {
     "id": "server/services/suppliers.ts#createSupplier",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.supplierConfidentialView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -36610,7 +36610,7 @@
   {
     "id": "server/services/suppliers.ts#createSupplierItemLink",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.supplierConfidentialView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -36718,7 +36718,7 @@
   {
     "id": "server/services/suppliers.ts#getSupplierCatalog",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.supplierConfidentialView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",
@@ -36760,7 +36760,7 @@
   {
     "id": "server/services/suppliers.ts#listSuppliers",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.coreAdminister",
+    "permission": "permissions.coreAdminister | permissions.supplierConfidentialView",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",

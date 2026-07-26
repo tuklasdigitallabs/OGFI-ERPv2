@@ -1,6 +1,10 @@
 import { prisma, Prisma } from "@ogfi/database";
 import { z } from "zod";
-import { permissions, requirePermission } from "./authorization";
+import {
+  getGrantedPermissionCodes,
+  permissions,
+  requirePermission
+} from "./authorization";
 import { assertCanManageCompanyScope } from "./coreAdmin";
 import { requireSessionContext, type SessionContext } from "./context";
 
@@ -27,6 +31,18 @@ const optionalPositiveNumberSchema = z.preprocess(
   (value) => (value === "" || value === null ? undefined : value),
   z.coerce.number().positive().optional()
 );
+
+export function isIsoCalendarDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+const optionalIsoDateSchema = z
+  .string()
+  .refine(isIsoCalendarDate, "INVALID_CALENDAR_DATE")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
 
 const createSupplierSchema = z.object({
   supplierCode: supplierCodeSchema,
@@ -70,14 +86,12 @@ const createSupplierItemLinkSchema = z.object({
   minOrderQty: optionalPositiveNumberSchema,
   preferredRank: optionalNonNegativeIntegerSchema,
   unitPrice: optionalPositiveNumberSchema,
-  effectiveFrom: z
-    .string()
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
+  effectiveFrom: optionalIsoDateSchema,
   reason: z.string().min(5).max(500)
 });
 
 const deactivateSupplierItemLinkSchema = z.object({
+  supplierId: z.string().uuid(),
   supplierItemLinkId: z.string().uuid(),
   reason: z.string().min(5).max(500)
 });
@@ -100,6 +114,54 @@ const supplierItemLinkLookupInputSchema = z.object({
   pageSize: z.number().int().min(10).max(50).default(25)
 });
 
+const boundedCatalogSearchSchema = z.preprocess(
+  (value) => (typeof value === "string" ? value.trim().slice(0, 120) : ""),
+  z.string().max(120)
+);
+
+function clampCatalogInteger(value: unknown, minimum: number, maximum: number, fallback: number) {
+  const numericValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.trunc(numericValue)));
+}
+
+const supplierCatalogInputSchema = z
+  .object({
+    query: boundedCatalogSearchSchema.default(""),
+    status: z.preprocess(
+      (value) => (["ACTIVE", "INACTIVE", "ALL"].includes(String(value)) ? value : "ALL"),
+      z.enum(["ACTIVE", "INACTIVE", "ALL"])
+    ).default("ALL"),
+    categoryId: z.preprocess((value) => {
+      if (typeof value !== "string") return undefined;
+      const normalized = value.trim();
+      return z.string().uuid().safeParse(normalized).success ? normalized : undefined;
+    }, z.string().uuid().optional()),
+    categoryQuery: boundedCatalogSearchSchema.default(""),
+    categoryPage: z.preprocess(
+      (value) => clampCatalogInteger(value, 1, 10_000, 1),
+      z.number().int().min(1).max(10_000)
+    ).default(1),
+    categoryPageSize: z.preprocess(
+      (value) => clampCatalogInteger(value, 10, 100, 25),
+      z.number().int().min(10).max(100)
+    ).default(25),
+    page: z.preprocess(
+      (value) => clampCatalogInteger(value, 1, 10_000, 1),
+      z.number().int().min(1).max(10_000)
+    ).default(1),
+    pageSize: z.preprocess(
+      (value) => clampCatalogInteger(value, 10, 100, 25),
+      z.number().int().min(10).max(100)
+    ).default(25)
+  })
+  .strict();
+
+async function canViewSupplierConfidential(session: SessionContext) {
+  const grantedPermissionCodes = await getGrantedPermissionCodes(session);
+  return grantedPermissionCodes.includes(permissions.supplierConfidentialView);
+}
+
 export function assertNoDuplicateSupplierCode(existingSupplierId?: string) {
   if (existingSupplierId) {
     throw new Error("DUPLICATE_SUPPLIER_CODE");
@@ -118,6 +180,7 @@ export async function listSuppliers(
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
+  const hasConfidentialAccess = await canViewSupplierConfidential(session);
   const values = supplierListInputSchema.parse(input);
   const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
   const where = {
@@ -133,7 +196,16 @@ export async function listSuppliers(
 
   const suppliers = await prisma.supplier.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      supplierCode: true,
+      legalName: true,
+      tradingName: true,
+      taxIdentifier: true,
+      status: true,
+      accreditationStatus: true,
+      paymentTerms: hasConfidentialAccess,
+      createdAt: true,
       _count: {
         select: {
           itemLinks: true
@@ -141,18 +213,38 @@ export async function listSuppliers(
       },
       contacts: {
         where: { isPrimary: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { name: true, role: true, email: true, phone: true },
         take: 1
       },
       itemLinks: {
-        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        orderBy: [{ status: "asc" }, { createdAt: "desc" }, { id: "asc" }],
         take: 3,
-        include: {
-          item: true,
-          purchaseUom: true,
-          priceHistory: {
-            orderBy: { effectiveFrom: "desc" },
-            take: 1
-          }
+        select: {
+          id: true,
+          supplierSku: true,
+          supplierItemName: true,
+          leadTimeDays: true,
+          minOrderQty: true,
+          preferredRank: true,
+          status: true,
+          item: { select: { itemCode: true, itemName: true } },
+          purchaseUom: { select: { uomCode: true } },
+          priceHistory: hasConfidentialAccess
+            ? {
+                orderBy: [
+                  { effectiveFrom: "desc" as const },
+                  { createdAt: "desc" as const },
+                  { id: "desc" as const }
+                ],
+                select: {
+                  currencyCode: true,
+                  unitPrice: true,
+                  effectiveFrom: true
+                },
+                take: 1
+              }
+            : false
         }
       }
     },
@@ -162,6 +254,7 @@ export async function listSuppliers(
   });
 
   return {
+    canViewSupplierConfidential: hasConfidentialAccess,
     suppliers: suppliers.map((supplier) => ({
     id: supplier.id,
     supplierCode: supplier.supplierCode,
@@ -170,7 +263,7 @@ export async function listSuppliers(
     taxIdentifier: supplier.taxIdentifier,
     status: supplier.status,
     accreditationStatus: supplier.accreditationStatus,
-    paymentTerms: supplier.paymentTerms,
+    paymentTerms: hasConfidentialAccess ? supplier.paymentTerms : null,
     createdAt: supplier.createdAt.toISOString(),
     itemLinkCount: supplier._count.itemLinks,
     primaryContact: supplier.contacts[0]
@@ -192,7 +285,7 @@ export async function listSuppliers(
       minOrderQty: link.minOrderQty ? Number(link.minOrderQty) : null,
       preferredRank: link.preferredRank,
       status: link.status,
-      latestPrice: link.priceHistory[0]
+      latestPrice: hasConfidentialAccess && link.priceHistory[0]
         ? {
             currencyCode: link.priceHistory[0].currencyCode,
             unitPrice: Number(link.priceHistory[0].unitPrice),
@@ -212,29 +305,35 @@ export async function listSuppliers(
 export async function getSupplierCatalog(
   session: SessionContext,
   supplierId: string,
-  filters?: {
-    query?: string;
-    status?: "ACTIVE" | "INACTIVE" | "ALL";
-    categoryId?: string;
-    categoryQuery?: string;
-    categoryPage?: number;
-    categoryPageSize?: number;
-    page?: number;
-    pageSize?: number;
-  }
+  filters: z.input<typeof supplierCatalogInputSchema> = {}
 ) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
+  const hasConfidentialAccess = await canViewSupplierConfidential(session);
+  const scopedSupplierId = z.string().uuid().safeParse(supplierId);
+  if (!scopedSupplierId.success) return null;
+  const values = supplierCatalogInputSchema.parse(filters);
 
   const supplier = await prisma.supplier.findFirst({
     where: {
-      id: supplierId,
+      id: scopedSupplierId.data,
       tenantId: session.context.tenantId,
       companyId: session.context.companyId
     },
-    include: {
+    select: {
+      id: true,
+      supplierCode: true,
+      legalName: true,
+      tradingName: true,
+      taxIdentifier: true,
+      status: true,
+      accreditationStatus: true,
+      paymentTerms: hasConfidentialAccess,
+      updatedAt: true,
       contacts: {
         where: { isPrimary: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { name: true, role: true, email: true, phone: true },
         take: 1
       }
     }
@@ -244,21 +343,14 @@ export async function getSupplierCatalog(
     return null;
   }
 
-  const query = filters?.query?.trim();
-  const status = filters?.status ?? "ALL";
-  const pageSize = Math.min(Math.max(filters?.pageSize ?? 25, 10), 100);
-  const page = Math.max(filters?.page ?? 1, 1);
-  const categoryPageSize = Math.min(Math.max(filters?.categoryPageSize ?? 25, 10), 100);
-  const categoryPage = Math.max(filters?.categoryPage ?? 1, 1);
-  const categoryQuery = filters?.categoryQuery?.trim().slice(0, 120);
   const categoryWhere = {
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    ...(categoryQuery
+    ...(values.categoryQuery
       ? {
           OR: [
-            { categoryName: { contains: categoryQuery, mode: "insensitive" as const } },
-            { categoryCode: { contains: categoryQuery, mode: "insensitive" as const } }
+            { categoryName: { contains: values.categoryQuery, mode: "insensitive" as const } },
+            { categoryCode: { contains: values.categoryQuery, mode: "insensitive" as const } }
           ]
         }
       : {}),
@@ -281,24 +373,24 @@ export async function getSupplierCatalog(
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     supplierId: supplier.id,
-    ...(status === "ALL" ? {} : { status }),
-    ...(filters?.categoryId
+    ...(values.status === "ALL" ? {} : { status: values.status }),
+    ...(values.categoryId
       ? {
           item: {
-            itemCategoryId: filters.categoryId
+            itemCategoryId: values.categoryId
           }
         }
       : {}),
-    ...(query
+    ...(values.query
       ? {
           OR: [
-            { supplierSku: { contains: query, mode: "insensitive" as const } },
-            { supplierItemName: { contains: query, mode: "insensitive" as const } },
+            { supplierSku: { contains: values.query, mode: "insensitive" as const } },
+            { supplierItemName: { contains: values.query, mode: "insensitive" as const } },
             {
               item: {
                 OR: [
-                  { itemCode: { contains: query, mode: "insensitive" as const } },
-                  { itemName: { contains: query, mode: "insensitive" as const } }
+                  { itemCode: { contains: values.query, mode: "insensitive" as const } },
+                  { itemName: { contains: values.query, mode: "insensitive" as const } }
                 ]
               }
             }
@@ -307,7 +399,7 @@ export async function getSupplierCatalog(
       : {})
   };
 
-  const [totalCount, activeCount, categoryCount, categoryTotalCount, categories, selectedCategory, filteredTotalCount, itemLinks] =
+  const [totalCount, activeCount, categoryCount, categoryTotalCount, filteredTotalCount] =
     await Promise.all([
       prisma.supplierItemLink.count({
         where: {
@@ -342,45 +434,85 @@ export async function getSupplierCatalog(
         }
       }),
       prisma.itemCategory.count({ where: categoryWhere }),
-      prisma.itemCategory.findMany({
-        where: categoryWhere,
-        orderBy: [{ categoryName: "asc" }, { id: "asc" }],
-        skip: (categoryPage - 1) * categoryPageSize,
-        take: categoryPageSize
-      }),
-      filters?.categoryId
-        ? prisma.itemCategory.findFirst({
-            where: { ...selectedCategoryWhere, id: filters.categoryId }
-          })
-        : Promise.resolve(null),
       prisma.supplierItemLink.count({
         where
-      }),
-      prisma.supplierItemLink.findMany({
+      })
+    ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTotalCount / values.pageSize));
+  const page = Math.min(values.page, totalPages);
+  const categoryTotalPages = Math.max(
+    1,
+    Math.ceil(categoryTotalCount / values.categoryPageSize)
+  );
+  const categoryPage = Math.min(values.categoryPage, categoryTotalPages);
+
+  const [categories, selectedCategory, itemLinks] = await Promise.all([
+    prisma.itemCategory.findMany({
+      where: categoryWhere,
+      orderBy: [{ categoryName: "asc" }, { id: "asc" }],
+      skip: (categoryPage - 1) * values.categoryPageSize,
+      take: values.categoryPageSize
+    }),
+    values.categoryId
+      ? prisma.itemCategory.findFirst({
+          where: { ...selectedCategoryWhere, id: values.categoryId }
+        })
+      : Promise.resolve(null),
+    prisma.supplierItemLink.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          supplierSku: true,
+          supplierItemName: true,
+          leadTimeDays: true,
+          minOrderQty: true,
+          preferredRank: true,
+          status: true,
           item: {
-            include: {
-              category: true
+            select: {
+              itemCode: true,
+              itemName: true,
+              category: { select: { categoryName: true } }
             }
           },
-          purchaseUom: true,
-          priceHistory: {
-            orderBy: { effectiveFrom: "desc" },
-            take: 1
-          }
+          purchaseUom: { select: { uomCode: true } },
+          priceHistory: hasConfidentialAccess
+            ? {
+                orderBy: [
+                  { effectiveFrom: "desc" as const },
+                  { createdAt: "desc" as const },
+                  { id: "desc" as const }
+                ],
+                select: {
+                  currencyCode: true,
+                  unitPrice: true,
+                  effectiveFrom: true
+                },
+                take: 1
+              }
+            : false
         },
         orderBy: [
           { status: "asc" },
           { item: { itemName: "asc" } },
-          { createdAt: "desc" }
+          { createdAt: "desc" },
+          { id: "asc" }
         ],
-        skip: (page - 1) * pageSize,
-        take: pageSize
+        skip: (page - 1) * values.pageSize,
+        take: values.pageSize
       })
     ]);
 
+  const rangeStart = filteredTotalCount === 0
+    ? 0
+    : (page - 1) * values.pageSize + 1;
+  const rangeEnd = filteredTotalCount === 0
+    ? 0
+    : Math.min(page * values.pageSize, filteredTotalCount);
+
   return {
+    canViewSupplierConfidential: hasConfidentialAccess,
     supplier: {
       id: supplier.id,
       supplierCode: supplier.supplierCode,
@@ -389,7 +521,7 @@ export async function getSupplierCatalog(
       taxIdentifier: supplier.taxIdentifier,
       status: supplier.status,
       accreditationStatus: supplier.accreditationStatus,
-      paymentTerms: supplier.paymentTerms,
+      paymentTerms: hasConfidentialAccess ? supplier.paymentTerms : null,
       updatedAt: supplier.updatedAt.toISOString(),
       primaryContact: supplier.contacts[0]
         ? {
@@ -418,15 +550,18 @@ export async function getSupplierCatalog(
     })),
     categoriesPage: {
       page: categoryPage,
-      pageSize: categoryPageSize,
+      pageSize: values.categoryPageSize,
       totalItems: categoryTotalCount,
-      hasNextPage: categoryPage * categoryPageSize < categoryTotalCount,
+      hasNextPage: categoryPage < categoryTotalPages,
       hasPreviousPage: categoryPage > 1
     },
     page,
-    pageSize,
+    pageSize: values.pageSize,
     filteredCount: filteredTotalCount,
-    hasNextPage: page * pageSize < filteredTotalCount,
+    totalPages,
+    rangeStart,
+    rangeEnd,
+    hasNextPage: page < totalPages,
     hasPreviousPage: page > 1,
     itemLinks: itemLinks.map((link) => ({
       id: link.id,
@@ -440,7 +575,7 @@ export async function getSupplierCatalog(
       minOrderQty: link.minOrderQty ? Number(link.minOrderQty) : null,
       preferredRank: link.preferredRank,
       status: link.status,
-      latestPrice: link.priceHistory[0]
+      latestPrice: hasConfidentialAccess && link.priceHistory[0]
         ? {
             currencyCode: link.priceHistory[0].currencyCode,
             unitPrice: Number(link.priceHistory[0].unitPrice),
@@ -557,6 +692,9 @@ export async function createSupplier(formData: FormData) {
 
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
+  if (values.paymentTerms !== undefined) {
+    await requirePermission(session, permissions.supplierConfidentialView);
+  }
 
   const existing = await prisma.supplier.findFirst({
     where: {
@@ -626,27 +764,47 @@ export async function deactivateSupplier(formData: FormData) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const supplier = await prisma.supplier.findFirst({
-    where: {
-      id: values.supplierId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE"
-    }
-  });
-
-  if (!supplier) {
-    throw new Error("SUPPLIER_NOT_FOUND");
-  }
-
   await prisma.$transaction(async (tx) => {
-    const updated = await tx.supplier.update({
-      where: { id: supplier.id },
+    const [supplier] = await tx.$queryRaw<Array<{
+      id: string;
+      supplierCode: string;
+      legalName: string;
+      status: string;
+      accreditationStatus: string;
+    }>>(Prisma.sql`
+      SELECT
+        supplier."id",
+        supplier."supplierCode",
+        supplier."legalName",
+        supplier."status"::text AS "status",
+        supplier."accreditationStatus"::text AS "accreditationStatus"
+      FROM "Supplier" supplier
+      WHERE supplier."id" = ${values.supplierId}::uuid
+        AND supplier."tenantId" = ${session.context.tenantId}::uuid
+        AND supplier."companyId" = ${session.context.companyId}::uuid
+        AND supplier."status" = 'ACTIVE'
+      FOR UPDATE OF supplier
+    `);
+
+    if (!supplier) {
+      throw new Error("SUPPLIER_NOT_FOUND");
+    }
+
+    const updated = await tx.supplier.updateMany({
+      where: {
+        id: values.supplierId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
       data: {
         status: "INACTIVE",
         accreditationStatus: "SUSPENDED"
       }
     });
+    if (updated.count !== 1) {
+      throw new Error("SUPPLIER_NOT_FOUND");
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -663,8 +821,8 @@ export async function deactivateSupplier(formData: FormData) {
           accreditationStatus: supplier.accreditationStatus
         },
         afterData: {
-          status: updated.status,
-          accreditationStatus: updated.accreditationStatus
+          status: "INACTIVE",
+          accreditationStatus: "SUSPENDED"
         },
         metadata: {
           reason: values.reason
@@ -683,26 +841,43 @@ export async function updateSupplierAccreditation(formData: FormData) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const supplier = await prisma.supplier.findFirst({
-    where: {
-      id: values.supplierId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE"
-    }
-  });
-
-  if (!supplier) {
-    throw new Error("SUPPLIER_NOT_FOUND");
-  }
-
   await prisma.$transaction(async (tx) => {
-    const updated = await tx.supplier.update({
-      where: { id: supplier.id },
+    const [supplier] = await tx.$queryRaw<Array<{
+      id: string;
+      supplierCode: string;
+      legalName: string;
+      accreditationStatus: string;
+    }>>(Prisma.sql`
+      SELECT
+        supplier."id",
+        supplier."supplierCode",
+        supplier."legalName",
+        supplier."accreditationStatus"::text AS "accreditationStatus"
+      FROM "Supplier" supplier
+      WHERE supplier."id" = ${values.supplierId}::uuid
+        AND supplier."tenantId" = ${session.context.tenantId}::uuid
+        AND supplier."companyId" = ${session.context.companyId}::uuid
+        AND supplier."status" = 'ACTIVE'
+      FOR UPDATE OF supplier
+    `);
+    if (!supplier) {
+      throw new Error("SUPPLIER_NOT_FOUND");
+    }
+
+    const updated = await tx.supplier.updateMany({
+      where: {
+        id: supplier.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
       data: {
         accreditationStatus: values.accreditationStatus
       }
     });
+    if (updated.count !== 1) {
+      throw new Error("SUPPLIER_NOT_FOUND");
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -718,7 +893,7 @@ export async function updateSupplierAccreditation(formData: FormData) {
           accreditationStatus: supplier.accreditationStatus
         },
         afterData: {
-          accreditationStatus: updated.accreditationStatus
+          accreditationStatus: values.accreditationStatus
         },
         metadata: {
           sourceDecisionId: "DEC-0036",
@@ -736,16 +911,14 @@ export async function createSupplierItemLink(formData: FormData) {
 
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
+  if (values.unitPrice !== undefined || values.effectiveFrom !== undefined) {
+    await requirePermission(session, permissions.supplierConfidentialView);
+  }
+  if (values.effectiveFrom !== undefined && values.unitPrice === undefined) {
+    throw new Error("SUPPLIER_REFERENCE_PRICE_REQUIRED");
+  }
 
-  const [supplier, item, uom, duplicate, company] = await Promise.all([
-    prisma.supplier.findFirst({
-      where: {
-        id: values.supplierId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      }
-    }),
+  const [item, uom, duplicate, company] = await Promise.all([
     prisma.item.findFirst({
       where: {
         id: values.itemId,
@@ -781,9 +954,6 @@ export async function createSupplierItemLink(formData: FormData) {
     })
   ]);
 
-  if (!supplier) {
-    throw new Error("SUPPLIER_NOT_FOUND");
-  }
   if (!item) {
     throw new Error("ITEM_NOT_FOUND");
   }
@@ -801,57 +971,73 @@ export async function createSupplierItemLink(formData: FormData) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-    const link = await tx.supplierItemLink.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        supplierId: supplier.id,
-        itemId: item.id,
-        purchaseUomId: uom.id,
-        supplierSku: values.supplierSku ?? null,
-        supplierItemName: values.supplierItemName ?? null,
-        leadTimeDays: values.leadTimeDays ?? null,
-        minOrderQty: values.minOrderQty ?? null,
-        preferredRank: values.preferredRank ?? null
+      const [supplier] = await tx.$queryRaw<Array<{
+        id: string;
+        supplierCode: string;
+      }>>(Prisma.sql`
+        SELECT supplier."id", supplier."supplierCode"
+        FROM "Supplier" supplier
+        WHERE supplier."id" = ${values.supplierId}::uuid
+          AND supplier."tenantId" = ${session.context.tenantId}::uuid
+          AND supplier."companyId" = ${session.context.companyId}::uuid
+          AND supplier."status" = 'ACTIVE'
+        FOR UPDATE OF supplier
+      `);
+      if (!supplier) {
+        throw new Error("SUPPLIER_NOT_FOUND");
       }
-    });
 
-    if (values.unitPrice) {
-      await tx.supplierPriceHistory.create({
+      const link = await tx.supplierItemLink.create({
         data: {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
           supplierId: supplier.id,
           itemId: item.id,
-          supplierItemLinkId: link.id,
-          uomId: uom.id,
-          currencyCode: company.currencyCode,
-          unitPrice: values.unitPrice,
-          effectiveFrom
+          purchaseUomId: uom.id,
+          supplierSku: values.supplierSku ?? null,
+          supplierItemName: values.supplierItemName ?? null,
+          leadTimeDays: values.leadTimeDays ?? null,
+          minOrderQty: values.minOrderQty ?? null,
+          preferredRank: values.preferredRank ?? null
         }
       });
-    }
 
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "supplier_item_link.created",
-        entityType: "SupplierItemLink",
-        entityId: link.id,
-        afterData: {
-          supplierCode: supplier.supplierCode,
-          itemCode: item.itemCode,
-          purchaseUomCode: uom.uomCode,
-          status: link.status
-        },
-        metadata: {
-          reason: values.reason,
-          hasReferencePrice: Boolean(values.unitPrice)
-        }
+      if (values.unitPrice) {
+        await tx.supplierPriceHistory.create({
+          data: {
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            supplierId: supplier.id,
+            itemId: item.id,
+            supplierItemLinkId: link.id,
+            uomId: uom.id,
+            currencyCode: company.currencyCode,
+            unitPrice: values.unitPrice,
+            effectiveFrom
+          }
+        });
       }
-    });
+
+      await tx.auditEvent.create({
+        data: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          actorUserId: session.user.id,
+          eventType: "supplier_item_link.created",
+          entityType: "SupplierItemLink",
+          entityId: link.id,
+          afterData: {
+            supplierCode: supplier.supplierCode,
+            itemCode: item.itemCode,
+            purchaseUomCode: uom.uomCode,
+            status: link.status
+          },
+          metadata: {
+            reason: values.reason,
+            hasReferencePrice: Boolean(values.unitPrice)
+          }
+        }
+      });
 
       return link;
     });
@@ -875,29 +1061,72 @@ export async function deactivateSupplierItemLink(formData: FormData) {
   await requirePermission(session, permissions.coreAdminister);
   await assertCanManageCompanyScope(session, session.context.companyId);
 
-  const link = await prisma.supplierItemLink.findFirst({
-    where: {
-      id: values.supplierItemLinkId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE"
-    },
-    include: {
-      supplier: true,
-      item: true,
-      purchaseUom: true
-    }
-  });
-
-  if (!link) {
-    throw new Error("SUPPLIER_ITEM_LINK_NOT_FOUND");
-  }
-
   await prisma.$transaction(async (tx) => {
-    const updated = await tx.supplierItemLink.update({
-      where: { id: link.id },
+    const [activeSupplier] = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT supplier."id"
+      FROM "Supplier" supplier
+      WHERE supplier."id" = ${values.supplierId}::uuid
+        AND supplier."tenantId" = ${session.context.tenantId}::uuid
+        AND supplier."companyId" = ${session.context.companyId}::uuid
+        AND supplier."status" = 'ACTIVE'
+      FOR UPDATE OF supplier
+    `);
+    if (!activeSupplier) {
+      throw new Error("SUPPLIER_ITEM_LINK_NOT_FOUND");
+    }
+
+    const [link] = await tx.$queryRaw<Array<{
+      id: string;
+      supplierCode: string;
+      itemCode: string;
+      purchaseUomCode: string;
+      status: string;
+    }>>(Prisma.sql`
+      SELECT
+        link."id",
+        supplier."supplierCode",
+        item."itemCode",
+        uom."uomCode" AS "purchaseUomCode",
+        link."status"::text AS "status"
+      FROM "SupplierItemLink" link
+      JOIN "Supplier" supplier
+        ON supplier."id" = link."supplierId"
+       AND supplier."tenantId" = link."tenantId"
+       AND supplier."companyId" = link."companyId"
+       AND supplier."status" = 'ACTIVE'
+      JOIN "Item" item
+        ON item."id" = link."itemId"
+       AND item."tenantId" = link."tenantId"
+       AND item."companyId" = link."companyId"
+      JOIN "Uom" uom
+        ON uom."id" = link."purchaseUomId"
+       AND uom."tenantId" = link."tenantId"
+       AND uom."companyId" = link."companyId"
+      WHERE link."id" = ${values.supplierItemLinkId}::uuid
+        AND link."supplierId" = ${values.supplierId}::uuid
+        AND link."tenantId" = ${session.context.tenantId}::uuid
+        AND link."companyId" = ${session.context.companyId}::uuid
+        AND link."status" = 'ACTIVE'
+      FOR UPDATE OF link
+    `);
+
+    if (!link) {
+      throw new Error("SUPPLIER_ITEM_LINK_NOT_FOUND");
+    }
+
+    const updated = await tx.supplierItemLink.updateMany({
+      where: {
+        id: values.supplierItemLinkId,
+        supplierId: values.supplierId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE"
+      },
       data: { status: "INACTIVE" }
     });
+    if (updated.count !== 1) {
+      throw new Error("SUPPLIER_ITEM_LINK_NOT_FOUND");
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -908,13 +1137,13 @@ export async function deactivateSupplierItemLink(formData: FormData) {
         entityType: "SupplierItemLink",
         entityId: link.id,
         beforeData: {
-          supplierCode: link.supplier.supplierCode,
-          itemCode: link.item.itemCode,
-          purchaseUomCode: link.purchaseUom.uomCode,
+          supplierCode: link.supplierCode,
+          itemCode: link.itemCode,
+          purchaseUomCode: link.purchaseUomCode,
           status: link.status
         },
         afterData: {
-          status: updated.status
+          status: "INACTIVE"
         },
         metadata: {
           reason: values.reason

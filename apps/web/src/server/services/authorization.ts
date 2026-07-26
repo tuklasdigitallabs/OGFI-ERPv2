@@ -11,6 +11,7 @@ export const permissions = {
   purchaseRequestApprove: "purchasing.purchase_request.approve",
   quoteManage: "purchasing.quote.manage",
   quoteApprove: "purchasing.quote.approve",
+  supplierConfidentialView: "purchasing.supplier_confidential.view",
   purchaseOrderView: "purchasing.purchase_order.view",
   purchaseOrderCreate: "purchasing.purchase_order.create",
   purchaseOrderSubmit: "purchasing.purchase_order.submit",
