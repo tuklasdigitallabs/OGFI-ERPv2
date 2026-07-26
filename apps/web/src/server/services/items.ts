@@ -1,4 +1,4 @@
-import { prisma } from "@ogfi/database";
+import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { permissions, requirePermission } from "./authorization";
 import { assertCanManageCompanyScope } from "./coreAdmin";
@@ -151,6 +151,92 @@ export function assertNoActiveMasterDataDependents(
   if (activeDependentCount > 0) {
     throw new Error(errorCode);
   }
+}
+
+type LockedItemParentRow = {
+  id: string;
+  status: string;
+};
+
+type LockedItemRow = {
+  id: string;
+  itemName: string;
+  itemCategoryId: string;
+  itemType: string;
+  baseUomId: string;
+  purchaseUomId: string | null;
+  issueUomId: string | null;
+  trackInventory: boolean;
+  trackExpiry: boolean;
+  trackLot: boolean;
+  requiresReceivingInspection: boolean;
+};
+
+type ItemParentReferences = {
+  itemCategoryId: string;
+  baseUomId: string;
+  purchaseUomId?: string | undefined;
+  issueUomId?: string | undefined;
+};
+
+async function lockActiveItemParents(
+  tx: TransactionClient,
+  session: SessionContext,
+  references: ItemParentReferences
+) {
+  // Keep the lock order stable across item creation and editing. FOR UPDATE is
+  // intentionally shared with parent deactivation so either the child write or
+  // the lifecycle change wins, then the waiting transaction revalidates.
+  const categories = await tx.$queryRaw<LockedItemParentRow[]>`
+    SELECT id, status::text AS status
+      FROM "ItemCategory"
+     WHERE id = ${references.itemCategoryId}::uuid
+       AND "tenantId" = ${session.context.tenantId}::uuid
+       AND "companyId" = ${session.context.companyId}::uuid
+     ORDER BY id
+     FOR UPDATE
+  `;
+  const category = categories[0];
+  if (!category || category.status !== "ACTIVE") {
+    throw new Error("ITEM_CATEGORY_NOT_FOUND");
+  }
+
+  const uomIds = [
+    references.baseUomId,
+    references.purchaseUomId,
+    references.issueUomId
+  ]
+    .filter((id): id is string => Boolean(id))
+    .filter((id, index, ids) => ids.indexOf(id) === index)
+    .sort();
+  const uoms = await tx.$queryRaw<LockedItemParentRow[]>(Prisma.sql`
+    SELECT id, status::text AS status
+      FROM "Uom"
+     WHERE id IN (${Prisma.join(uomIds.map((id) => Prisma.sql`${id}::uuid`))})
+       AND "tenantId" = ${session.context.tenantId}::uuid
+       AND "companyId" = ${session.context.companyId}::uuid
+     ORDER BY id
+     FOR UPDATE
+  `);
+  const activeUomIds = new Set(
+    uoms.filter((uom) => uom.status === "ACTIVE").map((uom) => uom.id)
+  );
+  if (!activeUomIds.has(references.baseUomId)) {
+    throw new Error("BASE_UOM_NOT_FOUND");
+  }
+  if (references.purchaseUomId && !activeUomIds.has(references.purchaseUomId)) {
+    throw new Error("PURCHASE_UOM_NOT_FOUND");
+  }
+  if (references.issueUomId && !activeUomIds.has(references.issueUomId)) {
+    throw new Error("ISSUE_UOM_NOT_FOUND");
+  }
+
+  return {
+    categoryId: category.id,
+    baseUomId: references.baseUomId,
+    purchaseUomId: references.purchaseUomId ?? null,
+    issueUomId: references.issueUomId ?? null
+  };
 }
 
 async function assertAdminCanManageMasterData(session: SessionContext) {
@@ -607,70 +693,19 @@ export async function createItem(formData: FormData) {
   });
   assertNoDuplicateMasterCode(existing?.id, "DUPLICATE_ITEM_CODE");
 
-  const [category, baseUom, purchaseUom, issueUom] = await Promise.all([
-    prisma.itemCategory.findFirst({
-      where: {
-        id: values.itemCategoryId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      }
-    }),
-    prisma.uom.findFirst({
-      where: {
-        id: values.baseUomId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      }
-    }),
-    values.purchaseUomId
-      ? prisma.uom.findFirst({
-          where: {
-            id: values.purchaseUomId,
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            status: "ACTIVE"
-          }
-        })
-      : null,
-    values.issueUomId
-      ? prisma.uom.findFirst({
-          where: {
-            id: values.issueUomId,
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            status: "ACTIVE"
-          }
-        })
-      : null
-  ]);
-
-  if (!category) {
-    throw new Error("ITEM_CATEGORY_NOT_FOUND");
-  }
-  if (!baseUom) {
-    throw new Error("BASE_UOM_NOT_FOUND");
-  }
-  if (values.purchaseUomId && !purchaseUom) {
-    throw new Error("PURCHASE_UOM_NOT_FOUND");
-  }
-  if (values.issueUomId && !issueUom) {
-    throw new Error("ISSUE_UOM_NOT_FOUND");
-  }
-
   return prisma.$transaction(async (tx) => {
+    const parents = await lockActiveItemParents(tx, session, values);
     const item = await tx.item.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         itemCode: values.itemCode,
         itemName: values.itemName,
-        itemCategoryId: category.id,
+        itemCategoryId: parents.categoryId,
         itemType: values.itemType,
-        baseUomId: baseUom.id,
-        purchaseUomId: purchaseUom?.id ?? null,
-        issueUomId: issueUom?.id ?? null,
+        baseUomId: parents.baseUomId,
+        purchaseUomId: parents.purchaseUomId,
+        issueUomId: parents.issueUomId,
         trackInventory: values.trackInventory,
         trackExpiry: values.trackExpiry,
         trackLot: values.trackLot,
@@ -911,71 +946,31 @@ export async function updateItem(formData: FormData) {
   const values = updateItemSchema.parse(Object.fromEntries(formData));
   await assertAdminCanManageMasterData(session);
 
-  const [item, category, baseUom, purchaseUom, issueUom] = await Promise.all([
-    prisma.item.findFirst({
-      where: {
-        id: values.itemId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId
-      }
-    }),
-    prisma.itemCategory.findFirst({
-      where: {
-        id: values.itemCategoryId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      }
-    }),
-    prisma.uom.findFirst({
-      where: {
-        id: values.baseUomId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "ACTIVE"
-      }
-    }),
-    values.purchaseUomId
-      ? prisma.uom.findFirst({
-          where: {
-            id: values.purchaseUomId,
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            status: "ACTIVE"
-          }
-        })
-      : null,
-    values.issueUomId
-      ? prisma.uom.findFirst({
-          where: {
-            id: values.issueUomId,
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            status: "ACTIVE"
-          }
-        })
-      : null
-  ]);
-
-  if (!item) {
-    throw new Error("ITEM_NOT_FOUND");
-  }
-  if (!category) {
-    throw new Error("ITEM_CATEGORY_NOT_FOUND");
-  }
-  if (!baseUom) {
-    throw new Error("BASE_UOM_NOT_FOUND");
-  }
-  if (values.purchaseUomId && !purchaseUom) {
-    throw new Error("PURCHASE_UOM_NOT_FOUND");
-  }
-  if (values.issueUomId && !issueUom) {
-    throw new Error("ISSUE_UOM_NOT_FOUND");
-  }
-
   return prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM "Item" WHERE id = ${item.id} FOR UPDATE`;
-    const postedMovementCount = item.baseUomId === baseUom.id
+    const items = await tx.$queryRaw<LockedItemRow[]>`
+      SELECT id,
+             "itemName",
+             "itemCategoryId",
+             "itemType",
+             "baseUomId",
+             "purchaseUomId",
+             "issueUomId",
+             "trackInventory",
+             "trackExpiry",
+             "trackLot",
+             "requiresReceivingInspection"
+        FROM "Item"
+       WHERE id = ${values.itemId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const item = items[0];
+    if (!item) {
+      throw new Error("ITEM_NOT_FOUND");
+    }
+    const parents = await lockActiveItemParents(tx, session, values);
+    const postedMovementCount = item.baseUomId === parents.baseUomId
       ? 0
       : await tx.inventoryMovement.count({
           where: {
@@ -984,16 +979,16 @@ export async function updateItem(formData: FormData) {
             itemId: item.id
           }
         });
-    assertBaseUomChangeAllowed(item.baseUomId, baseUom.id, postedMovementCount);
+    assertBaseUomChangeAllowed(item.baseUomId, parents.baseUomId, postedMovementCount);
     const updated = await tx.item.update({
       where: { id: item.id },
       data: {
         itemName: values.itemName,
-        itemCategoryId: category.id,
+        itemCategoryId: parents.categoryId,
         itemType: values.itemType,
-        baseUomId: baseUom.id,
-        purchaseUomId: purchaseUom?.id ?? null,
-        issueUomId: issueUom?.id ?? null,
+        baseUomId: parents.baseUomId,
+        purchaseUomId: parents.purchaseUomId,
+        issueUomId: parents.issueUomId,
         trackInventory: values.trackInventory,
         trackExpiry: values.trackExpiry,
         trackLot: values.trackLot,
@@ -1167,33 +1162,36 @@ export async function deactivateItemCategory(formData: FormData) {
   const values = deactivateCategorySchema.parse(Object.fromEntries(formData));
   await assertAdminCanManageMasterData(session);
 
-  const category = await prisma.itemCategory.findFirst({
-    where: {
-      id: values.categoryId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE"
-    }
-  });
-
-  if (!category) {
-    throw new Error("ITEM_CATEGORY_NOT_FOUND");
-  }
-
-  const activeDependentCount = await prisma.item.count({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      itemCategoryId: category.id,
-      status: "ACTIVE"
-    }
-  });
-  assertNoActiveMasterDataDependents(
-    activeDependentCount,
-    "ITEM_CATEGORY_HAS_ACTIVE_ITEMS"
-  );
-
   await prisma.$transaction(async (tx) => {
+    const categories = await tx.$queryRaw<Array<{
+      id: string;
+      categoryCode: string;
+      categoryName: string;
+      status: string;
+    }>>`
+      SELECT id, "categoryCode", "categoryName", status::text AS status
+        FROM "ItemCategory"
+       WHERE id = ${values.categoryId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const category = categories[0];
+    if (!category || category.status !== "ACTIVE") {
+      throw new Error("ITEM_CATEGORY_NOT_FOUND");
+    }
+    const activeDependentCount = await tx.item.count({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        itemCategoryId: category.id,
+        status: "ACTIVE"
+      }
+    });
+    assertNoActiveMasterDataDependents(
+      activeDependentCount,
+      "ITEM_CATEGORY_HAS_ACTIVE_ITEMS"
+    );
     const updated = await tx.itemCategory.update({
       where: { id: category.id },
       data: { status: "INACTIVE" }
@@ -1228,34 +1226,37 @@ export async function deactivateUom(formData: FormData) {
   const values = deactivateUomSchema.parse(Object.fromEntries(formData));
   await assertAdminCanManageMasterData(session);
 
-  const uom = await prisma.uom.findFirst({
-    where: {
-      id: values.uomId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE"
-    }
-  });
-
-  if (!uom) {
-    throw new Error("UOM_NOT_FOUND");
-  }
-
-  const activeDependentCount = await prisma.item.count({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE",
-      OR: [
-        { baseUomId: uom.id },
-        { purchaseUomId: uom.id },
-        { issueUomId: uom.id }
-      ]
-    }
-  });
-  assertNoActiveMasterDataDependents(activeDependentCount, "UOM_HAS_ACTIVE_ITEMS");
-
   await prisma.$transaction(async (tx) => {
+    const uoms = await tx.$queryRaw<Array<{
+      id: string;
+      uomCode: string;
+      uomName: string;
+      status: string;
+    }>>`
+      SELECT id, "uomCode", "uomName", status::text AS status
+        FROM "Uom"
+       WHERE id = ${values.uomId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const uom = uoms[0];
+    if (!uom || uom.status !== "ACTIVE") {
+      throw new Error("UOM_NOT_FOUND");
+    }
+    const activeDependentCount = await tx.item.count({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE",
+        OR: [
+          { baseUomId: uom.id },
+          { purchaseUomId: uom.id },
+          { issueUomId: uom.id }
+        ]
+      }
+    });
+    assertNoActiveMasterDataDependents(activeDependentCount, "UOM_HAS_ACTIVE_ITEMS");
     const updated = await tx.uom.update({
       where: { id: uom.id },
       data: { status: "INACTIVE" }

@@ -43,6 +43,25 @@ Implementation note (`DEC-0143`): item edit and deactivation use a selected item
 action composer with context-preserving redirects. Base UOM changes after posted
 inventory movements require controlled migration and are rejected server-side.
 
+Implementation note (`DEC-0239`): Item create/edit and Item Category/UOM
+deactivation share a transactional lifecycle-lock contract. Item writes lock and
+revalidate the exact tenant/company-scoped active Category followed by sorted,
+distinct base/purchase/issue UOMs. Category and UOM deactivation lock the scoped
+active parent before checking active dependent Items. A concurrent pair must
+serialize so the Item write either commits against active parents and blocks the
+later deactivation, or the parent deactivates first and the Item write rejects it;
+it must never create an active Item against an inactive parent. This checkpoint
+does not add a lifecycle state, permission, composer, TaskSheet, or large-catalog
+behavior. The executable disposable-PostgreSQL matrix is authored and registered:
+eight tests cover Item create/update against Category and base/purchase/issue UOM
+deactivation, with both winner orders for 16 total races. It requires distinct
+backend PIDs, observes `pg_blocking_pids` waits, and asserts stable loser errors,
+the final invariant, and atomic source/audit outcomes. It skips safely without the
+integration sentinel, while the disposable runner still fails closed at
+`DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`; no PostgreSQL execution credit is
+claimed, and the race evidence gate remains open before Master Data can claim
+production readiness.
+
 Implementation note (`DEC-0180`): Item Master tabs are URL-backed and use an
 active-tab projection. The selected register and only its required counts,
 selected record, and option catalogs are read; inactive registers are not

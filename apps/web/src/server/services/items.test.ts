@@ -71,6 +71,62 @@ describe("item master-data controls", () => {
     }
   });
 
+  test("item writes and parent deactivation share scoped lifecycle locks", () => {
+    const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
+    const parentLock = source.slice(
+      source.indexOf("async function lockActiveItemParents"),
+      source.indexOf("async function assertAdminCanManageMasterData")
+    );
+    const createItemSource = source.slice(
+      source.indexOf("export async function createItem("),
+      source.indexOf("export async function createItemUomConversion")
+    );
+    const updateItemSource = source.slice(
+      source.indexOf("export async function updateItem("),
+      source.indexOf("export async function updateItemUomConversion")
+    );
+    const deactivateCategorySource = source.slice(
+      source.indexOf("export async function deactivateItemCategory"),
+      source.indexOf("export async function deactivateUom")
+    );
+    const deactivateUomSource = source.slice(
+      source.indexOf("export async function deactivateUom")
+    );
+
+    expect(parentLock).toContain('FROM "ItemCategory"');
+    expect(parentLock).toContain('FROM "Uom"');
+    expect(parentLock).toContain('"tenantId" = ${session.context.tenantId}::uuid');
+    expect(parentLock).toContain('"companyId" = ${session.context.companyId}::uuid');
+    expect(parentLock).toContain(".sort()");
+    expect(parentLock.match(/^\s+FOR UPDATE$/gm)).toHaveLength(2);
+    expect(parentLock).toContain('category.status !== "ACTIVE"');
+    expect(parentLock).toContain('uom.status === "ACTIVE"');
+
+    expect(createItemSource.indexOf("prisma.$transaction")).toBeLessThan(
+      createItemSource.indexOf("lockActiveItemParents")
+    );
+    expect(updateItemSource).toContain('FROM "Item"');
+    expect(updateItemSource).toContain("FOR UPDATE");
+    expect(updateItemSource.indexOf("FOR UPDATE")).toBeLessThan(
+      updateItemSource.indexOf("lockActiveItemParents")
+    );
+
+    for (const deactivationSource of [
+      deactivateCategorySource,
+      deactivateUomSource
+    ]) {
+      expect(deactivationSource.indexOf("prisma.$transaction")).toBeLessThan(
+        deactivationSource.indexOf("FOR UPDATE")
+      );
+      expect(deactivationSource.indexOf("FOR UPDATE")).toBeLessThan(
+        deactivationSource.indexOf("tx.item.count")
+      );
+      expect(deactivationSource.indexOf("tx.item.count")).toBeLessThan(
+        deactivationSource.indexOf("tx.auditEvent.create")
+      );
+    }
+  });
+
   test("option catalogs are bounded and preserve scoped selected values", () => {
     const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
     expect(source).toContain("listItemMasterOptionCatalog");

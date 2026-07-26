@@ -189,6 +189,15 @@ Item edit and deactivation now use a selected item action composer with preserve
 filter/page context. Base-UOM changes are blocked after posted inventory history
 and require a controlled migration.
 
+Concurrent item creation or editing and Category/UOM deactivation now settle in
+one safe order. The losing action rechecks the latest parent lifecycle and fails
+with the existing unavailable-parent or active-item message; no partial item or
+deactivation audit is recorded. Refresh and review the affected Item, Category,
+and UOM before retrying. This does not make the wider Master Data workspace
+complete. The executable 8-test/16-race disposable-PostgreSQL matrix is authored
+and registered, but the runner still stops at its required database-administration
+URL gate; none of those races has PostgreSQL execution credit.
+
 Category, UOM, and conversion edits now use selected-record composers with
 context-preserving redirects; repeated row mutation controls are disabled with
 clear guidance.
