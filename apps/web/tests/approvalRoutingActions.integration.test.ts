@@ -174,6 +174,96 @@ describe.skipIf(!runPg).sequential("normalized approval action-time authority Po
     expect(after.notifications).toEqual([]);
   }, 4_000);
 
+  test("feature-disabled legacy decision still activates a v1 next step coherently", async () => {
+    process.env.APPROVAL_ROUTING_V1_ENABLED = "false";
+    try {
+      const scenario = await createScenario(2, 2);
+      expect(scenario.nextStepId).not.toBeNull();
+      mockContext.requireSessionContext.mockResolvedValueOnce(
+        scenario.actors[0]!.session
+      );
+
+      await approvePurchaseRequest(decisionForm(scenario.approvalInstanceId));
+
+      const [approval, nextStep, activationAudits] = await Promise.all([
+        prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: scenario.approvalInstanceId },
+          select: { status: true, currentStepOrder: true }
+        }),
+        prisma.approvalInstanceStep.findUniqueOrThrow({
+          where: { id: scenario.nextStepId! },
+          select: { status: true, activatedAt: true, actedAt: true }
+        }),
+        prisma.auditEvent.findMany({
+          where: {
+            tenantId: scenario.tenantId,
+            entityType: "ApprovalInstanceStep",
+            entityId: scenario.nextStepId!,
+            eventType: "approval.step_activated"
+          },
+          select: { eventType: true }
+        })
+      ]);
+      expect(approval).toEqual({ status: "PENDING", currentStepOrder: 2 });
+      expect(nextStep.status).toBe("PENDING");
+      expect(nextStep.activatedAt).not.toBeNull();
+      expect(nextStep.actedAt).toBeNull();
+      expect(activationAudits).toEqual([
+        { eventType: "approval.step_activated" }
+      ]);
+    } finally {
+      process.env.APPROVAL_ROUTING_V1_ENABLED = "true";
+    }
+  }, 4_000);
+
+  test("feature-disabled legacy decision preserves v0 next-step behavior", async () => {
+    process.env.APPROVAL_ROUTING_V1_ENABLED = "false";
+    try {
+      const scenario = await createScenario(2, 2, false);
+      expect(scenario.nextStepId).not.toBeNull();
+      mockContext.requireSessionContext.mockResolvedValueOnce(
+        scenario.actors[0]!.session
+      );
+
+      await approvePurchaseRequest(decisionForm(scenario.approvalInstanceId));
+
+      const [approval, nextStep, activationAudits] = await Promise.all([
+        prisma.approvalInstance.findUniqueOrThrow({
+          where: { id: scenario.approvalInstanceId },
+          select: { status: true, currentStepOrder: true }
+        }),
+        prisma.approvalInstanceStep.findUniqueOrThrow({
+          where: { id: scenario.nextStepId! },
+          select: {
+            status: true,
+            routingSchemaVersion: true,
+            activatedAt: true,
+            actedAt: true
+          }
+        }),
+        prisma.auditEvent.findMany({
+          where: {
+            tenantId: scenario.tenantId,
+            entityType: "ApprovalInstanceStep",
+            entityId: scenario.nextStepId!,
+            eventType: "approval.step_activated"
+          },
+          select: { eventType: true }
+        })
+      ]);
+      expect(approval).toEqual({ status: "PENDING", currentStepOrder: 2 });
+      expect(nextStep).toEqual({
+        status: "PENDING",
+        routingSchemaVersion: 0,
+        activatedAt: null,
+        actedAt: null
+      });
+      expect(activationAudits).toEqual([]);
+    } finally {
+      process.env.APPROVAL_ROUTING_V1_ENABLED = "true";
+    }
+  }, 4_000);
+
   test.each(["action-first", "operator-first"] as const)("%s action versus operator dry-run serializes without deadlock", async (startOrder) => {
     const scenario = await createScenario();
     mockContext.requireSessionContext.mockResolvedValueOnce(scenario.actors[0]!.session);

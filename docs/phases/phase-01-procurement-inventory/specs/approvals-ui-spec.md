@@ -144,3 +144,11 @@ clean passes and from-zero reconciliation, durable certification, authenticated
 desktop/tablet/mobile verification, UAT, and an explicit activation decision.
 While disabled, the public Approval Inbox fails closed rather than exposing a
 legacy or parallel approval queue.
+
+Feature-disabled source-workspace decisions still preserve the routing version
+already stored on each step. Advancing an intermediate v1 step must use the v1
+eligibility check, activation timestamp, compare-and-set transition, and immutable
+`approval.step_activated` audit even while the Inbox flag is false. A genuine v0
+step retains the legacy transition until the governed backfill/barrier cutover.
+This compatibility rule does not expose the normalized Inbox or authorize
+cutover.

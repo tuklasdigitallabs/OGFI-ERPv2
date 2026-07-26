@@ -31,6 +31,7 @@ import {
 import { dateOnlyInTimeZone, daysBetweenDateOnly } from "./projectDates";
 import { projectBudgetCommitmentFromApprovedSourceEvent } from "./budgetControl";
 import {
+  APPROVAL_ROUTING_SCHEMA_VERSION,
   activateApprovalStepWithEligibility,
   assertApprovalRoutingRuntimeReady,
   listEligibleApprovalStepPage,
@@ -745,7 +746,25 @@ async function activateNextApprovalStep(
     dueAt?: Date | null;
   }
 ) {
-  if (normalizedApprovalRoutingEnabled()) {
+  const routing = await tx.approvalInstanceStep.findFirst({
+    where: {
+      id: input.approvalInstanceStepId,
+      approvalInstanceId: input.approvalInstanceId,
+      status: "WAITING",
+      approvalInstance: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "PENDING"
+      }
+    },
+    select: { routingSchemaVersion: true }
+  });
+  if (!routing) return { count: 0 };
+
+  if (
+    routing.routingSchemaVersion === APPROVAL_ROUTING_SCHEMA_VERSION ||
+    normalizedApprovalRoutingEnabled()
+  ) {
     await activateApprovalStepWithEligibility(tx, {
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
@@ -763,7 +782,8 @@ async function activateNextApprovalStep(
     where: {
       id: input.approvalInstanceStepId,
       approvalInstanceId: input.approvalInstanceId,
-      status: "WAITING"
+      status: "WAITING",
+      routingSchemaVersion: 0
     },
     data: { status: "PENDING" }
   });

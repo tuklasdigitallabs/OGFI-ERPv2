@@ -434,7 +434,12 @@ describe("multi-step approval advancement", () => {
     expect(helperSource).toContain("approvalInstanceStep.updateMany");
     expect(helperSource).toContain('status: "PENDING"');
     expect(helperSource).toContain("activateNextApprovalStep");
+    expect(activationSource).toContain("approvalInstanceStep.findFirst");
+    expect(activationSource).toContain(
+      "routing.routingSchemaVersion === APPROVAL_ROUTING_SCHEMA_VERSION"
+    );
     expect(activationSource).toContain('status: "WAITING"');
+    expect(activationSource).toContain("routingSchemaVersion: 0");
     expect(activationSource).toContain('data: { status: "PENDING" }');
     expect(activationSource).toContain("activateApprovalStepWithEligibility");
     expect(activationSource).not.toContain("assertApprovalRoutingRuntimeReady");

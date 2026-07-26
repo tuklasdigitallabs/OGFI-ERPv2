@@ -1,0 +1,362 @@
+# DEC-0247 — Approval V1 Producer Barrier and Closed Writer Perimeter
+
+## Metadata
+
+- Decision ID: `DEC-0247`
+- Title: Approval V1 Producer Barrier and Closed Writer Perimeter
+- Status: `Confirmed — dormant implementation permitted; production activation and certification execution blocked`
+- Date: 2026-07-27
+- Decision owner: Shared Production Foundation / Approval Routing
+- Decision Chair: Parent agent
+- Related phase/module: Phase I normalized approval-routing producer integrity and cutover preparation
+- Related decisions: `DEC-0049`, `DEC-0050`, `DEC-0051`, `DEC-0052`, `DEC-0075`, `DEC-0244`, `DEC-0245`, `DEC-0246`
+- Related decision brief: Parent-led approval-routing producer-barrier deliberation
+
+## Decision
+
+Select the combined Option B+C architecture. Option B supplies company-scoped,
+append-only barrier generations; an automatic database shared transaction lock
+for every registered-family approval-graph creation and source transition; the
+same-key exclusive lock for activation and the final scan under PostgreSQL `READ
+COMMITTED`; deferred complete-v1 and exact-provenance validation; and semantic
+execution proof for all 18 registered producers.
+
+Option C is mandatory before production activation. It establishes an exclusive
+approval-graph writer and authenticity perimeter: runtime roles receive zero base
+approval-graph or routing-provenance DML, and every permitted mutation uses a
+typed closed capability that derives or validates a canonical registered-family
+descriptor. Direct runtime graph DML and caller-selected generic descriptors are
+prohibited.
+
+The barrier may be implemented and tested dormant while
+`APPROVAL_ROUTING_V1_ENABLED=false`. Its only positive result is
+`V1_PRODUCER_BARRIER_READY`. `DEC-0246` human authority remains required before
+production activation or certification execution. This decision does not permit
+`DRAIN_CLEAN`, does not enable normalized routing, and does not authorize a
+maintenance run.
+
+## Context
+
+The closed approval-routing registry has 18 production writers. Each current
+writer creates approval steps at routing schema version 0, completes its exact
+version-1 routing context, and commits the complete version-1 graph with its
+source effects in one source transaction. Family-specific eligibility and
+activation timing remains authoritative: normalized Budget Revision submission
+intentionally leaves all steps waiting and defers first-step eligibility and
+activation until commitment-fit review. These transaction shapes avoid a
+committed partial graph through the reviewed service paths.
+
+It does not protect the final backfill drain. The database still permits direct
+runtime approval-graph DML and has no serialization boundary between a producer
+transaction and a final zero-v0 scan. A producer can therefore begin before a
+scan, remain invisible to the scan under MVCC, and commit after an unsupported
+clean conclusion. A service factory alone also cannot authenticate future,
+missed, job, seed, migration, or direct-SQL writers.
+
+The required production boundary must preserve live source transactions, close
+the late-commit window, prove exact family semantics rather than mere v1 shape,
+contain writer authority at the database boundary, remain tenant/company scoped,
+and retain an auditable rollback and recovery path. It must not convert technical
+readiness into maintenance authority or feature activation.
+
+## Options considered
+
+### Option A — rejected: service-only lock and producer factory
+
+- Summary: Route application producers through one service factory that acquires
+  a lock and constructs version-1 routing.
+- Benefits: Small implementation surface, clear application ergonomics, and easy
+  unit-level producer inventory checks.
+- Failure modes: Direct SQL, an overlooked job or writer, a future code path, or a
+  migration can bypass the factory. The database cannot prove that the final scan
+  excluded an unregistered producer.
+- Why rejected: Application convention is not an authenticity or serialization
+  boundary. It fails the direct-DML, complete-writer-inventory, and trustworthy
+  final-scan hard gates. A factory may exist only as a convenience over the
+  selected database-enforced boundary.
+
+### Option B — selected as the barrier, insufficient alone for activation
+
+- Summary: Add company-scoped append-only barrier generations, automatic shared
+  producer locks, exclusive activation/final-scan locking, deferred complete-v1
+  and exact-provenance validation, and all-18 semantic producer proofs.
+- Benefits: Closes the MVCC late-commit race, supports company-by-company rollout,
+  preserves the current transactional v0-to-v1 construction shape, and creates
+  durable evidence bound to one exact generation, mapping, capability, and
+  release.
+- Failure modes: A direct writer can still bypass application lock acquisition;
+  incorrect lock keys or ordering can permit a race or deadlock; shape-only
+  validation can accept a semantically wrong descriptor; mutable provenance can
+  make old proof appear current; and a barrier-ready result can be mislabeled as
+  clean activation authority.
+- Why selected: Its database-automatic lock and deferred validator provide the
+  minimum concurrency and completeness barrier, but it passes the production
+  writer-authenticity gate only when combined with Option C.
+
+### Option C — selected and mandatory: closed typed producer capabilities
+
+- Summary: Remove base approval-graph and routing-provenance DML from runtime
+  roles. Permit mutations only through a closed, typed, versioned capability set
+  for the 18 registered families. Each capability derives or validates the exact
+  canonical descriptor and participates automatically in the Option B barrier.
+- Benefits: Makes writer identity and family semantics enforceable at the database
+  boundary; prevents arbitrary direct graph construction; fails closed when the
+  registry, capability, mapping, release, or provenance differs; and gives final
+  certification a closed producer population.
+- Failure modes: Capability and service contracts can drift; an over-broad routine
+  can become a generic privileged mutation API; ownership, grants, search path, or
+  default privileges can reopen direct DML; and a capability rollout across all
+  families can interrupt submissions if compatibility is not staged.
+- Why selected: It is required to make the barrier exhaustive and authentic. The
+  added implementation and migration cost is justified because B alone cannot
+  prove that every committed graph used the registered producer contract.
+
+### Option D — rejected: global v1-only constraint
+
+- Summary: Prohibit every version-0 approval step globally.
+- Benefits: A simple visible end-state invariant and no final v0 population.
+- Failure modes: It rejects the current valid v0-to-complete-v1 transaction shape,
+  forces an all-company cutover, increases global blast radius, and provides no
+  exact family mapping, capability provenance, or writer authenticity by itself.
+- Why rejected: It is incompatible with incremental company rollout and the
+  reviewed producer transaction shape. It substitutes a global shape rule for
+  the required semantic and authority perimeter.
+
+## Hard-gate assessment
+
+- **Tenant/company isolation:** Every generation and advisory-lock identity is
+  bound to one exact tenant and company. A producer, activation transaction,
+  final scan, descriptor, proof, and readiness result must share that scope.
+  Different companies must not block one another.
+- **Server-enforced authorization:** Runtime identities have no base approval-
+  graph or routing-provenance DML. Only reviewed typed capabilities can mutate the
+  graph, and they validate the executing role and exact registered family. The
+  barrier, feature flag, release identity, or possession of a request ID is not
+  authority.
+- **Approval segregation:** Canonical descriptors retain required permission,
+  scope, assignment exclusivity, prohibited actors, and no-self-approval rules.
+  Producer capability never approves, returns, rejects, delegates, posts, or
+  settles a source record.
+- **Inventory, money, and audit integrity:** The perimeter changes routing
+  construction authority only. It cannot create an approval outcome, inventory
+  movement, financial posting, settlement, or source effect outside the source
+  transaction. Routing and activation audits remain immutable.
+- **Transactional consistency and idempotency:** Producer lock, source
+  revalidation, graph construction, complete-v1 validation, eligible-actor proof,
+  source transition, and audit commit atomically. A failed validation rolls back
+  the source and graph. Existing one-pending-document uniqueness remains required;
+  concurrent retries must return stable outcomes rather than raw database errors.
+- **Phase scope:** The decision covers only normalized routing for the closed 18
+  families and its production barrier. It adds no new workflow status, approval
+  policy, user action, queue, or future module.
+- **Recovery and rollback:** Generations and proof evidence are append-only.
+  Rollback keeps the routing flag false, stops certification, revokes capability
+  execution where necessary, preserves committed v1 facts and evidence, and uses
+  compatible forward repair. It never downgrades v1 rows or rewrites a failed
+  generation as successful.
+
+The architecture passes these gates conditionally. Production execution remains
+blocked until the exact implementation, database permissions, all-18 proofs,
+deployment and recovery evidence, and `DEC-0246` human authority pass review.
+
+## Required safeguards
+
+### Barrier generations, lock identity, and MVCC
+
+- Persist company-scoped barrier generations as append-only facts bound
+  immutably to tenant, company, generation, routing schema, exact mapping version
+  and hash, exact capability version and hash, and release identity. Never update
+  a failed or superseded generation into a successful one.
+- Derive one canonical advisory-lock key from the exact tenant/company scope and a
+  versioned namespace. Producers and certifiers must use the identical database
+  derivation; application-computed lookalike keys are prohibited.
+- The database automatically acquires a shared transaction lock before any typed
+  capability creates or changes a registered-family approval graph or performs
+  its controlled source transition. The lock lasts until commit or rollback.
+- Activation and the final scan acquire the same key exclusively. Use one
+  documented global order: barrier generation and tenant/company advisory lock
+  before source row, approval instance, approval steps, and eligibility-
+  dependency locks. No path may acquire these resources in the reverse order.
+- Under `READ COMMITTED`, exclusive acquisition proves all earlier shared producer
+  transactions committed or rolled back. The final scan must execute only after
+  exclusive acquisition, so its statement snapshot observes those commits. New
+  same-company producers wait on the exclusive lock and cannot commit behind that
+  scan. Hold the exclusive lock through the final evidence and readiness-result
+  commit; do not release it between scan and result.
+- Bound lock and statement waits, emit safe retryable reason codes, measure wait,
+  timeout, and deadlock rates, and stop without a readiness result if the exclusive
+  window cannot complete within its approved operational bound.
+
+### Closed writer and provenance perimeter
+
+- Runtime web, worker, reporting, and other application roles have zero effective
+  `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, ownership, trigger, or grant authority
+  on base approval-graph and routing-provenance relations. Review inherited roles,
+  column privileges, views, routines, default privileges, and restore behavior.
+- Expose only exact typed capabilities for the authoritative 18-family registry.
+  No routine accepts caller-selected SQL, table, column, document family outside
+  the registry, arbitrary scope graph, permission, prohibited-actor set, routing
+  schema version, mapping identity, or provenance payload.
+- A capability derives canonical routing facts from locked source and registered
+  policy data or validates a typed descriptor against that canonical derivation.
+  It writes immutable provenance identifying the exact family, mapping,
+  capability, release, generation, and source transaction.
+- Use controlled non-login ownership, fixed search paths, schema-qualified
+  objects, exact signatures and grants, revoked `PUBLIC` execution, and executable
+  post-migration and post-restore privilege verification. The perimeter must not
+  become a generic privileged approval API.
+- Database-deferred validation must reject commit unless every active
+  `PENDING`/`WAITING` step is complete v1 and its exact permission, assignment,
+  scope groups and targets, prohibited actors, due semantics, activation fields,
+  and provenance match the canonical family descriptor. Structural v1 alone is
+  insufficient.
+
+### Source drift and eligible-actor races
+
+- Lock the exact scoped source row before deriving the descriptor. Revalidate
+  tenant, company, location or other scope, allowed source status, current
+  approval link, approval-rule version, and expected concurrency token immediately
+  before the controlled source transition. Use compare-and-swap for that
+  transition and fail the entire transaction on drift.
+- Retain the one-pending-approval database uniqueness rule and map concurrent
+  duplicate submission to a stable idempotent or retry-safe domain result. A
+  read-then-create precheck is not sufficient concurrency control.
+- Derive prohibited actors from the locked source and acting identity. Never trust
+  caller-supplied requester, creator, submitter, reviewer, or exclusion facts.
+- Prove a first-step eligible actor after complete canonical routing is present.
+  Role, permission, assignment, scope, and prohibited-actor dependencies used by
+  that proof must either participate in the documented lock/serialization order
+  or be revalidated under an equivalent database guard before commit. Concurrent
+  revocation must cause rollback or leave the step governed by the existing
+  fail-closed runtime eligibility check; it must never manufacture authority.
+- Revalidate eligibility whenever a waiting step becomes pending. Certification
+  proves producer integrity, not permanent future actor availability.
+
+### Result, rollout, and recovery
+
+- The implementation can produce only `V1_PRODUCER_BARRIER_READY`, bound to the
+  exact generation and proof set. This means the producer barrier and writer
+  perimeter passed; it is not `DRAIN_CLEAN`, maintenance authority, cutover
+  approval, or permission to enable the feature flag.
+- Keep `APPROVAL_ROUTING_V1_ENABLED=false` throughout dormant schema, capability,
+  shadow, and proof deployment. Do not execute production activation or final
+  certification until `DEC-0246` human issuer, key, revocation, STOP, and recovery
+  authority is confirmed.
+- Roll out additively: install append-only schema and dormant validators; verify
+  privileges; bind all 18 typed capabilities; run isolated semantic proofs;
+  observe lock behavior; then canary by authorized company only after the human
+  authority gate. Do not use a global cutover.
+- On failure, stop certification, keep or restore the flag to false, preserve the
+  failed generation and evidence, prevent new capability activation where
+  required, and forward-repair. Recovery must retain a compatible way to release
+  or expire fenced operational state without granting base-table DML.
+
+## Required tests and acceptance evidence
+
+1. Discover production graph/source writers and compare them with the canonical
+   registry, typed capability manifest, deferred validator, and proof manifest.
+   Missing, extra, duplicate, or untyped writers fail the build and readiness
+   check.
+2. Execute all 18 real producer paths against PostgreSQL. Verify atomic source and
+   graph commit, exact permission, assignment XOR, scope groups and targets,
+   prohibited actors, due semantics, activation audit, provenance, first-step
+   eligibility, and zero active v0 residue.
+3. For each family, inject failures after graph creation, during descriptor
+   completion, eligibility proof, source compare-and-swap, audit, and commit.
+   Prove total rollback and no source/approval split brain.
+4. Race a producer that acquires shared before the exclusive request, one that
+   arrives while exclusive is held, and one after exclusive release. Prove the
+   final `READ COMMITTED` scan observes all earlier commits and later producers
+   cannot commit behind its readiness result.
+5. Prove same-company serialization and different-company concurrency, canonical
+   lock-key equality, deterministic lock ordering, bounded timeout, deadlock
+   handling, transaction rollback, and safe retry outcomes.
+6. Attempt direct base graph/provenance DML, caller-selected descriptor mutation,
+   function substitution, search-path capture, inherited/default privilege use,
+   trigger bypass, truncate, ownership change, and cross-family capability use
+   from every runtime identity. All attempts must fail closed.
+7. Supply wrong or stale tenant/company, source state, approval link, rule version,
+   mapping/capability hash, release, generation, scope, permission, due fact,
+   prohibited actor, and provenance. No invalid graph or source transition may
+   commit.
+8. Race duplicate submissions and source edits. Prove source-row lock and CAS
+   behavior, exactly one pending instance and source link, stable idempotent or
+   retry-safe results, and no raw uniqueness error exposure.
+9. Race eligible-actor removal, permission revocation, role deactivation, scope
+   removal, prohibited-actor changes, and next-step activation. Prove no user gains
+   authority, invalid first-step activation rolls back or fails closed, and each
+   later activation revalidates current eligibility.
+10. Prove append-only generation history, immutable canonical hashes, one fenced
+    readiness result, exact replay behavior, crash before and after final scan or
+    result, stale worker rejection, and recovery without rewriting evidence.
+11. Verify flag-false behavior: producers still commit complete v1 graphs through
+    capabilities; normalized inbox/actions remain disabled; legacy decisions do
+    not bypass the graph perimeter; and no barrier path emits `DRAIN_CLEAN`.
+12. Rehearse additive migration, production-like load and lock duration, per-
+    company canary, timeout and retry telemetry, application rollback, forward
+    repair, backup/restore, privilege reconciliation, and emergency stop. Obtain
+    independent Database, Security, QA, DevOps, and Release acceptance for the
+    exact release.
+
+## Implementation and documentation impact
+
+- Code / architecture: Replace direct approval-graph construction with a closed
+  typed capability boundary and automatic company barrier participation. Retain
+  source-domain orchestration and the existing normalized decision contract.
+- Data / schema: Add append-only barrier-generation and readiness evidence,
+  canonical provenance, database lock-key derivation, deferred exact validators,
+  typed capability routines, and least-privilege grants through reviewed additive
+  migrations.
+- Workflow / permissions: No approval route, threshold, status, user permission,
+  or decision authority changes. `DEC-0246` remains the authority gate.
+- UI / mobile: No navigation, action, label, or mobile behavior changes while the
+  feature flag remains false. A bounded maintenance wait should be transparent.
+- Reporting: Barrier generations and `V1_PRODUCER_BARRIER_READY` are internal
+  operational evidence, not an end-user report or clean certificate.
+- Knowledge base / training: No glossary, knowledge-base, training, or end-user
+  release-note change is required for a transparent dormant barrier. If rollout
+  introduces a user-visible maintenance/retry error or planned submission outage,
+  Dunong must add troubleshooting and release-note guidance before exposure.
+- Tests / UAT: Add the exact database, concurrency, authorization, provenance,
+  all-18 semantic, flag-matrix, deployment, restore, and recovery evidence listed
+  above. End-user UAT remains a separate activation prerequisite.
+
+## Follow-up actions
+
+| Action | Owner | Due / trigger | Status |
+|---|---|---|---|
+| Implement dormant Option B barrier generations, automatic locks, deferred exact validator, and readiness result | Database and backend owners | Before producer-barrier readiness review | Pending |
+| Move all 18 producers behind Option C typed closed capabilities and remove runtime base graph/provenance DML | Database, backend, and security owners | Before production activation | Pending |
+| Execute the complete all-18 semantic, race, privilege, deployment, and recovery test matrix | QA, Database, Security, DevOps, and Release | Exact release candidate | Pending |
+| Confirm issuer, key custody, revocation, STOP, and recovery authority required by `DEC-0246` | Authorized human owner | Before production activation or certification execution | Blocked — human decision required |
+| Assess Dunong handoff if a visible retry or maintenance state is introduced | Product and enablement owners | Before user exposure | Not required for dormant implementation |
+
+## Evidence
+
+- Repository-root `AGENTS.md` — authority, hard-gate, documentation, and
+  deliberation requirements.
+- `docs/core/00-governance/decisions/DEC-0244-NORMALIZED-APPROVAL-DECISION-SURFACE-CONTRACT.md`
+  — closed 18-family normalized decision capability contract and activation gates.
+- `docs/core/00-governance/decisions/DEC-0245-DURABLE-APPROVAL-BACKFILL-AND-DRAIN-ORCHESTRATION.md`
+  — durable company-scoped reconciliation, barrier dependency, and prohibition on
+  unsupported `DRAIN_CLEAN`.
+- `docs/core/00-governance/decisions/DEC-0246-APPROVAL-BACKFILL-MAINTENANCE-AUTHORITY.md`
+  — closed maintenance reference-monitor design and unresolved human authority.
+- `apps/web/src/server/services/approvalRoutingRegistry.ts` — authoritative 18-
+  family routing registry and canonical family inputs.
+- `apps/web/src/server/services/approvalRouting.ts` — current v0-to-complete-v1
+  configuration, eligibility, activation, and runtime-readiness behavior.
+- Production producer inventory and independent Database, Architecture, Security,
+  QA, Product/Operations/Release, and Software Audit deliberation supplied to the
+  Decision Chair on 2026-07-27.
+- Requested Code Spark and exact GPT-5.4 subagent models were unavailable. The
+  closest permitted GPT-5.6 specialist roles, including GPT-5.6 Mithi for
+  documentation stewardship, were used. Model fallback did not relax a hard gate
+  or authorize activation.
+
+## Supersession
+
+This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
+the producer-barrier architecture decision required by those records while
+preserving their separate decision-surface, orchestration, human-authority,
+certification, and activation gates.
