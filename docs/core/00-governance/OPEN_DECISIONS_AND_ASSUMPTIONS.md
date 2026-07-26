@@ -172,6 +172,22 @@ normalized-approval adapter; no second Item-only approval authority or approval 
 mutable Item state is permitted. Historical transactions, balances, and inventory
 movements are never rewritten to a replacement Item.
 
+19. **Approval backfill maintenance-authority ownership (`DEC-0246`, open):**
+Before the approval-routing maintenance authority schema, launcher, or executor is
+activated, authorized human owners must confirm: (a) which independent role or
+governance body may issue an immutable authority record and the required approval
+or dual-control evidence; (b) signing-key generation, custody, authorized use,
+rotation, backup, compromise response, and recovery ownership; (c) who may revoke
+unused or active authority, under which incidents or change-control conditions,
+and how revocation affects an in-flight bounded transaction; and (d) who may issue
+and execute emergency STOP or recovery authority when the normal issuer, signing
+key, release, host, or maintenance credential is unavailable. Issuers must remain
+separate from executors, and environment values, launcher possession, database
+credentials, local receipts, and release SHA must never constitute authority.
+Until confirmed, the DEC-0246 façade and executor remain non-operational,
+`APPROVAL_ROUTING_V1_ENABLED` remains false, and neither maintenance execution nor
+`DRAIN_CLEAN` is authorized.
+
 ## 6. Change request format
 
 Every policy change request should include:
