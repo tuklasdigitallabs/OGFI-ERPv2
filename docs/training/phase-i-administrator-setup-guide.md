@@ -71,6 +71,22 @@ successful save names the new Item while posting no stock movement. The current
 build requires Core Administrator access plus selected-company `MANAGE`; broader
 role-based Item Master access remains an unresolved policy gate.
 
+Next, choose `Open item details` for an Active Item. Verify the company, Item,
+status, current Category and UOMs, item type, and operational-control summary.
+Correct only the Item name, enter a reason, and save. Explain that Category, item
+type, all UOMs, and inventory/expiry/lot/receiving-inspection controls are
+read-only and are rejected server-side until the governed owner-approval and
+impact-review workflow exists. Open the authoritative Item-filtered Admin Audit
+history in its new tab, then return to the preserved register context. Demonstrate
+the stale-change guidance: return to the refreshed register, reopen the Item, and
+review current details before deciding whether to retry.
+
+Open an inactive or archived Item and confirm that it is read-only. On an Active
+Item, review the `Deactivation unavailable` explanation and disabled action.
+Explain that no request was recorded: Warehouse/Purchasing review, on-hand stock
+and open procurement/inventory transaction checks, and a replacement plan where
+required must be supported before Item deactivation can be released.
+
 In a Supplier catalog, use the selected item-link Open controls action sheet to
 deactivate a link. Verify the supplier, item, UOM, and reason before submitting;
 the server preserves history and rechecks company scope and active status.
@@ -104,6 +120,9 @@ switch to Brands to review the full paginated brand register.
 - Treating evidence-register access as file access or hold authority: the register is metadata-only, and hold placement needs a separate permission plus current privileged MFA assurance.
 - Treating an optional Item UOM lookup as an automatic assignment: use the explicit `None` choice unless a separate Purchase or Issue UOM is required.
 - Retrying an Item save with a stale Category or UOM: refresh and re-select the unresolved active parent before submitting again.
+- Treating the disabled `Deactivate Item` control as a submitted request: no request is recorded; contact the company master-data owner and keep the Item Active.
+- Trying to change an Item Category, type, UOM, or operational control through the name-correction sheet: these material fields are read-only and server-rejected pending governed owner approval and impact review.
+- Retrying a stale Item-name correction without review: return to the refreshed register, reopen the Item, and confirm the correction is still needed.
 - Reading a CSV without checking the metadata rows: always confirm the report ID, selected scope, trust-gate mode, and source decision before using the data.
 - Deactivating a reason code: open the selected row’s details, confirm the workflow and code, enter the reason, and submit from the action sheet. If another administrator already handled it, refresh and do not retry by creating a replacement code.
 - Recovering an account: use Authentication → Recovery, page or filter the bounded queue, open one request, and have a different MFA-assured administrator approve or reject it. First-time identities belong in Activation; approved/rejected history is read-only.
@@ -114,4 +133,5 @@ switch to Brands to review the full paginated brand register.
 - Participant can explain DEC-0036 policy defaults, readable policy summaries, and reasoned overrides in Admin Settings.
 - Participant can verify export metadata before sharing or relying on CSV output.
 - Participant can create a governed Item with independent bounded selectors, explain optional `None`, recover from lookup or stale-parent errors, and confirm that creation does not post stock.
+- Participant can open Item details, perform a reasoned Active Item-name correction, use the authoritative audit handoff, recover from a stale correction, and explain why material changes, inactive/archived edits, and deactivation are unavailable.
 - Participant can explain which release-readiness evidence belongs in the ERP register and which external-security proof references must remain in the approved provider or evidence repository.

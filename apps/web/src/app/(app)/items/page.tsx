@@ -11,6 +11,11 @@ import {
   type ItemCreateActionState
 } from "@/components/ItemCreateComposer";
 import {
+  SelectedItemTaskSheet,
+  UnavailableSelectedItemTaskSheet,
+  type SelectedItemActionState
+} from "@/components/SelectedItemTaskSheet";
+import {
   actionErrorRedirectPath,
   getActionErrorCode,
   getActionFeedback
@@ -26,7 +31,6 @@ import {
   createItemCategory,
   createItemUomConversion,
   createUom,
-  deactivateItem,
   deactivateItemCategory,
   deactivateUom,
   itemInventoryClasses,
@@ -36,7 +40,6 @@ import {
   getItemUomConversionRecord,
   getUomRecord,
   listItemMasterData,
-  listItemMasterOptionCatalog,
   updateItem,
   updateItemCategory,
   updateItemUomConversion,
@@ -45,19 +48,6 @@ import {
 } from "@/server/services/items";
 
 export const dynamic = "force-dynamic";
-
-function itemReturnPath(formData: FormData) {
-  const query = new URLSearchParams({ tab: "items" });
-  const itemQuery = String(formData.get("returnItemQuery") ?? "").trim().slice(0, 120);
-  const itemStatus = String(formData.get("returnItemStatus") ?? "");
-  const itemPage = Number(formData.get("returnItemPage") ?? "1");
-  const itemId = String(formData.get("returnItemId") ?? "");
-  if (itemQuery) query.set("itemQuery", itemQuery);
-  if (["ACTIVE", "INACTIVE", "ARCHIVED"].includes(itemStatus)) query.set("itemStatus", itemStatus);
-  if (Number.isInteger(itemPage) && itemPage > 0 && itemPage <= 10_000) query.set("itemPage", String(itemPage));
-  if (/^[0-9a-f-]{36}$/i.test(itemId)) query.set("itemId", itemId);
-  return `/items?${query.toString()}`;
-}
 
 function masterTabReturnPath(formData: FormData, tab: "categories" | "uoms") {
   const prefix = tab === "categories" ? "category" : "uom";
@@ -149,18 +139,6 @@ async function createConversionAction(formData: FormData) {
   redirect("/items?tab=conversions");
 }
 
-async function deactivateItemAction(formData: FormData) {
-  "use server";
-
-  try {
-    await deactivateItem(formData);
-  } catch (error) {
-    redirect(actionErrorRedirectPath(itemReturnPath(formData), error));
-  }
-  revalidatePath("/items");
-  redirect(itemReturnPath(formData));
-}
-
 async function deactivateCategoryAction(formData: FormData) {
   "use server";
 
@@ -209,16 +187,30 @@ async function updateUomAction(formData: FormData) {
   redirect(masterTabReturnPath(formData, "uoms"));
 }
 
-async function updateItemAction(formData: FormData) {
+async function updateItemAction(
+  _previousState: SelectedItemActionState,
+  formData: FormData
+): Promise<SelectedItemActionState> {
   "use server";
 
   try {
-    await updateItem(formData);
+    await assertTrustedServerActionOrigin();
+    const updatedItem = await updateItem(formData);
+    revalidatePath("/items");
+    return {
+      status: "success",
+      itemCode: updatedItem.itemCode,
+      itemName: updatedItem.itemName
+    };
   } catch (error) {
-    redirect(actionErrorRedirectPath(itemReturnPath(formData), error));
+    const code = getActionErrorCode(error);
+    const feedback = getActionFeedback({ error: code });
+    return {
+      status: "error",
+      code,
+      message: feedback?.message ?? "The item name was not saved. Review the correction and try again."
+    };
   }
-  revalidatePath("/items");
-  redirect(itemReturnPath(formData));
 }
 
 async function updateConversionAction(formData: FormData) {
@@ -313,16 +305,6 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
   const selectedCategory = activeTab === "categories" && selectedCategoryId ? await getItemCategoryRecord(session, selectedCategoryId).catch(() => null) : null;
   const selectedUom = activeTab === "uoms" && selectedUomId ? await getUomRecord(session, selectedUomId).catch(() => null) : null;
   const selectedConversion = activeTab === "conversions" && selectedConversionId ? await getItemUomConversionRecord(session, selectedConversionId).catch(() => null) : null;
-  const selectedCategoryIds = selectedItem ? [selectedItem.itemCategoryId] : [];
-  const selectedUomIds = selectedItem
-    ? [selectedItem.baseUomId, selectedItem.purchaseUomId, selectedItem.issueUomId].filter((id): id is string => Boolean(id))
-    : [];
-  const [categoryOptionCatalog, uomOptionCatalog] = activeTab === "items" && selectedItem
-    ? await Promise.all([
-        listItemMasterOptionCatalog(session, { kind: "category", selectedIds: selectedCategoryIds, page: 1, pageSize: 100 }),
-        listItemMasterOptionCatalog(session, { kind: "uom", selectedIds: selectedUomIds, page: 1, pageSize: 100 })
-      ])
-    : [{ options: [], total: 0, hasMore: false }, { options: [], total: 0, hasMore: false }];
   const activeItems = masterData.itemsPage.activeItems;
   const actionFeedback = getActionFeedback(params);
   const itemActionHref = (itemId?: string) => {
@@ -470,7 +452,7 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
         <Panel className="ogfi-detail-card min-w-0 overflow-hidden">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-950">Items</h2>
+              <h2 id="item-register-heading" className="text-lg font-bold text-slate-950" tabIndex={-1}>Items</h2>
               <p className="text-sm text-slate-500">Company-scoped inventory master records</p>
             </div>
             <Badge tone="info">Not yet transactional</Badge>
@@ -532,10 +514,11 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
                   </div>
                   <div className="flex flex-wrap gap-2 sm:justify-end">
                     <Link
-                      className="inline-flex min-h-10 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50"
+                      id={`item-controls-${item.id}`}
+                      className="inline-flex min-h-11 items-center justify-center rounded-md bg-white px-3 text-sm font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50"
                       href={itemActionHref(item.id)}
                     >
-                      Open controls
+                      Open item details
                     </Link>
                   </div>
                 </div>
@@ -543,77 +526,14 @@ export default async function ItemsPage({ searchParams }: ItemsPageProps) {
             ))}
           </div>
           {selectedItem ? (
-            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-950">Selected item: {selectedItem.itemName}</h3>
-                  <p className="text-sm text-slate-600">Edit and lifecycle actions apply only to this selected record.</p>
-                </div>
-                <Link className="text-sm font-semibold text-blue-700 hover:underline" href={itemActionHref()}>Close controls</Link>
-              </div>
-              <form action={updateItemAction} className="grid gap-3">
-                <input name="itemId" type="hidden" value={selectedItem.id} />
-                <input name="returnItemQuery" type="hidden" value={itemQuery} />
-                <input name="returnItemStatus" type="hidden" value={itemStatus ?? ""} />
-                <input name="returnItemPage" type="hidden" value={String(masterData.itemsPage.page)} />
-                <input name="returnItemId" type="hidden" value={selectedItem.id} />
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">Item code
-                    <input className={`${inputClass} bg-slate-50 text-slate-500`} value={selectedItem.itemCode} disabled />
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">Item name
-                    <input className={inputClass} name="itemName" defaultValue={selectedItem.itemName} required />
-                  </label>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">Category
-                    <select className={inputClass} name="itemCategoryId" defaultValue={selectedItem.itemCategoryId} required>
-                      {categoryOptionCatalog.options.map((category) => <option key={category.id} value={category.id}>{category.label} ({category.status})</option>)}
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">Item type
-                    <select className={inputClass} name="itemType" defaultValue={selectedItem.itemType} required>
-                      {itemTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
-                    </select>
-                  </label>
-                </div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  {(["baseUomId", "purchaseUomId", "issueUomId"] as const).map((name) => (
-                    <label key={name} className="grid gap-1 text-sm font-medium text-slate-700">{name === "baseUomId" ? "Base UOM" : name === "purchaseUomId" ? "Purchase UOM" : "Issue UOM"}
-                      <select className={inputClass} name={name} defaultValue={selectedItem[name] ?? ""} required={name === "baseUomId"}>
-                        {name !== "baseUomId" ? <option value="">None</option> : null}
-                        {uomOptionCatalog.options.map((uom) => <option key={uom.id} value={uom.id}>{uom.code} ({uom.status})</option>)}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-                <div className="grid gap-2 text-sm font-medium text-slate-700 md:grid-cols-2">
-                  <label className="flex items-center gap-2"><input name="trackInventory" type="checkbox" defaultChecked={selectedItem.trackInventory} /> Track inventory</label>
-                  <label className="flex items-center gap-2"><input name="trackExpiry" type="checkbox" defaultChecked={selectedItem.trackExpiry} /> Track expiry</label>
-                  <label className="flex items-center gap-2"><input name="trackLot" type="checkbox" defaultChecked={selectedItem.trackLot} /> Track lot</label>
-                  <label className="flex items-center gap-2"><input name="requiresReceivingInspection" type="checkbox" defaultChecked={selectedItem.requiresReceivingInspection} /> Receiving inspection</label>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <input className={`${inputClass} min-w-64`} name="reason" minLength={5} placeholder="Update reason" required />
-                  <button className="min-h-10 rounded-md bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700">Save Item</button>
-                </div>
-              </form>
-              {selectedItem.status === "ACTIVE" ? (
-                <form action={deactivateItemAction} className="mt-4 grid gap-2 border-t border-blue-100 pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
-                  <input name="itemId" type="hidden" value={selectedItem.id} />
-                  <input name="returnItemQuery" type="hidden" value={itemQuery} />
-                  <input name="returnItemStatus" type="hidden" value={itemStatus ?? ""} />
-                  <input name="returnItemPage" type="hidden" value={String(masterData.itemsPage.page)} />
-                  <input name="returnItemId" type="hidden" value={selectedItem.id} />
-                  <label className="grid gap-1 text-sm font-medium text-slate-700">Deactivation reason
-                    <input className={inputClass} name="reason" minLength={5} required />
-                  </label>
-                  <button className="min-h-10 rounded-md bg-slate-700 px-4 text-sm font-bold text-white hover:bg-slate-800">Deactivate Item</button>
-                </form>
-              ) : <p className="mt-4 border-t border-blue-100 pt-4 text-sm text-slate-600">Inactive item: retained history; no lifecycle mutation is available.</p>}
-            </div>
+            <SelectedItemTaskSheet
+              item={{ ...selectedItem, updatedAt: selectedItem.updatedAt.toISOString() }}
+              companyName={session.context.companyName}
+              returnHref={itemActionHref()}
+              updateAction={updateItemAction}
+            />
           ) : selectedItemId ? (
-            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">The selected item is not available in the current company scope or filtered page.</p>
+            <UnavailableSelectedItemTaskSheet returnHref={itemActionHref()} />
           ) : null}
           {masterData.itemsPage.totalItems === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-slate-500">{itemQuery || itemStatus ? "No items match the selected filters." : "No item master records yet."}</p>

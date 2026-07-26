@@ -1646,6 +1646,7 @@ describe("procurement and inventory authorization boundaries", () => {
             form({
               itemId: ids.itemId, itemName: "Authorization Item Updated",
               itemCategoryId: ids.categoryId, itemType: "inventory", baseUomId: ids.uomId,
+              expectedUpdatedAt: "2026-01-01T00:00:00.000Z",
               reason: "Authorization test",
             }),
           ),

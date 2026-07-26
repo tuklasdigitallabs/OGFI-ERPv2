@@ -94,6 +94,15 @@ Requested → Validated → Approved → Active → Changed / Superseded → Ina
 | Approval route/template change | Process owner + Finance/Executive as applicable |
 | Par level change | Operations/warehouse authorization; effective date |
 
+Implementation note (`DEC-0241`): the current selected-Item maintenance surface
+implements only the first row's non-material correction case, limited to Item Name
+with a required reason and atomic audit. Category, UOM, item type, tracking controls,
+and lifecycle state remain read-only; forged material differences fail closed.
+Direct Item deactivation is unavailable until the documented owner review, on-hand-
+stock/open-transaction checks, and replacement-plan controls are implemented. The
+disabled screen control does not create or imply a change request. This note records
+implemented boundaries only and does not alter the approval policy above.
+
 ## 8. Data quality controls
 
 The system should report and prevent:

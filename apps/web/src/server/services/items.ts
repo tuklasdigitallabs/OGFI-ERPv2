@@ -94,7 +94,8 @@ const updateUomSchema = createUomSchema.omit({ uomCode: true }).extend({
 const updateItemSchema = createItemSchema
   .omit({ itemCode: true })
   .extend({
-    itemId: z.string().uuid()
+    itemId: z.string().uuid(),
+    expectedUpdatedAt: z.coerce.date()
   });
 
 const updateConversionSchema = z.object({
@@ -160,6 +161,8 @@ type LockedItemParentRow = {
 
 type LockedItemRow = {
   id: string;
+  status: string;
+  updatedAt: Date;
   itemName: string;
   itemCategoryId: string;
   itemType: string;
@@ -178,6 +181,37 @@ type ItemParentReferences = {
   purchaseUomId?: string | undefined;
   issueUomId?: string | undefined;
 };
+
+type MaterialItemFields = {
+  itemCategoryId: string;
+  baseUomId: string;
+  purchaseUomId?: string | null | undefined;
+  issueUomId?: string | null | undefined;
+  itemType: string;
+  trackInventory: boolean;
+  trackExpiry: boolean;
+  trackLot: boolean;
+  requiresReceivingInspection: boolean;
+};
+
+export function assertItemCorrectionIsNonMaterial(
+  current: MaterialItemFields,
+  proposed: MaterialItemFields
+) {
+  if (
+    current.itemCategoryId !== proposed.itemCategoryId ||
+    current.itemType !== proposed.itemType ||
+    current.baseUomId !== proposed.baseUomId ||
+    (current.purchaseUomId ?? null) !== (proposed.purchaseUomId ?? null) ||
+    (current.issueUomId ?? null) !== (proposed.issueUomId ?? null) ||
+    current.trackInventory !== proposed.trackInventory ||
+    current.trackExpiry !== proposed.trackExpiry ||
+    current.trackLot !== proposed.trackLot ||
+    current.requiresReceivingInspection !== proposed.requiresReceivingInspection
+  ) {
+    throw new Error("ITEM_MATERIAL_CHANGE_REQUIRES_REVIEW");
+  }
+}
 
 async function lockActiveItemParents(
   tx: TransactionClient,
@@ -313,7 +347,8 @@ export async function getItemMasterRecord(session: SessionContext, itemId: strin
     trackExpiry: item.trackExpiry,
     trackLot: item.trackLot,
     requiresReceivingInspection: item.requiresReceivingInspection,
-    status: item.status
+    status: item.status,
+    updatedAt: item.updatedAt
   };
 }
 
@@ -949,6 +984,8 @@ export async function updateItem(formData: FormData) {
   return prisma.$transaction(async (tx) => {
     const items = await tx.$queryRaw<LockedItemRow[]>`
       SELECT id,
+             status::text AS status,
+             "updatedAt",
              "itemName",
              "itemCategoryId",
              "itemType",
@@ -969,30 +1006,20 @@ export async function updateItem(formData: FormData) {
     if (!item) {
       throw new Error("ITEM_NOT_FOUND");
     }
-    const parents = await lockActiveItemParents(tx, session, values);
-    const postedMovementCount = item.baseUomId === parents.baseUomId
-      ? 0
-      : await tx.inventoryMovement.count({
-          where: {
-            tenantId: session.context.tenantId,
-            companyId: session.context.companyId,
-            itemId: item.id
-          }
-        });
-    assertBaseUomChangeAllowed(item.baseUomId, parents.baseUomId, postedMovementCount);
+    if (item.status !== "ACTIVE") {
+      throw new Error("ITEM_NOT_ACTIVE");
+    }
+    if (item.updatedAt.getTime() !== values.expectedUpdatedAt.getTime()) {
+      throw new Error("ITEM_UPDATE_CONFLICT");
+    }
+    assertItemCorrectionIsNonMaterial(item, values);
+    if (item.itemName.trim() === values.itemName) {
+      throw new Error("ITEM_CORRECTION_NO_CHANGE");
+    }
     const updated = await tx.item.update({
       where: { id: item.id },
       data: {
-        itemName: values.itemName,
-        itemCategoryId: parents.categoryId,
-        itemType: values.itemType,
-        baseUomId: parents.baseUomId,
-        purchaseUomId: parents.purchaseUomId,
-        issueUomId: parents.issueUomId,
-        trackInventory: values.trackInventory,
-        trackExpiry: values.trackExpiry,
-        trackLot: values.trackLot,
-        requiresReceivingInspection: values.requiresReceivingInspection
+        itemName: values.itemName
       }
     });
 
@@ -1005,28 +1032,10 @@ export async function updateItem(formData: FormData) {
         entityType: "Item",
         entityId: item.id,
         beforeData: {
-          itemName: item.itemName,
-          itemCategoryId: item.itemCategoryId,
-          itemType: item.itemType,
-          baseUomId: item.baseUomId,
-          purchaseUomId: item.purchaseUomId,
-          issueUomId: item.issueUomId,
-          trackInventory: item.trackInventory,
-          trackExpiry: item.trackExpiry,
-          trackLot: item.trackLot,
-          requiresReceivingInspection: item.requiresReceivingInspection
+          itemName: item.itemName
         },
         afterData: {
-          itemName: updated.itemName,
-          itemCategoryId: updated.itemCategoryId,
-          itemType: updated.itemType,
-          baseUomId: updated.baseUomId,
-          purchaseUomId: updated.purchaseUomId,
-          issueUomId: updated.issueUomId,
-          trackInventory: updated.trackInventory,
-          trackExpiry: updated.trackExpiry,
-          trackLot: updated.trackLot,
-          requiresReceivingInspection: updated.requiresReceivingInspection
+          itemName: updated.itemName
         },
         metadata: { reason: values.reason }
       }
@@ -1109,52 +1118,9 @@ export async function updateItemUomConversion(formData: FormData) {
 
 export async function deactivateItem(formData: FormData) {
   const session = await requireSessionContext();
-  const values = deactivateItemSchema.parse(Object.fromEntries(formData));
+  deactivateItemSchema.parse(Object.fromEntries(formData));
   await assertAdminCanManageMasterData(session);
-
-  const item = await prisma.item.findFirst({
-    where: {
-      id: values.itemId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      status: "ACTIVE"
-    }
-  });
-
-  if (!item) {
-    throw new Error("ITEM_NOT_FOUND");
-  }
-
-  await prisma.$transaction(async (tx) => {
-    const updated = await tx.item.update({
-      where: { id: item.id },
-      data: {
-        status: "INACTIVE"
-      }
-    });
-
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "item.deactivated",
-        entityType: "Item",
-        entityId: item.id,
-        beforeData: {
-          itemCode: item.itemCode,
-          itemName: item.itemName,
-          status: item.status
-        },
-        afterData: {
-          status: updated.status
-        },
-        metadata: {
-          reason: values.reason
-        }
-      }
-    });
-  });
+  throw new Error("ITEM_DEACTIVATION_GOVERNANCE_REQUIRED");
 }
 
 export async function deactivateItemCategory(formData: FormData) {

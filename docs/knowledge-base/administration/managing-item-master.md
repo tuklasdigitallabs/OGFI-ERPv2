@@ -50,7 +50,38 @@ After a successful save, the TaskSheet closes and Item Master shows a persistent
 
 The Item, Category, UOM, and Conversion registers use server-backed search, filters, deterministic pagination, and exact matching totals. Only the active URL-backed tab and its required catalogs are loaded.
 
-Select an existing item and choose `Open controls` to edit or deactivate it while preserving the register's current search and page context. If an item has posted inventory history, its Base UOM cannot be changed through normal editing; a controlled migration is required.
+### Open an existing item or correct its name
+
+1. In the `Items` register, find the company-scoped Item and choose `Open item details`.
+2. Review the company, Item code and name, status, Category, UOMs, item type, and operational-control summary.
+3. If the Item is Active and only its display name needs a non-material correction, enter the corrected Item name and a correction reason of at least five characters.
+4. Choose `Save Item Name`.
+5. Review the confirmation, then choose `Return to Item Register`. The register returns to the search, status filter, and page you were using.
+6. To inspect the authoritative change history, choose `View authoritative item audit history (opens in new tab)`. Admin Audit opens with the selected Item Entity ID filter.
+
+Only an Active Item's display name is writable in this sheet. Item code, Category,
+item type, base/purchase/issue UOMs, inventory tracking, expiry tracking, lot
+tracking, and receiving-inspection controls are read-only. These material changes
+require governed owner approval and impact review, and the current build does not
+provide that request workflow. A copied or modified submission cannot bypass the
+server-side restriction.
+
+Inactive or archived Items are read-only and remain visible for transaction and
+audit history. Reactivation is not available in this workspace.
+
+Item deactivation is also unavailable. The Item remains Active, and opening its
+details does not record a deactivation request. Deactivation requires Warehouse
+and Purchasing review, checks of on-hand stock and open procurement or inventory
+transactions, and a replacement plan where the Item is in use. Contact the
+company's master-data owner; do not treat the disabled `Deactivate Item` control
+as a submitted request.
+
+**Expected result:** A successful Item-name correction records the before/after
+name and reason in audit history without changing the Item's governed fields,
+lifecycle status, inventory balance, financial records, or transaction history.
+If another action changed the Item first, return to the refreshed register,
+reopen the Item, review its current details, and decide whether the correction is
+still required.
 
 Categories and UOMs use the same selected-record control pattern. Conversion creation uses independent, bounded searches for Item, From UOM, and To UOM; the server requires company-scoped active records, distinct UOMs, a positive conversion factor, a reason, and valid audit context. Conversion edits keep the Item and UOM endpoints read-only while allowing the factor, rounding rule, and reason to be changed.
 
@@ -58,18 +89,24 @@ Categories and UOMs use the same selected-record control pattern. Conversion cre
 
 - Item Master data belongs to the selected company. A search result or copied URL does not grant access to another company.
 - The server rechecks authorization, company scope, duplicate item code, and active Category/UOM selections when saving.
-- Important master data is deactivated, not hard-deleted, so historical use remains traceable.
-- All create and change actions require a reason and preserve audit history.
+- Important master data is never hard-deleted. Item deactivation is currently unavailable until its governed review workflow is implemented; inactive and archived Items remain traceable.
+- Available Item create and Item-name correction actions require a reason and preserve audit history.
 - Creating or editing master data has no inventory or financial posting effect. Use receiving, transfers, stock counts, wastage, or adjustments for controlled stock effects.
-- Concurrent item saves and Category/UOM deactivation settle in one safe order. Refresh the affected registers and review their current state before retrying a rejected action.
-- This Create Item improvement does not mean the wider Master Data workspace or Phase I is production-ready. Responsive-browser, database, hosted recovery/deployment, UAT, access-policy, and other visible-workspace gates remain open.
+- Concurrent Item creation and Category/UOM deactivation settle in one safe order. Refresh the affected registers and review their current state before retrying a rejected action.
+- A stale Item-name correction is rejected instead of overwriting a newer change. Reopen the Item from the refreshed register before deciding whether to retry.
+- These Item improvements do not mean the wider Master Data workspace or Phase I is production-ready. Responsive-browser, database, hosted recovery/deployment, UAT, access-policy, governed material-change/deactivation, and other visible-workspace gates remain open.
 
 ## What happens next
 
 The new governed item becomes available to later authorized workflows that use active Item Master records. Creating it does not create a Purchase Request, Purchase Order, receipt, transfer, balance, or ledger entry.
+
+An Item-name correction changes only the display name. Material changes and
+deactivation remain pending governed workflows; no request or approval is created
+from the current Item details sheet.
 
 ## Related articles
 
 - [Managing Suppliers](managing-suppliers.md)
 - [Item parent lifecycle saves fail safely](../../release-notes/2026-07-26-item-parent-lifecycle-concurrency.md)
 - [Create Item supports large Category and UOM catalogs](../../release-notes/2026-07-26-create-item-large-catalog-task-sheet.md)
+- [Existing Item details now enforce controlled corrections](../../release-notes/2026-07-26-selected-item-controlled-correction-sheet.md)

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { prisma } from "../../packages/database/src/client";
 
 const approverEmail = process.env.DEMO_APPROVER_EMAIL ?? "approver@example.test";
 const adminEmail = process.env.DEMO_ADMIN_EMAIL ?? "admin@example.test";
@@ -659,15 +660,20 @@ test("first milestone purchase request path works end to end", async ({
   await expect(page.getByRole("heading", { name: "Item Master" })).toBeVisible();
   const itemRow = page.getByTestId("item-row").filter({ hasText: itemCode });
   await itemRow.locator("summary").click();
-  await itemRow.getByRole("button", { name: "Deactivate", exact: true }).click();
-  const itemDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Item" });
-  await itemDeactivationDialog
-    .getByLabel("Item deactivation reason")
-    .fill(`E2E item deactivation for ${marker}`);
-  await itemDeactivationDialog
-    .getByRole("button", { name: "Deactivate Item", exact: true })
-    .click();
-  await expect(page.getByTestId("item-row").filter({ hasText: itemCode }).getByText("INACTIVE")).toBeVisible();
+  await itemRow.getByRole("link", { name: "Open item details" }).click();
+  const itemDetailsDialog = page.getByRole("dialog", { name: "Correct Item Name" });
+  await expect(itemDetailsDialog.getByRole("button", { name: "Deactivate Item" })).toBeDisabled();
+  await expect(itemDetailsDialog).toContainText("no deactivation request is recorded here");
+  await itemDetailsDialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Fixture-only transition: the product correctly blocks direct deactivation.
+  // This existing broad test still needs an inactive dependency to exercise the
+  // separate Category and UOM lifecycle surfaces below.
+  const createdItem = await prisma.item.findFirstOrThrow({
+    where: { itemCode },
+    select: { id: true }
+  });
+  await prisma.item.update({ where: { id: createdItem.id }, data: { status: "INACTIVE" } });
   await page.locator('a[href="/items?tab=categories"]').click();
   await page.waitForURL(/\/items\?tab=categories$/);
   const categoryRow = page.getByTestId("item-category-row").filter({ hasText: categoryCode });

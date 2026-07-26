@@ -14,7 +14,7 @@
 ## Decision
 
 Prioritize and implement the Item parent-lifecycle race correction before further
-composer expansion. Item creation and editing must lock and revalidate the exact
+composer expansion. Item creation and any future governed material edit must lock and revalidate the exact
 company-scoped Item Category and referenced base, purchase, and issue UOM rows in
 a stable order inside the write transaction. Item Category and UOM deactivation
 must lock the same parent row before checking active Item dependents and changing
@@ -84,8 +84,10 @@ visible-surface follow-ups and are not implemented by this decision.
   selected company; an absent, foreign, or inactive parent fails closed.
 - Server authorization: existing Core Administration permission and selected-
   company Manage checks remain required before any Item or parent mutation.
-- Data integrity: Item create/edit and parent deactivation share `FOR UPDATE`
-  locks and revalidate active state/dependents in the same transaction.
+- Data integrity: Item creation and parent deactivation share `FOR UPDATE` locks
+  and revalidate active state/dependents in the same transaction. `DEC-0241`
+  replaced current editing with name-only correction against the locked Item row;
+  it does not change parent references.
 - Consistency: Category locks precede sorted, de-duplicated UOM locks for Item
   writes. Deactivation locks its one scoped parent before the dependent count.
 - Audit: successful Item and parent lifecycle changes retain their existing audit
@@ -98,8 +100,8 @@ visible-surface follow-ups and are not implemented by this decision.
 ## Required safeguards
 
 - Lock the exact scoped Item Category and all distinct referenced UOMs during Item
-  creation and editing; normalize optional UOMs, sort their IDs, and lock them in
-  deterministic order.
+  creation and any future governed material edit; normalize optional UOMs, sort
+  their IDs, and lock them in deterministic order.
 - Recheck the Category and every required UOM as `ACTIVE` after acquiring locks.
   Preserve the existing stable user-safe error families for missing/inactive
   Category, base UOM, purchase UOM, and issue UOM.
@@ -109,9 +111,9 @@ visible-surface follow-ups and are not implemented by this decision.
 - Keep parent revalidation, Item write, deactivation, and successful audit evidence
   inside their existing transactions. A losing operation must leave source and
   audit state unchanged.
-- Preserve the existing Item-row lock and base-UOM movement-history guard during
-  Item edit; do not weaken duplicate-code, tracking, conversion, tenant, company,
-  or authorization controls.
+- Preserve the Item-row lock and base-UOM movement-history guard for any future
+  governed material edit. Under `DEC-0241`, current Item maintenance permits only
+  a version-checked Item Name correction and rejects every material-field change.
 - Execute a real two-connection PostgreSQL race for Category and each UOM role. It
   must prove both valid orderings, bounded settlement/no deadlock, exactly one
   permitted winner, stable losing error, final active-parent invariant, and no
@@ -121,7 +123,7 @@ visible-surface follow-ups and are not implemented by this decision.
 
 ## Implementation and documentation impact
 
-- Code / architecture: shared scoped parent-lock helper is used by Item create/edit;
+- Code / architecture: shared scoped parent-lock helper is used by Item creation;
   Category and UOM deactivation use corresponding transactional parent locks.
 - Data / schema: no schema, migration, backfill, field, or existing-row change.
 - Workflow / permissions: no lifecycle state or authority change; only concurrent
@@ -144,7 +146,7 @@ visible-surface follow-ups and are not implemented by this decision.
 | Implement shared parent lifecycle locks and transactional revalidation | Parent implementation agent | Current checkpoint | Complete locally |
 | Align decision index, Master Data source spec, and pending plan | Mithi | Current checkpoint | Complete |
 | Execute two-connection Category/UOM race matrix | QA / Database / release owner | Before Master Data production-readiness claim | Matrix authored and registered; PostgreSQL execution remains an open blocking evidence gate |
-| Complete large option-catalog and focused Item TaskSheet review | Product / UX / Engineering | Before Master Data workspace completion | Open visible-surface gate |
+| Complete large option-catalog and focused Item TaskSheet review | Product / UX / Engineering | Before Master Data workspace completion | Item create and controlled-correction sheets complete locally under `DEC-0240`/`DEC-0241`; external evidence remains open |
 | Verify authenticated responsive UI, hosted recovery, and UAT | QA / Product / release owner | Before workspace completion | Open release gate |
 
 ## Evidence
@@ -155,9 +157,9 @@ visible-surface follow-ups and are not implemented by this decision.
   controlled deactivation without retroactive historical mutation.
 - Implementation uses scoped `FOR UPDATE` parent locks, active-state revalidation,
   deterministic UOM ordering, and parent-lock-before-dependent-count deactivation.
-- The registered disposable-PostgreSQL integration matrix defines eight tests:
-  Item create and update against Category plus base, purchase, and issue UOM
-  deactivation. Each test exercises both winner orders for 16 total races. It
+- The current registered disposable-PostgreSQL integration matrix defines four
+  tests: Item creation against Category plus base, purchase, and issue UOM
+  deactivation. Each test exercises both winner orders for eight total races. It
   requires distinct backend PIDs, observes the actual wait through
   `pg_blocking_pids`, checks the stable loser error for each ordering, and asserts
   the final active-parent invariant together with atomic source and audit outcomes.
@@ -170,7 +172,7 @@ visible-surface follow-ups and are not implemented by this decision.
   checkpoint.
 - The matrix is registered in the procurement/inventory disposable runner. That
   runner was attempted and still fails closed before database creation with
-  `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`; therefore none of the 16 races has
+  `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`; therefore none of the eight races has
   execution credit. Authenticated responsive browser, hosted recovery/deployment,
   and UAT remain open. Master Data and Phase I remain incomplete and **NO-GO**.
 - Product initially selected the greater-than-100-option composer, UX selected a
@@ -181,4 +183,7 @@ visible-surface follow-ups and are not implemented by this decision.
 
 ## Supersession
 
-Not superseded.
+`DEC-0241` narrows the current selected-Item edit surface to name-only correction,
+so the authored race matrix no longer includes material Item update cases. This
+decision remains authoritative for Item creation versus parent deactivation and for
+the locking contract required by any future governed material edit.

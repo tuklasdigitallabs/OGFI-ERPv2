@@ -9844,44 +9844,6 @@
     ]
   },
   {
-    "id": "items/page.tsx#deactivateItemAction",
-    "surfaceType": "SERVER_ACTION",
-    "permission": "SERVICE_ENFORCED",
-    "scopeDimensions": [
-      "TENANT",
-      "COMPANY"
-    ],
-    "guardChain": [
-      "authenticated-app-layout",
-      "domain-service",
-      "service-authorization"
-    ],
-    "denialContract": "SAFE_ACTION_ERROR_NO_MUTATION",
-    "riskTier": "HIGH",
-    "executableTestIds": [
-      "AUTHZ-ACTION-001"
-    ],
-    "delegatedServiceIds": [
-      "server/services/items.ts#deactivateItem"
-    ],
-    "callChains": [
-      "deactivateItemAction -> server/services/items.ts#deactivateItem"
-    ],
-    "boundaryClassifications": [
-      "PUBLIC_BOUNDARY"
-    ],
-    "authorizationAdapterIds": [
-      "live-core-admin-permission"
-    ],
-    "boundaryCaseIds": [
-      "AUTHZ-PI-MASTER-DATA-BOUNDARIES-VALID-INPUT-MISSING-PERMISSION-NO-MUTATION"
-    ],
-    "noMutationControls": [
-      "Item",
-      "AuditEvent"
-    ]
-  },
-  {
     "id": "items/page.tsx#deactivateUomAction",
     "surfaceType": "SERVER_ACTION",
     "permission": "SERVICE_ENFORCED",
@@ -10032,9 +9994,11 @@
       "AUTHZ-ACTION-001"
     ],
     "delegatedServiceIds": [
+      "server/services/authentication.ts#assertTrustedServerActionOrigin",
       "server/services/items.ts#updateItem"
     ],
     "callChains": [
+      "updateItemAction -> server/services/authentication.ts#assertTrustedServerActionOrigin",
       "updateItemAction -> server/services/items.ts#updateItem"
     ],
     "boundaryClassifications": [

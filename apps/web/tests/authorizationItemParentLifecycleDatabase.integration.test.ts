@@ -47,7 +47,6 @@ const settlementTimeoutMs = 5_000;
 const reason = "DEC-0239 deterministic parent lifecycle race verification.";
 
 type ItemsService = typeof import("../src/server/services/items");
-type ItemOperation = "create" | "update";
 type ParentRole = "category" | "base" | "purchase" | "issue";
 type Winner = "item" | "parent";
 
@@ -55,7 +54,6 @@ type RaceFixture = {
   actorId: string;
   auditFixtureId: string;
   itemCode: string;
-  itemId: string | null;
   itemInput: {
     baseUomId: string;
     issueUomId: string;
@@ -169,11 +167,10 @@ async function waitForParentLockWait(input: {
   );
 }
 
-function itemForm(fixture: RaceFixture, operation: ItemOperation) {
+function itemForm(fixture: RaceFixture) {
   const form = new FormData();
-  if (operation === "update") form.set("itemId", fixture.itemId as string);
-  else form.set("itemCode", fixture.itemCode);
-  form.set("itemName", `DEC-0239 ${operation} winner candidate`);
+  form.set("itemCode", fixture.itemCode);
+  form.set("itemName", "DEC-0239 create winner candidate");
   form.set("itemCategoryId", fixture.itemInput.itemCategoryId);
   form.set("itemType", "inventory");
   form.set("baseUomId", fixture.itemInput.baseUomId);
@@ -256,7 +253,6 @@ describe.skipIf(!databaseEnabled).sequential(
     });
 
     async function createFixture(
-      operation: ItemOperation,
       parentRole: ParentRole,
     ): Promise<RaceFixture> {
       const suffix = randomUUID().slice(0, 8);
@@ -267,7 +263,6 @@ describe.skipIf(!databaseEnabled).sequential(
       const currentPurchaseUomId = randomUUID();
       const currentIssueUomId = randomUUID();
       const targetUomId = randomUUID();
-      const itemId = operation === "update" ? randomUUID() : null;
       const itemCode = `IL-${suffix}`;
 
       await prisma.user.create({
@@ -313,22 +308,6 @@ describe.skipIf(!databaseEnabled).sequential(
           uomType: "COUNT",
         })),
       });
-      if (itemId) {
-        await prisma.item.create({
-          data: {
-            id: itemId,
-            tenantId,
-            companyId,
-            itemCode,
-            itemName: `DEC-0239 source item ${suffix}`,
-            itemCategoryId: sourceCategoryId,
-            itemType: "inventory",
-            baseUomId: currentBaseUomId,
-            purchaseUomId: currentPurchaseUomId,
-            issueUomId: currentIssueUomId,
-          },
-        });
-      }
       const auditFixture = await prisma.auditEvent.create({
         data: {
           tenantId,
@@ -337,7 +316,7 @@ describe.skipIf(!databaseEnabled).sequential(
           eventType: "test.item_parent_lifecycle.fixture",
           entityType: "ItemLifecycleRaceFixture",
           entityId: randomUUID(),
-          metadata: { operation, parentRole },
+          metadata: { operation: "create", parentRole },
         },
         select: { id: true },
       });
@@ -378,7 +357,6 @@ describe.skipIf(!databaseEnabled).sequential(
         actorId,
         auditFixtureId: auditFixture.id,
         itemCode,
-        itemId,
         itemInput,
         parentId,
         parentRole,
@@ -418,10 +396,8 @@ describe.skipIf(!databaseEnabled).sequential(
       return { blocker, pid, release };
     }
 
-    function executeItem(fixture: RaceFixture, operation: ItemOperation) {
-      return operation === "create"
-        ? items.createItem(itemForm(fixture, operation))
-        : items.updateItem(itemForm(fixture, operation));
+    function executeItem(fixture: RaceFixture) {
+      return items.createItem(itemForm(fixture));
     }
 
     function executeParent(fixture: RaceFixture) {
@@ -442,9 +418,7 @@ describe.skipIf(!databaseEnabled).sequential(
               select: { id: true, status: true },
             }),
         prisma.item.findFirst({
-          where: fixture.itemId
-            ? { id: fixture.itemId }
-            : { companyId, itemCode: fixture.itemCode },
+          where: { companyId, itemCode: fixture.itemCode },
           select: {
             id: true,
             status: true,
@@ -461,7 +435,6 @@ describe.skipIf(!databaseEnabled).sequential(
             eventType: {
               in: [
                 "item.created",
-                "item.updated",
                 "item_category.deactivated",
                 "uom.deactivated",
               ],
@@ -479,11 +452,10 @@ describe.skipIf(!databaseEnabled).sequential(
     }
 
     async function runRace(
-      operation: ItemOperation,
       parentRole: ParentRole,
       winner: Winner,
     ) {
-      const fixture = await createFixture(operation, parentRole);
+      const fixture = await createFixture(parentRole);
       boundaryMock.requireSessionContext.mockResolvedValue(fixture.session);
       const before = await sourceSnapshot(fixture);
       expect(before.parent.status).toBe("ACTIVE");
@@ -500,7 +472,7 @@ describe.skipIf(!databaseEnabled).sequential(
       const barrier = await startActorForeignKeyBarrier(fixture.actorId);
       const winnerOperation = tracked(
         winner === "item"
-          ? executeItem(fixture, operation)
+          ? executeItem(fixture)
           : executeParent(fixture),
       );
       let loserOperation:
@@ -516,7 +488,7 @@ describe.skipIf(!databaseEnabled).sequential(
         loserOperation = tracked(
           winner === "item"
             ? executeParent(fixture)
-            : executeItem(fixture, operation),
+            : executeItem(fixture),
         );
         const loserPid = await waitForParentLockWait({
           blockerPid: winnerPid,
@@ -538,7 +510,7 @@ describe.skipIf(!databaseEnabled).sequential(
           ...(loserOperation ? [loserOperation.promise] : []),
         ]),
         settlementTimeoutMs,
-        `DEC_0239_${operation}_${parentRole}_${winner}_SETTLEMENT`,
+        `DEC_0239_create_${parentRole}_${winner}_SETTLEMENT`,
       );
       if (observationError) throw observationError;
       expect(outcomes[0]?.status).toBe("fulfilled");
@@ -576,7 +548,7 @@ describe.skipIf(!databaseEnabled).sequential(
           {
             actorUserId: fixture.actorId,
             entityId: after.item?.id,
-            eventType: operation === "create" ? "item.created" : "item.updated",
+            eventType: "item.created",
           },
         ]);
       } else {
@@ -595,17 +567,15 @@ describe.skipIf(!databaseEnabled).sequential(
       }
     }
 
-    const matrix = (["create", "update"] as const).flatMap((operation) =>
-      (["category", "base", "purchase", "issue"] as const).map(
-        (parentRole) => ({ operation, parentRole }),
-      ),
+    const matrix = (["category", "base", "purchase", "issue"] as const).map(
+      (parentRole) => ({ parentRole }),
     );
 
     test.each(matrix)(
-      "$operation versus $parentRole deactivation serializes in both winner orders",
-      async ({ operation, parentRole }) => {
-        await runRace(operation, parentRole, "item");
-        await runRace(operation, parentRole, "parent");
+      "create versus $parentRole deactivation serializes in both winner orders",
+      async ({ parentRole }) => {
+        await runRace(parentRole, "item");
+        await runRace(parentRole, "parent");
       },
       30_000,
     );

@@ -39,22 +39,24 @@ Implementation note (`DEC-0142`): supplier accreditation and deactivation use a
 selected supplier action composer in the catalog workspace; registry rows do not
 repeat the full mutation forms.
 
-Implementation note (`DEC-0143`): item edit and deactivation use a selected item
-action composer with context-preserving redirects. Base UOM changes after posted
-inventory movements require controlled migration and are rejected server-side.
+Implementation note (`DEC-0143`, superseded in part by `DEC-0241`): the selected
+Item URL pattern and context-preserving return remain in use. The earlier broad
+edit/deactivation behavior is no longer current. Base UOM changes after posted
+inventory movements still require controlled migration, but material Item fields
+are not writable through the current correction surface.
 
-Implementation note (`DEC-0239`): Item create/edit and Item Category/UOM
-deactivation share a transactional lifecycle-lock contract. Item writes lock and
-revalidate the exact tenant/company-scoped active Category followed by sorted,
+Implementation note (`DEC-0239`, narrowed by `DEC-0241`): Item creation and Item
+Category/UOM deactivation share a transactional lifecycle-lock contract. Creation locks and
+revalidates the exact tenant/company-scoped active Category followed by sorted,
 distinct base/purchase/issue UOMs. Category and UOM deactivation lock the scoped
 active parent before checking active dependent Items. A concurrent pair must
-serialize so the Item write either commits against active parents and blocks the
-later deactivation, or the parent deactivates first and the Item write rejects it;
+serialize so creation either commits against active parents and blocks the
+later deactivation, or the parent deactivates first and creation rejects it;
 it must never create an active Item against an inactive parent. This checkpoint
 does not add a lifecycle state, permission, composer, TaskSheet, or large-catalog
 behavior. The executable disposable-PostgreSQL matrix is authored and registered:
-eight tests cover Item create/update against Category and base/purchase/issue UOM
-deactivation, with both winner orders for 16 total races. It requires distinct
+four tests cover Item creation against Category and base/purchase/issue UOM
+deactivation, with both winner orders for eight total races. It requires distinct
 backend PIDs, observes `pg_blocking_pids` waits, and asserts stable loser errors,
 the final invariant, and atomic source/audit outcomes. It skips safely without the
 integration sentinel, while the disposable runner still fails closed at
@@ -80,7 +82,26 @@ parent outcomes refresh the selectors for explicit reselection. Success closes a
 resets the sheet, refreshes the registry, and leaves a persistent confirmation that
 names the created Item and states that no stock movement was posted. No schema,
 permission, lifecycle, workflow, inventory, reporting, or export behavior changes.
-The selected existing-Item TaskSheet remains a separate visible-surface follow-up.
+The Create Item and selected existing-Item TaskSheets are independent surfaces.
+
+Implementation note (`DEC-0241`): selecting an existing Item opens a workspace-
+sized TaskSheet while retaining register search, status, and page context. An
+`ACTIVE` Item permits only an Item Name correction with a required reason. Item
+code, Category, item type, base/purchase/issue UOM, inventory/expiry/lot tracking,
+receiving inspection, and lifecycle state are read-only. The trusted-origin Server
+Action delegates to a service that locks the exact tenant/company Item row,
+requires `ACTIVE`, compares `expectedUpdatedAt`, rejects no-op and forged material
+changes, and commits only the name plus its audit event atomically.
+
+Non-active Items are intentionally read-only. Direct Item deactivation fails closed
+with `ITEM_DEACTIVATION_GOVERNANCE_REQUIRED`; the sheet shows a disabled action and
+explains that Warehouse/Purchasing review, on-hand-stock and open procurement/
+inventory-transaction checks, and a replacement plan where applicable are not yet
+implemented. It records no request. The TaskSheet links to exact Item history in
+Admin Audit, while missing, malformed, or foreign selections share a generic
+unavailable state. This implementation does not add a schema, permission, approval
+route, inventory posting, report, or export behavior. Governed material-change,
+deactivation, and reactivation workflows remain completion gates.
 
 Implementation note (`DEC-0180`): Item Master tabs are URL-backed and use an
 active-tab projection. The selected register and only its required counts,

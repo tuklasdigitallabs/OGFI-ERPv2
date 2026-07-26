@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import {
   assertDistinctConversionUoms,
   assertBaseUomChangeAllowed,
+  assertItemCorrectionIsNonMaterial,
   assertNoActiveMasterDataDependents,
   assertNoDuplicateMasterCode,
   itemInventoryClasses,
@@ -63,7 +64,6 @@ describe("item master-data controls", () => {
       "uom.created",
       "item.created",
       "item_uom_conversion.created",
-      "item.deactivated",
       "item_category.deactivated",
       "uom.deactivated"
     ]) {
@@ -71,7 +71,7 @@ describe("item master-data controls", () => {
     }
   });
 
-  test("item writes and parent deactivation share scoped lifecycle locks", () => {
+  test("item creation and parent deactivation share scoped lifecycle locks while correction uses item CAS", () => {
     const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
     const parentLock = source.slice(
       source.indexOf("async function lockActiveItemParents"),
@@ -107,9 +107,10 @@ describe("item master-data controls", () => {
     );
     expect(updateItemSource).toContain('FROM "Item"');
     expect(updateItemSource).toContain("FOR UPDATE");
-    expect(updateItemSource.indexOf("FOR UPDATE")).toBeLessThan(
-      updateItemSource.indexOf("lockActiveItemParents")
-    );
+    expect(updateItemSource).toContain('item.status !== "ACTIVE"');
+    expect(updateItemSource).toContain("item.updatedAt.getTime() !== values.expectedUpdatedAt.getTime()");
+    expect(updateItemSource).toContain("assertItemCorrectionIsNonMaterial(item, values)");
+    expect(updateItemSource).not.toContain("lockActiveItemParents(tx, session, values)");
 
     for (const deactivationSource of [
       deactivateCategorySource,
@@ -125,6 +126,51 @@ describe("item master-data controls", () => {
         deactivationSource.indexOf("tx.auditEvent.create")
       );
     }
+  });
+
+  test("item correction rejects every material-field difference", () => {
+    const current = {
+      itemCategoryId: "category-1",
+      itemType: "inventory",
+      baseUomId: "uom-1",
+      purchaseUomId: "uom-2",
+      issueUomId: null,
+      trackInventory: true,
+      trackExpiry: false,
+      trackLot: false,
+      requiresReceivingInspection: true
+    };
+    expect(() => assertItemCorrectionIsNonMaterial(current, current)).not.toThrow();
+    for (const proposed of [
+      { ...current, itemCategoryId: "category-2" },
+      { ...current, itemType: "service" },
+      { ...current, baseUomId: "uom-3" },
+      { ...current, purchaseUomId: null },
+      { ...current, issueUomId: "uom-4" },
+      { ...current, trackInventory: false },
+      { ...current, trackExpiry: true },
+      { ...current, trackLot: true },
+      { ...current, requiresReceivingInspection: false }
+    ]) {
+      expect(() => assertItemCorrectionIsNonMaterial(current, proposed)).toThrow(
+        "ITEM_MATERIAL_CHANGE_REQUIRES_REVIEW"
+      );
+    }
+  });
+
+  test("direct item deactivation fails closed without mutation or audit", () => {
+    const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
+    const boundary = source.slice(
+      source.indexOf("export async function deactivateItem("),
+      source.indexOf("export async function deactivateItemCategory")
+    );
+    expect(boundary).toContain("requireSessionContext()");
+    expect(boundary).toContain("deactivateItemSchema.parse");
+    expect(boundary).toContain("assertAdminCanManageMasterData(session)");
+    expect(boundary).toContain('throw new Error("ITEM_DEACTIVATION_GOVERNANCE_REQUIRED")');
+    expect(boundary).not.toContain("prisma.item");
+    expect(boundary).not.toContain("item.update");
+    expect(boundary).not.toContain("auditEvent.create");
   });
 
   test("option catalogs are bounded and preserve scoped selected values", () => {
@@ -163,17 +209,20 @@ describe("item master-data controls", () => {
       path.resolve(__dirname, "../../app/(app)/items/page.tsx"),
       "utf8"
     );
+    const itemComposer = readFileSync(
+      path.resolve(__dirname, "../../components/ItemCreateComposer.tsx"),
+      "utf8"
+    );
 
     expect(itemInventoryClasses).toContain("RAW_MATERIAL");
     expect(itemTypes).toContain("inventory");
     expect(uomTypes).toContain("count");
     expect(page).toContain("itemInventoryClasses.map");
-    expect(page).toContain("itemTypes.map");
+    expect(itemComposer).toContain("itemTypes.map");
     expect(page).toContain("uomTypes.map");
     expect(page).toContain('name="inventoryClass"');
-    expect(page).toContain('name="itemType"');
+    expect(itemComposer).toContain('name="itemType"');
     expect(page).toContain('name="uomType"');
-    expect(page).toContain("listItemMasterOptionCatalog");
     expect(page).toContain("<ItemCreateComposer");
     expect(page).not.toContain("categoryOptionCatalog.hasMore || uomOptionCatalog.hasMore");
     expect(page).toContain("ConversionCreateComposer");
@@ -183,9 +232,9 @@ describe("item master-data controls", () => {
     expect(page).toContain("masterData.conversionsPage");
     expect(page).not.toContain("ItemMasterSearch");
     expect(page).toContain("selectedItemId");
-    expect(page).toContain("Selected item:");
-    expect(page).toContain("returnItemPage");
-    expect(page).toContain("Open controls");
+    expect(page).toContain("<SelectedItemTaskSheet");
+    expect(page).toContain("<UnavailableSelectedItemTaskSheet");
+    expect(page).toContain("Open item details");
     expect(page).toContain("Selected category:");
     expect(page).toContain("Selected UOM:");
     expect(page).toContain("returnCategoryPage");
@@ -212,8 +261,6 @@ describe("item master-data controls", () => {
     expect(page).toContain("<ItemCreateComposer");
     expect(page).not.toContain('disabledReason="Item selectors exceed');
     expect(page).not.toContain("...masterData.items.map((item) => item.itemCategoryId)");
-    expect(page).toContain("const selectedCategoryIds = selectedItem ? [selectedItem.itemCategoryId] : []");
-    expect(page).toContain('activeTab === "items" && selectedItem');
     expect(createAction).toContain("assertTrustedServerActionOrigin");
     expect(createAction).toContain("getActionErrorCode");
     expect(createAction).toContain('status: "success"');
@@ -253,5 +300,55 @@ describe("item master-data controls", () => {
     expect(composer).toContain("!selectorReady.baseUom");
     expect(composer).toContain("disabled={submitDisabled}");
     expect(composer).toContain("min-h-11");
+  });
+
+  test("selected Item TaskSheet exposes only concurrency-safe name correction", () => {
+    const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
+    const page = readFileSync(path.resolve(__dirname, "../../app/(app)/items/page.tsx"), "utf8");
+    const sheet = readFileSync(path.resolve(__dirname, "../../components/SelectedItemTaskSheet.tsx"), "utf8");
+    const updateSource = source.slice(
+      source.indexOf("export async function updateItem("),
+      source.indexOf("export async function updateItemUomConversion")
+    );
+    const updateAction = page.slice(
+      page.indexOf("async function updateItemAction"),
+      page.indexOf("async function updateConversionAction")
+    );
+
+    expect(updateAction).toContain("assertTrustedServerActionOrigin");
+    expect(updateAction).toContain("getActionErrorCode");
+    expect(updateSource).toContain('status::text AS status');
+    expect(updateSource).toContain('"updatedAt"');
+    expect(updateSource).toContain('throw new Error("ITEM_NOT_ACTIVE")');
+    expect(updateSource).toContain('throw new Error("ITEM_UPDATE_CONFLICT")');
+    expect(updateSource).toContain('throw new Error("ITEM_CORRECTION_NO_CHANGE")');
+    expect(updateSource.indexOf("ITEM_CORRECTION_NO_CHANGE")).toBeLessThan(updateSource.indexOf("tx.item.update"));
+    expect(updateSource).toContain("assertItemCorrectionIsNonMaterial(item, values)");
+    expect(updateSource).toContain("data: {\n        itemName: values.itemName\n      }");
+
+    expect(sheet).toContain('title={item.status === "ACTIVE" ? "Correct Item Name"');
+    expect(sheet).toContain('name="expectedUpdatedAt"');
+    expect(sheet).toContain('name="itemName"');
+    expect(sheet).not.toContain('name="deactivationReason"');
+    expect(sheet).toContain("Save Item Name");
+    expect(sheet).toContain("Governed fields are read-only");
+    expect(sheet).toContain("This item remains Active");
+    expect(sheet).toContain("no deactivation request is recorded here");
+    expect(sheet).toContain("contact the master-data owner");
+    expect(sheet).toContain("aria-describedby");
+    expect(sheet).toContain("View authoritative item audit history (opens in new tab)");
+    expect(sheet).toContain("Discard the item-name correction draft?");
+    expect(sheet).toContain("Return to refreshed register");
+    expect(sheet).toContain("disabled={refreshRequired}");
+    expect(sheet).toContain("event.preventDefault()");
+    expect(sheet).toContain('document.getElementById("item-register-heading")?.focus');
+    expect(sheet).toContain('target="_blank"');
+    expect(sheet).toContain('rel="noopener noreferrer"');
+    expect(page).toContain('item={{ ...selectedItem, updatedAt: selectedItem.updatedAt.toISOString() }}');
+    expect(page).toContain('id="item-register-heading"');
+    expect(page).not.toContain("itemNotice");
+    expect(page).not.toContain("noticeItemId");
+    expect(page).not.toContain("noticeItemCode");
+    expect(page).not.toContain("noticeItemName");
   });
 });

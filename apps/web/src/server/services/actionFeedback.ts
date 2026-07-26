@@ -501,6 +501,11 @@ const actionFeedbackMessages: Record<string, string> = {
   INVALID_STATUS_TRANSITION:
     "That status change is no longer valid. Refresh and review the latest state.",
   ITEM_NOT_FOUND: "The selected item is no longer available.",
+  ITEM_NOT_ACTIVE: "Only an active item can be edited. Refresh the register and review its current status.",
+  ITEM_UPDATE_CONFLICT: "This item changed while you were editing. Refresh the register and review the latest values before retrying.",
+  ITEM_MATERIAL_CHANGE_REQUIRES_REVIEW: "Category, type, UOM, and operational-control changes require the governed master-data review process.",
+  ITEM_DEACTIVATION_GOVERNANCE_REQUIRED: "Item deactivation requires governed review, stock and open-transaction checks, and a replacement plan. No deactivation was recorded.",
+  ITEM_CORRECTION_NO_CHANGE: "Enter a different item name before saving a correction.",
   ITEM_CATEGORY_NOT_FOUND: "The selected item category is no longer available.",
   ITEM_CATEGORY_HAS_ACTIVE_ITEMS:
     "This category is still used by active items. Move or deactivate those items before deactivating the category.",

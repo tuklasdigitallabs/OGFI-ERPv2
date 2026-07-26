@@ -185,18 +185,30 @@ selected supplier catalog remains the source for full item-link maintenance.
 Supplier accreditation and deactivation now use a selected supplier action
 composer in the catalog workspace rather than repeating full forms in every row.
 
-Item edit and deactivation now use a selected item action composer with preserved
-filter/page context. Base-UOM changes are blocked after posted inventory history
-and require a controlled migration.
+Existing Item records now open through a selected Item details sheet with
+preserved search, lifecycle-filter, and page context. Only an Active Item's name
+can be corrected, with a required reason and stale-record protection. Category,
+item type, UOM, and operational-control changes are read-only and rejected by the
+server pending a governed owner-approval and impact-review workflow. Inactive and
+archived Items are read-only. Item deactivation is unavailable and records no
+request pending Warehouse/Purchasing review, stock and open-transaction checks,
+and a replacement plan where required. The sheet links to authoritative,
+Item-filtered Admin Audit in a new tab. These actions post no stock movement.
 
-Concurrent item creation or editing and Category/UOM deactivation now settle in
+Concurrent Item creation and Category/UOM deactivation now settle in
 one safe order. The losing action rechecks the latest parent lifecycle and fails
 with the existing unavailable-parent or active-item message; no partial item or
 deactivation audit is recorded. Refresh and review the affected Item, Category,
 and UOM before retrying. This does not make the wider Master Data workspace
-complete. The executable 8-test/16-race disposable-PostgreSQL matrix is authored
+complete. The executable 4-test/8-race disposable-PostgreSQL parent matrix is authored
 and registered, but the runner still stops at its required database-administration
 URL gate; none of those races has PostgreSQL execution credit.
+
+The selected-Item correction boundary has a separate 14-case disposable-
+PostgreSQL specification covering stale and concurrent correction, inactive and
+foreign-scope rejection, direct deactivation fail-closed behavior, and nine
+material-field forgery attempts. The specification is discovered but has no
+database execution credit because the same administration URL is unavailable.
 
 Authorized Item creation no longer becomes unavailable merely because the active
 Category or UOM catalog contains more than 100 records. `Create Item` now opens a
@@ -207,8 +219,9 @@ provides retry guidance when a lookup is unavailable. If creation is rejected, t
 entered draft remains available for correction; when a Category or UOM became
 stale, refresh and select an active option before retrying. A successful create
 leaves a named confirmation and does not post stock movement. This locally closes
-the large-catalog create gap only; selected-Item editing, Supplier mobile layout,
-database/browser/hosted evidence, and wider Master Data readiness remain open. The
+the large-catalog create gap only; governed selected-Item material changes and
+deactivation, Supplier mobile layout, database/browser/hosted evidence, and wider
+Master Data readiness remain open. The
 current Core Administrator plus selected-company `MANAGE` gate also remains to be
 reconciled with the broader approved Item Master role matrix before role-based
 training sign-off.

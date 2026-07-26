@@ -164,7 +164,7 @@ fallbacks were used without relaxing any hard gate.
 | Implement and locally validate the Create Item TaskSheet and selectors | Engineering | Current checkpoint | Complete locally |
 | Align decision index, Master Data spec, plan, and release summary | Mithi | Current checkpoint | Complete |
 | Re-run and record the complete non-database suite on the final candidate | Parent / QA | Before checkpoint commit | Complete locally |
-| Complete selected existing-Item TaskSheet and Supplier catalog mobile layout | Product / UX / Engineering | Before Master Data completion | Open |
+| Complete selected existing-Item TaskSheet and Supplier catalog mobile layout | Product / UX / Engineering | Before Master Data completion | Item TaskSheet complete locally under `DEC-0241`; Supplier mobile layout remains open |
 | Add explicit option-endpoint observability/throttling evidence | Security / Operations / Engineering | Before production readiness | Open |
 | Reconcile the documented role matrix with implemented Item authority | Product / Security / Governance | Before production readiness | Open policy gate |
 | Execute high-cardinality/query-plan and `DEC-0239` race evidence in disposable PostgreSQL | Database / QA | Before production readiness | Open |
@@ -189,8 +189,8 @@ fallbacks were used without relaxing any hard gate.
   passes 1,431 tests with 305 skipped and one existing TODO across 130 passed/11
   skipped files. Web typecheck/lint, E2E typecheck, production build, the 20/20
   authorization manifest, secret review, and diff hygiene pass.
-- Disposable-PostgreSQL high-cardinality/query-plan evidence and the `DEC-0239`
-  two-connection races remain unexecuted locally. The PostgreSQL and authenticated
+- Disposable-PostgreSQL high-cardinality/query-plan evidence and the current
+  `DEC-0239` eight-race two-connection matrix remain unexecuted locally. The PostgreSQL and authenticated
   E2E runners were attempted and failed closed before database creation with
   `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`, so no database or responsive-browser
   execution credit is claimed. Hosted recovery/deployment and UAT gates also remain
