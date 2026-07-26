@@ -151,6 +151,27 @@ policy-change behavior used for date-only dashboard cutoffs. `DEC-0229` delibera
 uses an active-status whitelist for overdue work, preserves stored terminal history,
 and grants no workflow authority; profiles must not silently resolve these gaps.
 
+18. **Item material-change, deactivation, and reactivation policy (open):** Before
+the governed Item lifecycle workflow is implemented or activated, authorized
+business owners must confirm: (a) the exact Warehouse and Purchasing review order,
+required permissions/scopes, delegation rules, and whether the reviewers must be
+different people in addition to both being different from the requester; (b) the
+reactivation requester/reviewer authority and whether it uses the same route; (c)
+the canonical procurement and inventory dependency entities/statuses that block
+each action, including the treatment of positive, negative, reserved, in-transit,
+lot-level, and outstanding quantities; (d) which material fields may change in
+place and which require a replacement Item, especially Item code, base UOM, Item
+type, inventory tracking, lot tracking, and expiry tracking after operational
+history exists; (e) when a replacement Item is mandatory, who may approve a
+not-applicable disposition, and whether successor chains/cycles are permitted; and
+(f) whether an authorized change applies atomically on final approval or may be
+future-effective. Until confirmed, direct Item lifecycle actions remain fail-closed.
+The selected architecture is one company-scoped, immutable `ItemChangeRequest`
+source envelope with Item-specific live preflight/posting and one canonical
+normalized-approval adapter; no second Item-only approval authority or approval of
+mutable Item state is permitted. Historical transactions, balances, and inventory
+movements are never rewritten to a replacement Item.
+
 ## 6. Change request format
 
 Every policy change request should include:
