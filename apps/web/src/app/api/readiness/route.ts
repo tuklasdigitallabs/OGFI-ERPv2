@@ -5,6 +5,7 @@ import {
   readEvidenceStorageConfig,
 } from "../../../server/services/evidenceStorageConfig";
 import { createEvidenceStorageAdapters } from "../../../server/storage";
+import { getItemOptionCatalogAdmissionStaticReadiness } from "../../../server/services/itemOptionCatalogAdmission";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export async function GET() {
   const production =
     process.env.APP_ENV === "production" || process.env.NODE_ENV === "production";
   const staticStorage = getEvidenceStorageStaticReadiness();
+  const itemOptionCatalog = getItemOptionCatalogAdmissionStaticReadiness();
   let database: "ok" | "unavailable" = "ok";
 
   try {
@@ -24,7 +26,7 @@ export async function GET() {
     staticStorage.status;
   let malwareScan: "ok" | "degraded" | "not_checked" =
     staticStorage.status;
-  const issueCodes = [...staticStorage.issues];
+  const issueCodes = [...staticStorage.issues, ...itemOptionCatalog.issues];
   const live =
     production || process.env.EVIDENCE_READINESS_LIVE_CHECK === "true";
 
@@ -52,6 +54,7 @@ export async function GET() {
 
   const degraded =
     database !== "ok" ||
+    itemOptionCatalog.status !== "ok" ||
     staticStorage.status !== "ok" ||
     objectStorage !== "ok" ||
     malwareScan !== "ok";
@@ -63,6 +66,7 @@ export async function GET() {
       checks: {
         database,
         evidenceConfiguration: staticStorage.status,
+        itemOptionCatalogAdmission: itemOptionCatalog.status,
         evidenceProviderClass: staticStorage.providerClass,
         evidenceProductionSafe: staticStorage.productionSafe,
         objectStorage,

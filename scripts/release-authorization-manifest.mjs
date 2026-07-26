@@ -1224,6 +1224,39 @@ export function buildAuthorizationSurfaceManifest() {
         testIds: [
           "BOUNDARY_CASE:AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
         ],
+        delegatedServiceIds: [
+          "server/services/authenticationRuntimeMetrics.ts#readAuthenticationRuntimeMetrics",
+        ],
+        boundaryCaseIds: [
+          "AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+        ],
+        noMutationControls: [
+          "no metric disclosure, audit write, or authentication-state mutation",
+        ],
+      },
+    ],
+    [
+      "app/api/internal/item-option-catalog-metrics/route.ts",
+      {
+        permission: "SERVICE_ENFORCED",
+        dimensions: ["HOST_OPERATOR"],
+        guardChain: [
+          "loopback-edge-publication",
+          "constant-time-health-token",
+          "bounded-aggregate-only",
+        ],
+        denialContract: "NOT_FOUND_NO_METRICS_DISCLOSURE",
+        method: "GET",
+        testIds: [
+          "BOUNDARY_CASE:AUTHZ-ITEM-OPTION-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+        ],
+        delegatedServiceIds: [
+          "server/services/itemOptionCatalogRuntimeMetrics.ts#readItemOptionCatalogRuntimeMetrics",
+        ],
+        boundaryCaseIds: [
+          "AUTHZ-ITEM-OPTION-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+        ],
+        noMutationControls: ["no metric disclosure or business-state mutation"],
       },
     ],
   ]);
@@ -1293,9 +1326,7 @@ export function buildAuthorizationSurfaceManifest() {
     }
     const controlledInternalPolicy = controlledInternalRoutes.get(relativePath);
     if (controlledInternalPolicy) {
-      const delegatedServiceIds = [
-        "server/services/authenticationRuntimeMetrics.ts#readAuthenticationRuntimeMetrics",
-      ];
+      const delegatedServiceIds = controlledInternalPolicy.delegatedServiceIds;
       for (const serviceId of delegatedServiceIds) {
         if (!knownServiceIds.has(serviceId)) {
           throw new Error(`AUTHORIZATION_ROUTE_DELEGATION_UNKNOWN:${relativePath}:${serviceId}`);
@@ -1311,18 +1342,14 @@ export function buildAuthorizationSurfaceManifest() {
           denialContract: controlledInternalPolicy.denialContract,
           riskTier: "HIGH",
           testIds: controlledInternalPolicy.testIds,
-          boundaryCaseIds: [
-            "AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
-          ],
+          boundaryCaseIds: controlledInternalPolicy.boundaryCaseIds,
           boundaryClassifications: ["HOST_INTERNAL_BOUNDARY"],
           authorizationAdapterIds: [
             "loopback-only edge publication",
             "constant-time bearer token",
             "bounded aggregate payload",
           ],
-          noMutationControls: [
-            "no metric disclosure, audit write, or authentication-state mutation",
-          ],
+          noMutationControls: controlledInternalPolicy.noMutationControls,
           delegatedServiceIds,
           callChains: delegatedServiceIds.map((serviceId) => [
             `${relativePath}#${controlledInternalPolicy.method}`,
@@ -1851,6 +1878,10 @@ export function authorizationBoundaryCoverageReport(manifest) {
         : surface.id === "app/api/internal/authentication-metrics/route.ts#GET"
           ? !surface.executableTestIds.includes(
               "BOUNDARY_CASE:AUTHZ-AUTH-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
+            )
+        : surface.id === "app/api/internal/item-option-catalog-metrics/route.ts#GET"
+          ? !surface.executableTestIds.includes(
+              "BOUNDARY_CASE:AUTHZ-ITEM-OPTION-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION",
             )
         : [
               "app/api/evidence/uploads/route.ts#POST",

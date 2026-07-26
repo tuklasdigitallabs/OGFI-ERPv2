@@ -162,6 +162,9 @@ services:
       CADDY_UPSTREAM_RESPONSE_HEADER_TIMEOUT: ${CADDY_UPSTREAM_RESPONSE_HEADER_TIMEOUT:?Set the reviewed general upstream response timeout}
       CADDY_AUTH_RESPONSE_HEADER_TIMEOUT: ${CADDY_AUTH_RESPONSE_HEADER_TIMEOUT:?Set the reviewed authentication response timeout}
       CADDY_AUTH_RATE_WINDOW: ${CADDY_AUTH_RATE_WINDOW:?Set the staged and reviewed authentication rate window}
+      CADDY_ITEM_OPTION_RATE_WINDOW: ${CADDY_ITEM_OPTION_RATE_WINDOW:?Set the staged and reviewed Item option-catalog rate window}
+      CADDY_ITEM_OPTION_GLOBAL_EVENTS: ${CADDY_ITEM_OPTION_GLOBAL_EVENTS:?Set the staged and reviewed Item option-catalog global limit}
+      CADDY_ITEM_OPTION_SOURCE_EVENTS: ${CADDY_ITEM_OPTION_SOURCE_EVENTS:?Set the staged and reviewed Item option-catalog source limit}
       CADDY_SIGN_IN_GLOBAL_EVENTS: ${CADDY_SIGN_IN_GLOBAL_EVENTS:?Set the staged and reviewed sign-in global limit}
       CADDY_SIGN_IN_SOURCE_EVENTS: ${CADDY_SIGN_IN_SOURCE_EVENTS:?Set the staged and reviewed sign-in source limit}
       CADDY_ACTIVATE_GLOBAL_EVENTS: ${CADDY_ACTIVATE_GLOBAL_EVENTS:?Set the staged and reviewed activation global limit}

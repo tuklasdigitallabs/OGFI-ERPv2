@@ -85,6 +85,8 @@ Run `pnpm --filter @ogfi/database auth:rotate-encryption` during an approved key
 
 Authentication throttle-key rotation is separately database fenced. Deploy the new current HMAC key with an explicitly bounded previous key and expiry, run the key-rotation readiness check through the reviewed maintenance tooling, then change the database-authoritative generation. Do not remove the previous key until its expiry has passed, no valid reservation can reference it, the runtime probe passes, and aggregate health remains within the calibrated thresholds. Pause admission through the database control before an emergency key withdrawal; application-only environment changes are not an approved bypass.
 
+Item option-catalog admission is stateless and process-local by design. Configure the exact GET Caddy global zone before its direct-source zone, set explicit per-process application capacity and retry guidance, and run the root-controlled item-option health timer through the loopback-only `:2021` bridge. Production must not inherit staging candidates: calibrate global/source rates, per-process capacity, latency and rejection alerts with the deployed replica count, representative catalog queries, hostile load, and shared-NAT traffic. Exercise restart/drain, missing/invalid configuration, alert delivery, Caddy/application rollback, and proxy-header behavior before activation. Do not expose Caddy metrics or the internal health route publicly, and do not add user/source/query identifiers to monitoring.
+
 ### 3.1 Hosting guidance
 
 - Application containers may run on a VPS or cloud container service.

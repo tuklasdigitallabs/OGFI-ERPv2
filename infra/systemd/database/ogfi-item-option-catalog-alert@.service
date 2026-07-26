@@ -1,0 +1,12 @@
+[Unit]
+Description=Journal OGFI ERP Item option-catalog monitor failure for %i
+
+[Service]
+Type=oneshot
+User=ogfi-runtime
+Group=ogfi-runtime
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ExecStart=/usr/bin/systemd-cat --identifier=ogfi-item-option-catalog /usr/bin/echo event=item_option_catalog_monitor_failure status=CRITICAL failed_unit=%i hosted_alert_delivery=PENDING

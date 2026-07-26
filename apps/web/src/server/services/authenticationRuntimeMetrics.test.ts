@@ -10,15 +10,20 @@ describe("authentication runtime metrics", () => {
     const text = [
       "# HELP caddy_rate_limit_declined_requests_total Total declined requests.",
       "# TYPE caddy_rate_limit_declined_requests_total counter",
+      'caddy_rate_limit_declined_requests_total{key="",zone="sign_in_global"} 1',
       'caddy_rate_limit_declined_requests_total{key="",zone="sign_in_source"} 4',
-      'caddy_rate_limit_declined_requests_total{key="",zone="mfa_source"} 3',
-      'caddy_rate_limit_declined_requests_total{key="198.51.100.1/32",zone="mfa_source"} 3',
+      'caddy_rate_limit_declined_requests_total{key="",zone="activate_global"} 2',
+      'caddy_rate_limit_declined_requests_total{key="",zone="activate_source"} 3',
+      'caddy_rate_limit_declined_requests_total{key="",zone="mfa_challenge_global"} 4',
+      'caddy_rate_limit_declined_requests_total{key="",zone="mfa_challenge_source"} 5',
+      'caddy_rate_limit_declined_requests_total{key="198.51.100.1/32",zone="mfa_challenge_source"} 99',
+      'caddy_rate_limit_declined_requests_total{key="",zone="item_option_global"} 999',
       'untrusted_identifier_metric{address="198.51.100.1"} 999',
     ].join("\n");
-    expect(parseCaddyAuthenticationRejections(text)).toBe(7);
-    expect(parseCaddyAuthenticationRejections(
+    expect(parseCaddyAuthenticationRejections(text)).toBe(19);
+    expect(() => parseCaddyAuthenticationRejections(
       "# HELP caddy_rate_limit_declined_requests_total Total declined requests.\n# TYPE caddy_rate_limit_declined_requests_total counter",
-    )).toBe(0);
+    )).toThrow("AUTH_CADDY_REJECTION_METRIC_MISSING");
     expect(() => parseCaddyAuthenticationRejections("other_metric 1")).toThrow(
       "AUTH_CADDY_REJECTION_METRIC_MISSING",
     );

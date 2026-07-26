@@ -1,5 +1,6 @@
 import { Prisma, prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
+import { runWithItemOptionCatalogAdmission } from "./itemOptionCatalogAdmission";
 import { permissions, requirePermission } from "./authorization";
 import { assertCanManageCompanyScope } from "./coreAdmin";
 import { requireSessionContext, type SessionContext } from "./context";
@@ -388,8 +389,9 @@ export async function listItemMasterOptionCatalog(
 ) {
   await assertAdminCanManageMasterData(session);
   const values = itemMasterOptionCatalogInputSchema.parse(input);
-  const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
-  const scope = { tenantId: session.context.tenantId, companyId: session.context.companyId };
+  return runWithItemOptionCatalogAdmission(values.kind, async () => {
+    const query = values.query ? { contains: values.query, mode: "insensitive" as const } : undefined;
+    const scope = { tenantId: session.context.tenantId, companyId: session.context.companyId };
 
   if (values.kind === "category") {
     const where = {
@@ -438,7 +440,8 @@ export async function listItemMasterOptionCatalog(
     ? await prisma.item.findMany({ where: { ...scope, id: { in: values.selectedIds } }, orderBy: { itemName: "asc" } })
     : [];
   const options = [...selected, ...rows.filter((row) => !selected.some((item) => item.id === row.id))].map((row) => ({ id: row.id, code: row.itemCode, label: row.itemName, status: row.status }));
-  return { kind: values.kind, options, page: effectivePage, pageSize: values.pageSize, total, hasMore: effectivePage < totalPages };
+    return { kind: values.kind, options, page: effectivePage, pageSize: values.pageSize, total, hasMore: effectivePage < totalPages };
+  });
 }
 
 export async function listItemMasterData(

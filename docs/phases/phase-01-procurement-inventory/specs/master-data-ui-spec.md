@@ -106,6 +106,23 @@ names the created Item and states that no stock movement was posted. No schema,
 permission, lifecycle, workflow, inventory, reporting, or export behavior changes.
 The Create Item and selected existing-Item TaskSheets are independent surfaces.
 
+Implementation note (`DEC-0243`): Item Master option lookup uses layered,
+stateless admission. Create Item and Conversion selectors debounce for 250 ms,
+cancel superseded requests, reject stale responses, and keep each selection and
+draft intact after a lookup failure. Conversion's Item, From UOM, and To UOM
+selectors have independent loading, error, paging, and retry state. A rate-limited
+lookup follows bounded `Retry-After` guidance, disables retry during that cooldown,
+and never retries automatically when it expires.
+
+The exact GET option route remains session-authenticated, tenant/company scoped,
+server-authorized, strictly bounded, and private/no-store. Caddy applies a global
+zone before a source zone; after session, bounded input, and server authorization,
+the application rejects excess in-flight work before catalog database queries.
+Monitoring is fixed-cardinality and aggregate-only.
+Production capacities, edge limits, and alert thresholds require hosted evidence;
+staging candidates are not approved production policy. This checkpoint adds no
+Item lifecycle, permission, inventory, approval, reporting, or export authority.
+
 Implementation note (`DEC-0241`): selecting an existing Item opens a workspace-
 sized TaskSheet while retaining register search, status, and page context. An
 `ACTIVE` Item permits only an Item Name correction with a required reason. Item

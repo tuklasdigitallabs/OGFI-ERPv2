@@ -1,0 +1,14 @@
+[Unit]
+Description=Monitor OGFI ERP Item option-catalog admission and availability
+OnFailure=ogfi-item-option-catalog-alert@%n.service
+
+[Timer]
+OnBootSec=7min
+OnUnitActiveSec=5min
+RandomizedDelaySec=20s
+AccuracySec=1s
+Persistent=true
+Unit=ogfi-item-option-catalog-health.service
+
+[Install]
+WantedBy=timers.target

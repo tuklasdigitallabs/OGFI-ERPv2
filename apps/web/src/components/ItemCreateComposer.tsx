@@ -14,6 +14,7 @@ import {
   catalogSelectionReady,
   createItemCatalogRequestController,
   fetchItemMasterCatalog,
+  ItemCatalogRequestError,
   type ItemCatalogOption
 } from "@/components/itemCreateCatalogState";
 
@@ -85,6 +86,9 @@ function CatalogSelector({
   const [options, setOptions] = useState<ItemCatalogOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryAvailable, setRetryAvailable] = useState(true);
+  const cooldownUntilRef = useRef(0);
+  const cooldownTimerRef = useRef<number | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const controllerRef = useRef<ReturnType<typeof createItemCatalogRequestController> | null>(null);
   if (!controllerRef.current) {
@@ -92,7 +96,12 @@ function CatalogSelector({
   }
   const searchIsDebouncing = query !== debouncedQuery;
 
+  useEffect(() => () => {
+    if (cooldownTimerRef.current !== null) window.clearTimeout(cooldownTimerRef.current);
+  }, []);
+
   useEffect(() => {
+    if (Date.now() < cooldownUntilRef.current) return;
     setLoading(true);
     setError(null);
     const controller = controllerRef.current!;
@@ -106,6 +115,22 @@ function CatalogSelector({
       .catch((reason: unknown) => {
         if (reason instanceof Error && reason.name === "AbortError") return;
         setLoading(false);
+        if (
+          reason instanceof ItemCatalogRequestError &&
+          reason.code === "OPTION_LOOKUP_RATE_LIMITED"
+        ) {
+          const retryAfterSeconds = reason.retryAfterSeconds ?? 2;
+          cooldownUntilRef.current = Date.now() + retryAfterSeconds * 1_000;
+          setRetryAvailable(false);
+          setError("Too many option searches are in progress. Wait briefly, then retry.");
+          if (cooldownTimerRef.current !== null) window.clearTimeout(cooldownTimerRef.current);
+          cooldownTimerRef.current = window.setTimeout(() => {
+            setRetryAvailable(true);
+            cooldownTimerRef.current = null;
+          }, retryAfterSeconds * 1_000);
+          return;
+        }
+        setRetryAvailable(true);
         setError("This option lookup is unavailable. Retry or contact an administrator.");
       });
 
@@ -214,15 +239,21 @@ function CatalogSelector({
       {error ? (
         <div className="rounded-md border border-rose-200 bg-rose-50 p-3" role="alert">
           <p className="text-sm text-rose-800">{error}</p>
+          <p className="mt-1 text-xs font-semibold text-rose-800">Your current selection and item draft have not been changed.</p>
           {!required && !selectedId ? (
             <p className="mt-1 text-xs font-semibold text-rose-800">None remains a valid explicit choice; this lookup failure does not add an assignment.</p>
           ) : null}
           <button
             className="mt-2 min-h-11 rounded-md border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-800"
-            onClick={() => setRetryKey((value) => value + 1)}
+            disabled={!retryAvailable}
+            onClick={() => {
+              if (!retryAvailable) return;
+              cooldownUntilRef.current = 0;
+              setRetryKey((value) => value + 1);
+            }}
             type="button"
           >
-            Retry {label} lookup
+            {retryAvailable ? `Retry ${label} lookup` : "Retry available shortly"}
           </button>
         </div>
       ) : null}

@@ -12,6 +12,7 @@
     "approval-routing:backfill": "tsx src/server/jobs/approvalRoutingBackfill.ts",
     "auth-throttle:cleanup": "tsx src/server/jobs/authenticationThrottleCleanup.ts",
     "auth-throttle:health": "tsx src/server/jobs/authenticationThrottleHealth.ts",
+    "item-option-catalog:health": "tsx src/server/jobs/itemOptionCatalogHealth.ts",
     "auth-throttle:key-rotation-readiness": "tsx src/server/jobs/authenticationThrottleKeyRotationReadiness.ts",
     "auth-throttle:control-bootstrap": "tsx src/server/jobs/authenticationThrottleControlBootstrap.ts",
     "auth-throttle:runtime-probe": "tsx src/server/jobs/authenticationThrottleRuntimeProbe.ts",

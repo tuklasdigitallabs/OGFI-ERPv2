@@ -67,6 +67,17 @@ Real `.env`, `.env.staging`, `.env.production`, secret files, backups, and attac
 | `AUTH_THROTTLE_HEALTH_ARGON2_REJECTED_THRESHOLD` | Hosted authentication monitoring | Aggregate non-queuing Argon2 rejection threshold; production value requires load evidence. |
 | `AUTH_THROTTLE_HEALTH_ARGON2_DURATION_MS` | Hosted authentication monitoring | Maximum Argon2 duration alert threshold; production value requires load evidence. |
 | `AUTH_THROTTLE_HEALTH_CADDY_REJECTED_THRESHOLD` | Hosted authentication monitoring | Aggregate Caddy rejection-delta threshold; production value requires NAT/hostile-load evidence. |
+| `ITEM_OPTION_CATALOG_MAX_IN_FLIGHT` | Hosted Item option lookup | Process-local non-queuing capacity, integer `1..64`; required in production and calibrated under hosted load. |
+| `ITEM_OPTION_CATALOG_BUSY_RETRY_SECONDS` | Hosted Item option lookup | Stable application `Retry-After`, integer `1..60`; required in production. |
+| `ITEM_OPTION_CATALOG_RUNTIME_METRICS_URL` | Hosted Item option monitoring | Fixed host-loopback URL `http://127.0.0.1:2021/api/internal/item-option-catalog-metrics`. |
+| `ITEM_OPTION_CATALOG_HEALTH_GLOBAL_REJECTED_THRESHOLD` | Hosted Item option monitoring | Aggregate global-edge rejection-delta alert threshold; production value requires load evidence. |
+| `ITEM_OPTION_CATALOG_HEALTH_SOURCE_REJECTED_THRESHOLD` | Hosted Item option monitoring | Aggregate source-edge rejection-delta alert threshold; production value requires shared-NAT evidence. |
+| `ITEM_OPTION_CATALOG_HEALTH_BUSY_THRESHOLD` | Hosted Item option monitoring | Aggregate application admission-rejection threshold; production value requires load evidence. |
+| `ITEM_OPTION_CATALOG_HEALTH_UNAVAILABLE_THRESHOLD` | Hosted Item option monitoring | Aggregate unavailable-outcome threshold; production value requires alert calibration. |
+| `ITEM_OPTION_CATALOG_HEALTH_DURATION_MS` | Hosted Item option monitoring | Maximum observed lookup duration threshold in milliseconds; production value requires load evidence. |
+| `CADDY_ITEM_OPTION_RATE_WINDOW` | Hosted Item option lookup | Sliding edge-rate window; required and reviewed in production. |
+| `CADDY_ITEM_OPTION_GLOBAL_EVENTS` | Hosted Item option lookup | Global requests per window before Caddy rejection; required and load-calibrated in production. |
+| `CADDY_ITEM_OPTION_SOURCE_EVENTS` | Hosted Item option lookup | Direct-source requests per window; required and shared-NAT calibrated in production. |
 | `AUTH_BOOTSTRAP_TENANT_CODE` | First-admin ceremony only | Tenant login code for the approved initial administrator. Remove after the one-time bootstrap succeeds. |
 | `AUTH_BOOTSTRAP_USER_EMAIL` | First-admin ceremony only | Existing active user with `core.administer` and active company scope; bootstrap refuses any other target. |
 | `AUTH_BOOTSTRAP_AUTHORIZATION_REFERENCE` | First-admin ceremony only | Approved security/change reference recorded in the immutable bootstrap and audit records. |

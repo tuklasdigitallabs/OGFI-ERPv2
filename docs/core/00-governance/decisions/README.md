@@ -81,6 +81,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0099-STOCK-COUNT-DASHBOARD-ATTEMPT-PARITY-GATE.md`
 - `DEC-0100-RECEIVING-ITEM-FILTER-CONTRACT-DEFERRAL.md`
 - `DEC-0101-RECEIVING-CREATE-TASK-MODE.md`
+- `DEC-0243-ITEM-OPTION-CATALOG-ADMISSION-AND-OBSERVABILITY.md`
 
 ## Suggested future decision records
 

@@ -259,4 +259,36 @@ describe("protected route authorization matrix", () => {
       }
     }
   });
+
+  it("AUTHZ-ITEM-OPTION-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION", async () => {
+    const previousToken = process.env.AUTH_HEALTH_METRICS_TOKEN;
+    process.env.AUTH_HEALTH_METRICS_TOKEN =
+      "authorization-route-health-token-at-least-32-bytes";
+    const beforeAuditCount = await prisma.auditEvent.count({
+      where: { tenantId: ids.tenant },
+    });
+    try {
+      const { GET } = await import(
+        "../src/app/api/internal/item-option-catalog-metrics/route"
+      );
+      const response = await GET(
+        new Request(
+          "http://localhost/api/internal/item-option-catalog-metrics",
+        ) as never,
+      );
+      expect(response.status).toBe(404);
+      const body = await response.text();
+      expect(body).toContain("ITEM_OPTION_RUNTIME_METRICS_DENIED");
+      expect(body).not.toContain(process.env.AUTH_HEALTH_METRICS_TOKEN);
+      expect(await prisma.auditEvent.count({ where: { tenantId: ids.tenant } })).toBe(
+        beforeAuditCount,
+      );
+    } finally {
+      if (previousToken === undefined) {
+        delete process.env.AUTH_HEALTH_METRICS_TOKEN;
+      } else {
+        process.env.AUTH_HEALTH_METRICS_TOKEN = previousToken;
+      }
+    }
+  });
 });

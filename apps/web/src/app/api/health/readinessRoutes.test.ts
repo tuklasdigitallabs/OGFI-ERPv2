@@ -64,6 +64,7 @@ describe("health and readiness routes", () => {
       checks: {
         database: "ok",
         evidenceConfiguration: "ok",
+        itemOptionCatalogAdmission: "ok",
         evidenceProviderClass: "local-development-storage",
         evidenceProductionSafe: false,
         objectStorage: "ok",
@@ -121,6 +122,8 @@ describe("health and readiness routes", () => {
     expect(body.issueCodes).toContain(
       "EVIDENCE_STORAGE_PROVIDER_HOSTED_INVALID",
     );
+    expect(body.checks.itemOptionCatalogAdmission).toBe("degraded");
+    expect(body.issueCodes).toContain("ITEM_OPTION_CATALOG_MAX_IN_FLIGHT_INVALID");
     expect(serialized).not.toContain(process.env.EVIDENCE_LOCAL_STORAGE_ROOT);
   });
 

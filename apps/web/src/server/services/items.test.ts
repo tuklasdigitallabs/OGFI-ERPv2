@@ -71,6 +71,22 @@ describe("item master-data controls", () => {
     }
   });
 
+  test("option catalog authorizes and validates before consuming an application permit", () => {
+    const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
+    const catalog = source.slice(
+      source.indexOf("export async function listItemMasterOptionCatalog"),
+      source.indexOf("export async function listItemMasterData"),
+    );
+    expect(catalog.indexOf("assertAdminCanManageMasterData(session)")).toBeGreaterThan(-1);
+    expect(catalog.indexOf("itemMasterOptionCatalogInputSchema.parse(input)")).toBeGreaterThan(-1);
+    expect(catalog.indexOf("assertAdminCanManageMasterData(session)")).toBeLessThan(
+      catalog.indexOf("runWithItemOptionCatalogAdmission"),
+    );
+    expect(catalog.indexOf("itemMasterOptionCatalogInputSchema.parse(input)")).toBeLessThan(
+      catalog.indexOf("runWithItemOptionCatalogAdmission"),
+    );
+  });
+
   test("item creation and parent deactivation share scoped lifecycle locks while correction uses item CAS", () => {
     const source = readFileSync(path.resolve(__dirname, "items.ts"), "utf8");
     const parentLock = source.slice(

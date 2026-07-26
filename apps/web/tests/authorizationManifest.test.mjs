@@ -431,10 +431,14 @@ describe("authorization surface manifest", () => {
       expect(surface.callChains).toContain(`POST -> ${serviceId}`);
     }
 
+    const hostOperatorRoutes = new Set([
+      "app/api/internal/authentication-metrics/route.ts#GET",
+      "app/api/internal/item-option-catalog-metrics/route.ts#GET",
+    ]);
     for (const surface of manifest) {
       expect(surface.id).toBeTruthy();
       expect(surface.permission).toBeTruthy();
-      if (surface.id === "app/api/internal/authentication-metrics/route.ts#GET") {
+      if (hostOperatorRoutes.has(surface.id)) {
         expect(surface.scopeDimensions).toEqual(["HOST_OPERATOR"]);
         continue;
       }

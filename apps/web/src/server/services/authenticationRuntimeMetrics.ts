@@ -1,15 +1,21 @@
 import { timingSafeEqual } from "node:crypto";
 import { getArgon2WorkGate } from "./argon2WorkGate";
+import {
+  boundedMetricDelta,
+  parseCaddyRateLimitDeclines,
+} from "./caddyRateLimitMetrics";
 
 const MAX_METRICS_BYTES = 256 * 1024;
 const METRICS_TIMEOUT_MS = 2_000;
-const CADDY_REJECTION_METRIC = "caddy_rate_limit_declined_requests_total";
 let previousCaddyRejected: number | undefined;
-
-function boundedCount(value: number) {
-  if (!Number.isFinite(value) || value < 0) return 0;
-  return Math.min(1_000_000_000_000, Math.floor(value));
-}
+const authenticationRateLimitZones = [
+  "sign_in_global",
+  "sign_in_source",
+  "activate_global",
+  "activate_source",
+  "mfa_challenge_global",
+  "mfa_challenge_source",
+] as const;
 
 export function constantTimeTokenMatches(actual: string | null, expected: string) {
   const actualBuffer = Buffer.from(actual ?? "", "utf8");
@@ -19,28 +25,22 @@ export function constantTimeTokenMatches(actual: string | null, expected: string
 }
 
 export function parseCaddyAuthenticationRejections(metrics: string) {
-  if (Buffer.byteLength(metrics, "utf8") > MAX_METRICS_BYTES) {
-    throw new Error("AUTH_CADDY_METRICS_TOO_LARGE");
-  }
-  let total = 0;
-  let found = false;
-  for (const line of metrics.split("\n")) {
-    if (line.startsWith(`# HELP ${CADDY_REJECTION_METRIC} `) ||
-        line === `# TYPE ${CADDY_REJECTION_METRIC} counter`) {
-      found = true;
-      continue;
+  try {
+    const totals = parseCaddyRateLimitDeclines(
+      metrics,
+      authenticationRateLimitZones,
+      MAX_METRICS_BYTES,
+    );
+    return authenticationRateLimitZones.reduce(
+      (sum, zone) => Math.min(1_000_000_000_000, sum + totals[zone]!),
+      0,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message === "CADDY_RATE_LIMIT_METRICS_TOO_LARGE") {
+      throw new Error("AUTH_CADDY_METRICS_TOO_LARGE");
     }
-    if (!line || line.startsWith("#")) continue;
-    const match = /^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{[^\r\n]*\})?\s+([0-9]+(?:\.[0-9]+)?)(?:\s+[0-9]+)?$/.exec(line);
-    if (!match) continue;
-    const metricName = match[1]!;
-    if (metricName !== CADDY_REJECTION_METRIC ||
-        !/(?:^|[,{}])key=""(?:[,{}]|$)/.test(line.slice(metricName.length))) continue;
-    found = true;
-    total = boundedCount(total + Number(match[2]));
+    throw new Error("AUTH_CADDY_REJECTION_METRIC_MISSING");
   }
-  if (!found) throw new Error("AUTH_CADDY_REJECTION_METRIC_MISSING");
-  return total;
 }
 
 export async function readAuthenticationRuntimeMetrics(
@@ -62,9 +62,7 @@ export async function readAuthenticationRuntimeMetrics(
   if (declaredLength > MAX_METRICS_BYTES) throw new Error("AUTH_CADDY_METRICS_TOO_LARGE");
   const body = await response.text();
   const caddyRejected = parseCaddyAuthenticationRejections(body);
-  const caddyRejectedDelta = previousCaddyRejected === undefined || caddyRejected < previousCaddyRejected
-    ? 0
-    : boundedCount(caddyRejected - previousCaddyRejected);
+  const caddyRejectedDelta = boundedMetricDelta(caddyRejected, previousCaddyRejected);
   previousCaddyRejected = caddyRejected;
   return {
     argon2: getArgon2WorkGate().drainMetrics(),

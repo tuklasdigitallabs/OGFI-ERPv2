@@ -6,7 +6,7 @@ export type ItemCatalogOption = {
 };
 
 export type ItemCatalogRequest = {
-  kind: "category" | "uom";
+  kind: "item" | "category" | "uom";
   query: string;
   page: number;
   pageSize: number;
@@ -29,6 +29,21 @@ export type AcceptedItemCatalog = ItemCatalogResponse & {
 export type ItemCatalogFetcher = (
   request: ItemCatalogRequest
 ) => Promise<ItemCatalogResponse>;
+
+export class ItemCatalogRequestError extends Error {
+  constructor(
+    readonly code: "OPTION_LOOKUP_RATE_LIMITED" | "OPTION_LOOKUP_UNAVAILABLE",
+    readonly retryAfterSeconds: number | null = null
+  ) {
+    super(code);
+    this.name = "ItemCatalogRequestError";
+  }
+}
+
+function parseRetryAfterSeconds(value: string | null) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 60 ? parsed : 2;
+}
 
 export function catalogSelectionReady(input: {
   required: boolean;
@@ -110,6 +125,14 @@ export const fetchItemMasterCatalog: ItemCatalogFetcher = async (request) => {
     cache: "no-store",
     signal: request.signal
   });
-  if (!response.ok) throw new Error("OPTION_LOOKUP_UNAVAILABLE");
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new ItemCatalogRequestError(
+        "OPTION_LOOKUP_RATE_LIMITED",
+        parseRetryAfterSeconds(response.headers.get("Retry-After"))
+      );
+    }
+    throw new ItemCatalogRequestError("OPTION_LOOKUP_UNAVAILABLE");
+  }
   return response.json() as Promise<ItemCatalogResponse>;
 };

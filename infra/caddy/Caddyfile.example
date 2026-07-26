@@ -60,6 +60,9 @@ http://:2021 {
 	handle /api/internal/authentication-metrics {
 		import app_proxy
 	}
+	handle /api/internal/item-option-catalog-metrics {
+		import app_proxy
+	}
 	handle {
 		respond 404
 	}
@@ -84,6 +87,40 @@ http://:2021 {
 	handle /readiness {
 		rewrite * /api/readiness
 		import app_proxy
+	}
+
+	# Internal operator routes are published only by the loopback :2021 bridge.
+	# Never let the public catch-all proxy reach an application internal route.
+	handle /api/internal/* {
+		respond 404
+	}
+
+	@itemOptionCatalog {
+		method GET
+		path /api/items/option-catalog
+	}
+	handle @itemOptionCatalog {
+		route {
+			# The static/global zone runs first so request floods cannot allocate
+			# unbounded source rings before they meet the aggregate ceiling.
+			rate_limit {
+				zone item_option_global {
+					key global
+					events {$CADDY_ITEM_OPTION_GLOBAL_EVENTS:2400}
+					window {$CADDY_ITEM_OPTION_RATE_WINDOW:1m}
+				}
+			}
+			rate_limit {
+				zone item_option_source {
+					key {remote_host}
+					events {$CADDY_ITEM_OPTION_SOURCE_EVENTS:600}
+					window {$CADDY_ITEM_OPTION_RATE_WINDOW:1m}
+					ipv4_prefix 32
+					ipv6_prefix 64
+				}
+			}
+			import app_proxy
+		}
 	}
 
 	@signIn {

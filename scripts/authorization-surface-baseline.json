@@ -3066,6 +3066,47 @@
     ]
   },
   {
+    "id": "app/api/internal/item-option-catalog-metrics/route.ts#GET",
+    "surfaceType": "ROUTE_HANDLER",
+    "permission": "SERVICE_ENFORCED",
+    "scopeDimensions": [
+      "HOST_OPERATOR"
+    ],
+    "guardChain": [
+      "loopback-edge-publication",
+      "constant-time-health-token",
+      "bounded-aggregate-only"
+    ],
+    "denialContract": "NOT_FOUND_NO_METRICS_DISCLOSURE",
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:AUTHZ-ITEM-OPTION-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION"
+    ],
+    "delegatedServiceIds": [
+      "server/services/itemOptionCatalogRuntimeMetrics.ts#readItemOptionCatalogRuntimeMetrics"
+    ],
+    "callChains": [
+      [
+        "app/api/internal/item-option-catalog-metrics/route.ts#GET",
+        "server/services/itemOptionCatalogRuntimeMetrics.ts#readItemOptionCatalogRuntimeMetrics"
+      ]
+    ],
+    "boundaryCaseIds": [
+      "AUTHZ-ITEM-OPTION-RUNTIME-METRICS-TOKEN-DENIAL-NO-DISCLOSURE-OR-MUTATION"
+    ],
+    "boundaryClassifications": [
+      "HOST_INTERNAL_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "loopback-only edge publication",
+      "constant-time bearer token",
+      "bounded aggregate payload"
+    ],
+    "noMutationControls": [
+      "no metric disclosure or business-state mutation"
+    ]
+  },
+  {
     "id": "app/api/items/option-catalog/route.ts#GET",
     "surfaceType": "ROUTE_HANDLER",
     "permission": "SERVICE_ENFORCED",
@@ -27086,6 +27127,48 @@
       "InventoryBalance",
       "AuditEvent"
     ]
+  },
+  {
+    "id": "server/services/itemOptionCatalogAdmission.ts#runWithItemOptionCatalogAdmission",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
+    "id": "server/services/itemOptionCatalogRuntimeMetrics.ts#readItemOptionCatalogRuntimeMetrics",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
   },
   {
     "id": "server/services/items.ts#createItem",

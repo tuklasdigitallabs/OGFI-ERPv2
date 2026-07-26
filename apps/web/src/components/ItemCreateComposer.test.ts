@@ -5,6 +5,7 @@ import {
   catalogSelectionReady,
   createItemCatalogRequestController,
   fetchItemMasterCatalog,
+  ItemCatalogRequestError,
   type ItemCatalogResponse
 } from "./itemCreateCatalogState";
 
@@ -88,6 +89,42 @@ describe("Create Item catalog controller", () => {
     expect(accepted).toEqual([{ page: 1, id: "selected-uom" }, { page: 2, id: "selected-uom" }]);
   });
 
+  test("a bounded Retry-After response becomes a stable typed rate-limit error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: "OPTION_LOOKUP_RATE_LIMITED" }),
+      { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "7" } }
+    )));
+
+    await expect(fetchItemMasterCatalog({
+      kind: "item",
+      query: "rice",
+      page: 1,
+      pageSize: 25,
+      selectedId: "",
+      signal: new AbortController().signal
+    })).rejects.toEqual(expect.objectContaining({
+      name: "ItemCatalogRequestError",
+      code: "OPTION_LOOKUP_RATE_LIMITED",
+      retryAfterSeconds: 7
+    } satisfies Partial<ItemCatalogRequestError>));
+  });
+
+  test("invalid Retry-After values use the fixed safe cooldown", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {
+      status: 429,
+      headers: { "Retry-After": "999" }
+    })));
+
+    await expect(fetchItemMasterCatalog({
+      kind: "uom",
+      query: "",
+      page: 1,
+      pageSize: 25,
+      selectedId: "",
+      signal: new AbortController().signal
+    })).rejects.toEqual(expect.objectContaining({ retryAfterSeconds: 2 }));
+  });
+
   test("required submission readiness fails during debounce, load, errors, and unresolved selection", () => {
     const selected = [{ id: "uom-1", code: "EA", label: "Each", status: "ACTIVE" }];
     const ready = (overrides: Partial<Parameters<typeof catalogSelectionReady>[0]>) => catalogSelectionReady({
@@ -119,5 +156,18 @@ describe("Create Item catalog controller", () => {
     expect(source).toContain('aria-live="polite"');
     expect(source).toContain("View item register");
     expect(source).toContain("The option catalogs were refreshed. Re-select");
+  });
+
+  test("item and conversion composers provide manual rate-limit recovery without changing drafts", () => {
+    const itemSource = readFileSync(path.resolve(__dirname, "ItemCreateComposer.tsx"), "utf8");
+    const conversionSource = readFileSync(path.resolve(__dirname, "ConversionCreateComposer.tsx"), "utf8");
+    for (const source of [itemSource, conversionSource]) {
+      expect(source).toContain("Too many option searches are in progress. Wait briefly, then retry.");
+      expect(source).toContain("Retry available shortly");
+      expect(source).not.toContain("setRetryKey((value) => value + 1), retryAfterSeconds");
+    }
+    expect(conversionSource).toContain("useDebouncedValue(query, 250)");
+    expect(conversionSource).toContain("createItemCatalogRequestController(fetchItemMasterCatalog)");
+    expect(conversionSource).toContain("Your current selection and conversion draft have not been changed.");
   });
 });

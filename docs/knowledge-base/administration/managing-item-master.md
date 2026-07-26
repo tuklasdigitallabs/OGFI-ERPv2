@@ -42,6 +42,7 @@ After a successful save, the TaskSheet closes and Item Master shows a persistent
 - If no active Categories or UOMs are configured, close the TaskSheet and use the corresponding `Categories` or `UOMs` tab to create or reactivate the authoritative record.
 - If a search returns no match, choose `Clear search`. Your current selection is not changed by an empty search result.
 - If a lookup is unavailable, choose its `Retry ... lookup` action. An optional selector left at `None` remains unassigned even when its lookup fails.
+- If the screen reports that too many option searches are in progress, wait until the retry action becomes available, then retry manually. The system does not retry automatically, and it keeps the current selection and draft unchanged.
 - If creation fails, the TaskSheet keeps the draft and shows a user-safe message. Correct the indicated field and retry.
 - If a selected Category or UOM became inactive or unavailable, the option catalogs refresh. Re-select every unresolved Category or UOM before retrying.
 - If you cancel or close a changed draft, confirm whether to discard the entered information.
@@ -85,6 +86,8 @@ still required.
 
 Categories and UOMs use the same selected-record control pattern. Conversion creation uses independent, bounded searches for Item, From UOM, and To UOM; the server requires company-scoped active records, distinct UOMs, a positive conversion factor, a reason, and valid audit context. Conversion edits keep the Item and UOM endpoints read-only while allowing the factor, rounding rule, and reason to be changed.
 
+During Conversion creation, each of the three selectors can load or recover independently. If one is rate-limited or unavailable, wait for that selector's retry action and retry it manually; the other selections and the conversion draft remain unchanged.
+
 ## Controls and warnings
 
 - Item Master data belongs to the selected company. A search result or copied URL does not grant access to another company.
@@ -110,3 +113,4 @@ from the current Item details sheet.
 - [Item parent lifecycle saves fail safely](../../release-notes/2026-07-26-item-parent-lifecycle-concurrency.md)
 - [Create Item supports large Category and UOM catalogs](../../release-notes/2026-07-26-create-item-large-catalog-task-sheet.md)
 - [Existing Item details now enforce controlled corrections](../../release-notes/2026-07-26-selected-item-controlled-correction-sheet.md)
+- [Item option searches now recover without losing the draft](../../release-notes/2026-07-27-item-option-catalog-admission-and-observability.md)

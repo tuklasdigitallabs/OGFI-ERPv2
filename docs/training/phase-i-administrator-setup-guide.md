@@ -72,6 +72,12 @@ successful save names the new Item while posting no stock movement. The current
 build requires Core Administrator access plus selected-company `MANAGE`; broader
 role-based Item Master access remains an unresolved policy gate.
 
+Also demonstrate a rate-limited lookup: the selector keeps its selected value and
+draft, disables retry for the server-provided cooldown, and requires a manual retry
+afterward. In Conversion creation, verify that Item, From UOM, and To UOM loading,
+errors, paging, and retry are independent; recovery of one selector must not clear
+the other two selections or submit automatically.
+
 Next, choose `Open item details` for an Active Item. Verify the company, Item,
 status, current Category and UOMs, item type, and operational-control summary.
 Correct only the Item name, enter a reason, and save. Explain that Category, item
