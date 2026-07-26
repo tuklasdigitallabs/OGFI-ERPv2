@@ -26620,9 +26620,23 @@
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
-    "riskTier": "STANDARD",
-    "executableTestIds": [],
-    "permissionSource": "EXPLICIT_CATALOG_REFERENCE"
+    "riskTier": "HIGH",
+    "executableTestIds": [
+      "BOUNDARY_CASE:PROJECT_OPS_RESTAURANT_PERMISSION"
+    ],
+    "permissionSource": "EXPLICIT_CATALOG_REFERENCE",
+    "boundaryClassifications": [
+      "PUBLIC_BOUNDARY"
+    ],
+    "authorizationAdapterIds": [
+      "server/services/incidents.ts#listIncidentPage"
+    ],
+    "boundaryCaseIds": [
+      "PROJECT_OPS_RESTAURANT_PERMISSION"
+    ],
+    "noMutationControls": [
+      "all-protected-state"
+    ]
   },
   {
     "id": "server/services/incidents.ts#resolveOperationalIncident",

@@ -190,6 +190,7 @@ export type IncidentDashboardCandidate = {
 };
 
 export type IncidentDashboardRead = {
+  overdueAsOf: string;
   totalIncidents: number;
   openIncidents: number;
   criticalIncidents: number;
@@ -206,13 +207,192 @@ export type IncidentExportFilters = {
   incidentDate?: string;
 };
 
+export const incidentDashboardProfiles = [
+  "incident-open-v1",
+  "incident-critical-v1",
+  "incident-pending-review-v1",
+  "incident-overdue-v1"
+] as const;
+
+export type IncidentDashboardProfile =
+  (typeof incidentDashboardProfiles)[number];
+
+export function resolveIncidentDashboardProfile(
+  value: string | null | undefined
+): IncidentDashboardProfile | null {
+  return incidentDashboardProfiles.includes(value as IncidentDashboardProfile)
+    ? (value as IncidentDashboardProfile)
+    : null;
+}
+
+export function incidentDashboardProfileHref(
+  profile: IncidentDashboardProfile,
+  input: { asOf?: string | null } = {}
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  if (profile === "incident-overdue-v1" && input.asOf) params.set("asOf", input.asOf);
+  return `/incidents?${params.toString()}`;
+}
+
+export type IncidentDashboardRequestError =
+  | "PROFILE_INVALID"
+  | "SEARCH_INVALID"
+  | "AS_OF_INVALID"
+  | "AS_OF_REQUIRED"
+  | "AS_OF_FUTURE";
+
+function currentIncidentOperatingDate() {
+  return dateOnlyInTimeZone(new Date());
+}
+
+export function resolveIncidentDashboardRequest(
+  profileValue: string | string[] | null | undefined,
+  queryValue: string | string[] | null | undefined,
+  asOfValue: string | string[] | null | undefined,
+  currentOperatingDate = currentIncidentOperatingDate()
+) {
+  if (Array.isArray(profileValue)) {
+    return { profile: null, query: "", asOf: null, error: "PROFILE_INVALID" as const };
+  }
+  const profile = resolveIncidentDashboardProfile(profileValue);
+  if (profileValue !== null && profileValue !== undefined && !profile) {
+    return { profile: null, query: "", asOf: null, error: "PROFILE_INVALID" as const };
+  }
+  if (Array.isArray(asOfValue)) {
+    return { profile, query: "", asOf: null, error: "AS_OF_INVALID" as const };
+  }
+  let asOf: string | null = null;
+  if (profile !== "incident-overdue-v1") {
+    if (asOfValue !== null && asOfValue !== undefined) {
+      return { profile, query: "", asOf: null, error: "AS_OF_INVALID" as const };
+    }
+  } else {
+    if (!asOfValue) {
+      return { profile, query: "", asOf: null, error: "AS_OF_REQUIRED" as const };
+    }
+    if (!parseDateOnlyUtc(asOfValue)) {
+      return { profile, query: "", asOf: null, error: "AS_OF_INVALID" as const };
+    }
+    if (asOfValue > currentOperatingDate) {
+      return { profile, query: "", asOf: null, error: "AS_OF_FUTURE" as const };
+    }
+    asOf = asOfValue;
+  }
+  if (Array.isArray(queryValue)) {
+    return { profile, query: "", asOf, error: "SEARCH_INVALID" as const };
+  }
+  const query = normalizedFilterText(queryValue ?? undefined);
+  if (profile && query.length > 120) {
+    return { profile, query, asOf, error: "SEARCH_INVALID" as const };
+  }
+  return { profile, query, asOf, error: null };
+}
+
+export function incidentDashboardProfilePageHref(
+  profile: IncidentDashboardProfile,
+  input: { query?: string | null; page?: number; asOf?: string | null } = {}
+) {
+  const params = new URLSearchParams({ dashboard: profile });
+  if (profile === "incident-overdue-v1" && input.asOf) {
+    params.set("asOf", input.asOf);
+  }
+  const query = normalizedFilterText(input.query ?? undefined);
+  if (query) params.set("q", query);
+  if (Number.isInteger(input.page) && (input.page ?? 1) > 1) {
+    params.set("page", String(input.page));
+  }
+  return `/incidents?${params.toString()}`;
+}
+
+export function resolveIncidentProfileReturnTo(value: unknown) {
+  if (typeof value !== "string" || value.includes("\\") || value.includes("#")) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value, "https://ogfi.invalid");
+  } catch {
+    return null;
+  }
+  if (
+    parsed.origin !== "https://ogfi.invalid" ||
+    parsed.pathname !== "/incidents" ||
+    [...parsed.searchParams.keys()].some(
+      (key) => !["dashboard", "asOf", "q", "page"].includes(key)
+    ) ||
+    [...parsed.searchParams.keys()].some(
+      (key, index, keys) => keys.indexOf(key) !== index
+    )
+  ) {
+    return null;
+  }
+  const resolved = resolveIncidentDashboardRequest(
+    parsed.searchParams.get("dashboard"),
+    parsed.searchParams.get("q"),
+    parsed.searchParams.get("asOf")
+  );
+  const pageValue = parsed.searchParams.get("page");
+  const page = pageValue === null ? 1 : Number(pageValue);
+  if (resolved.error || !resolved.profile || !Number.isSafeInteger(page) || page < 1) {
+    return null;
+  }
+  const canonical = incidentDashboardProfilePageHref(resolved.profile, {
+    query: resolved.query,
+    page,
+    asOf: resolved.asOf
+  });
+  return value === canonical ? canonical : null;
+}
+
+export function incidentDetailHref(incidentId: string, returnTo: string | null) {
+  return `/incidents/${incidentId}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`;
+}
+
 export type IncidentPage = {
   items: OperationalIncidentSummary[];
   page: number;
   pageSize: number;
   totalItems: number;
   totalPages: number;
+  dashboardProfile: IncidentDashboardProfile | null;
+  profileAsOf: string | null;
 };
+
+function incidentScopeWhere(
+  session: SessionContext
+): Prisma.OperationalIncidentWhereInput {
+  return {
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    brandId: session.context.brandId ?? null,
+    locationId: session.context.locationId
+  };
+}
+
+export function incidentDashboardProfileWhere(
+  session: SessionContext,
+  profile: IncidentDashboardProfile,
+  asOf?: string | null
+): Prisma.OperationalIncidentWhereInput {
+  const scope = incidentScopeWhere(session);
+  if (profile === "incident-open-v1") {
+    return { ...scope, status: { in: [...resolvableIncidentStatuses] } };
+  }
+  if (profile === "incident-critical-v1") {
+    return { ...scope, severity: "CRITICAL" };
+  }
+  if (profile === "incident-pending-review-v1") {
+    return { ...scope, status: "PENDING_REVIEW" };
+  }
+  const cutoff = asOf ? parseDateOnlyUtc(asOf) : null;
+  if (!cutoff) throw new Error("INCIDENT_DASHBOARD_AS_OF_INVALID");
+  return {
+    ...scope,
+    dueAt: { lt: cutoff },
+    resolvedAt: null,
+    status: { not: "CANCELLED" }
+  };
+}
 
 function assertIncidentAccess(session: SessionContext) {
   if (!canUseIncidents(session.permissionCodes)) {
@@ -386,7 +566,12 @@ export function filterIncidents(
 export async function listIncidentPage(
   session: SessionContext,
   filters: IncidentExportFilters = {},
-  input: { page?: number; pageSize?: number } = {}
+  input: {
+    page?: number;
+    pageSize?: number;
+    dashboardProfile?: IncidentDashboardProfile;
+    asOf?: string;
+  } = {}
 ): Promise<IncidentPage> {
   assertIncidentAccess(session);
   const rawPageSize = input.pageSize ?? 25;
@@ -394,40 +579,64 @@ export async function listIncidentPage(
   const rawPage = input.page ?? 1;
   const requestedPage = Number.isFinite(rawPage) ? Math.max(Math.floor(rawPage), 1) : 1;
   const query = normalizedFilterText(filters.q);
-  const status = filters.status && filters.status !== "ALL" ? filters.status : null;
-  const severity = filters.severity && filters.severity !== "ALL" ? filters.severity : null;
-  const incidentDate = filters.incidentDate?.trim() || null;
+  const dashboardProfileValue = input.dashboardProfile;
+  const dashboardProfile = resolveIncidentDashboardProfile(dashboardProfileValue);
+  if (dashboardProfileValue !== undefined && !dashboardProfile) {
+    throw new Error("INCIDENT_DASHBOARD_PROFILE_INVALID");
+  }
+  if (dashboardProfile && query.length > 120) {
+    throw new Error("INCIDENT_DASHBOARD_SEARCH_INVALID");
+  }
+  const today = currentIncidentOperatingDate();
+  if (dashboardProfile === "incident-overdue-v1") {
+    if (!input.asOf) throw new Error("INCIDENT_DASHBOARD_AS_OF_REQUIRED");
+    if (!parseDateOnlyUtc(input.asOf)) throw new Error("INCIDENT_DASHBOARD_AS_OF_INVALID");
+    if (input.asOf > today) throw new Error("INCIDENT_DASHBOARD_AS_OF_FUTURE");
+  } else if (input.asOf !== undefined) {
+    throw new Error("INCIDENT_DASHBOARD_AS_OF_INVALID");
+  }
+  const status = !dashboardProfile && filters.status && filters.status !== "ALL" ? filters.status : null;
+  const severity = !dashboardProfile && filters.severity && filters.severity !== "ALL" ? filters.severity : null;
+  const incidentDate = !dashboardProfile ? filters.incidentDate?.trim() || null : null;
   const date = incidentDate ? parseDateOnlyUtc(incidentDate) : null;
   if (incidentDate && !date) throw new Error("INCIDENT_DATE_INVALID");
   const sourceIdFilter = /^[0-9a-f-]{36}$/i.test(query) ? [{ sourceRecordId: query }] : [];
   const actorMatches = query
     ? await prisma.user.findMany({
-        where: { tenantId: session.context.tenantId, OR: [
-          { displayName: { contains: query, mode: "insensitive" } },
-          { email: { contains: query, mode: "insensitive" } }
-        ] },
+        where: {
+          tenantId: session.context.tenantId,
+          ...(dashboardProfile
+            ? { displayName: { contains: query, mode: "insensitive" } }
+            : { OR: [
+                { displayName: { contains: query, mode: "insensitive" } },
+                { email: { contains: query, mode: "insensitive" } }
+              ] })
+        },
         select: { id: true }
       })
     : [];
   const where: Prisma.OperationalIncidentWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-    locationId: session.context.locationId,
+    ...(dashboardProfile
+      ? incidentDashboardProfileWhere(session, dashboardProfile, input.asOf)
+      : incidentScopeWhere(session)),
     ...(status ? { status } : {}),
     ...(severity ? { severity } : {}),
     ...(date ? { incidentDate: date } : {}),
     ...(query ? { OR: [
       { incidentNumber: { contains: query, mode: "insensitive" } },
       { title: { contains: query, mode: "insensitive" } },
-      { summary: { contains: query, mode: "insensitive" } },
       { category: { contains: query, mode: "insensitive" } },
-      { correctiveAction: { contains: query, mode: "insensitive" } },
-      { evidenceReference: { contains: query, mode: "insensitive" } },
       { sourceRecordType: { contains: query, mode: "insensitive" } },
       { reportedByUserId: { in: actorMatches.map((row) => row.id) } },
       { ownerUserId: { in: actorMatches.map((row) => row.id) } },
-      ...sourceIdFilter
+      ...(!dashboardProfile
+        ? [
+            { summary: { contains: query, mode: "insensitive" as const } },
+            { correctiveAction: { contains: query, mode: "insensitive" as const } },
+            { evidenceReference: { contains: query, mode: "insensitive" as const } },
+            ...sourceIdFilter
+          ]
+        : [])
     ] } : {})
   };
   const totalItems = await prisma.operationalIncident.count({ where });
@@ -435,7 +644,14 @@ export async function listIncidentPage(
   const page = Math.min(requestedPage, totalPages);
   const rows = await prisma.operationalIncident.findMany({
     where,
-    include: { location: true },
+    select: {
+      id: true, incidentNumber: true, incidentDate: true, category: true,
+      severity: true, status: true, title: true, summary: !dashboardProfile,
+      location: { select: { name: true } }, reportedByUserId: true,
+      ownerUserId: true, sourceRecordType: true, sourceRecordId: !dashboardProfile,
+      correctiveAction: !dashboardProfile, evidenceReference: !dashboardProfile,
+      dueAt: true, resolvedAt: true
+    },
     orderBy: [{ incidentDate: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     skip: (page - 1) * pageSize,
     take: pageSize
@@ -451,20 +667,23 @@ export async function listIncidentPage(
     severity: incident.severity,
     status: incident.status,
     title: incident.title,
-    summary: incident.summary,
+    summary: dashboardProfile ? "" : incident.summary,
     locationName: incident.location.name,
     reportedByName: incident.reportedByUserId ? names.get(incident.reportedByUserId) ?? "Unknown user" : null,
     hasReporter: Boolean(incident.reportedByUserId),
     reportedByCurrentUser: incident.reportedByUserId === session.user.id,
     ownerName: incident.ownerUserId ? names.get(incident.ownerUserId) ?? "Unknown user" : null,
     sourceRecordType: incident.sourceRecordType,
-    sourceRecordId: incident.sourceRecordId,
-    correctiveAction: incident.correctiveAction,
-    evidenceReference: incident.evidenceReference,
+    sourceRecordId: dashboardProfile ? null : incident.sourceRecordId,
+    correctiveAction: dashboardProfile ? null : incident.correctiveAction,
+    evidenceReference: dashboardProfile ? null : incident.evidenceReference,
     dueAt: dateOrNull(incident.dueAt),
     resolvedAt: dateOrNull(incident.resolvedAt)
   }));
-  return { items, page, pageSize, totalItems, totalPages };
+  return {
+    items, page, pageSize, totalItems, totalPages, dashboardProfile,
+    profileAsOf: dashboardProfile === "incident-overdue-v1" ? input.asOf ?? null : null
+  };
 }
 
 export async function getIncidentDashboard(
@@ -472,12 +691,7 @@ export async function getIncidentDashboard(
 ): Promise<IncidentDashboard> {
   assertIncidentAccess(session);
 
-  const where: Prisma.OperationalIncidentWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-    locationId: session.context.locationId
-  };
+  const where = incidentScopeWhere(session);
   const incidents = await prisma.operationalIncident.findMany({
     where,
     include: {
@@ -585,14 +799,12 @@ export async function getIncidentDashboardRead(
   session: SessionContext
 ): Promise<IncidentDashboardRead> {
   assertIncidentAccess(session);
-  const where: Prisma.OperationalIncidentWhereInput = {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    ...(session.context.brandId ? { brandId: session.context.brandId } : {}),
-    locationId: session.context.locationId
-  };
-  const todayDate = dateOnlyInTimeZone(new Date());
-  const [statusRows, severityRows, totalIncidents, overdueIncidents, candidates] = await Promise.all([
+  const where = incidentScopeWhere(session);
+  const todayDate = currentIncidentOperatingDate();
+  const openWhere = incidentDashboardProfileWhere(session, "incident-open-v1");
+  const criticalWhere = incidentDashboardProfileWhere(session, "incident-critical-v1");
+  const overdueWhere = incidentDashboardProfileWhere(session, "incident-overdue-v1", todayDate);
+  const [statusRows, severityRows, totalIncidents, openIncidents, criticalIncidents, overdueIncidents, candidates] = await Promise.all([
     prisma.operationalIncident.groupBy({
       by: ["status"],
       where,
@@ -604,16 +816,11 @@ export async function getIncidentDashboardRead(
       _count: { _all: true }
     }),
     prisma.operationalIncident.count({ where }),
-    prisma.operationalIncident.count({
-      where: {
-        ...where,
-        dueAt: { lt: new Date(`${todayDate}T00:00:00.000Z`) },
-        resolvedAt: null,
-        status: { not: "CANCELLED" }
-      }
-    }),
+    prisma.operationalIncident.count({ where: openWhere }),
+    prisma.operationalIncident.count({ where: criticalWhere }),
+    prisma.operationalIncident.count({ where: overdueWhere }),
     prisma.operationalIncident.findMany({
-      where: { ...where, status: { in: [...resolvableIncidentStatuses] } },
+      where: openWhere,
       orderBy: [{ severity: "desc" }, { incidentDate: "desc" }],
       take: 3,
       select: {
@@ -663,9 +870,10 @@ export async function getIncidentDashboardRead(
   const ownerNameById = userDisplayNameById(owners);
 
   return {
+    overdueAsOf: todayDate,
     totalIncidents,
-    openIncidents: statusCounts.OPEN + statusCounts.IN_PROGRESS + statusCounts.PENDING_REVIEW,
-    criticalIncidents: severityCounts.CRITICAL,
+    openIncidents,
+    criticalIncidents,
     overdueIncidents,
     statusCounts,
     severityCounts,
@@ -832,10 +1040,7 @@ export async function getOperationalIncidentSummary(
   const incident = await prisma.operationalIncident.findFirst({
     where: {
       id: incidentId,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      brandId: session.context.brandId || null,
-      locationId: session.context.locationId
+      ...incidentScopeWhere(session)
     },
     include: { location: true }
   });
@@ -998,10 +1203,7 @@ export async function resolveOperationalIncident(formData: FormData) {
     const current = await tx.operationalIncident.findFirst({
       where: {
         id: values.incidentId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        brandId: session.context.brandId || null,
-        locationId: session.context.locationId
+        ...incidentScopeWhere(session)
       }
     });
 
@@ -1123,10 +1325,7 @@ export async function cancelOperationalIncident(formData: FormData) {
     const current = await tx.operationalIncident.findFirst({
       where: {
         id: values.incidentId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        brandId: session.context.brandId || null,
-        locationId: session.context.locationId
+        ...incidentScopeWhere(session)
       }
     });
 
@@ -1266,10 +1465,7 @@ export async function correctOperationalIncident(formData: FormData) {
     const current = await tx.operationalIncident.findFirst({
       where: {
         id: values.incidentId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        brandId: session.context.brandId || null,
-        locationId: session.context.locationId
+        ...incidentScopeWhere(session)
       }
     });
 

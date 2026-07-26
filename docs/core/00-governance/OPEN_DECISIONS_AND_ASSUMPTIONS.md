@@ -125,6 +125,18 @@ role-only, sequential, and limited to the server-owned default and Purchase Requ
 emergency route templates. Active legacy `USER` routes must be explicitly inventoried
 and reconciled; they are never silently converted or grandfathered by a migration.
 
+16. **Incident lifecycle and integrity reconciliation (`DEC-0228`, open):** Before
+an Incident production-readiness claim, confirm and reconcile: (a) the correction
+permission because the current documentation and service authority do not agree;
+(b) which authorized command and roles may enter `PENDING_REVIEW`, because the status
+is displayed and used for oversight but no active transition currently creates it;
+(c) assignment semantics, authority, audit, notifications, and reassignment because
+product language refers to assignment but no assignment command is implemented; and
+(d) the invariant between `RESOLVED`/`CANCELLED` terminal statuses and `resolvedAt`,
+including migration, constraint, legacy-row disclosure, correction/recovery, and
+reporting behavior. `DEC-0228` intentionally preserves exact stored rows and grants
+no workflow authority; dashboard profiles must not silently normalize these gaps.
+
 ## 6. Change request format
 
 Every policy change request should include:

@@ -28,6 +28,7 @@ import {
 } from "./foodSafety";
 import {
   getIncidentDashboardRead,
+  incidentDashboardProfileHref,
   type IncidentDashboard,
   type IncidentDashboardRead
 } from "./incidents";
@@ -1097,11 +1098,15 @@ export function buildOperationalDashboardModel(
       incidents.statusCounts.OPEN +
       incidents.statusCounts.IN_PROGRESS +
       incidents.statusCounts.PENDING_REVIEW;
+    const incidentOverdueAsOf =
+      "overdueAsOf" in incidents
+        ? incidents.overdueAsOf
+        : dashboardOperationalDate(new Date().toISOString())!;
     cards.push({
       id: "open-operational-incidents",
       label: "Open Incidents",
       value: openIncidentCount,
-      href: "/incidents",
+      href: incidentDashboardProfileHref("incident-open-v1"),
       description: `${incidents.overdueIncidents} overdue corrective action${incidents.overdueIncidents === 1 ? "" : "s"}`,
       tone: cardTone(openIncidentCount)
     });
@@ -1111,7 +1116,7 @@ export function buildOperationalDashboardModel(
         label: "Critical incidents",
         displayValue: number(incidents.severityCounts.CRITICAL),
         detail: "Critical incident records in current scope",
-        href: "/incidents",
+        href: incidentDashboardProfileHref("incident-critical-v1"),
         tone: incidents.severityCounts.CRITICAL > 0 ? "warning" : "success"
       },
       {
@@ -1119,7 +1124,7 @@ export function buildOperationalDashboardModel(
         label: "Incident review",
         displayValue: number(incidents.statusCounts.PENDING_REVIEW),
         detail: "Incidents waiting for closure review",
-        href: "/incidents",
+        href: incidentDashboardProfileHref("incident-pending-review-v1"),
         tone:
           incidents.statusCounts.PENDING_REVIEW > 0 ? "warning" : "success"
       },
@@ -1128,7 +1133,7 @@ export function buildOperationalDashboardModel(
         label: "Incident overdue",
         displayValue: number(incidents.overdueIncidents),
         detail: "Incidents past corrective-action due date",
-        href: "/incidents",
+        href: incidentDashboardProfileHref("incident-overdue-v1", { asOf: incidentOverdueAsOf }),
         tone: incidents.overdueIncidents > 0 ? "warning" : "success"
       }
     );
@@ -1153,7 +1158,7 @@ export function buildOperationalDashboardModel(
         nextAction:
           incident.status === "PENDING_REVIEW"
             ? "Review closure evidence"
-            : "Assign or resolve incident",
+            : "Review incident follow-up",
         nextActor: incident.ownerName ?? "Unassigned",
         priority:
           incident.severity === "CRITICAL"

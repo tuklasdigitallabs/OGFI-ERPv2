@@ -55,6 +55,9 @@ export async function GET(request: Request) {
       reportId: "incident-corrective-actions",
       eventType: "report.export_started"
     });
+    if (new URL(request.url).searchParams.has("dashboard")) {
+      throw new Error("INCIDENT_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED");
+    }
     const rows = await buildIncidentExportRows(session, getFilterParams(request));
     await logOperationalExportAudit({
       session,

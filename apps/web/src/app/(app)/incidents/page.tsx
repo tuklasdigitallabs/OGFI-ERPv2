@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Badge, ButtonLink, Panel } from "@ogfi/ui";
+import { Badge, ButtonLink, EmptyState, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { TaskSheet } from "@/components/TaskSheet";
@@ -17,8 +17,13 @@ import { canExportIncidents } from "@/server/services/exportAuthorization";
 import {
   createOperationalIncident,
   getIncidentDashboardRead,
-  listIncidentPage
+  incidentDashboardProfileHref,
+  incidentDashboardProfilePageHref,
+  incidentDetailHref,
+  listIncidentPage,
+  resolveIncidentDashboardRequest
 } from "@/server/services/incidents";
+import { dateOnlyInTimeZone } from "@/server/services/projectDates";
 
 export const dynamic = "force-dynamic";
 
@@ -104,17 +109,30 @@ function buildQueryHref(
   return `${url.pathname}${url.search}`;
 }
 
-function sourceRecordHref(sourceRecordType: string | null, sourceRecordId: string | null) {
+function sourceRecordHref(
+  sourceRecordType: string | null,
+  sourceRecordId: string | null,
+  permissionCodes: string[]
+) {
   if (!sourceRecordId) {
     return null;
   }
-  if (sourceRecordType === "BranchOperationalChecklist") {
+  if (
+    sourceRecordType === "BranchOperationalChecklist" &&
+    permissionCodes.includes(permissions.branchOperationsView)
+  ) {
     return `/branch-operations/${sourceRecordId}`;
   }
-  if (sourceRecordType === "FoodSafetyLog") {
+  if (
+    sourceRecordType === "FoodSafetyLog" &&
+    permissionCodes.includes(permissions.foodSafetyView)
+  ) {
     return `/food-safety/${sourceRecordId}`;
   }
-  if (sourceRecordType === "MaintenanceTicket") {
+  if (
+    sourceRecordType === "MaintenanceTicket" &&
+    permissionCodes.includes(permissions.maintenanceView)
+  ) {
     return `/maintenance/${sourceRecordId}`;
   }
   return null;
@@ -133,12 +151,67 @@ export default async function IncidentsPage({
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
 
-  const dashboardRead = await getIncidentDashboardRead(session);
   const canExport = canExportIncidents(session);
   const canCreateIncident = session.permissionCodes.includes(permissions.incidentCreate);
   const params = searchParams ? await searchParams : {};
+  const currentOperatingDate = dateOnlyInTimeZone(new Date());
+  const dashboardRequest = resolveIncidentDashboardRequest(
+    params.dashboard,
+    params.q,
+    params.asOf,
+    currentOperatingDate
+  );
+  const dashboardProfile = dashboardRequest.profile;
+  if (dashboardRequest.error === "PROFILE_INVALID") {
+    return (
+      <AppShell session={session} title="Incident dashboard view unavailable" subtitle="The requested dashboard profile is unsupported or retired" activeNav="incidents">
+        <section className="ogfi-data-surface p-5">
+          <EmptyState title="Dashboard view unavailable" description="This dashboard link cannot be opened safely. Return to Overview for a current Incident card, or deliberately open the full Incident workspace." />
+          <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+            <ButtonLink href="/dashboard" className="min-h-11">Back to Overview</ButtonLink>
+            <ButtonLink href="/incidents" tone="secondary" className="min-h-11">Open full workspace</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  if (dashboardRequest.error === "SEARCH_INVALID" && dashboardProfile) {
+    return (
+      <AppShell session={session} title="Incident dashboard view unavailable" subtitle="The requested dashboard search is invalid" activeNav="incidents">
+        <section className="ogfi-data-surface p-5">
+          <EmptyState title="Search is too long" description="Dashboard-view search is limited to 120 characters. Return to the unfiltered view and try a shorter incident number, title, category, source type, reporter, or owner search." />
+          <div className="mt-4 flex justify-center">
+            <ButtonLink href={incidentDashboardProfileHref(dashboardProfile, { asOf: dashboardRequest.asOf })} className="min-h-11">Clear search</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  if (["AS_OF_REQUIRED", "AS_OF_INVALID", "AS_OF_FUTURE"].includes(dashboardRequest.error ?? "")) {
+    const missing = dashboardRequest.error === "AS_OF_REQUIRED";
+    const future = dashboardRequest.error === "AS_OF_FUTURE";
+    return (
+      <AppShell session={session} title="Incident overdue view unavailable" subtitle="The dashboard cutoff could not be validated" activeNav="incidents">
+        <section className="ogfi-data-surface p-5">
+          <EmptyState
+            title={missing ? "Overdue cutoff is missing" : future ? "Overdue cutoff is in the future" : "Overdue cutoff is invalid"}
+            description={missing
+              ? "This versioned overdue view requires the dashboard operating date that produced its count. Return to Overview for a current link."
+              : future
+                ? "The cutoff cannot be later than the current operating date. Return to Overview for a current link."
+                : "The cutoff must be a real calendar date in YYYY-MM-DD format. Return to Overview for a current link."}
+          />
+          <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+            <ButtonLink href="/dashboard" className="min-h-11">Back to Overview</ButtonLink>
+            <ButtonLink href="/incidents" tone="secondary" className="min-h-11">Open full workspace</ButtonLink>
+          </div>
+        </section>
+      </AppShell>
+    );
+  }
+  const dashboardRead = await getIncidentDashboardRead(session);
   const actionFeedback = getActionFeedback(params);
-  const query = (getSearchParam(params, "q") ?? "").trim().toLowerCase();
+  const query = dashboardRequest.query;
   const incidentDate = getSearchParam(params, "incidentDate") ?? "";
   const statusFilter = normalizeOption(getSearchParam(params, "status"), statusOptions);
   const severityFilter = normalizeOption(
@@ -149,10 +222,19 @@ export default async function IncidentsPage({
   try {
     workspace = await listIncidentPage(session, {
       q: query,
-      incidentDate,
-      status: statusFilter,
-      severity: severityFilter
-    }, { page: normalizePage(getSearchParam(params, "page")), pageSize: PAGE_SIZE });
+      ...(!dashboardProfile ? {
+        incidentDate,
+        status: statusFilter,
+        severity: severityFilter
+      } : {})
+    }, {
+      page: normalizePage(getSearchParam(params, "page")),
+      pageSize: PAGE_SIZE,
+      ...(dashboardProfile ? {
+        dashboardProfile,
+        ...(dashboardRequest.asOf ? { asOf: dashboardRequest.asOf } : {})
+      } : {})
+    });
   } catch (error) {
     redirect(actionErrorRedirectPath("/incidents", error));
   }
@@ -167,14 +249,33 @@ export default async function IncidentsPage({
     incidents: workspace.items
   };
   const paginatedIncidents = workspace.items;
-  const pageHref = (page: number) =>
-    buildQueryHref("/incidents", {
+  const pageHref = (page: number) => dashboardProfile
+    ? incidentDashboardProfilePageHref(dashboardProfile, {
+        query,
+        page,
+        asOf: dashboardRequest.asOf
+      })
+    : buildQueryHref("/incidents", {
       q: getSearchParam(params, "q"),
       incidentDate,
       status: statusFilter !== "ALL" ? statusFilter : undefined,
       severity: severityFilter !== "ALL" ? severityFilter : undefined,
       page: page > 1 ? String(page) : undefined
-    });
+      });
+  const detailHref = (incidentId: string) => incidentDetailHref(incidentId, pageHref(workspace.page));
+  const profileTitle = dashboardProfile === "incident-open-v1"
+    ? "Open Incidents"
+    : dashboardProfile === "incident-critical-v1"
+      ? "Critical Incidents"
+      : dashboardProfile === "incident-pending-review-v1"
+        ? "Incidents Pending Review"
+        : "Overdue Incidents";
+  const hasListFilters = Boolean(
+    query ||
+    (!dashboardProfile && (
+      incidentDate || statusFilter !== "ALL" || severityFilter !== "ALL"
+    ))
+  );
 
   return (
     <AppShell
@@ -184,6 +285,35 @@ export default async function IncidentsPage({
       activeNav="incidents"
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
+      {dashboardProfile ? (
+        <section className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-950 shadow-[var(--shadow-soft)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="info">Dashboard profile</Badge>
+            <Badge tone="neutral">{session.context.companyName}</Badge>
+            {session.context.brandId ? <Badge tone="neutral">{session.context.brandName}</Badge> : null}
+            <Badge tone="neutral">{session.context.locationName}</Badge>
+            {dashboardProfile === "incident-overdue-v1" ? <Badge tone="neutral">Cutoff {dashboardRequest.asOf}</Badge> : <Badge tone="neutral">All dates</Badge>}
+          </div>
+          <h2 className="mt-3 text-lg font-bold text-slate-950">{profileTitle}</h2>
+          {dashboardProfile === "incident-open-v1" ? (
+            <p className="mt-1">This read-only oversight view contains all {workspace.totalItems} active incident(s) in the selected scope: open, in progress, or pending review.</p>
+          ) : dashboardProfile === "incident-critical-v1" ? (
+            <p className="mt-1">This read-only oversight view contains all {workspace.totalItems} critical-severity incident(s) in the selected scope, including resolved and cancelled history.</p>
+          ) : dashboardProfile === "incident-pending-review-v1" ? (
+            <p className="mt-1">This read-only oversight view contains all {workspace.totalItems} incident(s) pending review in the selected scope. It is not a personal task queue.</p>
+          ) : (
+            <>
+              <p className="mt-1">This read-only oversight view contains {workspace.totalItems} incident(s) that remain unresolved now.</p>
+              <p className="mt-1">Due-date cutoff: {dashboardRequest.asOf}; incident status, resolution, cancellation, and corrected due dates reflect current records; this is not a historical snapshot.</p>
+              {dashboardRequest.asOf && dashboardRequest.asOf < currentOperatingDate ? (
+                <ButtonLink href={incidentDashboardProfileHref("incident-overdue-v1", { asOf: currentOperatingDate })} tone="secondary" className="mt-3 min-h-11">Open current overdue view</ButtonLink>
+              ) : null}
+            </>
+          )}
+          <p className="mt-1 text-blue-900/80">Opening an incident does not grant correction, resolution, or cancellation authority. Detail actions independently recheck current role, scope, status, actor lineage, and segregation rules.</p>
+          <ButtonLink href="/incidents" tone="secondary" className="mt-3 min-h-11">Exit dashboard view</ButtonLink>
+        </section>
+      ) : null}
       <div className="ogfi-coordination-cue mb-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -202,7 +332,7 @@ export default async function IncidentsPage({
         </div>
       </div>
 
-      <div className="mb-5 grid gap-4 md:grid-cols-4">
+      {!dashboardProfile ? <div className="mb-5 grid gap-4 md:grid-cols-4">
         <Panel className="ogfi-detail-card">
           <p className="text-sm font-semibold text-slate-500">Incidents</p>
           <p className="mt-2 text-3xl font-bold text-slate-950">
@@ -227,7 +357,7 @@ export default async function IncidentsPage({
             {dashboard.overdueIncidents}
           </p>
         </Panel>
-      </div>
+      </div> : null}
 
       <section className="ogfi-data-surface overflow-hidden">
         <div className="ogfi-section-header">
@@ -241,10 +371,10 @@ export default async function IncidentsPage({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={dashboard.criticalIncidents > 0 ? "destructive" : "info"}>
+            {!dashboardProfile ? <Badge tone={dashboard.criticalIncidents > 0 ? "destructive" : "info"}>
               {dashboard.criticalIncidents} critical
-            </Badge>
-            {canCreateIncident ? (
+            </Badge> : null}
+            {canCreateIncident && !dashboardProfile ? (
               <TaskSheet
                 title="Log Incident"
                 description={`Capture the incident, corrective follow-up, and evidence for ${dashboard.locationName}.`}
@@ -373,7 +503,7 @@ export default async function IncidentsPage({
                 </form>
               </TaskSheet>
             ) : null}
-            {canExport ? (
+            {canExport ? (!dashboardProfile ? (
               <ButtonLink
                 href={buildQueryHref("/incidents/export", {
                   q: query || null,
@@ -386,33 +516,37 @@ export default async function IncidentsPage({
               >
                 Export Incident CSV
               </ButtonLink>
-            ) : null}
+            ) : null) : null}
           </div>
         </div>
 
-        <form className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-[1fr_11rem_12rem_12rem_auto] md:items-end">
+        <form className={`grid gap-3 border-b border-slate-100 p-4 md:items-end ${dashboardProfile ? "md:grid-cols-[1fr_auto]" : "md:grid-cols-[1fr_11rem_12rem_12rem_auto]"}`}>
+          {dashboardProfile ? <input name="dashboard" type="hidden" value={dashboardProfile} /> : null}
+          {dashboardProfile === "incident-overdue-v1" && dashboardRequest.asOf ? <input name="asOf" type="hidden" value={dashboardRequest.asOf} /> : null}
           <label className="grid gap-1 text-sm font-medium text-slate-700">
             Search
             <input
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
               defaultValue={getSearchParam(params, "q") ?? ""}
               name="q"
-              placeholder="Incident number, title, category, reporter, owner, evidence"
+              placeholder={dashboardProfile
+                ? "Incident number, title, category, source type, reporter, owner"
+                : "Incident number, title, category, reporter, owner, evidence"}
             />
           </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          {!dashboardProfile ? <label className="grid gap-1 text-sm font-medium text-slate-700">
             Incident date
             <input
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
               defaultValue={incidentDate}
               name="incidentDate"
               type="date"
             />
-          </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          </label> : null}
+          {!dashboardProfile ? <label className="grid gap-1 text-sm font-medium text-slate-700">
             Status
             <select
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
               defaultValue={statusFilter}
               name="status"
             >
@@ -422,11 +556,11 @@ export default async function IncidentsPage({
                 </option>
               ))}
             </select>
-          </label>
-          <label className="grid gap-1 text-sm font-medium text-slate-700">
+          </label> : null}
+          {!dashboardProfile ? <label className="grid gap-1 text-sm font-medium text-slate-700">
             Severity
             <select
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+              className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
               defaultValue={severityFilter}
               name="severity"
             >
@@ -436,29 +570,31 @@ export default async function IncidentsPage({
                 </option>
               ))}
             </select>
-          </label>
+          </label> : null}
           <div className="flex gap-2">
-            <button className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
-              Apply
+            <button className="inline-flex min-h-11 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+              {dashboardProfile ? "Search" : "Apply"}
             </button>
-            <ButtonLink href="/incidents" tone="ghost" className="min-h-10">
+            <ButtonLink href={dashboardProfile ? incidentDashboardProfileHref(dashboardProfile, { asOf: dashboardRequest.asOf }) : "/incidents"} tone="ghost" className="min-h-11">
               Clear
             </ButtonLink>
           </div>
         </form>
 
-        {workspace.totalItems === 0 ? (
+        {workspace.totalItems === 0 && !hasListFilters ? (
           <div className="ogfi-empty-state">
-            <p className="font-semibold text-slate-900">No incident records yet</p>
+            <p className="font-semibold text-slate-900">{dashboardProfile ? `No incidents in ${profileTitle}` : "No incident records yet"}</p>
             <p className="mt-1 text-sm text-slate-600">
-              Create or seed branch incidents before reviewing the incident queue.
+              {dashboardProfile
+                ? "There are no current records matching this versioned dashboard definition in the selected scope."
+                : "Create or seed branch incidents before reviewing the incident queue."}
             </p>
           </div>
         ) : workspace.items.length === 0 ? (
           <div className="ogfi-empty-state">
             <p className="font-semibold text-slate-900">No incidents match the filters</p>
             <p className="mt-1 text-sm text-slate-600">
-              Adjust search, status, or severity to widen this incident queue.
+              {dashboardProfile ? "Clear or shorten the search to restore the full dashboard view." : "Adjust search, status, or severity to widen this incident queue."}
             </p>
           </div>
         ) : (
@@ -467,7 +603,8 @@ export default async function IncidentsPage({
               {paginatedIncidents.map((incident) => {
                 const sourceHref = sourceRecordHref(
                   incident.sourceRecordType,
-                  incident.sourceRecordId
+                  incident.sourceRecordId,
+                  session.permissionCodes
                 );
                 return (
                   <article
@@ -506,26 +643,42 @@ export default async function IncidentsPage({
                         <dd className="mt-1 break-words font-semibold text-slate-800">{incident.ownerName ?? "Unassigned"}</dd>
                       </div>
                       <div className="min-w-0">
-                        <dt className="text-xs font-semibold uppercase text-slate-500">Due / next action</dt>
-                        <dd className="mt-1 break-words font-semibold text-slate-800">{incident.dueAt ?? "Assign a due date"}</dd>
+                        <dt className="text-xs font-semibold uppercase text-slate-500">Reporter</dt>
+                        <dd className="mt-1 break-words font-semibold text-slate-800">{incident.reportedByName ?? "Unknown reporter"}</dd>
                       </div>
+                      <div className="min-w-0">
+                        <dt className="text-xs font-semibold uppercase text-slate-500">{dashboardProfile ? "Due" : "Due / next action"}</dt>
+                        <dd className="mt-1 break-words font-semibold text-slate-800">{incident.dueAt ?? (dashboardProfile ? "Not set" : "Assign a due date")}</dd>
+                      </div>
+                      {dashboardProfile ? <div className="min-w-0">
+                        <dt className="text-xs font-semibold uppercase text-slate-500">Resolved</dt>
+                        <dd className="mt-1 break-words font-semibold text-slate-800">{incident.resolvedAt ?? "Not resolved"}</dd>
+                      </div> : null}
+                      {dashboardProfile && incident.sourceRecordType ? <div className="min-w-0">
+                        <dt className="text-xs font-semibold uppercase text-slate-500">Source context</dt>
+                        <dd className="mt-1 break-words font-semibold text-slate-800">{incident.sourceRecordType}</dd>
+                      </div> : null}
                     </dl>
                     <div className="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row">
-                      {sourceHref ? (
+                      {dashboardProfile && incident.sourceRecordType ? (
+                        <span className="inline-flex min-h-10 items-center justify-center rounded-md bg-slate-100 px-3 text-xs font-semibold text-slate-600">
+                          Source: {incident.sourceRecordType}
+                        </span>
+                      ) : sourceHref ? (
                         <ButtonLink href={sourceHref} tone="ghost" className="min-h-10 justify-center sm:w-auto">
                           Open Source
                         </ButtonLink>
                       ) : incident.sourceRecordId ? (
                         <span className="inline-flex min-h-10 items-center justify-center rounded-md bg-slate-100 px-3 text-xs font-semibold text-slate-600">
-                          Source unavailable
+                          Source unavailable in current access
                         </span>
                       ) : null}
                       <ButtonLink
-                        href={`/incidents/${incident.id}`}
+                        href={detailHref(incident.id)}
                         tone="secondary"
-                        className="min-h-10 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100"
+                        className="min-h-11 justify-center font-bold"
                       >
-                        View Incident
+                        Open Incident
                       </ButtonLink>
                     </div>
                   </article>
@@ -540,15 +693,16 @@ export default async function IncidentsPage({
                   <span>Status</span>
                   <span>Severity</span>
                   <span>Owner</span>
-                  <span>Due</span>
-                  <span>Source</span>
+                  <span>{dashboardProfile ? "Due / resolved" : "Due"}</span>
+                  <span>{dashboardProfile ? "Reporter" : "Source"}</span>
                   <span>Action</span>
                 </div>
                 <div className="divide-y divide-slate-100">
                   {paginatedIncidents.map((incident) => {
                     const sourceHref = sourceRecordHref(
                       incident.sourceRecordType,
-                      incident.sourceRecordId
+                      incident.sourceRecordId,
+                      session.permissionCodes
                     );
                     return (
                       <div
@@ -563,6 +717,11 @@ export default async function IncidentsPage({
                             {incident.incidentNumber} /{" "}
                             {incident.category.replaceAll("_", " ").toLowerCase()}
                           </p>
+                          {dashboardProfile && incident.sourceRecordType ? (
+                            <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                              Source: {incident.sourceRecordType}
+                            </p>
+                          ) : null}
                         </div>
                         <p className="font-semibold text-slate-800">{incident.incidentDate}</p>
                         <Badge tone={badgeTone(incident.status)} size="sm">
@@ -576,22 +735,25 @@ export default async function IncidentsPage({
                         </p>
                         <p className="font-semibold text-slate-700">
                           {incident.dueAt ?? "Not set"}
+                          {dashboardProfile ? <span className="mt-1 block text-xs text-slate-500">Resolved: {incident.resolvedAt ?? "Not resolved"}</span> : null}
                         </p>
-                        {sourceHref ? (
+                        {dashboardProfile ? (
+                          <span className="truncate text-xs font-semibold text-slate-700">{incident.reportedByName ?? "Unknown reporter"}</span>
+                        ) : sourceHref ? (
                           <ButtonLink href={sourceHref} tone="ghost" className="ogfi-chip">
                             Source
                           </ButtonLink>
                         ) : incident.sourceRecordId ? (
-                          <Badge tone="neutral">Unavailable</Badge>
+                          <Badge tone="neutral">No access</Badge>
                         ) : (
                           <span className="text-xs font-semibold text-slate-400">None</span>
                         )}
                         <ButtonLink
-                          href={`/incidents/${incident.id}`}
+                          href={detailHref(incident.id)}
                           tone="secondary"
-                          className="min-h-10 justify-center border border-blue-200 bg-blue-50 font-bold !text-blue-800 hover:bg-blue-100"
+                          className="min-h-11 justify-center font-bold"
                         >
-                          View Detail
+                          Open Incident
                         </ButtonLink>
                       </div>
                     );

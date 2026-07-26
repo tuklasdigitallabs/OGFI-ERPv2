@@ -1876,6 +1876,9 @@ describe("projects and operations database-backed authorization boundaries", () 
         () => incidents.correctOperationalIncident(new FormData()),
       ],
       ["incident export", () => incidents.buildIncidentExportRows(session)],
+      ["incident profile page", () => incidents.listIncidentPage(session, {}, {
+        dashboardProfile: "incident-open-v1",
+      })],
       [
         "maintenance create",
         () => maintenance.createMaintenanceTicket(new FormData()),

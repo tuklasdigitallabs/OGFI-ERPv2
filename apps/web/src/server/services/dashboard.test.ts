@@ -1069,7 +1069,7 @@ describe("operational dashboard model", () => {
       ["branch-checklist-reviews", 1, "/branch-operations?dashboard=branch-checklist-reviews-v1"],
       ["food-safety-exceptions", 1, "/food-safety?dashboard=food-safety-exceptions-v1"],
       ["food-safety-reviews", 1, "/food-safety?dashboard=food-safety-reviews-v1"],
-      ["open-operational-incidents", 1, "/incidents"],
+      ["open-operational-incidents", 1, "/incidents?dashboard=incident-open-v1"],
       ["maintenance-follow-up", 1, "/maintenance"]
     ]);
     expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
@@ -1082,6 +1082,12 @@ describe("operational dashboard model", () => {
         "food-safety-reviewed-count"
       ])
     );
+    expect(dashboard.metrics.find(({ id }) => id === "incident-critical-count")?.href)
+      .toBe("/incidents?dashboard=incident-critical-v1");
+    expect(dashboard.metrics.find(({ id }) => id === "incident-pending-review-count")?.href)
+      .toBe("/incidents?dashboard=incident-pending-review-v1");
+    expect(dashboard.metrics.find(({ id }) => id === "incident-overdue-count")?.href)
+      .toBe(`/incidents?dashboard=incident-overdue-v1&asOf=${dashboardOperationalDate(new Date().toISOString())}`);
     expect(dashboard.metrics.map((metric) => metric.id)).toEqual(
       expect.arrayContaining([
         "incident-critical-count",
@@ -1109,7 +1115,7 @@ describe("operational dashboard model", () => {
       ["Checklist exception", "Investigate checklist exception"],
       ["Food safety review", "Review food-safety log"],
       ["Food safety exception", "Acknowledge food-safety deviation"],
-      ["Incident follow-up", "Assign or resolve incident"],
+      ["Incident follow-up", "Review incident follow-up"],
       ["Maintenance follow-up", "Update or complete ticket"]
     ]);
     expect(dashboard.sourceHealth).toEqual(

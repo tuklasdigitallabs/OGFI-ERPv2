@@ -36,7 +36,29 @@ The current implementation provides scoped incident list, create modal, detail v
 - Related source-record navigation without mutating the source record
 - CSV export preserving filters
 
-Future UI expansion should define assignment workflow, terminal reopen, richer audit timeline, source-link correction, and mobile-specific shortcut behavior before implementation.
+### Dashboard-profile mode
+
+- The read-only `incident-open-v1`, `incident-critical-v1`,
+  `incident-pending-review-v1`, and `incident-overdue-v1` destinations are visibly
+  labeled as dashboard-derived Incident views. Critical includes every status and is
+  a historical severity lens; Pending Review is oversight, not assigned work.
+- Profile mode is server-paginated and accepts only a normalized search of no more
+  than 120 characters as an additional narrowing condition. It ignores raw status,
+  severity, and incident-date filters, hides create and ordinary export, and displays
+  a controlled error for invalid or stale profile context.
+- Overdue requires exactly one valid non-future `asOf=YYYY-MM-DD`. Its notice states
+  the due-date cutoff and explains that incident status, resolution, cancellation,
+  and corrected due dates reflect current records; the view is not a historical
+  snapshot. Other profiles reject `asOf`.
+- Profile rows expose only the identity, scope, status, severity, due/resolution,
+  reporter, and owner context needed for triage. Narrative, corrective action,
+  evidence, source-record ID, and audit history remain on independently authorized
+  source detail.
+- Detail, Back, Correct, Resolve, and Cancel navigation preserves canonical profile,
+  bounded search, page, and applicable cutoff context. Visibility of a profile row
+  grants no action authority; each action reauthorizes the current user and record.
+
+Future UI expansion should define assignment workflow, terminal reopen, richer audit timeline, source-link correction, and mobile-specific shortcut behavior before implementation. The current assignment wording must not imply a working assignment command, and `PENDING_REVIEW` must not imply an implemented entry action until those contracts are confirmed.
 
 ## Acceptance Criteria
 

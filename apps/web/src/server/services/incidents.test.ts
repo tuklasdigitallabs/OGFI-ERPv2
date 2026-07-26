@@ -7,9 +7,15 @@ import {
   correctOperationalIncident,
   createOperationalIncident,
   filterIncidents,
+  getIncidentDashboardRead,
   getOperationalIncidentSummary,
+  incidentDashboardProfileHref,
+  incidentDashboardProfilePageHref,
+  incidentDetailHref,
   listIncidentPage,
   listIncidentMyTaskPage,
+  resolveIncidentDashboardRequest,
+  resolveIncidentProfileReturnTo,
   resolveOperationalIncident,
   type OperationalIncidentSummary
 } from "./incidents";
@@ -19,7 +25,8 @@ const mockPrisma = vi.hoisted(() => ({
   operationalIncident: {
     count: vi.fn(),
     findMany: vi.fn(),
-    findFirst: vi.fn()
+    findFirst: vi.fn(),
+    groupBy: vi.fn()
   },
   user: { findMany: vi.fn() },
   auditEvent: { findMany: vi.fn() },
@@ -189,6 +196,173 @@ const session = {
   },
   permissionCodes: [permissions.incidentCreate, permissions.branchOperationsView]
 };
+
+describe("Incident dashboard profiles", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.operationalIncident.count.mockResolvedValue(0);
+    mockPrisma.operationalIncident.findMany.mockResolvedValue([]);
+    mockPrisma.operationalIncident.groupBy.mockResolvedValue([]);
+    mockPrisma.user.findMany.mockResolvedValue([]);
+  });
+
+  it("accepts only the four versioned profiles and validates the overdue cutoff", () => {
+    for (const profile of [
+      "incident-open-v1",
+      "incident-critical-v1",
+      "incident-pending-review-v1"
+    ]) {
+      expect(resolveIncidentDashboardRequest(profile, undefined, undefined, "2026-07-26"))
+        .toEqual({ profile, query: "", asOf: null, error: null });
+    }
+    expect(resolveIncidentDashboardRequest("incident-overdue-v1", " Alarm ", "2026-07-25", "2026-07-26"))
+      .toEqual({ profile: "incident-overdue-v1", query: "alarm", asOf: "2026-07-25", error: null });
+    expect(resolveIncidentDashboardRequest("", undefined, undefined, "2026-07-26").error).toBe("PROFILE_INVALID");
+    expect(resolveIncidentDashboardRequest(["incident-open-v1"], undefined, undefined, "2026-07-26").error).toBe("PROFILE_INVALID");
+    expect(resolveIncidentDashboardRequest("incident-open-v1", ["a"], undefined, "2026-07-26").error).toBe("SEARCH_INVALID");
+    expect(resolveIncidentDashboardRequest("incident-overdue-v1", "x".repeat(121), "2026-07-25", "2026-07-26"))
+      .toMatchObject({ asOf: "2026-07-25", error: "SEARCH_INVALID" });
+    expect(resolveIncidentDashboardRequest("incident-overdue-v1", undefined, undefined, "2026-07-26").error).toBe("AS_OF_REQUIRED");
+    expect(resolveIncidentDashboardRequest("incident-overdue-v1", undefined, "2026-02-30", "2026-07-26").error).toBe("AS_OF_INVALID");
+    expect(resolveIncidentDashboardRequest("incident-overdue-v1", undefined, "2026-07-27", "2026-07-26").error).toBe("AS_OF_FUTURE");
+    expect(resolveIncidentDashboardRequest("incident-open-v1", undefined, "2026-07-25", "2026-07-26").error).toBe("AS_OF_INVALID");
+  });
+
+  it("builds strict canonical profile, pagination, return, and detail URLs", () => {
+    const canonical = incidentDashboardProfilePageHref("incident-overdue-v1", {
+      asOf: "2026-07-25", query: "alarm", page: 2
+    });
+    expect(canonical).toBe("/incidents?dashboard=incident-overdue-v1&asOf=2026-07-25&q=alarm&page=2");
+    expect(incidentDashboardProfileHref("incident-open-v1")).toBe("/incidents?dashboard=incident-open-v1");
+    expect(resolveIncidentProfileReturnTo(canonical)).toBe(canonical);
+    expect(resolveIncidentProfileReturnTo("/incidents?q=alarm&dashboard=incident-open-v1")).toBeNull();
+    expect(resolveIncidentProfileReturnTo("/incidents?dashboard=incident-open-v1&dashboard=incident-critical-v1")).toBeNull();
+    expect(resolveIncidentProfileReturnTo("https://evil.test/incidents?dashboard=incident-open-v1")).toBeNull();
+    expect(incidentDetailHref("incident-1", canonical)).toBe(
+      `/incidents/incident-1?returnTo=${encodeURIComponent(canonical)}`
+    );
+  });
+
+  it("rejects invalid profile inputs before any query", async () => {
+    const cases = [
+      [{ dashboardProfile: "retired" as never }, {}],
+      [{ dashboardProfile: "" as never }, {}],
+      [{ dashboardProfile: "incident-open-v1" as const }, { q: "x".repeat(121) }],
+      [{ dashboardProfile: "incident-overdue-v1" as const }, {}],
+      [{ dashboardProfile: "incident-overdue-v1" as const, asOf: "invalid" }, {}],
+      [{ dashboardProfile: "incident-overdue-v1" as const, asOf: "2999-01-01" }, {}],
+      [{ dashboardProfile: "incident-open-v1" as const, asOf: "2026-07-25" }, {}]
+    ] as const;
+    for (const [input, filters] of cases) {
+      await expect(listIncidentPage(session as never, filters, input)).rejects.toThrow();
+    }
+    expect(mockPrisma.operationalIncident.count).not.toHaveBeenCalled();
+    expect(mockPrisma.operationalIncident.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps profile count/list predicates identical, exact-null scoped, paged, and immune to raw facets", async () => {
+    const nullBrandSession = {
+      ...session,
+      context: { ...session.context, brandId: null, brandName: "All Brands" }
+    };
+    mockPrisma.operationalIncident.count.mockResolvedValueOnce(26);
+    const page = await listIncidentPage(
+      nullBrandSession as never,
+      { status: "CANCELLED", severity: "LOW", incidentDate: "2020-01-01" },
+      { dashboardProfile: "incident-open-v1", page: 2, pageSize: 25 }
+    );
+    const countWhere = mockPrisma.operationalIncident.count.mock.calls[0]![0].where;
+    const listQuery = mockPrisma.operationalIncident.findMany.mock.calls[0]![0];
+    expect(countWhere).toEqual({
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      brandId: null,
+      locationId: session.context.locationId,
+      status: { in: ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"] }
+    });
+    expect(listQuery.where).toEqual(countWhere);
+    expect(listQuery).toMatchObject({ skip: 25, take: 25 });
+    expect(listQuery.select).toEqual(expect.objectContaining({
+      id: true,
+      incidentNumber: true,
+      location: { select: { name: true } },
+      summary: false,
+      correctiveAction: false,
+      evidenceReference: false,
+      sourceRecordId: false
+    }));
+    expect(page).toMatchObject({ page: 2, totalItems: 26, totalPages: 2, dashboardProfile: "incident-open-v1", profileAsOf: null });
+  });
+
+  it("applies each shared profile predicate and actor search projection to both count and rows", async () => {
+    const cases = [
+      ["incident-critical-v1", undefined, { severity: "CRITICAL" }],
+      ["incident-pending-review-v1", undefined, { status: "PENDING_REVIEW" }],
+      ["incident-overdue-v1", "2026-07-25", {
+        dueAt: { lt: new Date("2026-07-25T00:00:00.000Z") }, resolvedAt: null, status: { not: "CANCELLED" }
+      }]
+    ] as const;
+    for (const [dashboardProfile, asOf, predicate] of cases) {
+      vi.clearAllMocks();
+      mockPrisma.operationalIncident.count.mockResolvedValue(0);
+      mockPrisma.operationalIncident.findMany.mockResolvedValue([]);
+      mockPrisma.user.findMany.mockResolvedValue([{ id: "actor-1" }]);
+      await listIncidentPage(session as never, { q: "owner" }, {
+        dashboardProfile,
+        ...(asOf ? { asOf } : {})
+      });
+      const where = mockPrisma.operationalIncident.count.mock.calls[0]![0].where;
+      expect(where).toMatchObject({
+        tenantId: session.context.tenantId, companyId: session.context.companyId,
+        brandId: session.context.brandId, locationId: session.context.locationId,
+        ...predicate
+      });
+      expect(mockPrisma.operationalIncident.findMany.mock.calls[0]![0].where).toEqual(where);
+      expect(where.OR).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ summary: expect.anything() }),
+        expect.objectContaining({ correctiveAction: expect.anything() }),
+        expect.objectContaining({ evidenceReference: expect.anything() }),
+        expect.objectContaining({ sourceRecordId: expect.anything() })
+      ]));
+      expect(mockPrisma.user.findMany.mock.calls[0]![0]).toEqual({
+        where: {
+          tenantId: session.context.tenantId,
+          displayName: { contains: "owner", mode: "insensitive" }
+        },
+        select: { id: true }
+      });
+    }
+  });
+
+  it("captures one operating-date cutoff and preserves base KPI plus profile parity", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-26T01:00:00.000Z"));
+    mockPrisma.operationalIncident.groupBy
+      .mockResolvedValueOnce([{ status: "OPEN", _count: { _all: 2 } }])
+      .mockResolvedValueOnce([{ severity: "CRITICAL", _count: { _all: 3 } }]);
+    mockPrisma.operationalIncident.count
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(1);
+    mockPrisma.operationalIncident.findMany.mockResolvedValueOnce([]);
+    const result = await getIncidentDashboardRead(session as never);
+    expect(result).toMatchObject({
+      overdueAsOf: "2026-07-26", totalIncidents: 10,
+      openIncidents: 2, criticalIncidents: 3, overdueIncidents: 1
+    });
+    expect(mockPrisma.operationalIncident.count.mock.calls.map(([query]) => query.where)).toEqual([
+      expect.objectContaining({ brandId: session.context.brandId }),
+      expect.objectContaining({ status: { in: ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"] } }),
+      expect.objectContaining({ severity: "CRITICAL" }),
+      expect.objectContaining({ dueAt: { lt: new Date("2026-07-26T00:00:00.000Z") }, resolvedAt: null, status: { not: "CANCELLED" } })
+    ]);
+    expect(mockPrisma.operationalIncident.findMany.mock.calls[0]![0].where)
+      .toEqual(mockPrisma.operationalIncident.count.mock.calls[1]![0].where);
+    vi.useRealTimers();
+  });
+});
 
 function incidentFormWithInvalidDueDate() {
   const form = new FormData();
@@ -924,7 +1098,7 @@ describe("Phase 2 incident management foundation", () => {
     expect(detailPageSource).toContain("/branch-operations/${sourceRecordId}");
     expect(detailPageSource).toContain("Source record (read-only reference)");
     expect(detailPageSource).toContain("Open Source Record");
-    expect(detailPageSource).toContain("Source link unavailable");
+    expect(detailPageSource).toContain("Source unavailable in current access");
     expect(detailPageSource).not.toContain("inventoryMovement.create");
   });
 
@@ -959,7 +1133,7 @@ describe("Phase 2 incident management foundation", () => {
     expect(listPageSource).toContain("sourceRecordHref");
     expect(listPageSource).toContain("/branch-operations/${sourceRecordId}");
     expect(listPageSource).toContain("Source");
-    expect(listPageSource).toContain("Unavailable");
+    expect(listPageSource).toContain("Source unavailable in current access");
     expect(listPageSource).toContain("<TaskSheet");
     expect(listPageSource).toContain('title="Log Incident"');
     expect(listPageSource).toContain("createIncidentAction");

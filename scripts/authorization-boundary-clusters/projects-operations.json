@@ -582,6 +582,14 @@
       "status": "COVERED"
     },
     {
+      "surfaceId": "server/services/incidents.ts#listIncidentPage",
+      "classification": "PUBLIC_BOUNDARY",
+      "adapterIds": ["server/services/incidents.ts#listIncidentPage"],
+      "caseIds": ["PROJECT_OPS_RESTAURANT_PERMISSION"],
+      "noMutationControls": ["all-protected-state"],
+      "status": "COVERED"
+    },
+    {
       "surfaceId": "server/services/incidents.ts#correctOperationalIncident",
       "classification": "PUBLIC_BOUNDARY",
       "adapterIds": [

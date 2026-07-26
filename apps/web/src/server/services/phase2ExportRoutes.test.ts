@@ -47,6 +47,7 @@ vi.mock("@/server/services/exportErrors", () => {
     "FOOD_COST_BUSINESS_DATE_INVALID",
     "FOOD_SAFETY_BUSINESS_DATE_INVALID",
     "INCIDENT_FILTER_DATE_INVALID",
+    "INCIDENT_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED",
     "MAINTENANCE_REQUESTED_AT_FILTER_INVALID"
   ]);
   const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -361,6 +362,29 @@ describe("Phase 2 export route contracts", () => {
       });
     }
   );
+
+  it("rejects Incident dashboard-profile exports before building broader ordinary rows", async () => {
+    const response = await incidentsExportGET(
+      request("/incidents/export?dashboard=incident-open-v1")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "INCIDENT_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED"
+    });
+    expect(mockServices.buildIncidentExportRows).not.toHaveBeenCalled();
+    expect(mockServices.logOperationalExportAudit).toHaveBeenNthCalledWith(1, {
+      session,
+      reportId: "incident-corrective-actions",
+      eventType: "report.export_started"
+    });
+    expect(mockServices.logOperationalExportAudit).toHaveBeenNthCalledWith(2, {
+      session,
+      reportId: "incident-corrective-actions",
+      eventType: "report.export_failed",
+      reasonCode: "INCIDENT_DASHBOARD_PROFILE_EXPORT_UNSUPPORTED"
+    });
+  });
 
   it.each(routeCases)(
     "requires an authenticated session before exporting $name",

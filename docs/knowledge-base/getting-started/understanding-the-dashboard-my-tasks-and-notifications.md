@@ -3,7 +3,7 @@
 **Audience / required role:** All operational users, managers, approvers, and project users  
 **Applies to:** Operations Dashboard, My Tasks, My Work, Approval Inbox, and Notifications
 **Related phase/module:** Phase I and Phase 1.5 / Operational Visibility  
-**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Checklist Reviews, Food Safety Exceptions, and Food Safety Reviews drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
+**Last verified against:** implemented action-first Operations Dashboard with per-source observation status, initial controlled My Tasks queue, closed Open Purchase Orders, Open Purchase Requests, Transfer Follow-up, Receiving Follow-up, Checklist Exceptions, Checklist Reviews, Food Safety Exceptions, Food Safety Reviews, and Incident drilldowns, Approval Inbox, project My Work, and scoped in-app notifications
 
 ## Purpose
 
@@ -34,12 +34,13 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 9. Use `Checklist Reviews` to inspect all scoped checklists in `SUBMITTED` or `MANAGER REVIEW`. This is an oversight view, not a list of work personally assigned to you.
 10. Use `Food Safety Exceptions` to inspect affected logs. Its card value counts exception readings across scoped history; the destination reports that value separately from the number of affected logs.
 11. Use `Food Safety Reviews` to inspect all scoped logs in `SUBMITTED` or `EXCEPTION REVIEW`. This is an oversight view, not a list of work personally assigned to you.
-12. Open `Approval Inbox` to review assigned approval decisions.
-13. Open `My Work` for project tasks assigned to you.
-14. Open `Notifications` to review unread or actionable alerts.
-15. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
-16. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
-17. Mark notifications read or archive them after handling the related source record.
+12. Use `Open Incidents`, `Critical incidents`, `Incident review`, or `Incident overdue` to inspect its fixed read-only Incident population. These are overlapping oversight lenses, not totals to add together.
+13. Open `Approval Inbox` to review assigned approval decisions.
+14. Open `My Work` for project tasks assigned to you.
+15. Open `Notifications` to review unread or actionable alerts.
+16. If you are an approver, use `Scan Approvals` to create in-app reminders for due or overdue approvals in your assigned approval queue.
+17. If you are an authorized project manager, use `Scan Reminders` to create in-app reminders for due or overdue project tasks.
+18. Mark notifications read or archive them after handling the related source record.
 
 ## Expected Result
 
@@ -66,6 +67,9 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - `Food Safety Exceptions` opens a read-only profile of logs with exception readings in the selected scope. The dashboard card counts exception readings across scoped history; the destination states both the reading total and affected-log total. The count does not say those readings are currently open or unresolved.
 - `Food Safety Reviews` opens a read-only profile containing all scoped `SUBMITTED` and `EXCEPTION REVIEW` logs. It is not filtered to the current user's personal tasks.
 - Both Food Safety profiles preserve their selected scope and membership while allowing Search to narrow the list. Raw status, log type, or business-date values cannot widen them; create and export controls remain hidden. An invalid or retired profile fails visibly, and log detail preserves the return path to the profile.
+- The four Incident profiles are read-only, selected-scope lenses that may overlap. Open includes `OPEN`, `IN_PROGRESS`, and `PENDING_REVIEW`; Critical includes every critical incident across all statuses, including resolved and cancelled history; Incident Review includes all scoped `PENDING_REVIEW` incidents and is not a personal task queue; Overdue applies its saved due-date cutoff to current records.
+- Incident profile Search is bounded to 120 characters and can only narrow the fixed population. Raw status, severity, or incident-date values cannot redefine it. Create and export are unavailable, unsupported profile context fails visibly, and Incident detail and actions preserve a safe return to the same profile.
+- An Incident overdue link is not a historical snapshot. The due-date cutoff stays fixed in the saved link, while current status, resolution, cancellation, and corrected due dates determine the rows now. An older link offers a route to the current overdue cutoff.
 - Approval Inbox shows records assigned to you or your active approval role.
 - My Work shows project tasks according to project visibility and assignment.
 - Notifications show scoped alerts and links to the related work where available.
@@ -84,6 +88,9 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - Do not compare the `Checklist Exceptions` card value directly with the number of checklist rows: the card counts exception lines, and one checklist can contain more than one exception line.
 - Food Safety dashboard profiles do not grant review, correction, or closure authority. Log detail rechecks current permission, scope, status, actor lineage, and segregation rules before offering an action.
 - Do not compare the `Food Safety Exceptions` card value directly with the number of log rows: the card counts exception readings, and one log can contain more than one exception reading.
+- Incident dashboard profiles do not grant create, correction, resolution, cancellation, assignment, or source-record authority. Incident detail and each command recheck the current permission, exact selected scope, record state, actor lineage, and segregation rules.
+- Do not add Incident card totals together: the same record can belong to several profiles. Critical is an all-status severity-history lens, and Pending Review is oversight rather than assigned work.
+- A related Incident source link is shown only when the user has the corresponding source-module permission, and the source destination reauthorizes access. A hidden or unavailable source link does not change the Incident record.
 - `Today’s work` is a prioritized read-only view. Opening an item does not bypass the source record’s permission, status, or segregation-of-duties checks.
 - `My Tasks` is not a replacement for Approval Inbox or project `My Work`, and it does not yet include every operational source. Its signed page cursor only continues the current queue page; it does not grant access or action authority.
 - My Tasks currently exposes enrolled-module, priority, source-qualified status, and native due buckets (`Overdue`, `Due today`, `Upcoming`, and `No due date`). Due buckets query only Incident and Maintenance native due fields; required dates, business dates, and creation dates are not substituted. Filters remain bound while paging. Arbitrary location and assigned-by filters are not exposed; do not infer those meanings from a task's creator, reporter, opener, or submitter.
@@ -103,6 +110,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 
 - [Review Branch Checklist Dashboard Profiles](../branch-operations/README.md)
 - [Review Food Safety Dashboard Profiles](../food-safety/README.md)
+- [Review Incident Records And Dashboard Profiles](../incidents/README.md)
 - Why can't I see my branch, warehouse, or request?
 - Why can't I approve this request?
 - How to export a report

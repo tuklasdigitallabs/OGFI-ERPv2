@@ -19,6 +19,8 @@ import {
   cancelOperationalIncident,
   correctOperationalIncident,
   getOperationalIncidentSummary,
+  incidentDetailHref,
+  resolveIncidentProfileReturnTo,
   resolveOperationalIncident
 } from "@/server/services/incidents";
 
@@ -35,43 +37,51 @@ const incidentCategories = [
 ] as const;
 const incidentSeverities = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
 
+function formReturnTo(formData: FormData) {
+  const values = formData.getAll("returnTo");
+  return resolveIncidentProfileReturnTo(values.length === 1 ? values[0] : values);
+}
+
 async function resolveOperationalIncidentAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("incidentId"));
+  const returnTo = formReturnTo(formData);
   let incidentId: string;
   try {
     incidentId = await resolveOperationalIncident(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/incidents/${id}`, error));
+    redirect(actionErrorRedirectPath(incidentDetailHref(id, returnTo), error));
   }
-  redirect(`/incidents/${incidentId}`);
+  redirect(incidentDetailHref(incidentId, returnTo));
 }
 
 async function cancelOperationalIncidentAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("incidentId"));
+  const returnTo = formReturnTo(formData);
   let incidentId: string;
   try {
     incidentId = await cancelOperationalIncident(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/incidents/${id}`, error));
+    redirect(actionErrorRedirectPath(incidentDetailHref(id, returnTo), error));
   }
-  redirect(`/incidents/${incidentId}`);
+  redirect(incidentDetailHref(incidentId, returnTo));
 }
 
 async function correctOperationalIncidentAction(formData: FormData) {
   "use server";
 
   const id = String(formData.get("incidentId"));
+  const returnTo = formReturnTo(formData);
   let incidentId: string;
   try {
     incidentId = await correctOperationalIncident(formData);
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/incidents/${id}`, error));
+    redirect(actionErrorRedirectPath(incidentDetailHref(id, returnTo), error));
   }
-  redirect(`/incidents/${incidentId}`);
+  redirect(incidentDetailHref(incidentId, returnTo));
 }
 
 function badgeTone(status: string, severity?: string) {
@@ -87,17 +97,30 @@ function badgeTone(status: string, severity?: string) {
   return "info" as const;
 }
 
-function sourceRecordHref(sourceRecordType: string | null, sourceRecordId: string | null) {
+function sourceRecordHref(
+  sourceRecordType: string | null,
+  sourceRecordId: string | null,
+  permissionCodes: string[]
+) {
   if (!sourceRecordId) {
     return null;
   }
-  if (sourceRecordType === "BranchOperationalChecklist") {
+  if (
+    sourceRecordType === "BranchOperationalChecklist" &&
+    permissionCodes.includes(permissions.branchOperationsView)
+  ) {
     return `/branch-operations/${sourceRecordId}`;
   }
-  if (sourceRecordType === "FoodSafetyLog") {
+  if (
+    sourceRecordType === "FoodSafetyLog" &&
+    permissionCodes.includes(permissions.foodSafetyView)
+  ) {
     return `/food-safety/${sourceRecordId}`;
   }
-  if (sourceRecordType === "MaintenanceTicket") {
+  if (
+    sourceRecordType === "MaintenanceTicket" &&
+    permissionCodes.includes(permissions.maintenanceView)
+  ) {
     return `/maintenance/${sourceRecordId}`;
   }
   return null;
@@ -132,10 +155,13 @@ export default async function IncidentDetailPage({
     session.permissionCodes.includes(permissions.incidentCreate) &&
     ["OPEN", "IN_PROGRESS", "PENDING_REVIEW"].includes(incident.status);
   const today = new Date().toISOString().slice(0, 10);
-  const actionFeedback = getActionFeedback(searchParams ? await searchParams : {});
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const returnTo = resolveIncidentProfileReturnTo(resolvedSearchParams.returnTo);
+  const actionFeedback = getActionFeedback(resolvedSearchParams);
   const sourceHref = sourceRecordHref(
     incident.sourceRecordType,
-    incident.sourceRecordId
+    incident.sourceRecordId,
+    session.permissionCodes
   );
 
   return (
@@ -147,7 +173,7 @@ export default async function IncidentDetailPage({
     >
       <ActionFeedbackBanner feedback={actionFeedback} />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <ButtonLink href="/incidents" tone="ghost" className="ogfi-chip">
+        <ButtonLink href={returnTo ?? "/incidents"} tone="ghost" className="ogfi-chip min-h-11">
           <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           Back to Incidents
         </ButtonLink>
@@ -180,10 +206,11 @@ export default async function IncidentDetailPage({
                 id="correct-incident"
               >
                 <input name="incidentId" type="hidden" value={incident.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Incident date
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={incident.incidentDate}
                     name="incidentDate"
                     required
@@ -193,7 +220,7 @@ export default async function IncidentDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Due date
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={incident.dueAt ?? ""}
                     name="dueAt"
                     type="date"
@@ -202,7 +229,7 @@ export default async function IncidentDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Category
                   <select
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={incident.category}
                     name="category"
                     required
@@ -217,7 +244,7 @@ export default async function IncidentDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Severity
                   <select
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={incident.severity}
                     name="severity"
                     required
@@ -232,7 +259,7 @@ export default async function IncidentDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700 md:col-span-2">
                   Title
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={incident.title}
                     maxLength={160}
                     name="title"
@@ -252,7 +279,7 @@ export default async function IncidentDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Evidence reference
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={incident.evidenceReference ?? ""}
                     maxLength={255}
                     name="evidenceReference"
@@ -261,7 +288,7 @@ export default async function IncidentDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Correction evidence
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     maxLength={255}
                     name="correctionEvidenceReference"
                     placeholder="Optional reference for this correction"
@@ -296,10 +323,11 @@ export default async function IncidentDetailPage({
                 className="ogfi-form-shell mt-4 grid gap-3 md:grid-cols-2"
               >
                 <input name="incidentId" type="hidden" value={incident.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Resolution date
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={today}
                     name="resolvedAt"
                     required
@@ -309,7 +337,7 @@ export default async function IncidentDetailPage({
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Evidence reference
                   <input
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
+                    className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950"
                     defaultValue={incident.evidenceReference ?? ""}
                     name="evidenceReference"
                     placeholder="Photo, report, or file reference"
@@ -327,7 +355,7 @@ export default async function IncidentDetailPage({
                     required
                   />
                 </label>
-                <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 md:col-span-2">
+                <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 md:col-span-2">
                   <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                   Resolve Incident
                 </button>
@@ -341,6 +369,7 @@ export default async function IncidentDetailPage({
                 className="ogfi-form-shell mt-4 grid gap-3"
               >
                 <input name="incidentId" type="hidden" value={incident.id} />
+                {returnTo ? <input name="returnTo" type="hidden" value={returnTo} /> : null}
                 <label className="grid gap-1 text-sm font-medium text-slate-700">
                   Cancellation reason
                   <textarea
@@ -351,7 +380,7 @@ export default async function IncidentDetailPage({
                     required
                   />
                 </label>
-                <button className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 hover:bg-red-100">
+                <button className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-700 hover:bg-red-100">
                   <XCircle aria-hidden="true" className="h-4 w-4" />
                   Cancel Incident
                 </button>
@@ -431,7 +460,7 @@ export default async function IncidentDetailPage({
                     Open Source Record
                   </ButtonLink>
                 ) : incident.sourceRecordId ? (
-                  <Badge tone="neutral">Source link unavailable</Badge>
+                  <Badge tone="neutral">Source unavailable in current access</Badge>
                 ) : null}
               </Panel>
               <Panel className="border border-slate-200 bg-slate-50 shadow-none">

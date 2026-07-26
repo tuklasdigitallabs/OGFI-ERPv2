@@ -1,7 +1,7 @@
 # OGFI ERP — Phase II Workflow: Incident Management
 
 **Status:** Controlled incident create, correction, resolve, cancel, dashboard, detail, and export slice implemented
-**Purpose:** Log, assign, investigate, resolve and verify restaurant operational incidents.
+**Purpose:** Log, investigate, resolve and verify restaurant operational incidents.
 
 ## Business Outcome
 
@@ -37,6 +37,30 @@ Non-terminal detail correction keeps the current status and records correction r
 9. Desktop detail/list actions with source-record navigation
 10. Reports and UAT scenarios for create, correct, resolve, cancel, filter, and export
 
+### Dashboard profile boundary
+
+`DEC-0228` adds four read-only, incident-record dashboard destinations. Open contains
+`OPEN`, `IN_PROGRESS`, and `PENDING_REVIEW`. Critical includes every `CRITICAL`
+incident across all statuses as a retained severity-history lens. Pending Review is
+the complete scoped `PENDING_REVIEW` oversight population and does not imply assigned
+or actor-actionable work. Overdue uses a captured operating-date cutoff and includes
+records with `dueAt` before that date, `resolvedAt` null, and status other than
+`CANCELLED`.
+
+All four profiles use exact session tenant, selected company, nullable selected
+brand, and selected location scope. Their populations may overlap and must not be
+added together. A bounded search may only narrow membership. Raw status, severity,
+and incident-date inputs cannot redefine it; invalid profile or cutoff parameters
+fail before data access. The overdue cutoff is stable for the opened link, but the
+rows reflect current Incident records rather than a historical snapshot.
+
+Profile mode grants no create, export, correction, resolve, cancel, or assignment
+authority. Create and ordinary export are unavailable from the profile, and direct
+profile-export requests fail. Detail and command paths independently reauthorize the
+live actor, record, status, and exact scope while preserving only canonical return
+context. Profile lists exclude narrative, corrective action, evidence, source-record
+ID, and audit detail; those remain controlled by the source detail boundary.
+
 ## Non-Negotiable Controls
 
 - No user may act outside assigned scope.
@@ -53,4 +77,11 @@ reauthorized by the Incident source service.
 
 ## Open Decisions
 
-Use `../implementation/PHASE2_DECISION_REGISTER.md` for future expansion such as assignment workflow, terminal reopen, source-link correction after creation, escalation routes, or approval-backed incident closure.
+Use `../implementation/PHASE2_DECISION_REGISTER.md` and the core open-decision
+register for future expansion. Before an Incident production-readiness claim, owners
+must reconcile the documented and implemented correction permission, define a
+supported transition into `PENDING_REVIEW` if that state remains operative, define
+assignment authority/commands before describing incidents as assigned, and confirm
+or enforce the invariant between terminal status and `resolvedAt`. Terminal reopen,
+source-link correction after creation, escalation routes, and approval-backed
+incident closure also remain future decisions.
