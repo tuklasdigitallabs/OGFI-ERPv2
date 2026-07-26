@@ -505,14 +505,6 @@ function countRecords<T>(
   return records?.filter(predicate).length ?? 0;
 }
 
-function currency(value: number, currencyCode = "PHP") {
-  return new Intl.NumberFormat("en-PH", {
-    style: "currency",
-    currency: currencyCode,
-    maximumFractionDigits: 0
-  }).format(value);
-}
-
 function number(value: number) {
   return new Intl.NumberFormat("en-PH", {
     maximumFractionDigits: 0
@@ -528,11 +520,6 @@ export function buildOperationalDashboardModel(
   const stockHealth: DashboardMetric[] = [];
   const sourceHealth: DashboardMetric[] = [];
   const exceptionQueue: DashboardQueueItemDraft[] = [];
-  const primaryCurrency =
-    source.purchaseOrderDashboard?.primaryCurrency ??
-    source.purchaseOrders?.find((order) => order.currencyCode)?.currencyCode ??
-    "PHP";
-
   if (source.approvals) {
     cards.push({
       id: "pending-approvals",
@@ -563,24 +550,6 @@ export function buildOperationalDashboardModel(
     const value = source.purchaseOrderDashboard
       ? source.purchaseOrderDashboard.openCount
       : countByStatus(purchaseOrders, purchaseOrderOpenStatuses);
-    const committedValue = source.purchaseOrderDashboard
-      ? source.purchaseOrderDashboard.committedValue
-      : purchaseOrders.reduce(
-      (total, order) => total + order.totalAmount,
-      0
-    );
-    const openValue = source.purchaseOrderDashboard
-      ? source.purchaseOrderDashboard.openValue
-      : purchaseOrders.reduce(
-      (total, order) => total + order.openValue,
-      0
-    );
-    const receivedValue = source.purchaseOrderDashboard
-      ? source.purchaseOrderDashboard.receivedValue
-      : purchaseOrders.reduce(
-      (total, order) => total + order.receivedValue,
-      0
-    );
     cards.push({
       id: "open-purchase-orders",
       label: "Open POs",
@@ -589,33 +558,6 @@ export function buildOperationalDashboardModel(
       description: "Approval, issue, and receiving pipeline",
       tone: cardTone(value)
     });
-    metrics.push(
-      {
-        id: "po-commitment-value",
-        label: "PO commitment",
-        displayValue: currency(committedValue, primaryCurrency),
-        detail: "Approved/draft PO value in selected scope",
-        href: "/purchase-orders",
-        tone: committedValue > 0 ? "info" : "neutral"
-      },
-      {
-        id: "open-po-exposure",
-        label: "Open PO exposure",
-        displayValue: currency(openValue, primaryCurrency),
-        detail: "Remaining value not yet received or closed",
-        href: "/purchase-orders",
-        tone: openValue > 0 ? "warning" : "success"
-      },
-      {
-        id: "received-po-value",
-        label: "Received value",
-        displayValue: currency(receivedValue, primaryCurrency),
-        detail: "PO value already received into operations",
-        href: "/receiving",
-        tone: receivedValue > 0 ? "success" : "neutral"
-      }
-    );
-
     const overdueOrders = source.purchaseOrderDashboard
       ? source.purchaseOrderDashboard.overdueCandidates
       : purchaseOrders.filter(

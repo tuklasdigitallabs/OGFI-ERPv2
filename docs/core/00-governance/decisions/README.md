@@ -175,3 +175,4 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0232-ZERO-STOCK-DASHBOARD-PROFILE.md` — closed existing-balance-row zero-stock profile with truthful row grain, exact dashboard/list/export parity, and bounded no-truncation export
 - `DEC-0233-LOT-EXPIRY-DATA-DASHBOARD-PROFILE.md` — closed lot-or-expiry data-presence profile with trim-aware row membership, static parameterized SQL, bounded export, and no compliance claim
 - `DEC-0234-SUPPRESS-BALANCE-CACHE-RECENCY-SIGNAL.md` — suppression of unauthoritative InventoryBalance cache recency pending a separately approved immutable-movement profile
+- `DEC-0235-SUPPRESS-PO-DASHBOARD-MONETARY-SIGNALS.md` — suppression of unauthoritative PO commitment/exposure/received-value signals while preserving open-count and overdue follow-up

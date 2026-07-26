@@ -75,6 +75,14 @@ The UI must make the next action obvious and keep the following visible at all t
 - Open quotation comparison
 - Create / review PO based on permission
 
+The Overview purchasing summary retains open-PO count/profile navigation and overdue
+delivery follow-up. Under `DEC-0235`, it does not display `PO commitment`, `Open PO
+exposure`, or `Received value`: the removed broad rollups mixed lifecycle, header/
+line basis, cancellation-subtype remainder, relation snapshot, and currency meaning.
+No replacement monetary KPI is approved. Authorized PO detail and source reports
+continue to display their scoped monetary fields without becoming an Overview
+aggregate reconciliation.
+
 ---
 
 ## 4. PUR-02 Purchase Request List

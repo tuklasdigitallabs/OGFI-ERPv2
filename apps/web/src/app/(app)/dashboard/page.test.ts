@@ -117,3 +117,14 @@ describe("DEC-0234 stock balance signal suppression", () => {
     expect(source).not.toContain("Updated this week");
   });
 });
+
+describe("DEC-0235 PO monetary signal suppression", () => {
+  it("does not retain monetary card icon registrations or labels", () => {
+    expect(source).not.toContain('"po-commitment-value"');
+    expect(source).not.toContain('"open-po-exposure"');
+    expect(source).not.toContain('"received-po-value"');
+    expect(source).not.toContain("PO commitment");
+    expect(source).not.toContain("Open PO exposure");
+    expect(source).not.toContain("Received value");
+  });
+});

@@ -5,11 +5,9 @@ import {
   Bell,
   Boxes,
   Building2,
-  CircleDollarSign,
   ClipboardCheck,
   Database,
   FileText,
-  PackageCheck,
   ShieldCheck,
   TriangleAlert,
   Utensils,
@@ -30,9 +28,6 @@ import { formatDashboardCheckedAt } from "./sourceObservation";
 export const dynamic = "force-dynamic";
 
 const metricIcons = {
-  "po-commitment-value": CircleDollarSign,
-  "open-po-exposure": AlertTriangle,
-  "received-po-value": PackageCheck,
   "stocked-items": Boxes,
   "active-stock-rows": Boxes,
   "zero-stock-rows": AlertTriangle,
@@ -850,10 +845,10 @@ function DashboardReports({
       available: dashboard.stockHealth.length > 0
     },
     {
-      title: "Purchase Order Exposure",
-      detail: "PO commitments, open value, receiving progress, and overdue supplier deliveries.",
+      title: "Purchase Order Register",
+      detail: "Open the source workspace to review purchase orders by record, status, and currency.",
       href: "/purchase-orders",
-      available: dashboard.metrics.some((metric) => metric.id.includes("po"))
+      sourceWorkspace: true
     },
     {
       title: "Receiving Follow-up",
@@ -1093,7 +1088,7 @@ export default async function DashboardPage({
     <AppShell
       session={session}
       title="Company Overview"
-      subtitle="Operational performance, stock health, commitments, and control exceptions"
+      subtitle="Operational performance, stock health, and control exceptions"
       activeNav="dashboard"
     >
       <section className="ogfi-dashboard-hero mb-6 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white shadow-sm">

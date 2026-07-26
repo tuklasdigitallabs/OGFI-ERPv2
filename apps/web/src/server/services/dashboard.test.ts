@@ -232,6 +232,13 @@ describe("operational dashboard model", () => {
     expect(dashboard.stockHealth).not.toContainEqual(expect.objectContaining({
       id: "recent-stock-updates"
     }));
+    for (const id of [
+      "po-commitment-value",
+      "open-po-exposure",
+      "received-po-value"
+    ]) {
+      expect(dashboard.metrics).not.toContainEqual(expect.objectContaining({ id }));
+    }
     expect(dashboard.sourceObservations[0]).toMatchObject({
       id: "inventory-balances",
       availability: "AVAILABLE"

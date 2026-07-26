@@ -58,14 +58,8 @@ const session = {
 };
 
 describe("bounded operational dashboard reads", () => {
-  it("uses scoped PO aggregates, narrow fulfillment values, and a bounded overdue preview", async () => {
+  it("uses the closed open-PO count and a bounded overdue preview without broad money rollups", async () => {
     mockPrisma.purchaseOrder.count.mockResolvedValue(4);
-    mockPrisma.purchaseOrder.aggregate.mockResolvedValue({
-      _sum: { totalAmount: 1200 },
-    });
-    mockPrisma.purchaseOrderLine.findMany.mockResolvedValue([
-      { orderedQty: 10, receivedQty: 4, cancelledQty: 1, unitPrice: 100 },
-    ]);
     mockPrisma.purchaseOrder.findMany.mockResolvedValue([
       {
         id: "po-1",
@@ -75,14 +69,10 @@ describe("bounded operational dashboard reads", () => {
         supplier: { legalName: "Demo Supplier", tradingName: null },
       },
     ]);
-    mockPrisma.purchaseOrder.findFirst.mockResolvedValue({ currencyCode: "PHP" });
 
     await expect(getPurchaseOrderDashboardRead(session as never)).resolves.toEqual(
       expect.objectContaining({
         openCount: 4,
-        committedValue: 1200,
-        openValue: 500,
-        receivedValue: 400,
         overdueCandidates: [expect.objectContaining({ id: "po-1" })],
       }),
     );
@@ -99,6 +89,9 @@ describe("bounded operational dashboard reads", () => {
         select: expect.not.objectContaining({ lines: expect.anything() }),
       }),
     );
+    expect(mockPrisma.purchaseOrder.aggregate).not.toHaveBeenCalled();
+    expect(mockPrisma.purchaseOrderLine.findMany).not.toHaveBeenCalled();
+    expect(mockPrisma.purchaseOrder.findFirst).not.toHaveBeenCalled();
   });
 
   it("uses an exact scoped count and bounded header-only purchase-request candidates", async () => {

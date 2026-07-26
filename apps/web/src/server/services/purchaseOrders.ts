@@ -739,10 +739,6 @@ async function requirePurchaseOrderRead(session: SessionContext) {
 
 export type PurchaseOrderDashboardRead = {
   openCount: number;
-  committedValue: number;
-  openValue: number;
-  receivedValue: number;
-  primaryCurrency: string | null;
   overdueCandidates: Array<{
     id: string;
     publicReference: string;
@@ -839,23 +835,9 @@ export async function getPurchaseOrderDashboardRead(
   const scope = purchaseOrderScope(session);
   const today = new Date().toISOString().slice(0, 10);
   const todayStart = new Date(`${today}T00:00:00.000Z`);
-  const [openCount, commitment, fulfillmentLines, overdueOrders, currencyOrder] =
-    await Promise.all([
+  const [openCount, overdueOrders] = await Promise.all([
       prisma.purchaseOrder.count({
         where: purchaseOrderListWhere(session, {}, "po-open-v1"),
-      }),
-      prisma.purchaseOrder.aggregate({
-        where: scope,
-        _sum: { totalAmount: true },
-      }),
-      prisma.purchaseOrderLine.findMany({
-        where: { purchaseOrder: scope },
-        select: {
-          orderedQty: true,
-          receivedQty: true,
-          cancelledQty: true,
-          unitPrice: true,
-        },
       }),
       prisma.purchaseOrder.findMany({
         where: {
@@ -873,20 +855,10 @@ export async function getPurchaseOrderDashboardRead(
         orderBy: [{ expectedDeliveryDate: "asc" }, { id: "asc" }],
         take: 8,
       }),
-      prisma.purchaseOrder.findFirst({
-        where: scope,
-        select: { currencyCode: true },
-        orderBy: { createdAt: "desc" },
-      }),
     ]);
-  const fulfillment = summarizePurchaseOrderFulfillment(fulfillmentLines);
 
   return {
     openCount,
-    committedValue: Number(commitment._sum.totalAmount ?? 0),
-    openValue: fulfillment.openValue,
-    receivedValue: fulfillment.receivedValue,
-    primaryCurrency: currencyOrder?.currencyCode ?? null,
     overdueCandidates: overdueOrders.map((order) => ({
       id: order.id,
       publicReference: order.publicReference,
