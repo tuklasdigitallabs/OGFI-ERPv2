@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { permissions } from "./authorization";
 import {
   decodeMyTasksCursor,
   encodeMyTasksCursor,
+  getMyTasksSourceDeadlineMs,
+  getMyTasksSourceMaxInFlight,
   getMyTasksPage,
-  myTasksRegistryVersion
+  myTasksRegistryVersion,
+  MyTasksSourceAdmissionController,
+  type MyTasksTelemetryEvent,
+  myTasksRuntimeTestSupport
 } from "./myTasks";
 
 const mocks = vi.hoisted(() => ({
@@ -116,6 +121,196 @@ describe("My Tasks queue", () => {
       nextCursor: null,
       items: [{ taskId: "stock-count-sc1", recordId: "sc1", publicReference: "SC-1", status: "IN_PROGRESS", actionLabel: "Submit stock count", createdAt: "2026-07-22T04:00:00.000Z" }]
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("validates bounded source deployment configuration", () => {
+    expect(getMyTasksSourceDeadlineMs({})).toBe(2_500);
+    expect(getMyTasksSourceDeadlineMs({ MY_TASKS_SOURCE_DEADLINE_MS: "3000" }))
+      .toBe(3_000);
+    expect(() =>
+      getMyTasksSourceDeadlineMs({ MY_TASKS_SOURCE_DEADLINE_MS: "3001" })
+    ).toThrow("MY_TASKS_SOURCE_DEADLINE_MS_INVALID");
+    expect(() =>
+      getMyTasksSourceDeadlineMs({ MY_TASKS_SOURCE_DEADLINE_MS: "invalid" })
+    ).toThrow("MY_TASKS_SOURCE_DEADLINE_MS_INVALID");
+    expect(getMyTasksSourceMaxInFlight({})).toBe(32);
+    expect(getMyTasksSourceMaxInFlight({ MY_TASKS_SOURCE_MAX_IN_FLIGHT: "64" }))
+      .toBe(64);
+    expect(() =>
+      getMyTasksSourceMaxInFlight({ MY_TASKS_SOURCE_MAX_IN_FLIGHT: "65" })
+    ).toThrow("MY_TASKS_SOURCE_MAX_IN_FLIGHT_INVALID");
+    expect(() => new MyTasksSourceAdmissionController(0))
+      .toThrow("MY_TASKS_SOURCE_MAX_IN_FLIGHT_INVALID");
+  });
+
+  test("returns a named partial page when one source never settles", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-26T00:00:00.000Z"));
+    mocks.wastage.mockImplementationOnce(() => new Promise<never>(() => undefined));
+    const events: MyTasksTelemetryEvent[] = [];
+    const pending = myTasksRuntimeTestSupport.getMyTasksPageWithRuntime(
+      session as never,
+      { pageSize: 2 },
+      {
+        deadlineMs: 100,
+        admissionController: new MyTasksSourceAdmissionController(3),
+        telemetry: (event) => events.push(event)
+      }
+    );
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(pending).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ sourceType: "TRANSFER" }),
+        expect.objectContaining({ sourceType: "STOCK_ADJUSTMENT" })
+      ]),
+      totalCount: null,
+      nextCursor: null,
+      isComplete: false,
+      unavailableSources: [{ type: "WASTAGE", label: "Wastage" }]
+    });
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        event: "my_tasks_source_read",
+        outcome: "TIMEOUT",
+        sourceType: "WASTAGE"
+      }),
+      expect.objectContaining({
+        event: "my_tasks_assembly",
+        outcome: "PARTIAL",
+        attemptedSourceCount: 3,
+        unavailableSourceCount: 1
+      })
+    ]));
+  });
+
+  test("retains timed-out capacity until late fulfillment and rejects saturated reads", async () => {
+    vi.useFakeTimers();
+    let resolveTransfer: (() => void) | undefined;
+    mocks.transfers.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveTransfer = () => resolve({ totalCount: 0, nextCursor: null, items: [] });
+    }));
+    const admissionController = new MyTasksSourceAdmissionController(1);
+    const events: MyTasksTelemetryEvent[] = [];
+    const first = myTasksRuntimeTestSupport.getMyTasksPageWithRuntime(
+      session as never,
+      { module: "TRANSFER" },
+      { deadlineMs: 100, admissionController, telemetry: (event) => events.push(event) }
+    );
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(100);
+    await first;
+    expect(admissionController.inFlight).toBe(1);
+
+    const saturated = await myTasksRuntimeTestSupport.getMyTasksPageWithRuntime(
+      session as never,
+      { module: "WASTAGE" },
+      { deadlineMs: 100, admissionController, telemetry: (event) => events.push(event) }
+    );
+    expect(saturated).toMatchObject({
+      totalCount: null,
+      nextCursor: null,
+      isComplete: false,
+      unavailableSources: [{ type: "WASTAGE" }]
+    });
+    expect(mocks.wastage).not.toHaveBeenCalled();
+    expect(events).toContainEqual(expect.objectContaining({
+      event: "my_tasks_source_read",
+      outcome: "SATURATED",
+      sourceType: "WASTAGE"
+    }));
+
+    expect(resolveTransfer).toEqual(expect.any(Function));
+    resolveTransfer!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(admissionController.inFlight).toBe(0);
+    expect(events).toContainEqual(expect.objectContaining({
+      event: "my_tasks_source_read",
+      outcome: "LATE_COMPLETION",
+      sourceType: "TRANSFER"
+    }));
+  });
+
+  test("observes late rejection without leaking errors or changing the partial page", async () => {
+    vi.useFakeTimers();
+    let rejectWastage: ((error: Error) => void) | undefined;
+    mocks.wastage.mockImplementationOnce(() => new Promise((_, reject) => {
+      rejectWastage = reject;
+    }));
+    const admissionController = new MyTasksSourceAdmissionController(1);
+    const events: MyTasksTelemetryEvent[] = [];
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const pending = myTasksRuntimeTestSupport.getMyTasksPageWithRuntime(
+        { ...session, permissionCodes: [permissions.wastageReview] } as never,
+        { module: "WASTAGE" },
+        { deadlineMs: 100, admissionController, telemetry: (event) => events.push(event) }
+      );
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(100);
+      const page = await pending;
+      expect(page).toMatchObject({
+        items: [],
+        totalCount: null,
+        nextCursor: null,
+        isComplete: false
+      });
+
+      expect(rejectWastage).toEqual(expect.any(Function));
+      rejectWastage!(new Error("postgres://secret@internal"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(admissionController.inFlight).toBe(0);
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(events).toContainEqual(expect.objectContaining({
+        event: "my_tasks_source_read",
+        outcome: "LATE_COMPLETION",
+        sourceType: "WASTAGE"
+      }));
+      expect(JSON.stringify(events)).not.toContain("secret");
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
+  test("emits redacted exception and assembly telemetry for only the selected module", async () => {
+    const events: MyTasksTelemetryEvent[] = [];
+    const admissionController = new MyTasksSourceAdmissionController(1);
+    mocks.wastage.mockRejectedValueOnce(new Error("database password must stay private"));
+
+    await expect(myTasksRuntimeTestSupport.getMyTasksPageWithRuntime(
+      session as never,
+      { module: "WASTAGE" },
+      {
+        deadlineMs: 100,
+        admissionController,
+        telemetry: (event) => events.push(event)
+      }
+    )).resolves.toMatchObject({ isComplete: false, totalCount: null, nextCursor: null });
+
+    expect(mocks.transfers).not.toHaveBeenCalled();
+    expect(mocks.adjustments).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      expect.objectContaining({
+        event: "my_tasks_source_read",
+        outcome: "EXCEPTION",
+        sourceType: "WASTAGE"
+      }),
+      expect.objectContaining({
+        event: "my_tasks_assembly",
+        outcome: "PARTIAL",
+        attemptedSourceCount: 1,
+        unavailableSourceCount: 1
+      })
+    ]);
+    expect(JSON.stringify(events)).not.toContain("password");
+    expect(JSON.stringify(events)).not.toContain(session.user.email);
+    expect(admissionController.inFlight).toBe(0);
   });
 
   test("merges enrolled sources in the shared stable order", async () => {

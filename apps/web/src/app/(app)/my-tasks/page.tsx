@@ -171,10 +171,20 @@ export default async function MyTasksPage({
 
         {page.items.length === 0 ? (
           <Panel className="p-8 text-center">
-            <CheckCircle2 aria-hidden="true" className="mx-auto h-8 w-8 text-emerald-600" />
-            <h3 className="mt-3 font-bold text-slate-950">No enrolled actions need you right now</h3>
+            {page.isComplete ? (
+              <CheckCircle2 aria-hidden="true" className="mx-auto h-8 w-8 text-emerald-600" />
+            ) : (
+              <AlertTriangle aria-hidden="true" className="mx-auto h-8 w-8 text-amber-600" />
+            )}
+            <h3 className="mt-3 font-bold text-slate-950">
+              {page.isComplete
+                ? "No enrolled actions need you right now"
+                : "No actions shown from available sources"}
+            </h3>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-              Your queue only shows controls you are authorized to complete in the selected location. Check the relevant source workspace for other operational work.
+              {page.isComplete
+                ? "Your queue only shows controls you are authorized to complete in the selected location. Check the relevant source workspace for other operational work."
+                : "One or more enrolled sources did not complete, so this is not confirmation that no work is waiting. Reload page one after those sources recover."}
             </p>
           </Panel>
         ) : (

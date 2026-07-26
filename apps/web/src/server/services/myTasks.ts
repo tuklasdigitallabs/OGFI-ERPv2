@@ -42,6 +42,10 @@ export const myTasksRegistryVersion = "my-tasks-registry-v6";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
 const defaultPageSize = 20;
 const maxPageSize = 25;
+const defaultMyTasksSourceDeadlineMs = 2_500;
+const maximumMyTasksSourceDeadlineMs = 3_000;
+const defaultMyTasksSourceMaxInFlight = 32;
+const maximumMyTasksSourceMaxInFlight = 64;
 
 type MyTasksCursorPayload = {
   version: 2;
@@ -69,6 +73,89 @@ export type MyTasksPage = {
   isComplete: boolean;
   enrolledSources: Array<{ type: DashboardTaskSource; label: string }>;
   unavailableSources: Array<{ type: DashboardTaskSource; label: string }>;
+};
+
+export function getMyTasksSourceDeadlineMs(
+  environment: Record<string, string | undefined> = process.env
+) {
+  const raw = environment.MY_TASKS_SOURCE_DEADLINE_MS?.trim();
+  const value = raw ? Number(raw) : defaultMyTasksSourceDeadlineMs;
+  if (!Number.isInteger(value) || value < 1 || value > maximumMyTasksSourceDeadlineMs) {
+    throw new Error("MY_TASKS_SOURCE_DEADLINE_MS_INVALID");
+  }
+  return value;
+}
+
+export function getMyTasksSourceMaxInFlight(
+  environment: Record<string, string | undefined> = process.env
+) {
+  const raw = environment.MY_TASKS_SOURCE_MAX_IN_FLIGHT?.trim();
+  const value = raw ? Number(raw) : defaultMyTasksSourceMaxInFlight;
+  if (
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > maximumMyTasksSourceMaxInFlight
+  ) {
+    throw new Error("MY_TASKS_SOURCE_MAX_IN_FLIGHT_INVALID");
+  }
+  return value;
+}
+
+export class MyTasksSourceAdmissionController {
+  private activeReads = 0;
+
+  constructor(readonly maximumInFlight: number) {
+    if (
+      !Number.isInteger(maximumInFlight) ||
+      maximumInFlight < 1 ||
+      maximumInFlight > maximumMyTasksSourceMaxInFlight
+    ) {
+      throw new Error("MY_TASKS_SOURCE_MAX_IN_FLIGHT_INVALID");
+    }
+  }
+
+  get inFlight() {
+    return this.activeReads;
+  }
+
+  tryAcquire() {
+    if (this.activeReads >= this.maximumInFlight) return null;
+    this.activeReads += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeReads -= 1;
+    };
+  }
+}
+
+export type MyTasksTelemetryEvent =
+  | {
+      event: "my_tasks_source_read";
+      outcome: "EXCEPTION" | "TIMEOUT" | "LATE_COMPLETION" | "SATURATED";
+      sourceType: DashboardTaskSource;
+      observedAt: string;
+      durationMs: number;
+    }
+  | {
+      event: "my_tasks_assembly";
+      outcome: "COMPLETE" | "PARTIAL";
+      assembledAt: string;
+      durationMs: number;
+      attemptedSourceCount: number;
+      unavailableSourceCount: number;
+    };
+
+export type MyTasksTelemetryEmitter = (event: MyTasksTelemetryEvent) => void;
+
+export const emitMyTasksTelemetry: MyTasksTelemetryEmitter = (event) => {
+  const message = JSON.stringify(event);
+  if (event.event === "my_tasks_source_read") {
+    console.warn(message);
+  } else {
+    console.info(message);
+  }
 };
 
 function taskScopeHash(session: SessionContext, module?: DashboardTaskSource, filter?: DashboardTaskFilter) {
@@ -207,6 +294,113 @@ type EnrolledSource = {
     items: MyTask[];
   }>;
 };
+
+type MyTasksSourceSettlement =
+  | {
+      status: "fulfilled";
+      source: EnrolledSource;
+      page: Awaited<ReturnType<EnrolledSource["read"]>>;
+    }
+  | {
+      status: "unavailable";
+      source: EnrolledSource;
+    };
+
+type MyTasksRuntime = {
+  deadlineMs: number;
+  admissionController: MyTasksSourceAdmissionController;
+  telemetry: MyTasksTelemetryEmitter;
+};
+
+const myTasksSourceAdmissionController = new MyTasksSourceAdmissionController(
+  getMyTasksSourceMaxInFlight()
+);
+
+async function settleMyTasksSource(
+  source: EnrolledSource,
+  after: DashboardTaskCursor | undefined,
+  take: number,
+  filter: DashboardTaskFilter,
+  runtime: MyTasksRuntime
+): Promise<MyTasksSourceSettlement> {
+  const startedAt = Date.now();
+  const release = runtime.admissionController.tryAcquire();
+  if (!release) {
+    runtime.telemetry({
+      event: "my_tasks_source_read",
+      outcome: "SATURATED",
+      sourceType: source.type,
+      observedAt: new Date().toISOString(),
+      durationMs: 0
+    });
+    return { status: "unavailable", source };
+  }
+
+  const timedOut = Symbol("my-tasks-source-timeout");
+  let presentationClosed = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const sourceRead = Promise.resolve()
+      .then(() => source.read(after, take, filter))
+      .then(
+        (page) => {
+          release();
+          if (presentationClosed) {
+            runtime.telemetry({
+              event: "my_tasks_source_read",
+              outcome: "LATE_COMPLETION",
+              sourceType: source.type,
+              observedAt: new Date().toISOString(),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            });
+          }
+          return page;
+        },
+        (error: unknown) => {
+          release();
+          if (presentationClosed) {
+            runtime.telemetry({
+              event: "my_tasks_source_read",
+              outcome: "LATE_COMPLETION",
+              sourceType: source.type,
+              observedAt: new Date().toISOString(),
+              durationMs: Math.max(0, Date.now() - startedAt)
+            });
+          }
+          throw error;
+        }
+      );
+    const result = await Promise.race([
+      sourceRead,
+      new Promise<typeof timedOut>((resolve) => {
+        timeout = setTimeout(() => resolve(timedOut), runtime.deadlineMs);
+      })
+    ]);
+    if (result === timedOut) {
+      presentationClosed = true;
+      runtime.telemetry({
+        event: "my_tasks_source_read",
+        outcome: "TIMEOUT",
+        sourceType: source.type,
+        observedAt: new Date().toISOString(),
+        durationMs: Math.max(0, Date.now() - startedAt)
+      });
+      return { status: "unavailable", source };
+    }
+    return { status: "fulfilled", source, page: result };
+  } catch {
+    runtime.telemetry({
+      event: "my_tasks_source_read",
+      outcome: "EXCEPTION",
+      sourceType: source.type,
+      observedAt: new Date().toISOString(),
+      durationMs: Math.max(0, Date.now() - startedAt)
+    });
+    return { status: "unavailable", source };
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 function enrolledSources(session: SessionContext): EnrolledSource[] {
   const sources: EnrolledSource[] = [];
@@ -496,10 +690,19 @@ function enrolledSources(session: SessionContext): EnrolledSource[] {
  * actions. Authorization and source filters stay in their authoritative
  * services; a failed source never becomes a misleading zero count.
  */
-export async function getMyTasksPage(
+async function getMyTasksPageWithRuntime(
   session: SessionContext,
-  input: { cursor?: string; pageSize?: number; module?: string; priority?: string; status?: string; due?: string } = {}
+  input: { cursor?: string; pageSize?: number; module?: string; priority?: string; status?: string; due?: string } = {},
+  runtime: MyTasksRuntime
 ): Promise<MyTasksPage> {
+  if (
+    !Number.isInteger(runtime.deadlineMs) ||
+    runtime.deadlineMs < 1 ||
+    runtime.deadlineMs > maximumMyTasksSourceDeadlineMs
+  ) {
+    throw new Error("MY_TASKS_SOURCE_DEADLINE_MS_INVALID");
+  }
+  const startedAt = Date.now();
   const module = input.module
     ? dashboardTaskSources.includes(input.module as DashboardTaskSource)
       ? (input.module as DashboardTaskSource)
@@ -533,26 +736,28 @@ export async function getMyTasksPage(
     (!module || source.type === module) &&
     (!filter.due || filter.due.kind === "NO_DUE" || source.type === "INCIDENT" || source.type === "MAINTENANCE")
   );
-  const reads = await Promise.allSettled(
-    sources.map(async (source) => ({ source, page: await source.read(after, take, filter) }))
+  const reads = await Promise.all(
+    sources.map((source) =>
+      settleMyTasksSource(source, after, take, filter, runtime)
+    )
   );
   const successful = reads.filter(
-    (result): result is PromiseFulfilledResult<{ source: EnrolledSource; page: Awaited<ReturnType<EnrolledSource["read"]>> }> =>
+    (result): result is Extract<MyTasksSourceSettlement, { status: "fulfilled" }> =>
       result.status === "fulfilled"
   );
-  const unavailableSources = reads.flatMap((result, index) =>
-    result.status === "rejected"
-      ? [{ type: sources[index]!.type, label: sources[index]!.label }]
+  const unavailableSources = reads.flatMap((result) =>
+    result.status === "unavailable"
+      ? [{ type: result.source.type, label: result.source.label }]
       : []
   );
   const merged = successful
-    .flatMap((result) => result.value.page.items)
+    .flatMap((result) => result.page.items)
     .sort(compareDashboardTaskOrder);
   const items = merged.slice(0, take);
   const last = items.at(-1);
-  const hasMore = merged.length > take || successful.some((result) => result.value.page.nextCursor);
+  const hasMore = merged.length > take || successful.some((result) => result.page.nextCursor);
 
-  return {
+  const page: MyTasksPage = {
     items,
     // A partial merge cannot safely issue a continuation cursor. If a failed
     // source recovers on the next request, seeking after this anchor could
@@ -564,10 +769,34 @@ export async function getMyTasksPage(
         : null,
     totalCount:
       unavailableSources.length === 0
-        ? successful.reduce((sum, result) => sum + result.value.page.totalCount, 0)
+        ? successful.reduce((sum, result) => sum + result.page.totalCount, 0)
         : null,
     isComplete: unavailableSources.length === 0,
     enrolledSources: sources.map(({ type, label }) => ({ type, label })),
     unavailableSources
   };
+  runtime.telemetry({
+    event: "my_tasks_assembly",
+    outcome: page.isComplete ? "COMPLETE" : "PARTIAL",
+    assembledAt: new Date().toISOString(),
+    durationMs: Math.max(0, Date.now() - startedAt),
+    attemptedSourceCount: sources.length,
+    unavailableSourceCount: unavailableSources.length
+  });
+  return page;
 }
+
+export async function getMyTasksPage(
+  session: SessionContext,
+  input: { cursor?: string; pageSize?: number; module?: string; priority?: string; status?: string; due?: string } = {}
+) {
+  return getMyTasksPageWithRuntime(session, input, {
+    deadlineMs: getMyTasksSourceDeadlineMs(),
+    admissionController: myTasksSourceAdmissionController,
+    telemetry: emitMyTasksTelemetry
+  });
+}
+
+export const myTasksRuntimeTestSupport = {
+  getMyTasksPageWithRuntime
+};

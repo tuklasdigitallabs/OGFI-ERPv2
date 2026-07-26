@@ -83,6 +83,9 @@ Example: `Receive Transfer TO-2026-00182 · Main Warehouse → YL-MOA · Due tod
 - Filters: priority, module, location, due date, assigned by, status.
 - Sort default: critical, overdue, due today, then newest.
 - Distinguish `task complete` from `notification read`.
+- Each enrolled source must settle within the validated presentation deadline. A timeout, saturation, or exception names that source as unavailable, preserves healthy-source items, and returns a partial page with no total or continuation cursor.
+- A partial page with no healthy rows must not use the complete-page all-clear state. It must explain that no actions are shown from the available sources and that work may still exist in an unavailable source.
+- The presentation deadline is a technical availability control, not a freshness promise or user-facing service-level agreement. The underlying source record remains authoritative and independently reauthorizes every action.
 
 ## 7. Responsive behavior
 

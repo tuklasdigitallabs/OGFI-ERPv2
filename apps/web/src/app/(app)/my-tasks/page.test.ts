@@ -37,3 +37,15 @@ describe("My Tasks module filter presentation", () => {
     expect(source).toContain("Due-date filtering uses only native Incident and Maintenance due fields");
   });
 });
+
+describe("My Tasks partial availability presentation", () => {
+  it("does not turn a zero-item partial page into an all-clear state", () => {
+    expect(source).toContain("No actions shown from available sources");
+    expect(source).toContain(
+      "this is not confirmation that no work is waiting",
+    );
+    expect(source).toContain(
+      'page.isComplete\n                ? "No enrolled actions need you right now"',
+    );
+  });
+});
