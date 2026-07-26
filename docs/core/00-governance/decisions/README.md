@@ -82,6 +82,7 @@ This folder stores material, confirmed decisions that affect OGFI ERP behavior, 
 - `DEC-0100-RECEIVING-ITEM-FILTER-CONTRACT-DEFERRAL.md`
 - `DEC-0101-RECEIVING-CREATE-TASK-MODE.md`
 - `DEC-0243-ITEM-OPTION-CATALOG-ADMISSION-AND-OBSERVABILITY.md`
+- `DEC-0244-NORMALIZED-APPROVAL-DECISION-SURFACE-CONTRACT.md`
 
 ## Suggested future decision records
 

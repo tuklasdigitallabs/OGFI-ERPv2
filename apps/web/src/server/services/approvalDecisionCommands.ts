@@ -1,162 +1,90 @@
 import { z } from "zod";
-import type { SupportedApprovalDocumentType } from "./approvalRoutingRegistry";
+import {
+  approvalFamilySupportsSupplementalEvidence,
+  canonicalApprovalDecisionCapabilities,
+  canonicalApprovalDecisionKinds,
+} from "./approvalDecisionCapabilities";
+import {
+  supportedApprovalDocumentTypes,
+  type SupportedApprovalDocumentType,
+} from "./approvalRoutingRegistry";
 
-export const canonicalApprovalDecisionCapabilities = {
-  PurchaseRequest: ["APPROVE", "RETURN", "REJECT"],
-  QuotationRecommendation: ["APPROVE", "RETURN", "REJECT"],
-  PurchaseOrder: ["APPROVE", "RETURN", "REJECT"],
-  PurchaseOrderBalanceClosure: ["APPROVE", "RETURN", "REJECT"],
-  PurchaseOrderAmendment: ["APPROVE", "RETURN", "REJECT"],
-  WastageReport: ["APPROVE", "RETURN", "REJECT"],
-  StockAdjustment: ["APPROVE", "RETURN", "REJECT"],
-  FinanceCloseRun: ["APPROVE", "REJECT"],
-  BudgetRevision: ["APPROVE", "REJECT"],
-  ExpenseRequest: ["APPROVE", "RETURN", "REJECT"],
-  CashAdvanceRequest: ["APPROVE", "RETURN", "REJECT"],
-  PettyCashRequest: ["APPROVE", "RETURN", "REJECT"],
-  PaymentRequest: ["APPROVE", "RETURN", "REJECT"],
-  PaymentRelease: ["APPROVE", "REJECT"],
-  EmployeeLeaveRequest: ["APPROVE", "RETURN", "REJECT"],
-  EmployeeOvertimeRecord: ["APPROVE", "REJECT"],
-  WorkforceSchedule: ["APPROVE", "RETURN", "REJECT"],
-  AttendanceImportBatch: ["APPROVE", "RETURN", "REJECT"],
-} as const satisfies Record<
+const approvalFamilyTuple = supportedApprovalDocumentTypes as unknown as readonly [
   SupportedApprovalDocumentType,
-  readonly ("APPROVE" | "RETURN" | "REJECT")[]
->;
+  ...SupportedApprovalDocumentType[],
+];
 
-const simpleApproveFamilies = [
-  "PurchaseRequest",
-  "QuotationRecommendation",
-  "PurchaseOrder",
-  "PurchaseOrderBalanceClosure",
-  "PurchaseOrderAmendment",
-  "WastageReport",
-  "StockAdjustment",
-  "FinanceCloseRun",
-  "PaymentRequest",
-  "PaymentRelease",
-  "AttendanceImportBatch",
-] as const;
-
-const evidenceApproveFamilies = [
-  "BudgetRevision",
-  "CashAdvanceRequest",
-  "ExpenseRequest",
-  "EmployeeLeaveRequest",
-  "EmployeeOvertimeRecord",
-  "WorkforceSchedule",
-] as const;
-
-const simpleReturnFamilies = [
-  "PurchaseRequest",
-  "QuotationRecommendation",
-  "PurchaseOrder",
-  "PurchaseOrderBalanceClosure",
-  "PurchaseOrderAmendment",
-  "WastageReport",
-  "StockAdjustment",
-  "PaymentRequest",
-  "AttendanceImportBatch",
-] as const;
-
-const evidenceReturnFamilies = [
-  "ExpenseRequest",
-  "CashAdvanceRequest",
-  "PettyCashRequest",
-  "EmployeeLeaveRequest",
-  "WorkforceSchedule",
-] as const;
-
-const simpleRejectFamilies = [
-  "PurchaseRequest",
-  "QuotationRecommendation",
-  "PurchaseOrder",
-  "PurchaseOrderBalanceClosure",
-  "PurchaseOrderAmendment",
-  "WastageReport",
-  "StockAdjustment",
-  "FinanceCloseRun",
-  "PaymentRequest",
-  "PaymentRelease",
-  "AttendanceImportBatch",
-] as const;
-
-const evidenceRejectFamilies = [
-  "BudgetRevision",
-  "ExpenseRequest",
-  "CashAdvanceRequest",
-  "PettyCashRequest",
-  "EmployeeLeaveRequest",
-  "EmployeeOvertimeRecord",
-  "WorkforceSchedule",
-] as const;
-
-const baseDecisionSchema = z.object({
+const canonicalApprovalDecisionCommandSchema = z.object({
   approvalInstanceId: z.string().uuid(),
+  family: z.enum(approvalFamilyTuple),
+  decision: z.enum(canonicalApprovalDecisionKinds),
   remarks: z.string().max(1000).optional(),
-}).strict();
-
-const evidenceDecisionSchema = baseDecisionSchema.extend({
   evidenceReference: z.string().max(1000).optional(),
+}).strict().superRefine((command, context) => {
+  if (
+    !canonicalApprovalDecisionCapabilities[command.family].includes(
+      command.decision as never,
+    )
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["decision"],
+      message: "Unsupported approval decision for this family",
+    });
+  }
+  if (
+    command.decision !== "APPROVE" &&
+    (command.remarks?.trim().length ?? 0) < 3
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["remarks"],
+      message: "Remarks are required for return or rejection",
+    });
+  }
+  if (
+    command.evidenceReference !== undefined &&
+    !approvalFamilySupportsSupplementalEvidence(command.family)
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["evidenceReference"],
+      message: "Supplemental evidence is not supported for this family",
+    });
+  }
 });
-
-const requiredRemarksSchema = baseDecisionSchema.extend({
-  remarks: z.string().min(3).max(1000),
-});
-
-const requiredRemarksWithEvidenceSchema = evidenceDecisionSchema.extend({
-  remarks: z.string().min(3).max(1000),
-});
-
-const simpleApproveSchema = baseDecisionSchema.extend({
-  family: z.enum(simpleApproveFamilies),
-  decision: z.literal("APPROVE"),
-});
-
-const evidenceApproveSchema = evidenceDecisionSchema.extend({
-  family: z.enum(evidenceApproveFamilies),
-  decision: z.literal("APPROVE"),
-});
-
-const pettyCashApproveSchema = evidenceDecisionSchema.extend({
-  family: z.literal("PettyCashRequest"),
-  decision: z.literal("APPROVE"),
-});
-
-const simpleReturnSchema = requiredRemarksSchema.extend({
-  family: z.enum(simpleReturnFamilies),
-  decision: z.literal("RETURN"),
-});
-
-const evidenceReturnSchema = requiredRemarksWithEvidenceSchema.extend({
-  family: z.enum(evidenceReturnFamilies),
-  decision: z.literal("RETURN"),
-});
-
-const simpleRejectSchema = requiredRemarksSchema.extend({
-  family: z.enum(simpleRejectFamilies),
-  decision: z.literal("REJECT"),
-});
-
-const evidenceRejectSchema = requiredRemarksWithEvidenceSchema.extend({
-  family: z.enum(evidenceRejectFamilies),
-  decision: z.literal("REJECT"),
-});
-
-export const canonicalApprovalDecisionCommandSchema = z.union([
-  simpleApproveSchema,
-  evidenceApproveSchema,
-  pettyCashApproveSchema,
-  simpleReturnSchema,
-  evidenceReturnSchema,
-  simpleRejectSchema,
-  evidenceRejectSchema,
-]);
 
 export type CanonicalApprovalDecisionCommand = z.infer<
   typeof canonicalApprovalDecisionCommandSchema
 >;
+
+export type ApprovalDecisionFieldErrors = {
+  decision?: string;
+  remarks?: string;
+  evidenceReference?: string;
+};
+
+export function getApprovalDecisionFieldErrors(
+  error: unknown,
+): ApprovalDecisionFieldErrors {
+  if (!(error instanceof z.ZodError)) return {};
+  const fieldErrors: ApprovalDecisionFieldErrors = {};
+  for (const issue of error.issues) {
+    const field = issue.path[0];
+    if (field === "remarks") {
+      fieldErrors.remarks =
+        issue.code === "too_big"
+          ? "Remarks must be 1,000 characters or fewer."
+          : "Enter at least 3 non-space characters for return or rejection.";
+    } else if (field === "evidenceReference") {
+      fieldErrors.evidenceReference =
+        "Evidence reference must be 1,000 characters or fewer.";
+    } else if (field === "decision") {
+      fieldErrors.decision = "Choose an available decision.";
+    }
+  }
+  return fieldErrors;
+}
 
 export function parseCanonicalApprovalDecisionCommand(input: unknown) {
   return canonicalApprovalDecisionCommandSchema.parse(input);
@@ -171,10 +99,7 @@ export function approvalDecisionCommandToFormData(
   if (command.remarks !== undefined) {
     formData.set("remarks", command.remarks);
   }
-  if (
-    "evidenceReference" in command &&
-    command.evidenceReference !== undefined
-  ) {
+  if (command.evidenceReference !== undefined) {
     formData.set("evidenceReference", command.evidenceReference);
   }
   return formData;

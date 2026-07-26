@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { prisma, type TransactionClient } from "@ogfi/database";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
-import {
-  canonicalApprovalDecisionCapabilities,
-  parseCanonicalApprovalDecisionCommand,
-} from "../src/server/services/approvalDecisionCommands";
+import { parseCanonicalApprovalDecisionCommand } from "../src/server/services/approvalDecisionCommands";
+import { canonicalApprovalDecisionCapabilities } from "../src/server/services/approvalDecisionCapabilities";
 import { permissions } from "../src/server/services/authorization";
 import { cancelPettyCashRequest } from "../src/server/services/pettyCash";
 import { supportedApprovalDocumentTypes } from "../src/server/services/approvalRoutingRegistry";

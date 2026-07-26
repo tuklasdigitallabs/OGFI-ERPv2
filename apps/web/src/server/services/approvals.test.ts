@@ -5,6 +5,7 @@ import {
   approvalReminderKind,
   findEligibleApprovalActor
 } from "./approvals";
+import { getApprovalDecisionSurfaceContract } from "./approvalDecisionCapabilities";
 import type { SessionContext } from "./context";
 
 const eligibilitySession = {
@@ -61,10 +62,7 @@ describe("approval inbox controls", () => {
 
   test("approval inbox supports non-posting budget revision decisions", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
-    const detailPageSource = readFileSync(
-      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
-      "utf8"
-    );
+    const decisionSurface = getApprovalDecisionSurfaceContract("BudgetRevision");
 
     expect(serviceSource).toContain("BudgetRevision");
     expect(serviceSource).toContain("findActionableBudgetRevisionApproval");
@@ -75,8 +73,10 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("budgetMutationDeferred");
     expect(serviceSource).toContain("lineMutationDeferred");
     expect(serviceSource).toContain("BUDGET_REVISION_RETURN_NOT_SUPPORTED");
-    expect(detailPageSource).toContain("Approve Budget Revision");
-    expect(detailPageSource).toContain("canReturnApprovalKind");
+    expect(decisionSurface.decisions.map((entry) => entry.label)).toEqual([
+      "Approve Budget Revision",
+      "Reject Budget Revision"
+    ]);
   });
 
   test("purchase request and order approvals project warning-mode budget commitments", () => {
@@ -100,10 +100,7 @@ describe("approval inbox controls", () => {
       path.resolve(__dirname, "expenseRequests.ts"),
       "utf8"
     );
-    const detailPageSource = readFileSync(
-      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
-      "utf8"
-    );
+    const decisionSurface = getApprovalDecisionSurfaceContract("ExpenseRequest");
 
     expect(serviceSource).toContain("ExpenseRequest");
     expect(serviceSource).toContain("findActionableExpenseRequestApproval");
@@ -116,16 +113,16 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("noPaymentCreation");
     expect(serviceSource).toContain("noJournalPosting");
     expect(serviceSource).toContain("noApSettlement");
-    expect(detailPageSource).toContain("Approve Expense Request");
-    expect(detailPageSource).toContain("Reject Expense Request");
+    expect(decisionSurface.decisions.map((entry) => entry.label)).toEqual([
+      "Approve Expense Request",
+      "Return for Revision",
+      "Reject Expense Request"
+    ]);
   });
 
   test("approval inbox supports non-posting cash advance request decisions", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
-    const detailPageSource = readFileSync(
-      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
-      "utf8"
-    );
+    const decisionSurface = getApprovalDecisionSurfaceContract("CashAdvanceRequest");
 
     expect(serviceSource).toContain("CashAdvanceRequest");
     expect(serviceSource).toContain("findActionableCashAdvanceRequestApproval");
@@ -139,8 +136,11 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("noPaymentRelease");
     expect(serviceSource).toContain("noJournalPosting");
     expect(serviceSource).toContain("noBankMutation");
-    expect(detailPageSource).toContain("Approve Cash Advance");
-    expect(detailPageSource).toContain("Reject Cash Advance");
+    expect(decisionSurface.decisions.map((entry) => entry.label)).toEqual([
+      "Approve Cash Advance",
+      "Return for Revision",
+      "Reject Cash Advance"
+    ]);
   });
 
   test("approval inbox supports non-posting petty cash request decisions", () => {
@@ -149,10 +149,7 @@ describe("approval inbox controls", () => {
       path.resolve(__dirname, "pettyCash.ts"),
       "utf8"
     );
-    const detailPageSource = readFileSync(
-      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
-      "utf8"
-    );
+    const decisionSurface = getApprovalDecisionSurfaceContract("PettyCashRequest");
 
     expect(serviceSource).toContain("PettyCashRequest");
     expect(serviceSource).toContain("findActionablePettyCashRequestApproval");
@@ -166,16 +163,16 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("noPaymentRelease");
     expect(serviceSource).toContain("noJournalPosting");
     expect(serviceSource).toContain("noBankMutation");
-    expect(detailPageSource).toContain("Approve Petty Cash");
-    expect(detailPageSource).toContain("Reject Petty Cash");
+    expect(decisionSurface.decisions.map((entry) => entry.label)).toEqual([
+      "Approve Petty Cash",
+      "Return for Revision",
+      "Reject Petty Cash"
+    ]);
   });
 
   test("approval inbox supports non-posting payment request decisions", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
-    const detailPageSource = readFileSync(
-      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
-      "utf8"
-    );
+    const decisionSurface = getApprovalDecisionSurfaceContract("PaymentRequest");
 
     expect(serviceSource).toContain("PaymentRequest");
     expect(serviceSource).toContain("findActionablePaymentRequestApproval");
@@ -189,16 +186,20 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("noPaymentRelease");
     expect(serviceSource).toContain("noBankMutation");
     expect(serviceSource).toContain("noJournalPosting");
-    expect(detailPageSource).toContain("Approve Payment Request");
-    expect(detailPageSource).toContain("Reject Payment Request");
+    expect(decisionSurface.decisions).toEqual([
+      expect.objectContaining({
+        label: "Approve Payment Request",
+        available: false,
+        disabledReasonCode: "PAYMENT_REQUEST_APPROVAL_POLICY_UNCONFIRMED"
+      }),
+      expect.objectContaining({ label: "Return for Revision", available: true }),
+      expect.objectContaining({ label: "Reject Payment Request", available: true })
+    ]);
   });
 
   test("approval inbox supports non-posting payment release decisions", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
-    const detailPageSource = readFileSync(
-      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
-      "utf8"
-    );
+    const decisionSurface = getApprovalDecisionSurfaceContract("PaymentRelease");
 
     expect(serviceSource).toContain("PaymentRelease");
     expect(serviceSource).toContain("findActionablePaymentReleaseApproval");
@@ -214,17 +215,15 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("noApMutation");
     expect(serviceSource).toContain("noBankApiCall");
     expect(serviceSource).toContain("noJournalPosting");
-    expect(detailPageSource).toContain("Approve Payment Release");
-    expect(detailPageSource).toContain("Reject Payment Release");
-    expect(detailPageSource).toContain("FinanceCloseRun");
+    expect(decisionSurface.decisions.map((entry) => entry.label)).toEqual([
+      "Approve Payment Release",
+      "Reject Payment Release"
+    ]);
   });
 
   test("approval inbox supports sensitive period close decisions", () => {
     const serviceSource = readFileSync(path.resolve(__dirname, "approvals.ts"), "utf8");
-    const detailPageSource = readFileSync(
-      path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
-      "utf8"
-    );
+    const decisionSurface = getApprovalDecisionSurfaceContract("FinanceCloseRun");
 
     expect(serviceSource).toContain("FinanceCloseRun");
     expect(serviceSource).toContain("readFinanceClosePendingApproval");
@@ -234,8 +233,10 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("Period close lock");
     expect(serviceSource).toContain("Period reopen");
     expect(serviceSource).toContain("Company period close");
-    expect(detailPageSource).toContain("Approve Period Action");
-    expect(detailPageSource).toContain("Reject Period Action");
+    expect(decisionSurface.decisions.map((entry) => entry.label)).toEqual([
+      "Approve Period Action",
+      "Reject Period Action"
+    ]);
   });
 
   test("approval inbox supports non-payroll workforce leave decisions", () => {
@@ -296,6 +297,7 @@ describe("approval inbox controls", () => {
       path.resolve(__dirname, "../../app/(app)/approvals/[id]/page.tsx"),
       "utf8"
     );
+    const decisionSurface = getApprovalDecisionSurfaceContract("AttendanceImportBatch");
 
     expect(serviceSource).toContain("AttendanceImportBatch");
     expect(serviceSource).toContain("findActionableAttendanceImportApproval");
@@ -310,8 +312,11 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("noAttendanceDeviceAuthority");
     expect(serviceSource).toContain("noPaymentRequest");
     expect(serviceSource).toContain("noFinanceJournal");
-    expect(detailPageSource).toContain("Approve Attendance Review");
-    expect(detailPageSource).toContain("Reject Attendance Review");
+    expect(decisionSurface.decisions.map((entry) => entry.label)).toEqual([
+      "Approve Attendance Review",
+      "Return for Revision",
+      "Reject Attendance Review"
+    ]);
     expect(detailPageSource).toContain('revalidatePath("/workforce")');
   });
 });
@@ -771,6 +776,10 @@ describe("multi-step approval advancement", () => {
     expect(detailSource).toContain("Comments are read-only here for this approval type");
     expect(detailSource).toContain("authoritative source workspace");
     expect(detailSource).toContain("No audit events recorded yet.");
+    expect(detailSource.match(/if \(!normalizedApprovalRoutingEnabled\(\)\)/g)).toHaveLength(2);
+    expect(detailSource).toContain(
+      'redirect("/approvals?error=APPROVAL_ROUTING_V1_DISABLED")'
+    );
   });
 
   test("balance closure serializes with receiving and uses quantity CAS", () => {

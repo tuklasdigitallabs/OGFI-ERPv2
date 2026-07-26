@@ -2,9 +2,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
+import {
+  ApprovalDecisionComposer,
+  type ApprovalDecisionActionState
+} from "@/components/ApprovalDecisionComposer";
 import { AppShell } from "@/components/AppShell";
 import {
   actionErrorRedirectPath,
+  getActionErrorFeedback,
   getActionFeedback
 } from "@/server/services/actionFeedback";
 import {
@@ -16,7 +21,12 @@ import {
   executeCanonicalApprovalDecision,
   getApprovalDetail
 } from "@/server/services/approvals";
-import { isSupportedApprovalDocumentType } from "@/server/services/approvalRoutingRegistry";
+import { getApprovalDecisionFieldErrors } from "@/server/services/approvalDecisionCommands";
+import {
+  assertNormalizedApprovalDecisionAvailable,
+  getApprovalDecisionSurfaceContract
+} from "@/server/services/approvalDecisionCapabilities";
+import { normalizedApprovalRoutingEnabled } from "@/server/services/approvalRouting";
 import { addPurchaseRequestComment } from "@/server/services/purchaseRequests";
 
 export const dynamic = "force-dynamic";
@@ -34,16 +44,21 @@ function revalidateApprovalTargets() {
   revalidatePath("/workforce");
 }
 
-async function reviewApproval(formData: FormData) {
+async function reviewApproval(
+  _previousState: ApprovalDecisionActionState,
+  formData: FormData
+): Promise<ApprovalDecisionActionState> {
   "use server";
 
   const approvalInstanceId = String(formData.get("approvalInstanceId"));
   const approvalKind = String(formData.get("approvalKind") ?? "");
   const decision = String(formData.get("decision") ?? "");
   try {
-    if (!supportsCanonicalSourceCommand(approvalKind, decision)) {
-      throw new Error("APPROVAL_DECISION_REQUIRED");
+    if (!normalizedApprovalRoutingEnabled()) {
+      throw new Error("APPROVAL_ROUTING_V1_DISABLED");
     }
+    assertNormalizedApprovalDecisionAvailable(approvalKind, decision);
+    const surface = getApprovalDecisionSurfaceContract(approvalKind);
     const remarks = String(formData.get("remarks") ?? "").trim();
     const evidenceReference = String(
       formData.get("evidenceReference") ?? ""
@@ -53,42 +68,22 @@ async function reviewApproval(formData: FormData) {
       family: approvalKind,
       decision: decision.toUpperCase(),
       ...(remarks ? { remarks } : {}),
-      ...(approvalKind === "PaymentRequest" || !evidenceReference
-        ? {}
-        : { evidenceReference }),
+      ...(surface.supportsSupplementalEvidence && evidenceReference
+        ? { evidenceReference }
+        : {}),
     });
   } catch (error) {
-    redirect(actionErrorRedirectPath(`/approvals/${approvalInstanceId}`, error));
+    const feedback = getActionErrorFeedback(error);
+    const fieldErrors = getApprovalDecisionFieldErrors(error);
+    return {
+      status: "error",
+      code: feedback.code,
+      message: feedback.message,
+      ...(Object.keys(fieldErrors).length > 0 ? { fieldErrors } : {})
+    };
   }
   revalidateApprovalTargets();
   redirect("/approvals");
-}
-
-const evidenceDecisionApprovalKinds = [
-  "BudgetRevision",
-  "ExpenseRequest",
-  "CashAdvanceRequest",
-  "PettyCashRequest",
-  "PaymentRequest",
-  "EmployeeLeaveRequest",
-  "EmployeeOvertimeRecord",
-  "WorkforceSchedule"
-] as const;
-
-function supportsDecisionEvidence(approvalKind: string) {
-  return evidenceDecisionApprovalKinds.some(
-    (kind) => kind === approvalKind && kind !== "PaymentRequest"
-  );
-}
-
-function supportsCanonicalSourceCommand(
-  approvalKind: string,
-  decision: string
-) {
-  return (
-    isSupportedApprovalDocumentType(approvalKind) &&
-    ["approve", "return", "reject"].includes(decision)
-  );
 }
 
 async function addComment(formData: FormData) {
@@ -103,119 +98,6 @@ async function addComment(formData: FormData) {
   revalidatePath(`/approvals/${approvalInstanceId}`);
 }
 
-function getApproveButtonLabel(approvalKind: string) {
-  if (approvalKind === "PurchaseRequest") {
-    return "Approve Purchase Request";
-  }
-  if (approvalKind === "PurchaseOrder") {
-    return "Approve Purchase Order";
-  }
-  if (approvalKind === "PurchaseOrderBalanceClosure") {
-    return "Approve Balance Closure";
-  }
-  if (approvalKind === "WastageReport") {
-    return "Approve Wastage Report";
-  }
-  if (approvalKind === "StockAdjustment") {
-    return "Approve Stock Adjustment";
-  }
-  if (approvalKind === "BudgetRevision") {
-    return "Approve Budget Revision";
-  }
-  if (approvalKind === "ExpenseRequest") {
-    return "Approve Expense Request";
-  }
-  if (approvalKind === "CashAdvanceRequest") {
-    return "Approve Cash Advance";
-  }
-  if (approvalKind === "PettyCashRequest") {
-    return "Approve Petty Cash";
-  }
-  if (approvalKind === "PaymentRequest") {
-    return "Approve Payment Request";
-  }
-  if (approvalKind === "PaymentRelease") {
-    return "Approve Payment Release";
-  }
-  if (approvalKind === "FinanceCloseRun") {
-    return "Approve Period Action";
-  }
-  if (approvalKind === "EmployeeLeaveRequest") {
-    return "Approve Leave";
-  }
-  if (approvalKind === "EmployeeOvertimeRecord") {
-    return "Approve Overtime";
-  }
-  if (approvalKind === "WorkforceSchedule") {
-    return "Approve Schedule";
-  }
-  if (approvalKind === "AttendanceImportBatch") {
-    return "Approve Attendance Review";
-  }
-  return "Approve Recommendation";
-}
-
-function getRejectButtonLabel(approvalKind: string) {
-  if (approvalKind === "PurchaseOrder") {
-    return "Reject Purchase Order";
-  }
-  if (approvalKind === "PurchaseOrderBalanceClosure") {
-    return "Reject Balance Closure";
-  }
-  if (approvalKind === "QuotationRecommendation") {
-    return "Reject Recommendation";
-  }
-  if (approvalKind === "WastageReport") {
-    return "Reject Wastage Report";
-  }
-  if (approvalKind === "StockAdjustment") {
-    return "Reject Stock Adjustment";
-  }
-  if (approvalKind === "BudgetRevision") {
-    return "Reject Budget Revision";
-  }
-  if (approvalKind === "ExpenseRequest") {
-    return "Reject Expense Request";
-  }
-  if (approvalKind === "CashAdvanceRequest") {
-    return "Reject Cash Advance";
-  }
-  if (approvalKind === "PettyCashRequest") {
-    return "Reject Petty Cash";
-  }
-  if (approvalKind === "PaymentRequest") {
-    return "Reject Payment Request";
-  }
-  if (approvalKind === "PaymentRelease") {
-    return "Reject Payment Release";
-  }
-  if (approvalKind === "FinanceCloseRun") {
-    return "Reject Period Action";
-  }
-  if (approvalKind === "EmployeeLeaveRequest") {
-    return "Reject Leave";
-  }
-  if (approvalKind === "EmployeeOvertimeRecord") {
-    return "Reject Overtime";
-  }
-  if (approvalKind === "WorkforceSchedule") {
-    return "Reject Schedule";
-  }
-  if (approvalKind === "AttendanceImportBatch") {
-    return "Reject Attendance Review";
-  }
-  return "Reject Purchase Request";
-}
-
-function canReturnApprovalKind(approvalKind: string) {
-  return ![
-    "BudgetRevision",
-    "PaymentRelease",
-    "FinanceCloseRun",
-    "EmployeeOvertimeRecord"
-  ].includes(approvalKind);
-}
-
 export default async function ApprovalDetailPage({
   params,
   searchParams
@@ -227,6 +109,9 @@ export default async function ApprovalDetailPage({
   if (!canUseApprovals(session.permissionCodes)) {
     redirect(getDefaultAppRoute(session.permissionCodes));
   }
+  if (!normalizedApprovalRoutingEnabled()) {
+    redirect("/approvals?error=APPROVAL_ROUTING_V1_DISABLED");
+  }
 
   const { id } = await params;
   const approval = await getApprovalDetail(session, id);
@@ -235,6 +120,13 @@ export default async function ApprovalDetailPage({
   }
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const actionFeedback = getActionFeedback(resolvedSearchParams);
+  const decisionPresentation = getApprovalDecisionSurfaceContract(
+    approval.approvalKind
+  );
+  const nextActionLabel = decisionPresentation.decisions
+    .filter((entry) => entry.supported && entry.available)
+    .map((entry) => entry.label)
+    .join(", ");
 
   return (
     <AppShell
@@ -282,11 +174,7 @@ export default async function ApprovalDetailPage({
             ) : null}
             <div>
               <dt className="text-sm font-medium text-slate-500">Next action</dt>
-              <dd className="text-slate-950">
-                {canReturnApprovalKind(approval.approvalKind)
-                  ? "Approve, return, or reject"
-                  : "Approve or reject"}
-              </dd>
+              <dd className="text-slate-950">{nextActionLabel}</dd>
             </div>
           </dl>
 
@@ -333,84 +221,11 @@ export default async function ApprovalDetailPage({
             ) : null}
           </div>
 
-          <form
+          <ApprovalDecisionComposer
             action={reviewApproval}
-            className="mt-6 rounded-xl border border-blue-100 bg-blue-50/60 p-4"
-          >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="font-bold text-slate-950">Decision composer</h3>
-                <p className="text-sm text-slate-600">
-                  Choose one outcome for this approval step. Remarks are required for return or reject decisions.
-                </p>
-              </div>
-              <Badge tone="info" size="sm">One decision only</Badge>
-            </div>
-            <div className="mt-4 grid gap-3">
-              <input name="approvalInstanceId" type="hidden" value={approval.approvalInstanceId} />
-              <input name="approvalKind" type="hidden" value={approval.approvalKind} />
-              <label className="grid gap-1 text-sm font-medium text-slate-700">
-                Decision remarks
-                <textarea
-                  className="min-h-24 rounded-md border border-slate-300 bg-white px-3 py-2"
-                  name="remarks"
-                  placeholder="Optional for approval; required for return or rejection"
-                />
-              </label>
-              {supportsDecisionEvidence(approval.approvalKind) ? (
-                <label className="grid gap-1 text-sm font-medium text-slate-700">
-                  Supplemental decision evidence reference
-                  <input
-                    className="rounded-md border border-slate-300 bg-white px-3 py-2"
-                    name="evidenceReference"
-                    placeholder="Approval memo, review note, or supporting reference"
-                  />
-                  <span className="text-xs font-normal text-slate-500">
-                    Adds decision-support context. It does not replace or verify
-                    evidence already attached to the source record.
-                  </span>
-                </label>
-              ) : null}
-              {approval.approvalKind === "PaymentRequest" ? (
-                <div className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-blue-900">
-                  Legacy approval remains available while normalized routing is
-                  disabled. Normalized approval stays blocked until Finance confirms
-                  the invoice eligibility and capacity policy.
-                </div>
-              ) : null}
-              <div
-                className={
-                  canReturnApprovalKind(approval.approvalKind)
-                    ? "grid gap-2 sm:grid-cols-3"
-                    : "grid gap-2 sm:grid-cols-2"
-                }
-              >
-                <button
-                  className="inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
-                  name="decision"
-                  value="approve"
-                >
-                  {getApproveButtonLabel(approval.approvalKind)}
-                </button>
-                {canReturnApprovalKind(approval.approvalKind) ? (
-                  <button
-                    className="inline-flex min-h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                    name="decision"
-                    value="return"
-                  >
-                    Return for Revision
-                  </button>
-                ) : null}
-                <button
-                  className="inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700"
-                  name="decision"
-                  value="reject"
-                >
-                  {getRejectButtonLabel(approval.approvalKind)}
-                </button>
-              </div>
-            </div>
-          </form>
+            approvalInstanceId={approval.approvalInstanceId}
+            presentation={decisionPresentation}
+          />
 
           <div className="mt-6">
             <ButtonLink href="/approvals" className="bg-slate-100 text-blue-700 hover:bg-blue-50">
@@ -435,7 +250,7 @@ export default async function ApprovalDetailPage({
                     required
                   />
                 </label>
-                <button className="inline-flex min-h-9 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
+                <button className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">
                   Add Comment
                 </button>
               </form>

@@ -68,6 +68,22 @@ For approval types without an approval-owned discussion writer, the detail surfa
 
 Reject, return, and request changes require a comment. Approval may require comment for exception states based on policy.
 
+The normalized decision surface derives its visible and accepted actions from one
+server-owned capability contract. It must not maintain a separate client action
+matrix. The closed contract contains 18 approval families with exactly 18
+Approve, 14 Return, and 18 Reject capabilities. A supported action may still be
+temporarily unavailable: while the Payment Request approval-readiness policy is
+unconfirmed, normalized `PaymentRequest` Approve is visibly disabled with the
+stable policy-hold explanation and fails closed on direct server attempts;
+Return and Reject remain available. This does not activate normalized routing.
+
+The decision composer must preserve entered remarks and supplemental evidence
+after correctable server errors, prevent duplicate submission while a decision is
+pending, expose the pending state accessibly, and use controls at least 44px high.
+Only families explicitly permitted by the server contract may accept
+supplemental decision evidence; authoritative source-evidence requirements remain
+enforced by the source workflow.
+
 If live eligibility changes between inbox hydration and detail rendering, the inbox must show a user-safe stale-authority message and allow refresh; it must not expose a generic server error or imply that the decision remains available.
 
 ## 4. Approval history
@@ -103,3 +119,14 @@ Do not allow edit/delete of completed approval events.
 - Decision writes status, comment, audit event, next step, and notification atomically.
 - Returned/rejected records clearly tell requester what to do next.
 - Overdue/delegated states are distinguishable in inbox and history.
+
+## 8. Current implementation boundary
+
+`DEC-0244` implements the shared capability/version/digest contract and the
+feature-disabled decision composer. `APPROVAL_ROUTING_V1_ENABLED` remains false.
+Production activation still requires a mapping-and-capability-bound resumable
+backfill/drain, exact-candidate PostgreSQL authorization and concurrency evidence,
+authenticated desktop/tablet/mobile verification, hosted deployment and recovery
+proof, UAT, and an explicit activation decision. While disabled, the public
+Approval Inbox fails closed rather than exposing a legacy or parallel approval
+queue.

@@ -137,7 +137,7 @@ Before a workspace is marked visually complete, verify the following:
 
 | Priority | Workspace | Severity | Why First |
 |---:|---|---:|---|
-| 1 | Approvals | High | Normalized routing has real URL-backed tabs and one decision composer, but the feature-disabled compatibility path still loads an unbounded legacy queue and client-slices it. |
+| 1 | Approvals | High | Normalized routing has real URL-backed tabs, server pagination, and one decision composer, but activation, populated-data migration, responsive-browser evidence, and hosted recovery remain open. The feature-disabled public Inbox fails closed and does not load a legacy queue. |
 | 2 | Receiving | High | Queue links to a dedicated `/receiving/new` full-page draft task with a responsive line editor and persistent draft action. |
 | 3 | Workforce | Critical | One route contains too many unrelated operational jobs. |
 | 4 | FinanceSubworkspace / AP | Critical | Monolithic shared component stacks AP, GL, bank/cash queues and repeated action forms. |
@@ -183,8 +183,8 @@ Before a workspace is marked visually complete, verify the following:
 
 | Route | Severity | Current Pattern | Problem | Recommended Pattern |
 |---|---:|---|---|---|
-| `/approvals` | Critical | Inbox with visual tabs. | Tabs look clickable but are not real segmented views; no pagination/search. | URL-backed tabs: `Assigned`, `Due Soon`, `Returned`, `History`; paginated queue. |
-| `/approvals/[id]` | Critical | Separate approve/return/reject forms. | Competing forms increase decision error risk. | One decision composer with mutually exclusive action choice, remarks, and submit. |
+| `/approvals` | High | Feature-disabled Inbox with implemented normalized URL-backed Inbox/Due Soon views. | Activation, populated-data migration, authenticated responsive-browser proof, and hosted recovery remain open. | Keep the disabled state truthful until normalized cutover is accepted; do not restore a legacy or parallel queue. |
+| `/approvals/[id]` | High | One server-contract-driven decision composer behind normalized routing. | Browser interaction, database parity, Payment policy, backfill/drain, and activation evidence remain open. | Retain mutually exclusive actions, accessible unavailability/field reasons, pending lock, and fail-closed flag boundary through cutover. |
 
 ### Inventory And Warehouse
 

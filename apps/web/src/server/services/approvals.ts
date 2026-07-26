@@ -55,6 +55,7 @@ import {
   parseCanonicalApprovalDecisionCommand,
   type CanonicalApprovalDecisionCommand
 } from "./approvalDecisionCommands";
+import { assertNormalizedApprovalDecisionAvailable } from "./approvalDecisionCapabilities";
 import {
   assertAuthoritativeApprovalEvidence,
   assertPaymentRequestApprovalPolicyConfirmed
@@ -324,8 +325,8 @@ export async function executeCanonicalApprovalDecision(input: unknown) {
   if (approval.documentType !== command.family) {
     throw new Error("APPROVAL_COMMAND_FAMILY_MISMATCH");
   }
-  if (command.family === "PaymentRequest" && command.decision === "APPROVE") {
-    assertPaymentRequestApprovalPolicyConfirmed();
+  if (normalizedApprovalRoutingEnabled()) {
+    assertNormalizedApprovalDecisionAvailable(command.family, command.decision);
   }
   const formData = approvalDecisionCommandToFormData(command);
   if (command.decision === "APPROVE") {

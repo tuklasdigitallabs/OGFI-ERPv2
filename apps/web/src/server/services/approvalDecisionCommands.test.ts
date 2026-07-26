@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  canonicalApprovalDecisionCapabilities,
+  getApprovalDecisionFieldErrors,
   parseCanonicalApprovalDecisionCommand,
 } from "./approvalDecisionCommands";
+import { canonicalApprovalDecisionCapabilities } from "./approvalDecisionCapabilities";
 import { validatePettyCashApprovedAmount } from "./pettyCash";
 import { assertPaymentRequestEligibleInvoice } from "./finance";
 import { supportedApprovalDocumentTypes } from "./approvalRoutingRegistry";
@@ -92,6 +93,45 @@ describe("canonical approval decision commands", () => {
         decision: "REJECT",
       }),
     ).toThrow();
+    expect(() =>
+      parseCanonicalApprovalDecisionCommand({
+        approvalInstanceId,
+        family: "ExpenseRequest",
+        decision: "RETURN",
+        remarks: "   ",
+      }),
+    ).toThrow();
+  });
+
+  it("projects bounded field-level feedback without exposing parser internals", () => {
+    const invalidInputs = [
+      {
+        family: "PurchaseRequest",
+        decision: "RETURN",
+        remarks: "  ",
+      },
+      {
+        family: "PurchaseRequest",
+        decision: "REJECT",
+        remarks: "x".repeat(1001),
+      },
+      {
+        family: "BudgetRevision",
+        decision: "APPROVE",
+        evidenceReference: "x".repeat(1001),
+      },
+    ];
+
+    for (const input of invalidInputs) {
+      try {
+        parseCanonicalApprovalDecisionCommand({ approvalInstanceId, ...input });
+        throw new Error("EXPECTED_VALIDATION_FAILURE");
+      } catch (error) {
+        const fieldErrors = getApprovalDecisionFieldErrors(error);
+        expect(Object.keys(fieldErrors)).toHaveLength(1);
+        expect(JSON.stringify(fieldErrors)).not.toContain("Zod");
+      }
+    }
   });
 });
 

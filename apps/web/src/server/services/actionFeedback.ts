@@ -449,6 +449,10 @@ const actionFeedbackMessages: Record<string, string> = {
     "The source document for this approval is no longer available.",
   APPROVAL_NOT_ACTIONABLE:
     "This approval is no longer actionable. Refresh the inbox and review the latest status.",
+  APPROVAL_DECISION_REQUIRED:
+    "Choose an available decision for this approval and try again.",
+  PAYMENT_REQUEST_APPROVAL_POLICY_UNCONFIRMED:
+    "Payment Request approval is unavailable until Finance confirms the invoice-eligibility and capacity policy. Return or reject remain available.",
   APPROVAL_NEXT_STEP_ROUTING_CHANGED:
     "The next approval step changed. Refresh the approval and review its current route.",
   APPROVAL_NEXT_STEP_RECIPIENT_NOT_AVAILABLE:
@@ -1198,19 +1202,24 @@ export function actionErrorRedirectPath(pathname: string, error: unknown) {
   return `${pathname}${separator}${params.toString()}`;
 }
 
+export function getActionErrorFeedback(error: unknown): ActionFeedback {
+  const code = getActionErrorCode(error);
+  return {
+    code,
+    message:
+      actionFeedbackMessages[code] ??
+      "The action could not be completed. Review the form and try again.",
+    title: "Action not completed"
+  };
+}
+
 export function getActionFeedback(
   searchParams: Record<string, string | string[] | undefined>,
 ): ActionFeedback | null {
   const rawErrorCode = searchParams.error;
   const errorCode = Array.isArray(rawErrorCode) ? rawErrorCode[0] : rawErrorCode;
   if (errorCode && safeActionCodePattern.test(errorCode)) {
-    return {
-      code: errorCode,
-      message:
-        actionFeedbackMessages[errorCode] ??
-        "The action could not be completed. Review the form and try again.",
-      title: "Action not completed"
-    };
+    return getActionErrorFeedback(new Error(errorCode));
   }
 
   const rawSuccessCode = searchParams.success;
