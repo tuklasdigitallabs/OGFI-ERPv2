@@ -92,6 +92,14 @@ Review must fail closed when opener or latest-submitter lineage is absent becaus
 
 ## Evidence
 
+- July 26, 2026 correction: source-qualified status filtering now selects the
+  named review or correction predicate instead of a permission-dependent array
+  position. A correction-only actor can therefore filter to `RETURNED` without
+  losing authorized pooled work, while a review-only actor still receives no
+  returned correction rows. Focused Branch Operations, Food Safety, and My Tasks
+  coverage passes 48/48; broader production gates remain recorded in the current
+  implementation plan.
+
 - Parent-confirmed conclusion, 2026-07-23: enroll independent `SUBMITTED`/`MANAGER_REVIEW` review tasks and role-pooled `RETURNED` correction tasks; require non-null opener/latest-submitter lineage and exclude both actors from review; defer `REVIEWED`/`EXCEPTION_OPEN` close work; preserve predicate parity, minimal projection, destination reauthorization, non-mutation, and permission-correct UI controls.
 - Deliberation followed the required council protocol. The requested Code Spark model and the exact documented GPT-5.4/GPT-5.4-mini fallbacks were unavailable; the council therefore used the inherited GPT-5.6 model. The Decision Chair confirmed the conclusion after considering permission boundaries, self-action risk, pooled-work semantics, count/page drift, stale targets, and source-authority safeguards.
 - `docs/core/00-governance/DEC-0063-CROSS-SOURCE-DASHBOARD-QUEUE-PAGINATION-DECISION-BRIEF.md`: closed source registry, source-owned predicate, minimal projection, exact count/page parity, cursor, degradation, and destination-reauthorization requirements.

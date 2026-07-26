@@ -1038,6 +1038,65 @@ describe("Branch Operations My Tasks adapter", () => {
     });
   });
 
+  it("keeps returned correction work visible for a correction-only actor", async () => {
+    mockPrisma.branchOperationalChecklist.count.mockResolvedValue(1);
+    mockPrisma.branchOperationalChecklist.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000302",
+        checklistName: "Closing Readiness",
+        status: "RETURNED",
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        shiftType: "CLOSING",
+        createdAt: new Date("2026-07-23T02:00:00.000Z"),
+        location: { name: "SM North Edsa" }
+      }
+    ]);
+    const actor = {
+      ...session,
+      permissionCodes: [permissions.branchOperationsCreate]
+    };
+
+    await expect(
+      listBranchOperationMyTaskPage(actor as never, { filter: { status: "RETURNED" } })
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      items: [{ actionLabel: "Correct and resubmit checklist", status: "RETURNED" }]
+    });
+    expect(mockPrisma.branchOperationalChecklist.count.mock.calls[0]![0].where).toMatchObject({
+      status: "RETURNED",
+      OR: [{ status: "RETURNED" }]
+    });
+  });
+
+  it("intersects review-only authority with review statuses and excludes returned work", async () => {
+    const actor = {
+      ...session,
+      permissionCodes: [permissions.branchOperationsReview]
+    };
+
+    await expect(
+      listBranchOperationMyTaskPage(actor as never, { filter: { status: "RETURNED" } })
+    ).resolves.toEqual({ totalCount: 0, items: [], nextCursor: null });
+    expect(mockPrisma.branchOperationalChecklist.count).not.toHaveBeenCalled();
+
+    mockPrisma.branchOperationalChecklist.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000301",
+        checklistName: "Opening Readiness",
+        status: "SUBMITTED",
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        shiftType: "OPENING",
+        createdAt: new Date("2026-07-23T01:00:00.000Z"),
+        location: { name: "SM North Edsa" }
+      }
+    ]);
+    await listBranchOperationMyTaskPage(actor as never, { filter: { status: "SUBMITTED" } });
+    expect(mockPrisma.branchOperationalChecklist.count.mock.calls[0]![0].where).toMatchObject({
+      status: "SUBMITTED",
+      OR: [expect.objectContaining({ status: { in: ["SUBMITTED", "MANAGER_REVIEW"] } })]
+    });
+  });
+
   it("does not query tasks for a view-only user", async () => {
     await expect(
       listBranchOperationMyTaskPage({ ...session, permissionCodes: [permissions.branchOperationsView] } as never)

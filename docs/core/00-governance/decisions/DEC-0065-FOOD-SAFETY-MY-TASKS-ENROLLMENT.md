@@ -92,6 +92,14 @@ Review and Return for correction must fail closed when recorder lineage is missi
 
 ## Evidence
 
+- July 26, 2026 correction: source-qualified status filtering now selects the
+  named review or correction predicate instead of a permission-dependent array
+  position. A correction-only actor can therefore filter to `RETURNED` without
+  losing authorized pooled work, while a review-only actor still receives no
+  returned correction rows. Focused Branch Operations, Food Safety, and My Tasks
+  coverage passes 48/48; broader production gates remain recorded in the current
+  implementation plan.
+
 - Parent-confirmed conclusion, 2026-07-23: enroll independent `SUBMITTED`/`EXCEPTION_REVIEW` review tasks and pooled `RETURNED` correction tasks; require non-null recorder lineage and exclude the recorder from review and Return for correction; preserve tenant/company/optional-brand/location predicate parity, minimal projection, destination reauthorization, permission-correct UI controls, and direct-action fail-closed behavior; defer final-close tasks.
 - The Decision Chair confirmed the conclusion after a unanimous independent council. The requested Code Spark model and the exact documented GPT-5.4/GPT-5.4-mini fallbacks were unavailable; the council used the permitted inherited GPT-5.6 model. The council considered scope isolation, permission boundaries, self-action risk, pooled-work semantics, count/page drift, stale destinations, and source-authority safeguards.
 - `docs/core/00-governance/DEC-0063-CROSS-SOURCE-DASHBOARD-QUEUE-PAGINATION-DECISION-BRIEF.md`: closed source registry, source-owned predicate, minimal projection, exact count/page parity, cursor, degradation, and destination-reauthorization requirements.

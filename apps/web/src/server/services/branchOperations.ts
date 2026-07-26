@@ -758,28 +758,30 @@ export async function listBranchOperationMyTaskPage(
 ): Promise<BranchOperationMyTaskPage> {
   assertBranchOperationsAccess(session);
 
-  const actionPredicates: Prisma.BranchOperationalChecklistWhereInput[] = [
-    ...(session.permissionCodes.includes(permissions.branchOperationsReview)
-      ? [{
-          status: { in: [...reviewableChecklistStatuses] },
-          openedByUserId: { not: null },
-          submittedByUserId: { not: null },
-          NOT: [
-            { openedByUserId: session.user.id },
-            { submittedByUserId: session.user.id }
-          ]
-        } satisfies Prisma.BranchOperationalChecklistWhereInput]
-      : []),
-    ...(session.permissionCodes.includes(permissions.branchOperationsCreate)
-      ? [{ status: "RETURNED" } satisfies Prisma.BranchOperationalChecklistWhereInput]
-      : [])
-  ];
+  const reviewPredicate: Prisma.BranchOperationalChecklistWhereInput | null = session.permissionCodes.includes(permissions.branchOperationsReview)
+    ? {
+        status: { in: [...reviewableChecklistStatuses] },
+        openedByUserId: { not: null },
+        submittedByUserId: { not: null },
+        NOT: [
+          { openedByUserId: session.user.id },
+          { submittedByUserId: session.user.id }
+        ]
+      } satisfies Prisma.BranchOperationalChecklistWhereInput
+    : null;
+  const correctionPredicate: Prisma.BranchOperationalChecklistWhereInput | null = session.permissionCodes.includes(permissions.branchOperationsCreate)
+    ? { status: "RETURNED" } satisfies Prisma.BranchOperationalChecklistWhereInput
+    : null;
   if (input.filter?.priority && input.filter.priority !== "HIGH") return { totalCount: 0, items: [], nextCursor: null };
   if (input.filter?.due && input.filter.due.kind !== "NO_DUE") return { totalCount: 0, items: [], nextCursor: null };
   if (input.filter?.status && !["SUBMITTED", "MANAGER_REVIEW", "RETURNED"].includes(input.filter.status)) return { totalCount: 0, items: [], nextCursor: null };
   const filteredActionPredicates = input.filter?.status
-    ? actionPredicates.filter((_predicate, index) => input.filter?.status === "RETURNED" ? index === 1 : index === 0)
-    : actionPredicates;
+    ? input.filter.status === "RETURNED"
+      ? correctionPredicate ? [correctionPredicate] : []
+      : reviewPredicate ? [reviewPredicate] : []
+    : [reviewPredicate, correctionPredicate].filter(
+        (predicate): predicate is Prisma.BranchOperationalChecklistWhereInput => predicate !== null
+      );
   if (filteredActionPredicates.length === 0) {
     return { totalCount: 0, items: [], nextCursor: null };
   }

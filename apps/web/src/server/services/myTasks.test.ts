@@ -133,7 +133,7 @@ describe("My Tasks queue", () => {
   });
 
   test("binds a cursor to its current user scope and rejects tampering", () => {
-    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v5");
+    expect(myTasksRegistryVersion).toBe("my-tasks-registry-v6");
     const cursor = encodeMyTasksCursor(session as never, {
       priority: "HIGH",
       dueAt: null,

@@ -109,6 +109,59 @@ describe("Food Safety My Tasks adapter", () => {
     expect(pageQuery.select).not.toHaveProperty("readings");
   });
 
+  it("keeps returned correction work visible for a correction-only actor", async () => {
+    mockPrisma.foodSafetyLog.count.mockResolvedValue(1);
+    mockPrisma.foodSafetyLog.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000402",
+        title: "Closing Sanitation Log",
+        status: "RETURNED",
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        logType: "SANITATION",
+        createdAt: new Date("2026-07-23T02:00:00.000Z"),
+        location: { name: "SM North Edsa" }
+      }
+    ]);
+    const actor = { ...session, permissionCodes: [permissions.foodSafetyCreate] };
+
+    await expect(
+      listFoodSafetyMyTaskPage(actor as never, { filter: { status: "RETURNED" } })
+    ).resolves.toMatchObject({
+      totalCount: 1,
+      items: [{ actionLabel: "Correct and resubmit food-safety log", status: "RETURNED" }]
+    });
+    expect(mockPrisma.foodSafetyLog.count.mock.calls[0]![0].where).toMatchObject({
+      status: "RETURNED",
+      OR: [{ status: "RETURNED" }]
+    });
+  });
+
+  it("intersects review-only authority with review statuses and excludes returned work", async () => {
+    const actor = { ...session, permissionCodes: [permissions.foodSafetyReview] };
+
+    await expect(
+      listFoodSafetyMyTaskPage(actor as never, { filter: { status: "RETURNED" } })
+    ).resolves.toEqual({ totalCount: 0, items: [], nextCursor: null });
+    expect(mockPrisma.foodSafetyLog.count).not.toHaveBeenCalled();
+
+    mockPrisma.foodSafetyLog.findMany.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-8000-000000000401",
+        title: "Opening Temperature Log",
+        status: "SUBMITTED",
+        businessDate: new Date("2026-07-23T00:00:00.000Z"),
+        logType: "TEMPERATURE",
+        createdAt: new Date("2026-07-23T01:00:00.000Z"),
+        location: { name: "SM North Edsa" }
+      }
+    ]);
+    await listFoodSafetyMyTaskPage(actor as never, { filter: { status: "SUBMITTED" } });
+    expect(mockPrisma.foodSafetyLog.count.mock.calls[0]![0].where).toMatchObject({
+      status: "SUBMITTED",
+      OR: [expect.objectContaining({ status: { in: ["SUBMITTED", "EXCEPTION_REVIEW"] } })]
+    });
+  });
+
   it("applies the shared Food Safety cursor without changing the count predicate", async () => {
     const actor = { ...session, permissionCodes: [permissions.foodSafetyReview] };
     const after = {

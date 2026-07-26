@@ -38,7 +38,7 @@ import { dateOnlyInTimeZone } from "./projectDates";
 const myTasksCursorDomain = "my-tasks-v2";
 // Bump whenever an enrolled source predicate, ordering contract, or adapter
 // projection changes. Signed cursors must never outlive that contract.
-export const myTasksRegistryVersion = "my-tasks-registry-v5";
+export const myTasksRegistryVersion = "my-tasks-registry-v6";
 const myTasksCursorTtlMs = 15 * 60 * 1000;
 const defaultPageSize = 20;
 const maxPageSize = 25;

@@ -765,21 +765,23 @@ export async function listFoodSafetyMyTaskPage(
   input: { after?: DashboardTaskCursor; take?: number; filter?: DashboardTaskFilter } = {}
 ): Promise<FoodSafetyMyTaskPage> {
   assertFoodSafetyAccess(session);
-  const actionPredicates: Prisma.FoodSafetyLogWhereInput[] = [
-    ...(session.permissionCodes.includes(permissions.foodSafetyReview)
-      ? [{
-          status: { in: [...reviewableFoodSafetyStatuses] },
-          recordedByUserId: { not: null },
-          NOT: { recordedByUserId: session.user.id }
-        } satisfies Prisma.FoodSafetyLogWhereInput]
-      : []),
-    ...(session.permissionCodes.includes(permissions.foodSafetyCreate)
-      ? [{ status: "RETURNED" } satisfies Prisma.FoodSafetyLogWhereInput]
-      : [])
-  ];
+  const reviewPredicate: Prisma.FoodSafetyLogWhereInput | null = session.permissionCodes.includes(permissions.foodSafetyReview)
+    ? {
+        status: { in: [...reviewableFoodSafetyStatuses] },
+        recordedByUserId: { not: null },
+        NOT: { recordedByUserId: session.user.id }
+      } satisfies Prisma.FoodSafetyLogWhereInput
+    : null;
+  const correctionPredicate: Prisma.FoodSafetyLogWhereInput | null = session.permissionCodes.includes(permissions.foodSafetyCreate)
+    ? { status: "RETURNED" } satisfies Prisma.FoodSafetyLogWhereInput
+    : null;
   const filteredActionPredicates = input.filter?.status
-    ? actionPredicates.filter((_predicate, index) => input.filter?.status === "RETURNED" ? index === 1 : index === 0)
-    : actionPredicates;
+    ? input.filter.status === "RETURNED"
+      ? correctionPredicate ? [correctionPredicate] : []
+      : reviewPredicate ? [reviewPredicate] : []
+    : [reviewPredicate, correctionPredicate].filter(
+        (predicate): predicate is Prisma.FoodSafetyLogWhereInput => predicate !== null
+      );
   if (filteredActionPredicates.length === 0) {
     return { totalCount: 0, items: [], nextCursor: null };
   }
