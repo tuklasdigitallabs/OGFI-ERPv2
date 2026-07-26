@@ -17,6 +17,10 @@ import {
   maxInventorySearchLength,
   type InventoryBalanceFilters
 } from "@/server/services/inventory";
+import {
+  formatInventoryUpdatedDate,
+  resolveInventoryTimeZone
+} from "./inventoryPresentation";
 
 export const dynamic = "force-dynamic";
 
@@ -96,13 +100,14 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   }
   const exportHref = `/inventory/export${exportParams.size ? `?${exportParams}` : ""}`;
   const balancePage = searchError
-    ? { items: [], totalItems: 0, positiveItems: 0, expiringItems: 0, page: 1, pageSize: PAGE_SIZE, totalPages: 1 }
+    ? { items: [], totalItems: 0, positiveItems: 0, expiringItems: 0, page: 1, pageSize: PAGE_SIZE, totalPages: 1, timeZone: "Asia/Manila" }
     : await listInventoryBalancePage(session, filters, { page, pageSize: PAGE_SIZE });
+  const inventoryTimeZone = resolveInventoryTimeZone(balancePage.timeZone);
   const balances = balancePage.items;
   const reconciliation = canViewLedger
     ? await getInventoryBalanceReconciliation(session)
     : null;
-  const totalLots = balances.length;
+  const totalLots = balancePage.totalItems;
   const positiveBalances = balancePage.positiveItems;
   const expiringLots = balancePage.expiringItems;
   const visibleBalances = balances;
@@ -150,6 +155,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         <Panel>
           <p className="text-sm font-semibold text-slate-500">Balance rows</p>
           <p className="mt-2 text-3xl font-bold text-slate-950">{totalLots}</p>
+          <p className="mt-1 text-xs text-slate-500">Matching the current search and tab</p>
         </Panel>
         <Panel>
           <p className="text-sm font-semibold text-slate-500">Positive stock</p>
@@ -289,8 +295,8 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                   <p className="text-slate-600">{balance.expiryDate ?? "None"}</p>
                   <p className="text-slate-600">{balance.inventoryLocationName}</p>
                   <p className="text-xs text-slate-500">
-                    {new Date(balance.updatedAt).toLocaleDateString()} / v
-                    {balance.version}
+                    {formatInventoryUpdatedDate(balance.updatedAt, inventoryTimeZone)} / v{balance.version}
+                    <span className="block">{inventoryTimeZone}</span>
                   </p>
                   {canViewLedger ? (
                     <ButtonLink

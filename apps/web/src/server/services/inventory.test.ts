@@ -92,6 +92,25 @@ describe("inventory ledger foundation rules", () => {
     expect(ledgerPage).toContain("await listInventoryMovementPage(session, filters");
   });
 
+  test("stock-balance summary uses the exact filtered total and approved timezone", () => {
+    const balancePage = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/inventory/page.tsx"),
+      "utf8"
+    );
+
+    expect(balancePage).toContain("const totalLots = balancePage.totalItems");
+    expect(balancePage).not.toContain("const totalLots = balances.length");
+    expect(balancePage).toContain("resolveInventoryTimeZone(balancePage.timeZone)");
+    expect(balancePage).toContain("formatInventoryUpdatedDate(balance.updatedAt, inventoryTimeZone)");
+    expect(balancePage).toContain("{inventoryTimeZone}");
+    expect(balancePage).not.toContain("toLocaleDateString()");
+
+    const inventorySource = readFileSync(path.resolve(__dirname, "inventory.ts"), "utf8");
+    expect(inventorySource).toContain("prisma.company.findFirst");
+    expect(inventorySource).toContain("tenantId: session.context.tenantId");
+    expect(inventorySource).toContain('timeZone: company?.timezone ?? "Asia/Manila"');
+  });
+
   test("normalizes lot and expiry into a deterministic balance key", () => {
     expect(normalizeInventoryLotKey(null, null)).toBe("NOLOT|NOEXP");
     expect(

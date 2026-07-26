@@ -71,6 +71,7 @@ export type InventoryBalancePage = {
   page: number;
   pageSize: number;
   totalPages: number;
+  timeZone: string;
 };
 
 export type InventoryMovementFilters = {
@@ -1134,7 +1135,16 @@ export async function listInventoryBalancePage(
         }
       : {})
   };
-  const totalItems = await prisma.inventoryBalance.count({ where });
+  const [totalItems, company] = await Promise.all([
+    prisma.inventoryBalance.count({ where }),
+    prisma.company.findFirst({
+      where: {
+        id: session.context.companyId,
+        tenantId: session.context.tenantId
+      },
+      select: { timezone: true }
+    })
+  ]);
   const baseWhere = { ...where };
   delete baseWhere.qtyOnHand;
   delete baseWhere.expiryDate;
@@ -1182,7 +1192,8 @@ export async function listInventoryBalancePage(
     expiringItems,
     page,
     pageSize,
-    totalPages
+    totalPages,
+    timeZone: company?.timezone ?? "Asia/Manila"
   };
 }
 
