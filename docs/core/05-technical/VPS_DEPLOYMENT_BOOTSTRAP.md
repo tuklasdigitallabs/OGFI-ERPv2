@@ -76,28 +76,28 @@ Do not point both environments to the same database, attachment bucket/prefix, e
 
 ## 5. Deployment procedure
 
-1. CI checks pass on the release candidate.
-2. Build image or pull the approved Git commit on the VPS.
-3. Run database migration through `ogfi-db-migrate@<validated-release>.service`; do not expose the migrator URL to the application or run direct hosted Prisma deploy.
-4. Start or update services with Docker Compose.
-5. Run health checks.
-6. Perform smoke tests:
-   - login;
-   - role/scope access;
-   - context selection;
-   - PR submission;
-   - approval action;
-   - audit event creation;
-   - report/export access;
-   - attachment upload/download as allowed.
-7. Watch logs and error monitoring after deployment.
-8. Record release version, migration version, deployer, timestamp, and any rollback plan.
+Hosted deployment, migration, cutover, and rollback are currently **unavailable**
+and production is **NO-GO**. The legacy deploy and rollback commands, workflow
+jobs, standalone migration unit, direct controlled-migration CLI, and combined-
+credential database verifier are fail-closed tombstones. Do not use them as a
+release procedure or evidence route.
+
+The next approved procedure must be implemented by the amended `DEC-0248`
+root-owned release service and must pass its immutable-artifact, split-
+credential, fixed-fence, durable-journal/recovery, exact cutover, smoke,
+rollback, backup/restore, and alert-delivery gates before this section can carry
+executable operator steps.
 
 ### 5.1 PostgreSQL role bootstrap and verification
 
 Install the templates under `infra/systemd/database/` and follow their README. Keep `/etc/ogfi/database/role-contract.env` non-secret, store the migrator/runtime URLs as separate root-owned mode-`0400` files, and keep the application environment root-owned with the runtime `DATABASE_URL` only. The app environment must contain no `DIRECT_DATABASE_URL`, admin/owner credential, migrator credential, or migrator username.
 
-Before first use, and again after a restore that does not preserve owners/privileges, a cluster administrator runs `infra/hostinger/postgres/bootstrap-roles.sql` against the positively identified target. Passwords are set in a separate secret ceremony and are never passed as SQL variables or committed files. The controlled migration then reconciles grants and proves exact memberships, supported object ownership, safe defaults and routine/column ACLs, owner-side append-only guards, runtime `SELECT`/`INSERT`, DDL/TEMP denials, and escalation denials. Enable the daily `ogfi-db-role-verify.timer` and alert on failure or a missed run.
+The role bootstrap and reconciliation SQL remain source contracts for the future
+release service; they are not a currently approved hosted execution path. The
+legacy `ogfi-db-role-verify.service` and timer are disabled because they executed
+candidate-controlled code while loading both migrator and runtime credentials.
+A future verifier must be root-installed outside the candidate tree, split the
+migrator and runtime probes, and prove alert delivery and missed-run handling.
 
 This control does not select PostgreSQL packaging. The database remains on a private Hostinger endpoint whether the approved design is a host service or a dedicated container. Production remains **NO-GO** until that packaging decision, credential custody, restore reconciliation evidence, and exact-release role-contract evidence are approved.
 

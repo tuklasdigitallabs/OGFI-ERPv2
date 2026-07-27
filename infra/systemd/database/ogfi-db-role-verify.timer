@@ -1,12 +1,9 @@
 [Unit]
-Description=Verify OGFI ERP hosted PostgreSQL role contract daily
+Description=DISABLED - legacy OGFI database role verifier timer
+RefuseManualStart=yes
+RefuseManualStop=yes
+ConditionPathExists=/run/ogfi-disabled-db-role-verifier
 
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=1d
-RandomizedDelaySec=15min
-Persistent=true
+OnActiveSec=1d
 Unit=ogfi-db-role-verify.service
-
-[Install]
-WantedBy=timers.target

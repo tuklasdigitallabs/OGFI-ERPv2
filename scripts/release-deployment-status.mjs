@@ -75,15 +75,7 @@ const incompleteOwnerSummary = summarizeByOwner([
 ]);
 
 const result =
-  incompleteRequiredRows.length === 0 &&
-  incompleteFocusedRows.length === 0 &&
-  incompleteSupportRows.length === 0 &&
-  incompleteSignoffRows.length === 0 &&
-  invalidRows.length === 0 &&
-  unresolved.pending === 0 &&
-  unresolved.tbd === 0
-    ? "RESULT | PASS | Deployment, rollback, backup/restore, smoke, and signoff evidence has no unresolved placeholders."
-    : "RESULT | WARN | Deployment, rollback, backup/restore, smoke, and signoff evidence is incomplete; capture environment artifacts, owner decisions, and evidence references before GO review.";
+  "RESULT | BLOCKED | DEC-0248 hosted release authority is unavailable; legacy deployment, rollback, and ordinary smoke evidence cannot clear release readiness.";
 
 const lines = [
   "OGFI ERP Phase I / Phase 1.5 deployment and rollback evidence status",
@@ -92,6 +84,7 @@ const lines = [
   `Deployment evidence file: ${deploymentFile}`,
   "",
   "This report is advisory. It does not deploy, run rollback, create backups, or approve release.",
+  "BLOCKED | DEC-0248 hosted release authority | Root-owned release service, durable recovery journal, authoritative cutover/smoke, and same-fence rollback are not implemented.",
   "",
   "Summary",
   `Required evidence rows: ${requiredEvidenceRows.length}`,

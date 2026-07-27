@@ -2,7 +2,14 @@
 
 These are installation templates, not deployment automation. They do not decide whether PostgreSQL on the Hostinger VPS is a host service or a dedicated production container. Adapt only the private connection endpoint and reviewed filesystem paths; do not weaken the role boundary.
 
-Install `ogfi-db-migrate@.service` only after creating the dedicated `ogfi-deploy` account, release directories, root-owned credentials, and `/etc/ogfi/database/role-contract.env`. A production example is:
+`ogfi-db-migrate@.service` is now a compatibility tombstone with
+`RefuseManualStart=yes` and `/usr/bin/false`. Do not grant a deployment identity
+`sudo`, direct controlled-wrapper access, or any standalone migration path. The
+amended `DEC-0248` requires a future root-owned `ogfi-release@<opaque-id>` service
+to own request admission, the fixed fence, credential-isolated migration,
+cutover, served-SHA smoke, rollback, and crash/reboot recovery in one cgroup.
+
+The non-secret role contract remains:
 
 ```text
 APP_ENV=production
@@ -13,13 +20,41 @@ OGFI_DATABASE_RUNTIME_ROLE=ogfi_prod_runtime
 OGFI_APPLICATION_ENV_FILE=/srv/ogfi/config/production.env
 ```
 
-The role-contract environment file contains no URLs or passwords. Store the migrator and runtime URLs as separate root-owned mode-`0400` files under `/etc/ogfi/secrets/`. Keep the application environment root-owned, mode `0640` or stricter, and accessible only to its reviewed runtime group. It contains the runtime URL only; it must not contain `DIRECT_DATABASE_URL`, a migration URL/file variable, an owner/admin secret, or the migrator username. Every controlled migration and scheduled verification fail closed unless that application file still resolves to the reviewed runtime identity. The migration unit receives both credentials only long enough to compare identities, migrate through `session_user=migrator/current_user=owner`, reconcile grants, and verify both effective sessions.
+`infra/systemd/tmpfiles.d/ogfi-deploy.conf` defines only future orchestrator
+directories: an untrusted upload quarantine, a root-only admitted spool and
+journal/state boundary, a root-owned fixed lock inode, and a separately readable
+evidence directory. Creating those paths does not authorize or enable release
+execution. The admission helper, service, fsync-safe journal, boot recovery,
+credential-isolated probes, and external alert path remain pending.
 
-Before first use or after a `--no-owner --no-privileges` restore, a cluster administrator runs `infra/hostinger/postgres/bootstrap-roles.sql` against the exact target. This adopts supported legacy/restored public objects into the non-login owner and resets the role graph to the single reviewed migrator → owner edge. Provision passwords separately, verify a fresh migrator connection assumes the owner through the database-specific role default, and keep application traffic stopped until reconciliation proves schema/object ownership, default privileges, routine/column ACLs, and the complete append-only contract.
+The controlled migration library now loads only the migrator credential plus
+non-secret role names. It has no default process runner and cannot execute from
+its CLI; a future trusted runner may construct a child environment containing
+only `DATABASE_URL` plus locale metadata. The library cannot read the runtime
+credential, application environment, credential directory, or unrelated
+application secrets. The full
+runtime/application identity and append-only verification remains a separate
+trusted verifier contract and must be installed outside the candidate execution
+boundary before the future orchestrator may be enabled.
 
-Validate installed units with `systemd-analyze verify`. A limited sudo policy may allow the deployment account to start only `ogfi-db-migrate@<validated-release>.service`; it must not grant a shell, arbitrary unit control, credential reads, or database-administrator access. Alert on any migration/verification failure, a missed daily verification, owner/grant drift, or credential-identity collision.
+`ogfi-db-role-verify.service` and `.timer` are compatibility tombstones too.
+The former design loaded both database credentials and ran code from the mutable
+`current` release tree, so it must not be installed or enabled. Its replacement
+must be root-installed outside candidate trees and split credentials and probes.
 
-Production remains **NO-GO** until the PostgreSQL packaging/private-network decision, credential custodians, RPO/RTO and backup retention, restore rehearsal, and hosted exact-SHA evidence are approved.
+After the DEC-0248 orchestrator and credential ceremonies are implemented and
+approved, first-use and restore recovery will require a separately authorized
+cluster administrator to run `infra/hostinger/postgres/bootstrap-roles.sql`
+against a positively identified target. It is not an authorized release command
+today. The future procedure must keep traffic stopped until reconciliation proves
+the role graph, ownership, ACLs, and complete append-only contract.
+
+`release-staging-deploy.sh` and `release-staging-rollback.sh` intentionally exit
+`78` without host mutation until the amended orchestrator is implemented and
+accepted. Production remains **NO-GO** until that source exists and installed-
+host contention, request replay, credential isolation, immutable image/SHA,
+phase fault/reboot recovery, backup/restore, cutover, served-SHA smoke, rollback,
+and external alert evidence pass for the exact candidate.
 
 `ogfi-authorization-denial-finalize.service` and its timer run the `DEC-0050` bounded finalizer as `ogfi-runtime` with the runtime-only application environment. The job uses the same compare-and-set service path as lazy rollover, takes a non-blocking host lock, processes at most 100 buckets per transaction by default, stops within a configurable maximum of 55 seconds, opens no port, and receives no owner, migrator, or administrator credential. Install or enable the timer only after the additive bucket migration and application service have passed disposable concurrency, rollover, and recovery rehearsal.
 

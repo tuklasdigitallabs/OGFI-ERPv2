@@ -4,13 +4,18 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { controlledMigrationPlan, runControlledMigration } from "./db-migrate-controlled.mjs";
+import {
+  controlledMigrationChildEnvironment,
+  controlledMigrationPlan,
+  runControlledMigration,
+} from "./db-migrate-controlled.mjs";
 import {
   classifyMigrationLedger,
   buildMigrationManifest,
   KNOWN_LEGACY_MIGRATION_CHECKSUMS,
   MIGRATION_LEDGER_RACE_LIMITATION,
 } from "./db-migration-ledger-preflight.mjs";
+import { loadDatabaseRoleContract } from "./database-role-contract-lib.mjs";
 
 function envLine(name, value) {
   return [name, value].join("=");
@@ -48,14 +53,24 @@ function fixture(overrides = {}) {
   };
 }
 
-test("builds a controlled migration plan with distinct sanitized identities", () => {
+test("builds a migrator-only controlled migration plan without runtime or application inputs", () => {
   const setup = fixture();
   try {
-    const plan = controlledMigrationPlan(setup.env);
+    const migrationEnv = { ...setup.env };
+    for (const name of ["DATABASE_URL", "RUNTIME_DATABASE_URL_FILE", "OGFI_APPLICATION_ENV_FILE"]) {
+      delete migrationEnv[name];
+      Object.defineProperty(migrationEnv, name, {
+        enumerable: true,
+        get() {
+          throw new Error(`controlled migration read forbidden input ${name}`);
+        },
+      });
+    }
+    const plan = controlledMigrationPlan(migrationEnv);
     assert.equal(plan.contract.migration.username, "ogfi_prod_migrator");
-    assert.equal(plan.contract.runtime.username, "ogfi_prod_runtime");
-    assert.notEqual(plan.contract.migration.identityFingerprint, plan.contract.runtime.identityFingerprint);
-    assert.equal(plan.contract.migration.endpointFingerprint, plan.contract.runtime.endpointFingerprint);
+    assert.equal(plan.contract.runtime, undefined);
+    assert.equal(plan.contract.credentialFiles.runtime, undefined);
+    assert.equal(plan.contract.applicationEnvironmentFile, undefined);
   } finally {
     rmSync(setup.root, { recursive: true, force: true });
   }
@@ -241,24 +256,27 @@ test("controlled migration runs ledger checks before deploy and after reconcilia
     const assertSession = () => calls.push("session");
     const assertRoleGraph = () => calls.push("role-graph");
     const reconcileRoles = () => calls.push("reconcile");
-    const runContract = () => {
-      calls.push("append-only");
-      return { result: "PASS" };
-    };
     const result = runControlledMigration(plan, {
       psql: "unused",
       inspectLedger,
       runMigration,
-      runContract,
       assertSession,
       assertRoleGraph,
       reconcileRoles,
     });
-    assert.deepEqual(calls, ["session", "role-graph", "ledger-preflight", "migration", "reconcile", "ledger-postflight", "append-only"]);
+    assert.deepEqual(calls, ["session", "role-graph", "ledger-preflight", "migration", "reconcile", "ledger-postflight"]);
     assert.equal(result.raceLimitation, MIGRATION_LEDGER_RACE_LIMITATION);
+    assert.equal(result.appendOnly, undefined);
   } finally {
     rmSync(setup.root, { recursive: true, force: true });
   }
+});
+
+test("controlled migration has no implicit executable runner", () => {
+  assert.throws(
+    () => runControlledMigration({ contract: {}, migrationManifest: [] }),
+    /requires a trusted release-orchestrator migration runner/,
+  );
 });
 
 test("controlled migration stops before deploy on a failed ledger preflight", () => {
@@ -274,7 +292,6 @@ test("controlled migration stops before deploy on a failed ledger preflight", ()
         inspectLedger: () => { throw new Error("ledger rejected"); },
         runMigration: () => { migrationCalled = true; },
         reconcileRoles: () => {},
-        runContract: () => ({}),
       }),
       /ledger rejected/,
     );
@@ -298,7 +315,6 @@ test("controlled migration stops before ledger inspection and deploy on role-gra
         inspectLedger: () => { ledgerCalled = true; },
         runMigration: () => { migrationCalled = true; },
         reconcileRoles: () => {},
-        runContract: () => ({}),
       }),
       /role graph rejected/,
     );
@@ -307,6 +323,47 @@ test("controlled migration stops before ledger inspection and deploy on role-gra
   } finally {
     rmSync(setup.root, { recursive: true, force: true });
   }
+});
+
+test("controlled migration preserves Prisma advisory locking and scrubs the override", () => {
+  assert.throws(
+    () => controlledMigrationChildEnvironment("postgresql://migration", {
+      PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: "1",
+    }),
+    /advisory locking cannot be disabled/,
+  );
+  const childEnvironment = controlledMigrationChildEnvironment(
+    "postgresql://migration",
+    Object.defineProperties({
+      PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: "false",
+      DATABASE_URL: "postgresql://runtime",
+      DIRECT_DATABASE_URL: "postgresql://admin",
+      PATH: "safe-path",
+      NODE_OPTIONS: "--require=/tmp/hostile.js",
+      PNPM_HOME: "/tmp/hostile-bin",
+      SAFE_SETTING: "removed",
+      OGFI_APPLICATION_ENV_FILE: "application-secrets",
+      CREDENTIALS_DIRECTORY: "credential-mount",
+      AUTH_SECRET: "application-secret",
+    }, {
+      RUNTIME_DATABASE_URL_FILE: {
+        enumerable: true,
+        get() {
+          throw new Error("Prisma child environment read the runtime credential path");
+        },
+      },
+    }),
+  );
+  assert.equal(childEnvironment.DATABASE_URL, "postgresql://migration");
+  assert.equal(childEnvironment.PATH, undefined);
+  assert.equal(childEnvironment.NODE_OPTIONS, undefined);
+  assert.equal(childEnvironment.PNPM_HOME, undefined);
+  assert.equal(childEnvironment.SAFE_SETTING, undefined);
+  assert.equal(childEnvironment.OGFI_APPLICATION_ENV_FILE, undefined);
+  assert.equal(childEnvironment.CREDENTIALS_DIRECTORY, undefined);
+  assert.equal(childEnvironment.AUTH_SECRET, undefined);
+  assert.equal(childEnvironment.PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK, undefined);
+  assert.equal(childEnvironment.DIRECT_DATABASE_URL, undefined);
 });
 
 test("predeploy role and ledger checks force the pg_catalog search path", () => {
@@ -327,7 +384,7 @@ test("rejects privileged database credentials in the application environment", (
         "",
       ].join("\n"),
     );
-    assert.throws(() => controlledMigrationPlan(setup.env), /forbidden privileged database setting DIRECT_DATABASE_URL/);
+    assert.throws(() => loadDatabaseRoleContract(setup.env), /forbidden privileged database setting DIRECT_DATABASE_URL/);
   } finally {
     rmSync(setup.root, { recursive: true, force: true });
   }
@@ -344,7 +401,7 @@ test("rejects generic secondary database URLs in the application environment", (
         "",
       ].join("\n"),
     );
-    assert.throws(() => controlledMigrationPlan(setup.env), /forbidden privileged database setting SETUP_DATABASE_URL/);
+    assert.throws(() => loadDatabaseRoleContract(setup.env), /forbidden privileged database setting SETUP_DATABASE_URL/);
   } finally {
     rmSync(setup.root, { recursive: true, force: true });
   }
@@ -362,14 +419,14 @@ test("rejects an unsafe database identity and non-environment role", () => {
   }
 });
 
-test("rejects matching migration/runtime identities and permissive credential files", () => {
+test("full trusted role verifier rejects matching migration/runtime identities and permissive credential files", () => {
   const setup = fixture();
   try {
     writeFileSync(setup.env.RUNTIME_DATABASE_URL_FILE, "postgresql://ogfi_prod_migrator:migration-secret@127.0.0.1:5432/ogfi_erp_production?schema=public\n");
-    assert.throws(() => controlledMigrationPlan(setup.env), /username must match/);
+    assert.throws(() => loadDatabaseRoleContract(setup.env), /username must match/);
     if (process.platform !== "win32") {
       chmodSync(setup.env.RUNTIME_DATABASE_URL_FILE, 0o644);
-      assert.throws(() => controlledMigrationPlan(setup.env), /must not be accessible by group or other/);
+      assert.throws(() => loadDatabaseRoleContract(setup.env), /must not be accessible by group or other/);
     }
   } finally {
     rmSync(setup.root, { recursive: true, force: true });

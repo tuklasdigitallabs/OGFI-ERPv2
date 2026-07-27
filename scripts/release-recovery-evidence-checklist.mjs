@@ -54,24 +54,24 @@ const checklist = [
   },
   {
     owner: "Release Manager / DevOps Owner",
-    action: "Capture rollback metadata after an approved staging rollback rehearsal.",
-    command: "ROLLBACK_RELEASE_VERSION=<version> GITHUB_RUN_ID=<run-id> GITHUB_SHA=<sha> pnpm release:rollback-summary",
-    artifact: "staging-rollback/rollback-summary.txt",
-    acceptance: "Must contain rollback_release_version, evidence_run_id, verified_at_utc, and RESULT | PASS.",
+    action: "Keep rollback evidence blocked until DEC-0248 same-fence rollback/recovery is implemented.",
+    command: "UNAVAILABLE — legacy release:rollback-summary exits 78.",
+    artifact: "Future root-owned release-service rollback/recovery journal evidence",
+    acceptance: "Only executed same-fence rollback/recovery can satisfy this item; manual metadata receives no credit.",
   },
   {
     owner: "DevOps Owner / QA Lead",
-    action: "Run post-rollback smoke against the restored or rolled-back staging URL.",
-    command: "SMOKE_OUTPUT_DIR=release-evidence/staging-rollback/smoke pnpm release:smoke",
-    artifact: "staging-rollback/smoke/smoke-*.txt",
-    acceptance: "Must prove health, readiness, and protected route redirect behavior.",
+    action: "Keep authoritative post-rollback smoke blocked until DEC-0248 proves the active target.",
+    command: "UNAVAILABLE — ordinary release:smoke output receives no rollback execution credit.",
+    artifact: "Future DEC-0248 authoritative post-rollback smoke evidence",
+    acceptance: "Must bind the active proxy target and exact recovered release under the same fence.",
   },
   {
     owner: "Release Manager",
     action: "Refresh recovery status after all recovery artifacts are collected.",
     command: "pnpm release:backup-restore-status",
     artifact: "backup-restore-status/backup-restore-status-*.txt",
-    acceptance: "Must contain RESULT | PASS | Backup, restore, and rollback evidence is present.",
+    acceptance: "Must remain BLOCKED while DEC-0248 hosted release authority is unavailable.",
   },
 ];
 
@@ -108,8 +108,8 @@ lines.push(
   ...latestStatusLines(latestStatus),
   "",
   latestStatus
-    ? "RESULT | ACTION REQUIRED | Follow the checklist until the latest backup/restore status passes."
-    : "RESULT | ACTION REQUIRED | No backup/restore status artifact found; run pnpm release:backup-restore-status after collecting recovery evidence.",
+    ? "RESULT | BLOCKED | DEC-0248 same-fence rollback/recovery remains unavailable; use the latest backup/restore status for diagnostics only."
+    : "RESULT | BLOCKED | DEC-0248 same-fence rollback/recovery remains unavailable; backup/restore diagnostics have not been generated.",
 );
 
 mkdirSync(dirname(outputFile), { recursive: true });

@@ -144,12 +144,8 @@ if (failed || strictFailed) {
 function isStrictFailure(label, resultLine) {
   const acceptedStrictResultsByLabel = {
     "Final-review readiness status": [
-      "RESULT | PASS",
-      "RESULT | READY FOR GO / NO-GO",
     ],
     "GO / NO-GO evidence summary": [
-      "RESULT | GO REVIEW READY",
-      "RESULT | CONDITIONAL GO REVIEW",
     ],
   };
   const acceptedResults = acceptedStrictResultsByLabel[label];

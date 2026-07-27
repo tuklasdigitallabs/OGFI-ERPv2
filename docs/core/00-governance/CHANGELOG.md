@@ -1,5 +1,13 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-27 — Single-Host Controlled Deployment Fence
+
+- Amended `DEC-0248` after Security challenge: one root-owned systemd service/cgroup and fixed fence must own strict request admission through immutable artifact verification, isolated migration/probes, cutover, authoritative served-SHA smoke, same-fence rollback, and fsync-safe crash/reboot recovery. The earlier SSH-held lock plus separately startable migration unit is rejected.
+- Closed unsafe interim authorities: the legacy migration unit, combined-credential database verifier/timer, staging deploy/rollback scripts, workflow jobs, and direct controlled-migration CLI now fail closed. The migrator-only library retains exact role/ledger/reconciliation gates but requires an injected trusted runner, resolves reconciliation SQL from its module tree, and strips code-loading/search-path variables from its child-environment contract.
+- Removed the unwired image/container and public served-SHA helpers after Security review showed they could create false provenance confidence without proving the active proxy target. Immutable digest/SHA provenance, exact cutover, authoritative smoke, the root request-spool service, journal/recovery state machine, trusted split-credential helpers, installed-host evidence, and the production image pipeline remain pending; production is **NO-GO**.
+- Final-review, GO/NO-GO, strict status, deployment status, backup/restore status, recovery checklists, and generated evidence guides now carry an unconditional DEC-0248 unavailable gate. Legacy rollback-summary generation exits `78`, and fabricated legacy deployment/rollback/status/smoke artifacts cannot receive final release credit.
+- Requested Code Spark and exact GPT-5.4 subagent models were unavailable; the closest permitted GPT-5.6 specialist fallbacks were used. Operator-facing release guidance was corrected; no ERP user knowledge-base, training, or glossary behavior changed.
+
 ## 2026-07-27 — Approval Observer Deployment-Gate Hardening
 
 - Hardened the controlled database path with a pre-DDL exact role-graph gate, a complete read-only Prisma migration-ledger preflight, an exact-current postflight, and fail-closed handling for unknown, duplicate, failed, rolled-back, logged, gapped, or legacy-checksum histories. An absent ledger is accepted only on a zero-application-object database, while an existing empty ledger is rejected; applied migration history is never rewritten or resolved by this tooling.

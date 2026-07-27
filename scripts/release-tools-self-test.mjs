@@ -1630,70 +1630,21 @@ function testRestoreTargetSafety() {
 }
 
 function testRollbackSummary() {
-  evidenceLines.push("CHECK | Rollback summary");
-  const output = runNodeScript("scripts/release-rollback-summary.mjs", {
-    RELEASE_EVIDENCE_ROOT: evidenceRoot,
-    RELEASE_EVIDENCE_RUN_ID: "self-test-run",
-    ROLLBACK_RELEASE_VERSION: "self-test-rollback",
-    GITHUB_RUN_ID: "self-test-run",
-    GITHUB_SHA: "abcdef1234567890",
-    RELEASE_ENVIRONMENT: "self-test",
-  });
-
-  assert(
-    output.includes("Staging rollback summary written:"),
-    "rollback summary command should report output path",
-  );
-
-  const summary = readFileSync(
-    join(evidenceRoot, "staging-rollback", "rollback-summary.txt"),
-    {
-      encoding: "utf8",
-    },
-  );
-  assert(
-    summary.includes("evidence_run_id=self-test-run"),
-    "rollback summary should include evidence run ID",
-  );
-  assert(
-    summary.includes("rollback_release_version=self-test-rollback"),
-    "rollback summary should include rollback release version",
-  );
-  assert(
-    summary.includes("github_run_id=self-test-run"),
-    "rollback summary should include run ID",
-  );
-  assert(
-    summary.includes("RESULT | PASS | Staging rollback summary captured."),
-    "rollback summary should include pass marker",
-  );
-  evidenceLines.push(
-    "PASS | Rollback summary captures rollback metadata required by GO / NO-GO.",
-  );
-
-  const invalidResult = spawnSync(
+  evidenceLines.push("CHECK | Rollback summary authority disabled");
+  const result = spawnSync(
     process.execPath,
     ["scripts/release-rollback-summary.mjs"],
     {
       cwd: workspaceRoot,
-      env: {
-        ...process.env,
-        RELEASE_EVIDENCE_ROOT: evidenceRoot,
-        RELEASE_EVIDENCE_RUN_ID: "self-test-run",
-        ROLLBACK_RELEASE_VERSION: "self-test-rollback",
-        GITHUB_RUN_ID: "self-test-run",
-        GITHUB_SHA: "not-a-sha",
-      },
       encoding: "utf8",
     },
   );
+  assert(result.status === 78, "legacy rollback summary should exit 78");
   assert(
-    invalidResult.status !== 0 &&
-      `${invalidResult.stdout}${invalidResult.stderr}`.includes(
-        "GITHUB_SHA value valid",
-      ),
-    "rollback summary should reject invalid metadata",
+    `${result.stdout}${result.stderr}`.includes("DEC-0248 same-fence rollback/recovery is not implemented"),
+    "legacy rollback summary should explain the DEC-0248 blocker",
   );
+  evidenceLines.push("PASS | Legacy rollback summary generation is unavailable and exits 78.");
 }
 
 function testBackupRestoreStatus() {
@@ -1725,8 +1676,8 @@ function testBackupRestoreStatus() {
     "backup/restore status should include ordered recovery evidence sequence",
   );
   assert(
-    output.includes("SMOKE_OUTPUT_DIR=release-evidence/staging-rollback/smoke pnpm release:smoke"),
-    "backup/restore status should include post-rollback smoke command guidance",
+    output.includes("Legacy rollback summaries and ordinary smoke files receive no release credit"),
+    "backup/restore status should expose the DEC-0248 no-credit boundary",
   );
   assert(
     output.includes("PASS | Backup/restore evidence consistency"),
@@ -1775,16 +1726,16 @@ function testRecoveryChecklist() {
     "recovery evidence checklist should include backup command",
   );
   assert(
-    output.includes("COMMAND | SMOKE_OUTPUT_DIR=release-evidence/staging-rollback/smoke pnpm release:smoke"),
-    "recovery evidence checklist should include post-rollback smoke command",
+    output.includes("UNAVAILABLE — ordinary release:smoke output receives no rollback execution credit"),
+    "recovery evidence checklist should block ordinary post-rollback smoke",
   );
   assert(
     output.includes("Latest Backup/Restore Status"),
     "recovery evidence checklist should include latest status snapshot",
   );
   assert(
-    output.includes("RESULT | ACTION REQUIRED |"),
-    "recovery evidence checklist should require action until recovery evidence passes",
+    output.includes("RESULT | BLOCKED | DEC-0248 same-fence rollback/recovery remains unavailable"),
+    "recovery evidence checklist should preserve the DEC-0248 hard blocker",
   );
   assert(
     readdirSync(join(evidenceRoot, "recovery-checklist")).some((file) =>
@@ -1861,10 +1812,8 @@ function testDeploymentStatus() {
     "deployment status should include evidence run ID",
   );
   assert(
-    output.includes(
-      "RESULT | WARN | Deployment, rollback, backup/restore, smoke, and signoff evidence is incomplete",
-    ),
-    "deployment status should warn when deployment evidence placeholders remain",
+    output.includes("RESULT | BLOCKED | DEC-0248 hosted release authority is unavailable"),
+    "deployment status should remain blocked while DEC-0248 is unavailable",
   );
   assert(
     output.includes("Incomplete Owner Summary"),
@@ -1965,8 +1914,8 @@ function testDeploymentChecklist() {
     "deployment checklist should include latest backup/restore status snapshot",
   );
   assert(
-    output.includes("RESULT | ACTION REQUIRED | Collect real deployment"),
-    "deployment checklist should end with one action-required owner handoff",
+    output.includes("RESULT | BLOCKED | DEC-0248 root-owned release service"),
+    "deployment checklist should end with the hard DEC-0248 blocker",
   );
   assert(
     readdirSync(join(evidenceRoot, "deployment-checklist")).some((file) =>
@@ -3124,8 +3073,8 @@ function testMilestoneReport() {
     "milestone report should include recovery checklist gate",
   );
   assert(
-    output.includes("deployment-evidence-checklist"),
-    "milestone report should include deployment checklist gate",
+    output.includes("UNAVAILABLE: root-owned release service, recovery journal, and authoritative rollback are not implemented"),
+    "milestone report should fail closed on unavailable DEC-0248 authority",
   );
   assert(
     output.includes("uat-execution-checklist"),
@@ -3433,18 +3382,6 @@ function testMilestoneReportRequiresAllArtifactMarkers() {
   );
   assert(
     output.includes(
-      "PENDING | artifact staging-rollback/smoke/^smoke-.*\\.txt$ | matching artifact found but required marker missing in smoke-partial.txt",
-    ),
-    "milestone report must require post-rollback smoke evidence markers",
-  );
-  assert(
-    output.includes(
-      "PENDING | artifact deployment-status/^deployment-status-.*\\.txt$ | matching artifact found but required marker missing in deployment-status-partial.txt",
-    ),
-    "milestone report must require explicit deployment status evidence markers",
-  );
-  assert(
-    output.includes(
       "PENDING | artifact uat-status/^uat-status-.*\\.txt$ | matching artifact found but required marker missing in uat-status-partial.txt",
     ),
     "milestone report must require explicit UAT status evidence markers",
@@ -3496,12 +3433,6 @@ function testMilestoneReportRequiresAllArtifactMarkers() {
       "PENDING | artifact backups/^restore-check-summary\\.txt$ | matching artifact found but required marker missing in restore-check-summary.txt",
     ),
     "milestone report must require restore-check summary metadata markers",
-  );
-  assert(
-    output.includes(
-      "PENDING | artifact staging-rollback/^rollback-summary\\.txt$ | matching artifact found but required marker missing in rollback-summary.txt",
-    ),
-    "milestone report must require rollback summary metadata markers",
   );
   assert(
     output.includes(
@@ -3723,8 +3654,8 @@ function testPendingEvidenceChecklist() {
     "pending evidence checklist should include backup summary generation",
   );
   assert(
-    output.includes(`SMOKE_OUTPUT_DIR=${evidenceRoot}/staging-rollback/smoke pnpm release:smoke`),
-    "pending evidence checklist should include post-rollback smoke command",
+    output.includes("DEC-0248 same-fence rollback/recovery command is not implemented"),
+    "pending evidence checklist should expose unavailable rollback authority",
   );
   assert(
     output.includes(`${evidenceRoot}/signed-documents/training-impact-assessment.md`),
@@ -4394,8 +4325,8 @@ function testBlockerDigest() {
     "release blocker digest should include data snapshot checklist action-required owner handoff row",
   );
   assert(
-    output.includes("source=Deployment evidence checklist | RESULT | ACTION REQUIRED"),
-    "release blocker digest should include deployment checklist action-required owner handoff row",
+    output.includes("source=Deployment evidence checklist | RESULT | BLOCKED | DEC-0248"),
+    "release blocker digest should include the deployment DEC-0248 hard-block row",
   );
   assert(
     output.includes("source=Enablement evidence checklist | RESULT | ACTION REQUIRED"),
@@ -4609,16 +4540,9 @@ function testStatusSuite() {
     "release status suite strict mode should report readiness failure",
   );
   assert(
-    statusSuiteSource.includes("RESULT | READY FOR GO / NO-GO"),
-    "release status suite strict mode should accept final-review ready-for-GO output",
-  );
-  assert(
-    statusSuiteSource.includes("RESULT | GO REVIEW READY"),
-    "release status suite strict mode should accept GO review-ready output",
-  );
-  assert(
-    statusSuiteSource.includes("RESULT | CONDITIONAL GO REVIEW"),
-    "release status suite strict mode should accept conditional GO review output",
+    statusSuiteSource.includes('"Final-review readiness status": [\n    ]') &&
+      statusSuiteSource.includes('"GO / NO-GO evidence summary": [\n    ]'),
+    "release status suite strict mode must accept no final release result while DEC-0248 is unavailable",
   );
   assert(
     readdirSync(join(evidenceRoot, "status-suite")).some((file) =>
@@ -4696,6 +4620,11 @@ function testFinalReviewStatus() {
   const output = runNodeScript("scripts/release-final-review-status.mjs", {
     RELEASE_EVIDENCE_ROOT: evidenceRoot,
   });
+  assert(
+    output.includes("BLOCKED | DEC-0248 hosted release authority") &&
+      !output.includes("RESULT | READY FOR GO / NO-GO"),
+    "final-review status must remain blocked even when legacy evidence artifacts exist",
+  );
 
   assert(
     output.includes("OGFI ERP Phase I / Phase 1.5 final review readiness status"),
@@ -4734,16 +4663,16 @@ function testFinalReviewStatus() {
     "final-review status should include data snapshot preflight PASS gate",
   );
   assert(
-    output.includes("Backup restore readiness status"),
-    "final-review status should include backup/restore status evidence gate",
+    !output.includes("Backup restore readiness status"),
+    "final-review status must not credit a legacy backup/rollback status artifact",
   );
   assert(
     output.includes("Backup/restore preflight PASS"),
     "final-review status should include backup/restore preflight PASS gate",
   );
   assert(
-    output.includes("Deployment and rollback status"),
-    "final-review status should include deployment status evidence gate",
+    !output.includes("Deployment and rollback status"),
+    "final-review status must not credit a legacy deployment/rollback status artifact",
   );
   assert(
     output.includes("Release readiness register export"),
@@ -5151,6 +5080,12 @@ function testGoNoGoReport() {
       renameSync(hiddenChecksumFile, checksumFile);
     }
   }
+  assert(
+    output.includes("FAIL | DEC-0248 hosted release authority") &&
+      !output.includes("RESULT | GO REVIEW READY") &&
+      !output.includes("RESULT | CONDITIONAL GO REVIEW"),
+    "GO / NO-GO must remain NO-GO even when legacy evidence artifacts exist",
+  );
 
   assert(
     output.includes("RESULT | NO-GO"),
@@ -5185,12 +5120,12 @@ function testGoNoGoReport() {
     "GO / NO-GO report should require PASS data snapshot preflight evidence",
   );
   assert(
-    output.includes("Backup restore readiness status"),
-    "GO / NO-GO report should include backup/restore status evidence gate",
+    !output.includes("Backup restore readiness status"),
+    "GO / NO-GO must not credit a legacy backup/rollback status artifact",
   );
   assert(
-    output.includes("Deployment and rollback status"),
-    "GO / NO-GO report should include deployment status evidence gate",
+    !output.includes("Deployment and rollback status"),
+    "GO / NO-GO must not credit a legacy deployment/rollback status artifact",
   );
   assert(
     output.includes("Release readiness register export"),

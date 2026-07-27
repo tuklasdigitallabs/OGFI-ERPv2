@@ -156,6 +156,10 @@ const milestones = [
   {
     name: "Backup, restore, and rollback evidence",
     checks: [
+      unavailableGate(
+        "DEC-0248 hosted deployment and same-fence rollback authority",
+        "UNAVAILABLE: root-owned release service, recovery journal, and authoritative rollback are not implemented",
+      ),
       scriptExists("db:backup"),
       scriptExists("db:restore-check"),
       scriptExists("release:backup-restore-preflight"),
@@ -163,10 +167,6 @@ const milestones = [
       scriptExists("release:restore-summary"),
       scriptExists("release:backup-restore-status"),
       scriptExists("release:recovery-checklist"),
-      scriptExists("release:deployment-checklist"),
-      scriptExists("release:rollback-summary"),
-      scriptExists("release:staging:rollback"),
-      scriptExists("release:deployment-status"),
       fileExists("scripts/db-backup.mjs"),
       fileExists("scripts/db-restore-check.mjs"),
       fileExists("scripts/release-backup-restore-preflight.mjs"),
@@ -174,40 +174,15 @@ const milestones = [
       fileExists("scripts/release-restore-summary.mjs"),
       fileExists("scripts/release-backup-restore-status.mjs"),
       fileExists("scripts/release-recovery-evidence-checklist.mjs"),
-      fileExists("scripts/release-deployment-evidence-checklist.mjs"),
-      fileExists("scripts/release-rollback-summary.mjs"),
-      fileExists("scripts/release-deployment-status.mjs"),
-      fileExists(".github/workflows/staging-rollback.yml"),
-      artifactHasAllContent(
-        "deployment-status",
-        /^deployment-status-.*\.txt$/,
-        [
-          "Evidence run ID:",
-          "RESULT | PASS | Deployment, rollback, backup/restore, smoke, and signoff evidence has no unresolved placeholders.",
-        ],
-      ),
       artifactExists(
         "backups",
         /^backup-restore-preflight-.*\.txt$/,
         "RESULT | PASS | Backup and restore prerequisites are configured.",
       ),
-      artifactHasAllContent(
-        "backup-restore-status",
-        /^backup-restore-status-.*\.txt$/,
-        [
-          "PASS | Backup/restore evidence consistency",
-          "RESULT | PASS | Backup, restore, and rollback evidence is present",
-        ],
-      ),
       artifactExists(
         "recovery-checklist",
         /^recovery-evidence-checklist-.*\.txt$/,
         "OGFI ERP Phase I / Phase 1.5 recovery evidence checklist",
-      ),
-      artifactExists(
-        "deployment-checklist",
-        /^deployment-evidence-checklist-.*\.txt$/,
-        "OGFI ERP Phase I / Phase 1.5 deployment evidence checklist",
       ),
       artifactExists("backups", /^ogfi-erp-.*\.dump$/),
       artifactExists("backups", /^ogfi-erp-.*\.dump\.sha256$/),
@@ -235,21 +210,6 @@ const milestones = [
           "RESULT | PASS | Restore-check summary captured.",
         ],
       ),
-      artifactExists(
-        "staging-rollback",
-        /^rollback-summary\.txt$/,
-        [
-          "evidence_run_id=",
-          "rollback_release_version=",
-          "verified_at_utc=",
-          "RESULT | PASS | Staging rollback summary captured.",
-        ],
-      ),
-      artifactExists("staging-rollback/smoke", /^smoke-.*\.txt$/, [
-        "api-health /api/health expected=200 actual=200",
-        "api-readiness /api/readiness expected=200 actual=200",
-        "protected-items-route /items expected=3xx actual=307",
-      ]),
     ],
   },
   {
@@ -604,7 +564,7 @@ const pendingGuidance = new Map([
       severity: "Critical",
       owner: "DevOps Owner / Release Manager",
       evidence:
-        "backup dump, matching checksum, backup summary, isolated restore summary, rollback summary, and post-rollback smoke",
+        "DEC-0248 orchestrator plus backup dump, matching checksum, backup summary, isolated restore summary, same-fence rollback, recovery, and authoritative smoke",
     },
   ],
   [
@@ -729,6 +689,10 @@ function scriptExists(name) {
         ? scripts[name]
         : "missing",
   };
+}
+
+function unavailableGate(label, detail) {
+  return { label, pass: false, detail };
 }
 
 function fileExists(path) {

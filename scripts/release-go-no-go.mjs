@@ -232,24 +232,6 @@ const artifactChecks = [
     ],
   },
   {
-    label: "Backup restore readiness status",
-    pattern: /^backup-restore-status-.*\.txt$/,
-    directory: join(evidenceRoot, "backup-restore-status"),
-    requiredContent: [
-      "PASS | Backup/restore evidence consistency",
-      "RESULT | PASS | Backup, restore, and rollback evidence is present",
-    ],
-  },
-  {
-    label: "Deployment and rollback status",
-    pattern: /^deployment-status-.*\.txt$/,
-    directory: join(evidenceRoot, "deployment-status"),
-    requiredContent: [
-      "Evidence run ID:",
-      "RESULT | PASS | Deployment, rollback, backup/restore, smoke, and signoff evidence has no unresolved placeholders.",
-    ],
-  },
-  {
     label: "Release readiness register export",
     pattern: /^release-readiness-register-.*\.csv$/,
     directory: join(evidenceRoot, "release-readiness-register"),
@@ -395,41 +377,6 @@ const artifactChecks = [
     directory: join(evidenceRoot, "signed-evidence-status"),
     requiredContent: [
       "RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
-    ],
-  },
-  {
-    label: "Release smoke report",
-    pattern: /^smoke-.*\.txt$/,
-    directory: join(evidenceRoot, "smoke"),
-    requiredContent: [
-      "api-health /api/health expected=200 actual=200",
-      "api-readiness /api/readiness expected=200 actual=200",
-      "health /health expected=200 actual=200",
-      "readiness /readiness expected=200 actual=200",
-      "protected-items-route /items expected=3xx actual=307",
-    ],
-  },
-  {
-    label: "Staging rollback summary",
-    pattern: /^rollback-summary\.txt$/,
-    directory: join(evidenceRoot, "staging-rollback"),
-    requiredContent: [
-      "evidence_run_id=",
-      "rollback_release_version=",
-      "verified_at_utc=",
-      "RESULT | PASS | Staging rollback summary captured.",
-    ],
-  },
-  {
-    label: "Post-rollback smoke report",
-    pattern: /^smoke-.*\.txt$/,
-    directory: join(evidenceRoot, "staging-rollback", "smoke"),
-    requiredContent: [
-      "api-health /api/health expected=200 actual=200",
-      "api-readiness /api/readiness expected=200 actual=200",
-      "health /health expected=200 actual=200",
-      "readiness /readiness expected=200 actual=200",
-      "protected-items-route /items expected=3xx actual=307",
     ],
   },
 ];
@@ -651,22 +598,6 @@ const blockerGuidance = new Map([
     },
   ],
   [
-    "Staging rollback summary",
-    {
-      severity: "Critical",
-      owner: "Release Manager / DevOps Owner",
-      evidence: "rollback-summary.txt for approved rollback rehearsal",
-    },
-  ],
-  [
-    "Post-rollback smoke report",
-    {
-      severity: "Critical",
-      owner: "DevOps Owner / QA Lead",
-      evidence: "post-rollback smoke artifact proving health/readiness and protected-route behavior",
-    },
-  ],
-  [
     "Signed UAT evidence pack",
     {
       severity: "Critical",
@@ -709,9 +640,16 @@ const lines = [
   "Document Gates",
 ];
 
-let blockingFailures = 0;
+let blockingFailures = 1;
 let warnings = 0;
 const ownerSummary = new Map();
+
+lines.push(
+  "Hard Release Authority Gate",
+  "FAIL | DEC-0248 hosted release authority | UNAVAILABLE: the root-owned release service, durable recovery journal, authoritative cutover/smoke, and same-fence rollback are not implemented.",
+  "  OWNER | severity=Critical | owner=DevOps Owner / Security Owner / Release Manager | evidence=implemented and accepted DEC-0248 orchestrator plus hosted recovery evidence",
+  "",
+);
 
 for (const check of documentChecks) {
   const result = evaluateDocument(check);
@@ -785,29 +723,11 @@ if (ownerSummary.size === 0) {
   }
 }
 
-lines.push("");
-if (blockingFailures > 0) {
-  lines.push(
-    `RESULT | NO-GO | ${blockingFailures} blocking gate(s) are missing or still pending. Warnings: ${warnings}.`,
-  );
-  lines.push(
-    "Next action: complete the missing evidence, record/verify the matching ERP readiness-register entries, rerun this report, then obtain named owner signoff.",
-  );
-} else if (warnings > 0) {
-  lines.push(
-    `RESULT | CONDITIONAL GO REVIEW | No blocking gates failed, but ${warnings} warning(s) need owner review before signoff.`,
-  );
-  lines.push(
-    "Next action: record the conditional Release Board decision in ERP Admin > Release Readiness > GO / NO-GO before updating the final readiness gate.",
-  );
-} else {
-  lines.push(
-    "RESULT | GO REVIEW READY | All scanned gates passed. Named owner signoff is still required.",
-  );
-  lines.push(
-    "Next action: record the GO Release Board decision in ERP Admin > Release Readiness > GO / NO-GO before marking the final readiness gate ready.",
-  );
-}
+lines.push(
+  "",
+  `RESULT | NO-GO | ${blockingFailures} blocking gate(s) remain; DEC-0248 hosted release authority is unavailable. Warnings: ${warnings}.`,
+  "Next action: implement and accept DEC-0248, then complete the remaining evidence and obtain named owner signoff.",
+);
 
 writeFileSync(outputFile, `${lines.join("\n")}\n`);
 console.log(lines.join("\n"));

@@ -10,7 +10,7 @@ const environmentDefinitions = {
 const rolePattern = /^[a-z][a-z0-9_]{2,62}$/;
 const databasePattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{2,62}$/;
 
-export function loadDatabaseRoleContract(env = process.env) {
+export function loadMigrationDatabaseRoleContract(env = process.env) {
   const appEnvironment = env.APP_ENV;
   const definition = environmentDefinitions[appEnvironment];
   if (!definition) {
@@ -53,14 +53,36 @@ export function loadDatabaseRoleContract(env = process.env) {
     required(env, "MIGRATION_DATABASE_URL_FILE"),
     { requireRootOwnership, credentialsDirectory, expectedCredentialName: "migration_database_url" },
   );
+  const migration = parseConnection(migrationCredential.value, "migration");
+  assertConnection(migration, roles.migrator, expectedDatabaseName, "migration");
+
+  return {
+    appEnvironment,
+    expectedDatabaseName,
+    roles,
+    migration: { ...migration, url: migrationCredential.value },
+    credentialFiles: {
+      migration: migrationCredential.path,
+    },
+  };
+}
+
+export function loadDatabaseRoleContract(env = process.env) {
+  const migrationContract = loadMigrationDatabaseRoleContract(env);
+  const {
+    appEnvironment,
+    expectedDatabaseName,
+    roles,
+    migration,
+  } = migrationContract;
+  const requireRootOwnership = env.OGFI_REQUIRE_ROOT_OWNED_DATABASE_CREDENTIALS !== "no";
+  const credentialsDirectory = env.CREDENTIALS_DIRECTORY;
   const runtimeCredential = readCredentialFile(
     required(env, "RUNTIME_DATABASE_URL_FILE"),
     { requireRootOwnership, credentialsDirectory, expectedCredentialName: "runtime_database_url" },
   );
-  const migration = parseConnection(migrationCredential.value, "migration");
   const runtime = parseConnection(runtimeCredential.value, "runtime");
 
-  assertConnection(migration, roles.migrator, expectedDatabaseName, "migration");
   assertConnection(runtime, roles.runtime, expectedDatabaseName, "runtime");
   if (migration.endpointFingerprint !== runtime.endpointFingerprint) {
     throw new Error("Migration and runtime credentials must target the same database endpoint.");
@@ -68,23 +90,23 @@ export function loadDatabaseRoleContract(env = process.env) {
   if (migration.identityFingerprint === runtime.identityFingerprint) {
     throw new Error("Migration and runtime connection identity fingerprints must differ.");
   }
-  if (migrationCredential.value === runtimeCredential.value) {
+  if (migration.url === runtimeCredential.value) {
     throw new Error("Migration and runtime credentials must not be identical.");
   }
 
   const applicationEnvironmentFile = assertApplicationEnvironmentFile(
     required(env, "OGFI_APPLICATION_ENV_FILE"),
-    { migration, runtime, migrationUrl: migrationCredential.value, requireRootOwnership },
+    { migration, runtime, migrationUrl: migration.url, requireRootOwnership },
   );
 
   return {
     appEnvironment,
     expectedDatabaseName,
     roles,
-    migration: { ...migration, url: migrationCredential.value },
+    migration,
     runtime: { ...runtime, url: runtimeCredential.value },
     credentialFiles: {
-      migration: migrationCredential.path,
+      migration: migrationContract.credentialFiles.migration,
       runtime: runtimeCredential.path,
     },
     applicationEnvironmentFile,
@@ -265,6 +287,16 @@ export function sanitizedContractSummary(contract) {
     databaseEndpointFingerprint: contract.migration.endpointFingerprint,
     migrationIdentityFingerprint: contract.migration.identityFingerprint,
     runtimeIdentityFingerprint: contract.runtime.identityFingerprint,
+    roles: contract.roles,
+  };
+}
+
+export function sanitizedMigrationContractSummary(contract) {
+  return {
+    appEnvironment: contract.appEnvironment,
+    databaseName: contract.expectedDatabaseName,
+    databaseEndpointFingerprint: contract.migration.endpointFingerprint,
+    migrationIdentityFingerprint: contract.migration.identityFingerprint,
     roles: contract.roles,
   };
 }

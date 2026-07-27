@@ -84,35 +84,6 @@ const artifactChecks = [
     owner: "DevOps Owner / DBA",
     evidence: "restore-check-summary.txt from isolated non-production restore verification",
   },
-  {
-    label: "Staging rollback summary",
-    directory: "staging-rollback",
-    pattern: /^rollback-summary\.txt$/,
-    requiredAll: [
-      "rollback_release_version=",
-      "evidence_run_id=",
-      "verified_at_utc=",
-      "RESULT | PASS | Staging rollback summary captured.",
-    ],
-    severity: "Critical",
-    owner: "Release Manager / DevOps Owner",
-    evidence: "rollback-summary.txt for the approved rollback target",
-  },
-  {
-    label: "Post-rollback smoke report",
-    directory: "staging-rollback/smoke",
-    pattern: /^smoke-.*\.txt$/,
-    requiredAll: [
-      "api-health /api/health expected=200 actual=200",
-      "api-readiness /api/readiness expected=200 actual=200",
-      "health /health expected=200 actual=200",
-      "readiness /readiness expected=200 actual=200",
-      "protected-items-route /items expected=3xx actual=307",
-    ],
-    severity: "Critical",
-    owner: "DevOps Owner / QA Lead",
-    evidence: "post-rollback smoke report proving health, readiness, and protected route behavior",
-  },
 ];
 
 const lines = [
@@ -122,6 +93,7 @@ const lines = [
   `Evidence root: ${evidenceRoot}`,
   "",
   "This report is advisory. It does not create a backup, restore a database, run rollback, run smoke tests, or approve release.",
+  "BLOCKED | DEC-0248 hosted release authority | Legacy rollback summaries and ordinary smoke files receive no release credit; the root-owned same-fence rollback/recovery path is unavailable.",
   "",
   "Required Evidence Sequence",
   "1. Run pnpm release:backup-restore-preflight with reviewed DATABASE_URL and RESTORE_DATABASE_URL.",
@@ -129,13 +101,13 @@ const lines = [
   "3. Generate backup-summary.txt with pnpm release:backup-summary after the backup artifact exists.",
   "4. Restore the backup into an isolated non-production database with pnpm db:restore-check.",
   "5. Generate restore-check-summary.txt with pnpm release:restore-summary after restore verification.",
-  "6. Run the approved staging rollback rehearsal and generate staging-rollback/rollback-summary.txt.",
-  "7. Run post-rollback smoke with SMOKE_OUTPUT_DIR=release-evidence/staging-rollback/smoke pnpm release:smoke.",
-  "8. Rerun pnpm release:backup-restore-status and attach the latest backup-restore-status artifact.",
+  "6. Keep rollback readiness blocked until the DEC-0248 same-fence rollback/recovery path is implemented and accepted.",
+  "7. Do not use release:rollback-summary or ordinary release:smoke output as rollback execution evidence.",
+  "8. Rerun pnpm release:backup-restore-status for backup/restore diagnostics; it cannot pass the release-recovery gate yet.",
   "",
 ];
 
-let blockers = 0;
+let blockers = 1;
 const artifactResults = new Map();
 
 for (const check of artifactChecks) {
@@ -159,7 +131,6 @@ lines.push("", "Recovery Evidence Consistency");
 const consistencyResult = evaluateRecoveryConsistency(
   artifactResults.get("Backup summary"),
   artifactResults.get("Restore-check summary"),
-  artifactResults.get("Staging rollback summary"),
 );
 if (consistencyResult.status === "SKIP") {
   lines.push(`SKIP | Backup/restore evidence consistency | ${consistencyResult.detail}`);
@@ -189,19 +160,11 @@ if (checksumResult.status === "SKIP") {
   );
 }
 
-lines.push("");
-if (blockers > 0) {
-  lines.push(
-    `RESULT | BLOCKED | ${blockers} backup, restore, or rollback evidence blocker(s) remain before release recovery can be accepted.`,
-  );
-  lines.push(
-    "Next action: capture a real backup dump, matching checksum, backup summary, isolated restore summary, rollback summary, and post-rollback smoke report.",
-  );
-} else {
-  lines.push(
-    "RESULT | PASS | Backup, restore, and rollback evidence is present for release recovery review.",
-  );
-}
+lines.push(
+  "",
+  `RESULT | BLOCKED | ${blockers} backup, restore, or rollback evidence blocker(s) remain; DEC-0248 same-fence rollback/recovery is unavailable.`,
+  "Next action: complete backup/restore proof and implement the DEC-0248 same-fence rollback/recovery path; legacy rollback summaries and ordinary smoke receive no release credit.",
+);
 
 mkdirSync(dirname(outputFile), { recursive: true });
 writeFileSync(outputFile, `${lines.join("\n")}\n`);
@@ -261,19 +224,18 @@ function artifactPasses(filePath, check) {
   return allPass && anyPass;
 }
 
-function evaluateRecoveryConsistency(backupSummary, restoreSummary, rollbackSummary) {
-  if (!backupSummary?.pass || !restoreSummary?.pass || !rollbackSummary?.pass) {
+function evaluateRecoveryConsistency(backupSummary, restoreSummary) {
+  if (!backupSummary?.pass || !restoreSummary?.pass) {
     return {
       status: "SKIP",
       detail:
-        "requires passing backup summary, restore-check summary, and rollback summary artifacts",
+        "requires passing backup summary and restore-check summary artifacts",
     };
   }
 
   const runIds = [
     backupSummary.metadata.evidenceRunId,
     restoreSummary.metadata.evidenceRunId,
-    rollbackSummary.metadata.evidenceRunId,
   ];
   if (runIds.some((runId) => !runId)) {
     return {
@@ -285,7 +247,7 @@ function evaluateRecoveryConsistency(backupSummary, restoreSummary, rollbackSumm
   if (new Set(runIds).size !== 1) {
     return {
       pass: false,
-      detail: `backup_evidence_run_id=${runIds[0]} | restore_evidence_run_id=${runIds[1]} | rollback_evidence_run_id=${runIds[2]}`,
+      detail: `backup_evidence_run_id=${runIds[0]} | restore_evidence_run_id=${runIds[1]}`,
     };
   }
 

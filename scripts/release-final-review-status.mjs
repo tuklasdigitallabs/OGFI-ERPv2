@@ -133,14 +133,6 @@ const artifactChecks = [
     "restore_target_safety=passed",
     "RESULT | PASS | Restore-check summary captured.",
   ]),
-  requiredArtifact("Backup restore readiness status", "backup-restore-status", /^backup-restore-status-.*\.txt$/, [
-    "PASS | Backup/restore evidence consistency",
-    "RESULT | PASS | Backup, restore, and rollback evidence is present",
-  ]),
-  requiredArtifact("Deployment and rollback status", "deployment-status", /^deployment-status-.*\.txt$/, [
-    "Evidence run ID:",
-    "RESULT | PASS | Deployment, rollback, backup/restore, smoke, and signoff evidence has no unresolved placeholders.",
-  ]),
   requiredArtifact("Release readiness register export", "release-readiness-register", /^release-readiness-register-.*\.csv$/, [
     "Evidence run ID,",
     "Source Decision,DEC-0036",
@@ -193,15 +185,6 @@ const artifactChecks = [
   ]),
   requiredArtifact("Signed evidence status", "signed-evidence-status", /^signed-evidence-status-.*\.txt$/, [
     "RESULT | PASS | Signed and external security evidence documents are present and have no unresolved placeholders.",
-  ]),
-  requiredArtifact("Staging rollback summary", "staging-rollback", /^rollback-summary\.txt$/, [
-    "evidence_run_id=",
-    "RESULT | PASS | Staging rollback summary captured.",
-  ]),
-  requiredArtifact("Post-rollback smoke report", "staging-rollback/smoke", /^smoke-.*\.txt$/, [
-    "api-health /api/health expected=200 actual=200",
-    "api-readiness /api/readiness expected=200 actual=200",
-    "protected-items-route /items expected=3xx actual=307",
   ]),
 ];
 
@@ -455,22 +438,6 @@ const blockerGuidance = new Map([
     },
   ],
   [
-    "Staging rollback summary",
-    {
-      severity: "Critical",
-      owner: "Release Manager / DevOps Owner",
-      evidence: "rollback-summary.txt for approved rollback rehearsal",
-    },
-  ],
-  [
-    "Post-rollback smoke report",
-    {
-      severity: "Critical",
-      owner: "DevOps Owner / QA Lead",
-      evidence: "post-rollback smoke artifact proving health/readiness and protected-route behavior",
-    },
-  ],
-  [
     "Signed UAT evidence pack",
     {
       severity: "Critical",
@@ -523,7 +490,13 @@ const lines = [
   `INFO | migration_mode=${metadata.migrationMode}`,
 ];
 
-let blockers = metadataFailures.length > 0 ? 1 : 0;
+let blockers = (metadataFailures.length > 0 ? 1 : 0) + 1;
+lines.push(
+  "",
+  "Hard Release Authority Gate",
+  "BLOCKED | DEC-0248 hosted release authority | UNAVAILABLE: the root-owned release service, durable recovery journal, authoritative cutover/smoke, and same-fence rollback are not implemented.",
+  "  OWNER | severity=Critical | owner=DevOps Owner / Security Owner / Release Manager | evidence=implemented and accepted DEC-0248 orchestrator plus hosted recovery evidence",
+);
 if (metadataFailures.length > 0) {
   addOwnerSummary("Release summary metadata incomplete");
   lines.push(formatGuidance("Release summary metadata incomplete"));
@@ -595,19 +568,11 @@ if (ownerSummary.size === 0) {
   }
 }
 
-lines.push("");
-if (blockers > 0) {
-  lines.push(
-    `RESULT | BLOCKED | ${blockers} final-review blocker(s) remain before GO / NO-GO can be ready.`,
-  );
-  lines.push(
-    "Next action: complete real environment evidence, signed documents, external-security proof references, release metadata, manifest refresh, then rerun release:go-no-go.",
-  );
-} else {
-  lines.push(
-    "RESULT | READY FOR GO / NO-GO | Final-review prerequisites are present. Run release:go-no-go and obtain named owner signoff.",
-  );
-}
+lines.push(
+  "",
+  `RESULT | BLOCKED | ${blockers} final-review blocker(s) remain; DEC-0248 hosted release authority is unavailable.`,
+  "Next action: implement and accept DEC-0248, then complete real environment evidence, signed documents, external-security proof references, release metadata, and manifest refresh.",
+);
 
 mkdirSync(dirname(outputFile), { recursive: true });
 writeFileSync(outputFile, `${lines.join("\n")}\n`);

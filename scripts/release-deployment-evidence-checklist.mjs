@@ -56,10 +56,10 @@ const checklist = [
   },
   {
     owner: "Release Manager / DevOps Owner",
-    action: "Attach staging rollback rehearsal proof.",
-    command: "pnpm release:rollback-summary after approved rollback rehearsal metadata is available.",
-    artifact: "staging-rollback/rollback-summary.txt",
-    acceptance: "Rollback summary contains evidence_run_id, rollback release version, run ID, commit SHA, verified timestamp, and RESULT | PASS.",
+    action: "Keep rollback proof blocked until DEC-0248 same-fence rollback/recovery exists.",
+    command: "UNAVAILABLE — legacy release:rollback-summary exits 78.",
+    artifact: "Future root-owned release-service rollback/recovery journal evidence",
+    acceptance: "Only executed same-fence rollback/recovery and authoritative target smoke can satisfy this row; manual metadata receives no credit.",
   },
   {
     owner: "DevOps Owner / QA Lead",
@@ -94,7 +94,7 @@ const checklist = [
     action: "Refresh deployment status and final manifest only after source evidence, signed documents, and external-security proof references are complete.",
     command: "pnpm release:deployment-status && pnpm release:evidence:manifest",
     artifact: "deployment-status/deployment-status-*.txt and manifests/release-evidence-manifest-*.txt",
-    acceptance: "Deployment status passes, and the manifest includes checksums for deployment status, signed deployment evidence, smoke, rollback, and source artifacts.",
+    acceptance: "Unavailable until DEC-0248 is implemented; deployment status must remain BLOCKED even when legacy evidence files are populated.",
   },
 ];
 
@@ -115,6 +115,7 @@ const lines = [
   `Deployment evidence file: ${deploymentFile}`,
   "",
   "This checklist is advisory. It does not deploy, apply migrations, create backups, restore databases, run rollback, run smoke tests, sign evidence, or approve release.",
+  "BLOCKED | DEC-0248 hosted release authority is unavailable; legacy deployment, rollback, and ordinary smoke artifacts receive no final release credit.",
   "Use the same RELEASE_EVIDENCE_RUN_ID across deployment status, backup/restore status, smoke, signed evidence, final manifest, final review, and GO / NO-GO.",
   "",
   "Required Deployment Evidence Fields",
@@ -148,7 +149,7 @@ lines.push(
   "Latest Backup/Restore Status",
   ...latestStatusLines("backup-restore-status", latestBackupRestoreStatus),
   "",
-  "RESULT | ACTION REQUIRED | Collect real deployment, staging rehearsal, rollback, smoke, monitoring, signoff, and manifest integrity proof before final release review.",
+  "RESULT | BLOCKED | DEC-0248 root-owned release service, same-fence rollback/recovery, and authoritative smoke must be implemented before final release review.",
 );
 
 mkdirSync(dirname(outputFile), { recursive: true });

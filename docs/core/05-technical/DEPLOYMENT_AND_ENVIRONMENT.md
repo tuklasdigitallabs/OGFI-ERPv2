@@ -158,23 +158,29 @@ Use the manual `Staging Release Rehearsal` GitHub Actions workflow for release c
 10. generate the release candidate summary and a release evidence manifest with SHA-256 checksums for collected artifacts;
 11. upload a release evidence artifact containing release version, run ID, commit SHA, timestamp, release helper self-test evidence, evidence manifest, rendered Compose configs, data snapshots, delta report, and backup/restore proof.
 
-If staging SSH secrets are configured and `deploy_to_staging` is explicitly selected, the guarded deploy step may run `pnpm release:staging:deploy`. The script refuses to deploy unless `CONFIRM_STAGING_DEPLOY=yes` and the staging host, user, app directory, and release version are provided.
+The SSH-held staging deploy and rollback paths were rejected by the amended
+`DEC-0248`. `pnpm release:staging:deploy` and
+`pnpm release:staging:rollback` intentionally exit `78` without host mutation.
+Do not select `deploy_to_staging` until the root-owned one-service request-spool,
+phase-journal, recovery, credential-isolation, and same-fence rollback
+orchestrator is implemented and accepted.
 
-After a guarded staging deploy, run:
+For an independent non-acceptance diagnostic only, run:
 
 ```text
 SMOKE_BASE_URL=https://staging-erp.<approved-domain> pnpm release:smoke
 ```
 
-The smoke command writes timestamped evidence under `release-evidence/smoke/` and verifies `/health`, `/readiness`, `/api/health`, `/api/readiness`, sign-in reachability, and protected-route redirect behavior.
+The smoke command writes timestamped diagnostic output under
+`release-evidence/smoke/` and verifies endpoint behavior only. It does not prove
+image identity, active proxy target, or DEC-0248 release acceptance.
 
-The guarded staging deploy artifact must include the smoke evidence, any remote deploy data snapshots, and `release-evidence/manifests/` generated after those files are collected.
+No staging rollback command is currently authorized. The future orchestrator must
+admit deploy and rollback through the same root-owned fence and durable journal;
+post-rollback served-SHA smoke evidence remains mandatory.
 
-Rollback uses the manual `Staging Rollback Rehearsal` workflow or `pnpm release:staging:rollback` with an approved `ROLLBACK_RELEASE_VERSION` and `CONFIRM_STAGING_ROLLBACK=yes`. Post-rollback smoke evidence must be attached before final release approval.
-
-The staging rollback artifact must include `release-evidence/staging-rollback/` and `release-evidence/manifests/` generated after rollback summary and post-rollback smoke evidence are collected.
-
-Use `pnpm release:rollback-summary` when rollback evidence is collected manually outside the workflow so the summary contains the same required fields and pass marker checked by GO/NO-GO.
+Manual rollback summaries and direct smoke output are advisory metadata only and
+cannot replace executed same-fence rollback/recovery evidence.
 
 Before transaction UAT, run:
 
@@ -234,11 +240,31 @@ Production deployment requires:
 
 Staging and production use three distinct PostgreSQL roles: a non-login object owner, a login migrator that may `SET ROLE` only to that owner, and a login runtime role with no memberships or schema/database creation rights. The application receives only `DATABASE_URL` for `ogfi_stg_runtime` or `ogfi_prod_runtime`. Owner, administrator, `DIRECT_DATABASE_URL`, and migrator credentials are prohibited from the application environment.
 
-On Hostinger, keep the migrator and runtime URLs in separate root-owned mode-`0400` files and keep the non-secret role contract separate from the application environment. Run `pnpm db:migrate:controlled`, or the reviewed `ogfi-db-migrate@<release>.service`, for hosted migrations. The wrapper positively identifies the environment and database, verifies distinct credentials, session identity, and the exact controlled-role graph before any Prisma DDL, performs a complete read-only `_prisma_migrations` manifest/checksum preflight, runs Prisma migration deployment with a scrubbed child environment, reconciles ownership/grants, requires an exact-current ledger postflight, and runs `pnpm db:append-only:contract`. An absent ledger is accepted only when the database has zero application objects, and an existing empty ledger is rejected. Unknown, duplicate, failed, rolled-back, logged, gapped, or checksum-divergent histories fail closed; the tooling never rewrites `_prisma_migrations` or invokes migration resolution. A database carrying a known legacy checksum must be restored or rebuilt from an approved exact history. Direct hosted `pnpm db:migrate:deploy` is not an approved release operation.
+On Hostinger, keep the migrator, snapshot, and runtime credentials separate and
+keep the non-secret role contract separate from the application environment.
+The legacy `ogfi-db-migrate@.service` is a non-startable `/usr/bin/false`
+tombstone; direct hosted invocation of either migration wrapper is prohibited.
+The controlled migration code is now migrator-only: it loads no runtime
+credential or application environment, positively identifies the target and
+role graph, preserves Prisma advisory locking, performs the complete read-only
+ledger preflight, and defines reconciliation and exact-current postflight. It
+has no default runner and its CLI exits `78`; only the future root service may
+inject a fixed trusted executor. Full runtime/application identity and
+append-only verification is a separate trusted-verifier contract. The future
+root-owned release service must isolate those credentials and helpers before
+either may run on a hosted target. Unknown, duplicate, failed, rolled-back,
+logged, gapped, or checksum-divergent histories fail closed; the tooling never
+rewrites `_prisma_migrations` or invokes migration resolution. A database with a
+known legacy checksum must be restored or rebuilt from approved exact history.
 
-The role SQL under `infra/hostinger/postgres/` is packaging-neutral: it does not decide whether PostgreSQL is a Hostinger host service or a separately approved private container. Before first deployment, a cluster administrator runs the bootstrap and provisions SCRAM passwords out of band. The exact controlled-role graph permits only the migrator as a member of the owner with `SET` true, `ADMIN` false, and inherited owner privileges false; every other incoming, outgoing, option-drift, or nested edge touching owner, migrator, or runtime fails closed and is not silently repaired. After every restore, the administrator reruns bootstrap ownership and exact-membership adoption, then the migrator reconciles default/table/column/routine privileges and runs the append-only contract before application traffic resumes. Unexpected schemas or objects, unsafe ownership/default ACLs, or any unapproved callable `SECURITY DEFINER` routine are a release **NO-GO**.
+The role SQL under `infra/hostinger/postgres/` is packaging-neutral: it does not decide whether PostgreSQL is a Hostinger host service or a separately approved private container. Its future first-use and restore execution requires the DEC-0248 service plus a separately authorized cluster-administrator ceremony; it is not an authorized deployment path today. The exact controlled-role graph permits only the migrator as a member of the owner with `SET` true, `ADMIN` false, and inherited owner privileges false; every other incoming, outgoing, option-drift, or nested edge touching owner, migrator, or runtime fails closed and is not silently repaired. Application traffic must remain stopped until the future split verifiers prove ownership, membership, ACL, and append-only contracts. Unexpected schemas or objects, unsafe ownership/default ACLs, or any unapproved callable `SECURITY DEFINER` routine are a release **NO-GO**.
 
-The ledger preflight snapshot and Prisma migration deployment currently run through separate database connections. A migration-history mutation between those steps can therefore invalidate the audited starting state even though the exact-current postflight detects the resulting divergence afterward. Until a deployment-wide database lock/fence or an explicitly accepted equivalent control is implemented and rehearsed, this non-atomic interval remains a production release gate rather than an approved race window.
+The ledger preflight and Prisma deployment remain separate database connections
+and are not transactionally atomic. The amended `DEC-0248` accepts a host fence
+only when one root-owned service/cgroup owns admission through verified cutover
+or rollback and durable boot recovery; that orchestrator is not implemented in
+this checkpoint. Any additional host, runner, namespace, shared credential, or
+direct path requires a PostgreSQL session keeper. Production remains **NO-GO**.
 
 ### 5.2 Normalized approval-routing activation
 
