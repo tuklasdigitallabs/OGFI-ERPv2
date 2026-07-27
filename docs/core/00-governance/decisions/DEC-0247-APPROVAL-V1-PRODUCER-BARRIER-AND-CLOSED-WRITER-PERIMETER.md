@@ -759,6 +759,14 @@ typecheck/lint green; PostgreSQL contention, rollback, replay, and lifecycle
 writer parity remain unexecuted/open. This remains planned Phase III
 compatibility work, not Phase I or production activation.
 
+Conditional Attendance Import review now locks the batch, ordered import lines,
+and active Location, requires a sealed rule for approval-required outcomes, and
+uses scoped source CAS in both the graph and graph-free branches. No payroll,
+device, payment, journal, or schedule authority is introduced. Focused
+Workforce coverage passes 22/22 with web typecheck/lint green; PostgreSQL race,
+rollback, replay, and lifecycle-writer parity remain unexecuted/open. This is
+planned Phase III compatibility work, not Phase I activation.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

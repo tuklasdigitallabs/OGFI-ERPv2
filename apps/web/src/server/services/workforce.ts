@@ -892,7 +892,8 @@ async function findAttendanceImportApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "AttendanceImportBatch",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -3538,11 +3539,36 @@ export async function reviewAttendanceImportBatch(
     companyId: session.context.companyId,
     documentType: "AttendanceImportBatch",
   }, async (tx) => {
-    const batch = await getScopedAttendanceBatchOrThrow(
-      tx,
-      session,
-      input.batchId
-    );
+    const lockedRows = await tx.$queryRaw<Array<{ id: string; status: string; updatedAt: Date; locationId: string; approvalInstanceId: string | null }>>`
+      SELECT b.id, b.status, b."updatedAt", b."locationId", b."approvalInstanceId"
+        FROM "AttendanceImportBatch" b
+       WHERE b.id = ${input.batchId}::uuid
+         AND b."tenantId" = ${session.context.tenantId}::uuid
+         AND b."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedBatch = lockedRows[0];
+    if (!lockedBatch) throw new Error("WORKFORCE_ATTENDANCE_BATCH_NOT_FOUND");
+    const batch = await getScopedAttendanceBatchOrThrow(tx, session, input.batchId);
+    const lockedLines = await tx.$queryRaw<Array<{ id: string; tenantId: string; companyId: string; locationId: string }>>`
+      SELECT line.id, line."tenantId", line."companyId", line."locationId"
+        FROM "AttendanceImportLine" line
+       WHERE line."batchId" = ${batch.id}::uuid
+       ORDER BY line."sourceRowNumber", line.id
+       FOR UPDATE
+    `;
+    if (lockedLines.length !== batch.lines.length || lockedLines.some((line) =>
+      line.tenantId !== session.context.tenantId || line.companyId !== session.context.companyId || line.locationId !== lockedBatch.locationId
+    )) throw new Error("WORKFORCE_ATTENDANCE_LINE_SCOPE_INVALID");
+    const locationRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT l.id, l.status FROM "Location" l
+       WHERE l.id = ${lockedBatch.locationId}::uuid
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    if (!locationRows[0] || locationRows[0].status !== "ACTIVE") throw new Error("WORKFORCE_ATTENDANCE_LOCATION_NOT_ACTIVE");
+    if (lockedBatch.updatedAt.getTime() !== batch.updatedAt.getTime()) throw new Error("WORKFORCE_ATTENDANCE_REVIEW_CONFLICT");
     assertStatusAllowed(
       batch.status,
       ["IMPORTED", "VALIDATING", "REVIEW_READY", "EXCEPTION_LIST"],
@@ -3656,8 +3682,15 @@ export async function reviewAttendanceImportBatch(
         companyId: session.context.companyId,
         approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
       });
-      const updated = await tx.attendanceImportBatch.update({
-        where: { id: batch.id },
+      const claimed = await tx.attendanceImportBatch.updateMany({
+        where: {
+          id: batch.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          status: { in: ["IMPORTED", "VALIDATING", "REVIEW_READY", "EXCEPTION_LIST"] },
+          updatedAt: lockedBatch.updatedAt,
+          approvalInstanceId: null
+        },
         data: {
           status: "VALIDATING",
           approvalInstanceId: approvalInstance.id,
@@ -3685,6 +3718,8 @@ export async function reviewAttendanceImportBatch(
           }
         }
       });
+      if (claimed.count !== 1) throw new Error("WORKFORCE_ATTENDANCE_REVIEW_CONFLICT");
+      const updated = await tx.attendanceImportBatch.findFirstOrThrow({ where: { id: batch.id, tenantId: session.context.tenantId, companyId: session.context.companyId } });
       const auditEvent = await tx.auditEvent.create({
         data: {
           tenantId: session.context.tenantId,
@@ -3763,8 +3798,15 @@ export async function reviewAttendanceImportBatch(
             batch.duplicateCount > 0
           ? "EXCEPTION_LIST"
           : "REVIEW_READY";
-    const updated = await tx.attendanceImportBatch.update({
-      where: { id: batch.id },
+    const cleanUpdate = await tx.attendanceImportBatch.updateMany({
+      where: {
+        id: batch.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: { in: ["IMPORTED", "VALIDATING", "REVIEW_READY", "EXCEPTION_LIST"] },
+        updatedAt: lockedBatch.updatedAt,
+        approvalInstanceId: null
+      },
       data: {
         status: nextStatus,
         reviewedByUserId: session.user.id,
@@ -3784,6 +3826,8 @@ export async function reviewAttendanceImportBatch(
         }
       }
     });
+    if (cleanUpdate.count !== 1) throw new Error("WORKFORCE_ATTENDANCE_REVIEW_CONFLICT");
+    const updated = await tx.attendanceImportBatch.findFirstOrThrow({ where: { id: batch.id, tenantId: session.context.tenantId, companyId: session.context.companyId } });
     await writeWorkforceAudit(tx, {
       session,
       entityType: "AttendanceImportBatch",
