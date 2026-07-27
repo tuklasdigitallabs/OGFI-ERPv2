@@ -516,6 +516,9 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain("reversalOfMovementId: original.id");
     expect(service).toContain("sourceEventKey: `receipt:${line.id}:reverse`");
     expect(service).toContain("TRANSFER_RECEIPT_REVERSAL_ROLLUP_INVALID");
+    expect(service).toContain('action: "inventory_transfer_receipt.reverse"');
+    expect(service).toContain("entityId: authoritativeReceipt.id");
+    expect(service).toContain("{ transaction: tx }");
   });
 
   test("transfer discrepancy settlement is permissioned, audited, and non-posting", () => {
