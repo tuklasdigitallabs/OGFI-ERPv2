@@ -77,6 +77,14 @@ const actionFeedbackMessages: Record<string, string> = {
     "Viewing or changing Expansion financial estimates requires the Budget Control permission.",
   GOODS_RECEIPT_LINE_REQUIRED:
     "A receiving report needs at least one receivable line.",
+  GOODS_RECEIPT_INVENTORY_LOCATION_SET_CHANGED:
+    "The receiving destination changed while posting. Reopen the draft and try again.",
+  GOODS_RECEIPT_LINE_LOCK_SCOPE_CHANGED:
+    "The receiving lines changed while posting. Reopen the draft and try again.",
+  GOODS_RECEIPT_LINE_POSTING_CONFLICT:
+    "Another receiving action changed this line. Reopen the draft before retrying.",
+  GOODS_RECEIPT_POSTING_CONFLICT:
+    "Another receiving action completed first. Refresh the Receiving page before retrying.",
   GOODS_RECEIPT_NOT_DRAFT_FOR_POSTING:
     "Only draft receiving reports can be posted.",
   GOODS_RECEIPT_NOT_POSTED_FOR_REVERSAL:
@@ -165,6 +173,8 @@ const actionFeedbackMessages: Record<string, string> = {
     "This receiving discrepancy changed while you were working. Refresh and review the latest receipt.",
   GOODS_RECEIPT_PURCHASE_ORDER_LINE_MISMATCH:
     "The selected Purchase Order lines no longer match the receiving record.",
+  PURCHASE_ORDER_LINE_POSTING_CONFLICT:
+    "The Purchase Order changed while receiving. Reopen the draft before retrying.",
   PURCHASE_ORDER_NOT_FOUND:
     "The selected Purchase Order is no longer available.",
   PERMISSION_DENIED: "You do not have permission to perform this action.",

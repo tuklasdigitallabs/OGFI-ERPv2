@@ -1863,19 +1863,6 @@ export async function postGoodsReceipt(formData: FormData) {
   }
   assertAuthorizedLocation(session, receipt.receivingLocationId);
   assertGoodsReceiptCanBePosted(receipt.status);
-  await assertPrivilegedMfaForAction(session, {
-    action: "goods_receipt.post",
-    enforcementScope: "all_sensitive",
-    permissionCode: permissions.receivingPost,
-    entityType: "GoodsReceipt",
-    entityId: receipt.id,
-    reason:
-      "Posting receiving creates inventory ledger movements and requires privileged MFA evidence.",
-    metadata: {
-      purchaseOrderId: receipt.purchaseOrderId,
-      receivingLocationId: receipt.receivingLocationId
-    }
-  });
 
   await prisma.$transaction(async (tx) => {
     const postingInventoryLocationIds = receipt.lines
@@ -1905,6 +1892,15 @@ export async function postGoodsReceipt(formData: FormData) {
     if (!lockedReceipts[0]) {
       throw new Error("GOODS_RECEIPT_NOT_FOUND");
     }
+    const lockedReceiptLines = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT grl.id
+        FROM "GoodsReceiptLine" grl
+       WHERE grl."goodsReceiptId" = ${receipt.id}::uuid
+         AND grl."tenantId" = ${session.context.tenantId}::uuid
+         AND grl."companyId" = ${session.context.companyId}::uuid
+       ORDER BY grl."lineNumber" ASC, grl.id ASC
+       FOR UPDATE OF grl
+    `;
     await assertFreshReceivingAuthority(
       tx,
       session,
@@ -1933,6 +1929,38 @@ export async function postGoodsReceipt(formData: FormData) {
     if (!currentReceipt) {
       throw new Error("GOODS_RECEIPT_NOT_FOUND");
     }
+    if (lockedReceiptLines.length !== currentReceipt.lines.length) {
+      throw new Error("GOODS_RECEIPT_LINE_LOCK_SCOPE_CHANGED");
+    }
+    const initialInventoryLocationIds = [...new Set(postingInventoryLocationIds)].sort();
+    const authoritativeInventoryLocationIds = [
+      ...new Set(
+        currentReceipt.lines
+          .filter((line) => Number(line.acceptedQty) > 0)
+          .map((line) => line.inventoryDestinationLocationId)
+      )
+    ].sort();
+    if (
+      initialInventoryLocationIds.length !== authoritativeInventoryLocationIds.length ||
+      initialInventoryLocationIds.some(
+        (locationId, index) => locationId !== authoritativeInventoryLocationIds[index]
+      )
+    ) {
+      throw new Error("GOODS_RECEIPT_INVENTORY_LOCATION_SET_CHANGED");
+    }
+    await assertPrivilegedMfaForAction(session, {
+      action: "goods_receipt.post",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.receivingPost,
+      entityType: "GoodsReceipt",
+      entityId: currentReceipt.id,
+      reason:
+        "Posting receiving creates inventory ledger movements and requires privileged MFA evidence.",
+      metadata: {
+        purchaseOrderId: currentReceipt.purchaseOrderId,
+        receivingLocationId: currentReceipt.receivingLocationId
+      }
+    }, { transaction: tx });
     assertGoodsReceiptCanBePosted(currentReceipt.status);
 
     const receivablePurchaseOrder = await tx.purchaseOrder.findFirst({
@@ -2064,23 +2092,46 @@ export async function postGoodsReceipt(formData: FormData) {
         }
       );
 
-      await tx.goodsReceiptLine.update({
-        where: { id: line.id },
+      const updatedReceiptLine = await tx.goodsReceiptLine.updateMany({
+        where: {
+          id: line.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          goodsReceiptId: currentReceipt.id,
+          postedMovementId: null
+        },
         data: {
           postedMovementId: movement.id
         }
       });
+      if (updatedReceiptLine.count !== 1) {
+        throw new Error("GOODS_RECEIPT_LINE_POSTING_CONFLICT");
+      }
       if (duplicate) {
         continue;
       }
-      await tx.purchaseOrderLine.update({
-        where: { id: line.purchaseOrderLineId },
+      const purchaseOrderLine = purchaseOrderLines.get(line.purchaseOrderLineId);
+      if (!purchaseOrderLine) {
+        throw new Error("GOODS_RECEIPT_PURCHASE_ORDER_LINE_MISMATCH");
+      }
+      const updatedPurchaseOrderLine = await tx.purchaseOrderLine.updateMany({
+        where: {
+          id: purchaseOrderLine.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          purchaseOrderId: receivablePurchaseOrder.id,
+          receivedQty: purchaseOrderLine.receivedQty,
+          cancelledQty: purchaseOrderLine.cancelledQty
+        },
         data: {
           receivedQty: {
             increment: line.acceptedQty
           }
         }
       });
+      if (updatedPurchaseOrderLine.count !== 1) {
+        throw new Error("PURCHASE_ORDER_LINE_POSTING_CONFLICT");
+      }
     }
 
     const refreshedPoLines = await tx.purchaseOrderLine.findMany({
@@ -2096,8 +2147,15 @@ export async function postGoodsReceipt(formData: FormData) {
         Number(line.receivedQty) + Number(line.cancelledQty) >= Number(line.orderedQty)
     );
 
-    await tx.goodsReceipt.update({
-      where: { id: currentReceipt.id },
+    const postedReceipt = await tx.goodsReceipt.updateMany({
+      where: {
+        id: currentReceipt.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        purchaseOrderId: receivablePurchaseOrder.id,
+        receivingLocationId: session.context.locationId,
+        status: "POSTING"
+      },
       data: {
         status: currentReceipt.discrepancyFlag
           ? "POSTED_WITH_DISCREPANCY"
@@ -2105,12 +2163,17 @@ export async function postGoodsReceipt(formData: FormData) {
         postedAt: new Date()
       }
     });
+    if (postedReceipt.count !== 1) {
+      throw new Error("GOODS_RECEIPT_POSTING_CONFLICT");
+    }
     const updatedPurchaseOrder = await tx.purchaseOrder.updateMany({
       where: {
         id: receivablePurchaseOrder.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: { in: ["ISSUED", "PARTIALLY_RECEIVED"] }
+        deliveryLocationId: session.context.locationId,
+        status: { in: ["ISSUED", "PARTIALLY_RECEIVED"] },
+        updatedAt: receivablePurchaseOrder.updatedAt
       },
       data: {
         status: fullyReceived ? "FULLY_RECEIVED" : "PARTIALLY_RECEIVED"

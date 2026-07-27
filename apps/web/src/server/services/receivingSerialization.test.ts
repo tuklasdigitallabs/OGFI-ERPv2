@@ -139,6 +139,7 @@ function purchaseOrderLine(input?: {
     orderedQty: input?.orderedQty ?? 10,
     receivedQty: input?.receivedQty ?? 0,
     cancelledQty: input?.cancelledQty ?? 0,
+    updatedAt: new Date("2026-07-22T00:00:00.000Z"),
     unitPrice: 5,
     item: {
       id: ids.item,
@@ -165,6 +166,7 @@ function purchaseOrder(input?: {
     supplierId: ids.supplier,
     deliveryLocationId: ids.location,
     status: input?.status ?? "ISSUED",
+    updatedAt: new Date("2026-07-22T00:00:00.000Z"),
     supplier: { id: ids.supplier },
     deliveryLocation: { id: ids.location },
     lines: [purchaseOrderLine(input)]
@@ -186,6 +188,7 @@ function goodsReceipt(input?: {
     receivingLocationId: ids.location,
     receivedByUserId: ids.user,
     receivedAt: new Date("2026-07-22T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-22T00:00:00.000Z"),
     status: input?.status ?? "DRAFT",
     discrepancyFlag: shortQty > 0,
     discrepancySummary:
@@ -213,6 +216,7 @@ function goodsReceipt(input?: {
         lotNumber: null,
         expiryDate: null,
         notes: null,
+        updatedAt: new Date("2026-07-22T00:00:00.000Z"),
         item: {
           id: ids.item,
           baseUomId: ids.uom
@@ -246,6 +250,9 @@ function makeQueryRaw(input?: {
     }
     if (sql.includes('FROM "GoodsReceipt" gr')) {
       return [{ id: ids.receipt }];
+    }
+    if (sql.includes('FROM "GoodsReceiptLine" grl')) {
+      return [{ id: ids.receiptLine }];
     }
     if (sql.includes('FROM "User"')) {
       return [{ status: input?.userStatus ?? "ACTIVE", privilegeEpoch: 0 }];
@@ -340,6 +347,7 @@ function makePostTransaction(input?: {
     },
     purchaseOrderLine: {
       update: vi.fn().mockResolvedValue({ id: ids.purchaseOrderLine }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       findMany: vi.fn().mockResolvedValue([
         purchaseOrderLine({ orderedQty: 10, receivedQty: 10 })
       ])
@@ -352,7 +360,7 @@ function makePostTransaction(input?: {
       update: vi.fn().mockResolvedValue({ id: ids.receipt })
     },
     goodsReceiptLine: {
-      update: vi.fn().mockResolvedValue({ id: ids.receiptLine })
+      updateMany: vi.fn().mockResolvedValue({ count: 1 })
     },
     itemUomConversion: {
       findFirst: vi.fn()
@@ -497,6 +505,12 @@ describe("receiving Purchase Order serialization", () => {
     expect(tx.$queryRaw.mock.calls[2]?.[0].join(" ")).toContain(
       'FROM "GoodsReceipt" gr'
     );
+    expect(tx.$queryRaw.mock.calls[3]?.[0].join(" ")).toContain(
+      'FROM "GoodsReceiptLine" grl'
+    );
+    expect(tx.$queryRaw.mock.invocationCallOrder[3]).toBeLessThan(
+      mockPrivilegedMfa.assertPrivilegedMfaForAction.mock.invocationCallOrder[0] ?? 0
+    );
     expect(
       mockInventory.lockInventoryLocationsForPosting
     ).toHaveBeenCalledWith(tx, session, [ids.inventoryLocation]);
@@ -519,7 +533,28 @@ describe("receiving Purchase Order serialization", () => {
         sourceEventKey: `posted:${ids.receiptLine}`
       })
     );
-    expect(tx.purchaseOrderLine.update).toHaveBeenCalledTimes(1);
+    expect(tx.purchaseOrderLine.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.goodsReceiptLine.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: ids.tenant,
+          companyId: ids.company,
+          goodsReceiptId: ids.receipt,
+          postedMovementId: null
+        })
+      })
+    );
+    expect(tx.purchaseOrderLine.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: ids.tenant,
+          companyId: ids.company,
+          purchaseOrderId: ids.purchaseOrder,
+          receivedQty: 9,
+          cancelledQty: 0
+        })
+      })
+    );
     expect(tx.auditEvent.create).toHaveBeenCalledTimes(1);
   });
 

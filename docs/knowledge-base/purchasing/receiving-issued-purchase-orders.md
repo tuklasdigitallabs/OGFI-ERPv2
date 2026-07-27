@@ -3,7 +3,7 @@
 **Audience / required role:** Storekeeper, receiver, warehouse staff, or authorized manager with receiving permissions  
 **Applies to:** Assigned receiving location  
 **Related phase/module:** Phase I / Receiving  
-**Last verified against:** `receiving-transfer-workflow.md`, `inventory-workflow.md`, and implemented receiving service
+**Last verified against:** `receiving-transfer-workflow.md`, `inventory-workflow.md`, and implemented receiving service (2026-07-27)
 
 ## Purpose
 
@@ -34,7 +34,9 @@ Use this article to create and post a Receiving Report from an issued Purchase O
 7. Select `Create Draft Receipt` at the bottom of the task page. This saves a draft only; it does not post inventory.
 8. Review the draft receipt, then select `Post Receipt`.
 
-If the browser or network retries the same draft submission, OGFI returns the original draft instead of creating a duplicate. The retry token is handled automatically and is not a business reference you need to copy. If you change the PO, quantities, delivery details, or other receipt values after a failed attempt, submit the changed receipt as a new attempt; the previous retry token cannot be reused for changed data.
+ If the browser or network retries the same draft submission, OGFI returns the original draft instead of creating a duplicate. The retry token is handled automatically and is not a business reference you need to copy. If you change the PO, quantities, delivery details, or other receipt values after a failed attempt, submit the changed receipt as a new attempt; the previous retry token cannot be reused for changed data.
+
+Posting rechecks the live PO, receipt header and lines, inventory-location scope, permission, and privileged MFA inside the posting transaction. If another authorized change wins first, the post fails safely; do not retry from a stale page without reopening the draft.
 
 [Screenshot placeholder: Receiving page showing an issued PO receipt form and draft receipt post action.]
 
@@ -53,6 +55,7 @@ If the browser or network retries the same draft submission, OGFI returns the or
 - Rejected, damaged, and short quantities do not stock in.
 - Posted receipts are not edited directly; authorized full-document reversal is the correction path.
 - Posting does not perform supplier invoice matching, payment release, GL posting, or valuation finalization.
+- A receipt post creates at most one accepted-quantity movement per receipt line. A stale or competing post is rejected or rolled back as a whole; it does not leave partial stock or PO updates.
 
 ## What happens next
 
