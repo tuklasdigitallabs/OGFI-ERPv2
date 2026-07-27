@@ -924,6 +924,15 @@ inventory, payment, or journal mutation is introduced. Stock Adjustment
 terminal/cancellation remains the next inventory-control gate; replay,
 PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain open.
 
+The next inventory-control increment hardens Stock Adjustment terminal
+return/reject and cancellation together. Both paths use the shared barrier,
+source header and InventoryLocation/Location scope locks, exact approval graph
+cleanup, and source `updatedAt`/status CAS; cancellation retains privileged MFA
+and performs graph termination before source cancellation. These paths remain
+strictly non-posting: no InventoryMovement or balance mutation is introduced.
+Approve, post, reverse, count bridges, line edits, opening-balance policy,
+replay, PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

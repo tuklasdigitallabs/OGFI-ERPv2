@@ -576,6 +576,15 @@ describe("multi-step approval advancement", () => {
     expect(source).toContain('quotationRequestId: lockedSource.source.quotationRequestId');
   });
 
+  test("stock adjustment terminal decisions lock source scope and CAS", () => {
+    const source = extractFunctionSource(serviceSource, "closeStockAdjustmentWithDecision");
+    expect(source).toContain("lockStockAdjustmentApprovalSource");
+    expect(source).toContain('documentType: "StockAdjustment"');
+    expect(source).toContain('FOR UPDATE OF ai');
+    expect(source).toContain('updatedAt: lockedSource.source.updatedAt');
+    expect(source).toContain('inventoryLocationId: lockedSource.source.inventoryLocationId');
+  });
+
   test.each([
     [
       "approvePurchaseRequest",

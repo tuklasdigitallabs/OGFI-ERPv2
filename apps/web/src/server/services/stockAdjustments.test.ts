@@ -108,6 +108,22 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(source).not.toContain("nonPostingFoundation: true");
   });
 
+  test("cancellation uses source lock and graph cleanup before source CAS", () => {
+    const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
+    const start = source.indexOf("export async function cancelStockAdjustment");
+    const end = source.indexOf("\nexport async function postStockAdjustment", start);
+    const action = source.slice(start, end);
+    expect(action).toContain("withApprovalProducerTransaction");
+    expect(action).toContain("lockStockAdjustmentSourceForCancellation");
+    expect(action.indexOf("lockStockAdjustmentSourceForCancellation")).toBeLessThan(
+      action.indexOf("lockPendingStockAdjustmentApproval")
+    );
+    expect(action.indexOf("approvalInstance.updateMany")).toBeLessThan(
+      action.indexOf("stockAdjustment.updateMany")
+    );
+    expect(action).toContain("updatedAt: lockedSource.updatedAt");
+  });
+
   test("My Tasks returns only authorized unposted approved adjustments with exact count and cursor", async () => {
     mockPrisma.stockAdjustment.count.mockResolvedValue(2);
     mockPrisma.stockAdjustment.findMany.mockResolvedValue([
