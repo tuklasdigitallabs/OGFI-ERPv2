@@ -385,6 +385,17 @@ describe.skipIf(!databaseEnabled).sequential(
         reversalForm.set("id", ids.transfer);
         reversalForm.set("receiptId", first.id);
         reversalForm.set("reversalReason", "Disposable neutrality reversal");
+        const reversalMovementCountBeforeSod = await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "REVERSAL" } });
+        mockContext.requireSessionContext.mockResolvedValue(session);
+        await expect(reverseInventoryTransferReceipt(reversalForm)).rejects.toThrow("TRANSFER_RECEIPT_SELF_REVERSAL_NOT_ALLOWED");
+        mockContext.requireSessionContext.mockResolvedValue({
+          ...reverseSession,
+          user: { id: ids.dispatcher, email: `dispatcher-${suffix}@example.test`, displayName: "Receipt Dispatcher", role: "Receipt Dispatcher" },
+          authentication: undefined,
+        });
+        await expect(reverseInventoryTransferReceipt(reversalForm)).rejects.toThrow("TRANSFER_RECEIPT_DISPATCHER_REVERSAL_NOT_ALLOWED");
+        expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "REVERSAL" } })).toBe(reversalMovementCountBeforeSod);
+        mockContext.requireSessionContext.mockResolvedValue(reverseSession);
         const laterReceiptLine = receiptLines.find((line) => line.lineNumber === 2)!;
         const laterMovementId = laterReceiptLine.postedMovementId;
         expect(laterMovementId).toBeTruthy();
