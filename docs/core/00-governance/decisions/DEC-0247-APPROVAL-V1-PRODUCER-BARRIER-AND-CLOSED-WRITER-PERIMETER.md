@@ -767,6 +767,16 @@ Workforce coverage passes 22/22 with web typecheck/lint green; PostgreSQL race,
 rollback, replay, and lifecycle-writer parity remain unexecuted/open. This is
 planned Phase III compatibility work, not Phase I activation.
 
+Independent Architecture, Security, and QA review selected Employee Leave as
+the safest first typed-adapter pilot: one source plus Employee/Location lineage,
+no money or inventory effect, and existing source-lock/CAS hardening. The
+proposed family-specific adapter remains a C4 design/rehearsal gate only. No
+executable routine, positive grant, base-DML revocation, or runtime call is
+authorized until DEC-0246 human authority, disposable PostgreSQL semantic/ACL
+evidence, exact replay/rollback proofs, and the complete all-18 plus
+decision/terminal/cancellation/tooling perimeter are satisfied. C4 changes no
+user-visible behavior; the routing flag remains false.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
