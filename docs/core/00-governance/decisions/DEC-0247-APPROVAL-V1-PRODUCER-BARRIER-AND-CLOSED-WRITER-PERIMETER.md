@@ -1037,3 +1037,7 @@ Architecture and Security accepted the bounded dispatch correction. The writer p
 ### Inventory Transfer submit source/line/scope fencing correction — July 27, 2026
 
 Security conditionally approved the non-posting submit correction. The writer locks the endpoint-scoped transfer header, ordered lines, and active endpoint `Location` rows, validates line-to-endpoint lineage and zero posting/receipt/discrepancy/residue state, then CASes `DRAFT → REQUESTED` with exact scope and `updatedAt` predicates before one audit. It deliberately does not lock `InventoryLocation`, create approval records, or post inventory, preserving dispatch lock order and the future approval-status boundary. PostgreSQL submit races, rollback, scope revocation, duplicate audit cardinality, and zero-side-effect evidence remain open.
+
+### Inventory Transfer receipt writer review — July 27, 2026 (NO-GO)
+
+Architecture review rejected enabling the current receipt writer. It requires an additive durable receipt idempotency key/request hash, authoritative transfer/line/receipt locks and CAS, transaction-time privileged MFA, reversal-compatible lock ordering, exact replay/conflict semantics, accepted-only `TRANSFER_IN`, and PostgreSQL rollback/race/balance evidence before implementation. The current writer remains deferred; no receipt schema, UI, or authority change is approved by this record.
