@@ -1920,3 +1920,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - The guarded `pnpm test:authorization-procurement-inventory` command was rerun after registering the acceptance prerequisite suite and failed closed before database creation with the exact `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED` error. No PostgreSQL migration, authority-revocation, race, rollback, movement, balance, or audit evidence was credited.
 - The source-controlled transfer work remains pushed through `81d352b`; the next meaningful acceptance step still requires a marked disposable PostgreSQL administrator URL. Browser/UAT, hosted deployment/recovery, and final release gates remain open; receipt, Workspace 4, and Phase I remain **NO-GO**.
+
+### Transfer Receipt static acceptance and migration inventory revalidation — July 28, 2026
+
+- Fresh local revalidation discovers the registered acceptance suite with **2/2 guarded cases skipped** when no disposable integration marker is enabled, and `pnpm release:migration-review` passes for all **141** migrations with **88** explicit dispositions, **67** approved for rehearsal, and **21** pending review statuses elsewhere in the repository. No database behavior or production credit is inferred from these checks.
+- The exact next gate remains the marked disposable PostgreSQL run for migration catalog/constraint validation, live authority revocation, replay/concurrency, rollback, movement/balance/audit cardinality, then authenticated responsive browser/UAT and hosted recovery/deployment evidence. Receipt, Workspace 4, and Phase I remain **NO-GO**.
