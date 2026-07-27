@@ -838,7 +838,7 @@ async function prepareSpecializedApprovalDecisionAuthority(
   return prepareNormalizedApprovalDecisionPreflight(tx, session, input);
 }
 
-async function lockAndRevalidateBudgetRevisionApprovalSource(
+async function _lockAndRevalidateBudgetRevisionApprovalSource(
   tx: TransactionClient,
   session: SessionContext,
   input: {
@@ -876,6 +876,120 @@ async function lockAndRevalidateBudgetRevisionApprovalSource(
   ) {
     throw new Error("BUDGET_REVISION_NOT_UNDER_REVIEW");
   }
+}
+
+async function lockBudgetRevisionTerminalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: {
+    revisionId: string;
+    approvalInstanceId: string;
+    stepOrder: number;
+    expectedUpdatedAt: Date;
+  }
+) {
+  const approvalRows = await tx.$queryRaw<Array<{
+    id: string;
+    documentType: string;
+    documentId: string;
+    status: string;
+    currentStepOrder: number | null;
+  }>>`
+    SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status,
+           ai."currentStepOrder"
+      FROM "ApprovalInstance" ai
+     WHERE ai.id = ${input.approvalInstanceId}::uuid
+       AND ai."tenantId" = ${session.context.tenantId}::uuid
+       AND ai."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF ai
+  `;
+  const approval = approvalRows[0];
+  if (!approval || approval.documentType !== "BudgetRevision" ||
+      approval.documentId !== input.revisionId || approval.status !== "PENDING" ||
+      approval.currentStepOrder !== input.stepOrder) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT step.id
+      FROM "ApprovalInstanceStep" step
+     WHERE step."approvalInstanceId" = ${input.approvalInstanceId}::uuid
+     ORDER BY step."stepOrder" ASC, step.id ASC
+     FOR UPDATE OF step
+  `;
+  const revisionRows = await tx.$queryRaw<Array<{
+    id: string;
+    budgetId: string;
+    requestedByUserId: string;
+    status: string;
+    updatedAt: Date;
+  }>>`
+    SELECT revision.id, revision."budgetId", revision."requestedByUserId",
+           revision.status::text AS status, revision."updatedAt"
+      FROM "BudgetRevision" revision
+     WHERE revision.id = ${input.revisionId}::uuid
+       AND revision."tenantId" = ${session.context.tenantId}::uuid
+       AND revision."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF revision
+  `;
+  const revision = revisionRows[0];
+  if (!revision || revision.status !== "UNDER_REVIEW" ||
+      revision.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    throw new Error("BUDGET_REVISION_NOT_UNDER_REVIEW");
+  }
+  const budgetRows = await tx.$queryRaw<Array<{ id: string; locationId: string | null }>>`
+    SELECT budget.id, budget."locationId"
+      FROM "Budget" budget
+     WHERE budget.id = ${revision.budgetId}::uuid
+       AND budget."tenantId" = ${session.context.tenantId}::uuid
+       AND budget."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF budget
+  `;
+  const budget = budgetRows[0];
+  if (!budget) throw new Error("BUDGET_REVISION_SCOPE_CHANGED");
+  const lineRows = await tx.$queryRaw<Array<{ id: string; locationId: string | null }>>`
+    SELECT line.id, line."locationId"
+      FROM "BudgetLine" line
+     WHERE line."budgetId" = ${budget.id}::uuid
+       AND line."tenantId" = ${session.context.tenantId}::uuid
+       AND line."companyId" = ${session.context.companyId}::uuid
+     ORDER BY line."lineNumber" ASC, line.id ASC
+     FOR UPDATE OF line
+  `;
+  const locationIds = [...new Set([
+    budget.locationId,
+    ...lineRows.map((line) => line.locationId)
+  ].filter((id): id is string => Boolean(id)))].sort();
+  if (locationIds.length > 0) {
+    const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT location.id
+        FROM "Location" location
+       WHERE location.id IN (${Prisma.join(locationIds.map((id) => Prisma.sql`${id}::uuid`))})
+         AND location."tenantId" = ${session.context.tenantId}::uuid
+         AND location."companyId" = ${session.context.companyId}::uuid
+         AND location.status = 'ACTIVE'::"RecordStatus"
+       ORDER BY location.id ASC
+       FOR SHARE OF location
+    `;
+    if (locationRows.length !== locationIds.length) {
+      throw new Error("BUDGET_REVISION_SCOPE_CHANGED");
+    }
+  } else if (!(await hasCompanyApprovalScope(session))) {
+    throw new Error("APPROVAL_SCOPE_DENIED");
+  }
+  const budgetForScope = await tx.budget.findFirst({
+    where: { id: budget.id, tenantId: session.context.tenantId, companyId: session.context.companyId },
+    select: {
+      locationId: true,
+      lines: { select: { locationId: true } }
+    }
+  });
+  if (!budgetForScope || !(await hasBudgetApprovalScope(session, budgetForScope))) {
+    throw new Error("APPROVAL_SCOPE_DENIED");
+  }
+  if (revision.requestedByUserId === session.user.id) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  return revision;
 }
 
 type ExpenseApprovalSource = Prisma.ExpenseRequestGetPayload<{
@@ -8967,6 +9081,11 @@ export async function approveBudgetRevision(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "BudgetRevision"
+    });
     const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
       tx,
       session,
@@ -8977,24 +9096,12 @@ export async function approveBudgetRevision(formData: FormData) {
         includeNextStep: true
       }
     );
-    if (normalizedPreflight) {
-      await lockAndRevalidateBudgetRevisionApprovalSource(tx, session, {
-        budgetRevisionId: revision.id,
-        approvalInstanceId: approval.id,
-        expectedUpdatedAt: revision.updatedAt
-      });
-    } else {
-      const liveRevision = await tx.budgetRevision.findFirst({
-        where: {
-          id: revision.id,
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          status: "UNDER_REVIEW"
-        },
-        select: { id: true }
-      });
-      if (!liveRevision) throw new Error("BUDGET_REVISION_NOT_UNDER_REVIEW");
-    }
+    const lockedRevision = await lockBudgetRevisionTerminalSource(tx, session, {
+      revisionId: revision.id,
+      approvalInstanceId: approval.id,
+      stepOrder: step.stepOrder,
+      expectedUpdatedAt: revision.updatedAt
+    });
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -9082,7 +9189,9 @@ export async function approveBudgetRevision(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "UNDER_REVIEW",
-        ...(normalizedPreflight ? { updatedAt: revision.updatedAt } : {})
+        updatedAt: lockedRevision.updatedAt,
+        budgetId: lockedRevision.budgetId,
+        requestedByUserId: lockedRevision.requestedByUserId
       },
       data: {
         status: "APPROVED",
@@ -10633,30 +10742,23 @@ async function closeBudgetRevisionWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
-    const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(tx, session, {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "BudgetRevision"
+    });
+    await prepareSpecializedApprovalDecisionAuthority(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
       currentStepOrder: step.stepOrder,
       includeNextStep: false
     });
-    if (normalizedPreflight) {
-      await lockAndRevalidateBudgetRevisionApprovalSource(tx, session, {
-        budgetRevisionId: revision.id,
-        approvalInstanceId: approval.id,
-        expectedUpdatedAt: revision.updatedAt
-      });
-    } else {
-      const liveRevision = await tx.budgetRevision.findFirst({
-        where: {
-          id: revision.id,
-          tenantId: session.context.tenantId,
-          companyId: session.context.companyId,
-          status: "UNDER_REVIEW"
-        },
-        select: { id: true }
-      });
-      if (!liveRevision) throw new Error("BUDGET_REVISION_NOT_UNDER_REVIEW");
-    }
+    const lockedRevision = await lockBudgetRevisionTerminalSource(tx, session, {
+      revisionId: revision.id,
+      approvalInstanceId: approval.id,
+      stepOrder: step.stepOrder,
+      expectedUpdatedAt: revision.updatedAt
+    });
     await decideSpecializedCurrentApprovalStep(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -10686,7 +10788,9 @@ async function closeBudgetRevisionWithDecision(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "UNDER_REVIEW",
-        ...(normalizedPreflight ? { updatedAt: revision.updatedAt } : {})
+        updatedAt: lockedRevision.updatedAt,
+        budgetId: lockedRevision.budgetId,
+        requestedByUserId: lockedRevision.requestedByUserId
       },
       data: {
         status,
@@ -10703,8 +10807,8 @@ async function closeBudgetRevisionWithDecision(
         companyId: session.context.companyId,
         actorUserId: session.user.id,
         eventType,
-        entityType: "Budget",
-        entityId: revision.budgetId,
+        entityType: "BudgetRevision",
+        entityId: revision.id,
         beforeData: { status: "UNDER_REVIEW" },
         afterData: { status },
         metadata: {
@@ -10715,7 +10819,8 @@ async function closeBudgetRevisionWithDecision(
           evidenceReference: values.evidenceReference ?? null,
           budgetMutationDeferred: true,
           lineMutationDeferred: true,
-          noSourceMutation: true,
+          noBudgetLineMutation: true,
+          noCommitmentMutation: true,
           noPaymentMutation: true,
           noJournalPosting: true
         }

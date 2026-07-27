@@ -1040,4 +1040,32 @@ describe("multi-step approval advancement", () => {
     expect(terminal).toContain("noPaymentCreation");
     expect(terminal).toContain("noPaymentRelease");
   });
+
+  test("budget revision approval and rejection share locked source and scope perimeter", () => {
+    const helper = extractFunctionSource(
+      serviceSource,
+      "lockBudgetRevisionTerminalSource"
+    );
+    const approve = extractFunctionSource(serviceSource, "approveBudgetRevision");
+    const reject = extractFunctionSource(
+      serviceSource,
+      "closeBudgetRevisionWithDecision"
+    );
+    expect(helper).toContain('documentType !== "BudgetRevision"');
+    expect(helper).toContain('FROM "BudgetRevision" revision');
+    expect(helper).toContain('FOR UPDATE OF revision');
+    expect(helper).toContain('FROM "Budget" budget');
+    expect(helper).toContain('FROM "BudgetLine" line');
+    expect(helper).toContain('FOR SHARE OF location');
+    expect(helper).toContain("hasBudgetApprovalScope");
+    expect(helper).toContain("SELF_APPROVAL_BLOCKED");
+    for (const source of [approve, reject]) {
+      expect(source).toContain('documentType: "BudgetRevision"');
+      expect(source).toContain("lockBudgetRevisionTerminalSource");
+      expect(source).toContain("updatedAt: lockedRevision.updatedAt");
+    }
+    expect(reject).toContain("noBudgetLineMutation");
+    expect(reject).toContain("noCommitmentMutation");
+    expect(reject).not.toContain("budgetLine.update");
+  });
 });
