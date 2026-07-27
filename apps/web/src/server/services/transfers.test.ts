@@ -280,6 +280,19 @@ describe("inventory transfer foundation rules", () => {
     );
   });
 
+  test("cancellation uses a scoped source and child-row fence without posting movements", () => {
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const cancellation = source.slice(source.indexOf("export async function cancelInventoryTransfer"));
+
+    expect(cancellation).toContain('FOR UPDATE OF t');
+    expect(cancellation).toContain('FOR UPDATE OF l');
+    expect(cancellation).toContain('FOR UPDATE OF r');
+    expect(cancellation).toContain('updatedAt: transfer.updatedAt');
+    expect(cancellation).toContain('sourceDocumentType: "InventoryTransfer"');
+    expect(cancellation).toContain('TRANSFER_CANCELLATION_RESIDUE_CONFLICT');
+    expect(cancellation).not.toContain('postInventoryMovementInTransaction');
+  });
+
   test("dispatches requested transfers only", () => {
     expect(() => assertTransferCanDispatch("REQUESTED")).not.toThrow();
     expect(() => assertTransferCanDispatch("DRAFT")).toThrow(

@@ -1025,3 +1025,7 @@ Architecture and Security accepted a feature-disabled, legacy-only Payment Reque
 ### Purchase Order pre-receiving cancellation correction — July 27, 2026
 
 Architecture, Security, and QA accepted the source/commitment-only Purchase Order cancellation correction. The writer now uses the shared PO barrier, locks the parent/line/receipt/scope facts, rejects pending approval-child residue, CASes the parent and each line against the locked snapshot, and keeps deterministic budget-commitment reversal keys. It does not post receiving or inventory and does not mutate AP, payment, bank, journal, or supplier communication state. PostgreSQL race, rollback, replay, and zero-side-effect evidence remain required.
+
+### Inventory Transfer cancellation source/line fencing correction — July 27, 2026
+
+Architecture and Security accepted the bounded non-posting transfer cancellation correction. The writer now locks the scoped transfer header, revalidates distinct active source/destination locations, locks ordered transfer lines and receipt rows, rejects any dispatched/received/discrepancy quantity or movement/approval/receipt residue, and CASes `DRAFT|REQUESTED → CANCELLED` with the locked `updatedAt` and scope predicates before one immutable audit event. It does not create or reverse inventory movements. PostgreSQL contention, rollback, ACL/scope, duplicate retry, and zero-movement/receipt evidence remain open.

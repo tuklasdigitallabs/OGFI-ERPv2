@@ -2001,19 +2001,112 @@ export async function cancelInventoryTransfer(formData: FormData) {
   await requirePermission(session, permissions.transferCancel);
   const values = cancelTransferSchema.parse(Object.fromEntries(formData));
 
-  const transfer = await prisma.inventoryTransfer.findFirst({
-    where: scopedTransferWhere(session, values.id)
-  });
-  if (!transfer) {
-    throw new Error("TRANSFER_NOT_FOUND");
-  }
-  assertTransferCanCancel(transfer.status);
-
   await prisma.$transaction(async (tx) => {
+    const [transfer] = await tx.$queryRaw<Array<{
+      id: string;
+      tenantId: string;
+      companyId: string;
+      sourceLocationId: string;
+      destinationLocationId: string;
+      status: string;
+      updatedAt: Date;
+    }>>(Prisma.sql`
+      SELECT t."id", t."tenantId", t."companyId", t."sourceLocationId",
+        t."destinationLocationId", t."status", t."updatedAt"
+      FROM "InventoryTransfer" t
+      WHERE t."id" = ${values.id}
+        AND t."tenantId" = ${session.context.tenantId}
+        AND t."companyId" = ${session.context.companyId}
+        AND (t."sourceLocationId" = ${session.context.locationId}
+          OR t."destinationLocationId" = ${session.context.locationId})
+      FOR UPDATE OF t
+    `);
+    if (!transfer) {
+      throw new Error("TRANSFER_NOT_FOUND");
+    }
+    assertTransferCanCancel(transfer.status);
+
+    const locations = await tx.location.findMany({
+      where: {
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
+        id: { in: [transfer.sourceLocationId, transfer.destinationLocationId] },
+        status: "ACTIVE"
+      },
+      select: { id: true }
+    });
+    assertTransferLocationsDistinct(transfer.sourceLocationId, transfer.destinationLocationId);
+    if (locations.length !== 2) {
+      throw new Error("TRANSFER_LOCATION_SCOPE_CONFLICT");
+    }
+
+    const lines = await tx.$queryRaw<Array<{
+      id: string;
+      dispatchedQty: Prisma.Decimal;
+      receivedQty: Prisma.Decimal;
+      rejectedQty: Prisma.Decimal;
+      damagedQty: Prisma.Decimal;
+      discrepancyQty: Prisma.Decimal;
+    }>>(Prisma.sql`
+      SELECT l."id", l."dispatchedQty", l."receivedQty", l."rejectedQty",
+        l."damagedQty", l."discrepancyQty"
+      FROM "InventoryTransferLine" l
+      WHERE l."inventoryTransferId" = ${transfer.id}
+        AND l."tenantId" = ${transfer.tenantId}
+        AND l."companyId" = ${transfer.companyId}
+      ORDER BY l."lineNumber" ASC, l."id" ASC
+      FOR UPDATE OF l
+    `);
+    if (lines.some((line) => [
+      line.dispatchedQty,
+      line.receivedQty,
+      line.rejectedQty,
+      line.damagedQty,
+      line.discrepancyQty
+    ].some((quantity) => Number(quantity) !== 0))) {
+      throw new Error("TRANSFER_CANCELLATION_RESIDUE_CONFLICT");
+    }
+
+    const receipts = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT r."id"
+      FROM "InventoryTransferReceipt" r
+      WHERE r."inventoryTransferId" = ${transfer.id}
+        AND r."tenantId" = ${transfer.tenantId}
+        AND r."companyId" = ${transfer.companyId}
+      ORDER BY r."id" ASC
+      FOR UPDATE OF r
+    `);
+    const [movementResidue, approvalResidue] = await Promise.all([
+      tx.inventoryMovement.count({
+        where: {
+          tenantId: transfer.tenantId,
+          companyId: transfer.companyId,
+          sourceDocumentType: "InventoryTransfer",
+          sourceDocumentId: transfer.id
+        }
+      }),
+      tx.approvalInstance.count({
+        where: {
+          tenantId: transfer.tenantId,
+          companyId: transfer.companyId,
+          documentType: "InventoryTransfer",
+          documentId: transfer.id
+        }
+      })
+    ]);
+    if (receipts.length > 0 || movementResidue > 0 || approvalResidue > 0) {
+      throw new Error("TRANSFER_CANCELLATION_RESIDUE_CONFLICT");
+    }
+
     const cancelled = await tx.inventoryTransfer.updateMany({
       where: {
         id: transfer.id,
-        status: { in: ["DRAFT", "REQUESTED"] }
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
+        sourceLocationId: transfer.sourceLocationId,
+        destinationLocationId: transfer.destinationLocationId,
+        status: { in: ["DRAFT", "REQUESTED"] },
+        updatedAt: transfer.updatedAt
       },
       data: {
         status: "CANCELLED",
