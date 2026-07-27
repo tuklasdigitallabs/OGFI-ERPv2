@@ -1847,3 +1847,8 @@ Update this register only when implementation state, release scope, a confirmed 
 ### Transfer receipt retry and reversal enablement documentation — July 27, 2026
 
 - The transfer receipt knowledge-base article, transfer UI specification, and glossary now describe the implemented actor/destination/line/quantity/discrepancy-bound retry identity, exact terminal replay, safe conflict behavior, and transaction-time lock/MFA boundary. This documents existing behavior only; it does not activate the transfer receipt writer or close its PostgreSQL migration, race, rollback, browser/UAT, or hosted gates.
+
+### Overview inventory-valuation availability suppression — July 27, 2026
+
+- Independent Workspace and backend review selected a bounded visible-surface correction: Overview no longer labels `Inventory value` as `Available` merely because quantity balances can be read. This removes an unauthoritative valuation claim without changing inventory reads, permissions, ledger behavior, or accounting.
+- Dashboard coverage now asserts the valuation card is absent; the dashboard UI specification and user guide explain that quantity visibility is not formal valuation and that no replacement metric is currently approved. Focused dashboard tests and the full non-database suite remain the applicable local evidence; PostgreSQL, responsive-browser, hosted, and UAT gates remain open.

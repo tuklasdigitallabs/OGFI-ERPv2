@@ -103,6 +103,7 @@ Dashboard cards and notifications provide visibility. They do not replace the de
 - Food Cost is intentionally not summarized on Overview while its business-date, missing-valuation, and status definitions are under review. If authorized, open `Food Cost Analysis` from its neutral source-workspace link and verify the selected date and evidence there.
 - Overview does not show an `Updated this week` or recent stock-updates total. A balance row's update time is mutable cache metadata and does not provide a reliable inventory-movement activity measure or an exact dashboard drilldown. Authorized users can still open ordinary `Inventory → Stock Balances` and `Inventory → Ledger` under their existing permissions.
 - Overview does not provide a combined PO commitment, open-exposure, or received-value total. The removed cards did not have an approved authoritative lifecycle, currency, valuation, and reconciliation basis or an exact destination. Their absence is not a zero-value statement, and no replacement procurement money metric is currently approved.
+- Overview also does not show an `Inventory value` availability card. Visible stock balances are quantity signals; formal valuation remains withheld until an approved costing basis, currency/reconciliation policy, and exact source destination exist. This is not a zero-value statement.
 
 ## Important Controls And Warnings
 

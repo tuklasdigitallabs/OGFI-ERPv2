@@ -1207,6 +1207,24 @@ describe("operational dashboard model", () => {
     expect(serializedDashboard).not.toContain("/recipes/analysis");
   });
 
+  it("does not advertise inventory valuation from balance visibility alone", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      inventoryBalanceDashboard: {
+        totalRows: 6,
+        positiveRows: 3,
+        zeroRows: 1,
+        lotExpiryTrackedRows: 2
+      }
+    });
+
+    expect(dashboard.sourceHealth).not.toContainEqual(
+      expect.objectContaining({ id: "inventory-value-source" })
+    );
+    expect(dashboard.sourceHealth.map((metric) => metric.label)).not.toContain(
+      "Inventory value"
+    );
+  });
+
   it("keeps incident and maintenance source views routed to their exact profiles", () => {
     expect(dashboardPageSource).toContain('title: "Open Incidents"');
     expect(dashboardPageSource).toContain(

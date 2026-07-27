@@ -1218,15 +1218,6 @@ export function buildOperationalDashboardModel(
           }
         ]
       : []),
-    {
-      id: "inventory-value-source",
-      label: "Inventory value",
-      displayValue: source.inventoryBalanceDashboard ? "Available" : "No access",
-      detail:
-        "On-hand stock is visible; formal valuation needs trusted costing/accounting source",
-      ...(source.inventoryBalanceDashboard ? { href: "/inventory" } : {}),
-      tone: source.inventoryBalanceDashboard ? "info" : "neutral"
-    }
   );
 
   const approvalQueueDrafts = source.approvals?.map((approval) => ({
