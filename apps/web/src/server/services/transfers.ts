@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { prisma, Prisma } from "@ogfi/database";
 import { z } from "zod";
 import { TRANSFER_MAX_LINES } from "../../lib/workflowLimits";
@@ -50,8 +51,58 @@ const transferActionSchema = z.object({
 
 const receiveTransferSchema = z.object({
   id: z.string().uuid(),
+  idempotencyKey: z.string().trim().min(16).max(200),
   notes: z.string().trim().max(1000).optional()
 });
+
+type TransferReceiptHashLine = {
+  lineId: string;
+  sourceInventoryLocationId: string;
+  destinationInventoryLocationId: string;
+  acceptedQty: number;
+  rejectedQty: number;
+  damagedQty: number;
+  discrepancyQty: number;
+  discrepancyType: string | null;
+  discrepancyReason: string | null;
+  evidenceReference: string | null;
+};
+
+function canonicalReceiptQuantity(value: number) {
+  return value.toFixed(6);
+}
+
+export function hashInventoryTransferReceiptRequest(input: {
+  actorUserId: string;
+  destinationLocationId: string;
+  transferId: string;
+  notes?: string | null;
+  lines: TransferReceiptHashLine[];
+}) {
+  const payload = {
+    version: "inventory-transfer-receipt-v1",
+    actorUserId: input.actorUserId,
+    destinationLocationId: input.destinationLocationId,
+    transferId: input.transferId,
+    notes: input.notes?.trim() || null,
+    lines: [...input.lines]
+      .sort((left, right) => left.lineId.localeCompare(right.lineId))
+      .map((line) => ({
+        lineId: line.lineId,
+        sourceInventoryLocationId: line.sourceInventoryLocationId,
+        destinationInventoryLocationId: line.destinationInventoryLocationId,
+        acceptedQty: canonicalReceiptQuantity(line.acceptedQty),
+        rejectedQty: canonicalReceiptQuantity(line.rejectedQty),
+        damagedQty: canonicalReceiptQuantity(line.damagedQty),
+        discrepancyQty: canonicalReceiptQuantity(line.discrepancyQty),
+        discrepancyType: line.discrepancyType?.trim() || null,
+        discrepancyReason: line.discrepancyReason?.trim() || null,
+        evidenceReference: line.evidenceReference?.trim() || null
+      }))
+  };
+
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
 
 const reverseTransferReceiptSchema = z.object({
   id: z.string().uuid(),

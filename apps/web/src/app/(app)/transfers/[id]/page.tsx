@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
 import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
@@ -367,6 +368,11 @@ export default async function TransferDetailPage({
               <EntryModal title="Receive Transfer" triggerLabel="Receive Transfer">
                 <form action={receiveTransferAction} className="mt-4 grid gap-4">
                   <input name="id" type="hidden" value={transfer.id} />
+                  <input
+                    name="idempotencyKey"
+                    type="hidden"
+                    value={`ui:transfer-receipt:${randomUUID()}`}
+                  />
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     Accepted quantity posts destination stock. Rejected, damaged, and
                     discrepancy quantities are recorded without increasing stock.

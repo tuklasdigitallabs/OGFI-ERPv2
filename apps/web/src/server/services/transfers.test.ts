@@ -13,6 +13,7 @@ import {
   assertTransferReceiptCanReverse,
   assertTransferCanSubmit,
   assertTransferLocationsDistinct,
+  hashInventoryTransferReceiptRequest,
   getTransferDashboardRead,
   listTransferMyTaskPage,
   listInventoryTransfersDashboardProfilePage,
@@ -602,5 +603,83 @@ describe("inventory transfer foundation rules", () => {
     expect(page).toContain("listInventoryTransfersDashboardProfilePage(session, profile, getPage(params))");
     expect(page).toContain("This view does not grant transfer or inventory actions.");
     expect(page).toContain("!profile && canCreateTransfers");
+  });
+
+  test("receipt request hash is canonical, line-order independent, and actor-bound", () => {
+    const base = {
+      actorUserId: "00000000-0000-4000-8000-000000000005",
+      destinationLocationId: "00000000-0000-4000-8000-000000000004",
+      transferId: "00000000-0000-4000-8000-000000000006",
+      notes: "  received at dock  "
+    };
+    const first = hashInventoryTransferReceiptRequest({
+      ...base,
+      lines: [
+        {
+          lineId: "00000000-0000-4000-8000-000000000008",
+          sourceInventoryLocationId: "00000000-0000-4000-8000-000000000009",
+          destinationInventoryLocationId: "00000000-0000-4000-8000-000000000010",
+          acceptedQty: 1,
+          rejectedQty: 0,
+          damagedQty: 0,
+          discrepancyQty: 0,
+          discrepancyType: null,
+          discrepancyReason: null,
+          evidenceReference: null
+        },
+        {
+          lineId: "00000000-0000-4000-8000-000000000007",
+          sourceInventoryLocationId: "00000000-0000-4000-8000-000000000011",
+          destinationInventoryLocationId: "00000000-0000-4000-8000-000000000012",
+          acceptedQty: 2.5,
+          rejectedQty: 0,
+          damagedQty: 0,
+          discrepancyQty: 0,
+          discrepancyType: null,
+          discrepancyReason: null,
+          evidenceReference: null
+        }
+      ]
+    });
+    const reordered = hashInventoryTransferReceiptRequest({
+      ...base,
+      notes: "received at dock",
+      lines: [
+        {
+          lineId: "00000000-0000-4000-8000-000000000007",
+          sourceInventoryLocationId: "00000000-0000-4000-8000-000000000011",
+          destinationInventoryLocationId: "00000000-0000-4000-8000-000000000012",
+          acceptedQty: 2.5,
+          rejectedQty: 0,
+          damagedQty: 0,
+          discrepancyQty: 0,
+          discrepancyType: null,
+          discrepancyReason: null,
+          evidenceReference: null
+        },
+        {
+          lineId: "00000000-0000-4000-8000-000000000008",
+          sourceInventoryLocationId: "00000000-0000-4000-8000-000000000009",
+          destinationInventoryLocationId: "00000000-0000-4000-8000-000000000010",
+          acceptedQty: 1.0000001,
+          rejectedQty: 0,
+          damagedQty: 0,
+          discrepancyQty: 0,
+          discrepancyType: null,
+          discrepancyReason: null,
+          evidenceReference: null
+        }
+      ]
+    });
+    expect(reordered).toBe(first);
+    expect(
+      hashInventoryTransferReceiptRequest({
+        ...base,
+        actorUserId: "00000000-0000-4000-8000-000000000013",
+        lines: []
+      })
+    ).not.toBe(
+      hashInventoryTransferReceiptRequest({ ...base, lines: [] })
+    );
   });
 });
