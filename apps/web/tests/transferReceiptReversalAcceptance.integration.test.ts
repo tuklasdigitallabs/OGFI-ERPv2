@@ -134,6 +134,7 @@ describe.skipIf(!databaseEnabled).sequential(
         destinationInventoryLocation: randomUUID(),
         receiver: randomUUID(),
         dispatcher: randomUUID(),
+        reverser: randomUUID(),
         role: randomUUID(),
         uom: randomUUID(),
         category: randomUUID(),
@@ -142,12 +143,14 @@ describe.skipIf(!databaseEnabled).sequential(
         line: randomUUID(),
         line2: randomUUID(),
         authSession: randomUUID(),
+        reverseAuthSession: randomUUID(),
       };
       const now = new Date();
-      const permission = await prisma.permission.findUniqueOrThrow({
-        where: { code: "inventory.transfer.receive" },
-        select: { id: true },
+      const permissions = await prisma.permission.findMany({
+        where: { code: { in: ["inventory.transfer.receive", "inventory.transfer.receipt.reverse"] } },
+        select: { id: true, code: true },
       });
+      expect(permissions).toHaveLength(2);
       await prisma.tenant.create({
         data: { id: ids.tenant, name: `Receipt Acceptance ${suffix}`, loginCode: `ra-${suffix}` },
       });
@@ -179,6 +182,7 @@ describe.skipIf(!databaseEnabled).sequential(
         data: [
           { id: ids.receiver, tenantId: ids.tenant, email: `receiver-${suffix}@example.test`, displayName: "Receipt Receiver", status: "ACTIVE", privilegeEpoch: 0 },
           { id: ids.dispatcher, tenantId: ids.tenant, email: `dispatcher-${suffix}@example.test`, displayName: "Receipt Dispatcher", status: "ACTIVE", privilegeEpoch: 0 },
+          { id: ids.reverser, tenantId: ids.tenant, email: `reverser-${suffix}@example.test`, displayName: "Receipt Reverser", status: "ACTIVE", privilegeEpoch: 0 },
         ],
       });
       await prisma.role.create({
@@ -187,12 +191,16 @@ describe.skipIf(!databaseEnabled).sequential(
           tenantId: ids.tenant,
           code: `RA-ROLE-${suffix}`,
           name: "Receipt Acceptance Receiver",
-          permissions: { create: { permissionId: permission.id } },
+          permissions: { create: permissions.map(({ id }) => ({ permissionId: id })) },
         },
       });
       await prisma.userRoleAssignment.create({ data: { userId: ids.receiver, roleId: ids.role } });
+      await prisma.userRoleAssignment.create({ data: { userId: ids.reverser, roleId: ids.role } });
       await prisma.userScopeAssignment.create({
         data: { userId: ids.receiver, scopeType: "LOCATION", scopeId: ids.destinationLocation, accessLevel: "MANAGE" },
+      });
+      await prisma.userScopeAssignment.create({
+        data: { userId: ids.reverser, scopeType: "LOCATION", scopeId: ids.destinationLocation, accessLevel: "MANAGE" },
       });
       await prisma.authSession.create({
         data: {
@@ -200,6 +208,20 @@ describe.skipIf(!databaseEnabled).sequential(
           tenantId: ids.tenant,
           userId: ids.receiver,
           tokenHash: `ra-token-${suffix}`,
+          status: "ACTIVE",
+          assuranceLevel: "MFA",
+          mfaAuthenticatedAt: now,
+          privilegeEpochAtIssue: 0,
+          idleExpiresAt: new Date(now.getTime() + 30 * 60_000),
+          absoluteExpiresAt: new Date(now.getTime() + 60 * 60_000),
+        },
+      });
+      await prisma.authSession.create({
+        data: {
+          id: ids.reverseAuthSession,
+          tenantId: ids.tenant,
+          userId: ids.reverser,
+          tokenHash: `ra-reverse-token-${suffix}`,
           status: "ACTIVE",
           assuranceLevel: "MFA",
           mfaAuthenticatedAt: now,
@@ -345,6 +367,36 @@ describe.skipIf(!databaseEnabled).sequential(
         conflicting.set(`lines.${lineIds[0]}.acceptedQty`, "1");
         await expect(receiveInventoryTransfer(conflicting)).rejects.toThrow("TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT");
         expect(await prisma.inventoryTransferReceipt.count({ where: { inventoryTransferId: ids.transfer } })).toBe(1);
+
+        const originalMovements = await prisma.inventoryMovement.findMany({
+          where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "TRANSFER_IN" },
+          orderBy: { sourceEventKey: "asc" },
+          select: { id: true, quantityDeltaBaseUom: true, sourceEventKey: true, createdAt: true },
+        });
+        const reverseSession: SessionContext = {
+          ...session,
+          user: { id: ids.reverser, email: `reverser-${suffix}@example.test`, displayName: "Receipt Reverser", role: "Receipt Reverser" },
+          permissionCodes: ["inventory.transfer.receipt.reverse"],
+          authentication: { sessionId: ids.reverseAuthSession, assuranceLevel: "MFA", mfaAuthenticatedAt: now, absoluteExpiresAt: new Date(now.getTime() + 60 * 60_000) },
+        };
+        mockContext.requireSessionContext.mockResolvedValue(reverseSession);
+        const { reverseInventoryTransferReceipt } = await import("../src/server/services/transfers");
+        const reversalForm = new FormData();
+        reversalForm.set("id", ids.transfer);
+        reversalForm.set("receiptId", first.id);
+        reversalForm.set("reversalReason", "Disposable neutrality reversal");
+        await reverseInventoryTransferReceipt(reversalForm);
+        const reversedReceipt = await prisma.inventoryTransferReceipt.findUniqueOrThrow({ where: { id: first.id } });
+        expect(reversedReceipt.status).toBe("REVERSED");
+        expect(reversedReceipt.reversedByUserId).toBe(ids.reverser);
+        expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "REVERSAL" } })).toBe(2);
+        expect(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { inventoryLocationId_itemId_lotKey: { inventoryLocationId: ids.destinationInventoryLocation, itemId: ids.item, lotKey: "NOLOT|NOEXP" } } })).qtyOnHand)).toBe(0);
+        expect((await prisma.inventoryTransfer.findUniqueOrThrow({ where: { id: ids.transfer } })).status).toBe("DISPATCHED");
+        expect((await prisma.inventoryTransferLine.findMany({ where: { id: { in: lineIds } } })).every((line) => Number(line.receivedQty) === 0)).toBe(true);
+        expect(await prisma.auditEvent.count({ where: { entityType: "InventoryTransfer", entityId: ids.transfer, eventType: "inventory_transfer.receipt_reversed" } })).toBe(1);
+        const reversalMovements = await prisma.inventoryMovement.findMany({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "REVERSAL" }, select: { reversalOfMovementId: true, sourceEventKey: true, quantityDeltaBaseUom: true } });
+        expect(reversalMovements.every((movement) => originalMovements.some((original) => original.id === movement.reversalOfMovementId) && Number(movement.quantityDeltaBaseUom) === -2)).toBe(true);
+        await expect(reverseInventoryTransferReceipt(reversalForm)).rejects.toThrow("TRANSFER_RECEIPT_ALREADY_REVERSED");
       } finally {
         if (previousAuthMode === undefined) delete process.env.AUTH_MODE;
         else process.env.AUTH_MODE = previousAuthMode;

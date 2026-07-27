@@ -2501,17 +2501,20 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
       .map((line) => line.postedMovementId)
       .filter((id): id is string => Boolean(id));
     if (originalMovementIdsToLock.length > 0) {
-      const lockedOriginalMovements = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-        SELECT m."id"
-        FROM "InventoryMovement" m
-        WHERE m."id" IN (${Prisma.join(
-          originalMovementIdsToLock.map((id) => Prisma.sql`${id}::uuid`)
-        )})
-          AND m."tenantId" = ${session.context.tenantId}::uuid
-          AND m."companyId" = ${session.context.companyId}::uuid
-        ORDER BY m."id"
-        FOR UPDATE OF m
-      `);
+      // InventoryMovement is append-only and the runtime role is intentionally
+      // denied direct SELECT ... FOR UPDATE on that table. The ORM read uses
+      // the runtime's approved read surface; inventory-location locks provide
+      // the posting serialization boundary, while immutability protects the
+      // movement lineage after it is read.
+      const lockedOriginalMovements = await tx.inventoryMovement.findMany({
+        where: {
+          id: { in: originalMovementIdsToLock },
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+        },
+        select: { id: true },
+        orderBy: { id: "asc" },
+      });
       if (
         lockedOriginalMovements.length !== new Set(originalMovementIdsToLock).size
       ) {
@@ -2695,7 +2698,18 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
           original.itemId !== line.itemId ||
           original.sourceDocumentType !== "InventoryTransfer" ||
           original.sourceDocumentId !== transfer.id ||
-          original.sourceDocumentLineId !== line.inventoryTransferLineId
+            original.sourceDocumentLineId !== line.inventoryTransferLineId
+        ) {
+          throw new Error("TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH");
+        }
+        if (
+          Number(original.enteredQuantity) !== acceptedQty ||
+          Number(original.quantityDeltaBaseUom) !== acceptedQty ||
+          original.enteredUomId !== line.uomId ||
+          original.baseUomId !== line.inventoryTransferLine.uomId ||
+          original.lotNumber !== line.inventoryTransferLine.lotNumber ||
+          (original.expiryDate?.getTime() ?? null) !==
+            (line.inventoryTransferLine.expiryDate?.getTime() ?? null)
         ) {
           throw new Error("TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH");
         }
