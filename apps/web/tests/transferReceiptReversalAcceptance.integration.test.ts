@@ -55,19 +55,23 @@ describe.skipIf(!databaseEnabled).sequential(
       expect(definition).toContain('btrim(("idempotencyRequestHash")::text)');
       expect(definition).toContain("^[0-9a-f]{64}$");
 
-      const uniqueIndexes = await prisma.$queryRaw<Array<{ indexName: string }>>`
-        SELECT indexname AS "indexName"
-          FROM pg_indexes
-         WHERE schemaname = current_schema()
-           AND tablename = 'InventoryTransferReceipt'
-           AND indexname = 'InventoryTransferReceipt_tenantId_companyId_idempotencyKey_key'
+      const uniqueIndexes = await prisma.$queryRaw<
+        Array<{ indexName: string; definition: string }>
+      >`
+        SELECT indexrelid::regclass::text AS "indexName",
+               pg_get_indexdef(indexrelid) AS definition
+          FROM pg_index
+         WHERE indrelid = '"InventoryTransferReceipt"'::regclass
+           AND indisunique
       `;
-      expect(uniqueIndexes).toEqual([
-        {
-          indexName:
-            "InventoryTransferReceipt_tenantId_companyId_idempotencyKey_key",
-        },
-      ]);
+      const scopedReplayIndexes = uniqueIndexes.filter(
+        ({ definition }) =>
+          /^CREATE UNIQUE INDEX/i.test(definition) &&
+          definition.includes('"tenantId"') &&
+          definition.includes('"companyId"') &&
+          definition.includes('"idempotencyKey"'),
+      );
+      expect(scopedReplayIndexes).toHaveLength(1);
     });
   },
 );

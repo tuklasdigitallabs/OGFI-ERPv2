@@ -116,6 +116,15 @@ describe(`wastage cancellation database concurrency (${expectedDatabase})`, () =
     });
 
     const approvalDecision = prisma.$transaction(async (tx) => {
+      // Match the production approval/cancellation lock contract: the
+      // wastage source row is acquired before the approval graph. Locking
+      // approval rows first creates an artificial inverse-order deadlock.
+      await tx.$queryRaw`
+        SELECT wr.id
+          FROM "WastageReport" wr
+         WHERE wr.id = ${ids.report}::uuid
+         FOR UPDATE
+      `;
       await tx.$queryRaw`
         SELECT ai.id
           FROM "ApprovalInstance" ai

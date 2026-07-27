@@ -406,7 +406,7 @@ describe.skipIf(!databaseEnabled).sequential(
         : items.deactivateUom(parentForm(fixture));
     }
 
-    async function sourceSnapshot(fixture: RaceFixture) {
+    async function sourceSnapshot(fixture: RaceFixture, itemId?: string) {
       const [parent, item, audits, auditFixture] = await Promise.all([
         fixture.parentRole === "category"
           ? prisma.itemCategory.findUniqueOrThrow({
@@ -418,7 +418,9 @@ describe.skipIf(!databaseEnabled).sequential(
               select: { id: true, status: true },
             }),
         prisma.item.findFirst({
-          where: { companyId, itemCode: fixture.itemCode },
+          where: itemId
+            ? { id: itemId, tenantId, companyId }
+            : { tenantId, companyId, itemCode: fixture.itemCode },
           select: {
             id: true,
             status: true,
@@ -470,9 +472,13 @@ describe.skipIf(!databaseEnabled).sequential(
       // FOR UPDATE lock. The winner therefore pauses after its source write
       // owns the parent row and before either source or audit can commit.
       const barrier = await startActorForeignKeyBarrier(fixture.actorId);
+      let createdItemId: string | undefined;
       const winnerOperation = tracked(
         winner === "item"
-          ? executeItem(fixture)
+          ? executeItem(fixture).then((item) => {
+              createdItemId = item.id;
+              return item;
+            })
           : executeParent(fixture),
       );
       let loserOperation:
@@ -533,7 +539,7 @@ describe.skipIf(!databaseEnabled).sequential(
         reason: expect.objectContaining({ message: loserError }),
       });
 
-      const after = await sourceSnapshot(fixture);
+      const after = await sourceSnapshot(fixture, createdItemId);
       expect(after.auditFixture).toEqual(before.auditFixture);
       if (winner === "item") {
         expect(after.parent.status).toBe("ACTIVE");

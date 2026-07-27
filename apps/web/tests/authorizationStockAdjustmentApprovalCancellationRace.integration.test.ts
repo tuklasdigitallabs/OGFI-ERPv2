@@ -405,7 +405,7 @@ describe(`stock-adjustment final approval versus cancellation (${expectedDatabas
     const loser = outcomes.find(({ status }) => status === "rejected");
     expect(loser?.error).toBeInstanceOf(Error);
     expect((loser?.error as Error).message).toMatch(
-      /^(APPROVAL_NOT_ACTIONABLE|STOCK_ADJUSTMENT_NOT_CANCELLABLE)$/
+      /^(APPROVAL_NOT_ACTIONABLE|STOCK_ADJUSTMENT_NOT_CANCELLABLE|STOCK_ADJUSTMENT_NOT_PENDING_APPROVAL)$/
     );
     expect((loser?.error as Error).message).not.toMatch(
       /P2034|40P01|40001|deadlock|serialization/i

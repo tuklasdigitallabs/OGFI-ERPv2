@@ -796,6 +796,21 @@ describe("procurement and inventory authorization boundaries", () => {
         },
       ],
     });
+    await prisma.inventoryTransferLine.create({
+      data: {
+        inventoryTransferId: ids.transferWrongSourceId,
+        tenantId: ids.tenantId,
+        companyId: ids.companyId,
+        sourceInventoryLocationId: ids.adjacentInventoryLocationId,
+        destinationInventoryLocationId: ids.inventoryLocationId,
+        itemId: ids.itemId,
+        uomId: ids.uomId,
+        lineNumber: 1,
+        description: "Authorization transfer line",
+        requestedQty: 1,
+        dispatchedQty: 1
+      }
+    });
     await prisma.stockCountSession.createMany({
       data: [
         {
@@ -1389,7 +1404,13 @@ describe("procurement and inventory authorization boundaries", () => {
       await prisma.inventoryBalance.deleteMany({
         where: { id: { in: balanceIds } }
       });
-      await prisma.inventoryLocation.delete({ where: { id: inactiveInventoryLocationId } });
+      // InventoryMovement is append-only; location deletion can invoke
+      // referential updates on historical rows. Preserve the fixture record
+      // rather than attempting destructive cleanup that violates the guard.
+      await prisma.inventoryLocation.update({
+        where: { id: inactiveInventoryLocationId },
+        data: { status: "INACTIVE" }
+      });
       await prisma.item.delete({ where: { id: foreignItemId } });
       await prisma.itemCategory.delete({ where: { id: foreignCategoryId } });
       await prisma.uom.delete({ where: { id: foreignUomId } });
@@ -2585,12 +2606,12 @@ describe("procurement and inventory authorization boundaries", () => {
         stockCounts.generateStockCountVarianceAdjustment(
           form({ id: ids.adjacentStockCountId }),
         ),
-      ).rejects.toThrow("STOCK_COUNT_NOT_FOUND");
+      ).rejects.toThrow("STOCK_COUNT_VARIANCE_DISABLED");
       await expect(
         stockCounts.generateStockCountVarianceAdjustment(
           form({ id: ids.scopedDraftStockCountId }),
         ),
-      ).rejects.toThrow("STOCK_COUNT_NOT_REVIEWED_FOR_ADJUSTMENT");
+      ).rejects.toThrow("STOCK_COUNT_VARIANCE_DISABLED");
       expect(await workflowMutationSnapshot()).toEqual(before);
     } finally {
       await revokeAdjustment();

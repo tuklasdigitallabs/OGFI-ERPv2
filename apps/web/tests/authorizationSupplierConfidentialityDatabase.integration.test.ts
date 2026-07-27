@@ -597,8 +597,11 @@ describe.sequential("DEC-0242 supplier confidentiality and deactivation integrit
       reason: string;
     }>,
   ) {
+    const bytewiseCompare = (left: string, right: string) =>
+      left === right ? 0 : left < right ? -1 : 1;
     return audits.sort((left, right) =>
-      left.eventType.localeCompare(right.eventType) || left.entityId.localeCompare(right.entityId),
+      bytewiseCompare(left.eventType, right.eventType) ||
+      bytewiseCompare(left.entityId, right.entityId),
     );
   }
 

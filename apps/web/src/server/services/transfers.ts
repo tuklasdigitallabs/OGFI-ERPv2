@@ -1494,11 +1494,11 @@ export async function submitInventoryTransfer(formData: FormData) {
       SELECT t."id", t."tenantId", t."companyId", t."sourceLocationId",
         t."destinationLocationId", t."status", t."updatedAt"
       FROM "InventoryTransfer" t
-      WHERE t."id" = ${values.id}
-        AND t."tenantId" = ${session.context.tenantId}
-        AND t."companyId" = ${session.context.companyId}
-        AND (t."sourceLocationId" = ${session.context.locationId}
-          OR t."destinationLocationId" = ${session.context.locationId})
+      WHERE t."id" = ${values.id}::uuid
+        AND t."tenantId" = ${session.context.tenantId}::uuid
+        AND t."companyId" = ${session.context.companyId}::uuid
+        AND (t."sourceLocationId" = ${session.context.locationId}::uuid
+          OR t."destinationLocationId" = ${session.context.locationId}::uuid)
       FOR UPDATE OF t
     `);
     if (!transfer) {
@@ -1512,8 +1512,8 @@ export async function submitInventoryTransfer(formData: FormData) {
       SELECT l."id", l."status"
       FROM "Location" l
       WHERE l."id" IN (${Prisma.join(locationIds.map((id) => Prisma.sql`${id}::uuid`))})
-        AND l."tenantId" = ${transfer.tenantId}
-        AND l."companyId" = ${transfer.companyId}
+        AND l."tenantId" = ${transfer.tenantId}::uuid
+        AND l."companyId" = ${transfer.companyId}::uuid
       ORDER BY l."id" ASC
       FOR SHARE OF l
     `);
@@ -1539,13 +1539,13 @@ export async function submitInventoryTransfer(formData: FormData) {
       FROM "InventoryTransferLine" l
       JOIN "InventoryLocation" sil ON sil."id" = l."sourceInventoryLocationId"
       JOIN "InventoryLocation" dil ON dil."id" = l."destinationInventoryLocationId"
-      WHERE l."inventoryTransferId" = ${transfer.id}
-        AND l."tenantId" = ${transfer.tenantId}
-        AND l."companyId" = ${transfer.companyId}
-        AND sil."tenantId" = ${transfer.tenantId}
-        AND sil."companyId" = ${transfer.companyId}
-        AND dil."tenantId" = ${transfer.tenantId}
-        AND dil."companyId" = ${transfer.companyId}
+      WHERE l."inventoryTransferId" = ${transfer.id}::uuid
+        AND l."tenantId" = ${transfer.tenantId}::uuid
+        AND l."companyId" = ${transfer.companyId}::uuid
+        AND sil."tenantId" = ${transfer.tenantId}::uuid
+        AND sil."companyId" = ${transfer.companyId}::uuid
+        AND dil."tenantId" = ${transfer.tenantId}::uuid
+        AND dil."companyId" = ${transfer.companyId}::uuid
       ORDER BY l."lineNumber" ASC, l."id" ASC
       FOR UPDATE OF l
     `);
@@ -1671,10 +1671,10 @@ export async function dispatchInventoryTransfer(formData: FormData) {
       SELECT t."id", t."status", t."updatedAt", t."sourceLocationId",
         t."destinationLocationId"
       FROM "InventoryTransfer" t
-      WHERE t."id" = ${values.id}
-        AND t."tenantId" = ${session.context.tenantId}
-        AND t."companyId" = ${session.context.companyId}
-        AND t."sourceLocationId" = ${session.context.locationId}
+      WHERE t."id" = ${values.id}::uuid
+        AND t."tenantId" = ${session.context.tenantId}::uuid
+        AND t."companyId" = ${session.context.companyId}::uuid
+        AND t."sourceLocationId" = ${session.context.locationId}::uuid
       FOR UPDATE OF t
     `);
     if (!lockedTransfer) {
@@ -1684,9 +1684,9 @@ export async function dispatchInventoryTransfer(formData: FormData) {
     const lockedLineIds = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT l."id"
       FROM "InventoryTransferLine" l
-      WHERE l."inventoryTransferId" = ${lockedTransfer.id}
-        AND l."tenantId" = ${session.context.tenantId}
-        AND l."companyId" = ${session.context.companyId}
+      WHERE l."inventoryTransferId" = ${lockedTransfer.id}::uuid
+        AND l."tenantId" = ${session.context.tenantId}::uuid
+        AND l."companyId" = ${session.context.companyId}::uuid
       ORDER BY l."lineNumber" ASC, l."id" ASC
       FOR UPDATE OF l
     `);
@@ -1884,10 +1884,10 @@ export async function receiveInventoryTransfer(formData: FormData) {
       SELECT t."id", t."status", t."updatedAt", t."sourceLocationId",
         t."destinationLocationId"
       FROM "InventoryTransfer" t
-      WHERE t."id" = ${values.id}
-        AND t."tenantId" = ${session.context.tenantId}
-        AND t."companyId" = ${session.context.companyId}
-        AND t."destinationLocationId" = ${session.context.locationId}
+      WHERE t."id" = ${values.id}::uuid
+        AND t."tenantId" = ${session.context.tenantId}::uuid
+        AND t."companyId" = ${session.context.companyId}::uuid
+        AND t."destinationLocationId" = ${session.context.locationId}::uuid
       FOR UPDATE OF t
     `);
     if (!lockedTransfer) {
@@ -1896,9 +1896,9 @@ export async function receiveInventoryTransfer(formData: FormData) {
     const lockedLineIds = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT l."id"
       FROM "InventoryTransferLine" l
-      WHERE l."inventoryTransferId" = ${lockedTransfer.id}
-        AND l."tenantId" = ${session.context.tenantId}
-        AND l."companyId" = ${session.context.companyId}
+      WHERE l."inventoryTransferId" = ${lockedTransfer.id}::uuid
+        AND l."tenantId" = ${session.context.tenantId}::uuid
+        AND l."companyId" = ${session.context.companyId}::uuid
       ORDER BY l."lineNumber" ASC, l."id" ASC
       FOR UPDATE OF l
     `);
@@ -2456,10 +2456,10 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     }>>(Prisma.sql`
       SELECT t."id", t."status", t."updatedAt", t."destinationLocationId"
       FROM "InventoryTransfer" t
-      WHERE t."id" = ${values.id}
-        AND t."tenantId" = ${session.context.tenantId}
-        AND t."companyId" = ${session.context.companyId}
-        AND t."destinationLocationId" = ${session.context.locationId}
+      WHERE t."id" = ${values.id}::uuid
+        AND t."tenantId" = ${session.context.tenantId}::uuid
+        AND t."companyId" = ${session.context.companyId}::uuid
+        AND t."destinationLocationId" = ${session.context.locationId}::uuid
       FOR UPDATE OF t
     `);
     if (!lockedTransfer) {
@@ -2468,19 +2468,19 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     await tx.$queryRaw(Prisma.sql`
       SELECT l."id"
       FROM "InventoryTransferLine" l
-      WHERE l."inventoryTransferId" = ${lockedTransfer.id}
-        AND l."tenantId" = ${session.context.tenantId}
-        AND l."companyId" = ${session.context.companyId}
+      WHERE l."inventoryTransferId" = ${lockedTransfer.id}::uuid
+        AND l."tenantId" = ${session.context.tenantId}::uuid
+        AND l."companyId" = ${session.context.companyId}::uuid
       ORDER BY l."lineNumber" ASC, l."id" ASC
       FOR UPDATE OF l
     `);
     const lockedReceiptRows = await tx.$queryRaw<Array<{ id: string; updatedAt: Date }>>(Prisma.sql`
       SELECT r."id", r."updatedAt"
       FROM "InventoryTransferReceipt" r
-      WHERE r."id" = ${loadedReceipt.id}
-        AND r."tenantId" = ${session.context.tenantId}
-        AND r."companyId" = ${session.context.companyId}
-        AND r."inventoryTransferId" = ${lockedTransfer.id}
+      WHERE r."id" = ${loadedReceipt.id}::uuid
+        AND r."tenantId" = ${session.context.tenantId}::uuid
+        AND r."companyId" = ${session.context.companyId}::uuid
+        AND r."inventoryTransferId" = ${lockedTransfer.id}::uuid
       FOR UPDATE OF r
     `);
     if (lockedReceiptRows.length !== 1) {
@@ -2491,9 +2491,9 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     >(Prisma.sql`
       SELECT rl."id", rl."postedMovementId"
       FROM "InventoryTransferReceiptLine" rl
-      WHERE rl."transferReceiptId" = ${loadedReceipt.id}
-        AND rl."tenantId" = ${session.context.tenantId}
-        AND rl."companyId" = ${session.context.companyId}
+      WHERE rl."transferReceiptId" = ${loadedReceipt.id}::uuid
+        AND rl."tenantId" = ${session.context.tenantId}::uuid
+        AND rl."companyId" = ${session.context.companyId}::uuid
       ORDER BY rl."lineNumber" ASC, rl."id" ASC
       FOR UPDATE OF rl
     `);
@@ -2507,8 +2507,8 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
         WHERE m."id" IN (${Prisma.join(
           originalMovementIdsToLock.map((id) => Prisma.sql`${id}::uuid`)
         )})
-          AND m."tenantId" = ${session.context.tenantId}
-          AND m."companyId" = ${session.context.companyId}
+          AND m."tenantId" = ${session.context.tenantId}::uuid
+          AND m."companyId" = ${session.context.companyId}::uuid
         ORDER BY m."id"
         FOR UPDATE OF m
       `);
@@ -2864,11 +2864,11 @@ export async function cancelInventoryTransfer(formData: FormData) {
       SELECT t."id", t."tenantId", t."companyId", t."sourceLocationId",
         t."destinationLocationId", t."status", t."updatedAt"
       FROM "InventoryTransfer" t
-      WHERE t."id" = ${values.id}
-        AND t."tenantId" = ${session.context.tenantId}
-        AND t."companyId" = ${session.context.companyId}
-        AND (t."sourceLocationId" = ${session.context.locationId}
-          OR t."destinationLocationId" = ${session.context.locationId})
+      WHERE t."id" = ${values.id}::uuid
+        AND t."tenantId" = ${session.context.tenantId}::uuid
+        AND t."companyId" = ${session.context.companyId}::uuid
+        AND (t."sourceLocationId" = ${session.context.locationId}::uuid
+          OR t."destinationLocationId" = ${session.context.locationId}::uuid)
       FOR UPDATE OF t
     `);
     if (!transfer) {
@@ -2901,9 +2901,9 @@ export async function cancelInventoryTransfer(formData: FormData) {
       SELECT l."id", l."dispatchedQty", l."receivedQty", l."rejectedQty",
         l."damagedQty", l."discrepancyQty"
       FROM "InventoryTransferLine" l
-      WHERE l."inventoryTransferId" = ${transfer.id}
-        AND l."tenantId" = ${transfer.tenantId}
-        AND l."companyId" = ${transfer.companyId}
+      WHERE l."inventoryTransferId" = ${transfer.id}::uuid
+        AND l."tenantId" = ${transfer.tenantId}::uuid
+        AND l."companyId" = ${transfer.companyId}::uuid
       ORDER BY l."lineNumber" ASC, l."id" ASC
       FOR UPDATE OF l
     `);
@@ -2920,9 +2920,9 @@ export async function cancelInventoryTransfer(formData: FormData) {
     const receipts = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT r."id"
       FROM "InventoryTransferReceipt" r
-      WHERE r."inventoryTransferId" = ${transfer.id}
-        AND r."tenantId" = ${transfer.tenantId}
-        AND r."companyId" = ${transfer.companyId}
+      WHERE r."inventoryTransferId" = ${transfer.id}::uuid
+        AND r."tenantId" = ${transfer.tenantId}::uuid
+        AND r."companyId" = ${transfer.companyId}::uuid
       ORDER BY r."id" ASC
       FOR UPDATE OF r
     `);

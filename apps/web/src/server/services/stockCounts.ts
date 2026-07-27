@@ -262,17 +262,6 @@ function scopedStockCountWhere(session: SessionContext, id?: string) {
     ...(id ? { id } : {}),
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
-    currentAttemptId: { not: null },
-    currentAttempt: {
-      is: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        ...(id ? { stockCountSessionId: id } : {}),
-        inventoryLocation: {
-          locationId: session.context.locationId
-        }
-      }
-    },
     inventoryLocation: {
       locationId: session.context.locationId
     }
@@ -324,7 +313,7 @@ async function lockScopedStockCount(
            sc."updatedAt",
            clock_timestamp() AS "databaseNow"
       FROM "StockCountSession" sc
-      JOIN "StockCountAttempt" ca
+      LEFT JOIN "StockCountAttempt" ca
         ON ca.id = sc."currentAttemptId"
        AND ca."stockCountSessionId" = sc.id
        AND ca."tenantId" = sc."tenantId"
@@ -338,7 +327,7 @@ async function lockScopedStockCount(
        AND sc."tenantId" = ${session.context.tenantId}::uuid
        AND sc."companyId" = ${session.context.companyId}::uuid
        AND sc."inventoryLocationId" = ${inventoryLocationId}::uuid
-       AND sc."currentAttemptId" IS NOT NULL
+       AND (sc."currentAttemptId" IS NULL OR ca.id IS NOT NULL)
        AND il."locationId" = ${session.context.locationId}::uuid
      FOR UPDATE OF sc
   `);

@@ -1810,6 +1810,9 @@ export async function cancelWastageReport(formData: FormData) {
       session,
       report.id
     );
+    // The preflight read is advisory; the locked source status is the
+    // authority after a competing approval/review commits.
+    assertWastageCanCancel(lockedSource.status);
     const principal = await lockWastageCancellationPrincipal(tx, session);
     const approval = await lockPendingWastageApproval(
       tx,

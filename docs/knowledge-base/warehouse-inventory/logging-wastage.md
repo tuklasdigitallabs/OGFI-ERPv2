@@ -33,7 +33,7 @@ Use this article to record spoiled, expired, damaged, consumed, or otherwise los
 7. Create the draft report.
 8. Open the report and submit it for approval.
 
-After normalized routing is activated, assigned approvers can approve, return, or reject the report from `Approval Inbox`. While the Inbox is unavailable, it exposes no complete queue or approval actions. `Scan Approvals` may create a current-user reminder for an eligible due or overdue report, but its approval link remains unavailable and the scan is not a complete report list. Follow the workflow owner for release guidance and do not interpret silence as zero pending reports. Eligible reports can be cancelled with reason before final approval.
+After normalized routing is activated, assigned approvers can approve, return, or reject the report from `Approval Inbox`. While the Inbox is unavailable, it exposes no complete queue or approval actions. `Scan Approvals` may create a current-user reminder for an eligible due or overdue report, but its approval link remains unavailable and the scan is not a complete report list. Follow the workflow owner for release guidance and do not interpret silence as zero pending reports. Eligible reports can be cancelled with reason before final approval. The cancel action rechecks the locked report status, so if approval wins while cancellation is waiting, cancellation is rejected and the approved report remains authoritative.
 Authorized inventory posters can post an approved report from the report detail page. Posted reports cannot be corrected by editing. Authorized reversal users can reverse a posted report with a reason, then create a corrected replacement report when needed.
 
 ## What To Check
