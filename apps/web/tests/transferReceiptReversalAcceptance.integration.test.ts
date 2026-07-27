@@ -36,6 +36,25 @@ describe.skipIf(!databaseEnabled).sequential(
   "transfer receipt/reversal PostgreSQL acceptance prerequisites",
   () => {
     let prisma: PrismaClient;
+    let racePrisma: PrismaClient;
+
+    async function waitForLockWait(isSettled: () => boolean) {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const rows = await racePrisma.$queryRaw<Array<{ count: number }>>`
+          SELECT COUNT(*)::int AS count
+            FROM pg_stat_activity
+           WHERE datname = current_database()
+             AND pid <> pg_backend_pid()
+             AND state = 'active'
+             AND wait_event_type = 'Lock'
+        `;
+        if ((rows[0]?.count ?? 0) > 0) return;
+        if (isSettled()) throw new Error("RECEIPT_REVOCATION_SETTLED_BEFORE_LOCK_WAIT");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error("RECEIPT_REVOCATION_LOCK_WAIT_NOT_OBSERVED");
+    }
 
     beforeAll(async () => {
       const expectedDatabase = assertDisposableAuthorizationDatabaseConfigured(
@@ -44,6 +63,11 @@ describe.skipIf(!databaseEnabled).sequential(
       const database = await import("@ogfi/database");
       ({ prisma } = database);
       await prisma.$connect();
+      const raceDatabaseUrl = new URL(process.env.DATABASE_URL as string);
+      raceDatabaseUrl.searchParams.set("connection_limit", "2");
+      raceDatabaseUrl.searchParams.set("pool_timeout", "10");
+      racePrisma = new database.PrismaClient({ datasourceUrl: raceDatabaseUrl.toString() });
+      await racePrisma.$connect();
       await assertDisposableAuthorizationDatabaseMarker(prisma, process.env);
       const identity = await prisma.$queryRaw<
         Array<{ currentDatabase: string }>
@@ -56,6 +80,7 @@ describe.skipIf(!databaseEnabled).sequential(
     // runtime role is intentionally denied access to _prisma_migrations.
 
     afterAll(async () => {
+      await racePrisma?.$disconnect();
       await prisma?.$disconnect();
     });
 
@@ -268,6 +293,36 @@ describe.skipIf(!databaseEnabled).sequential(
         expect(await prisma.auditEvent.count({ where: { entityType: "InventoryTransfer", entityId: ids.transfer } })).toBe(0);
         expect((await prisma.inventoryTransfer.findUniqueOrThrow({ where: { id: ids.transfer } })).status).toBe("DISPATCHED");
         expect((await prisma.inventoryTransferLine.findMany({ where: { id: { in: lineIds } } })).every((line) => Number(line.receivedQty) === 0 && Number(line.rejectedQty) === 0 && Number(line.damagedQty) === 0 && Number(line.discrepancyQty) === 0)).toBe(true);
+
+        let releaseLocation!: () => void;
+        let signalLocationLock!: () => void;
+        const locationLocked = new Promise<void>((resolve) => { signalLocationLock = resolve; });
+        const locationGate = new Promise<void>((resolve) => { releaseLocation = resolve; });
+        const holdLocation = racePrisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "InventoryLocation" WHERE id = ${ids.destinationInventoryLocation}::uuid FOR UPDATE`;
+          signalLocationLock();
+          await locationGate;
+        });
+        await locationLocked;
+        let revocationSettled = false;
+        const revocationAttempt = receiveInventoryTransfer(form());
+        await waitForLockWait(() => revocationSettled);
+        const { touchUserPrivilegeEpoch } = await import("../src/server/services/coreAdmin");
+        await racePrisma.$transaction((tx) => touchUserPrivilegeEpoch(tx, ids.receiver, {
+          companyId: ids.company,
+          requestedByUserId: ids.dispatcher,
+          reason: "Disposable receipt authority revocation race",
+          sourceEventType: "user_scope_assignment.deactivated",
+          sourceRecordId: ids.destinationLocation,
+        }));
+        releaseLocation();
+        await expect(revocationAttempt).rejects.toThrow("AUTH_REQUIRED");
+        revocationSettled = true;
+        await holdLocation;
+        expect(await prisma.inventoryTransferReceipt.count({ where: { inventoryTransferId: ids.transfer } })).toBe(0);
+        expect((await prisma.user.findUniqueOrThrow({ where: { id: ids.receiver } })).privilegeEpoch).toBe(1);
+        expect((await prisma.authSession.findUniqueOrThrow({ where: { id: ids.authSession } })).status).toBe("REVOKED");
+        await prisma.authSession.update({ where: { id: ids.authSession }, data: { status: "ACTIVE", revokedAt: null, revocationReason: null, privilegeEpochAtIssue: 1, idleExpiresAt: new Date(Date.now() + 30 * 60_000), absoluteExpiresAt: new Date(Date.now() + 60 * 60_000) } });
         const concurrentResults = await Promise.allSettled([
           receiveInventoryTransfer(form()),
           receiveInventoryTransfer(form()),
