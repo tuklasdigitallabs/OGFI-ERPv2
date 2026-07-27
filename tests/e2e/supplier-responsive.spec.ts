@@ -361,7 +361,7 @@ test("dirty-state edits retain focus and link deactivation handles stale error t
     selectedSupplierItemLinkId: link.id
   }));
   const sheet = page.getByRole("dialog", { name: "Deactivate supplier-item link" });
-  const reason = sheet.getByLabel("Deactivation reason");
+  const reason = sheet.getByLabel("Deactivation reason", { exact: true });
   await reason.focus();
   await reason.type("Stale deactivation reason retained");
   await expect(reason).toBeFocused();

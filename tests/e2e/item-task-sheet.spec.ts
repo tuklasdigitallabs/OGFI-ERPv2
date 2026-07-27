@@ -131,8 +131,8 @@ test("URL-selected active item opens a name-only sheet and closes to preserved r
   const sheet = page.getByRole("dialog", { name: "Correct Item Name" });
   await expect(sheet).toBeVisible();
   await expect(sheet.getByText(item.itemCode, { exact: false }).first()).toBeVisible();
-  await expect(sheet.getByLabel("Item name")).toBeEditable();
-  await expect(sheet.getByLabel("Item name")).toBeFocused();
+  await expect(sheet.getByLabel("Item name", { exact: true })).toBeEditable();
+  await expect(sheet.getByLabel("Item name", { exact: true })).toBeFocused();
   await expect(sheet.getByLabel("Item code")).toBeDisabled();
   await expect(sheet.getByLabel("Correction reason")).toBeEditable();
   await expect(sheet.getByRole("heading", { name: "Governed fields are read-only" })).toBeVisible();
@@ -153,7 +153,7 @@ test("dirty Cancel, close button, and Escape require confirmation", async ({ pag
   await page.goto(href);
 
   const sheet = page.getByRole("dialog", { name: "Correct Item Name" });
-  await sheet.getByLabel("Item name").fill(`${item.itemName} draft`);
+  await sheet.getByLabel("Item name", { exact: true }).fill(`${item.itemName} draft`);
   page.once("dialog", async (dialog) => {
     expect(dialog.message()).toBe("Discard the item-name correction draft?");
     await dialog.dismiss();
@@ -195,7 +195,7 @@ test("name correction announces success and suppresses duplicate submission whil
 
   const sheet = page.getByRole("dialog", { name: "Correct Item Name" });
   const correctedName = `${item.itemName} corrected`;
-  await sheet.getByLabel("Item name").fill(correctedName);
+  await sheet.getByLabel("Item name", { exact: true }).fill(correctedName);
   await sheet.getByLabel("Correction reason").fill("Correct the item display label");
   const saveButton = sheet.getByRole("button", { name: "Save Item Name" });
   await saveButton.click();
@@ -234,7 +234,7 @@ test("stale correction fails safely, keeps the draft, and focuses recovery feedb
 
   const sheet = page.getByRole("dialog", { name: "Correct Item Name" });
   const draftName = `${item.itemName} stale draft`;
-  await sheet.getByLabel("Item name").fill(draftName);
+  await sheet.getByLabel("Item name", { exact: true }).fill(draftName);
   await sheet.getByLabel("Correction reason").fill("Attempt a stale item correction");
   await sheet.getByRole("button", { name: "Save Item Name" }).click();
 
@@ -242,8 +242,8 @@ test("stale correction fails safely, keeps the draft, and focuses recovery feedb
   await expect(alert).toContainText("This item changed while you were editing");
   await expect(alert).toContainText("Return to the refreshed register");
   await expect(alert).toBeFocused();
-  await expect(sheet.getByLabel("Item name")).toHaveValue(draftName);
-  await expect(sheet.getByLabel("Item name")).toBeDisabled();
+  await expect(sheet.getByLabel("Item name", { exact: true })).toHaveValue(draftName);
+  await expect(sheet.getByLabel("Item name", { exact: true })).toBeDisabled();
   await expect(sheet.getByLabel("Correction reason")).toBeDisabled();
   expect(actionPosts).toBe(1);
   await page.keyboard.press("Enter");
@@ -264,7 +264,7 @@ test("audit history handoff opens the authoritative filtered audit view in a new
     name: "View authoritative item audit history (opens in new tab)"
   });
   const draftName = `${item.itemName} audit draft`;
-  await page.getByRole("dialog", { name: "Correct Item Name" }).getByLabel("Item name").fill(draftName);
+  await page.getByRole("dialog", { name: "Correct Item Name" }).getByLabel("Item name", { exact: true }).fill(draftName);
   await expect(link).toHaveAttribute("target", "_blank");
   await expect(link).toHaveAttribute("rel", /noopener/);
   const [auditPage] = await Promise.all([page.waitForEvent("popup"), link.click()]);
@@ -275,7 +275,7 @@ test("audit history handoff opens the authoritative filtered audit view in a new
     url.searchParams.get("entityId") === item.id
   );
   await auditPage.close();
-  await expect(page.getByRole("dialog", { name: "Correct Item Name" }).getByLabel("Item name")).toHaveValue(
+  await expect(page.getByRole("dialog", { name: "Correct Item Name" }).getByLabel("Item name", { exact: true })).toHaveValue(
     draftName
   );
 });
@@ -292,7 +292,7 @@ for (const status of ["INACTIVE", "ARCHIVED"] as const) {
     const sheet = page.getByRole("dialog", { name: "Item details" });
     await expect(sheet.getByRole("heading", { name: `Read-only ${status.toLowerCase()} item` })).toBeVisible();
     await expect(sheet.getByText("preserve historical transaction and audit references", { exact: false })).toBeVisible();
-    await expect(sheet.getByLabel("Item name")).toHaveCount(0);
+    await expect(sheet.getByLabel("Item name", { exact: true })).toHaveCount(0);
     await expect(sheet.getByRole("button", { name: /Save Item Name|Deactivate Item/ })).toHaveCount(0);
     await expect(sheet.getByRole("link", { name: "View item audit history" })).toHaveAttribute(
       "href",
@@ -333,7 +333,7 @@ test("mobile selected-item sheet stays task-focused without horizontal overflow"
 
   const sheet = page.getByRole("dialog", { name: "Correct Item Name" });
   await expect(sheet).toBeVisible();
-  await expect(sheet.getByLabel("Item name")).toBeFocused();
+  await expect(sheet.getByLabel("Item name", { exact: true })).toBeFocused();
   await expect(sheet.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Save Item Name" })).toBeVisible();
   expect(

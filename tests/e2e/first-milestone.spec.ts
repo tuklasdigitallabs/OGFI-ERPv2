@@ -198,7 +198,7 @@ test("returned purchase requests can be reopened as draft", async ({
   await page.getByLabel("Required date").fill(futureDate(7));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Return/reopen validation for ${marker}`);
-  await page.getByLabel("Catalog item").selectOption({ index: 1 });
+  await page.getByLabel("Catalog item", { exact: true }).selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("1");
   await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
@@ -253,7 +253,7 @@ test("draft purchase requests can be cancelled with audit history", async ({
   await page.getByLabel("Required date").fill(futureDate(8));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Cancellation validation for ${marker}`);
-  await page.getByLabel("Catalog item").selectOption({ index: 1 });
+  await page.getByLabel("Catalog item", { exact: true }).selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("1");
   await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
@@ -289,7 +289,7 @@ test("purchase requests can be rejected with remarks and action history", async 
   await page.getByLabel("Required date").fill(futureDate(9));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Rejection validation for ${marker}`);
-  await page.getByLabel("Catalog item").selectOption({ index: 1 });
+  await page.getByLabel("Catalog item", { exact: true }).selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("1");
   await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
@@ -352,7 +352,7 @@ test("first milestone purchase request path works end to end", async ({
   await page.getByLabel("Required date").fill(futureDate(10));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Local milestone validation for ${marker}`);
-  await page.getByLabel("Catalog item").selectOption({ index: 1 });
+  await page.getByLabel("Catalog item", { exact: true }).selectOption({ index: 1 });
   await page.getByLabel("Quantity").fill("3");
   await page.getByLabel("Purpose / notes").fill(marker);
   await createDraftPurchaseRequest(page);
@@ -538,7 +538,7 @@ test("first milestone purchase request path works end to end", async ({
   const supplierRow = visibleSupplierRecord(page, supplierCode);
   await expect(supplierRow).toBeVisible();
   await supplierRow.getByRole("link", { name: "Deactivate", exact: true }).click();
-  await page.getByLabel("Deactivation reason").fill(`E2E supplier deactivation for ${marker}`);
+  await page.getByLabel("Deactivation reason", { exact: true }).fill(`E2E supplier deactivation for ${marker}`);
   await page.getByRole("button", { name: "Deactivate supplier", exact: true }).click();
   await expect(visibleSupplierRecord(page, supplierCode).getByText(/INACTIVE|Lifecycle inactive/)).toBeVisible();
   await page.goto("/items");
@@ -573,7 +573,7 @@ test("first milestone purchase request path works end to end", async ({
   await page.waitForURL(/\/items\?tab=items$/);
   const itemDialog = await openEntryDialog(page, "Create Item");
   await page.getByLabel("Item code").fill(itemCode);
-  await page.getByLabel("Item name").fill(itemName);
+  await page.getByLabel("Item name", { exact: true }).fill(itemName);
   await page.locator('select[name="itemCategoryId"]').selectOption({ label: `${marker} Category` });
   await page.locator('select[name="baseUomId"]').selectOption({ label: uomCode });
   await page.getByLabel("Creation reason").first().fill(`E2E item setup for ${marker}`);
@@ -624,7 +624,7 @@ test("first milestone purchase request path works end to end", async ({
     name: "Deactivate supplier-item link"
   });
   await linkDeactivationDialog
-    .getByLabel("Deactivation reason")
+    .getByLabel("Deactivation reason", { exact: true })
     .fill(`E2E supplier item link deactivation for ${marker}`);
   await linkDeactivationDialog
     .getByRole("button", { name: "Deactivate link", exact: true })
@@ -646,7 +646,7 @@ test("first milestone purchase request path works end to end", async ({
   await page.getByLabel("Required date").fill(futureDate(11));
   await page.getByLabel("Urgency").selectOption("Normal");
   await page.getByLabel("Justification").fill(`Catalog item validation for ${marker}`);
-  await page.getByLabel("Catalog item").selectOption({ label: `${itemName} / ${itemCode}` });
+  await page.getByLabel("Catalog item", { exact: true }).selectOption({ label: `${itemName} / ${itemCode}` });
   await page.getByLabel("Quantity").fill("2");
   await page.getByLabel("Purpose / notes").fill(catalogMarker);
   await createDraftPurchaseRequest(page);
@@ -827,7 +827,7 @@ test("first milestone purchase request path works end to end", async ({
   );
   const scopeDeactivationDialog = page.getByRole("dialog", { name: "Deactivate Scope" });
   await scopeDeactivationDialog
-    .getByLabel("Deactivation reason")
+    .getByLabel("Deactivation reason", { exact: true })
     .fill(`E2E scope deactivation for ${marker}`);
   await scopeDeactivationDialog
     .getByRole("button", { name: "Deactivate Scope", exact: true })
