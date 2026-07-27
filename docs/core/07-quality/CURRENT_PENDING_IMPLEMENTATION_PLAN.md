@@ -17,6 +17,10 @@ The delivery approach is:
 
 Formal UAT execution, evidence collection with real users, owner signoff, and the final GO / NO-GO decision remain separate release activities.
 
+### UAT acceleration priority — July 27, 2026
+
+The fastest safe route to Phase I/UAT readiness is to close the shared disposable-PostgreSQL evidence gap before adding higher-risk writers. The runner must use a verified ephemeral, non-production target and execute the existing concurrent race, rollback, authorization/scope, segregation-of-duties, replay, and zero-adjacent-ledger suites for completed approval, cancellation, and terminal-source fences. An unavailable or misconfigured database is a hard **NO-GO** and must not be counted as passing evidence. After this foundation is evidenced, continue with bounded non-posting source fences, then complete visible workspace surfaces and the isolated Phase I UAT/recovery gates in dependency order. Approval routing remains disabled and C4 remains dormant until its separate policy and evidence gates are satisfied.
+
 ## 2. Shared Production Foundation
 
 These items must be completed once at platform level. A workspace must not be certified when it depends on an incomplete shared control.
