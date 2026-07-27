@@ -5,11 +5,11 @@ import {
   type SupportedApprovalDocumentType,
 } from "./approvalRoutingRegistry";
 
-export const canonicalApprovalDecisionKinds = [
+export const canonicalApprovalDecisionKinds = Object.freeze([
   "APPROVE",
   "RETURN",
   "REJECT",
-] as const;
+] as const);
 
 export type CanonicalApprovalDecisionKind =
   (typeof canonicalApprovalDecisionKinds)[number];
@@ -20,6 +20,14 @@ type ApprovalDecisionFamilyContract = {
   rejectLabel: string;
   supportsSupplementalEvidence: boolean;
 };
+
+function deepFreeze<T>(value: T): Readonly<T> {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const item of Object.values(value as Record<string, unknown>)) deepFreeze(item);
+  }
+  return value;
+}
 
 const approvalDecisionFamilyContracts = {
   PurchaseRequest: {
@@ -135,15 +143,17 @@ const approvalDecisionFamilyContracts = {
   ApprovalDecisionFamilyContract
 >;
 
-export const canonicalApprovalDecisionCapabilities = Object.fromEntries(
+deepFreeze(approvalDecisionFamilyContracts);
+
+export const canonicalApprovalDecisionCapabilities = deepFreeze(Object.fromEntries(
   supportedApprovalDocumentTypes.map((family) => [
     family,
-    approvalDecisionFamilyContracts[family].decisions,
+    [...approvalDecisionFamilyContracts[family].decisions],
   ]),
 ) as unknown as Record<
   SupportedApprovalDocumentType,
   readonly CanonicalApprovalDecisionKind[]
->;
+>);
 
 export const APPROVAL_DECISION_CAPABILITY_VERSION = "1";
 
@@ -202,7 +212,7 @@ export const APPROVAL_DECISION_CAPABILITY_HASH = createHash("sha256")
   .digest("hex");
 
 export function getApprovalDecisionSurfaceContract(family: string) {
-  if (!isSupportedApprovalDocumentType(family)) {
+  if (typeof family !== "string" || !isSupportedApprovalDocumentType(family)) {
     throw new Error("APPROVAL_DECISION_REQUIRED");
   }
   const contract = approvalDecisionFamilyContracts[family];
@@ -220,9 +230,13 @@ export function getApprovalDecisionSurfaceContract(family: string) {
 
 export function assertNormalizedApprovalDecisionAvailable(
   family: string,
-  decision: string,
+  decision: unknown,
 ) {
-  if (!isSupportedApprovalDocumentType(family)) {
+  if (
+    typeof family !== "string" ||
+    !isSupportedApprovalDocumentType(family) ||
+    typeof decision !== "string"
+  ) {
     throw new Error("APPROVAL_DECISION_REQUIRED");
   }
   const normalizedDecision = decision.toUpperCase();
@@ -247,6 +261,7 @@ export function assertNormalizedApprovalDecisionAvailable(
 
 export function approvalFamilySupportsSupplementalEvidence(family: string) {
   return (
+    typeof family === "string" &&
     isSupportedApprovalDocumentType(family) &&
     approvalDecisionFamilyContracts[family].supportsSupplementalEvidence
   );

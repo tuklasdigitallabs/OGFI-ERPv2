@@ -30,6 +30,35 @@ describe("normalized approval decision capability contract", () => {
     ).toHaveLength(18);
   });
 
+  it("pins the exact closed family/action sets and rejects runtime mutation", () => {
+    const noReturn = new Set([
+      "FinanceCloseRun",
+      "BudgetRevision",
+      "PaymentRelease",
+      "EmployeeOvertimeRecord",
+    ]);
+    for (const family of supportedApprovalDocumentTypes) {
+      expect(canonicalApprovalDecisionCapabilities[family]).toEqual(
+        noReturn.has(family)
+          ? ["APPROVE", "REJECT"]
+          : ["APPROVE", "RETURN", "REJECT"],
+      );
+      expect(new Set(canonicalApprovalDecisionCapabilities[family]).size).toBe(
+        canonicalApprovalDecisionCapabilities[family].length,
+      );
+      expect(Object.isFrozen(canonicalApprovalDecisionCapabilities[family])).toBe(true);
+    }
+    expect(Object.isFrozen(canonicalApprovalDecisionCapabilities)).toBe(true);
+    expect(() => {
+      (canonicalApprovalDecisionCapabilities.PurchaseRequest as string[]).push("RETURN");
+    }).toThrow();
+    expect(() => Object.defineProperty(
+      canonicalApprovalDecisionCapabilities,
+      "PurchaseRequest",
+      { value: ["REJECT"] },
+    )).toThrow();
+  });
+
   it("publishes a stable versioned digest for the subsequent cutover cursor", () => {
     expect(APPROVAL_DECISION_CAPABILITY_VERSION).toBe("1");
     expect(APPROVAL_DECISION_CAPABILITY_HASH).toBe(
@@ -66,6 +95,14 @@ describe("normalized approval decision capability contract", () => {
     expect(() =>
       assertNormalizedApprovalDecisionAvailable("FinanceCloseRun", "RETURN"),
     ).toThrow("APPROVAL_DECISION_REQUIRED");
+    for (const malformed of [null, undefined, 1, {}, [], { toString: () => "PaymentRequest" }]) {
+      expect(() =>
+        assertNormalizedApprovalDecisionAvailable("PurchaseRequest", malformed),
+      ).toThrow("APPROVAL_DECISION_REQUIRED");
+      expect(() => getApprovalDecisionSurfaceContract(malformed as string)).toThrow(
+        "APPROVAL_DECISION_REQUIRED",
+      );
+    }
   });
 
   it("provides an explicit label and availability for every supported control", () => {

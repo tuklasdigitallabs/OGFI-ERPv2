@@ -320,6 +320,24 @@ and production gates remain open.
   PostgreSQL, authenticated browser, hosted recovery, UAT, and explicit cutover
   acceptance.
 
+### Decision-contract integrity hardening — July 27, 2026
+
+The server-owned decision matrix is now deeply frozen at runtime, including its
+family arrays and canonical decision-kind list. `getApprovalDecisionSurfaceContract`
+and `assertNormalizedApprovalDecisionAvailable` reject non-string or malformed
+family/decision inputs with the stable `APPROVAL_DECISION_REQUIRED` error before
+contract lookup. The exact 18-family matrix remains unchanged: all families
+support Approve and Reject, while Return is absent only for Finance Close,
+Budget Revision, Payment Release, and Employee Overtime. Payment Request Approve
+remains supported-but-unavailable under
+`PAYMENT_REQUEST_APPROVAL_POLICY_UNCONFIRMED`; Return and Reject remain available.
+
+Focused decision-contract coverage passes 6/6, repository lint and typecheck pass,
+and the existing feature-disabled/legacy Payment behavior remains unchanged.
+This hardening changes no approval authority, workflow status, database write, or
+feature-flag posture; PostgreSQL, browser, hosted recovery, UAT, and activation
+gates remain as documented above.
+
 ## Supersession
 
 This decision is not superseded. It refines the decision-surface and sequencing
