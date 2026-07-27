@@ -274,6 +274,7 @@ describe("period close readiness foundation", () => {
     expect(serviceSource).toContain("rejectFinanceCloseRunApproval");
     expect(serviceSource).toContain("SELF_APPROVAL_BLOCKED");
     expect(serviceSource).toContain("PERIOD_CLOSE_APPROVAL_ALREADY_PENDING");
+    expect(serviceSource).toContain("asConfigObject(run.configSnapshot).pendingSensitiveApproval");
     expect(serviceSource).toContain("PERIOD_CLOSE_APPROVAL_RULE_NOT_CONFIGURED");
     expect(serviceSource).toContain("FOR UPDATE OF run");
     expect(serviceSource).toContain("definitionSealed: true");

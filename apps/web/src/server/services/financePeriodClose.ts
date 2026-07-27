@@ -1653,6 +1653,10 @@ export async function requestPeriodCloseSensitiveActionApproval(
     if (lockedRuns.length !== 1) throw new Error("PERIOD_CLOSE_RUN_NOT_FOUND");
     const run = await getScopedCloseRunOrThrow(tx, session, input.financeCloseRunId);
     assertSensitiveApprovalActionAllowed(run, input.approvalAction);
+    const pendingAction = asConfigObject(run.configSnapshot).pendingSensitiveApproval;
+    if (pendingAction) {
+      throw new Error("PERIOD_CLOSE_APPROVAL_ALREADY_PENDING");
+    }
 
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
