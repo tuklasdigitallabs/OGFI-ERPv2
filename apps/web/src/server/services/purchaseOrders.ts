@@ -2199,44 +2199,100 @@ export async function cancelPurchaseOrder(formData: FormData) {
     throw new Error("PURCHASE_ORDER_SUPPLIER_CANCELLATION_NOTICE_REQUIRED");
   }
 
-  await prisma.$transaction(async (tx) => {
-    const activeReceiptCount = await tx.goodsReceipt.count({
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PurchaseOrder",
+  }, async (tx) => {
+    const lockedOrders = await tx.$queryRaw<Array<{
+      id: string;
+      updatedAt: Date;
+      deliveryLocationId: string;
+      supplierId: string;
+    }>>`
+      SELECT po.id, po."updatedAt", po."deliveryLocationId", po."supplierId"
+        FROM "PurchaseOrder" po
+       WHERE po.id = ${values.id}::uuid
+         AND po."tenantId" = ${session.context.tenantId}::uuid
+         AND po."companyId" = ${session.context.companyId}::uuid
+         AND po."deliveryLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE OF po
+    `;
+    const lockedOrder = lockedOrders[0];
+    if (!lockedOrder) throw new Error("PURCHASE_ORDER_NOT_FOUND");
+    await tx.$queryRaw`
+      SELECT supplier.id FROM "Supplier" supplier
+       WHERE supplier.id = ${lockedOrder.supplierId}::uuid
+         AND supplier."tenantId" = ${session.context.tenantId}::uuid
+         AND supplier."companyId" = ${session.context.companyId}::uuid
+       FOR SHARE
+    `;
+    await tx.$queryRaw`
+      SELECT location.id FROM "Location" location
+       WHERE location.id = ${lockedOrder.deliveryLocationId}::uuid
+         AND location."tenantId" = ${session.context.tenantId}::uuid
+         AND location."companyId" = ${session.context.companyId}::uuid
+         AND location.status = 'ACTIVE'
+       FOR SHARE
+    `;
+    const pendingGraph = await tx.approvalInstance.findFirst({
       where: {
-        purchaseOrderId: order.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
+        documentType: "PurchaseOrder",
+        documentId: lockedOrder.id,
+        status: "PENDING",
       },
+      select: { id: true },
     });
-    const currentLines = await tx.purchaseOrderLine.findMany({
+    if (pendingGraph) throw new Error("PURCHASE_ORDER_APPROVAL_GRAPH_NOT_CLOSED");
+    const pendingAmendment = await tx.purchaseOrderAmendment.findFirst({
+      where: { purchaseOrderId: lockedOrder.id, status: "PENDING_APPROVAL" },
+      select: { id: true },
+    });
+    if (pendingAmendment) throw new Error("PURCHASE_ORDER_APPROVAL_GRAPH_NOT_CLOSED");
+    const pendingClosure = await tx.purchaseOrderBalanceClosure.findFirst({
+      where: { purchaseOrderId: lockedOrder.id, status: "PENDING_APPROVAL" },
+      select: { id: true },
+    });
+    if (pendingClosure) throw new Error("PURCHASE_ORDER_APPROVAL_GRAPH_NOT_CLOSED");
+    const currentOrder = await tx.purchaseOrder.findFirst({
       where: {
-        purchaseOrderId: order.id,
+        id: lockedOrder.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: lockedOrder.deliveryLocationId,
       },
-      select: {
-        id: true,
-        budgetLineId: true,
-        orderedQty: true,
-        receivedQty: true,
-        cancelledQty: true,
-      },
+      include: { lines: true, goodsReceipts: { select: { id: true } } },
     });
+    if (!currentOrder) throw new Error("PURCHASE_ORDER_NOT_FOUND");
+    const activeReceiptCount = currentOrder.goodsReceipts.length;
+    const currentLines = currentOrder.lines.map((line) => ({
+      id: line.id,
+      budgetLineId: line.budgetLineId,
+      orderedQty: line.orderedQty,
+      receivedQty: line.receivedQty,
+      cancelledQty: line.cancelledQty,
+    }));
     const currentReceivedQty = currentLines.reduce(
       (total, line) => total + Number(line.receivedQty),
       0,
     );
 
     assertPurchaseOrderCanBeCancelled({
-      status: order.status,
+      status: currentOrder.status,
       receivedQty: currentReceivedQty,
       receiptCount: activeReceiptCount,
     });
 
     const updated = await tx.purchaseOrder.updateMany({
       where: {
-        id: order.id,
+        id: currentOrder.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        deliveryLocationId: session.context.locationId,
+        deliveryLocationId: lockedOrder.deliveryLocationId,
         status: { in: ["DRAFT", "APPROVED", "ISSUED"] },
+        updatedAt: lockedOrder.updatedAt,
       },
       data: {
         status: "CANCELLED",
@@ -2252,14 +2308,21 @@ export async function cancelPurchaseOrder(formData: FormData) {
     }
 
     for (const line of currentLines) {
-      await tx.purchaseOrderLine.update({
+      const updatedLine = await tx.purchaseOrderLine.updateMany({
         where: {
           id: line.id,
+          purchaseOrderId: currentOrder.id,
+          orderedQty: line.orderedQty,
+          receivedQty: line.receivedQty,
+          cancelledQty: line.cancelledQty,
         },
         data: {
           cancelledQty: Number(line.orderedQty) - Number(line.receivedQty),
         },
       });
+      if (updatedLine.count !== 1) {
+        throw new Error("PURCHASE_ORDER_NOT_CANCELLABLE");
+      }
     }
 
     await tx.auditEvent.create({
@@ -2269,19 +2332,19 @@ export async function cancelPurchaseOrder(formData: FormData) {
         actorUserId: session.user.id,
         eventType: "purchase_order.cancelled",
         entityType: "PurchaseOrder",
-        entityId: order.id,
-        beforeData: { status: order.status },
+        entityId: currentOrder.id,
+        beforeData: { status: currentOrder.status },
         afterData: { status: "CANCELLED" },
         metadata: {
           cancellationSubtype: "pre_receiving_cancellation",
           cancellationReason: values.cancellationReason,
-          previousStatus: order.status,
+          previousStatus: currentOrder.status,
           supplierNoticeReference,
           supplierNoticeUnavailableReason,
-          purchaseRequestId: order.purchaseRequestId,
-          quotationRecommendationId: order.quotationRecommendationId,
-          supplierId: order.supplierId,
-          totalAmount: Number(order.totalAmount),
+          purchaseRequestId: currentOrder.purchaseRequestId,
+          quotationRecommendationId: currentOrder.quotationRecommendationId,
+          supplierId: currentOrder.supplierId,
+          totalAmount: Number(currentOrder.totalAmount),
           lineCount: currentLines.length,
         },
       },
@@ -2293,7 +2356,7 @@ export async function cancelPurchaseOrder(formData: FormData) {
       }
       await reverseBudgetCommitmentFromApprovedSourceEvent(tx, session, {
         sourceType: "PURCHASE_ORDER",
-        sourceId: order.id,
+        sourceId: currentOrder.id,
         sourceEventKey: `purchase_order.approved:${line.id}`,
         reversalEventKey: `purchase_order.cancelled:${line.id}`,
         reason: values.cancellationReason,

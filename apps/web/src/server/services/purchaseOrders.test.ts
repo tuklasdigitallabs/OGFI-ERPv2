@@ -48,6 +48,22 @@ describe("purchase order lifecycle rules", () => {
     expect(source).toContain("deliveryRecordedNotSent: true");
     expect(source).toContain("PURCHASE_ORDER_APPROVAL_GRAPH_NOT_CLOSED");
   });
+
+  test("pre-receiving cancellation locks the PO lineage and CASes lines/commitments", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+    const start = source.indexOf("export async function cancelPurchaseOrder");
+    const end = source.indexOf("\nexport async function requestPurchaseOrderBalanceClosure", start);
+    const cancel = source.slice(start, end);
+    expect(cancel).toContain('documentType: "PurchaseOrder"');
+    expect(cancel).toContain('FOR UPDATE OF po');
+    expect(cancel).toContain('FOR SHARE');
+    expect(cancel).toContain("PURCHASE_ORDER_APPROVAL_GRAPH_NOT_CLOSED");
+    expect(cancel).toContain("updatedAt: lockedOrder.updatedAt");
+    expect(cancel).toContain("purchaseOrderLine.updateMany");
+    expect(cancel).toContain("reverseBudgetCommitmentFromApprovedSourceEvent");
+    expect(cancel).toContain("purchase_order.cancelled");
+    expect(cancel).not.toContain("InventoryMovement");
+  });
   test("My Tasks uses only explicit draft-submit and approved-issue PO actions", () => {
     const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
     const start = source.indexOf("export async function listPurchaseOrderMyTaskPage");

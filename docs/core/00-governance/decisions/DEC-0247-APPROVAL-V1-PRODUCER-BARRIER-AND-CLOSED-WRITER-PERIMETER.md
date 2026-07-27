@@ -1021,3 +1021,7 @@ The coupled correction is accepted as a dormant, feature-disabled source-integri
 ### Payment Request final approval legacy-perimeter correction — July 27, 2026
 
 Architecture and Security accepted a feature-disabled, legacy-only Payment Request approval correction. Approval now uses the same barrier and source/line/AP-invoice/supplier/location/release-residue lock contract as terminal decisions, and final source CAS binds status, `updatedAt`, and the approval backlink. The change remains approval-only: it does not create or mutate PaymentRelease, AP balances, bank, journal, budget, commitment, or inventory state. DEC-0244 normalized approval and Payment Release policy gates remain open.
+
+### Purchase Order pre-receiving cancellation correction — July 27, 2026
+
+Architecture, Security, and QA accepted the source/commitment-only Purchase Order cancellation correction. The writer now uses the shared PO barrier, locks the parent/line/receipt/scope facts, rejects pending approval-child residue, CASes the parent and each line against the locked snapshot, and keeps deterministic budget-commitment reversal keys. It does not post receiving or inventory and does not mutate AP, payment, bank, journal, or supplier communication state. PostgreSQL race, rollback, replay, and zero-side-effect evidence remain required.
