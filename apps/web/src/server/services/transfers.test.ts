@@ -704,6 +704,47 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain("InventoryTransferReceipt_tenantId_companyId_idempotencyKey");
   });
 
+  test("receipt and reversal contracts keep their lock/CAS order inside each writer", () => {
+    const service = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const receiveStart = service.indexOf("export async function receiveInventoryTransfer");
+    const settleStart = service.indexOf("export async function settleInventoryTransferDiscrepancy");
+    const reverseStart = service.indexOf("export async function reverseInventoryTransferReceipt");
+    const receiveSource = service.slice(receiveStart, reverseStart);
+    const reverseSource = service.slice(reverseStart, service.indexOf("export async function settleInventoryTransferDiscrepancy", reverseStart));
+
+    expect(receiveStart).toBeGreaterThanOrEqual(0);
+    expect(settleStart).toBeGreaterThan(receiveStart);
+    expect(reverseStart).toBeGreaterThan(receiveStart);
+    expect(receiveSource.indexOf("lockInventoryLocationsForPosting")).toBeLessThan(
+      receiveSource.indexOf('FOR UPDATE OF t')
+    );
+    expect(receiveSource.indexOf('FOR UPDATE OF t')).toBeLessThan(
+      receiveSource.indexOf('action: "inventory_transfer_receipt.receive"')
+    );
+    expect(receiveSource.indexOf('action: "inventory_transfer_receipt.receive"')).toBeLessThan(
+      receiveSource.indexOf('movementType: "TRANSFER_IN"')
+    );
+    expect(receiveSource.indexOf('movementType: "TRANSFER_IN"')).toBeLessThan(
+      receiveSource.indexOf('updatedAt: lockedTransfer.updatedAt')
+    );
+
+    expect(reverseSource.indexOf("lockInventoryLocationsForPosting")).toBeLessThan(
+      reverseSource.indexOf('FOR UPDATE OF t')
+    );
+    expect(reverseSource.indexOf('FOR UPDATE OF t')).toBeLessThan(
+      reverseSource.indexOf('action: "inventory_transfer_receipt.reverse"')
+    );
+    expect(reverseSource.indexOf('action: "inventory_transfer_receipt.reverse"')).toBeLessThan(
+      reverseSource.indexOf('status: "REVERSING"')
+    );
+    expect(reverseSource.indexOf('status: "REVERSING"')).toBeLessThan(
+      reverseSource.indexOf('sourceEventKey: `receipt:${line.id}:reverse`')
+    );
+    expect(reverseSource.indexOf('sourceEventKey: `receipt:${line.id}:reverse`')).toBeLessThan(
+      reverseSource.indexOf('status: "REVERSED"')
+    );
+  });
+
   test("receive UI supplies the required bounded idempotency key", () => {
     const service = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
     const detailPage = readFileSync(

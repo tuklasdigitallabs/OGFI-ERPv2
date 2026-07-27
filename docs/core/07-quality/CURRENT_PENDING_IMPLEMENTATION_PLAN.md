@@ -1877,3 +1877,8 @@ Update this register only when implementation state, release scope, a confirmed 
 - Reversal now rechecks permission, receipt status, receiver/dispatcher segregation, receipt-to-transfer-line lineage, item/UOM identity, and active inventory-location endpoint lineage after authoritative locks. Rollup decrements are scoped to the transfer and exact locked prior quantities; remaining receipt and line reads are tenant/company scoped.
 - Focused transfer coverage passes **28/28**; web typecheck and lint pass. No migration or workflow activation was introduced. The transfer UI and warehouse guide now state that omitted quantities never imply accepted stock.
 - Disposable PostgreSQL migration, unique-key/concurrency, deadlock, rollback, live permission/scope/MFA revocation, lineage tamper, movement cardinality, balance-neutrality, browser/UAT, hosted recovery, and deployment evidence remain open. Receipt writer, Workspace 4, and Phase I remain **NO-GO**. Requested Spark/GPT-5.4 specialists were unavailable; the closest permitted GPT-5.6 fallbacks were used without relaxing gates.
+
+### Transfer Receipt function-scoped contract gate — July 28, 2026
+
+- Independent QA review added a function-scoped contract test so receipt/reversal lock order, in-transaction MFA, deterministic movement identity, and terminal CAS ordering cannot be satisfied by unrelated transfer writers. This is test-only and does not alter workflow authority or activate receipt posting.
+- Focused transfer coverage passes **29/29**. Disposable PostgreSQL contention, rollback, revocation, migration, browser/UAT, hosted recovery, and deployment gates remain open; receipt, Workspace 4, and Phase I remain **NO-GO**.
