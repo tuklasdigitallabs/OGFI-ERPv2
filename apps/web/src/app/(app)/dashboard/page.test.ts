@@ -65,6 +65,11 @@ describe("DEC-0238 truthful operational source views", () => {
     expect(source).not.toContain("Data available");
   });
 
+  it("labels the dashboard trust gate as read-only policy status", () => {
+    expect(source).toContain('"Read-only policy status"');
+    expect(source).not.toContain('"inventory-value-source"');
+  });
+
   it("keeps the longer source-view tab usable on narrow touch screens", () => {
     expect(globalStyleSource).toMatch(/\.ogfi-tab-list\s*\{[^}]*overflow-x: auto;/s);
     expect(globalStyleSource).toMatch(/\.ogfi-tab\s*\{[^}]*min-height: 2\.75rem;/s);

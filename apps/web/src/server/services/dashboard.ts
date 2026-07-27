@@ -10,6 +10,7 @@ import {
   canUseStockAdjustments,
   canUseTransfers,
   canUseWastageReports,
+  requirePermission,
   permissions
 } from "./authorization";
 import { type ApprovalQueueItem } from "./approvals";
@@ -158,6 +159,11 @@ export const dashboardSourceIds = [
   "trust-gate"
 ] as const;
 
+export function canViewDashboardTrustGate(permissionCodes: string[]) {
+  return permissionCodes.includes(permissions.inventoryBalanceView) &&
+    permissionCodes.includes(permissions.inventoryLedgerView);
+}
+
 export type DashboardSourceId = (typeof dashboardSourceIds)[number];
 
 export type DashboardSourceObservation = {
@@ -211,12 +217,12 @@ export type OperationalDashboard = {
   metrics: DashboardMetric[];
   stockHealth: DashboardMetric[];
   sourceHealth: DashboardMetric[];
-  trustGate: {
+  trustGate?: {
     availability: "AVAILABLE" | "UNAVAILABLE";
     mode: DashboardTrustGateMode;
     label: string;
     isOverridden: boolean;
-    sourceDecisionId: string;
+    sourceDecisionId?: string;
   };
   approvalQueue: DashboardQueueItemLegacy[];
   exceptionQueue: DashboardQueueItemLegacy[];
@@ -515,6 +521,18 @@ export function buildOperationalDashboardModel(
   session: SessionContext,
   source: OperationalDashboardSource
 ): OperationalDashboard {
+  const dashboardTrustEntitled = canViewDashboardTrustGate(session.permissionCodes);
+  const authorizedReconciliation = dashboardTrustEntitled
+    ? source.reconciliation
+    : undefined;
+  const authorizedTrustGate = dashboardTrustEntitled
+    ? source.dashboardTrustGate
+    : undefined;
+  const authorizedSourceObservations = (source.sourceObservations ?? []).filter(
+    (observation) =>
+      dashboardTrustEntitled ||
+      (observation.id !== "trust-gate" && observation.id !== "inventory-reconciliation")
+  );
   const cards: DashboardCard[] = [];
   const metrics: DashboardMetric[] = [];
   const stockHealth: DashboardMetric[] = [];
@@ -750,17 +768,19 @@ export function buildOperationalDashboardModel(
     }
   }
 
-  if (source.reconciliation && !isDashboardTrustGateBlocking(source)) {
+  if (authorizedReconciliation && !isDashboardTrustGateBlocking({
+    ...(authorizedTrustGate ? { ...source, dashboardTrustGate: authorizedTrustGate } : source)
+  })) {
     cards.push({
       id: "ledger-reconciliation",
       label: "Ledger Variance",
-      value: source.reconciliation.varianceCount,
+      value: authorizedReconciliation.varianceCount,
       href: inventoryDashboardProfileHref("ledger-variance-v1"),
       description: "Cache-to-ledger difference rows",
-      tone: cardTone(source.reconciliation.varianceCount)
+      tone: cardTone(authorizedReconciliation.varianceCount)
     });
 
-    for (const row of source.reconciliation.candidates) {
+    for (const row of authorizedReconciliation.candidates) {
       exceptionQueue.push({
         id: `ledger-${row.key}`,
         contributorSourceId: "inventory-reconciliation",
@@ -1187,25 +1207,32 @@ export function buildOperationalDashboardModel(
           },
         ]
       : [])),
-    {
-      id: "dashboard-trust-gate",
-      label: "Reporting trust gate",
-      displayValue: source.dashboardTrustGate?.label ?? "Unavailable",
-      detail: !source.dashboardTrustGate
-        ? "Trust policy could not be checked. Reconciliation-dependent values are withheld."
-        : source.dashboardTrustGate.isOverridden
-          ? "Company override is active for unreconciled dashboard source data"
-          : "Recommended DEC-0036 dashboard source-data policy is active",
-      tone:
-        !source.dashboardTrustGate
-          ? "warning"
-          : source.dashboardTrustGate.mode === "show_only"
-          ? "warning"
-          : source.dashboardTrustGate.mode === "block"
-            ? "success"
-            : "info"
-    },
-    ...(source.reconciliation && isDashboardTrustGateBlocking(source)
+    ...(dashboardTrustEntitled &&
+    (authorizedTrustGate ||
+      authorizedSourceObservations.some((observation) => observation.id === "trust-gate"))
+      ? [{
+          id: "dashboard-trust-gate",
+          label: "Reporting trust gate",
+          displayValue: authorizedTrustGate?.label ?? "Unavailable",
+          detail: !authorizedTrustGate
+            ? "Trust policy could not be checked. Reconciliation-dependent values are withheld."
+            : authorizedTrustGate.isOverridden
+              ? "Company override is active for unreconciled dashboard source data"
+              : "Recommended DEC-0036 dashboard source-data policy is active",
+          tone: (
+            !authorizedTrustGate
+              ? "warning"
+              : authorizedTrustGate.mode === "show_only"
+              ? "warning"
+              : authorizedTrustGate.mode === "block"
+                ? "success"
+                : "info"
+          ) as BadgeTone
+        }]
+      : []),
+    ...(authorizedReconciliation && isDashboardTrustGateBlocking(
+      authorizedTrustGate ? { ...source, dashboardTrustGate: authorizedTrustGate } : source
+    )
       ? [
           {
             id: "ledger-reconciliation-blocked",
@@ -1289,15 +1316,19 @@ export function buildOperationalDashboardModel(
     metrics,
     stockHealth,
     sourceHealth,
-    trustGate: {
-      availability: source.dashboardTrustGate ? "AVAILABLE" : "UNAVAILABLE",
-      mode: source.dashboardTrustGate?.mode ?? "block",
-      label:
-        source.dashboardTrustGate?.label ??
-        "Unavailable — reconciliation values withheld",
-      isOverridden: source.dashboardTrustGate?.isOverridden ?? false,
-      sourceDecisionId: source.dashboardTrustGate?.sourceDecisionId ?? "DEC-0036"
-    },
+    ...(dashboardTrustEntitled
+      ? {
+          trustGate: {
+            availability: authorizedTrustGate ? "AVAILABLE" as const : "UNAVAILABLE" as const,
+            mode: authorizedTrustGate?.mode ?? "block",
+            label:
+              authorizedTrustGate?.label ??
+              "Unavailable — reconciliation values withheld",
+            isOverridden: authorizedTrustGate?.isOverridden ?? false,
+            sourceDecisionId: authorizedTrustGate?.sourceDecisionId ?? "DEC-0036"
+          }
+        }
+      : {}),
     approvalQueue: toLegacyDashboardQueueItems(
       approvalQueueDrafts.slice(0, approvalQueueDisplayLimit),
     ),
@@ -1306,7 +1337,7 @@ export function buildOperationalDashboardModel(
     ),
     approvalQueueContract,
     exceptionQueueContract,
-    sourceObservations: source.sourceObservations ?? []
+    sourceObservations: authorizedSourceObservations
   };
 }
 
@@ -1761,15 +1792,25 @@ export function getOperationalDashboardSourceDescriptors(
           })
         }]
       : []),
-    {
-      id: "trust-gate",
-      label: "Dashboard trust status",
-      href: "/inventory",
-      read: async () => ({
-        patch: { dashboardTrustGate: await getDashboardTrustGatePolicy(session) }
-      })
-    }
+    ...(canViewDashboardTrustGate(session.permissionCodes)
+      ? [{
+          id: "trust-gate" as const,
+          label: "Dashboard trust status",
+          href: inventoryDashboardProfileHref("ledger-variance-v1"),
+          read: async () => ({
+            patch: {
+              dashboardTrustGate: await readDashboardTrustGatePolicy(session)
+            }
+          })
+        }]
+      : [])
   ];
+}
+
+async function readDashboardTrustGatePolicy(session: SessionContext) {
+  await requirePermission(session, permissions.inventoryBalanceView);
+  await requirePermission(session, permissions.inventoryLedgerView);
+  return getDashboardTrustGatePolicy(session);
 }
 
 export async function getOperationalDashboard(

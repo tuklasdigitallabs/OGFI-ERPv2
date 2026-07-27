@@ -41,8 +41,7 @@ const metricIcons = {
   "active-stock-rows": Boxes,
   "zero-stock-rows": AlertTriangle,
   "lot-expiry-data": Database,
-  "sales-source": BarChart3,
-  "inventory-value-source": Boxes
+  "sales-source": BarChart3
 };
 
 const dashboardViews = ["overview", "analytics", "reports", "notifications"] as const;
@@ -94,7 +93,13 @@ function MetricCard({ metric }: { metric: DashboardMetric }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             {metric.label}
           </p>
-          <p className="mt-2 truncate text-2xl font-bold text-slate-950">
+          <p
+            className={
+              metric.id === "dashboard-trust-gate"
+                ? "mt-2 text-lg font-bold leading-6 text-slate-950"
+                : "mt-2 truncate text-2xl font-bold text-slate-950"
+            }
+          >
             {metric.displayValue}
           </p>
         </div>
@@ -105,7 +110,9 @@ function MetricCard({ metric }: { metric: DashboardMetric }) {
       <p className="mt-3 min-h-10 text-sm leading-6 text-slate-600">{metric.detail}</p>
       <div className="mt-3 flex items-center justify-between gap-2">
         <Badge tone={metric.tone} size="sm">
-          {hasExactProfile
+          {metric.id === "dashboard-trust-gate"
+            ? "Read-only policy status"
+            : hasExactProfile
             ? "Exact profile"
             : metric.href
               ? "Drill-down ready"

@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildOperationalDashboardModel,
+  canViewDashboardTrustGate,
   DashboardSourceAdmissionController,
   dashboardRuntimeTestSupport,
   dashboardDueState,
@@ -39,6 +40,11 @@ const session: SessionContext = {
   },
   authorizedLocations: [],
   permissionCodes: []
+};
+
+const dashboardTrustSession: SessionContext = {
+  ...session,
+  permissionCodes: ["inventory.balance.view", "inventory.ledger.view"]
 };
 
 const warnTrustGate = {
@@ -81,8 +87,42 @@ describe("operational dashboard model", () => {
   it("omits unauthorized source descriptors and keeps authorized reads lazy", () => {
     const descriptors = getOperationalDashboardSourceDescriptors(session);
 
-    expect(descriptors.map((descriptor) => descriptor.id)).toEqual(["trust-gate"]);
-    expect(descriptors[0]?.read).toEqual(expect.any(Function));
+    expect(descriptors.map((descriptor) => descriptor.id)).toEqual([]);
+    expect(canViewDashboardTrustGate(session.permissionCodes)).toBe(false);
+  });
+
+  it("enrolls the trust-gate read only for the reconciliation permission pair", () => {
+    const descriptors = getOperationalDashboardSourceDescriptors(dashboardTrustSession);
+
+    expect(canViewDashboardTrustGate(dashboardTrustSession.permissionCodes)).toBe(true);
+    expect(descriptors.find((descriptor) => descriptor.id === "trust-gate")).toMatchObject({
+      href: "/inventory/reconciliation?dashboard=ledger-variance-v1",
+      read: expect.any(Function)
+    });
+  });
+
+  it("does not materialize injected reconciliation or trust metadata for an unentitled session", () => {
+    const dashboard = buildOperationalDashboardModel(session, {
+      dashboardTrustGate: warnTrustGate,
+      reconciliation: {
+        varianceCount: 1,
+        generatedAt: "2026-07-23T00:00:00.000Z",
+        candidates: []
+      },
+      sourceObservations: [{
+        id: "trust-gate",
+        label: "Dashboard trust status",
+        href: "/inventory/reconciliation?dashboard=ledger-variance-v1",
+        availability: "AVAILABLE",
+        checkedAt: "2026-07-23T00:00:00.000Z"
+      }]
+    });
+
+    expect(dashboard.trustGate).toBeUndefined();
+    expect(dashboard.cards.map((card) => card.id)).not.toContain("ledger-reconciliation");
+    expect(dashboard.sourceHealth.map((metric) => metric.id)).not.toContain("dashboard-trust-gate");
+    expect(dashboard.sourceObservations).toEqual([]);
+    expect(JSON.stringify(dashboard)).not.toContain("DEC-0036");
   });
 
   it("closes a never-settling source at its deadline", async () => {
@@ -555,7 +595,7 @@ describe("operational dashboard model", () => {
   });
 
   it("surfaces source-linked exceptions without creating dashboard state", () => {
-    const dashboard = buildOperationalDashboardModel(session, {
+    const dashboard = buildOperationalDashboardModel(dashboardTrustSession, {
       dashboardTrustGate: warnTrustGate,
       purchaseOrders: [
         {
@@ -623,7 +663,7 @@ describe("operational dashboard model", () => {
   });
 
   it("blocks reconciliation-dependent dashboard values when the trust gate requires blocking", () => {
-    const dashboard = buildOperationalDashboardModel(session, {
+    const dashboard = buildOperationalDashboardModel(dashboardTrustSession, {
       dashboardTrustGate: {
         key: "reporting.dashboard.unreconciled_mode",
         mode: "block",
@@ -678,7 +718,7 @@ describe("operational dashboard model", () => {
   });
 
   it("fails closed when trust-gate policy is unavailable", () => {
-    const dashboard = buildOperationalDashboardModel(session, {
+    const dashboard = buildOperationalDashboardModel(dashboardTrustSession, {
       reconciliation: {
         varianceCount: 1,
         generatedAt: "2026-07-23T00:00:00.000Z",
@@ -783,7 +823,11 @@ describe("operational dashboard model", () => {
 
   it("covers every Phase 1 operational visibility lane without replacing source records", () => {
     const dashboard = buildOperationalDashboardModel(
-      { ...session, permissionCodes: ["inventory.stock_count.review"] },
+      { ...dashboardTrustSession, permissionCodes: [
+        "inventory.balance.view",
+        "inventory.ledger.view",
+        "inventory.stock_count.review"
+      ] },
       {
       dashboardTrustGate: warnTrustGate,
       approvals: [
@@ -902,7 +946,7 @@ describe("operational dashboard model", () => {
   });
 
   it("surfaces Phase 2 restaurant operations from source dashboards", () => {
-    const dashboard = buildOperationalDashboardModel(session, {
+    const dashboard = buildOperationalDashboardModel(dashboardTrustSession, {
       dashboardTrustGate: warnTrustGate,
       branchOperations: {
         locationName: "Selected Branch",

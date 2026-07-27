@@ -21900,7 +21900,7 @@
     ],
     "guardChain": [
       "session-delegated-by-caller",
-      "service-policy-helper",
+      "live-permission",
       "tenant-company-scope-query"
     ],
     "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
