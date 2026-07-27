@@ -860,6 +860,57 @@ async function lockWastageSourceForPosting(
   return source;
 }
 
+async function lockWastageSourceForReversal(
+  tx: TransactionClient,
+  session: SessionContext,
+  reportId: string
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    inventoryLocationId: string;
+    status: string;
+    updatedAt: Date;
+    postedAt: Date | null;
+    reversedAt: Date | null;
+  }>>`
+    SELECT report.id, report."inventoryLocationId", report.status,
+           report."updatedAt", report."postedAt", report."reversedAt"
+      FROM "WastageReport" report
+     WHERE report.id = ${reportId}::uuid
+       AND report."tenantId" = ${session.context.tenantId}::uuid
+       AND report."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF report
+  `;
+  const source = rows[0];
+  if (!source || source.status !== "POSTED" || !source.postedAt || source.reversedAt) {
+    if (source?.status === "REVERSED" || source?.reversedAt) return source;
+    throw new Error("WASTAGE_NOT_POSTED_FOR_REVERSAL");
+  }
+  const inventoryRows = await tx.$queryRaw<Array<{ id: string; locationId: string }>>`
+    SELECT inventoryLocation.id, inventoryLocation."locationId"
+      FROM "InventoryLocation" inventoryLocation
+     WHERE inventoryLocation.id = ${source.inventoryLocationId}::uuid
+       AND inventoryLocation."tenantId" = ${session.context.tenantId}::uuid
+       AND inventoryLocation."companyId" = ${session.context.companyId}::uuid
+       AND inventoryLocation.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF inventoryLocation
+  `;
+  const inventoryLocation = inventoryRows[0];
+  if (!inventoryLocation) throw new Error("WASTAGE_DOCUMENT_SCOPE_NOT_FOUND");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${inventoryLocation.locationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("WASTAGE_DOCUMENT_SCOPE_NOT_FOUND");
+  assertAuthorizedLocation(session, inventoryLocation.locationId);
+  return source;
+}
+
 function requiredFormValues(formData: FormData, name: string) {
   return formData
     .getAll(name)
@@ -2084,11 +2135,62 @@ export async function reverseWastageReport(formData: FormData) {
     }
   });
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "WastageReport"
+  }, async (tx) => {
+    const lockedSource = await lockWastageSourceForReversal(tx, session, report.id);
+    if (lockedSource.status === "REVERSED" || lockedSource.reversedAt) return;
+    const lockedLineRows = await tx.$queryRaw<Array<{ id: string; inventoryLocationId: string; postedMovementId: string | null }>>`
+      SELECT line.id, line."inventoryLocationId", line."postedMovementId"
+        FROM "WastageLine" line
+       WHERE line."wastageReportId" = ${report.id}::uuid
+         AND line."tenantId" = ${session.context.tenantId}::uuid
+         AND line."companyId" = ${session.context.companyId}::uuid
+       ORDER BY line."lineNumber" ASC, line.id ASC
+       FOR UPDATE OF line
+    `;
+    if (lockedLineRows.length === 0 || lockedLineRows.some((line) =>
+      line.inventoryLocationId !== lockedSource.inventoryLocationId || !line.postedMovementId
+    )) {
+      throw new Error("WASTAGE_LINE_POSTED_MOVEMENT_REQUIRED");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT movement.id
+        FROM "InventoryMovement" movement
+        JOIN "WastageLine" line ON line."postedMovementId" = movement.id
+       WHERE line."wastageReportId" = ${report.id}::uuid
+         AND line."tenantId" = ${session.context.tenantId}::uuid
+         AND line."companyId" = ${session.context.companyId}::uuid
+       ORDER BY movement.id ASC
+       FOR UPDATE OF movement
+    `;
+    const authoritativeReport = await tx.wastageReport.findFirst({
+      where: {
+        id: report.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "POSTED",
+        postedAt: { not: null },
+        reversedAt: null
+      },
+      include: {
+        inventoryLocation: true,
+        lines: {
+          orderBy: { lineNumber: "asc" },
+          include: {
+            postedMovement: { include: { reversalMovements: true } }
+          }
+        }
+      }
+    });
+    if (!authoritativeReport) throw new Error("WASTAGE_NOT_POSTED_FOR_REVERSAL");
+    const reversalReport = authoritativeReport;
     const inventoryLocationLock = await lockInventoryLocationsForPosting(
       tx,
       session,
-      report.lines.flatMap((line) => [
+      reversalReport.lines.flatMap((line) => [
         line.postedMovement?.inventoryLocationId ?? line.inventoryLocationId,
         ...(line.postedMovement?.relatedInventoryLocationId
           ? [line.postedMovement.relatedInventoryLocationId]
@@ -2097,7 +2199,7 @@ export async function reverseWastageReport(formData: FormData) {
     );
     const claimed = await tx.wastageReport.updateMany({
       where: {
-        id: report.id,
+        id: reversalReport.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "POSTED",
@@ -2109,7 +2211,7 @@ export async function reverseWastageReport(formData: FormData) {
     if (claimed.count !== 1) {
       const current = await tx.wastageReport.findFirst({
         where: {
-          id: report.id,
+          id: reversalReport.id,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId
         },
@@ -2123,7 +2225,7 @@ export async function reverseWastageReport(formData: FormData) {
 
     const reversalMovementIds: string[] = [];
     const originalMovementIds: string[] = [];
-    for (const line of report.lines) {
+    for (const line of reversalReport.lines) {
       const original = line.postedMovement;
       if (!original || !line.postedMovementId) {
         throw new Error("WASTAGE_LINE_POSTED_MOVEMENT_REQUIRED");
@@ -2137,7 +2239,7 @@ export async function reverseWastageReport(formData: FormData) {
         original.inventoryLocationId !== line.inventoryLocationId ||
         original.itemId !== line.itemId ||
         original.sourceDocumentType !== "WastageReport" ||
-        original.sourceDocumentId !== report.id ||
+        original.sourceDocumentId !== reversalReport.id ||
         original.sourceDocumentLineId !== line.id
       ) {
         throw new Error("WASTAGE_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH");
@@ -2157,7 +2259,7 @@ export async function reverseWastageReport(formData: FormData) {
         enteredUomId: original.enteredUomId,
         quantityDeltaBaseUom,
         sourceDocumentType: "WastageReport",
-        sourceDocumentId: report.id,
+        sourceDocumentId: reversalReport.id,
         sourceDocumentLineId: line.id,
         sourceEventKey: `wastage_line:${line.id}:reverse`,
         lotNumber: original.lotNumber,
@@ -2175,7 +2277,7 @@ export async function reverseWastageReport(formData: FormData) {
     const reversedAt = new Date();
     const reversed = await tx.wastageReport.updateMany({
       where: {
-        id: report.id,
+        id: reversalReport.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "REVERSING",

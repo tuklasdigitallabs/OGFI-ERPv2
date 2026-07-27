@@ -162,6 +162,20 @@ describe("wastage foundation rules", () => {
     expect(action).toContain('sourceEventKey: `wastage_line:${line.id}:post`');
   });
 
+  test("wastage reversal locks source, lines, and originals before inventory scope", () => {
+    const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
+    const start = source.indexOf("export async function reverseWastageReport");
+    const action = source.slice(start);
+    expect(action).toContain("withApprovalProducerTransaction");
+    expect(action).toContain("lockWastageSourceForReversal");
+    expect(action).toContain("FOR UPDATE OF movement");
+    expect(action.indexOf("lockWastageSourceForReversal")).toBeLessThan(
+      action.indexOf("lockInventoryLocationsForPosting")
+    );
+    expect(action).toContain('sourceEventKey: `wastage_line:${line.id}:reverse`');
+    expect(action).toContain("WASTAGE_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH");
+  });
+
   test("service read gate allows every wastage action permission", () => {
     const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
 

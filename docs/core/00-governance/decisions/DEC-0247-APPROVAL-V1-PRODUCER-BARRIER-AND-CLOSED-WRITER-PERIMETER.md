@@ -967,6 +967,10 @@ Security recommended, and Architecture challenged/accepted, a bounded Stock Adju
 
 Architecture and Security accepted a bounded Wastage posting correction. The poster now follows barrier → source → ordered lines → inventory scope, rejects pending approval-graph residue and cross-location lines, and rehydrates the authoritative approved report before claiming `POSTING`. Immutable `WASTAGE_OUT` movement keys, line links, final source CAS, reversal separation, and privileged MFA remain unchanged. PostgreSQL contention, rollback, ACL/MFA, replay, and exact-once movement evidence remain open.
 
+### Wastage reversal lock-order correction (July 27, 2026)
+
+Architecture and Security accepted a bounded Wastage recovery correction. Reversal now follows barrier → posted source → ordered lines/original movements → inventory scope, then atomically claims `POSTED → REVERSING`, creates uniquely keyed counter-movements, and closes `REVERSED`. Original movement provenance, privileged MFA, reversal separation, and audit linkage remain enforced; PostgreSQL contention, rollback, ACL/MFA, replay, and balance-neutrality evidence remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
