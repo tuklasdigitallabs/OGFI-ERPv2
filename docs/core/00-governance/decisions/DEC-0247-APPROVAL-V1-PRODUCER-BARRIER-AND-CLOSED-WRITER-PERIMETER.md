@@ -702,6 +702,15 @@ green. Optional linked-source lineage, evidence/payment handoff policy,
 replay, PostgreSQL races/rollback, sibling writers, and activation remain open;
 no payment, bank, journal, or settlement mutation is authorized.
 
+Petty Cash submission now locks the request with its active PettyCashFund and
+Location, requires a sealed rule, initializes the immutable requested-amount
+proposal with expected-`updatedAt`/status/link CAS before graph creation, and
+attaches the exact approval backlink with a second CAS. Existing awaiting rows
+fail closed because replay and decision-intent proof are absent. Focused
+coverage passes 11/11 with web typecheck green; fund/lineage, custodian-policy,
+evidence/handoff, PostgreSQL race/rollback, sibling writer, and activation gates
+remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

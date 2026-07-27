@@ -658,7 +658,8 @@ async function findPettyCashApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "PettyCashRequest",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -1394,6 +1395,31 @@ export async function submitPettyCashRequest(
     companyId: session.context.companyId,
     documentType: "PettyCashRequest",
   }, async (tx) => {
+    const lockedRequests = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      updatedAt: Date;
+      pettyCashFundId: string;
+    }>>`
+      SELECT pr.id, pr.status, pr."updatedAt", pr."pettyCashFundId"
+        FROM "PettyCashRequest" pr
+        JOIN "PettyCashFund" f ON f.id = pr."pettyCashFundId"
+        JOIN "Location" l ON l.id = f."locationId"
+       WHERE pr.id = ${input.pettyCashRequestId}::uuid
+         AND pr."tenantId" = ${session.context.tenantId}::uuid
+         AND pr."companyId" = ${session.context.companyId}::uuid
+         AND f."tenantId" = ${session.context.tenantId}::uuid
+         AND f."companyId" = ${session.context.companyId}::uuid
+         AND f.status = 'ACTIVE'
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+         AND l.status = 'ACTIVE'
+       FOR UPDATE OF pr, f, l
+    `;
+    const lockedRequest = lockedRequests[0];
+    if (!lockedRequest) {
+      throw new Error("PETTY_CASH_REQUEST_NOT_FOUND");
+    }
     const request = await getScopedRequestOrThrow(
       tx,
       session,
@@ -1408,12 +1434,10 @@ export async function submitPettyCashRequest(
         status: "PENDING"
       }
     })
-    if (request.status === "AWAITING_APPROVAL" && existingApproval) {
-      return request
+    if (request.status === "AWAITING_APPROVAL") {
+      throw new Error("PETTY_CASH_ALREADY_SUBMITTED")
     }
-    if (request.status !== "AWAITING_APPROVAL") {
-      assertRequestTransition({ transition: "submit", status: request.status })
-    }
+    assertRequestTransition({ transition: "submit", status: request.status })
     assertEvidence(
       evidenceReference ?? request.evidenceReference,
       "PETTY_CASH_REQUEST_EVIDENCE_REQUIRED"
@@ -1436,6 +1460,31 @@ export async function submitPettyCashRequest(
 
     if (!request.fund.locationId) {
       throw new Error("PETTY_CASH_APPROVAL_SCOPE_NOT_CONFIGURED")
+    }
+    const submittedAt = new Date()
+    const claimed = await tx.pettyCashRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        pettyCashFundId: lockedRequest.pettyCashFundId,
+        status: { in: ["DRAFT", "RETURNED_FOR_REVISION"] },
+        updatedAt: lockedRequest.updatedAt,
+        approvalInstanceId: null,
+        currentProposedAmountPhp: null,
+        approvalProposalVersion: 0
+      },
+      data: {
+        status: "AWAITING_APPROVAL",
+        currentProposedAmountPhp: request.requestedAmountPhp,
+        approvalProposalVersion: 1,
+        submittedByUserId: session.user.id,
+        submittedAt,
+        evidenceReference: evidenceReference ?? request.evidenceReference
+      }
+    })
+    if (claimed.count !== 1) {
+      throw new Error("PETTY_CASH_INVALID_STATUS_TRANSITION")
     }
     const routedSteps = approvalRule.steps.map((step, index) => ({
       ...step,
@@ -1499,18 +1548,31 @@ export async function submitPettyCashRequest(
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     })
 
-    const updated = await tx.pettyCashRequest.update({
-      where: { id: request.id },
-      data: {
+    const linked = await tx.pettyCashRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
-        approvalInstanceId: approvalInstance.id,
+        approvalInstanceId: null,
         currentProposedAmountPhp: request.requestedAmountPhp,
-        approvalProposalVersion: 1,
-        submittedByUserId: session.user.id,
-        submittedAt: new Date(),
-        evidenceReference: evidenceReference ?? request.evidenceReference
-      }
+        approvalProposalVersion: 1
+      },
+      data: { approvalInstanceId: approvalInstance.id }
     })
+    if (linked.count !== 1) {
+      throw new Error("PETTY_CASH_INVALID_STATUS_TRANSITION")
+    }
+    const updated = {
+      ...request,
+      status: "AWAITING_APPROVAL" as const,
+      approvalInstanceId: approvalInstance.id,
+      currentProposedAmountPhp: request.requestedAmountPhp,
+      approvalProposalVersion: 1,
+      submittedByUserId: session.user.id,
+      submittedAt,
+      evidenceReference: evidenceReference ?? request.evidenceReference
+    }
     const auditEvent = await writePettyCashAudit(tx, {
       session,
       entityType: "PettyCashRequest",

@@ -148,6 +148,13 @@ describe("petty cash foundation", () => {
     expect(serviceSource).toContain("findPettyCashApprovalRule");
     expect(serviceSource).toContain('documentType: "PettyCashRequest"');
     expect(serviceSource).toContain("approvalInstance.create");
+    expect(serviceSource).toContain("FOR UPDATE OF pr, f, l");
+    expect(serviceSource).toContain("definitionSealed: true");
+    expect(serviceSource).toContain("currentProposedAmountPhp: null");
+    expect(serviceSource).toContain("const claimed = await tx.pettyCashRequest.updateMany");
+    expect(serviceSource.indexOf("const claimed = await tx.pettyCashRequest.updateMany")).toBeLessThan(
+      serviceSource.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
     expect(serviceSource).toContain("APPROVE_PETTY_CASH");
     expect(serviceSource).toContain("PETTY_CASH_APPROVAL_RULE_NOT_CONFIGURED");
     expect(serviceSource).toContain("PETTY_CASH_ALREADY_SUBMITTED");
