@@ -2534,6 +2534,90 @@ async function findActionablePaymentRequestApproval(
   return { approval, step, request };
 }
 
+async function lockAndRevalidatePaymentRequestTerminalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  expected: Prisma.PaymentRequestGetPayload<{
+    include: { lines: { include: { apInvoice: true } }; supplier: true; location: true };
+  }>,
+  approvalInstanceId: string
+) {
+  const sourceRows = await tx.$queryRaw<Array<{
+    id: string;
+    status: string;
+    updatedAt: Date;
+    approvalInstanceId: string | null;
+    locationId: string;
+    supplierId: string;
+    requestedByUserId: string;
+  }>>`
+    SELECT request.id, request.status::text AS status, request."updatedAt",
+           request."approvalInstanceId", request."locationId",
+           request."supplierId", request."requestedByUserId"
+      FROM "PaymentRequest" request
+     WHERE request.id = ${expected.id}::uuid
+       AND request."tenantId" = ${session.context.tenantId}::uuid
+       AND request."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF request
+  `;
+  const source = sourceRows[0];
+  if (!source || source.status !== "AWAITING_APPROVAL" ||
+      (source.approvalInstanceId !== null && source.approvalInstanceId !== approvalInstanceId) ||
+      source.updatedAt.getTime() !== expected.updatedAt.getTime()) {
+    throw new Error("PAYMENT_REQUEST_SOURCE_CHANGED");
+  }
+  const lineRows = await tx.$queryRaw<Array<{
+    id: string;
+    apInvoiceId: string;
+    locationId: string;
+    updatedAt: Date;
+  }>>`
+    SELECT line.id, line."apInvoiceId", line."locationId", line."updatedAt"
+      FROM "PaymentRequestLine" line
+     WHERE line."paymentRequestId" = ${expected.id}::uuid
+       AND line."tenantId" = ${session.context.tenantId}::uuid
+       AND line."companyId" = ${session.context.companyId}::uuid
+     ORDER BY line."lineNumber" ASC, line.id ASC
+     FOR UPDATE OF line
+  `;
+  if (lineRows.length !== expected.lines.length || lineRows.some((line) =>
+    line.locationId !== source.locationId
+  )) {
+    throw new Error("PAYMENT_REQUEST_SOURCE_CHANGED");
+  }
+  const expectedLineIds = [...expected.lines].sort((a, b) => a.id.localeCompare(b.id));
+  const lockedLineIds = [...lineRows].sort((a, b) => a.id.localeCompare(b.id));
+  if (expectedLineIds.some((line, index) =>
+    line.id !== lockedLineIds[index]?.id || line.updatedAt.getTime() !== lockedLineIds[index]?.updatedAt.getTime()
+  )) {
+    throw new Error("PAYMENT_REQUEST_SOURCE_CHANGED");
+  }
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT invoice.id
+      FROM "ApInvoice" invoice
+      JOIN "PaymentRequestLine" line ON line."apInvoiceId" = invoice.id
+     WHERE line."paymentRequestId" = ${expected.id}::uuid
+       AND invoice."tenantId" = ${session.context.tenantId}::uuid
+       AND invoice."companyId" = ${session.context.companyId}::uuid
+     ORDER BY invoice.id ASC
+     FOR UPDATE OF invoice
+  `;
+  const releaseRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT release.id
+      FROM "PaymentRelease" release
+     WHERE release."paymentRequestId" = ${expected.id}::uuid
+       AND release."tenantId" = ${session.context.tenantId}::uuid
+       AND release."companyId" = ${session.context.companyId}::uuid
+     LIMIT 1
+  `;
+  if (releaseRows.length > 0) throw new Error("PAYMENT_REQUEST_RELEASE_STATE_CONFLICT");
+  await tx.$queryRaw`SELECT id FROM "Location" WHERE id = ${source.locationId}::uuid AND "tenantId" = ${session.context.tenantId}::uuid AND "companyId" = ${session.context.companyId}::uuid AND status = 'ACTIVE'::"RecordStatus" FOR SHARE`;
+  await tx.$queryRaw`SELECT id FROM "Supplier" WHERE id = ${source.supplierId}::uuid AND "tenantId" = ${session.context.tenantId}::uuid AND "companyId" = ${session.context.companyId}::uuid FOR SHARE`;
+  await assertApprovalScope(session, source.locationId);
+  if (source.requestedByUserId === session.user.id) throw new Error("SELF_APPROVAL_BLOCKED");
+  return source;
+}
+
 async function findActionablePaymentReleaseApproval(
   session: SessionContext,
   approvalInstanceId: string
@@ -9028,7 +9112,7 @@ async function closeExpenseRequestWithDecision(
     });
     const updatedRequest = await tx.expenseRequest.updateMany({
       where: {
-        id: lockedRequest.id,
+        id: request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
@@ -10001,7 +10085,7 @@ export async function approvePaymentRequestApproval(formData: FormData) {
         id: request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
+        status: "AWAITING_APPROVAL",
       },
       data: {
         status: "APPROVED",
@@ -10051,6 +10135,17 @@ async function closePaymentRequestWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PaymentRequest"
+    });
+    const lockedRequest = await lockAndRevalidatePaymentRequestTerminalSource(
+      tx,
+      session,
+      request,
+      approval.id
+    );
     await prepareSpecializedApprovalDecisionAuthority(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -10085,7 +10180,9 @@ async function closePaymentRequestWithDecision(
         id: request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "AWAITING_APPROVAL"
+        status: "AWAITING_APPROVAL",
+        updatedAt: lockedRequest.updatedAt,
+        ...(lockedRequest.approvalInstanceId ? { approvalInstanceId: approval.id } : {})
       },
       data:
         requestStatus === "RETURNED_FOR_REVISION"
@@ -10111,14 +10208,14 @@ async function closePaymentRequestWithDecision(
         actorUserId: session.user.id,
         eventType,
         entityType: "PaymentRequest",
-        entityId: request.id,
+        entityId: lockedRequest.id,
         beforeData: { status: "AWAITING_APPROVAL" },
         afterData: { status: requestStatus },
         metadata: {
           approvalInstanceId: approval.id,
           remarks: values.remarks,
           returnReasonStoredIn: requestStatus === "RETURNED_FOR_REVISION" ? "holdReason" : null,
-          noSourceMutation: true,
+          noApInvoiceMutation: true,
           noPaymentRelease: true,
           noBankMutation: true,
           noJournalPosting: true

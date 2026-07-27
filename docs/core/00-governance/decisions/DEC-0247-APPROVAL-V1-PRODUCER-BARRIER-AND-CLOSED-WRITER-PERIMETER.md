@@ -997,3 +997,6 @@ This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
 the producer-barrier architecture decision required by those records while
 preserving their separate decision-surface, orchestration, human-authority,
 certification, and activation gates.
+### Payment Request terminal correction (July 27, 2026)
+
+Architecture/Security accepted terminal-only Payment Request return/reject with source, line, AP-invoice, supplier, and location locks plus an explicit zero-`PaymentRelease` gate. The writer changes only the Payment Request terminal status and audit record; it does not mutate AP, payment, bank, journal, commitment, budget, or inventory state. Normalized approval remains blocked by DEC-0244. PostgreSQL race, rollback, ACL/SOD, and replay evidence remain open.

@@ -990,4 +990,25 @@ describe("multi-step approval advancement", () => {
     expect(source).toContain("cancelledQty: line.cancelledQty");
     expect(source).toContain("PURCHASE_ORDER_BALANCE_CLOSURE_CONFLICT");
   });
+
+  test("payment request terminal decisions lock lines and invoices and reject downstream release state", () => {
+    const helper = extractFunctionSource(
+      serviceSource,
+      "lockAndRevalidatePaymentRequestTerminalSource"
+    );
+    const terminal = extractFunctionSource(
+      serviceSource,
+      "closePaymentRequestWithDecision"
+    );
+    expect(helper).toContain("PaymentRequestLine");
+    expect(helper).toContain("ApInvoice");
+    expect(helper).toContain("PaymentRelease");
+    expect(helper).toContain("PAYMENT_REQUEST_RELEASE_STATE_CONFLICT");
+    expect(helper).toContain("FOR UPDATE OF request");
+    expect(helper).toContain("FOR UPDATE OF line");
+    expect(terminal).toContain('documentType: "PaymentRequest"');
+    expect(terminal).toContain("updatedAt: lockedRequest.updatedAt");
+    expect(terminal).toContain("noApInvoiceMutation");
+    expect(terminal).toContain("noPaymentRelease");
+  });
 });
