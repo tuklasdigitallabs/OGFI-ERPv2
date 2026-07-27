@@ -675,6 +675,15 @@ creation. Focused coverage passes 10/10 with web typecheck/lint and diff checks
 green. Readiness-child locking, finance MFA semantic alignment, PostgreSQL race
 and rollback evidence, replay, sibling writers, and activation remain open.
 
+Budget Revision submission now locks the revision, parent Budget, ordered
+BudgetLine rows, and distinct header/line Location rows before rehydration and
+sealed-rule selection, then claims DRAFT→SUBMITTED with the locked `updatedAt`
+before graph creation. Existing SUBMITTED revisions fail closed because replay
+intent/hash and typed budget-line lineage are absent. Focused Budget Control
+coverage passes 6/6 with web typecheck/lint and diff checks green; PostgreSQL
+lifecycle-race, rollback, scope, orphan-graph, and replay evidence remain
+pending, and no capability or ACL activation is authorized.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

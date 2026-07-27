@@ -1792,7 +1792,13 @@ export async function requestPeriodCloseSensitiveActionApproval(
       }
     });
 
-    return updated;
+    return {
+      ...run,
+      reason,
+      evidenceReference,
+      configSnapshot: pendingConfigSnapshot,
+      version: run.version + 1
+    };
   });
 }
 

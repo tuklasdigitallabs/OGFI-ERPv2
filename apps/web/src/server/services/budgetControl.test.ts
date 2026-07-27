@@ -270,6 +270,13 @@ describe("budget control foundation", () => {
     expect(budgetServiceSource).toContain("findBudgetRevisionApprovalRule");
     expect(budgetServiceSource).toContain('documentType: "BudgetRevision"');
     expect(budgetServiceSource).toContain("approvalInstance.create");
+    expect(budgetServiceSource).toContain('FOR UPDATE');
+    expect(budgetServiceSource).toContain('definitionSealed: true');
+    expect(budgetServiceSource).toContain('updatedAt: lockedRevision.updatedAt');
+    expect(budgetServiceSource).toContain('const claimed = await tx.budgetRevision.updateMany');
+    expect(budgetServiceSource.indexOf("const claimed = await tx.budgetRevision.updateMany")).toBeLessThan(
+      budgetServiceSource.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
     expect(budgetServiceSource).toContain("APPROVE_BUDGET_REVISION");
     expect(budgetServiceSource).toContain("configureApprovalStepRouting");
     expect(budgetServiceSource).not.toContain(

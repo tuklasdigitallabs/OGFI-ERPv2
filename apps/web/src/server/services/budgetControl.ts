@@ -496,6 +496,7 @@ async function findBudgetRevisionApprovalRule(
       companyId: session.context.companyId,
       transactionType: "BudgetRevision",
       isActive: true,
+      definitionSealed: true,
     },
     include: {
       steps: {
@@ -2236,13 +2237,64 @@ export async function submitBudgetRevisionForReview(
     companyId: session.context.companyId,
     documentType: "BudgetRevision",
   }, async (tx) => {
+    const lockedRevisions = await tx.$queryRaw<Array<{
+      id: string;
+      budgetId: string;
+      status: string;
+      updatedAt: Date;
+    }>>`
+      SELECT br.id, br."budgetId", br.status, br."updatedAt"
+        FROM "BudgetRevision" br
+       WHERE br.id = ${input.budgetRevisionId}::uuid
+         AND br."tenantId" = ${session.context.tenantId}::uuid
+         AND br."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedRevision = lockedRevisions[0];
+    if (!lockedRevision) {
+      throw new Error("BUDGET_REVISION_NOT_FOUND");
+    }
+    const lockedBudgets = await tx.$queryRaw<Array<{ id: string; locationId: string | null }>>`
+      SELECT b.id, b."locationId"
+        FROM "Budget" b
+       WHERE b.id = ${lockedRevision.budgetId}::uuid
+         AND b."tenantId" = ${session.context.tenantId}::uuid
+         AND b."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    if (!lockedBudgets[0]) {
+      throw new Error("BUDGET_NOT_FOUND");
+    }
+    const lockedLines = await tx.$queryRaw<Array<{ id: string; locationId: string | null }>>`
+      SELECT bl.id, bl."locationId"
+        FROM "BudgetLine" bl
+       WHERE bl."budgetId" = ${lockedRevision.budgetId}::uuid
+         AND bl."tenantId" = ${session.context.tenantId}::uuid
+         AND bl."companyId" = ${session.context.companyId}::uuid
+       ORDER BY bl.id
+       FOR UPDATE
+    `;
+    const lockedLocationIds = Array.from(new Set(
+      [lockedBudgets[0].locationId, ...lockedLines.map((line) => line.locationId)]
+        .filter((id): id is string => Boolean(id))
+    )).sort();
+    for (const locationId of lockedLocationIds) {
+      await tx.$queryRaw`
+        SELECT l.id
+          FROM "Location" l
+         WHERE l.id = ${locationId}::uuid
+           AND l."tenantId" = ${session.context.tenantId}::uuid
+           AND l."companyId" = ${session.context.companyId}::uuid
+         FOR UPDATE
+      `;
+    }
     const revision = await getScopedBudgetRevisionOrThrow(
       tx,
       session,
       input.budgetRevisionId,
     );
     if (revision.status === "SUBMITTED") {
-      return revision;
+      throw new Error("BUDGET_REVISION_ALREADY_SUBMITTED");
     }
     assertBudgetRevisionTransition({
       transition: "submit",
@@ -2267,6 +2319,19 @@ export async function submitBudgetRevisionForReview(
     });
     if (existingApproval) {
       throw new Error("BUDGET_REVISION_ALREADY_SUBMITTED");
+    }
+    const claimed = await tx.budgetRevision.updateMany({
+      where: {
+        id: revision.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "DRAFT",
+        updatedAt: lockedRevision.updatedAt,
+      },
+      data: { status: "SUBMITTED" },
+    });
+    if (claimed.count !== 1) {
+      throw new Error("BUDGET_REVISION_INVALID_STATUS_TRANSITION");
     }
     const useNormalizedRouting = normalizedApprovalRoutingEnabled();
     const routedSteps = approvalRule.steps.map((step, index) => ({
@@ -2345,10 +2410,7 @@ export async function submitBudgetRevisionForReview(
         approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId,
       });
     }
-    const updated = await tx.budgetRevision.update({
-      where: { id: revision.id },
-      data: { status: "SUBMITTED" },
-    });
+    const updated = { ...revision, status: "SUBMITTED" as const };
     const auditEvent = await writeBudgetAudit(tx, {
       session,
       budgetId: revision.budgetId,
