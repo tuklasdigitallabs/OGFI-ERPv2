@@ -54,6 +54,7 @@ Posting rechecks the live PO, receipt header and lines, inventory-location scope
 - Receiving more than the remaining open PO quantity is blocked in the current Phase I foundation.
 - Rejected, damaged, and short quantities do not stock in.
 - Posted receipts are not edited directly; authorized full-document reversal is the correction path.
+- Reversal rechecks the live receipt, Purchase Order, receipt lines, and inventory destinations inside one transaction and requires privileged MFA after those records are locked. A stale or competing reversal fails safely without partial counter-movements or PO restoration.
 - Posting does not perform supplier invoice matching, payment release, GL posting, or valuation finalization.
 - A receipt post creates at most one accepted-quantity movement per receipt line. A stale or competing post is rejected or rolled back as a whole; it does not leave partial stock or PO updates.
 

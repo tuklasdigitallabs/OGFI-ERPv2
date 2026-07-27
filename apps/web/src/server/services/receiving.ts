@@ -2239,19 +2239,6 @@ export async function reverseGoodsReceipt(formData: FormData) {
   if (receipt.receivedByUserId === session.user.id) {
     throw new Error("GOODS_RECEIPT_SELF_REVERSAL_NOT_ALLOWED");
   }
-  await assertPrivilegedMfaForAction(session, {
-    action: "goods_receipt.reverse",
-    enforcementScope: "all_sensitive",
-    permissionCode: permissions.receivingReverse,
-    entityType: "GoodsReceipt",
-    entityId: receipt.id,
-    reason:
-      "Receiving reversal creates counter-movements and requires privileged MFA evidence.",
-    metadata: {
-      purchaseOrderId: receipt.purchaseOrderId,
-      receivingLocationId: receipt.receivingLocationId
-    }
-  });
 
   await prisma.$transaction(async (tx) => {
     const reversalInventoryLocationIds = receipt.lines
@@ -2280,6 +2267,15 @@ export async function reverseGoodsReceipt(formData: FormData) {
     if (!lockedReceipts[0]) {
       throw new Error("GOODS_RECEIPT_NOT_FOUND");
     }
+    const lockedReceiptLines = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT grl.id
+        FROM "GoodsReceiptLine" grl
+       WHERE grl."goodsReceiptId" = ${receipt.id}::uuid
+         AND grl."tenantId" = ${session.context.tenantId}::uuid
+         AND grl."companyId" = ${session.context.companyId}::uuid
+       ORDER BY grl."lineNumber" ASC, grl.id ASC
+       FOR UPDATE OF grl
+    `;
     await assertFreshReceivingAuthority(
       tx,
       session,
@@ -2301,6 +2297,9 @@ export async function reverseGoodsReceipt(formData: FormData) {
           include: {
             item: true,
             uom: true,
+            purchaseOrderLine: {
+              select: { receivedQty: true, cancelledQty: true }
+            },
             postedMovement: {
               include: {
                 reversalMovements: true
@@ -2313,6 +2312,40 @@ export async function reverseGoodsReceipt(formData: FormData) {
     if (!currentReceipt) {
       throw new Error("GOODS_RECEIPT_NOT_FOUND");
     }
+    if (lockedReceiptLines.length !== currentReceipt.lines.length) {
+      throw new Error("GOODS_RECEIPT_LINE_LOCK_SCOPE_CHANGED");
+    }
+    const initialInventoryLocationIds = [
+      ...new Set(reversalInventoryLocationIds)
+    ].sort();
+    const authoritativeInventoryLocationIds = [
+      ...new Set(
+        currentReceipt.lines
+          .filter((line) => Number(line.acceptedQty) > 0)
+          .map((line) => line.inventoryDestinationLocationId)
+      )
+    ].sort();
+    if (
+      initialInventoryLocationIds.length !== authoritativeInventoryLocationIds.length ||
+      initialInventoryLocationIds.some(
+        (locationId, index) => locationId !== authoritativeInventoryLocationIds[index]
+      )
+    ) {
+      throw new Error("GOODS_RECEIPT_INVENTORY_LOCATION_SET_CHANGED");
+    }
+    await assertPrivilegedMfaForAction(session, {
+      action: "goods_receipt.reverse",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.receivingReverse,
+      entityType: "GoodsReceipt",
+      entityId: currentReceipt.id,
+      reason:
+        "Receiving reversal creates counter-movements and requires privileged MFA evidence.",
+      metadata: {
+        purchaseOrderId: currentReceipt.purchaseOrderId,
+        receivingLocationId: currentReceipt.receivingLocationId
+      }
+    }, { transaction: tx });
     assertGoodsReceiptCanBeReversed(
       currentReceipt.status,
       currentReceipt.reversedAt
@@ -2353,7 +2386,8 @@ export async function reverseGoodsReceipt(formData: FormData) {
         purchaseOrderId: currentPurchaseOrder.id,
         receivingLocationId: session.context.locationId,
         status: { in: ["POSTED", "POSTED_WITH_DISCREPANCY"] },
-        reversedAt: null
+        reversedAt: null,
+        updatedAt: currentReceipt.updatedAt
       },
       data: {
         status: "REVERSING"
@@ -2440,8 +2474,12 @@ export async function reverseGoodsReceipt(formData: FormData) {
           id: line.purchaseOrderLineId,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
+          purchaseOrderId: currentPurchaseOrder.id,
           receivedQty: {
             gte: line.acceptedQty
+          },
+          cancelledQty: {
+            equals: line.purchaseOrderLine.cancelledQty
           }
         },
         data: {
@@ -2475,7 +2513,8 @@ export async function reverseGoodsReceipt(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         deliveryLocationId: session.context.locationId,
-        status: currentPurchaseOrder.status
+        status: currentPurchaseOrder.status,
+        updatedAt: currentPurchaseOrder.updatedAt
       },
       data: {
         status: nextPurchaseOrderStatus

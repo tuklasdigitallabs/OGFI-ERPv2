@@ -115,3 +115,4 @@ Notify Purchasing and relevant manager when configured thresholds are met.
 - Audit trail contains receiver, timestamps, quantities, evidence, and posting result.
 - Receiver cannot post inventory to wrong location.
 - Posting rechecks the scoped receipt/PO/line graph and inventory-location lock set inside one transaction; stale or competing posts fail safely without partial movement, line, PO, or audit effects.
+- Reversal uses the same inventory-location → PO → receipt lock order, rechecks original movement lineage, and CASes receipt/PO restoration before writing the reversal audit.

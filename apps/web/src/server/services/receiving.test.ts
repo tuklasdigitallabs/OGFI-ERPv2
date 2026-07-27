@@ -649,6 +649,14 @@ describe("receiving foundation rules", () => {
     expect(source).toContain("reversalOfMovementId: original.id");
     expect(source).toContain('status: { in: ["DRAFT", "POSTING", "REVERSING"] }');
     expect(source).toContain('eventType: "goods_receipt.reversed"');
+    const reversalStart = source.indexOf("export async function reverseGoodsReceipt");
+    const reversalWriter = source.slice(reversalStart);
+    expect(reversalWriter).toContain('FROM "GoodsReceiptLine" grl');
+    expect(reversalWriter).toContain("updatedAt: currentReceipt.updatedAt");
+    expect(reversalWriter).toContain("updatedAt: currentPurchaseOrder.updatedAt");
+    expect(reversalWriter).toContain("{ transaction: tx }");
+    expect(reversalWriter).toContain("GOODS_RECEIPT_INVENTORY_LOCATION_SET_CHANGED");
+    expect(reversalWriter).toContain("purchaseOrderId: currentPurchaseOrder.id");
     expect(detailPage).toContain("Reverse Receipt");
     expect(detailPage).toContain("reverseGoodsReceipt");
   });
