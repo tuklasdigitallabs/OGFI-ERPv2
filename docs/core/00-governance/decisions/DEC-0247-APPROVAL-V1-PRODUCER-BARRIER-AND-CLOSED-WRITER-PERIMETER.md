@@ -975,6 +975,10 @@ Architecture and Security accepted a bounded Wastage recovery correction. Revers
 
 Security and Architecture accepted only the bounded manual Stock Adjustment recovery writer. Reversal now rejects opening-balance adjustments, requires dedicated privileged MFA, corrects posting MFA semantics, and follows source → lines/original movements → inventory scope before the atomic counter-movement set. PostgreSQL contention, rollback, ACL/MFA, replay, and balance-neutrality evidence remain open.
 
+### Purchase Order balance-closure terminal correction (July 27, 2026)
+
+Architecture and Security accepted only the child-terminal return/reject writer. It locks the graph, closure child, and scoped partially received parent, then CASes the child without mutating PO status/lines, receipts, commitments, inventory, AP, payment, or supplier communication. Final balance-closure approval remains outside this decision pending partial budget-commitment semantics. PostgreSQL contention, rollback, ACL, replay, and no-parent-mutation evidence remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

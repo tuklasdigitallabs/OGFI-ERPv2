@@ -10816,6 +10816,66 @@ async function closePurchaseOrderBalanceClosureWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PurchaseOrderBalanceClosure"
+    });
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status,
+             ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "PurchaseOrderBalanceClosure" || lockedApproval.documentId !== closure.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id
+        FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
+    const lockedClosureRows = await tx.$queryRaw<Array<{
+      id: string;
+      purchaseOrderId: string;
+      status: string;
+      updatedAt: Date;
+    }>>`
+      SELECT closure.id, closure."purchaseOrderId", closure.status, closure."updatedAt"
+        FROM "PurchaseOrderBalanceClosure" closure
+       WHERE closure.id = ${closure.id}::uuid
+         AND closure."tenantId" = ${session.context.tenantId}::uuid
+         AND closure."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF closure
+    `;
+    const lockedClosure = lockedClosureRows[0];
+    if (!lockedClosure || lockedClosure.status !== "PENDING_APPROVAL" || lockedClosure.purchaseOrderId !== order.id) {
+      throw new Error("PURCHASE_ORDER_CLOSURE_NOT_PENDING_APPROVAL");
+    }
+    const lockedOrderRows = await tx.$queryRaw<Array<{ id: string; deliveryLocationId: string; status: string }>>`
+      SELECT po.id, po."deliveryLocationId", po.status
+        FROM "PurchaseOrder" po
+       WHERE po.id = ${lockedClosure.purchaseOrderId}::uuid
+         AND po."tenantId" = ${session.context.tenantId}::uuid
+         AND po."companyId" = ${session.context.companyId}::uuid
+       FOR SHARE OF po
+    `;
+    const lockedOrder = lockedOrderRows[0];
+    if (!lockedOrder || lockedOrder.deliveryLocationId !== order.deliveryLocationId || lockedOrder.status !== "PARTIALLY_RECEIVED") {
+      throw new Error("PURCHASE_ORDER_CLOSURE_CONFLICT");
+    }
     const decision = await closeCurrentApprovalDecision(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
@@ -10841,7 +10901,9 @@ async function closePurchaseOrderBalanceClosureWithDecision(
         id: closure.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "PENDING_APPROVAL"
+        purchaseOrderId: lockedClosure.purchaseOrderId,
+        status: "PENDING_APPROVAL",
+        updatedAt: lockedClosure.updatedAt
       },
       data: {
         status,

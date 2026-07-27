@@ -625,6 +625,21 @@ describe("multi-step approval advancement", () => {
     expect(source).not.toContain("issuePurchaseOrderToSupplier");
   });
 
+  test("PO balance-closure terminal decisions lock graph, child, and parent without parent mutation", () => {
+    const source = extractFunctionSource(
+      serviceSource,
+      "closePurchaseOrderBalanceClosureWithDecision"
+    );
+    expect(source).toContain('documentType: "PurchaseOrderBalanceClosure"');
+    expect(source).toContain('FOR UPDATE OF ai');
+    expect(source).toContain('FOR UPDATE OF closure');
+    expect(source).toContain('FOR SHARE OF po');
+    expect(source).toContain("updatedAt: lockedClosure.updatedAt");
+    expect(source).toContain("noPurchaseOrderMutation: true");
+    expect(source).not.toContain("purchaseOrderLine.update");
+    expect(source).not.toContain('status: "CLOSED"');
+  });
+
   test.each([
     [
       "approvePurchaseRequest",
