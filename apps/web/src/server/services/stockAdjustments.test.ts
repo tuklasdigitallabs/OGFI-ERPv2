@@ -134,6 +134,19 @@ describe("stock adjustment controlled workflow rules", () => {
     );
   });
 
+  test("reversal is manual-only, MFA-gated, and source/line locked", () => {
+    const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
+    const start = source.indexOf("export async function reverseStockAdjustment");
+    const action = source.slice(start);
+    expect(action).toContain("assertStockAdjustmentReversalType");
+    expect(action).toContain('action: "stock_adjustment.reverse"');
+    expect(action).toContain("lockStockAdjustmentSourceForReversal");
+    expect(action).toContain("FOR UPDATE OF line");
+    expect(action).toContain("FOR UPDATE OF movement");
+    expect(action).toContain('sourceEventKey: `stock_adjustment_line:${line.id}:reverse`');
+    expect(action).not.toContain('"OPENING_BALANCE_IN"].includes');
+  });
+
   test("My Tasks returns only authorized unposted approved adjustments with exact count and cursor", async () => {
     mockPrisma.stockAdjustment.count.mockResolvedValue(2);
     mockPrisma.stockAdjustment.findMany.mockResolvedValue([

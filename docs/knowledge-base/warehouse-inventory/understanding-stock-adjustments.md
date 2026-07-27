@@ -66,6 +66,7 @@ Do not use it to hide wastage, supplier shortage, transfer loss, unapproved back
 - Count Variance adjustment generation is disabled in this release. Do not infer that a reviewed count created an adjustment; immutable recount recovery and adjustment-lineage gates must close first.
 - Posted adjustments cannot be edited.
 - Reversal creates linked `REVERSAL` inventory movements and preserves the original adjustment history.
+- Reversal is limited to manual `INCREASE` and `DECREASE` adjustments and requires privileged MFA in addition to the scoped reverse permission; opening-balance adjustments are not reversible in this release.
 - Users cannot rely on page visibility alone for authority; scope and permission checks are enforced by the service layer.
 
 ## What To Check

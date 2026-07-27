@@ -146,6 +146,12 @@ export function assertStockAdjustmentCanReverse(
   }
 }
 
+export function assertStockAdjustmentReversalType(adjustmentType: string) {
+  if (adjustmentType !== "INCREASE" && adjustmentType !== "DECREASE") {
+    throw new Error("STOCK_ADJUSTMENT_REVERSAL_TYPE_NOT_SUPPORTED");
+  }
+}
+
 export function calculateAdjustmentDelta(
   adjustmentType: "INCREASE" | "DECREASE" | "OPENING_BALANCE",
   quantity: number
@@ -564,6 +570,60 @@ async function lockStockAdjustmentSourceForCancellation(
   const inventoryLocation = inventoryRows[0];
   if (!inventoryLocation) throw new Error("STOCK_ADJUSTMENT_NOT_FOUND");
   await assertAuthorizedLocation(session, inventoryLocation.locationId);
+  return source;
+}
+
+async function lockStockAdjustmentSourceForReversal(
+  tx: TransactionClient,
+  session: SessionContext,
+  adjustmentId: string
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    inventoryLocationId: string;
+    status: string;
+    adjustmentType: string;
+    updatedAt: Date;
+    postedAt: Date | null;
+    reversedAt: Date | null;
+  }>>`
+    SELECT adjustment.id, adjustment."inventoryLocationId", adjustment.status,
+           adjustment."adjustmentType", adjustment."updatedAt",
+           adjustment."postedAt", adjustment."reversedAt"
+      FROM "StockAdjustment" adjustment
+     WHERE adjustment.id = ${adjustmentId}::uuid
+       AND adjustment."tenantId" = ${session.context.tenantId}::uuid
+       AND adjustment."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF adjustment
+  `;
+  const source = rows[0];
+  if (!source || source.status !== "POSTED" || !source.postedAt || source.reversedAt) {
+    if (source?.status === "REVERSED" || source?.reversedAt) return source;
+    throw new Error("STOCK_ADJUSTMENT_NOT_POSTED_FOR_REVERSAL");
+  }
+  assertStockAdjustmentReversalType(source.adjustmentType);
+  const inventoryRows = await tx.$queryRaw<Array<{ id: string; locationId: string }>>`
+    SELECT inventoryLocation.id, inventoryLocation."locationId"
+      FROM "InventoryLocation" inventoryLocation
+     WHERE inventoryLocation.id = ${source.inventoryLocationId}::uuid
+       AND inventoryLocation."tenantId" = ${session.context.tenantId}::uuid
+       AND inventoryLocation."companyId" = ${session.context.companyId}::uuid
+       AND inventoryLocation.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF inventoryLocation
+  `;
+  const inventoryLocation = inventoryRows[0];
+  if (!inventoryLocation) throw new Error("STOCK_ADJUSTMENT_DOCUMENT_SCOPE_NOT_FOUND");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${inventoryLocation.locationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("STOCK_ADJUSTMENT_DOCUMENT_SCOPE_NOT_FOUND");
+  assertAuthorizedLocation(session, inventoryLocation.locationId);
   return source;
 }
 
@@ -1645,13 +1705,13 @@ export async function postStockAdjustment(formData: FormData) {
     throw new Error("STOCK_ADJUSTMENT_HAS_NO_LINES");
   }
   await assertPrivilegedMfaForAction(session, {
-    action: "stock_adjustment.reverse",
+    action: "stock_adjustment.post",
     enforcementScope: "all_sensitive",
-    permissionCode: permissions.stockAdjustmentReverse,
+    permissionCode: permissions.stockAdjustmentPost,
     entityType: "StockAdjustment",
     entityId: adjustment.id,
     reason:
-      "Reversing a stock adjustment creates counter-movements and requires privileged MFA evidence.",
+      "Posting a stock adjustment changes inventory balances and requires privileged MFA evidence.",
     metadata: {
       adjustmentType: adjustment.adjustmentType,
       inventoryLocationId: adjustment.inventoryLocationId
@@ -1825,12 +1885,76 @@ export async function reverseStockAdjustment(formData: FormData) {
   if (adjustment.lines.length === 0) {
     throw new Error("STOCK_ADJUSTMENT_HAS_NO_LINES");
   }
+  assertStockAdjustmentReversalType(adjustment.adjustmentType);
+  await assertPrivilegedMfaForAction(session, {
+    action: "stock_adjustment.reverse",
+    enforcementScope: "all_sensitive",
+    permissionCode: permissions.stockAdjustmentReverse,
+    entityType: "StockAdjustment",
+    entityId: adjustment.id,
+    reason:
+      "Reversing a stock adjustment creates counter-movements and requires privileged MFA evidence.",
+    metadata: {
+      adjustmentType: adjustment.adjustmentType,
+      inventoryLocationId: adjustment.inventoryLocationId
+    }
+  });
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "StockAdjustment"
+  }, async (tx) => {
+    const lockedSource = await lockStockAdjustmentSourceForReversal(tx, session, adjustment.id);
+    if (lockedSource.status === "REVERSED" || lockedSource.reversedAt) return;
+    const lockedLineRows = await tx.$queryRaw<Array<{ id: string; inventoryLocationId: string; postedMovementId: string | null }>>`
+      SELECT line.id, line."inventoryLocationId", line."postedMovementId"
+        FROM "StockAdjustmentLine" line
+       WHERE line."stockAdjustmentId" = ${adjustment.id}::uuid
+         AND line."tenantId" = ${session.context.tenantId}::uuid
+         AND line."companyId" = ${session.context.companyId}::uuid
+       ORDER BY line."lineNumber" ASC, line.id ASC
+       FOR UPDATE OF line
+    `;
+    if (lockedLineRows.length === 0 || lockedLineRows.some((line) =>
+      line.inventoryLocationId !== lockedSource.inventoryLocationId || !line.postedMovementId
+    )) {
+      throw new Error("STOCK_ADJUSTMENT_LINE_POSTED_MOVEMENT_REQUIRED");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT movement.id
+        FROM "InventoryMovement" movement
+        JOIN "StockAdjustmentLine" line ON line."postedMovementId" = movement.id
+       WHERE line."stockAdjustmentId" = ${adjustment.id}::uuid
+         AND line."tenantId" = ${session.context.tenantId}::uuid
+         AND line."companyId" = ${session.context.companyId}::uuid
+       ORDER BY movement.id ASC
+       FOR UPDATE OF movement
+    `;
+    const authoritativeAdjustment = await tx.stockAdjustment.findFirst({
+      where: {
+        id: adjustment.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "POSTED",
+        postedAt: { not: null },
+        reversedAt: null
+      },
+      include: {
+        inventoryLocation: true,
+        lines: {
+          orderBy: { lineNumber: "asc" },
+          include: { postedMovement: { include: { reversalMovements: true } } }
+        }
+      }
+    });
+    if (!authoritativeAdjustment) throw new Error("STOCK_ADJUSTMENT_NOT_POSTED_FOR_REVERSAL");
+    assertStockAdjustmentReversalType(authoritativeAdjustment.adjustmentType);
+    const reversalAdjustment = authoritativeAdjustment;
     const inventoryLocationLock = await lockInventoryLocationsForPosting(
       tx,
       session,
-      adjustment.lines.flatMap((line) => [
+      reversalAdjustment.lines.flatMap((line) => [
         line.postedMovement?.inventoryLocationId ?? line.inventoryLocationId,
         ...(line.postedMovement?.relatedInventoryLocationId
           ? [line.postedMovement.relatedInventoryLocationId]
@@ -1865,13 +1989,13 @@ export async function reverseStockAdjustment(formData: FormData) {
 
     const originalMovementIds: string[] = [];
     const reversalMovementIds: string[] = [];
-    for (const line of adjustment.lines) {
+    for (const line of reversalAdjustment.lines) {
       const original = line.postedMovement;
       if (!original || !line.postedMovementId) {
         throw new Error("STOCK_ADJUSTMENT_LINE_POSTED_MOVEMENT_REQUIRED");
       }
       if (
-        !["ADJUSTMENT_IN", "ADJUSTMENT_OUT", "OPENING_BALANCE_IN"].includes(
+        !["ADJUSTMENT_IN", "ADJUSTMENT_OUT"].includes(
           original.movementType
         )
       ) {
@@ -1883,7 +2007,7 @@ export async function reverseStockAdjustment(formData: FormData) {
         original.inventoryLocationId !== line.inventoryLocationId ||
         original.itemId !== line.itemId ||
         original.sourceDocumentType !== "StockAdjustment" ||
-        original.sourceDocumentId !== adjustment.id ||
+        original.sourceDocumentId !== reversalAdjustment.id ||
         original.sourceDocumentLineId !== line.id
       ) {
         throw new Error("STOCK_ADJUSTMENT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH");
@@ -1902,7 +2026,7 @@ export async function reverseStockAdjustment(formData: FormData) {
         enteredUomId: original.enteredUomId,
         quantityDeltaBaseUom: -Number(original.quantityDeltaBaseUom),
         sourceDocumentType: "StockAdjustment",
-        sourceDocumentId: adjustment.id,
+        sourceDocumentId: reversalAdjustment.id,
         sourceDocumentLineId: line.id,
         sourceEventKey: `stock_adjustment_line:${line.id}:reverse`,
         lotNumber: original.lotNumber,
@@ -1920,7 +2044,7 @@ export async function reverseStockAdjustment(formData: FormData) {
     const reversedAt = new Date();
     const reversed = await tx.stockAdjustment.updateMany({
       where: {
-        id: adjustment.id,
+        id: reversalAdjustment.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "REVERSING",
@@ -1944,7 +2068,7 @@ export async function reverseStockAdjustment(formData: FormData) {
         actorUserId: session.user.id,
         eventType: "stock_adjustment.reversed",
         entityType: "StockAdjustment",
-        entityId: adjustment.id,
+        entityId: reversalAdjustment.id,
         beforeData: { status: "POSTED" },
         afterData: { status: "REVERSED", reversedAt },
         metadata: {

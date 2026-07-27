@@ -971,6 +971,10 @@ Architecture and Security accepted a bounded Wastage posting correction. The pos
 
 Architecture and Security accepted a bounded Wastage recovery correction. Reversal now follows barrier → posted source → ordered lines/original movements → inventory scope, then atomically claims `POSTED → REVERSING`, creates uniquely keyed counter-movements, and closes `REVERSED`. Original movement provenance, privileged MFA, reversal separation, and audit linkage remain enforced; PostgreSQL contention, rollback, ACL/MFA, replay, and balance-neutrality evidence remain open.
 
+### Stock Adjustment manual reversal correction (July 27, 2026)
+
+Security and Architecture accepted only the bounded manual Stock Adjustment recovery writer. Reversal now rejects opening-balance adjustments, requires dedicated privileged MFA, corrects posting MFA semantics, and follows source → lines/original movements → inventory scope before the atomic counter-movement set. PostgreSQL contention, rollback, ACL/MFA, replay, and balance-neutrality evidence remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

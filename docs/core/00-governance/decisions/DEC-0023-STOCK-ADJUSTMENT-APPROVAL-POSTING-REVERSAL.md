@@ -101,6 +101,10 @@ Approval is non-posting. Posting is a separate authorized action after final app
 - First-round deliberation by Dalisay, Hiraya, Ligaya, and Lualhati.
 - User-facing stock adjustment guidance explains non-posting approval, separate posting, reversal, reason/evidence controls, and current exclusions.
 
+## Implementation correction — July 27, 2026
+
+The reversal service now enforces this decision's manual `INCREASE`/`DECREASE` boundary, rejects opening-balance reversal, and requires privileged MFA with the dedicated reverse permission. Posting MFA evidence now uses the dedicated post action/permission. Source, line, original-movement, and inventory-scope locking is aligned with the posted-adjustment writer; no ledger or reversal semantics are otherwise changed.
+
 ## Supersession
 
 This decision supersedes only the `DEC-0019` deferral for manual `INCREASE` and `DECREASE` Stock Adjustment approval, posting, and full-document reversal. All other `DEC-0019` deferrals remain active.
