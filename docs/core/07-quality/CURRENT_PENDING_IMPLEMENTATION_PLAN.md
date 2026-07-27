@@ -1792,6 +1792,7 @@ Update this register only when implementation state, release scope, a confirmed 
 - Reversal now CASes the parent transfer status update against the locked transfer status and `updatedAt`, with exact tenant/company/destination scope predicates, after counter-movement and line-rollup work. Focused transfer coverage remains **27/27** and repository typecheck passes. Disposable PostgreSQL reversal-vs-receive contention, rollback, and balance-neutrality evidence remain open.
 - Receipt idempotency race classification now also recognizes PostgreSQL `P2010`/`23505` errors when the named receipt idempotency index is involved, while unrelated database errors continue to propagate. Focused transfer coverage remains **27/27**; disposable PostgreSQL proof is still required.
 - Disposable PostgreSQL lifecycle safety verification passes **15/15** (`pnpm test:disposable-db-lifecycle`), including explicit administrator-URL requirement and cross-run/target isolation guards. No database-backed receipt/race suite was executed because `DISPOSABLE_DATABASE_ADMIN_URL` remains unset.
+- Receive replay checks now run before rejecting an already-`RECEIVED` parent status, so a matching terminal idempotency key can replay after completion while a reused/mismatched key still fails closed. No posting behavior is enabled by this ordering correction; focused transfer coverage remains **27/27**.
 
 ### UAT fast-track execution guardrail — July 27, 2026
 

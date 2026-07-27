@@ -1831,10 +1831,6 @@ export async function receiveInventoryTransfer(formData: FormData) {
     if (activeInventoryLocations.length !== authoritativeInventoryLocationIds.size) {
       throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
     }
-    if (lockedTransfer.status === "RECEIVED") {
-      return;
-    }
-    assertTransferCanReceive(lockedTransfer.status);
     if (authoritativeTransfer.dispatchedByUserId === session.user.id) {
       throw new Error("TRANSFER_RECEIVER_MUST_DIFFER_FROM_DISPATCHER");
     }
@@ -1900,6 +1896,7 @@ export async function receiveInventoryTransfer(formData: FormData) {
       }
       throw new Error("TRANSFER_RECEIPT_IDEMPOTENCY_IN_PROGRESS");
     }
+    assertTransferCanReceive(lockedTransfer.status);
     const receipt = await tx.inventoryTransferReceipt.create({
       data: {
         tenantId: session.context.tenantId,
