@@ -275,6 +275,12 @@ describe("period close readiness foundation", () => {
     expect(serviceSource).toContain("SELF_APPROVAL_BLOCKED");
     expect(serviceSource).toContain("PERIOD_CLOSE_APPROVAL_ALREADY_PENDING");
     expect(serviceSource).toContain("PERIOD_CLOSE_APPROVAL_RULE_NOT_CONFIGURED");
+    expect(serviceSource).toContain("FOR UPDATE OF run");
+    expect(serviceSource).toContain("definitionSealed: true");
+    expect(serviceSource).toContain("version: run.version");
+    expect(serviceSource.indexOf("const claimed = await tx.financeCloseRun.updateMany")).toBeLessThan(
+      serviceSource.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
     expect(serviceSource).toContain('approvalAction: "LOCK_PERIOD"');
     expect(serviceSource).toContain('approvalAction: "REOPEN_PERIOD"');
   });

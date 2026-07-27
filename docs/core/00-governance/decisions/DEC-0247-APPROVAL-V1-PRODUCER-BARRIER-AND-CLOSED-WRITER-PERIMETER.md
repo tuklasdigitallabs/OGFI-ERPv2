@@ -668,6 +668,13 @@ open. Existing submit MFA action/permission semantics are recorded as a
 separate sensitive-operation correction; this checkpoint does not activate the
 capability.
 
+Finance Close sensitive-action approval requests retain their locked and
+rehydrated FinanceCloseRun source, now require a sealed active rule, and claim
+the exact `CLOSED` plus expected-version pending-action snapshot before graph
+creation. Focused coverage passes 10/10 with web typecheck/lint and diff checks
+green. Readiness-child locking, finance MFA semantic alignment, PostgreSQL race
+and rollback evidence, replay, sibling writers, and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

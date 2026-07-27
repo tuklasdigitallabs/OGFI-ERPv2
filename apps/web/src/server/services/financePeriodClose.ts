@@ -288,7 +288,8 @@ async function findFinanceCloseRunApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "FinanceCloseRun",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -1666,6 +1667,33 @@ export async function requestPeriodCloseSensitiveActionApproval(
       throw new Error("PERIOD_CLOSE_APPROVAL_ALREADY_PENDING");
     }
 
+    const requestedAt = new Date();
+    const pendingConfigSnapshot = withPendingCloseApproval(run.configSnapshot, {
+      approvalAction: input.approvalAction,
+      reason,
+      evidenceReference,
+      requestedByUserId: session.user.id,
+      requestedAt
+    });
+    const claimed = await tx.financeCloseRun.updateMany({
+      where: {
+        id: run.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "CLOSED",
+        version: run.version,
+      },
+      data: {
+        reason,
+        evidenceReference,
+        configSnapshot: pendingConfigSnapshot,
+        version: { increment: 1 }
+      }
+    });
+    if (claimed.count !== 1) {
+      throw new Error("PERIOD_CLOSE_APPROVAL_ALREADY_PENDING");
+    }
+
     const approvalRule = await findFinanceCloseRunApprovalRule(tx, session);
     if (!approvalRule || approvalRule.steps.length === 0) {
       throw new Error("PERIOD_CLOSE_APPROVAL_RULE_NOT_CONFIGURED");
@@ -1675,7 +1703,6 @@ export async function requestPeriodCloseSensitiveActionApproval(
       throw new Error("PERIOD_CLOSE_APPROVAL_RULE_STEP_NOT_CONFIGURED");
     }
 
-    const requestedAt = new Date();
     const routedSteps = approvalRule.steps.map((step, index) => ({
       ...step,
       approvalInstanceStepId: randomUUID(),
@@ -1744,29 +1771,13 @@ export async function requestPeriodCloseSensitiveActionApproval(
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
 
-    const updated = await tx.financeCloseRun.update({
-      where: { id: run.id },
-      data: {
-        reason,
-        evidenceReference,
-        configSnapshot: withPendingCloseApproval(run.configSnapshot, {
-          approvalAction: input.approvalAction,
-          reason,
-          evidenceReference,
-          requestedByUserId: session.user.id,
-          requestedAt
-        }),
-        version: { increment: 1 }
-      }
-    });
-
     await writeCloseAudit(tx, {
       session,
       entityType: "FinanceCloseRun",
       entityId: run.id,
       eventType: "finance_close.sensitive_action_approval_requested",
       beforeStatus: run.status,
-      afterStatus: updated.status,
+      afterStatus: run.status,
       reason,
       evidenceReference,
       metadata: {
