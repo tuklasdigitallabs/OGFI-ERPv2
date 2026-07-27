@@ -766,6 +766,7 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain('const acceptedQty = parseReceiptQuantity(formData, line.id, "acceptedQty") ?? 0;');
     expect(service).toContain('authoritativeReceipt.receivedByUserId === session.user.id');
     expect(service).toContain('line.inventoryTransferLine.inventoryTransferId !== transfer.id');
+    expect(service).toContain('lockedOriginalMovements.length !== new Set(originalMovementIdsToLock).size');
     expect(detailPage).toContain("server rechecks destination scope, MFA, idempotency, and ledger effects");
     expect(detailPage).not.toContain('<EntryModal title="Receive Transfer"');
   });

@@ -2367,7 +2367,7 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
       .map((line) => line.postedMovementId)
       .filter((id): id is string => Boolean(id));
     if (originalMovementIdsToLock.length > 0) {
-      await tx.$queryRaw(Prisma.sql`
+      const lockedOriginalMovements = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT m."id"
         FROM "InventoryMovement" m
         WHERE m."id" IN (${Prisma.join(
@@ -2378,6 +2378,11 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
         ORDER BY m."id"
         FOR UPDATE OF m
       `);
+      if (
+        lockedOriginalMovements.length !== new Set(originalMovementIdsToLock).size
+      ) {
+        throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+      }
     }
     const authoritativeReceipt = await tx.inventoryTransferReceipt.findFirst({
       where: {

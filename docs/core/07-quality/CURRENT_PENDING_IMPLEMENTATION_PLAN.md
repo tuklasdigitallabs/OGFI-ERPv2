@@ -1887,3 +1887,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - The guarded procurement/inventory acceptance command was rerun against the current candidate and failed closed before database setup with `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`. No PostgreSQL receipt/reversal cases were executed and no behavioral credit is claimed. The existing authorization runner remains the registration point for the future transfer receipt/reversal serialization harness; no placeholder suite or fake pass was added.
 - Receipt/reversal migration deployment, unique-key contention, lock waits/deadlock behavior, rollback, live authority/scope/MFA revocation, lineage tamper, exact movement/audit cardinality, balance neutrality, authenticated browser/UAT, hosted recovery, and deployment gates remain open. Receipt, Workspace 4, and Phase I remain **NO-GO**.
+
+### Transfer Receipt reversal movement-lock cardinality fence — July 28, 2026
+
+- Reversal now fails closed when the database returns fewer locked original movement rows than the distinct receipt-line references require. This protects the authoritative counter-movement path from proceeding with incomplete lineage; no workflow or activation semantics changed.
+- Focused transfer coverage remains **29/29**. PostgreSQL lock/cardinality, rollback, revocation, migration, browser/UAT, hosted recovery, and deployment evidence remain open; receipt, Workspace 4, and Phase I remain **NO-GO**.
