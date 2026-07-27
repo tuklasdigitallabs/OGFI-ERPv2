@@ -658,6 +658,16 @@ rollback, policy/rule drift, malformed-line integrity, notification, replay,
 and sibling-writer evidence remain pending; the feature flag remains false and
 this does not authorize activation or ACL migration.
 
+Stock Adjustment submission now follows the same barrier-first contract: it
+locks the adjustment through its tenant/company and InventoryLocation→Location
+lineage, reloads the header and lines, requires a sealed active rule, and claims
+the admitted draft/submitted/returned status before graph creation. Focused
+coverage passes 18/18 and web typecheck passes. Durable replay, PostgreSQL race
+and rollback evidence, sibling writer migration, and ACL/activation gates remain
+open. Existing submit MFA action/permission semantics are recorded as a
+separate sensitive-operation correction; this checkpoint does not activate the
+capability.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

@@ -168,9 +168,15 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(source).toContain('source: "stock-adjustment-submission"');
     expect(source).toContain("userId: adjustment.requestedByUserId");
     expect(source).toContain("assertAnyEligibleApprovalActorForStep(tx");
-    expect(source.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
-      source.indexOf("const submitted = await tx.stockAdjustment.updateMany")
+    expect(source.indexOf("const submitted = await tx.stockAdjustment.updateMany")).toBeLessThan(
+      source.indexOf("const approval = await tx.approvalInstance.create")
     );
+    expect(source.indexOf("const submitted = await tx.stockAdjustment.updateMany")).toBeLessThan(
+      source.indexOf("assertAnyEligibleApprovalActorForStep(tx")
+    );
+    expect(source).toContain('FOR UPDATE OF sa');
+    expect(source).toContain('definitionSealed: true');
+    expect(source).toContain('status: { in: ["DRAFT", "SUBMITTED", "RETURNED"] }');
     expect(source).toContain("recordWorkflowNotifications");
     expect(source).toContain('notificationType: "APPROVE_STOCK_ADJUSTMENT"');
     expect(source).toContain("locationId: adjustment.inventoryLocation.locationId");

@@ -239,7 +239,7 @@ const requiredCapabilityDiscoveryFacts = {
       lock: "Shared company barrier, then exact scoped StockAdjustment, location/policy facts, and sealed rule.",
       compareAndSet: "DRAFT, SUBMITTED, or RETURNED to PENDING_APPROVAL; one pending approval backstop.",
     },
-    stableErrors: errors("STOCK_ADJUSTMENT_APPROVAL_ALREADY_SUBMITTED", "STOCK_ADJUSTMENT_STATUS_CHANGED"),
+    stableErrors: errors("STOCK_ADJUSTMENT_APPROVAL_ALREADY_SUBMITTED", "STOCK_ADJUSTMENT_NOT_OPEN_FOR_SUBMIT"),
     idempotency: exactReplay,
   },
   FinanceCloseRun: {
@@ -509,7 +509,7 @@ const currentTransactionFacts = {
   PurchaseOrderBalanceClosure: { lock: "IMPLEMENTED", cas: "PARTIAL", replay: "ABSENT", fact: "Parent PurchaseOrder is locked and revalidated; the closure child is now created before the approval graph in the same transaction, but has no request-hash replay contract or durable child intent identity." },
   PurchaseOrderAmendment: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer barrier now locks and re-reads the scoped PurchaseOrder before snapshotting, creates the amendment child before graph work, and claims ISSUED-to-AMENDMENT_PENDING before routing with exact parent scope/status predicates; durable replay identity remains absent." },
   WastageReport: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Shared company barrier now locks the scoped WastageReport through InventoryLocation→Location, reloads lines and policy in-transaction, and claims DRAFT/RETURNED before approval graph creation; durable replay identity remains absent." },
-  StockAdjustment: { lock: "PARTIAL", cas: "IMPLEMENTED", replay: "ABSENT", fact: "No explicit source row lock; status updateMany admits DRAFT/SUBMITTED/RETURNED after graph construction." },
+  StockAdjustment: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Shared company barrier now locks the scoped StockAdjustment through InventoryLocation→Location, reloads header/lines, requires a sealed rule, and claims DRAFT/SUBMITTED/RETURNED before approval graph creation; durable replay identity remains absent." },
   FinanceCloseRun: { lock: "IMPLEMENTED", cas: "PARTIAL", replay: "ABSENT", fact: "Run row is explicitly locked and version increments, but pending-action snapshot update is not an expected-version compare-and-set." },
   BudgetRevision: { lock: "ABSENT", cas: "ABSENT", replay: "ABSENT", fact: "Existing SUBMITTED returns the source directly without proving an exact linked graph, provenance, request identity, or contract; the submit update is by id." },
   ExpenseRequest: { lock: "ABSENT", cas: "PARTIAL", replay: "ABSENT", fact: "Scoped source is read in the transaction, but the source update is by id and AWAITING_APPROVAL returns are not capability-bound replay proof." },

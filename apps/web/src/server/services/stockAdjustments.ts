@@ -1193,31 +1193,27 @@ export async function submitStockAdjustment(formData: FormData) {
   await requirePermission(session, permissions.stockAdjustmentSubmit);
   const values = stockAdjustmentActionSchema.parse(Object.fromEntries(formData));
 
-  const adjustment = await prisma.stockAdjustment.findFirst({
+  const initialAdjustment = await prisma.stockAdjustment.findFirst({
     where: scopedStockAdjustmentWhere(session, values.id),
     include: {
       inventoryLocation: true,
       lines: true
     }
   });
-  if (!adjustment) {
+  if (!initialAdjustment) {
     throw new Error("STOCK_ADJUSTMENT_NOT_FOUND");
-  }
-  assertStockAdjustmentCanSubmit(adjustment.status);
-  if (adjustment.lines.length === 0) {
-    throw new Error("STOCK_ADJUSTMENT_HAS_NO_LINES");
   }
   await assertPrivilegedMfaForAction(session, {
     action: "stock_adjustment.post",
     enforcementScope: "all_sensitive",
     permissionCode: permissions.stockAdjustmentPost,
     entityType: "StockAdjustment",
-    entityId: adjustment.id,
+    entityId: initialAdjustment.id,
     reason:
       "Posting a stock adjustment changes inventory balances and requires privileged MFA evidence.",
     metadata: {
-      adjustmentType: adjustment.adjustmentType,
-      inventoryLocationId: adjustment.inventoryLocationId
+      adjustmentType: initialAdjustment.adjustmentType,
+      inventoryLocationId: initialAdjustment.inventoryLocationId
     }
   });
 
@@ -1226,6 +1222,40 @@ export async function submitStockAdjustment(formData: FormData) {
     companyId: session.context.companyId,
     documentType: "StockAdjustment",
   }, async (tx) => {
+    const lockedRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT sa.id, sa.status
+        FROM "StockAdjustment" sa
+        JOIN "InventoryLocation" il ON il.id = sa."inventoryLocationId"
+        JOIN "Location" l ON l.id = il."locationId"
+       WHERE sa.id = ${initialAdjustment.id}::uuid
+         AND sa."tenantId" = ${session.context.tenantId}::uuid
+         AND sa."companyId" = ${session.context.companyId}::uuid
+         AND il."tenantId" = ${session.context.tenantId}::uuid
+         AND il."companyId" = ${session.context.companyId}::uuid
+         AND il."locationId" = ${session.context.locationId}::uuid
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF sa
+    `;
+    const locked = lockedRows[0];
+    if (!locked || !["DRAFT", "SUBMITTED", "RETURNED"].includes(locked.status)) {
+      throw new Error("STOCK_ADJUSTMENT_NOT_OPEN_FOR_SUBMIT");
+    }
+    const adjustment = await tx.stockAdjustment.findFirst({
+      where: {
+        id: locked.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocation: { locationId: session.context.locationId },
+      },
+      include: {
+        inventoryLocation: true,
+        lines: { orderBy: { lineNumber: "asc" } },
+      },
+    });
+    if (!adjustment || adjustment.lines.length === 0) {
+      throw new Error("STOCK_ADJUSTMENT_HAS_NO_LINES");
+    }
     const transactionType = adjustment.sourceStockCountSessionId
       ? "StockCountVarianceAdjustment"
       : "StockAdjustment";
@@ -1234,7 +1264,8 @@ export async function submitStockAdjustment(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         transactionType,
-        isActive: true
+        isActive: true,
+        definitionSealed: true
       },
       include: {
         steps: {
@@ -1263,6 +1294,23 @@ export async function submitStockAdjustment(formData: FormData) {
     });
     if (existingPendingApproval) {
       throw new Error("STOCK_ADJUSTMENT_APPROVAL_ALREADY_SUBMITTED");
+    }
+
+    const submitted = await tx.stockAdjustment.updateMany({
+      where: {
+        id: adjustment.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocation: { locationId: session.context.locationId },
+        status: { in: ["DRAFT", "SUBMITTED", "RETURNED"] },
+      },
+      data: {
+        status: "PENDING_APPROVAL",
+        submittedAt: new Date()
+      }
+    });
+    if (submitted.count !== 1) {
+      throw new Error("STOCK_ADJUSTMENT_NOT_OPEN_FOR_SUBMIT");
     }
 
     const routedSteps = approvalRule.steps.map((step, index) => ({
@@ -1328,20 +1376,6 @@ export async function submitStockAdjustment(formData: FormData) {
       companyId: session.context.companyId,
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
-
-    const submitted = await tx.stockAdjustment.updateMany({
-      where: {
-        id: adjustment.id,
-        status: { in: ["DRAFT", "SUBMITTED", "RETURNED"] }
-      },
-      data: {
-        status: "PENDING_APPROVAL",
-        submittedAt: new Date()
-      }
-    });
-    if (submitted.count !== 1) {
-      throw new Error("STOCK_ADJUSTMENT_NOT_OPEN_FOR_SUBMIT");
-    }
 
     const auditEvent = await tx.auditEvent.create({
       data: {
