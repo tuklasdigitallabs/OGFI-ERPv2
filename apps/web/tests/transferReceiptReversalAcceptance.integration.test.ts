@@ -385,6 +385,21 @@ describe.skipIf(!databaseEnabled).sequential(
         reversalForm.set("id", ids.transfer);
         reversalForm.set("receiptId", first.id);
         reversalForm.set("reversalReason", "Disposable neutrality reversal");
+        const laterReceiptLine = receiptLines.find((line) => line.lineNumber === 2)!;
+        const laterMovementId = laterReceiptLine.postedMovementId;
+        expect(laterMovementId).toBeTruthy();
+        await prisma.inventoryTransferReceiptLine.update({ where: { id: laterReceiptLine.id }, data: { postedMovementId: null } });
+        await expect(reverseInventoryTransferReceipt(reversalForm)).rejects.toThrow("TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_REQUIRED");
+        expect((await prisma.inventoryTransferReceipt.findUniqueOrThrow({ where: { id: first.id } })).status).toBe("POSTED");
+        expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "REVERSAL" } })).toBe(0);
+        expect(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { inventoryLocationId_itemId_lotKey: { inventoryLocationId: ids.destinationInventoryLocation, itemId: ids.item, lotKey: "NOLOT|NOEXP" } } })).qtyOnHand)).toBe(4);
+        expect(await prisma.auditEvent.count({ where: { entityType: "InventoryTransfer", entityId: ids.transfer, eventType: "inventory_transfer.receipt_reversed" } })).toBe(0);
+        await prisma.inventoryTransferReceiptLine.update({ where: { id: laterReceiptLine.id }, data: { postedMovementId: laterMovementId } });
+        const firstReceiptLine = receiptLines.find((line) => line.lineNumber === 1)!;
+        await prisma.inventoryTransferReceiptLine.update({ where: { id: firstReceiptLine.id }, data: { acceptedQty: 1 } });
+        await expect(reverseInventoryTransferReceipt(reversalForm)).rejects.toThrow("TRANSFER_RECEIPT_REVERSAL_ORIGINAL_MOVEMENT_MISMATCH");
+        expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "REVERSAL" } })).toBe(0);
+        await prisma.inventoryTransferReceiptLine.update({ where: { id: firstReceiptLine.id }, data: { acceptedQty: 2 } });
         await reverseInventoryTransferReceipt(reversalForm);
         const reversedReceipt = await prisma.inventoryTransferReceipt.findUniqueOrThrow({ where: { id: first.id } });
         expect(reversedReceipt.status).toBe("REVERSED");
@@ -397,6 +412,8 @@ describe.skipIf(!databaseEnabled).sequential(
         const reversalMovements = await prisma.inventoryMovement.findMany({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "REVERSAL" }, select: { reversalOfMovementId: true, sourceEventKey: true, quantityDeltaBaseUom: true } });
         expect(reversalMovements.every((movement) => originalMovements.some((original) => original.id === movement.reversalOfMovementId) && Number(movement.quantityDeltaBaseUom) === -2)).toBe(true);
         await expect(reverseInventoryTransferReceipt(reversalForm)).rejects.toThrow("TRANSFER_RECEIPT_ALREADY_REVERSED");
+        expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, movementType: "REVERSAL" } })).toBe(2);
+        expect(await prisma.auditEvent.count({ where: { entityType: "InventoryTransfer", entityId: ids.transfer, eventType: "inventory_transfer.receipt_reversed" } })).toBe(1);
       } finally {
         if (previousAuthMode === undefined) delete process.env.AUTH_MODE;
         else process.env.AUTH_MODE = previousAuthMode;
