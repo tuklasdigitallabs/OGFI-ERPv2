@@ -20,7 +20,9 @@ const cases = [
     permission: "permissions.financeBudgetApprove",
     transition: "tx.budgetRevision.update",
     dueAt: "revision.effectiveFrom ?? null",
-    source: 'source: "budget_revision.submit"'
+    source: 'source: "budget_revision.submit"',
+    sourceBacked: true,
+    sourceClaimMarker: "tx.budgetRevision.updateMany"
   },
   {
     fileName: "expenseRequests.ts",
@@ -28,7 +30,8 @@ const cases = [
     permission: "permissions.financeExpenseRequestApprove",
     transition: "tx.expenseRequest.update",
     dueAt: "request.requiredByDate ?? null",
-    source: 'source: "expense_request.submit"'
+    source: 'source: "expense_request.submit"',
+    sourceBacked: true
   },
   {
     fileName: "cashAdvances.ts",
@@ -36,7 +39,8 @@ const cases = [
     permission: "permissions.financeCashAdvanceApprove",
     transition: "tx.cashAdvanceRequest.update",
     dueAt: "request.dueDate ?? null",
-    source: 'source: "cash_advance.submit"'
+    source: 'source: "cash_advance.submit"',
+    sourceBacked: true
   },
   {
     fileName: "pettyCash.ts",
@@ -44,7 +48,8 @@ const cases = [
     permission: "permissions.financePettyCashApprove",
     transition: "tx.pettyCashRequest.update",
     dueAt: "request.dueBy ?? null",
-    source: 'source: "petty_cash_request.submit"'
+    source: 'source: "petty_cash_request.submit"',
+    sourceBacked: true
   },
   {
     fileName: "finance.ts",
@@ -52,7 +57,8 @@ const cases = [
     permission: "permissions.financePaymentRequestApprove",
     transition: "tx.paymentRequest.update",
     dueAt: "dueAt: null",
-    source: 'source: "payment_request.submit"'
+    source: 'source: "payment_request.submit"',
+    sourceBacked: true
   },
   {
     fileName: "finance.ts",
@@ -60,7 +66,8 @@ const cases = [
     permission: "permissions.financePaymentRelease",
     transition: "tx.paymentRelease.create",
     dueAt: "input.scheduledAt ?? null",
-    source: 'source: "payment_release.submit"'
+    source: 'source: "payment_release.submit"',
+    sourceBacked: false
   },
   {
     fileName: "financePeriodClose.ts",
@@ -68,7 +75,9 @@ const cases = [
     permission: "permissions.financePeriodCloseManage",
     transition: "tx.financeCloseRun.update",
     dueAt: "dueAt: null",
-    source: 'source: "finance_close.sensitive_action_request"'
+    source: 'source: "finance_close.sensitive_action_request"',
+    sourceBacked: true,
+    sourceClaimMarker: "tx.financeCloseRun.updateMany"
   }
 ] as const;
 
@@ -93,7 +102,16 @@ describe("finance approval routing creation contracts", () => {
       expect(source).toContain("actorUserId: session.user.id");
       expect(configureAt).toBeGreaterThanOrEqual(0);
       expect(eligibilityAt).toBeGreaterThan(configureAt);
-      expect(transitionAt).toBeGreaterThan(eligibilityAt);
+      expect(transitionAt).toBeGreaterThanOrEqual(0);
+      if (contract.sourceBacked) {
+        const sourceClaimAt = source.indexOf(
+          contract.sourceClaimMarker ?? "approvalInstanceId: null"
+        );
+        const backlinkAt = source.indexOf("approvalInstanceId: approvalInstance.id", eligibilityAt);
+        expect(sourceClaimAt).toBeGreaterThanOrEqual(0);
+        expect(sourceClaimAt).toBeLessThan(configureAt);
+        expect(backlinkAt).toBeGreaterThan(eligibilityAt);
+      }
     });
   }
 

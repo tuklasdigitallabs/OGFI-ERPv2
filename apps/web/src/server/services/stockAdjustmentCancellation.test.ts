@@ -100,6 +100,7 @@ function adjustment(status = "PENDING_APPROVAL") {
 
 function makeTransaction(input?: {
   lockedApprovals?: Array<{ id: string; currentStepOrder: number }>;
+  lockedStatus?: string;
   sourceUpdateCount?: number;
   approvalUpdateCount?: number;
   livePermission?: boolean;
@@ -107,8 +108,19 @@ function makeTransaction(input?: {
   liveInventoryLocation?: boolean;
 }) {
   const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(1),
     $queryRaw: vi
       .fn()
+      .mockResolvedValueOnce([
+        {
+          id: ids.adjustment,
+          inventoryLocationId: ids.inventoryLocation,
+          requestedByUserId: ids.requester,
+          status: input?.lockedStatus ?? "PENDING_APPROVAL",
+          updatedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([{ id: ids.inventoryLocation, locationId: ids.location }])
       .mockResolvedValueOnce([
         { id: ids.actor, status: "ACTIVE", privilegeEpoch: 1 }
       ])
@@ -186,14 +198,14 @@ describe("stock-adjustment cancellation serialization", () => {
 
     await expect(cancelStockAdjustment(cancellationForm())).resolves.toBeUndefined();
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(3);
-    const firstUserLockSql = tx.$queryRaw.mock.calls[0]?.[0].join(" ");
-    const secondUserLockSql = tx.$queryRaw.mock.calls[1]?.[0].join(" ");
-    const approvalLockSql = tx.$queryRaw.mock.calls[2]?.[0].join(" ");
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(5);
+    const firstUserLockSql = tx.$queryRaw.mock.calls[2]?.[0].join(" ");
+    const secondUserLockSql = tx.$queryRaw.mock.calls[3]?.[0].join(" ");
+    const approvalLockSql = tx.$queryRaw.mock.calls[4]?.[0].join(" ");
     expect(firstUserLockSql).toContain('FROM "User"');
     expect(secondUserLockSql).toContain('FROM "User"');
-    expect(tx.$queryRaw.mock.calls[0]?.[1]).toBe(ids.actor);
-    expect(tx.$queryRaw.mock.calls[1]?.[1]).toBe(ids.requester);
+    expect(tx.$queryRaw.mock.calls[2]?.[1]).toBe(ids.actor);
+    expect(tx.$queryRaw.mock.calls[3]?.[1]).toBe(ids.requester);
     expect(approvalLockSql).toContain('JOIN "ApprovalInstanceStep"');
     expect(approvalLockSql).toContain("FOR UPDATE OF ai, s");
 
@@ -217,7 +229,7 @@ describe("stock-adjustment cancellation serialization", () => {
       })
     );
 
-    const approvalLockOrder = tx.$queryRaw.mock.invocationCallOrder[2] ?? 0;
+    const approvalLockOrder = tx.$queryRaw.mock.invocationCallOrder[4] ?? 0;
     const mfaOrder =
       mockMfa.assertPrivilegedMfaForAction.mock.invocationCallOrder[0] ?? 0;
     const sourceOrder =
@@ -233,7 +245,7 @@ describe("stock-adjustment cancellation serialization", () => {
     "cancels %s without requiring an approval row",
     async (status) => {
       mockPrisma.stockAdjustment.findFirst.mockResolvedValueOnce(adjustment(status));
-      const tx = makeTransaction({ lockedApprovals: [] });
+      const tx = makeTransaction({ lockedApprovals: [], lockedStatus: status });
       mockPrisma.$transaction.mockImplementation(async (callback) => callback(tx));
 
       await expect(cancelStockAdjustment(cancellationForm())).resolves.toBeUndefined();
@@ -269,8 +281,8 @@ describe("stock-adjustment cancellation serialization", () => {
       "STOCK_ADJUSTMENT_NOT_CANCELLABLE"
     );
 
-    expect(tx.approvalInstance.updateMany).not.toHaveBeenCalled();
-    expect(tx.approvalInstanceStep.updateMany).not.toHaveBeenCalled();
+    expect(tx.approvalInstance.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.approvalInstanceStep.updateMany).toHaveBeenCalledTimes(1);
     expect(tx.auditEvent.create).not.toHaveBeenCalled();
     expect(tx.notification.upsert).not.toHaveBeenCalled();
   });
@@ -326,6 +338,16 @@ describe("stock-adjustment cancellation serialization", () => {
     tx.$queryRaw
       .mockReset()
       .mockResolvedValueOnce([
+        {
+          id: ids.adjustment,
+          inventoryLocationId: ids.inventoryLocation,
+          requestedByUserId: ids.requester,
+          status: "PENDING_APPROVAL",
+          updatedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([{ id: ids.inventoryLocation, locationId: ids.location }])
+      .mockResolvedValueOnce([
         { id: ids.actor, status: "ACTIVE", privilegeEpoch: 2 }
       ])
       .mockResolvedValueOnce([
@@ -348,7 +370,7 @@ describe("stock-adjustment cancellation serialization", () => {
       "STOCK_ADJUSTMENT_CANCELLATION_AUTHORITY_STALE"
     );
 
-    const approvalLockSql = tx.$queryRaw.mock.calls[3]?.[0].join(" ");
+    const approvalLockSql = tx.$queryRaw.mock.calls[5]?.[0].join(" ");
     expect(approvalLockSql).toContain("FOR UPDATE OF ai, s");
     expect(mockMfa.assertPrivilegedMfaForAction).not.toHaveBeenCalled();
     expect(tx.stockAdjustment.updateMany).not.toHaveBeenCalled();
@@ -369,6 +391,16 @@ describe("stock-adjustment cancellation serialization", () => {
     const tx = makeTransaction();
     tx.$queryRaw
       .mockReset()
+      .mockResolvedValueOnce([
+        {
+          id: ids.adjustment,
+          inventoryLocationId: ids.inventoryLocation,
+          requestedByUserId: ids.requester,
+          status: "PENDING_APPROVAL",
+          updatedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([{ id: ids.inventoryLocation, locationId: ids.location }])
       .mockResolvedValueOnce([
         { id: ids.actor, status: "ACTIVE", privilegeEpoch: 1 }
       ])
@@ -395,8 +427,8 @@ describe("stock-adjustment cancellation serialization", () => {
       "PRIVILEGED_MFA_STEP_UP_REQUIRED"
     );
 
-    const sessionLockSql = tx.$queryRaw.mock.calls[2]?.[0].join(" ");
-    const approvalLockSql = tx.$queryRaw.mock.calls[3]?.[0].join(" ");
+    const sessionLockSql = tx.$queryRaw.mock.calls[4]?.[0].join(" ");
+    const approvalLockSql = tx.$queryRaw.mock.calls[5]?.[0].join(" ");
     expect(sessionLockSql).toContain('FROM "AuthSession"');
     expect(sessionLockSql).toContain('"assuranceLevel"');
     expect(sessionLockSql).toContain('"mfaAuthenticatedAt"');
