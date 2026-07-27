@@ -836,6 +836,17 @@ Legacy approve/reject parity, broader cancellation policy, C4 executable
 capabilities, disposable PostgreSQL evidence, DEC-0246 authority, and
 activation remain open. No user-facing policy or UI behavior was changed.
 
+The next Inbox decision increment hardens `approveEmployeeOvertimeRecordApproval`
+with the same barrier → source/Employee/Location → approval graph lock order as
+rejection. It verifies the exact family/document backlink and pending step,
+then CASes the acted step, optional next-step activation/instance advance, and
+source status (`UNDER_REVIEW` for an intermediate step or `APPROVED` for the
+terminal step) using the locked approval backlink and `updatedAt` before audit
+and notification. This remains feature-disabled compatibility hardening;
+legacy approve/reject/cancel writers, subject-employee SOD policy, replay,
+disposable PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain
+open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
