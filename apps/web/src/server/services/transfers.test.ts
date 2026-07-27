@@ -310,6 +310,23 @@ describe("inventory transfer foundation rules", () => {
     expect(dispatch).toContain("TRANSFER_DISPATCH_STATE_CONFLICT");
   });
 
+  test("submit fences the scoped header and lines without posting inventory", () => {
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const submit = source.slice(
+      source.indexOf("export async function submitInventoryTransfer"),
+      source.indexOf("export async function dispatchInventoryTransfer")
+    );
+
+    expect(submit).toContain('FOR UPDATE OF t');
+    expect(submit).toContain('FOR SHARE OF l');
+    expect(submit).toContain('FOR UPDATE OF l');
+    expect(submit).toContain('updatedAt: transfer.updatedAt');
+    expect(submit).toContain('status: "DRAFT"');
+    expect(submit).toContain("TRANSFER_SUBMIT_RESIDUE_CONFLICT");
+    expect(submit).not.toContain("lockInventoryLocationsForPosting");
+    expect(submit).not.toContain("postInventoryMovementInTransaction");
+  });
+
   test("dispatches requested transfers only", () => {
     expect(() => assertTransferCanDispatch("REQUESTED")).not.toThrow();
     expect(() => assertTransferCanDispatch("DRAFT")).toThrow(

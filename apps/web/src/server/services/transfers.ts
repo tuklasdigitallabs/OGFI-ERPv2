@@ -1224,19 +1224,130 @@ export async function submitInventoryTransfer(formData: FormData) {
   await requirePermission(session, permissions.transferSubmit);
   const values = transferActionSchema.parse(Object.fromEntries(formData));
 
-  const transfer = await prisma.inventoryTransfer.findFirst({
-    where: scopedTransferWhere(session, values.id)
-  });
-  if (!transfer) {
-    throw new Error("TRANSFER_NOT_FOUND");
-  }
-  assertTransferCanSubmit(transfer.status);
-
   await prisma.$transaction(async (tx) => {
+    const [transfer] = await tx.$queryRaw<Array<{
+      id: string;
+      tenantId: string;
+      companyId: string;
+      sourceLocationId: string;
+      destinationLocationId: string;
+      status: string;
+      updatedAt: Date;
+    }>>(Prisma.sql`
+      SELECT t."id", t."tenantId", t."companyId", t."sourceLocationId",
+        t."destinationLocationId", t."status", t."updatedAt"
+      FROM "InventoryTransfer" t
+      WHERE t."id" = ${values.id}
+        AND t."tenantId" = ${session.context.tenantId}
+        AND t."companyId" = ${session.context.companyId}
+        AND (t."sourceLocationId" = ${session.context.locationId}
+          OR t."destinationLocationId" = ${session.context.locationId})
+      FOR UPDATE OF t
+    `);
+    if (!transfer) {
+      throw new Error("TRANSFER_NOT_FOUND");
+    }
+    assertTransferCanSubmit(transfer.status);
+    assertTransferLocationsDistinct(transfer.sourceLocationId, transfer.destinationLocationId);
+
+    const locationIds = [transfer.sourceLocationId, transfer.destinationLocationId].sort();
+    const locations = await tx.$queryRaw<Array<{ id: string; status: string }>>(Prisma.sql`
+      SELECT l."id", l."status"
+      FROM "Location" l
+      WHERE l."id" IN (${Prisma.join(locationIds.map((id) => Prisma.sql`${id}::uuid`))})
+        AND l."tenantId" = ${transfer.tenantId}
+        AND l."companyId" = ${transfer.companyId}
+      ORDER BY l."id" ASC
+      FOR SHARE OF l
+    `);
+    if (locations.length !== 2 || locations.some((location) => location.status !== "ACTIVE")) {
+      throw new Error("TRANSFER_LOCATION_SCOPE_CONFLICT");
+    }
+
+    const lines = await tx.$queryRaw<Array<{
+      id: string;
+      sourceLocationId: string;
+      destinationLocationId: string;
+      requestedQty: Prisma.Decimal;
+      dispatchedQty: Prisma.Decimal;
+      receivedQty: Prisma.Decimal;
+      rejectedQty: Prisma.Decimal;
+      damagedQty: Prisma.Decimal;
+      discrepancyQty: Prisma.Decimal;
+    }>>(Prisma.sql`
+      SELECT l."id", sil."locationId" AS "sourceLocationId",
+        dil."locationId" AS "destinationLocationId", l."requestedQty",
+        l."dispatchedQty", l."receivedQty", l."rejectedQty", l."damagedQty",
+        l."discrepancyQty"
+      FROM "InventoryTransferLine" l
+      JOIN "InventoryLocation" sil ON sil."id" = l."sourceInventoryLocationId"
+      JOIN "InventoryLocation" dil ON dil."id" = l."destinationInventoryLocationId"
+      WHERE l."inventoryTransferId" = ${transfer.id}
+        AND l."tenantId" = ${transfer.tenantId}
+        AND l."companyId" = ${transfer.companyId}
+        AND sil."tenantId" = ${transfer.tenantId}
+        AND sil."companyId" = ${transfer.companyId}
+        AND dil."tenantId" = ${transfer.tenantId}
+        AND dil."companyId" = ${transfer.companyId}
+      ORDER BY l."lineNumber" ASC, l."id" ASC
+      FOR UPDATE OF l
+    `);
+    if (lines.length === 0) {
+      throw new Error("TRANSFER_SUBMIT_SCOPE_CONFLICT");
+    }
+    for (const line of lines) {
+      if (
+        line.sourceLocationId !== transfer.sourceLocationId ||
+        line.destinationLocationId !== transfer.destinationLocationId
+      ) {
+        throw new Error("TRANSFER_SUBMIT_SCOPE_CONFLICT");
+      }
+      assertPositiveTransferQuantity(Number(line.requestedQty));
+      if ([
+        line.dispatchedQty,
+        line.receivedQty,
+        line.rejectedQty,
+        line.damagedQty,
+        line.discrepancyQty
+      ].some((quantity) => Number(quantity) !== 0)) {
+        throw new Error("TRANSFER_SUBMIT_RESIDUE_CONFLICT");
+      }
+    }
+
+    const [receiptResidue, movementResidue, approvalResidue] = await Promise.all([
+      tx.inventoryTransferReceipt.count({
+        where: { tenantId: transfer.tenantId, companyId: transfer.companyId, inventoryTransferId: transfer.id }
+      }),
+      tx.inventoryMovement.count({
+        where: {
+          tenantId: transfer.tenantId,
+          companyId: transfer.companyId,
+          sourceDocumentType: "InventoryTransfer",
+          sourceDocumentId: transfer.id
+        }
+      }),
+      tx.approvalInstance.count({
+        where: {
+          tenantId: transfer.tenantId,
+          companyId: transfer.companyId,
+          documentType: "InventoryTransfer",
+          documentId: transfer.id
+        }
+      })
+    ]);
+    if (receiptResidue > 0 || movementResidue > 0 || approvalResidue > 0) {
+      throw new Error("TRANSFER_SUBMIT_RESIDUE_CONFLICT");
+    }
+
     const submitted = await tx.inventoryTransfer.updateMany({
       where: {
         id: transfer.id,
-        status: "DRAFT"
+        tenantId: transfer.tenantId,
+        companyId: transfer.companyId,
+        sourceLocationId: transfer.sourceLocationId,
+        destinationLocationId: transfer.destinationLocationId,
+        status: "DRAFT",
+        updatedAt: transfer.updatedAt
       },
       data: {
         status: "REQUESTED",
