@@ -504,7 +504,7 @@ type CurrentControlLevel = "IMPLEMENTED" | "PARTIAL" | "ABSENT";
 
 const currentTransactionFacts = {
   PurchaseRequest: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer transaction locks the exact tenant/company/location source row, derives routing facts from that snapshot, and claims DRAFT with an exact version/status/scope compare-and-set; durable replay identity remains absent." },
-  QuotationRecommendation: { lock: "PARTIAL", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Recommendation is loaded before the transaction; DRAFT updateMany claims status and increments version." },
+  QuotationRecommendation: { lock: "IMPLEMENTED", cas: "IMPLEMENTED", replay: "ABSENT", fact: "The producer barrier now locks the recommendation, quotation-request, and linked Purchase Request lineage inside the transaction, re-reads the authoritative recommendation, and claims DRAFT with exact scoped version/status/lineage predicates; durable replay identity remains absent." },
   PurchaseOrder: { lock: "PARTIAL", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Source and lineage are read before the transaction; graph creation precedes the DRAFT status compare-and-set." },
   PurchaseOrderBalanceClosure: { lock: "IMPLEMENTED", cas: "PARTIAL", replay: "ABSENT", fact: "Parent PurchaseOrder is locked and revalidated; the child is newly created without a request-hash replay contract." },
   PurchaseOrderAmendment: { lock: "ABSENT", cas: "IMPLEMENTED", replay: "ABSENT", fact: "Parent PurchaseOrder is read and revalidated, then an ISSUED-to-AMENDMENT_PENDING updateMany compare-and-set is attempted; no explicit parent row lock is observed and child replay is not request-hash bound." },

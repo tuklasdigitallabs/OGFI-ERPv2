@@ -968,36 +968,115 @@ export async function submitQuotationRecommendation(formData: FormData) {
       recommendation.singleSourceJustification ?? undefined
   });
 
-  const approvalRule = await prisma.approvalRule.findFirst({
-    where: {
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      transactionType: "QuotationRecommendation",
-      isActive: true
-    },
-    include: {
-      steps: {
-        orderBy: { stepOrder: "asc" }
-      }
-    },
-    orderBy: { priority: "asc" }
-  });
-
-  if (!approvalRule || approvalRule.steps.length === 0) {
-    throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
-  }
-
   await withApprovalProducerTransaction({
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     documentType: "QuotationRecommendation",
   }, async (tx) => {
+    const lockedRecommendationRows = await tx.$queryRaw<Array<{
+      id: string;
+      tenantId: string;
+      companyId: string;
+      quotationRequestId: string;
+      preparedByUserId: string;
+      selectedSupplierQuotationId: string;
+      status: string;
+      version: number;
+    }>>`
+      SELECT id, "tenantId", "companyId", "quotationRequestId",
+             "preparedByUserId", "selectedSupplierQuotationId", status, version
+        FROM "QuotationRecommendation"
+       WHERE id = ${values.quotationRecommendationId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedRecommendation = lockedRecommendationRows[0];
+    if (!lockedRecommendation || lockedRecommendation.status !== "DRAFT") {
+      throw new Error("QUOTATION_RECOMMENDATION_NOT_SUBMITTABLE");
+    }
+
+    await tx.$queryRaw`
+      SELECT id
+        FROM "QuotationRequest"
+       WHERE id = ${lockedRecommendation.quotationRequestId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedPurchaseRequestRows = await tx.$queryRaw<Array<{
+      id: string;
+      tenantId: string;
+      companyId: string;
+      requestLocationId: string;
+      requesterUserId: string;
+      status: string;
+      requiredDate: Date;
+      publicReference: string;
+      version: number;
+    }>>`
+      SELECT pr.id, pr."tenantId", pr."companyId", pr."requestLocationId",
+             pr."requesterUserId", pr.status, pr."requiredDate",
+             pr."publicReference", pr.version
+        FROM "PurchaseRequest" pr
+        JOIN "QuotationRequest" qr ON qr."purchaseRequestId" = pr.id
+       WHERE qr.id = ${lockedRecommendation.quotationRequestId}::uuid
+         AND qr."tenantId" = ${session.context.tenantId}::uuid
+         AND qr."companyId" = ${session.context.companyId}::uuid
+         AND pr."tenantId" = ${session.context.tenantId}::uuid
+         AND pr."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF pr
+    `;
+    const lockedPurchaseRequest = lockedPurchaseRequestRows[0];
+    if (!lockedPurchaseRequest) {
+      throw new Error("QUOTATION_RECOMMENDATION_NOT_FOUND");
+    }
+    assertAuthorizedLocation(session, lockedPurchaseRequest.requestLocationId);
+    assertApprovedPurchaseRequestForQuote(lockedPurchaseRequest.status);
+
+    const recommendation = await tx.quotationRecommendation.findFirst({
+      where: {
+        id: lockedRecommendation.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+      },
+      include: {
+        quotationRequest: {
+          include: {
+            purchaseRequest: { include: { lines: true } },
+            supplierQuotes: true
+          }
+        },
+        selectedSupplierQuotation: { include: { supplier: true } }
+      }
+    });
+    if (!recommendation || recommendation.version !== lockedRecommendation.version) {
+      throw new Error("QUOTATION_RECOMMENDATION_NOT_FOUND");
+    }
+
+    const approvalRule = await tx.approvalRule.findFirst({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        transactionType: "QuotationRecommendation",
+        isActive: true
+      },
+      include: { steps: { orderBy: { stepOrder: "asc" } } },
+      orderBy: { priority: "asc" }
+    });
+    if (!approvalRule || approvalRule.steps.length === 0) {
+      throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+    }
+
     const claimed = await tx.quotationRecommendation.updateMany({
       where: {
         id: recommendation.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "DRAFT",
+        quotationRequestId: lockedRecommendation.quotationRequestId,
+        preparedByUserId: lockedRecommendation.preparedByUserId,
+        version: lockedRecommendation.version,
       },
       data: {
         status: "PENDING_APPROVAL",

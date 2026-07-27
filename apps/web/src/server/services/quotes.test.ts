@@ -70,6 +70,26 @@ describe("quotation recommendation rules", () => {
     expect(submit).toContain("purchaseRequest.lines.reduce");
   });
 
+  test("recommendation submission locks upstream lineage before the approval graph", () => {
+    const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
+    const start = source.indexOf("export async function submitQuotationRecommendation");
+    const submit = source.slice(start);
+    expect(submit).toContain('FROM "QuotationRecommendation"');
+    expect(submit).toContain('FROM "QuotationRequest"');
+    expect(submit).toContain('FROM "PurchaseRequest" pr');
+    expect(submit).toContain("FOR UPDATE");
+    expect(submit).toContain("version: lockedRecommendation.version");
+    expect(submit.indexOf('FROM "QuotationRecommendation"')).toBeLessThan(
+      submit.indexOf('FROM "QuotationRequest"')
+    );
+    expect(submit.indexOf('FROM "QuotationRequest"')).toBeLessThan(
+      submit.indexOf('FROM "PurchaseRequest" pr')
+    );
+    expect(submit.indexOf('FROM "PurchaseRequest" pr')).toBeLessThan(
+      submit.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
+  });
+
   test("quote creation binds retries to a canonical scoped request hash", () => {
     const source = readFileSync(path.resolve(__dirname, "quotes.ts"), "utf8");
     expect(source).toContain('idempotencyKey: z.string().min(1).max(200)');

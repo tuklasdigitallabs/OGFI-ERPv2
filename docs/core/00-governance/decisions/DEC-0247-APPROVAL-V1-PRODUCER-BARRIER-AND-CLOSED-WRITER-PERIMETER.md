@@ -621,6 +621,13 @@ disposable PostgreSQL race evidence, line/source snapshot proof, replay
 identity, and the remaining family decision/terminal/cancellation writers are
 still required before any executable capability or ACL cutover.
 
+Quotation Recommendation submission now follows the same barrier-first order,
+locks the recommendation → quotation request → Purchase Request lineage, and
+re-reads the recommendation and active rule before its exact version/status/
+lineage CAS. This closes the producer's stale upstream-lineage snapshot defect
+without adding replay identity or activating the capability; recommendation
+creation concurrency and approval decision-path migration remain separate gates.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
