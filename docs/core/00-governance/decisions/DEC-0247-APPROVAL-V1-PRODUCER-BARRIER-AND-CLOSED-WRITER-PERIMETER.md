@@ -777,6 +777,16 @@ evidence, exact replay/rollback proofs, and the complete all-18 plus
 decision/terminal/cancellation/tooling perimeter are satisfied. C4 changes no
 user-visible behavior; the routing flag remains false.
 
+The producer-fact updates required a successor contract binding: C1 version
+`dec-0247-c1.private-binary-observer-sql.2` with digest
+`f460803ba04366045f9633f3baf208e6e3bbbca19b1b45efce84ba274b4c7cbe`, C2
+version `dec-0247-c2.dormant-closed-writer-contract.2` with digest
+`6878aacdd237b95494a2139f4df2c1d161a2e2b5c76c91ef5f4a0e49bed6a319`, and C3
+version `dec-0247-c3.dormant-typed-adapter-shape.2` with digest
+`548e59e5c550807f04ebd58dc2d79408f8e19bd95532e4b646f38963c03d0f9b`. The
+successor remains test-only, private, ungranted, and non-executable; focused
+contract coverage passes 16/16, with no user-facing behavior change.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

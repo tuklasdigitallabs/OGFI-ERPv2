@@ -6,7 +6,7 @@ import {
 } from "./approvalRoutingRegistry";
 
 export const APPROVAL_PRODUCER_CAPABILITY_VERSION =
-  "dec-0247-c1.private-binary-observer-sql.1";
+  "dec-0247-c1.private-binary-observer-sql.2";
 
 export const approvalProducerStableErrors = Object.freeze({
   barrierRetry: "APPROVAL_ROUTING_PRODUCER_BARRIER_RETRY",

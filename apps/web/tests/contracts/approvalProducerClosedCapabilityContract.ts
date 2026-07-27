@@ -13,7 +13,7 @@ import {
 import { supportedApprovalDocumentTypes } from "../../src/server/services/approvalRoutingRegistry";
 
 export const APPROVAL_PRODUCER_CLOSED_CAPABILITY_CONTRACT_VERSION =
-  "dec-0247-c2.dormant-closed-writer-contract.1";
+  "dec-0247-c2.dormant-closed-writer-contract.2";
 
 type ClosedCapabilityContract = Readonly<{
   contractKind: "DORMANT_WRITER_DISCOVERY";

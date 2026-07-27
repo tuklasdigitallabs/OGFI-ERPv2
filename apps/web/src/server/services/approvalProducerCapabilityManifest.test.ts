@@ -536,9 +536,9 @@ function moduleReferences(file: string, source: string, target: string) {
 
 describe("DEC-0247 C1-S dormant observer structural contract", () => {
   test("pins a deeply frozen, private exact 18-family manifest", () => {
-    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0247-c1.private-binary-observer-sql.1");
+    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe("dec-0247-c1.private-binary-observer-sql.2");
     expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(
-      "982d32877fd2e71e87394c73b81b2955c6422f586baa14b7d40dbc939b385a0b",
+      "f460803ba04366045f9633f3baf208e6e3bbbca19b1b45efce84ba274b4c7cbe",
     );
     expect(Object.isFrozen(approvalProducerCapabilityManifest)).toBe(true);
     expect(approvalProducerCapabilityContracts).toHaveLength(18);
@@ -642,7 +642,7 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
     }
     expect(approvalProducerCapabilityManifest.PurchaseRequest.currentCompatibility.routingObserved.due).toContain("UTC midnight");
     expect(approvalProducerCapabilityManifest.BudgetRevision.currentCompatibility.transactionControl.replay).toBe("ABSENT");
-    expect(approvalProducerCapabilityManifest.PurchaseOrderAmendment.currentCompatibility.transactionControl.lock).not.toBe("IMPLEMENTED");
+    expect(approvalProducerCapabilityManifest.PurchaseOrderAmendment.currentCompatibility.transactionControl.lock).toBe("IMPLEMENTED");
     expect(new Set(approvalProducerCapabilityContracts.map(
       (contract) => `${contract.currentCompatibility.producer.serviceFile}:${contract.currentCompatibility.producer.functionName}`,
     )).size).toBe(18);
@@ -848,13 +848,13 @@ describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
 
   test("binds the C2 digest to the full producer, graph, tooling, and raw-SQL inventory", () => {
     expect(APPROVAL_PRODUCER_CLOSED_CAPABILITY_CONTRACT_VERSION).toBe(
-      "dec-0247-c2.dormant-closed-writer-contract.1",
+      "dec-0247-c2.dormant-closed-writer-contract.2",
     );
     expect(approvalProducerClosedCapabilityInventoryDigest).toBe(
-      "3f952a575bb24c781ada9cfecac5b2aefa90c49967df25ec9a80a5a0dd0a800d",
+      "6878aacdd237b95494a2139f4df2c1d161a2e2b5c76c91ef5f4a0e49bed6a319",
     );
     expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe(
-      "dec-0247-c1.private-binary-observer-sql.1",
+      "dec-0247-c1.private-binary-observer-sql.2",
     );
     expect(Object.isFrozen(approvalProducerClosedCapabilityContract)).toBe(true);
     expect(Object.isFrozen(approvalProducerClosedCapabilityContracts)).toBe(true);
@@ -905,10 +905,10 @@ describe("DEC-0247 C3 dormant typed-adapter shape", () => {
 
   test("binds the typed-adapter contract to a reviewed version and digest", () => {
     expect(APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_VERSION).toBe(
-      "dec-0247-c3.dormant-typed-adapter-shape.1",
+      "dec-0247-c3.dormant-typed-adapter-shape.2",
     );
     expect(APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_DIGEST).toBe(
-      "38244059fbcee62c36634bac91f7bb95d84f3c160b76b90405090c7b826fabde",
+      "548e59e5c550807f04ebd58dc2d79408f8e19bd95532e4b646f38963c03d0f9b",
     );
     expect(runtimeFiles().filter((file) =>
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalProducerTypedAdapterContract"),

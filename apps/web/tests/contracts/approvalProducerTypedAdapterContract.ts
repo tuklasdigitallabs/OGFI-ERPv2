@@ -5,7 +5,7 @@ import {
 } from "./approvalProducerClosedCapabilityContract";
 
 export const APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_VERSION =
-  "dec-0247-c3.dormant-typed-adapter-shape.1";
+  "dec-0247-c3.dormant-typed-adapter-shape.2";
 
 export type DormantTypedAdapterContract = Readonly<{
   contractKind: "DORMANT_TYPED_ADAPTER_SHAPE";
