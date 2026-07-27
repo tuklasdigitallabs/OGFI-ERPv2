@@ -1819,3 +1819,9 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - Independent architecture review identifies `postGoodsReceipt` as an alternative bounded writer slice: it has a shared inventory-location → PO → receipt lock/CAS gap, but requires no new schema and can remain feature-disabled pending PostgreSQL proof.
 - Security review identifies checklist-toggle CAS hardening as the smaller project-only slice. Because these recommendations optimize different risks (inventory-adjacent integrity versus coordination audit integrity), the Decision Chair has opened a challenge round; no write-capable implementation may start until the choice and safeguards are recorded.
+
+### Project task checklist-toggle CAS slice — July 27, 2026
+
+- Parent-led Architecture and Security challenge selected the lower-blast-radius project-only writer first. `toggleProjectTaskChecklistItem` now requires a positive `expectedVersion`, atomically CASes the tenant/company/project-scoped `ProjectTask.version`, scopes the checklist update to the same task and active item, and appends activity in the same transaction. Stale task versions fail with `PROJECT_TASK_STALE_VERSION`; checklist mutations are not described as full idempotency.
+- Both `My Work` surfaces now submit the rendered task version. Focused project-task/action-feedback coverage passes **33/33**; repository typecheck and lint pass. The checklist help article and glossary now explain refresh-on-stale behavior and distinguish task versions from idempotency keys.
+- Disposable PostgreSQL contention, rollback, cross-scope IDOR, terminal-task policy, and readiness/lifecycle race evidence remain open because `DISPOSABLE_DATABASE_ADMIN_URL` is unset. This dormant source-control slice does not activate production readiness; Goods Receipt posting remains the next inventory-specific writer and Workspace 4 / Phase I remains **NO-GO**.

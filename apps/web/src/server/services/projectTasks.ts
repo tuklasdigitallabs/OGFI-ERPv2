@@ -157,7 +157,8 @@ const addChecklistItemSchema = z.object({
 
 const toggleChecklistItemSchema = z.object({
   checklistItemId: z.string().uuid(),
-  isCompleted: z.coerce.boolean().default(false)
+  isCompleted: z.coerce.boolean().default(false),
+  expectedVersion: z.coerce.number().int().positive()
 });
 
 const addCommentSchema = z.object({
@@ -1380,7 +1381,8 @@ export async function toggleProjectTaskChecklistItem(formData: FormData) {
   const session = await requireSessionContext();
   const values = toggleChecklistItemSchema.parse({
     checklistItemId: formData.get("checklistItemId"),
-    isCompleted: formData.get("isCompleted") === "true"
+    isCompleted: formData.get("isCompleted") === "true",
+    expectedVersion: formData.get("expectedVersion")
   });
   const item = await prisma.projectTaskChecklistItem.findFirst({
     where: {
@@ -1402,12 +1404,36 @@ export async function toggleProjectTaskChecklistItem(formData: FormData) {
   if (!item) {
     throw new Error("PROJECT_CHECKLIST_ITEM_NOT_FOUND");
   }
-  await findMutableTask(session, item.taskId);
+  const task = await findMutableTask(session, item.taskId);
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    const updated = await tx.projectTaskChecklistItem.update({
-      where: { id: item.id },
+    const updatedTask = await tx.projectTask.updateMany({
+      where: {
+        id: task.id,
+        tenantId: task.tenantId,
+        companyId: task.companyId,
+        projectId: task.projectId,
+        version: values.expectedVersion
+      },
+      data: {
+        version: { increment: 1 },
+        updatedByUserId: session.user.id
+      }
+    });
+    if (updatedTask.count !== 1) {
+      throw new Error("PROJECT_TASK_STALE_VERSION");
+    }
+
+    const updated = await tx.projectTaskChecklistItem.updateMany({
+      where: {
+        id: item.id,
+        tenantId: item.tenantId,
+        companyId: item.companyId,
+        projectId: item.projectId,
+        taskId: task.id,
+        archivedAt: null
+      },
       data: {
         isCompleted: values.isCompleted,
         completedAt: values.isCompleted ? now : null,
@@ -1415,6 +1441,9 @@ export async function toggleProjectTaskChecklistItem(formData: FormData) {
         updatedByUserId: session.user.id
       }
     });
+    if (updated.count !== 1) {
+      throw new Error("PROJECT_CHECKLIST_ITEM_NOT_FOUND");
+    }
     await tx.projectActivityEvent.create({
       data: {
         tenantId: item.tenantId,
@@ -1427,7 +1456,10 @@ export async function toggleProjectTaskChecklistItem(formData: FormData) {
         entityType: "ProjectTaskChecklistItem",
         entityId: item.id,
         beforeData: { isCompleted: item.isCompleted },
-        afterData: { isCompleted: updated.isCompleted },
+        afterData: {
+          isCompleted: values.isCompleted,
+          taskVersion: values.expectedVersion + 1
+        },
         metadata: {
           taskId: item.taskId,
           source: "project-task-checklist-comments"

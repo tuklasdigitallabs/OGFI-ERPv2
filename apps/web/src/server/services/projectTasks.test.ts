@@ -485,6 +485,28 @@ describe("project task workflow controls", () => {
     expect(myWorkSource).not.toContain("objectKey");
   });
 
+  test("checklist toggles require a task-version CAS and scoped atomic activity", () => {
+    const detailPageSource = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/my-work/[taskId]/page.tsx"),
+      "utf8"
+    );
+    const checklistWriter = projectTaskService.slice(
+      projectTaskService.indexOf("export async function toggleProjectTaskChecklistItem"),
+      projectTaskService.indexOf("export async function addProjectTaskComment")
+    );
+
+    expect(checklistWriter).toContain("expectedVersion: formData.get(\"expectedVersion\")");
+    expect(checklistWriter).toContain("version: values.expectedVersion");
+    expect(checklistWriter).toContain("version: { increment: 1 }");
+    expect(checklistWriter).toContain("tenantId: task.tenantId");
+    expect(checklistWriter).toContain("projectId: task.projectId");
+    expect(checklistWriter).toContain("taskId: task.id");
+    expect(checklistWriter).toContain("if (updatedTask.count !== 1)");
+    expect(checklistWriter).toContain("if (updated.count !== 1)");
+    expect(checklistWriter).toContain("taskVersion: values.expectedVersion + 1");
+    expect(detailPageSource).toContain('name="expectedVersion"');
+  });
+
   test("project attachment denial recorder excludes target data", () => {
     const writer = projectTaskService.slice(
       projectTaskService.indexOf("async function logProjectAttachmentDenied"),

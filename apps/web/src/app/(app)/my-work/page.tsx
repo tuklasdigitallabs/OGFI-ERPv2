@@ -377,6 +377,7 @@ function TaskChecklist({ task }: { task: ProjectTaskCard }) {
               key={item.id}
             >
               <input name="checklistItemId" type="hidden" value={item.id} />
+              <input name="expectedVersion" type="hidden" value={task.version} />
               <input
                 name="isCompleted"
                 type="hidden"

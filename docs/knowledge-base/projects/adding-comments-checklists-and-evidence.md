@@ -3,7 +3,7 @@
 **Audience / required role:** Project contributors, project managers, task owners, and authorized viewers  
 **Applies to:** Task detail, checklist items, comments, and attachment metadata links  
 **Related phase/module:** Phase 1.5 / Task Collaboration and Evidence  
-**Last verified against:** implemented task checklist items, required checklist gate, comments, attachment metadata links, controlled project-requirement upload linkage, attachment archive reason, activity history, and project visibility controls (2026-07-21)
+**Last verified against:** implemented task checklist items, required checklist gate, task-version conflict protection, comments, attachment metadata links, controlled project-requirement upload linkage, attachment archive reason, activity history, and project visibility controls (2026-07-27)
 
 ## Purpose
 
@@ -39,6 +39,7 @@ Comments and evidence help explain project work. They do not replace controlled 
 - Comments show author and body on the task. Comments are add-only in this slice.
 - Attachment metadata links show filename, purpose, type, size, caption, and creator where visible.
 - Archive actions preserve reason and activity history.
+- If another task change was saved after this page loaded, a checklist update may show a stale-task message. Refresh the task and submit the checklist change again; the earlier activity remains preserved.
 - A project-level evidence requirement can hold evidence without an artificial task. A task-bound evidence requirement is linked only to its own task. The ERP enforces both contexts; uploading evidence does not submit or approve the requirement.
 
 ## Important Controls And Warnings

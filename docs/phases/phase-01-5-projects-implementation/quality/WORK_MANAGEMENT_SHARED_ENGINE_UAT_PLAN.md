@@ -18,7 +18,7 @@ Validate shared work-management behavior before specialized Expansion or Marketi
 10. Add an attachment/comment to a restricted container; verify unauthorized user cannot read it via direct URL/API.
 11. Test Board/List/Calendar/My Work filters for company/brand/location/project scope.
 12. Create date-only and scheduled events; verify display remains correct in Asia/Manila.
-13. Two users update the same work item; verify stale/conflict handling does not silently overwrite.
+13. Two users update the same work item; verify stale/conflict handling does not silently overwrite. For checklist toggles, confirm the second submission receives a safe stale-task message, the task version advances once, and only the winning checklist activity is recorded.
 14. Create dependency and verify circular dependency is rejected.
 15. Trigger reminders/notifications; verify no duplicate delivery after retry.
 
