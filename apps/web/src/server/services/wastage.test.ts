@@ -121,9 +121,11 @@ describe("wastage foundation rules", () => {
     expect(source).toContain('source: "wastage-report-submission"');
     expect(source).toContain("userId: report.reportedByUserId");
     expect(source).toContain("assertAnyEligibleApprovalActorForStep(tx");
-    expect(source.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
-      source.indexOf("const submitted = await tx.wastageReport.updateMany")
+    expect(source.indexOf("const submitted = await tx.wastageReport.updateMany")).toBeLessThan(
+      source.indexOf("assertAnyEligibleApprovalActorForStep(tx")
     );
+    expect(source).toContain('FOR UPDATE');
+    expect(source).toContain('status: { in: ["DRAFT", "RETURNED"] }');
     expect(source).toContain("recordWorkflowNotifications");
     expect(source).toContain('notificationType: "APPROVE_WASTAGE_REPORT"');
     expect(source).toContain("locationId: report.inventoryLocation.locationId");

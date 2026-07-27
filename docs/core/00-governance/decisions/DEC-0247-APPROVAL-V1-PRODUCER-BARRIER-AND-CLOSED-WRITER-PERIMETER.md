@@ -649,6 +649,15 @@ stable conflict feedback remains `PURCHASE_ORDER_NOT_ISSUED_FOR_AMENDMENT`;
 durable replay, brand invariants, sibling decision locks, and PostgreSQL race
 evidence remain separate gates.
 
+Wastage Report submission now follows the same barrier-first contract: it locks
+the report through the authorized InventoryLocation→Location scope, reloads
+lines and evaluates policy inside the transaction, requires a sealed active
+rule, and claims DRAFT/RETURNED before creating approval graph rows. Focused
+source validation passes 17/17 and web typecheck passes. PostgreSQL contention,
+rollback, policy/rule drift, malformed-line integrity, notification, replay,
+and sibling-writer evidence remain pending; the feature flag remains false and
+this does not authorize activation or ACL migration.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

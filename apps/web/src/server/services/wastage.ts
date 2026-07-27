@@ -275,6 +275,7 @@ async function nextWastageReference(companyId: string) {
 }
 
 async function evaluateWastagePolicy(input: {
+  db?: typeof prisma | TransactionClient;
   session: SessionContext;
   inventoryLocationId: string;
   itemId: string;
@@ -284,7 +285,8 @@ async function evaluateWastagePolicy(input: {
   estimatedTotalCost: number;
   categoryPhotoRequired: boolean;
 }) {
-  const policy = await prisma.wastagePolicy.findFirst({
+  const db = input.db ?? prisma;
+  const policy = await db.wastagePolicy.findFirst({
     where: {
       tenantId: input.session.context.tenantId,
       companyId: input.session.context.companyId,
@@ -330,7 +332,7 @@ async function evaluateWastagePolicy(input: {
       Date.now() - policy.repeatLookbackDays * 24 * 60 * 60 * 1000
     );
     [repeatItemLocationPriorCount, repeatReporterPriorCount] = await Promise.all([
-      prisma.wastageLine.count({
+      db.wastageLine.count({
         where: {
           tenantId: input.session.context.tenantId,
           companyId: input.session.context.companyId,
@@ -342,7 +344,7 @@ async function evaluateWastagePolicy(input: {
           }
         }
       }),
-      prisma.wastageReport.count({
+      db.wastageReport.count({
         where: {
           tenantId: input.session.context.tenantId,
           companyId: input.session.context.companyId,
@@ -1336,52 +1338,81 @@ export async function submitWastageReport(formData: FormData) {
   await requirePermission(session, permissions.wastageSubmit);
   const values = wastageActionSchema.parse(Object.fromEntries(formData));
 
-  const report = await prisma.wastageReport.findFirst({
+  const initialReport = await prisma.wastageReport.findFirst({
     where: scopedWastageWhere(session, values.id),
     include: {
       inventoryLocation: true,
       lines: { orderBy: { lineNumber: "asc" } }
     }
   });
-  if (!report) {
+  if (!initialReport) {
     throw new Error("WASTAGE_REPORT_NOT_FOUND");
   }
-  assertWastageCanSubmit(report.status);
-  if (report.lines.length === 0) {
-    throw new Error("WASTAGE_REPORT_HAS_NO_LINES");
-  }
-  const firstLine = report.lines[0];
-  if (!firstLine) {
-    throw new Error("WASTAGE_REPORT_HAS_NO_LINES");
-  }
-  const policyEvaluation = await evaluateWastagePolicy({
-    session,
-    inventoryLocationId: report.inventoryLocationId,
-    itemId: firstLine.itemId,
-    wastageType: report.wastageType,
-    reasonCode: report.reasonCode,
-    evidenceReference:
-      report.evidenceReference ??
-      report.lines.find((line) => line.evidenceReference)?.evidenceReference ??
-      null,
-    estimatedTotalCost: Number(report.totalEstimatedCost),
-    categoryPhotoRequired: report.lines.some((line) => line.photoRequired)
-  });
-  if (policyEvaluation.evidenceRequired && !policyEvaluation.evidenceSatisfied) {
-    throw new Error("WASTAGE_EVIDENCE_REFERENCE_REQUIRED");
-  }
-
   await withApprovalProducerTransaction({
     tenantId: session.context.tenantId,
     companyId: session.context.companyId,
     documentType: "WastageReport",
   }, async (tx) => {
+    const lockedRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT id, status
+        FROM "WastageReport"
+       WHERE id = ${initialReport.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND EXISTS (
+           SELECT 1 FROM "InventoryLocation" il
+            WHERE il.id = "WastageReport"."inventoryLocationId"
+              AND il."locationId" = ${session.context.locationId}::uuid
+         )
+       FOR UPDATE
+    `;
+    const locked = lockedRows[0];
+    if (!locked || !["DRAFT", "RETURNED"].includes(locked.status)) {
+      throw new Error("WASTAGE_NOT_OPEN_FOR_SUBMIT");
+    }
+    const report = await tx.wastageReport.findFirst({
+      where: {
+        id: locked.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocation: { locationId: session.context.locationId },
+      },
+      include: {
+        inventoryLocation: true,
+        lines: { orderBy: { lineNumber: "asc" } },
+      },
+    });
+    if (!report || report.lines.length === 0) {
+      throw new Error("WASTAGE_REPORT_HAS_NO_LINES");
+    }
+    const firstLine = report.lines[0];
+    if (!firstLine) {
+      throw new Error("WASTAGE_REPORT_HAS_NO_LINES");
+    }
+    const policyEvaluation = await evaluateWastagePolicy({
+      db: tx,
+      session,
+      inventoryLocationId: report.inventoryLocationId,
+      itemId: firstLine.itemId,
+      wastageType: report.wastageType,
+      reasonCode: report.reasonCode,
+      evidenceReference:
+        report.evidenceReference ??
+        report.lines.find((line) => line.evidenceReference)?.evidenceReference ??
+        null,
+      estimatedTotalCost: Number(report.totalEstimatedCost),
+      categoryPhotoRequired: report.lines.some((line) => line.photoRequired)
+    });
+    if (policyEvaluation.evidenceRequired && !policyEvaluation.evidenceSatisfied) {
+      throw new Error("WASTAGE_EVIDENCE_REFERENCE_REQUIRED");
+    }
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         transactionType: "WastageReport",
-        isActive: true
+        isActive: true,
+        definitionSealed: true
       },
       include: {
         steps: {
@@ -1411,6 +1442,27 @@ export async function submitWastageReport(formData: FormData) {
     });
     if (existingPendingApproval) {
       throw new Error("WASTAGE_APPROVAL_ALREADY_SUBMITTED");
+    }
+
+    const submitted = await tx.wastageReport.updateMany({
+      where: {
+        id: report.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryLocation: { locationId: session.context.locationId },
+        status: { in: ["DRAFT", "RETURNED"] },
+      },
+      data: {
+        status: "PENDING_APPROVAL",
+        submittedAt: new Date(),
+        policyFlags: policyEvaluation.flags,
+        policySnapshot: policyEvaluation.policySnapshot,
+        evidenceRequired: policyEvaluation.evidenceRequired,
+        evidenceSatisfied: policyEvaluation.evidenceSatisfied,
+      },
+    });
+    if (submitted.count !== 1) {
+      throw new Error("WASTAGE_NOT_OPEN_FOR_SUBMIT");
     }
 
     const routedSteps = approvalRule.steps.map((step, index) => ({
@@ -1476,24 +1528,6 @@ export async function submitWastageReport(formData: FormData) {
       companyId: session.context.companyId,
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
-
-    const submitted = await tx.wastageReport.updateMany({
-      where: {
-        id: report.id,
-        status: { in: ["DRAFT", "RETURNED"] }
-      },
-      data: {
-        status: "PENDING_APPROVAL",
-        submittedAt: new Date(),
-        policyFlags: policyEvaluation.flags,
-        policySnapshot: policyEvaluation.policySnapshot,
-        evidenceRequired: policyEvaluation.evidenceRequired,
-        evidenceSatisfied: policyEvaluation.evidenceSatisfied
-      }
-    });
-    if (submitted.count !== 1) {
-      throw new Error("WASTAGE_NOT_OPEN_FOR_SUBMIT");
-    }
 
     const auditEvent = await tx.auditEvent.create({
       data: {
