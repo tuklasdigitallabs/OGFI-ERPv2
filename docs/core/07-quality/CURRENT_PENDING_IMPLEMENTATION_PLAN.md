@@ -21,6 +21,8 @@ Formal UAT execution, evidence collection with real users, owner signoff, and th
 
 The fastest safe route to Phase I/UAT readiness is to close the shared disposable-PostgreSQL evidence gap before adding higher-risk writers. The runner must use a verified ephemeral, non-production target and execute the existing concurrent race, rollback, authorization/scope, segregation-of-duties, replay, and zero-adjacent-ledger suites for completed approval, cancellation, and terminal-source fences. An unavailable or misconfigured database is a hard **NO-GO** and must not be counted as passing evidence. After this foundation is evidenced, continue with bounded non-posting source fences, then complete visible workspace surfaces and the isolated Phase I UAT/recovery gates in dependency order. Approval routing remains disabled and C4 remains dormant until its separate policy and evidence gates are satisfied.
 
+Runner safety validation now passes **15/15** lifecycle-contract tests, including target allowlisting, generated identity binding, credential scrubbing, marker attestation, and adversarial-target rejection. An exact runner invocation still fails closed with `DISPOSABLE_DATABASE_ADMIN_URL_REQUIRED`; therefore no PostgreSQL race, rollback, ACL, or UAT evidence is credited yet.
+
 ## 2. Shared Production Foundation
 
 These items must be completed once at platform level. A workspace must not be certified when it depends on an incomplete shared control.
