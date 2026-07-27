@@ -808,6 +808,21 @@ version `dec-0247-c3.dormant-typed-adapter-shape.2` with digest
 successor remains test-only, private, ungranted, and non-executable; focused
 contract coverage passes 16/16, with no user-facing behavior change.
 
+The next bounded decision-writer slice is the feature-disabled Approval Inbox
+`rejectEmployeeOvertimeRecordApproval` path. Architecture, Security, and QA
+selected it over Quotation Recommendation because it has one source plus
+Employee/Location facts, terminal-reject-only semantics, and no child, supplier,
+money, inventory, payroll, payment, journal, or device effect. The implemented
+source checkpoint acquires the shared company barrier, locks/reloads the exact
+EmployeeOvertimeRecord with approval-backlink and `updatedAt` CAS, locks active
+Employee and derived Location scope, locks the ApprovalInstance and ordered
+steps, then performs reject, future-step skip, terminal instance CAS, source
+CAS, audit, and outcome notification atomically. It remains compatibility
+hardening only: legacy reject/cancel writers, all other decision families, C4
+typed routines, base-DML closure, replay identity, disposable PostgreSQL/ACL
+evidence, DEC-0246 authority, and activation remain open. Subject-employee
+self-approval policy for the separate approval path is not inferred or changed.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

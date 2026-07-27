@@ -268,6 +268,12 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("workforce.overtime_approved");
     expect(serviceSource).toContain("workforce.overtime_rejected");
     expect(serviceSource).toContain("WORKFORCE_OVERTIME_NOT_AWAITING_APPROVAL");
+    expect(serviceSource).toContain("lockEmployeeOvertimeApprovalSource");
+    expect(serviceSource).toContain("acquireApprovalProducerBarrierShared");
+    expect(serviceSource).toContain('approvalInstanceId: approval.id');
+    expect(serviceSource).toContain('updatedAt: lockedSource.source.updatedAt');
+    expect(serviceSource).toContain('FOR UPDATE OF record');
+    expect(serviceSource).toContain('FOR UPDATE OF ai');
     expect(serviceSource).toContain("noPayrollComputation");
     expect(serviceSource).toContain("noPaymentRequest");
     expect(serviceSource).toContain("noFinanceJournal");
