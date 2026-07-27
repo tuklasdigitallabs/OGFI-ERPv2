@@ -50,9 +50,10 @@ export async function terminatePendingApprovalForCancellation(
     documentId: string;
     policy: ApprovalCancellationPolicy;
     coherenceMode?: ApprovalCancellationCoherenceMode;
+    forceWhenDisabled?: boolean;
   }
 ): Promise<ApprovalCancellationResult> {
-  if (!normalizedApprovalRoutingEnabled()) {
+  if (!normalizedApprovalRoutingEnabled() && !input.forceWhenDisabled) {
     return { mode: "LEGACY", approvalInstanceId: null };
   }
 

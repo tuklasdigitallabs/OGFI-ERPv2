@@ -74,6 +74,25 @@ describe("normalized approval cancellation termination", () => {
     expect(budgetTx.$queryRaw).not.toHaveBeenCalled();
   });
 
+  test("allows an explicitly bounded family cancellation to terminate a graph while the flag is off", async () => {
+    process.env.APPROVAL_ROUTING_V1_ENABLED = "false";
+    const tx = mockTx(
+      [{ id: "approval-1", currentStepOrder: 1 }],
+      [
+        { id: "step-1", stepOrder: 1, status: "PENDING" },
+        { id: "step-2", stepOrder: 2, status: "WAITING" }
+      ]
+    );
+    await expect(
+      terminatePendingApprovalForCancellation(tx, {
+        ...input,
+        documentType: "EmployeeOvertimeRecord",
+        forceWhenDisabled: true
+      })
+    ).resolves.toEqual({ mode: "CANCELLED", approvalInstanceId: "approval-1" });
+    expect(tx.$queryRaw).toHaveBeenCalled();
+  });
+
   test("allows a cancellable draft with no pending approval only under optional policy", async () => {
     const optionalTx = mockTx([]);
     await expect(

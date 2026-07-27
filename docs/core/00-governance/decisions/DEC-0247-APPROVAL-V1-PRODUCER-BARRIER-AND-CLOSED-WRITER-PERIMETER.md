@@ -823,6 +823,19 @@ typed routines, base-DML closure, replay identity, disposable PostgreSQL/ACL
 evidence, DEC-0246 authority, and activation remain open. Subject-employee
 self-approval policy for the separate approval path is not inferred or changed.
 
+The subsequent bounded lifecycle correction addresses `cancelOvertimeRecord`
+only. Independent review found that the submit path can create a pending graph
+while normalized routing is disabled, whereas the shared cancellation helper
+previously returned `LEGACY` and left that graph active after source
+cancellation. Overtime cancellation now runs behind the shared company
+barrier, locks/reloads the source plus active Employee/derived Location scope,
+uses exact `updatedAt` CAS, and forces coherent pending-approval termination for
+this family even with the flag off. Draft/approved cancellation remains
+graph-free; missing or incoherent submitted/under-review graphs fail closed.
+Legacy approve/reject parity, broader cancellation policy, C4 executable
+capabilities, disposable PostgreSQL evidence, DEC-0246 authority, and
+activation remain open. No user-facing policy or UI behavior was changed.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

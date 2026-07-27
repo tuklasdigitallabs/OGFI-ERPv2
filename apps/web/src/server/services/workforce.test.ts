@@ -483,6 +483,12 @@ describe("workforce foundation controls", () => {
       expect(action).toContain(testCase.requiredPolicy);
       expect(action).toContain('"APPROVAL_REQUIRED"');
       expect(action).toContain('"APPROVAL_OPTIONAL"');
+      if (testCase.functionName === "cancelOvertimeRecord") {
+        expect(action).toContain("withApprovalProducerTransaction");
+        expect(action).toContain("forceWhenDisabled: true");
+        expect(action).toContain("lockOvertimeForLifecycleMutation");
+        expect(action).toContain("updatedAt: record.updatedAt");
+      }
       expect(action).toContain("tenantId: session.context.tenantId");
       expect(action).toContain("companyId: session.context.companyId");
       expect(action).toContain(`throw new Error("${testCase.conflict}")`);

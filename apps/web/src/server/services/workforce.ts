@@ -928,6 +928,65 @@ async function getScopedOvertimeOrThrow(
   return record;
 }
 
+async function lockOvertimeForLifecycleMutation(
+  tx: TransactionClient,
+  session: SessionContext,
+  overtimeRecordId: string,
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    tenantId: string;
+    companyId: string;
+    employeeId: string;
+    locationId: string | null;
+    status: "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED";
+    approvalInstanceId: string | null;
+    updatedAt: Date;
+  }>>`
+    SELECT record.id,
+           record."tenantId",
+           record."companyId",
+           record."employeeId",
+           record."locationId",
+           record.status::text AS status,
+           record."approvalInstanceId",
+           record."updatedAt"
+      FROM "EmployeeOvertimeRecord" record
+     WHERE record.id = ${overtimeRecordId}::uuid
+       AND record."tenantId" = ${session.context.tenantId}::uuid
+       AND record."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF record
+  `;
+  const source = rows[0];
+  if (!source) throw new Error("WORKFORCE_OVERTIME_RECORD_NOT_FOUND");
+  const employeeRows = await tx.$queryRaw<Array<{ id: string; status: string; homeLocationId: string | null }>>`
+    SELECT employee.id,
+           employee.status::text AS status,
+           employee."homeLocationId"
+      FROM "Employee" employee
+     WHERE employee.id = ${source.employeeId}::uuid
+       AND employee."tenantId" = ${session.context.tenantId}::uuid
+       AND employee."companyId" = ${session.context.companyId}::uuid
+     FOR SHARE OF employee
+  `;
+  const employee = employeeRows[0];
+  if (!employee || employee.status !== "ACTIVE") throw new Error("WORKFORCE_OVERTIME_RECORD_NOT_FOUND");
+  const scopeLocationId = source.locationId ?? employee.homeLocationId;
+  if (!scopeLocationId) throw new Error("WORKFORCE_EMPLOYEE_HOME_LOCATION_REQUIRED");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${scopeLocationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("WORKFORCE_OVERTIME_RECORD_NOT_FOUND");
+  await assertScopedLocation(session, scopeLocationId);
+  return source;
+}
+
 async function getScopedScheduleOrThrow(
   tx: TransactionClient,
   session: SessionContext,
@@ -2978,8 +3037,14 @@ export async function cancelOvertimeRecord(
     input.reason,
     "WORKFORCE_OVERTIME_CANCELLATION_REASON_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
-    const record = await getScopedOvertimeOrThrow(
+  return withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeOvertimeRecord"
+    },
+    async (tx) => {
+    const record = await lockOvertimeForLifecycleMutation(
       tx,
       session,
       input.overtimeRecordId
@@ -2998,7 +3063,8 @@ export async function cancelOvertimeRecord(
         documentId: record.id,
         policy: ["SUBMITTED", "UNDER_REVIEW"].includes(record.status)
           ? "APPROVAL_REQUIRED"
-          : "APPROVAL_OPTIONAL"
+          : "APPROVAL_OPTIONAL",
+        forceWhenDisabled: true
       }
     );
     const cancelled = await tx.employeeOvertimeRecord.updateMany({
@@ -3006,7 +3072,8 @@ export async function cancelOvertimeRecord(
         id: record.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: record.status
+        status: record.status,
+        updatedAt: record.updatedAt
       },
       data: {
         status: "CANCELLED",
@@ -3038,7 +3105,8 @@ export async function cancelOvertimeRecord(
       }
     });
     return updated;
-  });
+    }
+  );
 }
 
 export async function submitWorkforceSchedule(
@@ -3300,7 +3368,8 @@ export async function submitWorkforceSchedule(
       }
     });
     return updated;
-  });
+    }
+  );
 }
 
 export async function approveWorkforceSchedule(
