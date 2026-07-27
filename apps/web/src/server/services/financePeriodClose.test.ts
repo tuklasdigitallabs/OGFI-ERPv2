@@ -286,6 +286,20 @@ describe("period close readiness foundation", () => {
     expect(serviceSource).toContain('approvalAction: "REOPEN_PERIOD"');
   });
 
+  it("keeps sensitive rejection source-only and serialized", () => {
+    const rejectStart = serviceSource.indexOf("export async function rejectFinanceCloseRunApproval");
+    const rejectSource = serviceSource.slice(rejectStart);
+    expect(rejectSource).toContain(["withApprovalProducer", "Transaction"].join(""));
+    expect(rejectSource).toContain("noAccountingPeriodMutation: true");
+    expect(rejectSource).toContain("noJournalPosting: true");
+    expect(rejectSource).toContain("withoutPendingCloseApproval");
+    expect(rejectSource).toContain("version: run.version");
+    expect(rejectSource).not.toContain("lockAccountingPeriodFromCloseRunTx");
+    expect(rejectSource).not.toContain("reopenAccountingPeriodFromCloseRunTx");
+    expect(serviceSource).toContain("FOR SHARE");
+    expect(serviceSource).toContain("APPROVAL_SOURCE_STATE_CHANGED");
+  });
+
   it("wires period-close readiness actions through the page server actions", () => {
     expect(pageSource).toContain("runPeriodCloseRunAction");
     expect(pageSource).toContain("requestPeriodCloseSensitiveActionApproval");

@@ -2174,6 +2174,7 @@ async function lockAndRevalidateFinanceCloseApprovalSource(
     select: {
       version: true,
       initiatedByUserId: true,
+      accountingPeriodId: true,
       configSnapshot: true
     }
   });
@@ -2192,6 +2193,24 @@ async function lockAndRevalidateFinanceCloseApprovalSource(
     pendingAction.requestedByUserId === session.user.id
   ) {
     throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  const periods = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+    SELECT period.id, period.status
+      FROM "AccountingPeriod" period
+     WHERE period.id = ${run.accountingPeriodId}::uuid
+       AND period."tenantId" = ${session.context.tenantId}::uuid
+       AND period."companyId" = ${session.context.companyId}::uuid
+     FOR SHARE
+  `;
+  const period = periods[0];
+  if (!period) throw new Error("ACCOUNTING_PERIOD_NOT_FOUND");
+  if (
+    (pendingAction.approvalAction === "LOCK_PERIOD" &&
+      period.status !== "SOFT_CLOSED") ||
+    (pendingAction.approvalAction === "REOPEN_PERIOD" &&
+      !["SOFT_CLOSED", "LOCKED"].includes(period.status))
+  ) {
+    throw new Error("APPROVAL_SOURCE_STATE_CHANGED");
   }
 }
 
@@ -2455,7 +2474,11 @@ export async function rejectFinanceCloseRunApproval(formData: FormData) {
       values.approvalInstanceId
     );
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "FinanceCloseRun"
+  }, async (tx) => {
     await prepareFinanceCloseApprovalDecision(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
