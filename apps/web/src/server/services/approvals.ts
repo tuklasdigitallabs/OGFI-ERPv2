@@ -892,24 +892,35 @@ async function lockAndRevalidateExpenseApprovalSource(
   expected: ExpenseApprovalSource,
   approvalInstanceId: string
 ) {
-  if (!normalizedApprovalRoutingEnabled()) return expected;
-
-  await lockNormalizedApprovalLifecycleGraph(tx, {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    approvalInstanceId,
-    documentType: "ExpenseRequest",
-    documentId: expected.id
-  });
-  const sourceRows = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT request.id
+  if (normalizedApprovalRoutingEnabled()) {
+    await lockNormalizedApprovalLifecycleGraph(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId,
+      documentType: "ExpenseRequest",
+      documentId: expected.id
+    });
+  }
+  const sourceRows = await tx.$queryRaw<Array<{
+    id: string;
+    status: string;
+    version: number;
+    updatedAt: Date;
+    approvalInstanceId: string | null;
+    locationId: string;
+    requestedByUserId: string;
+  }>>`
+    SELECT request.id, request.status::text AS status, request.version,
+           request."updatedAt", request."approvalInstanceId",
+           request."locationId", request."requestedByUserId"
       FROM "ExpenseRequest" request
      WHERE request.id = ${expected.id}::uuid
        AND request."tenantId" = ${session.context.tenantId}::uuid
        AND request."companyId" = ${session.context.companyId}::uuid
      FOR UPDATE OF request
   `;
-  if (sourceRows.length !== 1) throw new Error("APPROVAL_SOURCE_CHANGED");
+  const source = sourceRows[0];
+  if (!source) throw new Error("APPROVAL_SOURCE_CHANGED");
 
   const lockedLineRows = await tx.$queryRaw<Array<{
     id: string;
@@ -946,13 +957,15 @@ async function lockAndRevalidateExpenseApprovalSource(
   if (
     !locked ||
     locked.status !== "AWAITING_APPROVAL" ||
-    locked.approvalInstanceId !== approvalInstanceId ||
+    (locked.approvalInstanceId !== null && locked.approvalInstanceId !== approvalInstanceId) ||
+    locked.version !== expected.version ||
     locked.version !== expected.version ||
     lockedLineRows.some(
       (line) =>
         line.tenantId !== session.context.tenantId ||
         line.companyId !== session.context.companyId
     ) ||
+    source.version !== expected.version ||
     expectedLines.length !== lockedLines.length ||
     expectedLines.some((line, index) => line !== lockedLines[index]) ||
     loadedLockedLines.length !== lockedLines.length ||
@@ -8991,9 +9004,9 @@ async function closeExpenseRequestWithDecision(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
+        version: lockedRequest.version,
         ...(normalizedApprovalRoutingEnabled()
           ? {
-              version: lockedRequest.version,
               approvalInstanceId: approval.id
             }
           : {})

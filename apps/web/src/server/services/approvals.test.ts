@@ -656,6 +656,24 @@ describe("multi-step approval advancement", () => {
     expect(source).not.toContain("purchaseOrderLine.update");
   });
 
+  test("expense terminal decisions lock source and lines in legacy and normalized modes", () => {
+    const helper = extractFunctionSource(
+      serviceSource,
+      "lockAndRevalidateExpenseApprovalSource"
+    );
+    const terminal = extractFunctionSource(
+      serviceSource,
+      "closeExpenseRequestWithDecision"
+    );
+    expect(helper).toContain("ExpenseRequestLine");
+    expect(helper).toContain("FOR UPDATE OF request");
+    expect(helper).toContain("FOR UPDATE OF line");
+    expect(helper).toContain("APPROVAL_SOURCE_CHANGED");
+    expect(terminal).toContain("version: lockedRequest.version");
+    expect(terminal).toContain("noPaymentCreation: true");
+    expect(terminal).toContain("noJournalPosting: true");
+  });
+
   test.each([
     [
       "approvePurchaseRequest",

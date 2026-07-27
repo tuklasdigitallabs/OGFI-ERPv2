@@ -983,6 +983,10 @@ Architecture and Security accepted only the child-terminal return/reject writer.
 
 Architecture and Security accepted only the amendment child-terminal return/reject writer. It locks the graph, amendment child, lines/receipts, and parent PO, then restores `AMENDMENT_PENDING → ISSUED` with child/parent CAS. Proposal values, commercial fields, commitments, receipts, inventory, AP, payment, and supplier communication remain untouched. PostgreSQL contention, rollback, ACL, replay, and zero-commercial-mutation evidence remain open.
 
+### Expense Request terminal parity correction (July 27, 2026)
+
+Security and Architecture accepted the source-state-only Expense terminal writer across legacy and normalized routing modes. It locks the approval graph, ExpenseRequest, ordered lines, scope and source version before terminal CAS, and preserves the no-payment/no-release/no-AP/no-journal boundary. PostgreSQL contention, rollback, ACL, evidence drift, and no-side-effect proof remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
