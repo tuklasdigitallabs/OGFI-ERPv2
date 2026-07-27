@@ -13,6 +13,7 @@ By the end of this module, participants can:
 - Navigate Finance Control Center, Bank & Cash, Budget Control, Cash Advances, Petty Cash, Period Close, and Workforce Operations.
 - Create or review source-linked finance and workforce records without expecting AP settlement, bank mutation, payroll computation, or official journal posting unless that exact workflow supports it.
 - Explain that Approval Inbox actions are a post-activation exercise; while normalized routing is disabled, follow the authoritative source-workflow owner or administrator guidance and retain no-self-approval controls.
+- Explain that submitted overtime records linked to a governed approval graph cannot be approved through the legacy Workforce action while normalized routing is disabled; the page shows the controlled-routing explanation and the Approval Inbox is the authoritative destination once enabled.
 - Record UAT evidence in Release Readiness using the correct Phase 3 workflow-area values.
 - Identify issue labels, evidence gaps, deferred blockers, and readiness items that must be reviewed before go-live.
 
@@ -48,6 +49,7 @@ Each participant should complete the exercises that match their role:
 | Issue | Correct action |
 | --- | --- |
 | Approval is missing from inbox | Confirm the record was submitted, the approver is not the requester, and the approver has matching role and location scope. |
+| Workforce overtime approval is unavailable | If the overtime record is linked to a governed approval graph, use the Approval Inbox after controlled routing is enabled; do not retry the legacy Workforce approval action or bypass the graph. |
 | A finance row shows an issue label | Open the source detail or report preview and resolve the evidence, match, variance, or close-readiness item in the proper workflow. |
 | A workforce row shows a coverage or attendance issue | Review the schedule line, attendance import batch, exception list, or duplicate row before recording UAT pass evidence. |
 | Evidence remains unavailable after upload | Read the visible safety state. Refresh later while checks are in progress; retry an expired or failed upload; upload a different file after rejection; contact support if the state does not resolve. Production activation remains gated. |

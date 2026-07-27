@@ -2252,7 +2252,14 @@ export default async function WorkforcePage() {
                       (action) =>
                         !["approve", "return", "reject"].includes(action)
                     )
-                  : permissionScopedActions;
+                  : permissionScopedActions.filter(
+                      (action) =>
+                        !(
+                          !isLeave &&
+                          record.approvalInstanceId !== null &&
+                          action === "approve"
+                        )
+                    );
                 return (
                   <div
                     key={`${isLeave ? "leave" : "ot"}-${record.id}`}
@@ -2359,6 +2366,17 @@ export default async function WorkforcePage() {
                             </Link>
                             . Workforce permissions on this page do not establish
                             current-step eligibility.
+                          </div>
+                        ) : null}
+                        {!canonicalApprovalDecisions &&
+                        !isLeave &&
+                        record.approvalInstanceId !== null &&
+                        ["SUBMITTED", "UNDER_REVIEW"].includes(record.status) ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                            This overtime record is linked to a governed approval
+                            graph. Direct workforce approval is unavailable;
+                            use the Approval Inbox when controlled routing is
+                            enabled.
                           </div>
                         ) : null}
                         <div className="flex flex-wrap gap-2">

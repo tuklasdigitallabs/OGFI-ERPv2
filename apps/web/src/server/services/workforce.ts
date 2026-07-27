@@ -75,6 +75,7 @@ export type WorkforceLeaveRow = {
 
 export type WorkforceOvertimeRow = {
   id: string;
+  approvalInstanceId: string | null;
   employeeName: string;
   locationName: string;
   overtimeType: string;
@@ -939,6 +940,7 @@ async function lockOvertimeForLifecycleMutation(
     companyId: string;
     employeeId: string;
     locationId: string | null;
+    requestedByUserId: string;
     status: "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED";
     approvalInstanceId: string | null;
     updatedAt: Date;
@@ -948,6 +950,7 @@ async function lockOvertimeForLifecycleMutation(
            record."companyId",
            record."employeeId",
            record."locationId",
+           record."requestedByUserId",
            record.status::text AS status,
            record."approvalInstanceId",
            record."updatedAt"
@@ -2947,8 +2950,14 @@ export async function approveOvertimeRecord(
     permissions.workforceOvertimeApprove
   );
   assertLegacyApprovalDecisionAllowed();
-  return prisma.$transaction(async (tx) => {
-    const record = await getScopedOvertimeOrThrow(
+  return withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeOvertimeRecord"
+    },
+    async (tx) => {
+    const record = await lockOvertimeForLifecycleMutation(
       tx,
       session,
       input.overtimeRecordId
@@ -2961,13 +2970,43 @@ export async function approveOvertimeRecord(
     if (record.requestedByUserId === session.user.id) {
       throw new Error("WORKFORCE_OVERTIME_SELF_APPROVAL_BLOCKED");
     }
-    const updated = await tx.employeeOvertimeRecord.update({
-      where: { id: record.id },
+    const graphRows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT ai.id
+        FROM "ApprovalInstance" ai
+       WHERE ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+         AND ai."documentType" = 'EmployeeOvertimeRecord'
+         AND ai."documentId" = ${record.id}::uuid
+       ORDER BY ai.id ASC
+       FOR UPDATE OF ai
+    `;
+    if (record.approvalInstanceId !== null || graphRows.length > 0) {
+      throw new Error("WORKFORCE_OVERTIME_APPROVAL_GRAPH_REQUIRES_INBOX");
+    }
+    const updatedResult = await tx.employeeOvertimeRecord.updateMany({
+      where: {
+        id: record.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        approvalInstanceId: null,
+        status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+        updatedAt: record.updatedAt
+      },
       data: {
         status: "APPROVED",
         approvedByUserId: session.user.id,
         approvedAt: new Date(),
         updatedByUserId: session.user.id
+      }
+    });
+    if (updatedResult.count !== 1) {
+      throw new Error("WORKFORCE_OVERTIME_APPROVAL_CONFLICT");
+    }
+    const updated = await tx.employeeOvertimeRecord.findFirstOrThrow({
+      where: {
+        id: record.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
       }
     });
     await writeWorkforceAudit(tx, {
@@ -2980,7 +3019,8 @@ export async function approveOvertimeRecord(
       reason: input.reason?.trim() ?? null
     });
     return updated;
-  });
+    }
+  );
 }
 
 export async function rejectOvertimeRecord(
@@ -4439,6 +4479,7 @@ export async function getWorkforceDashboard(
     })),
     overtimeRecords: scopedOvertimeRecords.map((record) => ({
       id: record.id,
+      approvalInstanceId: record.approvalInstanceId,
       employeeName: showConfidentialNames
         ? displayEmployeeName(record.employee)
         : record.employee.employeeCode,

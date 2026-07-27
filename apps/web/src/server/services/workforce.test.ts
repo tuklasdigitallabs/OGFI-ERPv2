@@ -679,6 +679,8 @@ describe("workforce foundation controls", () => {
     expect(workforcePageSource).toContain("Create Draft Schedule");
     expect(workforcePageSource).toContain("Leave as open coverage gap");
     expect(workforcePageSource).toContain("Leave And Overtime Actions");
+    expect(workforcePageSource).toContain("approvalInstanceId");
+    expect(workforcePageSource).toContain("Direct workforce approval is unavailable");
     expect(workforcePageSource).toContain("Publish");
     expect(workforcePageSource).toContain("Record Review");
     expect(workforcePageSource).toContain("Void Batch");
