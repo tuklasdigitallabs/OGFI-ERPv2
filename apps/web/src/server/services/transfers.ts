@@ -2112,7 +2112,7 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
   await requirePermission(session, permissions.transferReceiptReverse);
   const values = reverseTransferReceiptSchema.parse(Object.fromEntries(formData));
 
-  const receipt = await prisma.inventoryTransferReceipt.findFirst({
+  let receipt = await prisma.inventoryTransferReceipt.findFirst({
     where: {
       id: values.receiptId,
       tenantId: session.context.tenantId,
@@ -2146,7 +2146,8 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
   if (!receipt) {
     throw new Error("TRANSFER_RECEIPT_NOT_FOUND");
   }
-  const transfer = receipt.inventoryTransfer;
+  const loadedReceipt = receipt;
+  let transfer = receipt.inventoryTransfer;
   assertAuthorizedLocation(session, transfer.destinationLocationId);
   assertTransferReceiptCanReverse(receipt.status, receipt.reversedAt);
   if (receipt.receivedByUserId === session.user.id) {
@@ -2171,7 +2172,7 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
-    const reversalInventoryLocationIds = receipt.lines.flatMap((line) => {
+    const reversalInventoryLocationIds = loadedReceipt.lines.flatMap((line) => {
       if (Number(line.acceptedQty) <= 0 || !line.postedMovement) {
         return [];
       }
@@ -2190,9 +2191,83 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
             reversalInventoryLocationIds
           )
         : null;
+    const [lockedTransfer] = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      updatedAt: Date;
+      destinationLocationId: string;
+    }>>(Prisma.sql`
+      SELECT t."id", t."status", t."updatedAt", t."destinationLocationId"
+      FROM "InventoryTransfer" t
+      WHERE t."id" = ${values.id}
+        AND t."tenantId" = ${session.context.tenantId}
+        AND t."companyId" = ${session.context.companyId}
+        AND t."destinationLocationId" = ${session.context.locationId}
+      FOR UPDATE OF t
+    `);
+    if (!lockedTransfer) {
+      throw new Error("TRANSFER_RECEIPT_NOT_FOUND");
+    }
+    await tx.$queryRaw(Prisma.sql`
+      SELECT l."id"
+      FROM "InventoryTransferLine" l
+      WHERE l."inventoryTransferId" = ${lockedTransfer.id}
+        AND l."tenantId" = ${session.context.tenantId}
+        AND l."companyId" = ${session.context.companyId}
+      ORDER BY l."lineNumber" ASC, l."id" ASC
+      FOR UPDATE OF l
+    `);
+    const authoritativeReceipt = await tx.inventoryTransferReceipt.findFirst({
+      where: {
+        id: loadedReceipt.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryTransferId: lockedTransfer.id
+      },
+      include: {
+        inventoryTransfer: {
+          include: { lines: { orderBy: { lineNumber: "asc" } } }
+        },
+        lines: {
+          orderBy: { lineNumber: "asc" },
+          include: {
+            inventoryTransferLine: true,
+            postedMovement: { include: { reversalMovements: true } }
+          }
+        }
+      }
+    });
+    if (!authoritativeReceipt) {
+      throw new Error("TRANSFER_RECEIPT_NOT_FOUND");
+    }
+    receipt = authoritativeReceipt;
+    transfer = authoritativeReceipt.inventoryTransfer;
+    if (transfer.destinationLocationId !== session.context.locationId) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
+    const authoritativeReversalLocationIds = new Set(
+      authoritativeReceipt.lines.flatMap((line) => {
+        if (Number(line.acceptedQty) <= 0 || !line.postedMovement) return [];
+        return [
+          line.postedMovement.inventoryLocationId,
+          ...(line.postedMovement.relatedInventoryLocationId
+            ? [line.postedMovement.relatedInventoryLocationId]
+            : [])
+        ];
+      })
+    );
+    const initiallyLockedReversalLocationIds = new Set(reversalInventoryLocationIds);
+    if (
+      authoritativeReversalLocationIds.size !== initiallyLockedReversalLocationIds.size ||
+      [...authoritativeReversalLocationIds].some(
+        (id) => !initiallyLockedReversalLocationIds.has(id)
+      )
+    ) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
     const claimed = await tx.inventoryTransferReceipt.updateMany({
       where: {
-        id: receipt.id,
+        id: receipt!.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "POSTED",
@@ -2203,7 +2278,7 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     if (claimed.count !== 1) {
       const current = await tx.inventoryTransferReceipt.findFirst({
         where: {
-          id: receipt.id,
+          id: receipt!.id,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId
         },
@@ -2219,7 +2294,7 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     const reversalMovementIds: string[] = [];
     const receiptLineIds: string[] = [];
 
-    for (const line of receipt.lines) {
+    for (const line of receipt!.lines) {
       const acceptedQty = Number(line.acceptedQty);
       const rejectedQty = Number(line.rejectedQty);
       const damagedQty = Number(line.damagedQty);
