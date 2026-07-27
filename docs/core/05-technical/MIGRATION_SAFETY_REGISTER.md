@@ -1435,6 +1435,40 @@ Local inventory generation permits hash-bound `PENDING` rows. The hosted release
     "owner": "Database Engineering owns routine bodies, lock identity, ACLs, migration, and recovery; Security and QA own scope/privilege/contention verification; Release owns exact hash, redeploy, and restore evidence. DEC-0246 human owners retain all maintenance and activation authority.",
     "verification": "Static schema and role-contract checks must prove byte-identical tenant/company hash expressions, exact SQLSTATEs, invoker/fixed search_path routines, exclusive runtime/PUBLIC denial, and no readiness/result objects or writes. Disposable PostgreSQL execution remains required for same-company shared/exclusive contention, cross-company concurrency, READ COMMITTED visibility, rollback, idempotent redeploy, and restored ACL/body attestation. No hosted, UAT, recovery, certification, or activation credit is claimed.",
     "expectedRecoveryTime": "Measure transaction rollback, contention retry, application rollback, idempotent redeploy, forward correction, and isolated restore against approved RPO/RTO before promotion."
+  },
+  {
+    "migration": "20260727180000_inventory_transfer_receipt_idempotency",
+    "sha256": "8a80d49118218455b3c48cf9b9a27db082c7bbddcf683c721a867b7d51b8df87",
+    "risk": "Adding a tenant/company-scoped unique receipt replay key can expose duplicate legacy identities or be mistaken for complete replay protection before the paired hash guard and writer enforcement are live.",
+    "expectedDataEffect": "Add nullable receipt idempotency key and request-hash columns plus a tenant/company/key unique index; preserve all existing rows without backfill.",
+    "recovery": "Reconcile any duplicate non-null keys with a reviewed forward fix; restore the pre-migration backup if the unique index cannot be safely established.",
+    "reviewerStatus": "PENDING",
+    "reviewerIdentity": "Not yet approved for rehearsal; disposition added during receipt coherence review.",
+    "reviewedAtUtc": null,
+    "failurePoint": "Duplicate scoped keys, checksum drift, failed redeploy, restore mismatch, or treating nullable identity columns as authoritative replay enforcement.",
+    "transactionBehavior": "Additive DDL with no row rewrite; inspect migration history and affected indexes after any partial failure.",
+    "reversibility": "No automatic down migration is assumed; use a reviewed forward correction or restore the pre-migration backup.",
+    "decisionTrigger": "Stop rehearsal or promotion on duplicate keys, scope/index drift, or any claim of production replay safety before the coherence guard and writer proof are complete.",
+    "owner": "Database Engineering owns the additive schema and recovery; Backend owns writer enforcement; Security, QA, and Release own replay, scope, and exact-candidate evidence.",
+    "verification": "Static schema contract, disposable PostgreSQL duplicate-key preflight, index/catalog attestation, idempotent redeploy, populated restore, and later paired-identity acceptance are required. No production or UAT credit is claimed from the additive foundation alone.",
+    "expectedRecoveryTime": "Measure migration retry, forward correction, application rollback, and isolated restore against approved RPO/RTO before promotion."
+  },
+  {
+    "migration": "20260728100000_inventory_transfer_receipt_idempotency_coherence",
+    "sha256": "302dcbf87167b845f2504ed40195cebf2198e7f2a4655d4214b35275b28dd542",
+    "risk": "Legacy transfer receipts may contain one-sided or malformed replay identity, or concurrent deployment may expose a partially enforced key/hash pair invariant.",
+    "expectedDataEffect": "Add the named InventoryTransferReceipt idempotency pair CHECK, preserve NULL/NULL legacy rows, fail closed on one-sided or malformed pairs, and change no rows.",
+    "recovery": "The migration is transactional and has no data rewrite. Roll back on preflight, lock, validation, or timeout failure; after rehearsal use a reviewed forward correction and preserve migration history.",
+    "reviewerStatus": "PENDING",
+    "reviewerIdentity": "Not yet approved for rehearsal; authored after independent Backend, Security, QA, and Workspace review.",
+    "reviewedAtUtc": null,
+    "failurePoint": "Preflight detects any partial or malformed pair; constraint validation, lock/statement timeout, checksum, redeploy, populated restore, or ACL evidence fails; or the guard is mistaken for PostgreSQL/UAT/production acceptance.",
+    "transactionBehavior": "One explicit transaction adds the constraint as NOT VALID, runs an explicit fail-closed preflight, validates the constraint, and commits only when all existing rows satisfy the pair invariant.",
+    "reversibility": "No automatic down migration is assumed. If rehearsal fails, preserve the prior schema through transaction rollback; after deployment use a reviewed forward correction or restore the pre-migration backup.",
+    "decisionTrigger": "Stop rehearsal or promotion on any invalid legacy row, hash-format mismatch, lock timeout, checksum drift, non-idempotent redeploy, restore mismatch, or missing hosted PostgreSQL evidence.",
+    "owner": "Database Engineering owns the constraint, preflight, migration, and recovery; Backend owns writer compatibility; Security and QA own scope, format, and integrity verification; Release owns exact-SHA rehearsal and promotion evidence.",
+    "verification": "Static migration/schema contracts, Prisma validation, disposable PostgreSQL empty and populated-restore execution, constraint-catalog attestation, invalid-row rollback, concurrent-write lock behavior, idempotent redeploy, and recovery evidence are required. No production or UAT credit is claimed from authoring alone.",
+    "expectedRecoveryTime": "Measure migration rollback, lock-timeout recovery, idempotent redeploy, forward correction, and isolated restore against approved RPO/RTO before promotion."
   }
 ]
 ```
