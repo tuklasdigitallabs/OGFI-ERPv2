@@ -1808,3 +1808,14 @@ Update this register only when implementation state, release scope, a confirmed 
 - Database package validation passes **57 tests** with **18 PostgreSQL integration cases skipped**; the receipt idempotency schema contract remains green. This confirms schema/static integrity only, not live migration or concurrency behavior.
 - Authorization integration fixtures now supply bounded transfer-receipt idempotency keys through their shared `FormData` helper, preserving the intended wrong-scope/no-mutation assertions when PostgreSQL execution is enabled. This is test-contract maintenance only; no UAT or live-database claim changes.
 - Transfer service coverage now includes a visible-contract regression test asserting that the receive form emits `ui:transfer-receipt:<UUID>` and the service requires a 16–200 character key. Focused transfer coverage is **28/28**; this does not alter the receipt **NO-GO** status.
+
+### UAT fast-track goal extension — July 27, 2026
+
+- The active implementation goal now also carries the next-slice constraint from independent security review: after the disposable PostgreSQL prerequisite is available, the next bounded writer candidate is `toggleProjectTaskChecklistItem` CAS hardening. The proposed perimeter reuses the existing `ProjectTask.version`, requires a positive `expectedVersion` from both My Work forms, atomically updates the scoped task/checklist/activity graph, and fails closed on stale replay. This is a candidate pending the companion architecture review; it does not mark the Projects workspace complete.
+- Project-record-link idempotency remains deferred to a migration-backed PostgreSQL acceptance slice. Checklist edits on terminal tasks and the expansion-project lifecycle closure race remain explicit open policy/control questions and must not be silently resolved in the candidate slice.
+- This extension preserves the current UAT priority: obtain the disposable PostgreSQL administrator URL, prove receipt and writer concurrency/rollback behavior, then run browser/UAT, recovery, and hosted-deployment gates. Workspace 4 / Phase I remains **NO-GO**.
+
+### Next-writer deliberation remains open — July 27, 2026
+
+- Independent architecture review identifies `postGoodsReceipt` as an alternative bounded writer slice: it has a shared inventory-location → PO → receipt lock/CAS gap, but requires no new schema and can remain feature-disabled pending PostgreSQL proof.
+- Security review identifies checklist-toggle CAS hardening as the smaller project-only slice. Because these recommendations optimize different risks (inventory-adjacent integrity versus coordination audit integrity), the Decision Chair has opened a challenge round; no write-capable implementation may start until the choice and safeguards are recorded.
