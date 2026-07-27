@@ -1009,3 +1009,7 @@ Architecture, Security, and QA accepted a source-only BudgetRevision perimeter c
 ### Finance Close terminal rejection — July 27, 2026
 
 Architecture and Security review conditionally approved a reject-only parity slice. The rejection path is serialized by the shared `FinanceCloseRun` producer barrier, locks/revalidates the run and referenced AccountingPeriod (`FOR SHARE`) with action-specific period-state preconditions, then terminalizes the approval graph and CAS-clears only the pending sensitive-action envelope. It performs no period lock/reopen or checklist, exception, journal, AP, payment, bank, inventory, or readiness mutation. Finance Close approval/period mutation remains deferred pending its own finance recovery and rollback decision.
+
+### Finance Close cancellation lifecycle — July 27, 2026
+
+Architecture, Security, and QA rejected an isolated cancellation barrier/CAS change. Mutable readiness runs and `CLOSED` sensitive-approval runs are disjoint, and readiness, completion, checklist, and exception writers are not yet fenced by a common parent lock/version order. The next acceptable cancellation change must couple those lifecycle writers, define graph incoherence handling and durable replay identity, and preserve a zero-period/zero-accounting-side-effect boundary. No implementation or authority change is approved by this review.
