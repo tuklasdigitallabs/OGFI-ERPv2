@@ -501,6 +501,18 @@ describe("workforce foundation controls", () => {
     }
   });
 
+  it("keeps legacy overtime rejection source and pending graph coherent", () => {
+    const start = workforceServiceSource.indexOf("export async function rejectOvertimeRecord");
+    const end = workforceServiceSource.indexOf("\nexport async function ", start + 1);
+    const action = workforceServiceSource.slice(start, end === -1 ? undefined : end);
+    expect(action).toContain("withApprovalProducerTransaction");
+    expect(action).toContain("lockOvertimeForLifecycleMutation");
+    expect(action).toContain("terminatePendingApprovalForCancellation");
+    expect(action).toContain("forceWhenDisabled: true");
+    expect(action).toContain("updatedAt: record.updatedAt");
+    expect(action).toContain("approvalCancellationMode: approvalTermination.mode");
+  });
+
   it("normalizes every workforce approval step and fails before source transition", () => {
     expect(workforceServiceSource.match(/configureApprovalStepRouting\(tx/g)).toHaveLength(4);
     expect(workforceServiceSource.match(/assertAnyEligibleApprovalActorForStep\(tx/g)).toHaveLength(4);

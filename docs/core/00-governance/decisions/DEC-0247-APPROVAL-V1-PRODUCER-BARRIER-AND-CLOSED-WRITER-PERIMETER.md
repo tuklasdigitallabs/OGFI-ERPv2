@@ -847,6 +847,15 @@ legacy approve/reject/cancel writers, subject-employee SOD policy, replay,
 disposable PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain
 open.
 
+Legacy `rejectOvertimeRecord` is now the next bounded compatibility correction:
+it acquires the shared company barrier, locks/reloads the overtime source and
+active Employee/derived Location scope, force-terminates the exact pending
+approval graph while normalized routing is disabled, and applies a
+tenant/company/status/`updatedAt` source CAS before audit. Existing workforce
+approval permission semantics remain unchanged; legacy approve/cancel parity,
+subject-employee SOD policy, replay, disposable PostgreSQL/ACL evidence,
+DEC-0246 authority, and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

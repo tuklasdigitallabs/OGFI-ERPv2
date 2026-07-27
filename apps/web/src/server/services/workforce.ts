@@ -2996,8 +2996,14 @@ export async function rejectOvertimeRecord(
     input.reason,
     "WORKFORCE_OVERTIME_REJECTION_REASON_REQUIRED"
   );
-  return prisma.$transaction(async (tx) => {
-    const record = await getScopedOvertimeOrThrow(
+  return withApprovalProducerTransaction(
+    {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeOvertimeRecord"
+    },
+    async (tx) => {
+    const record = await lockOvertimeForLifecycleMutation(
       tx,
       session,
       input.overtimeRecordId
@@ -3007,8 +3013,25 @@ export async function rejectOvertimeRecord(
       ["SUBMITTED", "UNDER_REVIEW"],
       "WORKFORCE_OVERTIME_INVALID_REJECTION_STATUS"
     );
+    const approvalTermination = await terminatePendingApprovalForCancellation(
+      tx,
+      {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        documentType: "EmployeeOvertimeRecord",
+        documentId: record.id,
+        policy: "APPROVAL_REQUIRED",
+        forceWhenDisabled: true
+      }
+    );
     const updated = await tx.employeeOvertimeRecord.update({
-      where: { id: record.id },
+      where: {
+        id: record.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: record.status,
+        updatedAt: record.updatedAt
+      },
       data: {
         status: "REJECTED",
         updatedByUserId: session.user.id
@@ -3022,10 +3045,15 @@ export async function rejectOvertimeRecord(
       beforeStatus: record.status,
       afterStatus: updated.status,
       reason,
-      evidenceReference: input.evidenceReference ?? null
+      evidenceReference: input.evidenceReference ?? null,
+      metadata: {
+        approvalCancellationMode: approvalTermination.mode,
+        approvalInstanceId: approvalTermination.approvalInstanceId
+      }
     });
     return updated;
-  });
+    }
+  );
 }
 
 export async function cancelOvertimeRecord(
