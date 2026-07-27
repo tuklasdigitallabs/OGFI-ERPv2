@@ -715,12 +715,16 @@ describe("inventory transfer foundation rules", () => {
     expect(detailPage).toContain("ui:transfer-receipt:");
     expect(detailPage).toContain('import { TaskSheet } from "@/components/TaskSheet";');
     expect(detailPage).toContain('size="workspace"');
-    expect(detailPage).toContain('bodyScroll="contained"');
+    expect(detailPage).toContain('bodyScroll="auto"');
+    expect(detailPage).toContain('key={`receive-transfer-${transfer.status}-${transfer.receipts.length}');
     expect(detailPage).toContain('footer={({ pending }) =>');
     expect(detailPage).toContain('form={`transfer-receipt-form-${transfer.id}`}');
     expect(detailPage).toContain("No receivable lines remain.");
     expect(detailPage).toContain("min-h-11");
-    expect(detailPage).toContain("sm:grid-cols-2 lg:grid-cols-[1fr_repeat(4,7rem)]");
+    expect(detailPage).toContain("grid-cols-2 gap-3 rounded-md border");
+    expect(service).toContain('const acceptedQty = parseReceiptQuantity(formData, line.id, "acceptedQty") ?? 0;');
+    expect(service).toContain('authoritativeReceipt.receivedByUserId === session.user.id');
+    expect(service).toContain('line.inventoryTransferLine.inventoryTransferId !== transfer.id');
     expect(detailPage).toContain("server rechecks destination scope, MFA, idempotency, and ledger effects");
     expect(detailPage).not.toContain('<EntryModal title="Receive Transfer"');
   });

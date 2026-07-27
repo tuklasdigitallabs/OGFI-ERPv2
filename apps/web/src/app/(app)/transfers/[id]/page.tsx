@@ -379,12 +379,13 @@ export default async function TransferDetailPage({
           {canReceiveCurrentTransfer && receivableLines.length > 0 ? (
             <div className="mt-4">
               <TaskSheet
+                key={`receive-transfer-${transfer.status}-${transfer.receipts.length}-${transfer.receivedAt ?? ""}`}
                 title="Receive Transfer"
                 description="Review every dispatched line, record accepted or discrepancy quantities, and post the destination receipt. The server rechecks destination scope, MFA, idempotency, and ledger effects."
                 trigger={<span>Receive Transfer</span>}
                 triggerClassName="min-h-11 bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
                 size="workspace"
-                bodyScroll="contained"
+                bodyScroll="auto"
                 bodyClassName="p-0"
                 header={
                   <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-3">
@@ -437,7 +438,7 @@ export default async function TransferDetailPage({
                       return (
                         <div
                           key={line.id}
-                          className="grid gap-3 rounded-md border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-[1fr_repeat(4,7rem)]"
+                          className="grid grid-cols-2 gap-3 rounded-md border border-slate-200 bg-white p-3 lg:grid-cols-[1fr_repeat(4,7rem)]"
                         >
                           <div>
                             <p className="text-sm font-semibold text-slate-950">
@@ -502,7 +503,7 @@ export default async function TransferDetailPage({
                           <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">
                             Evidence ref
                             <input
-                              className="rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
+                              className="min-h-11 rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
                               name={`lines.${line.id}.evidenceReference`}
                               placeholder="Photo or document"
                             />

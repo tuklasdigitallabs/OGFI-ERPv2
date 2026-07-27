@@ -78,6 +78,7 @@ Cancelled / Reversed only through controlled actions
 - Source and destination stock never both increase or both decrease for the same confirmed transfer.
 - Dispatch/receipt are idempotent.
 - Receipt retry identity binds the actor, destination, transfer lines, quantities, notes, and discrepancy details; exact completed retries replay, while changed or in-progress reuse fails with a safe conflict state. Receipt reversal follows the same authoritative location/header/line lock order and transaction-time MFA boundary.
+- Receipt quantities are explicit inputs. Missing or blank line quantities are treated as zero; the server never infers acceptance of an omitted line.
 - `Receive Transfer` is a workspace-sized task sheet rather than a short modal: it keeps source/destination context visible while the receiver enters multi-line quantities, discrepancy reasons, and evidence references. Submission prevents accidental duplicate clicks while the server action is pending.
 - When no dispatched quantity remains receivable, the detail page shows an intentional no-receivable-lines state instead of opening a form that cannot post.
 - Receipt failures distinguish scope changes, a retry key bound to different details, and an already-running retry. The user is told to refresh/start a new attempt or wait for the existing result; generic blind-retry guidance is not used for these states.

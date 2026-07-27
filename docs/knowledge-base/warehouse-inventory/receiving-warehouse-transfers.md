@@ -37,6 +37,8 @@ The receipt opens in a workspace-sized task sheet with an independently scrollin
 
 The receipt form uses a retry identity automatically. If the same post is retried, OGFI replays only the same authorized, completed receipt payload. A changed quantity, note, destination, or discrepancy detail requires a new submission; a stale or competing post is rejected safely and does not create duplicate stock. A scope conflict tells you to refresh the transfer; a retry-key conflict tells you to start a new receipt attempt; and an in-progress response tells you to wait for the existing result before retrying.
 
+Each line’s quantity is explicit: if a quantity field is omitted or blank in a crafted or incomplete request, OGFI treats it as zero rather than inferring acceptance of the remaining stock. The standard receipt form supplies accepted, rejected, damaged, and short quantities for every receivable line.
+
 [Screenshot placeholder: Transfer detail page showing Destination Receipt fields for accepted, rejected, damaged, short, reason, and evidence reference.]
 
 ## Expected result

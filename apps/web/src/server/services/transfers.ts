@@ -134,15 +134,7 @@ function receiptRequestHashFromForm(
       destinationInventoryLocationId: line.destinationInventoryLocationId,
       acceptedQty:
         parseReceiptQuantity(formData, line.id, "acceptedQty") ??
-        Number(
-          (
-            Number(line.dispatchedQty) -
-            Number(line.receivedQty) -
-            Number(line.rejectedQty) -
-            Number(line.damagedQty) -
-            Number(line.discrepancyQty)
-          ).toFixed(6)
-        ),
+        0,
       rejectedQty: parseReceiptQuantity(formData, line.id, "rejectedQty") ?? 0,
       damagedQty: parseReceiptQuantity(formData, line.id, "damagedQty") ?? 0,
       discrepancyQty:
@@ -1799,6 +1791,9 @@ export async function receiveInventoryTransfer(formData: FormData) {
     ) {
       throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
     }
+    // Reauthorize after the authoritative locks are held so a revoked receiver
+    // cannot post against a stale session snapshot.
+    await requirePermission(session, permissions.transferReceive);
     const authoritativeInventoryLocationIds = new Set(
       authoritativeTransfer.lines.flatMap((line) => [
         line.sourceInventoryLocationId,
@@ -1826,9 +1821,23 @@ export async function receiveInventoryTransfer(formData: FormData) {
         status: "ACTIVE",
         id: { in: [...authoritativeInventoryLocationIds] }
       },
-      select: { id: true }
+      select: { id: true, locationId: true }
     });
     if (activeInventoryLocations.length !== authoritativeInventoryLocationIds.size) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
+    const inventoryLocationById = new Map(
+      activeInventoryLocations.map((location) => [location.id, location.locationId])
+    );
+    if (
+      authoritativeTransfer.lines.some(
+        (line) =>
+          inventoryLocationById.get(line.sourceInventoryLocationId) !==
+            authoritativeTransfer.sourceLocationId ||
+          inventoryLocationById.get(line.destinationInventoryLocationId) !==
+            authoritativeTransfer.destinationLocationId
+      )
+    ) {
       throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
     }
     if (authoritativeTransfer.dispatchedByUserId === session.user.id) {
@@ -1836,8 +1845,7 @@ export async function receiveInventoryTransfer(formData: FormData) {
     }
 
     const receiptInputs = authoritativeTransfer.lines.map((line) => {
-      const acceptedQty = parseReceiptQuantity(formData, line.id, "acceptedQty") ??
-        Number((Number(line.dispatchedQty) - Number(line.receivedQty) - Number(line.rejectedQty) - Number(line.damagedQty) - Number(line.discrepancyQty)).toFixed(6));
+      const acceptedQty = parseReceiptQuantity(formData, line.id, "acceptedQty") ?? 0;
       const rejectedQty = parseReceiptQuantity(formData, line.id, "rejectedQty") ?? 0;
       const damagedQty = parseReceiptQuantity(formData, line.id, "damagedQty") ?? 0;
       const discrepancyQty = parseReceiptQuantity(formData, line.id, "discrepancyQty") ?? 0;
@@ -1990,10 +1998,19 @@ export async function receiveInventoryTransfer(formData: FormData) {
           notes: authoritativeTransfer.publicReference
         });
 
-        await tx.inventoryTransferReceiptLine.update({
-          where: { id: receiptLine.id },
+        const linked = await tx.inventoryTransferReceiptLine.updateMany({
+          where: {
+            id: receiptLine.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            inventoryTransferId: authoritativeTransfer.id,
+            postedMovementId: null
+          },
           data: { postedMovementId: movement.id }
         });
+        if (linked.count !== 1) {
+          throw new Error("TRANSFER_RECEIPT_STATE_CONFLICT");
+        }
       }
 
       const updated = await tx.inventoryTransferLine.updateMany({
@@ -2045,8 +2062,15 @@ export async function receiveInventoryTransfer(formData: FormData) {
       }))
     );
 
-    await tx.inventoryTransferReceipt.update({
-      where: { id: receipt.id },
+    const postedReceipt = await tx.inventoryTransferReceipt.updateMany({
+      where: {
+        id: receipt.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        inventoryTransferId: authoritativeTransfer.id,
+        status: "POSTING",
+        updatedAt: receipt.updatedAt
+      },
       data: {
         status: "POSTED",
         postedAt: now,
@@ -2054,6 +2078,9 @@ export async function receiveInventoryTransfer(formData: FormData) {
         discrepancySummary: discrepancySummaries.join("; ") || null
       }
     });
+    if (postedReceipt.count !== 1) {
+      throw new Error("TRANSFER_RECEIPT_STATE_CONFLICT");
+    }
 
     const updatedTransfer = await tx.inventoryTransfer.updateMany({
       where: {
@@ -2313,6 +2340,45 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
       ORDER BY l."lineNumber" ASC, l."id" ASC
       FOR UPDATE OF l
     `);
+    const lockedReceiptRows = await tx.$queryRaw<Array<{ id: string; updatedAt: Date }>>(Prisma.sql`
+      SELECT r."id", r."updatedAt"
+      FROM "InventoryTransferReceipt" r
+      WHERE r."id" = ${loadedReceipt.id}
+        AND r."tenantId" = ${session.context.tenantId}
+        AND r."companyId" = ${session.context.companyId}
+        AND r."inventoryTransferId" = ${lockedTransfer.id}
+      FOR UPDATE OF r
+    `);
+    if (lockedReceiptRows.length !== 1) {
+      throw new Error("TRANSFER_RECEIPT_NOT_FOUND");
+    }
+    const lockedReceiptLines = await tx.$queryRaw<
+      Array<{ id: string; postedMovementId: string | null }>
+    >(Prisma.sql`
+      SELECT rl."id", rl."postedMovementId"
+      FROM "InventoryTransferReceiptLine" rl
+      WHERE rl."transferReceiptId" = ${loadedReceipt.id}
+        AND rl."tenantId" = ${session.context.tenantId}
+        AND rl."companyId" = ${session.context.companyId}
+      ORDER BY rl."lineNumber" ASC, rl."id" ASC
+      FOR UPDATE OF rl
+    `);
+    const originalMovementIdsToLock = lockedReceiptLines
+      .map((line) => line.postedMovementId)
+      .filter((id): id is string => Boolean(id));
+    if (originalMovementIdsToLock.length > 0) {
+      await tx.$queryRaw(Prisma.sql`
+        SELECT m."id"
+        FROM "InventoryMovement" m
+        WHERE m."id" IN (${Prisma.join(
+          originalMovementIdsToLock.map((id) => Prisma.sql`${id}::uuid`)
+        )})
+          AND m."tenantId" = ${session.context.tenantId}
+          AND m."companyId" = ${session.context.companyId}
+        ORDER BY m."id"
+        FOR UPDATE OF m
+      `);
+    }
     const authoritativeReceipt = await tx.inventoryTransferReceipt.findFirst({
       where: {
         id: loadedReceipt.id,
@@ -2336,9 +2402,67 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     if (!authoritativeReceipt) {
       throw new Error("TRANSFER_RECEIPT_NOT_FOUND");
     }
+    if (lockedReceiptLines.length !== authoritativeReceipt.lines.length) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
     receipt = authoritativeReceipt;
     transfer = authoritativeReceipt.inventoryTransfer;
+    // Reauthorize and validate endpoint lineage after the receipt graph is
+    // rehydrated; the pre-lock session and line snapshots are not authoritative.
+    await requirePermission(session, permissions.transferReceiptReverse);
     if (transfer.destinationLocationId !== session.context.locationId) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
+    assertTransferReceiptCanReverse(authoritativeReceipt.status, authoritativeReceipt.reversedAt);
+    if (
+      authoritativeReceipt.receivedByUserId === session.user.id ||
+      transfer.dispatchedByUserId === session.user.id
+    ) {
+      throw new Error(
+        authoritativeReceipt.receivedByUserId === session.user.id
+          ? "TRANSFER_RECEIPT_SELF_REVERSAL_NOT_ALLOWED"
+          : "TRANSFER_RECEIPT_DISPATCHER_REVERSAL_NOT_ALLOWED"
+      );
+    }
+    if (
+      authoritativeReceipt.lines.some(
+        (line) =>
+          line.inventoryTransferId !== transfer.id ||
+          line.inventoryTransferLine.inventoryTransferId !== transfer.id ||
+          line.inventoryTransferLine.itemId !== line.itemId ||
+          line.inventoryTransferLine.uomId !== line.uomId
+      )
+    ) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
+    const receiptInventoryLocationIds = new Set(
+      transfer.lines.flatMap((line) => [
+        line.sourceInventoryLocationId,
+        line.destinationInventoryLocationId
+      ])
+    );
+    const receiptInventoryLocations = await tx.inventoryLocation.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE",
+        id: { in: [...receiptInventoryLocationIds] }
+      },
+      select: { id: true, locationId: true }
+    });
+    const receiptInventoryLocationById = new Map(
+      receiptInventoryLocations.map((location) => [location.id, location.locationId])
+    );
+    if (
+      receiptInventoryLocations.length !== receiptInventoryLocationIds.size ||
+      transfer.lines.some(
+        (line) =>
+          receiptInventoryLocationById.get(line.sourceInventoryLocationId) !==
+            transfer.sourceLocationId ||
+          receiptInventoryLocationById.get(line.destinationInventoryLocationId) !==
+            transfer.destinationLocationId
+      )
+    ) {
       throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
     }
     const authoritativeReversalLocationIds = new Set(
@@ -2464,10 +2588,11 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
           id: line.inventoryTransferLineId,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          receivedQty: { gte: line.acceptedQty },
-          rejectedQty: { gte: line.rejectedQty },
-          damagedQty: { gte: line.damagedQty },
-          discrepancyQty: { gte: line.discrepancyQty }
+          inventoryTransferId: transfer.id,
+          receivedQty: line.inventoryTransferLine.receivedQty,
+          rejectedQty: line.inventoryTransferLine.rejectedQty,
+          damagedQty: line.inventoryTransferLine.damagedQty,
+          discrepancyQty: line.inventoryTransferLine.discrepancyQty
         },
         data: {
           receivedQty: { decrement: acceptedQty },
@@ -2483,7 +2608,11 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     }
 
     const updatedLines = await tx.inventoryTransferLine.findMany({
-      where: { inventoryTransferId: transfer.id },
+      where: {
+        inventoryTransferId: transfer.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
+      },
       orderBy: { lineNumber: "asc" }
     });
     const nextStatus = calculateTransferReceiptStatus(
@@ -2499,6 +2628,8 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     const latestRemainingReceipt = await tx.inventoryTransferReceipt.findFirst({
       where: {
         inventoryTransferId: transfer.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
         status: "POSTED",
         reversedAt: null,
         id: { not: receipt.id }
