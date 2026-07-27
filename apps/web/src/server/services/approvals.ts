@@ -2618,6 +2618,170 @@ async function lockAndRevalidatePaymentRequestTerminalSource(
   return source;
 }
 
+type LockedPettyCashTerminalSource = {
+  id: string;
+  pettyCashFundId: string;
+  fundLocationId: string;
+  requestedByUserId: string;
+  approvalInstanceId: string | null;
+  approvalProposalVersion: number;
+  updatedAt: Date;
+  evidenceReference: string | null;
+};
+
+async function lockAndRevalidateLegacyPettyCashTerminalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  expected: Prisma.PettyCashRequestGetPayload<{
+    include: { fund: true; ledgerEntries: true };
+  }>,
+  approvalInstanceId: string,
+  stepOrder: number
+): Promise<LockedPettyCashTerminalSource> {
+  const approvalRows = await tx.$queryRaw<Array<{
+    id: string;
+    documentType: string;
+    documentId: string;
+    status: string;
+    currentStepOrder: number | null;
+  }>>`
+    SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status,
+           ai."currentStepOrder"
+      FROM "ApprovalInstance" ai
+     WHERE ai.id = ${approvalInstanceId}::uuid
+       AND ai."tenantId" = ${session.context.tenantId}::uuid
+       AND ai."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF ai
+  `;
+  const approval = approvalRows[0];
+  if (!approval || approval.documentType !== "PettyCashRequest" ||
+      approval.documentId !== expected.id || approval.status !== "PENDING" ||
+      approval.currentStepOrder !== stepOrder) {
+    throw new Error("APPROVAL_NOT_ACTIONABLE");
+  }
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT step.id
+      FROM "ApprovalInstanceStep" step
+     WHERE step."approvalInstanceId" = ${approvalInstanceId}::uuid
+     ORDER BY step."stepOrder" ASC, step.id ASC
+     FOR UPDATE OF step
+  `;
+  const rows = await tx.$queryRaw<LockedPettyCashTerminalSource[]>`
+    SELECT request.id,
+           request."pettyCashFundId",
+           fund."locationId" AS "fundLocationId",
+           request."requestedByUserId",
+           request."approvalInstanceId",
+           request."approvalProposalVersion",
+           request."updatedAt",
+           request."evidenceReference"
+      FROM "PettyCashRequest" request
+      JOIN "PettyCashFund" fund
+        ON fund.id = request."pettyCashFundId"
+       AND fund."tenantId" = request."tenantId"
+       AND fund."companyId" = request."companyId"
+       AND fund.status = 'ACTIVE'::"PettyCashFundStatus"
+      JOIN "Location" location
+        ON location.id = fund."locationId"
+       AND location."tenantId" = request."tenantId"
+       AND location."companyId" = request."companyId"
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     WHERE request.id = ${expected.id}::uuid
+       AND request."tenantId" = ${session.context.tenantId}::uuid
+       AND request."companyId" = ${session.context.companyId}::uuid
+       AND request.status = 'AWAITING_APPROVAL'::"PettyCashRequestStatus"
+       AND request."approvalInstanceId" = ${approvalInstanceId}::uuid
+     FOR UPDATE OF request
+     FOR SHARE OF fund, location
+  `;
+  const source = rows[0];
+  if (!source || source.updatedAt.getTime() !== expected.updatedAt.getTime() ||
+      source.pettyCashFundId !== expected.pettyCashFundId ||
+      source.requestedByUserId !== expected.requestedByUserId) {
+    throw new Error("APPROVAL_SOURCE_CHANGED");
+  }
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT entry.id
+      FROM "PettyCashLedgerEntry" entry
+     WHERE entry."pettyCashRequestId" = ${source.id}::uuid
+       AND entry."tenantId" = ${session.context.tenantId}::uuid
+       AND entry."companyId" = ${session.context.companyId}::uuid
+     ORDER BY entry.id ASC
+     FOR UPDATE OF entry
+  `;
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT disbursement.id
+      FROM "NonSupplierDisbursementRequest" disbursement
+     WHERE disbursement."pettyCashRequestId" = ${source.id}::uuid
+       AND disbursement."tenantId" = ${session.context.tenantId}::uuid
+       AND disbursement."companyId" = ${session.context.companyId}::uuid
+     ORDER BY disbursement.id ASC
+     FOR UPDATE OF disbursement
+  `;
+  const activity = await tx.$queryRaw<Array<{ count: bigint }>>`
+    SELECT (
+      (SELECT count(*) FROM "PettyCashLedgerEntry" entry
+        WHERE entry."pettyCashRequestId" = ${source.id}::uuid
+          AND entry."tenantId" = ${session.context.tenantId}::uuid
+          AND entry."companyId" = ${session.context.companyId}::uuid)
+      +
+      (SELECT count(*) FROM "NonSupplierDisbursementRequest" disbursement
+        WHERE disbursement."pettyCashRequestId" = ${source.id}::uuid
+          AND disbursement."tenantId" = ${session.context.tenantId}::uuid
+          AND disbursement."companyId" = ${session.context.companyId}::uuid)
+    )::bigint AS count
+  `;
+  if (Number(activity[0]?.count ?? 0n) !== 0) {
+    throw new Error("PETTY_CASH_REQUEST_CASH_ACTIVITY_CONFLICT");
+  }
+  await assertApprovalScope(session, source.fundLocationId);
+  if (source.requestedByUserId === session.user.id) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  return source;
+}
+
+async function assertPettyCashTerminalNoActivity(
+  tx: TransactionClient,
+  session: SessionContext,
+  requestId: string
+) {
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT entry.id
+      FROM "PettyCashLedgerEntry" entry
+     WHERE entry."pettyCashRequestId" = ${requestId}::uuid
+       AND entry."tenantId" = ${session.context.tenantId}::uuid
+       AND entry."companyId" = ${session.context.companyId}::uuid
+     ORDER BY entry.id ASC
+     FOR UPDATE OF entry
+  `;
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT disbursement.id
+      FROM "NonSupplierDisbursementRequest" disbursement
+     WHERE disbursement."pettyCashRequestId" = ${requestId}::uuid
+       AND disbursement."tenantId" = ${session.context.tenantId}::uuid
+       AND disbursement."companyId" = ${session.context.companyId}::uuid
+     ORDER BY disbursement.id ASC
+     FOR UPDATE OF disbursement
+  `;
+  const rows = await tx.$queryRaw<Array<{ count: bigint }>>`
+    SELECT (
+      (SELECT count(*) FROM "PettyCashLedgerEntry" entry
+        WHERE entry."pettyCashRequestId" = ${requestId}::uuid
+          AND entry."tenantId" = ${session.context.tenantId}::uuid
+          AND entry."companyId" = ${session.context.companyId}::uuid)
+      +
+      (SELECT count(*) FROM "NonSupplierDisbursementRequest" disbursement
+        WHERE disbursement."pettyCashRequestId" = ${requestId}::uuid
+          AND disbursement."tenantId" = ${session.context.tenantId}::uuid
+          AND disbursement."companyId" = ${session.context.companyId}::uuid)
+    )::bigint AS count
+  `;
+  if (Number(rows[0]?.count ?? 0n) !== 0) {
+    throw new Error("PETTY_CASH_REQUEST_CASH_ACTIVITY_CONFLICT");
+  }
+}
+
 async function findActionablePaymentReleaseApproval(
   session: SessionContext,
   approvalInstanceId: string
@@ -9861,6 +10025,11 @@ async function closePettyCashRequestWithDecision(
     );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PettyCashRequest"
+    });
     const normalizedPreflight =
       await prepareSpecializedApprovalDecisionAuthority(tx, session, {
         approvalInstanceId: approval.id,
@@ -9873,6 +10042,20 @@ async function closePettyCashRequestWithDecision(
           documentId: request.id
         }
       });
+    const legacyLockedSource = normalizedPreflight
+      ? null
+      : await lockAndRevalidateLegacyPettyCashTerminalSource(
+          tx,
+          session,
+          request,
+          approval.id,
+          step.stepOrder
+        );
+    await assertPettyCashTerminalNoActivity(
+      tx,
+      session,
+      legacyLockedSource?.id ?? normalizedPreflight?.lockedPettyCashSource?.id ?? request.id
+    );
     const lockedSource = normalizedPreflight?.lockedPettyCashSource ?? null;
     const normalizedIntent = lockedSource
       ? await appendPettyCashApprovalIntentAndAdvanceProposal(tx, session, {
@@ -9918,11 +10101,17 @@ async function closePettyCashRequestWithDecision(
     });
     const updatedRequest = await tx.pettyCashRequest.updateMany({
       where: {
-        id: lockedSource?.id ?? request.id,
+        id: legacyLockedSource?.id ?? lockedSource?.id ?? request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
         approvalInstanceId: approval.id,
+        ...(legacyLockedSource
+          ? {
+              pettyCashFundId: legacyLockedSource.pettyCashFundId,
+              updatedAt: legacyLockedSource.updatedAt
+            }
+          : {}),
         ...(lockedSource && normalizedIntent
           ? {
               currentProposedAmountPhp: null,
@@ -9965,7 +10154,7 @@ async function closePettyCashRequestWithDecision(
         actorUserId: session.user.id,
         eventType,
         entityType: "PettyCashRequest",
-        entityId: lockedSource?.id ?? request.id,
+        entityId: legacyLockedSource?.id ?? lockedSource?.id ?? request.id,
         beforeData: { status: "AWAITING_APPROVAL" },
         afterData: { status: requestStatus },
         metadata: {

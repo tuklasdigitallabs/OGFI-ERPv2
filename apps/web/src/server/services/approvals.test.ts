@@ -1011,4 +1011,33 @@ describe("multi-step approval advancement", () => {
     expect(terminal).toContain("noApInvoiceMutation");
     expect(terminal).toContain("noPaymentRelease");
   });
+
+  test("petty cash terminal decisions harden legacy source and cash-activity boundaries", () => {
+    const helper = extractFunctionSource(
+      serviceSource,
+      "lockAndRevalidateLegacyPettyCashTerminalSource"
+    );
+    const activity = extractFunctionSource(
+      serviceSource,
+      "assertPettyCashTerminalNoActivity"
+    );
+    const terminal = extractFunctionSource(
+      serviceSource,
+      "closePettyCashRequestWithDecision"
+    );
+    expect(helper).toContain('documentType !== "PettyCashRequest"');
+    expect(helper).toContain('FROM "PettyCashRequest" request');
+    expect(helper).toContain('FOR UPDATE OF ai');
+    expect(helper).toContain('FOR UPDATE OF request');
+    expect(helper).toContain('FOR SHARE OF fund, location');
+    expect(helper).toContain('FROM "PettyCashLedgerEntry" entry');
+    expect(helper).toContain('FROM "NonSupplierDisbursementRequest" disbursement');
+    expect(helper).toContain("PETTY_CASH_REQUEST_CASH_ACTIVITY_CONFLICT");
+    expect(activity).toContain("FOR UPDATE OF entry");
+    expect(activity).toContain("FOR UPDATE OF disbursement");
+    expect(terminal).toContain('documentType: "PettyCashRequest"');
+    expect(terminal).toContain("legacyLockedSource.updatedAt");
+    expect(terminal).toContain("noPaymentCreation");
+    expect(terminal).toContain("noPaymentRelease");
+  });
 });

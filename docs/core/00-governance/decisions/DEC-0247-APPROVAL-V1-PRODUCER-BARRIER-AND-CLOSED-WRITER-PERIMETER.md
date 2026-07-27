@@ -1000,3 +1000,6 @@ certification, and activation gates.
 ### Payment Request terminal correction (July 27, 2026)
 
 Architecture/Security accepted terminal-only Payment Request return/reject with source, line, AP-invoice, supplier, and location locks plus an explicit zero-`PaymentRelease` gate. The writer changes only the Payment Request terminal status and audit record; it does not mutate AP, payment, bank, journal, commitment, budget, or inventory state. Normalized approval remains blocked by DEC-0244. PostgreSQL race, rollback, ACL/SOD, and replay evidence remain open.
+### Petty Cash terminal legacy-parity correction (July 27, 2026)
+
+Architecture, Security, and QA accepted a terminal-only PettyCashRequest return/reject parity slice. The legacy path now uses the company barrier, locks and revalidates the approval graph, request, active fund/location, and exact source timestamp, and fails closed when any Petty Cash ledger or non-supplier disbursement activity exists. Normalized typed-intent behavior and amount/evidence policy remain unchanged; no fund, payment, bank, AP, journal, budget, or period-close mutation is introduced. DEC-0051 amount authority and DEC-0047 evidence qualification remain open, as do PostgreSQL race/rollback/ACL/replay proofs.
