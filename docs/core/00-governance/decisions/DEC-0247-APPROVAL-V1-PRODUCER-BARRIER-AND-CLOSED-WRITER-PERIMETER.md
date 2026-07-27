@@ -1017,3 +1017,7 @@ Architecture, Security, and QA rejected an isolated cancellation barrier/CAS cha
 ### Finance Close mutable lifecycle fencing correction — July 27, 2026
 
 The coupled correction is accepted as a dormant, feature-disabled source-integrity improvement. Checklist, exception, readiness, completion, and cancellation writers now share the FinanceCloseRun barrier and parent-row lock order; completion locks the AccountingPeriod before soft-close; cancellation requires a stable idempotency identity, verifies legacy graph coherence, and remains source-only. This does not authorize Finance Close approval/period lock/reopen activation, and PostgreSQL race/replay/rollback/zero-side-effect evidence remains a release gate.
+
+### Payment Request final approval legacy-perimeter correction — July 27, 2026
+
+Architecture and Security accepted a feature-disabled, legacy-only Payment Request approval correction. Approval now uses the same barrier and source/line/AP-invoice/supplier/location/release-residue lock contract as terminal decisions, and final source CAS binds status, `updatedAt`, and the approval backlink. The change remains approval-only: it does not create or mutate PaymentRelease, AP balances, bank, journal, budget, commitment, or inventory state. DEC-0244 normalized approval and Payment Release policy gates remain open.

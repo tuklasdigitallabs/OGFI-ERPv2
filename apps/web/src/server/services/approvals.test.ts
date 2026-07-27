@@ -1012,6 +1012,22 @@ describe("multi-step approval advancement", () => {
     expect(terminal).toContain("noPaymentRelease");
   });
 
+  test("payment request approval revalidates the source perimeter before graph decisions", () => {
+    const approve = extractFunctionSource(
+      serviceSource,
+      "approvePaymentRequestApproval"
+    );
+    expect(approve).toContain('documentType: "PaymentRequest"');
+    expect(approve).toContain("lockAndRevalidatePaymentRequestTerminalSource");
+    expect(approve).toContain("updatedAt: lockedRequest.updatedAt");
+    expect(approve).toContain("approvalInstanceId: approval.id");
+    expect(approve).toContain("noPaymentRelease");
+    expect(approve).toContain("noJournalPosting");
+    expect(approve.indexOf("lockAndRevalidatePaymentRequestTerminalSource")).toBeLessThan(
+      approve.indexOf("prepareSpecializedApprovalDecisionAuthority")
+    );
+  });
+
   test("petty cash terminal decisions harden legacy source and cash-activity boundaries", () => {
     const helper = extractFunctionSource(
       serviceSource,

@@ -10307,6 +10307,17 @@ export async function approvePaymentRequestApproval(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PaymentRequest"
+    });
+    const lockedRequest = await lockAndRevalidatePaymentRequestTerminalSource(
+      tx,
+      session,
+      request,
+      approval.id
+    );
     const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
       tx,
       session,
@@ -10384,6 +10395,10 @@ export async function approvePaymentRequestApproval(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
+        updatedAt: lockedRequest.updatedAt,
+        ...(lockedRequest.approvalInstanceId
+          ? { approvalInstanceId: approval.id }
+          : {}),
       },
       data: {
         status: "APPROVED",
