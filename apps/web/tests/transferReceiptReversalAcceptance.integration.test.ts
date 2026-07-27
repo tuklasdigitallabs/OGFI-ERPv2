@@ -239,7 +239,11 @@ describe.skipIf(!databaseEnabled).sequential(
           value.set(`lines.${lineId}.discrepancyQty`, "0");
           return value;
         };
-        await receiveInventoryTransfer(form("2"));
+        const concurrentResults = await Promise.allSettled([
+          receiveInventoryTransfer(form("2")),
+          receiveInventoryTransfer(form("2")),
+        ]);
+        expect(concurrentResults.every(({ status }) => status === "fulfilled")).toBe(true);
         const first = await prisma.inventoryTransferReceipt.findFirstOrThrow({ where: { inventoryTransferId: ids.transfer } });
         expect(first.status).toBe("POSTED");
         const receiptLine = await prisma.inventoryTransferReceiptLine.findFirstOrThrow({ where: { transferReceiptId: first.id } });
