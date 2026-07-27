@@ -693,6 +693,15 @@ replay identity is absent. Focused coverage passes 4/4 with web typecheck/lint
 and diff checks green; PostgreSQL race, lineage, evidence, rollback, sibling
 writer, and activation evidence remain pending.
 
+Cash Advance submission now locks the request through an active
+tenant/company Location, requires a sealed rule, claims the admitted draft or
+returned state before graph creation, and attaches the exact approval backlink
+with a second CAS. The legacy approval path now prohibits both requester and
+beneficiary self-approval. Focused coverage passes 10/10 with web typecheck
+green. Optional linked-source lineage, evidence/payment handoff policy,
+replay, PostgreSQL races/rollback, sibling writers, and activation remain open;
+no payment, bank, journal, or settlement mutation is authorized.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

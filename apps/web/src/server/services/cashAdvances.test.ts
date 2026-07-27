@@ -152,6 +152,14 @@ describe("cash advance foundation", () => {
     expect(serviceSource).toContain("findCashAdvanceApprovalRule");
     expect(serviceSource).toContain('documentType: "CashAdvanceRequest"');
     expect(serviceSource).toContain("approvalInstance.create");
+    expect(serviceSource).toContain("FOR UPDATE OF ca");
+    expect(serviceSource).toContain("definitionSealed: true");
+    expect(serviceSource).toContain("approvalInstanceId: null");
+    expect(serviceSource).toContain("const claimed = await tx.cashAdvanceRequest.updateMany");
+    expect(serviceSource.indexOf("const claimed = await tx.cashAdvanceRequest.updateMany")).toBeLessThan(
+      serviceSource.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
+    expect(serviceSource).toContain("request.beneficiaryUserId === session.user.id");
     expect(serviceSource).toContain("APPROVE_CASH_ADVANCE");
     expect(serviceSource).toContain("CASH_ADVANCE_APPROVAL_RULE_NOT_CONFIGURED");
     expect(serviceSource).toContain("CASH_ADVANCE_ALREADY_SUBMITTED");

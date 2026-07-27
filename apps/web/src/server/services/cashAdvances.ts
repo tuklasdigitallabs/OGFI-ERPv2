@@ -605,7 +605,8 @@ async function findCashAdvanceApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "CashAdvanceRequest",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -1057,6 +1058,27 @@ export async function submitCashAdvanceForApproval(
     companyId: session.context.companyId,
     documentType: "CashAdvanceRequest",
   }, async (tx) => {
+    const lockedRequests = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      version: number;
+      locationId: string;
+    }>>`
+      SELECT ca.id, ca.status, ca.version, ca."locationId"
+        FROM "CashAdvanceRequest" ca
+        JOIN "Location" l ON l.id = ca."locationId"
+       WHERE ca.id = ${input.cashAdvanceRequestId}::uuid
+         AND ca."tenantId" = ${session.context.tenantId}::uuid
+         AND ca."companyId" = ${session.context.companyId}::uuid
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+         AND l.status = 'ACTIVE'
+       FOR UPDATE OF ca
+    `;
+    const lockedRequest = lockedRequests[0];
+    if (!lockedRequest) {
+      throw new Error("CASH_ADVANCE_NOT_FOUND");
+    }
     const request = await getScopedCashAdvanceOrThrow(
       tx,
       session,
@@ -1071,15 +1093,13 @@ export async function submitCashAdvanceForApproval(
         status: "PENDING"
       }
     })
-    if (request.status === "AWAITING_APPROVAL" && existingApproval) {
-      return request
+    if (request.status === "AWAITING_APPROVAL") {
+      throw new Error("CASH_ADVANCE_ALREADY_SUBMITTED")
     }
-    if (request.status !== "AWAITING_APPROVAL") {
-      assertCashAdvanceTransition({
-        transition: "submit",
-        status: request.status
-      })
-    }
+    assertCashAdvanceTransition({
+      transition: "submit",
+      status: request.status
+    })
     assertEvidence(
       input.evidenceReference ?? request.evidenceReference,
       "CASH_ADVANCE_EVIDENCE_REQUIRED"
@@ -1102,6 +1122,30 @@ export async function submitCashAdvanceForApproval(
 
     if (!request.locationId) {
       throw new Error("CASH_ADVANCE_APPROVAL_SCOPE_NOT_CONFIGURED")
+    }
+    const submittedAt = new Date()
+    const evidenceReference =
+      input.evidenceReference?.trim() ?? request.evidenceReference
+    const claimed = await tx.cashAdvanceRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: lockedRequest.locationId,
+        status: { in: ["DRAFT", "RETURNED_FOR_REVISION"] },
+        version: lockedRequest.version,
+        approvalInstanceId: null
+      },
+      data: {
+        status: "AWAITING_APPROVAL",
+        submittedByUserId: session.user.id,
+        submittedAt,
+        evidenceReference,
+        version: { increment: 1 }
+      }
+    })
+    if (claimed.count !== 1) {
+      throw new Error("CASH_ADVANCE_INVALID_STATUS_TRANSITION")
     }
     const routedSteps = approvalRule.steps.map((step, index) => ({
       ...step,
@@ -1174,18 +1218,32 @@ export async function submitCashAdvanceForApproval(
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     })
 
-    const updated = await tx.cashAdvanceRequest.update({
-      where: { id: request.id },
-      data: {
+    const linked = await tx.cashAdvanceRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
+        approvalInstanceId: null,
+        version: lockedRequest.version + 1
+      },
+      data: {
         approvalInstanceId: approvalInstance.id,
-        submittedByUserId: session.user.id,
-        submittedAt: new Date(),
-        evidenceReference:
-          input.evidenceReference?.trim() ?? request.evidenceReference,
         version: { increment: 1 }
       }
     })
+    if (linked.count !== 1) {
+      throw new Error("CASH_ADVANCE_INVALID_STATUS_TRANSITION")
+    }
+    const updated = {
+      ...request,
+      status: "AWAITING_APPROVAL" as const,
+      approvalInstanceId: approvalInstance.id,
+      submittedByUserId: session.user.id,
+      submittedAt,
+      evidenceReference,
+      version: lockedRequest.version + 2
+    }
     const auditEvent = await writeCashAdvanceAudit(tx, {
       session,
       entityType: "CashAdvanceRequest",
@@ -1249,7 +1307,10 @@ export async function approveCashAdvanceRequest(
       transition: "approve",
       status: request.status
     })
-    if (request.requestedByUserId === session.user.id) {
+    if (
+      request.requestedByUserId === session.user.id ||
+      request.beneficiaryUserId === session.user.id
+    ) {
       throw new Error("CASH_ADVANCE_SELF_APPROVAL_BLOCKED")
     }
     if (request.budgetStatus === "OVER_BUDGET") {
