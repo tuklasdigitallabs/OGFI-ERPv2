@@ -963,6 +963,10 @@ Architecture, Security, and QA accepted first issuance as a bounded status-only 
 
 Security recommended, and Architecture challenged/accepted, a bounded Stock Adjustment final-approval writer. Approval is source/line/scope/graph locked and CAS-protected, remains non-posting, and preserves the separate post/reverse authority. Posting was normalized to lock the authoritative adjustment before inventory scope, aligning the source → lines → inventory order with approval and terminal/cancellation paths. PostgreSQL contention, rollback, ACL/MFA, replay, and no-ledger-effect evidence remain open.
 
+### Wastage posting lock-order correction (July 27, 2026)
+
+Architecture and Security accepted a bounded Wastage posting correction. The poster now follows barrier → source → ordered lines → inventory scope, rejects pending approval-graph residue and cross-location lines, and rehydrates the authoritative approved report before claiming `POSTING`. Immutable `WASTAGE_OUT` movement keys, line links, final source CAS, reversal separation, and privileged MFA remain unchanged. PostgreSQL contention, rollback, ACL/MFA, replay, and exact-once movement evidence remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

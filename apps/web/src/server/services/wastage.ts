@@ -810,6 +810,56 @@ async function lockWastageSourceForCancellation(
   return source;
 }
 
+async function lockWastageSourceForPosting(
+  tx: TransactionClient,
+  session: SessionContext,
+  reportId: string
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    inventoryLocationId: string;
+    status: string;
+    updatedAt: Date;
+    postedAt: Date | null;
+  }>>`
+    SELECT report.id, report."inventoryLocationId", report.status,
+           report."updatedAt", report."postedAt"
+      FROM "WastageReport" report
+     WHERE report.id = ${reportId}::uuid
+       AND report."tenantId" = ${session.context.tenantId}::uuid
+       AND report."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF report
+  `;
+  const source = rows[0];
+  if (!source || source.status !== "APPROVED" || source.postedAt) {
+    if (source?.status === "POSTED" || source?.postedAt) return source;
+    throw new Error("WASTAGE_NOT_APPROVED_FOR_POSTING");
+  }
+  const inventoryRows = await tx.$queryRaw<Array<{ id: string; locationId: string }>>`
+    SELECT inventoryLocation.id, inventoryLocation."locationId"
+      FROM "InventoryLocation" inventoryLocation
+     WHERE inventoryLocation.id = ${source.inventoryLocationId}::uuid
+       AND inventoryLocation."tenantId" = ${session.context.tenantId}::uuid
+       AND inventoryLocation."companyId" = ${session.context.companyId}::uuid
+       AND inventoryLocation.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF inventoryLocation
+  `;
+  const inventoryLocation = inventoryRows[0];
+  if (!inventoryLocation) throw new Error("WASTAGE_DOCUMENT_SCOPE_NOT_FOUND");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${inventoryLocation.locationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("WASTAGE_DOCUMENT_SCOPE_NOT_FOUND");
+  assertAuthorizedLocation(session, inventoryLocation.locationId);
+  return source;
+}
+
 function requiredFormValues(formData: FormData, name: string) {
   return formData
     .getAll(name)
@@ -1829,15 +1879,68 @@ export async function postWastageReport(formData: FormData) {
     }
   });
 
-  await prisma.$transaction(async (tx) => {
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "WastageReport"
+  }, async (tx) => {
+    const lockedSource = await lockWastageSourceForPosting(tx, session, report.id);
+    if (lockedSource.status === "POSTED" || lockedSource.postedAt) return;
+    const pendingGraphRows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+        FROM "ApprovalInstance"
+       WHERE "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "documentType" = 'WastageReport'
+         AND "documentId" = ${report.id}::uuid
+         AND status = 'PENDING'::"ApprovalStatus"
+       LIMIT 1
+    `;
+    if (pendingGraphRows.length > 0) {
+      throw new Error("WASTAGE_APPROVAL_GRAPH_NOT_CLOSED");
+    }
+    const lockedLineRows = await tx.$queryRaw<Array<{ id: string; inventoryLocationId: string; postedMovementId: string | null }>>`
+      SELECT line.id, line."inventoryLocationId", line."postedMovementId"
+        FROM "WastageLine" line
+       WHERE line."wastageReportId" = ${report.id}::uuid
+         AND line."tenantId" = ${session.context.tenantId}::uuid
+         AND line."companyId" = ${session.context.companyId}::uuid
+       ORDER BY line."lineNumber" ASC, line.id ASC
+       FOR UPDATE OF line
+    `;
+    if (lockedLineRows.length === 0 || lockedLineRows.some((line) =>
+      line.inventoryLocationId !== lockedSource.inventoryLocationId
+    )) {
+      throw new Error("WASTAGE_LINES_NOT_POSTABLE");
+    }
+    const authoritativeReport = await tx.wastageReport.findFirst({
+      where: {
+        id: report.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "APPROVED"
+      },
+      include: {
+        inventoryLocation: true,
+        lines: {
+          orderBy: { lineNumber: "asc" },
+          include: { item: true }
+        }
+      }
+    });
+    if (!authoritativeReport) throw new Error("WASTAGE_NOT_APPROVED_FOR_POSTING");
+    if (authoritativeReport.lines.length === 0) {
+      throw new Error("WASTAGE_REPORT_HAS_NO_LINES");
+    }
+    const postingReport = authoritativeReport;
     const inventoryLocationLock = await lockInventoryLocationsForPosting(
       tx,
       session,
-      report.lines.map((line) => line.inventoryLocationId)
+      postingReport.lines.map((line) => line.inventoryLocationId)
     );
     const claimed = await tx.wastageReport.updateMany({
       where: {
-        id: report.id,
+        id: postingReport.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "APPROVED",
@@ -1848,7 +1951,7 @@ export async function postWastageReport(formData: FormData) {
     if (claimed.count !== 1) {
       const current = await tx.wastageReport.findFirst({
         where: {
-          id: report.id,
+          id: postingReport.id,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId
         },
@@ -1861,7 +1964,7 @@ export async function postWastageReport(formData: FormData) {
     }
 
     const movementIds: string[] = [];
-    for (const line of report.lines) {
+    for (const line of postingReport.lines) {
       if (line.postedMovementId) {
         movementIds.push(line.postedMovementId);
         continue;
@@ -1877,7 +1980,7 @@ export async function postWastageReport(formData: FormData) {
         enteredUomId: line.uomId,
         quantityDeltaBaseUom: -Math.abs(quantityBaseUom),
         sourceDocumentType: "WastageReport",
-        sourceDocumentId: report.id,
+        sourceDocumentId: postingReport.id,
         sourceDocumentLineId: line.id,
         sourceEventKey: `wastage_line:${line.id}:post`,
         lotNumber: line.lotNumber ?? null,
@@ -1885,7 +1988,7 @@ export async function postWastageReport(formData: FormData) {
         unitCost: Number(line.estimatedUnitCost),
         totalCost: Number(line.estimatedTotalCost),
         reasonCode: line.reasonCode,
-        notes: line.notes ?? report.notes ?? null
+        notes: line.notes ?? postingReport.notes ?? null
       });
 
       await tx.wastageLine.update({
@@ -1898,7 +2001,7 @@ export async function postWastageReport(formData: FormData) {
     const postedAt = new Date();
     const posted = await tx.wastageReport.updateMany({
       where: {
-        id: report.id,
+        id: postingReport.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "POSTING",
@@ -1921,13 +2024,13 @@ export async function postWastageReport(formData: FormData) {
         actorUserId: session.user.id,
         eventType: "wastage_report.posted",
         entityType: "WastageReport",
-        entityId: report.id,
+        entityId: postingReport.id,
         beforeData: { status: "APPROVED" },
         afterData: { status: "POSTED", postedAt },
         metadata: {
-          lineCount: report.lines.length,
+          lineCount: postingReport.lines.length,
           movementIds,
-          totalEstimatedCost: Number(report.totalEstimatedCost),
+          totalEstimatedCost: Number(postingReport.totalEstimatedCost),
           reversalRequiredForCorrections: true
         }
       }

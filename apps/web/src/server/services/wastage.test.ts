@@ -148,6 +148,20 @@ describe("wastage foundation rules", () => {
     expect(action).toContain("updatedAt: lockedSource.updatedAt");
   });
 
+  test("wastage posting locks source and lines before inventory scope", () => {
+    const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
+    const start = source.indexOf("export async function postWastageReport");
+    const action = source.slice(start);
+    expect(action).toContain("withApprovalProducerTransaction");
+    expect(action).toContain("lockWastageSourceForPosting");
+    expect(action).toContain("FOR UPDATE OF line");
+    expect(action).toContain("WASTAGE_APPROVAL_GRAPH_NOT_CLOSED");
+    expect(action.indexOf("lockWastageSourceForPosting")).toBeLessThan(
+      action.indexOf("lockInventoryLocationsForPosting")
+    );
+    expect(action).toContain('sourceEventKey: `wastage_line:${line.id}:post`');
+  });
+
   test("service read gate allows every wastage action permission", () => {
     const source = readFileSync(path.resolve(__dirname, "wastage.ts"), "utf8");
 
