@@ -394,12 +394,29 @@ function isUniqueConstraintError(error: unknown) {
 }
 
 function isTransferReceiptIdempotencyUniqueConstraintError(error: unknown) {
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("code" in error)
+  ) {
+    return false;
+  }
+  if ((error as { code?: unknown }).code === "P2010") {
+    const message =
+      "message" in error && typeof (error as { message?: unknown }).message === "string"
+        ? (error as { message: string }).message
+        : "";
+    return (
+      message.includes("23505") &&
+      message.includes("InventoryTransferReceipt_tenantId_companyId_idempotencyKey")
+    );
+  }
   if (!isUniqueConstraintError(error)) return false;
   const meta =
     "meta" in (error as object) &&
     typeof (error as { meta?: unknown }).meta === "object" &&
     (error as { meta?: unknown }).meta !== null
-      ? (error as { meta: Record<string, unknown> }).meta
+      ? (error as unknown as { meta: Record<string, unknown> }).meta
       : null;
   const target = meta?.target;
   return Array.isArray(target)

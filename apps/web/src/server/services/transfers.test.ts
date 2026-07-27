@@ -700,5 +700,7 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain("TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT");
     expect(service).toContain("racedReceipt");
     expect(service).toContain("requestHashCandidate");
+    expect(service).toContain('code === "P2010"');
+    expect(service).toContain("InventoryTransferReceipt_tenantId_companyId_idempotencyKey");
   });
 });
