@@ -92,7 +92,7 @@ describe("purchase order lifecycle rules", () => {
             ? "const closure = await tx.purchaseOrderBalanceClosure.create"
             : "const amendment = await tx.purchaseOrderAmendment.create"
       );
-      if (functionName === "submitPurchaseOrderForApproval") {
+      if (functionName === "submitPurchaseOrderForApproval" || functionName === "requestPurchaseOrderBalanceClosure") {
         expect(claimOrChildAt).toBeLessThan(
           action.indexOf("assertAnyEligibleApprovalActorForStep(tx")
         );

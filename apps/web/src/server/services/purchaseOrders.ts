@@ -2386,7 +2386,7 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
   }, async (tx) => {
     // Serialize competing closure requests on the authoritative PO row before
     // evaluating pending closures and creating the approval child record.
-    await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${order.id} AND "tenantId" = ${session.context.tenantId} AND "companyId" = ${session.context.companyId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "PurchaseOrder" WHERE id = ${order.id} AND "tenantId" = ${session.context.tenantId} AND "companyId" = ${session.context.companyId} AND "deliveryLocationId" = ${session.context.locationId} FOR UPDATE`;
 
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
@@ -2453,6 +2453,10 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
       (total, line) => total + line.closedValue,
       0,
     );
+    // All routing, prohibited-actor, audit, and notification facts below must
+    // come from the locked/re-read parent rather than the pre-transaction
+    // snapshot.
+    const order = currentOrder;
     const firstStep = approvalRule.steps[0];
     if (!firstStep) {
       throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
@@ -2466,6 +2470,26 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
     }));
     const firstRoutedStep = routedSteps[0];
     if (!firstRoutedStep) throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+
+    // Persist the child source record before creating the approval graph. The
+    // parent row and pending-child count are already locked above; a graph
+    // failure therefore rolls the child back with the same transaction.
+    const closure = await tx.purchaseOrderBalanceClosure.create({
+      data: {
+        id: closureId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        purchaseOrderId: order.id,
+        requestedByUserId: session.user.id,
+        reason: values.reason,
+        supplierNoticeReference,
+        supplierNoticeUnavailableReason,
+        notes: values.notes || null,
+        lineSnapshot: currentLineSnapshot,
+        totalClosedQuantity: currentOutstandingQty,
+        totalClosedValue: currentClosedValue,
+      },
+    });
 
     const approvalInstance = await tx.approvalInstance.create({
       data: {
@@ -2533,23 +2557,6 @@ export async function requestPurchaseOrderBalanceClosure(formData: FormData) {
       ...(firstRoutedStep.userId
         ? { actorUserId: firstRoutedStep.userId }
         : {})
-    });
-
-    const closure = await tx.purchaseOrderBalanceClosure.create({
-      data: {
-        id: closureId,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        purchaseOrderId: order.id,
-        requestedByUserId: session.user.id,
-        reason: values.reason,
-        supplierNoticeReference,
-        supplierNoticeUnavailableReason,
-        notes: values.notes || null,
-        lineSnapshot: currentLineSnapshot,
-        totalClosedQuantity: currentOutstandingQty,
-        totalClosedValue: currentClosedValue,
-      },
     });
 
     await tx.auditEvent.create({

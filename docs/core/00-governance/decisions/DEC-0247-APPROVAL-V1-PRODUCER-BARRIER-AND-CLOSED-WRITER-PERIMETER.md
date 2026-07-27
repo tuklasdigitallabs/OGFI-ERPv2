@@ -635,6 +635,13 @@ with a scoped status/linkage CAS. PurchaseOrder has no version field, so this
 checkpoint adds no schema migration; replay identity, sibling PO lifecycle
 writers, and disposable race evidence remain open.
 
+Purchase Order balance-closure requests now use the locked parent facts for all
+routing and audit/notification lineage and create the preallocated child before
+its ApprovalInstance. This satisfies the POST_CHILD_ONLY identity order and
+keeps child, graph, routing, audit, and notification writes atomic; replay,
+composite child-parent scope integrity, and executable PostgreSQL evidence
+remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
