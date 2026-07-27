@@ -713,5 +713,9 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain('idempotencyKey: z.string().trim().min(16).max(200)');
     expect(detailPage).toContain('name="idempotencyKey"');
     expect(detailPage).toContain("ui:transfer-receipt:");
+    expect(detailPage).toContain('import { TaskSheet } from "@/components/TaskSheet";');
+    expect(detailPage).toContain('size="workspace"');
+    expect(detailPage).toContain("server rechecks destination scope, MFA, idempotency, and ledger effects");
+    expect(detailPage).not.toContain('<EntryModal title="Receive Transfer"');
   });
 });

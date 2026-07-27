@@ -33,7 +33,9 @@ Use this article to confirm stock received from a dispatched transfer. Only acce
 8. Add an optional receiving note.
 9. Select `Post Receipt`.
 
-The receipt form uses a retry identity automatically. If the same post is retried, OGFI replays only the same authorized, completed receipt payload. A changed quantity, note, destination, or discrepancy detail requires a new submission; a stale or competing post is rejected safely and does not create duplicate stock.
+The receipt opens in a workspace-sized task sheet so the full line set, source/destination context, discrepancy fields, and evidence references remain usable on desktop and mobile. While the receipt is submitting, the sheet prevents a second submission.
+
+The receipt form uses a retry identity automatically. If the same post is retried, OGFI replays only the same authorized, completed receipt payload. A changed quantity, note, destination, or discrepancy detail requires a new submission; a stale or competing post is rejected safely and does not create duplicate stock. A scope conflict tells you to refresh the transfer; a retry-key conflict tells you to start a new receipt attempt; and an in-progress response tells you to wait for the existing result before retrying.
 
 [Screenshot placeholder: Transfer detail page showing Destination Receipt fields for accepted, rejected, damaged, short, reason, and evidence reference.]
 

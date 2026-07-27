@@ -146,6 +146,12 @@ const actionFeedbackMessages: Record<string, string> = {
     "Enter at least one accepted, rejected, damaged, or short quantity.",
   TRANSFER_RECEIPT_STATE_CONFLICT:
     "This transfer changed while the receipt was being posted. Refresh and try again.",
+  TRANSFER_RECEIPT_SCOPE_CONFLICT:
+    "The transfer or destination scope changed. Refresh the transfer and confirm the current destination before retrying.",
+  TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT:
+    "This receipt retry key is already bound to different receipt details. Refresh the transfer and start a new receipt attempt.",
+  TRANSFER_RECEIPT_IDEMPOTENCY_IN_PROGRESS:
+    "This receipt attempt is still being processed. Wait for the result and refresh before retrying.",
   TRANSFER_RECEIPT_NOT_FOUND: "This transfer receipt is no longer available.",
   TRANSFER_RECEIPT_NOT_POSTED_FOR_REVERSAL:
     "Only posted transfer receipts can be reversed.",

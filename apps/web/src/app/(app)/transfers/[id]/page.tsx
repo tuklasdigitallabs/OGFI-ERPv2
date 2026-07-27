@@ -5,6 +5,7 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
   getActionFeedback
@@ -365,7 +366,15 @@ export default async function TransferDetailPage({
 
           {canReceiveCurrentTransfer ? (
             <div className="mt-4">
-              <EntryModal title="Receive Transfer" triggerLabel="Receive Transfer">
+              <TaskSheet
+                title="Receive Transfer"
+                description="Review every dispatched line, record accepted or discrepancy quantities, and post the destination receipt. The server rechecks destination scope, MFA, idempotency, and ledger effects."
+                trigger={<span>Receive Transfer</span>}
+                triggerClassName="bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+                size="workspace"
+                bodyScroll="contained"
+                bodyClassName="p-0"
+              >
                 <form action={receiveTransferAction} className="mt-4 grid gap-4">
                   <input name="id" type="hidden" value={transfer.id} />
                   <input
@@ -481,7 +490,7 @@ export default async function TransferDetailPage({
                     Post Receipt
                   </button>
                 </form>
-              </EntryModal>
+              </TaskSheet>
             </div>
           ) : null}
 
