@@ -547,6 +547,16 @@ describe("multi-step approval advancement", () => {
     expect(closeSource).toContain('throw new Error("APPROVAL_NOT_ACTIONABLE")');
   });
 
+  test("quotation recommendation terminal decisions lock lineage and source CAS", () => {
+    expect(serviceSource).toContain("lockQuotationRecommendationApprovalSource");
+    expect(serviceSource).toContain('documentType: "QuotationRecommendation"');
+    expect(serviceSource).toContain('FOR UPDATE OF recommendation');
+    expect(serviceSource).toContain('FOR UPDATE OF qr');
+    expect(serviceSource).toContain('FOR UPDATE OF pr');
+    expect(serviceSource).toContain('updatedAt: lockedSource.source.updatedAt');
+    expect(serviceSource).toContain('version: lockedSource.source.version');
+  });
+
   test.each([
     [
       "approvePurchaseRequest",

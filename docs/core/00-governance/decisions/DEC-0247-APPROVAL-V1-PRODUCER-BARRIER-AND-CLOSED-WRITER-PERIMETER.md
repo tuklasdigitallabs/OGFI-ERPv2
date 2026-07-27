@@ -897,6 +897,15 @@ and `updatedAt` CAS plus existing permission, scope, reason, and SOD checks.
 This does not enable routing or create a second graph authority; PostgreSQL/ACL,
 replay, DEC-0246, legacy Inbox migration, and activation remain open.
 
+The next non-workforce decision increment hardens terminal Quotation
+Recommendation return/reject. It locks the recommendation through its
+Quotation Request, Purchase Request, active request Location, and selected
+Supplier Quotation lineage, then locks the approval graph and applies source
+version/`updatedAt` CAS for `PENDING_APPROVAL` to `RETURNED` or `REJECTED`.
+No Purchase Order, supplier selection, receiving, inventory, payment, or journal
+mutation is introduced. Final recommendation approval, replay, PostgreSQL/ACL
+evidence, DEC-0246 authority, and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

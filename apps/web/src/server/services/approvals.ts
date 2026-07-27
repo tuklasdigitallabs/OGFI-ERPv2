@@ -1820,6 +1820,84 @@ async function findActionableQuotationRecommendationApproval(
   return { approval, step, recommendation, purchaseRequest };
 }
 
+async function lockQuotationRecommendationApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { id: string; approvalInstanceId: string; expectedVersion: number; expectedUpdatedAt: Date },
+) {
+  const recommendationRows = await tx.$queryRaw<Array<{
+    id: string;
+    quotationRequestId: string;
+    selectedSupplierQuotationId: string;
+    preparedByUserId: string;
+    status: string;
+    version: number;
+    updatedAt: Date;
+  }>>`
+    SELECT recommendation.id,
+           recommendation."quotationRequestId",
+           recommendation."selectedSupplierQuotationId",
+           recommendation."preparedByUserId",
+           recommendation.status,
+           recommendation.version,
+           recommendation."updatedAt"
+      FROM "QuotationRecommendation" recommendation
+     WHERE recommendation.id = ${input.id}::uuid
+       AND recommendation."tenantId" = ${session.context.tenantId}::uuid
+       AND recommendation."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF recommendation
+  `;
+  const source = recommendationRows[0];
+  if (!source || source.status !== "PENDING_APPROVAL" || source.version !== input.expectedVersion || source.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    throw new Error("QUOTATION_RECOMMENDATION_NOT_PENDING_APPROVAL");
+  }
+  const quotationRequestRows = await tx.$queryRaw<Array<{ id: string; purchaseRequestId: string }>>`
+    SELECT qr.id, qr."purchaseRequestId"
+      FROM "QuotationRequest" qr
+     WHERE qr.id = ${source.quotationRequestId}::uuid
+       AND qr."tenantId" = ${session.context.tenantId}::uuid
+       AND qr."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF qr
+  `;
+  const quotationRequest = quotationRequestRows[0];
+  if (!quotationRequest) throw new Error("APPROVAL_DOCUMENT_SCOPE_NOT_FOUND");
+  const purchaseRequestRows = await tx.$queryRaw<Array<{ id: string; requestLocationId: string; requesterUserId: string }>>`
+    SELECT pr.id, pr."requestLocationId", pr."requesterUserId"
+      FROM "PurchaseRequest" pr
+     WHERE pr.id = ${quotationRequest.purchaseRequestId}::uuid
+       AND pr."tenantId" = ${session.context.tenantId}::uuid
+       AND pr."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF pr
+  `;
+  const purchaseRequest = purchaseRequestRows[0];
+  if (!purchaseRequest) throw new Error("APPROVAL_DOCUMENT_SCOPE_NOT_FOUND");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${purchaseRequest.requestLocationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("APPROVAL_DOCUMENT_SCOPE_NOT_FOUND");
+  const quoteRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT quote.id
+      FROM "SupplierQuotation" quote
+     WHERE quote.id = ${source.selectedSupplierQuotationId}::uuid
+       AND quote."quotationRequestId" = ${source.quotationRequestId}::uuid
+       AND quote."tenantId" = ${session.context.tenantId}::uuid
+       AND quote."companyId" = ${session.context.companyId}::uuid
+     FOR SHARE OF quote
+  `;
+  if (quoteRows.length !== 1) throw new Error("APPROVAL_DOCUMENT_SCOPE_NOT_FOUND");
+  await assertApprovalScope(session, purchaseRequest.requestLocationId);
+  if (source.preparedByUserId === session.user.id || purchaseRequest.requesterUserId === session.user.id) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  return { source, purchaseRequest, locationId: purchaseRequest.requestLocationId };
+}
+
 async function findActionablePurchaseOrderApproval(
   session: SessionContext,
   approvalInstanceId: string
@@ -10152,6 +10230,41 @@ async function closeQuotationRecommendationWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "QuotationRecommendation",
+    });
+    const lockedSource = await lockQuotationRecommendationApprovalSource(tx, session, {
+      id: recommendation.id,
+      approvalInstanceId: approval.id,
+      expectedVersion: recommendation.version,
+      expectedUpdatedAt: recommendation.updatedAt,
+    });
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status, ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "QuotationRecommendation" || lockedApproval.documentId !== recommendation.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
     await closeCurrentApprovalDecision(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
@@ -10180,7 +10293,9 @@ async function closeQuotationRecommendationWithDecision(
         id: recommendation.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "PENDING_APPROVAL"
+        status: "PENDING_APPROVAL",
+        version: lockedSource.source.version,
+        updatedAt: lockedSource.source.updatedAt
       },
       data: {
         status,
