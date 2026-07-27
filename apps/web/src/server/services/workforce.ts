@@ -871,7 +871,8 @@ async function findWorkforceScheduleApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "WorkforceSchedule",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -3049,11 +3050,37 @@ export async function submitWorkforceSchedule(
     companyId: session.context.companyId,
     documentType: "WorkforceSchedule",
   }, async (tx) => {
-    const schedule = await getScopedScheduleOrThrow(
-      tx,
-      session,
-      input.scheduleId
-    );
+    const lockedRows = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      updatedAt: Date;
+      locationId: string;
+      approvalInstanceId: string | null;
+    }>>`
+      SELECT s.id, s.status, s."updatedAt", s."locationId", s."approvalInstanceId"
+        FROM "WorkforceSchedule" s
+       WHERE s.id = ${input.scheduleId}::uuid
+         AND s."tenantId" = ${session.context.tenantId}::uuid
+         AND s."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedSchedule = lockedRows[0];
+    if (!lockedSchedule) throw new Error("WORKFORCE_SCHEDULE_NOT_FOUND");
+    const schedule = await getScopedScheduleOrThrow(tx, session, input.scheduleId);
+    const lockedLines = await tx.$queryRaw<Array<{ id: string; tenantId: string; companyId: string; locationId: string }>>`
+      SELECT line.id, line."tenantId", line."companyId", line."locationId"
+        FROM "WorkforceScheduleLine" line
+       WHERE line."workforceScheduleId" = ${schedule.id}::uuid
+       ORDER BY line.id
+       FOR UPDATE
+    `;
+    if (lockedLines.length !== schedule.lines.length || lockedLines.some((line) =>
+      line.tenantId !== session.context.tenantId ||
+      line.companyId !== session.context.companyId ||
+      line.locationId !== lockedSchedule.locationId
+    )) {
+      throw new Error("WORKFORCE_SCHEDULE_LINE_SCOPE_INVALID");
+    }
     assertStatusAllowed(
       schedule.status,
       ["DRAFT", "RETURNED_FOR_REVISION"],
@@ -3061,6 +3088,20 @@ export async function submitWorkforceSchedule(
     );
     if (schedule.lines.length === 0) {
       throw new Error("WORKFORCE_SCHEDULE_LINES_REQUIRED");
+    }
+    const locationRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT l.id, l.status
+        FROM "Location" l
+       WHERE l.id = ${lockedSchedule.locationId}::uuid
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    if (!locationRows[0] || locationRows[0].status !== "ACTIVE") {
+      throw new Error("WORKFORCE_SCHEDULE_LOCATION_NOT_ACTIVE");
+    }
+    if (lockedSchedule.updatedAt.getTime() !== schedule.updatedAt.getTime()) {
+      throw new Error("WORKFORCE_SCHEDULE_SUBMIT_CONFLICT");
     }
     const approvalRule = await findWorkforceScheduleApprovalRule(tx, session);
     if (!approvalRule || approvalRule.steps.length === 0) {
@@ -3152,18 +3193,44 @@ export async function submitWorkforceSchedule(
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
     const submittedAt = new Date();
-    const updated = await tx.workforceSchedule.update({
-      where: { id: schedule.id },
+    const claimed = await tx.workforceSchedule.updateMany({
+      where: {
+        id: schedule.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: { in: ["DRAFT", "RETURNED_FOR_REVISION"] },
+        updatedAt: lockedSchedule.updatedAt
+      },
       data: {
         status: "SUBMITTED",
-        approvalInstanceId: approvalInstance.id,
+        approvalInstanceId: null,
         submittedByUserId: session.user.id,
         submittedAt,
         reason: input.reason?.trim() ?? schedule.reason,
-        evidenceReference:
-          input.evidenceReference?.trim() ?? schedule.evidenceReference
+        evidenceReference: input.evidenceReference?.trim() ?? schedule.evidenceReference
       }
     });
+    if (claimed.count !== 1) throw new Error("WORKFORCE_SCHEDULE_SUBMIT_CONFLICT");
+    const linked = await tx.workforceSchedule.updateMany({
+      where: {
+        id: schedule.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "SUBMITTED",
+        approvalInstanceId: null
+      },
+      data: { approvalInstanceId: approvalInstance.id }
+    });
+    if (linked.count !== 1) throw new Error("WORKFORCE_SCHEDULE_SUBMIT_CONFLICT");
+    const updated = {
+      ...schedule,
+      status: "SUBMITTED" as const,
+      approvalInstanceId: approvalInstance.id,
+      submittedByUserId: session.user.id,
+      submittedAt,
+      reason: input.reason?.trim() ?? schedule.reason,
+      evidenceReference: input.evidenceReference?.trim() ?? schedule.evidenceReference
+    };
     const auditEvent = await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,

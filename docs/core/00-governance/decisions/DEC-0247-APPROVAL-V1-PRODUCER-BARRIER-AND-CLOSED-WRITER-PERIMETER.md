@@ -751,6 +751,14 @@ passes 22/22 with web typecheck/lint green; PostgreSQL race, rollback, replay,
 and lifecycle-writer parity remain unexecuted/open. This remains planned Phase
 III compatibility work, not Phase I or production activation.
 
+The dormant Workforce Schedule producer now locks the schedule, ordered
+same-scope lines, and active Location under the shared barrier, requires a
+sealed rule, validates line lineage, and binds the approval graph backlink with
+scoped status/`updatedAt` CAS. Focused Workforce coverage passes 22/22 with web
+typecheck/lint green; PostgreSQL contention, rollback, replay, and lifecycle
+writer parity remain unexecuted/open. This remains planned Phase III
+compatibility work, not Phase I or production activation.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

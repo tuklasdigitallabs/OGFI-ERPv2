@@ -512,7 +512,7 @@ describe("workforce foundation controls", () => {
     const transitions = new Map([
       ["submitLeaveRequest", "const claimed = await tx.employeeLeaveRequest.updateMany"],
       ["submitOvertimeRecord", "const claimed = await tx.employeeOvertimeRecord.updateMany"],
-      ["submitWorkforceSchedule", "const updated = await tx.workforceSchedule.update"],
+      ["submitWorkforceSchedule", "const claimed = await tx.workforceSchedule.updateMany"],
       ["reviewAttendanceImportBatch", "const updated = await tx.attendanceImportBatch.update"]
     ]);
     for (const [functionName, sourceTransition] of transitions) {
@@ -520,7 +520,7 @@ describe("workforce foundation controls", () => {
       const end = workforceServiceSource.indexOf("\nexport async function ", start + 1);
       const action = workforceServiceSource.slice(start, end === -1 ? undefined : end);
       expect(action).toContain("for (const step of routedSteps)");
-      if (functionName === "submitLeaveRequest" || functionName === "submitOvertimeRecord") {
+      if (functionName === "submitLeaveRequest" || functionName === "submitOvertimeRecord" || functionName === "submitWorkforceSchedule") {
         expect(action.indexOf("const approvalInstance = await tx.approvalInstance.create")).toBeLessThan(
           action.indexOf(sourceTransition)
         );
