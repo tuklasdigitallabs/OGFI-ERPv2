@@ -2515,14 +2515,24 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
       throw new Error("TRANSFER_RECEIPT_REVERSAL_STATE_CONFLICT");
     }
 
-    await tx.inventoryTransfer.update({
-      where: { id: transfer.id },
+    const updatedTransfer = await tx.inventoryTransfer.updateMany({
+      where: {
+        id: transfer.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        destinationLocationId: session.context.locationId,
+        status: lockedTransfer.status,
+        updatedAt: lockedTransfer.updatedAt
+      },
       data: {
         status: nextStatus,
         receivedAt: latestRemainingReceipt?.receivedAt ?? null,
         receivedByUserId: latestRemainingReceipt?.receivedByUserId ?? null
       }
     });
+    if (updatedTransfer.count !== 1) {
+      throw new Error("TRANSFER_RECEIPT_REVERSAL_STATE_CONFLICT");
+    }
 
     await tx.auditEvent.create({
       data: {
