@@ -115,6 +115,7 @@ describe.skipIf(!databaseEnabled).sequential(
         item: randomUUID(),
         transfer: randomUUID(),
         line: randomUUID(),
+        line2: randomUUID(),
         authSession: randomUUID(),
       };
       const now = new Date();
@@ -196,7 +197,8 @@ describe.skipIf(!databaseEnabled).sequential(
           status: "DISPATCHED",
           dispatchedByUserId: ids.dispatcher,
           lines: {
-            create: {
+            create: [
+              {
               id: ids.line,
               tenantId: ids.tenant,
               companyId: ids.company,
@@ -210,12 +212,28 @@ describe.skipIf(!databaseEnabled).sequential(
               approvedQty: 2,
               preparedQty: 2,
               dispatchedQty: 2,
-            },
+              },
+              {
+                id: ids.line2,
+                tenantId: ids.tenant,
+                companyId: ids.company,
+                sourceInventoryLocationId: ids.sourceInventoryLocation,
+                destinationInventoryLocationId: ids.destinationInventoryLocation,
+                itemId: ids.item,
+                uomId: ids.uom,
+                lineNumber: 2,
+                description: "Receipt rollback line",
+                requestedQty: 2,
+                approvedQty: 2,
+                preparedQty: 2,
+                dispatchedQty: 2,
+              },
+            ],
           },
         },
         include: { lines: true },
       });
-      const lineId = createdTransfer.lines[0]?.id ?? ids.line;
+      const lineIds = createdTransfer.lines.map((line) => line.id);
 
       const session: SessionContext = {
         user: { id: ids.receiver, email: `receiver-${suffix}@example.test`, displayName: "Receipt Receiver", role: "Receipt Acceptance Receiver" },
@@ -229,38 +247,47 @@ describe.skipIf(!databaseEnabled).sequential(
       mockContext.requireSessionContext.mockResolvedValue(session);
       try {
         const { receiveInventoryTransfer } = await import("../src/server/services/transfers");
-        const form = (acceptedQty: string) => {
+        const form = (rollback = false) => {
           const value = new FormData();
           value.set("id", ids.transfer);
           value.set("idempotencyKey", `receipt-replay-${suffix}`);
-          value.set(`lines.${lineId}.acceptedQty`, acceptedQty);
-          value.set(`lines.${lineId}.rejectedQty`, "0");
-          value.set(`lines.${lineId}.damagedQty`, "0");
-          value.set(`lines.${lineId}.discrepancyQty`, "0");
+          value.set(`lines.${lineIds[0]}.acceptedQty`, rollback ? "1" : "2");
+          value.set(`lines.${lineIds[0]}.rejectedQty`, "0");
+          value.set(`lines.${lineIds[0]}.damagedQty`, "0");
+          value.set(`lines.${lineIds[0]}.discrepancyQty`, "0");
+          value.set(`lines.${lineIds[1]}.acceptedQty`, rollback ? "0" : "2");
+          value.set(`lines.${lineIds[1]}.rejectedQty`, rollback ? "1" : "0");
+          value.set(`lines.${lineIds[1]}.damagedQty`, "0");
+          value.set(`lines.${lineIds[1]}.discrepancyQty`, "0");
           return value;
         };
+        await expect(receiveInventoryTransfer(form(true))).rejects.toThrow("TRANSFER_RECEIPT_DISCREPANCY_REASON_REQUIRED");
+        expect(await prisma.inventoryTransferReceipt.count({ where: { inventoryTransferId: ids.transfer } })).toBe(0);
+        expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer } })).toBe(0);
+        expect(await prisma.inventoryBalance.count({ where: { inventoryLocationId: ids.destinationInventoryLocation, itemId: ids.item } })).toBe(0);
+        expect(await prisma.auditEvent.count({ where: { entityType: "InventoryTransfer", entityId: ids.transfer } })).toBe(0);
+        expect((await prisma.inventoryTransfer.findUniqueOrThrow({ where: { id: ids.transfer } })).status).toBe("DISPATCHED");
+        expect((await prisma.inventoryTransferLine.findMany({ where: { id: { in: lineIds } } })).every((line) => Number(line.receivedQty) === 0 && Number(line.rejectedQty) === 0 && Number(line.damagedQty) === 0 && Number(line.discrepancyQty) === 0)).toBe(true);
         const concurrentResults = await Promise.allSettled([
-          receiveInventoryTransfer(form("2")),
-          receiveInventoryTransfer(form("2")),
+          receiveInventoryTransfer(form()),
+          receiveInventoryTransfer(form()),
         ]);
         expect(concurrentResults.every(({ status }) => status === "fulfilled")).toBe(true);
         const first = await prisma.inventoryTransferReceipt.findFirstOrThrow({ where: { inventoryTransferId: ids.transfer } });
         expect(first.status).toBe("POSTED");
-        const receiptLine = await prisma.inventoryTransferReceiptLine.findFirstOrThrow({ where: { transferReceiptId: first.id } });
-        expect(Number(receiptLine.acceptedQty)).toBe(2);
-        expect(Number(receiptLine.rejectedQty)).toBe(0);
-        expect(Number(receiptLine.damagedQty)).toBe(0);
-        expect(Number(receiptLine.discrepancyQty)).toBe(0);
-        expect(Number(receiptLine.outstandingQty)).toBe(0);
-        expect(Number((await prisma.inventoryTransferLine.findUniqueOrThrow({ where: { id: lineId } })).receivedQty)).toBe(2);
+        const receiptLines = await prisma.inventoryTransferReceiptLine.findMany({ where: { transferReceiptId: first.id } });
+        expect(receiptLines).toHaveLength(2);
+        expect(receiptLines.every((line) => Number(line.acceptedQty) === 2 && Number(line.outstandingQty) === 0)).toBe(true);
+        expect((await prisma.inventoryTransferLine.findMany({ where: { id: { in: lineIds } } })).every((line) => Number(line.receivedQty) === 2)).toBe(true);
         expect((await prisma.inventoryTransfer.findUniqueOrThrow({ where: { id: ids.transfer } })).status).toBe("RECEIVED");
-        expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, sourceEventKey: { startsWith: "receipt:" } } })).toBe(1);
-        expect(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { inventoryLocationId_itemId_lotKey: { inventoryLocationId: ids.destinationInventoryLocation, itemId: ids.item, lotKey: "NOLOT|NOEXP" } } })).qtyOnHand)).toBe(2);
+        expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer, sourceEventKey: { startsWith: "receipt:" } } })).toBe(2);
+        expect(Number((await prisma.inventoryBalance.findUniqueOrThrow({ where: { inventoryLocationId_itemId_lotKey: { inventoryLocationId: ids.destinationInventoryLocation, itemId: ids.item, lotKey: "NOLOT|NOEXP" } } })).qtyOnHand)).toBe(4);
         expect(await prisma.auditEvent.count({ where: { entityType: "InventoryTransfer", entityId: ids.transfer, eventType: "inventory_transfer.received" } })).toBe(1);
         const movementCount = await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer } });
-        await expect(receiveInventoryTransfer(form("2"))).resolves.toBeUndefined();
+        await expect(receiveInventoryTransfer(form())).resolves.toBeUndefined();
         expect(await prisma.inventoryMovement.count({ where: { sourceDocumentType: "InventoryTransfer", sourceDocumentId: ids.transfer } })).toBe(movementCount);
-        const conflicting = form("1");
+        const conflicting = form();
+        conflicting.set(`lines.${lineIds[0]}.acceptedQty`, "1");
         await expect(receiveInventoryTransfer(conflicting)).rejects.toThrow("TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT");
         expect(await prisma.inventoryTransferReceipt.count({ where: { inventoryTransferId: ids.transfer } })).toBe(1);
       } finally {
