@@ -1659,6 +1659,28 @@ export async function postStockAdjustment(formData: FormData) {
   });
 
   await prisma.$transaction(async (tx) => {
+    // Serialize the authoritative adjustment before inventory scope locks so
+    // posting follows the same source → lines → inventory lock order as
+    // approval and terminal/cancellation decisions.
+    const lockedSourceRows = await tx.$queryRaw<Array<{
+      id: string;
+      inventoryLocationId: string;
+      status: string;
+      postedAt: Date | null;
+    }>>`
+      SELECT adjustment.id, adjustment."inventoryLocationId", adjustment.status,
+             adjustment."postedAt"
+        FROM "StockAdjustment" adjustment
+       WHERE adjustment.id = ${adjustment.id}::uuid
+         AND adjustment."tenantId" = ${session.context.tenantId}::uuid
+         AND adjustment."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF adjustment
+    `;
+    const lockedSource = lockedSourceRows[0];
+    if (!lockedSource || lockedSource.status !== "APPROVED" || lockedSource.postedAt) {
+      if (lockedSource?.status === "POSTED" || lockedSource?.postedAt) return;
+      throw new Error("STOCK_ADJUSTMENT_NOT_APPROVED_FOR_POSTING");
+    }
     const inventoryLocationLock = await lockInventoryLocationsForPosting(
       tx,
       session,

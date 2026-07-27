@@ -6321,6 +6321,57 @@ export async function approveStockAdjustment(formData: FormData) {
     );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "StockAdjustment",
+    });
+    const lockedSource = await lockStockAdjustmentApprovalSource(tx, session, {
+      id: adjustment.id,
+      expectedUpdatedAt: adjustment.updatedAt,
+    });
+    const lockedLineRows = await tx.$queryRaw<Array<{
+      id: string;
+      inventoryLocationId: string;
+      postedMovementId: string | null;
+    }>>`
+      SELECT line.id, line."inventoryLocationId", line."postedMovementId"
+        FROM "StockAdjustmentLine" line
+       WHERE line."stockAdjustmentId" = ${adjustment.id}::uuid
+         AND line."tenantId" = ${session.context.tenantId}::uuid
+         AND line."companyId" = ${session.context.companyId}::uuid
+       ORDER BY line."lineNumber" ASC, line.id ASC
+       FOR UPDATE OF line
+    `;
+    if (lockedLineRows.length === 0 || lockedLineRows.some((line) =>
+      line.inventoryLocationId !== lockedSource.source.inventoryLocationId || line.postedMovementId !== null
+    )) {
+      throw new Error("STOCK_ADJUSTMENT_LINES_NOT_APPROVABLE");
+    }
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status, ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "StockAdjustment" || lockedApproval.documentId !== adjustment.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
     const stepResult = await approveCurrentStepAndAdvance(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
@@ -6353,7 +6404,9 @@ export async function approveStockAdjustment(formData: FormData) {
         id: adjustment.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "PENDING_APPROVAL"
+        status: "PENDING_APPROVAL",
+        updatedAt: lockedSource.source.updatedAt,
+        inventoryLocationId: lockedSource.source.inventoryLocationId
       },
       data: { status: "APPROVED" }
     });

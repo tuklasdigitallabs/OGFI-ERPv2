@@ -959,6 +959,10 @@ The next bounded writer selected after PO approval was feature-disabled Inbox Wa
 
 Architecture, Security, and QA accepted first issuance as a bounded status-only writer. The path now uses the shared barrier, locks the scoped PO/supplier/location facts, fails closed on a pending approval graph, and CASes `APPROVED → ISSUED` with one issuance audit in the same transaction. It does not call a supplier, create an outbox, receive goods, mutate inventory, project budget, or create AP/payment/journal effects. Repeat `ISSUED` remains a separate audit-only resend branch; because durable resend identity and explicit operator intent are not yet implemented, automatic retry/replay proof remains open. PostgreSQL contention, ACL, rollback, and no-side-effect evidence remain open.
 
+### Stock Adjustment final approval and posting lock order (July 27, 2026)
+
+Security recommended, and Architecture challenged/accepted, a bounded Stock Adjustment final-approval writer. Approval is source/line/scope/graph locked and CAS-protected, remains non-posting, and preserves the separate post/reverse authority. Posting was normalized to lock the authoritative adjustment before inventory scope, aligning the source → lines → inventory order with approval and terminal/cancellation paths. PostgreSQL contention, rollback, ACL/MFA, replay, and no-ledger-effect evidence remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

@@ -124,6 +124,16 @@ describe("stock adjustment controlled workflow rules", () => {
     expect(action).toContain("updatedAt: lockedSource.updatedAt");
   });
 
+  test("posting locks the adjustment before inventory scope", () => {
+    const source = readFileSync(path.resolve(__dirname, "stockAdjustments.ts"), "utf8");
+    const start = source.indexOf("export async function postStockAdjustment");
+    const action = source.slice(start);
+    expect(action).toContain("FOR UPDATE OF adjustment");
+    expect(action.indexOf("FOR UPDATE OF adjustment")).toBeLessThan(
+      action.indexOf("lockInventoryLocationsForPosting")
+    );
+  });
+
   test("My Tasks returns only authorized unposted approved adjustments with exact count and cursor", async () => {
     mockPrisma.stockAdjustment.count.mockResolvedValue(2);
     mockPrisma.stockAdjustment.findMany.mockResolvedValue([

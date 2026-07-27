@@ -594,6 +594,17 @@ describe("multi-step approval advancement", () => {
     expect(source).toContain('inventoryLocationId: lockedSource.source.inventoryLocationId');
   });
 
+  test("stock adjustment approval locks lines and preserves non-posting source CAS", () => {
+    const source = extractFunctionSource(serviceSource, "approveStockAdjustment");
+    expect(source).toContain("lockStockAdjustmentApprovalSource");
+    expect(source).toContain('documentType: "StockAdjustment"');
+    expect(source).toContain('FOR UPDATE OF line');
+    expect(source).toContain("STOCK_ADJUSTMENT_LINES_NOT_APPROVABLE");
+    expect(source).toContain('updatedAt: lockedSource.source.updatedAt');
+    expect(source).toContain('inventoryLocationId: lockedSource.source.inventoryLocationId');
+    expect(source).toContain("nonPostingApproval");
+  });
+
   test("purchase order terminal decisions lock procurement lineage and source CAS", () => {
     const source = extractFunctionSource(serviceSource, "closePurchaseOrderWithDecision");
     expect(source).toContain("lockPurchaseOrderApprovalSource");
