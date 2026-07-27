@@ -5,6 +5,7 @@ import { Badge, ButtonLink, Panel } from "@ogfi/ui";
 import { ActionFeedbackBanner } from "@/components/ActionFeedbackBanner";
 import { AppShell } from "@/components/AppShell";
 import { EntryModal } from "@/components/EntryModal";
+import { PendingActionButton } from "@/components/PendingActionButton";
 import { TaskSheet } from "@/components/TaskSheet";
 import {
   actionErrorRedirectPath,
@@ -565,10 +566,14 @@ export default async function TransferDetailPage({
                         <EntryModal
                           title="Reverse Transfer Receipt"
                           triggerLabel="Reverse Receipt"
+                          triggerClassName="min-h-11"
                         >
                           <form action={reverseTransferReceiptAction} className="mt-4 grid gap-3">
                             <input name="id" type="hidden" value={transfer.id} />
                             <input name="receiptId" type="hidden" value={receipt.id} />
+                            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                              This creates linked counter-movements for the accepted quantity and keeps the original receipt event for audit history.
+                            </div>
                             <label className="grid gap-1 text-sm font-medium text-slate-700">
                               Reversal reason
                               <input
@@ -578,9 +583,12 @@ export default async function TransferDetailPage({
                                 required
                               />
                             </label>
-                            <button className="inline-flex min-h-10 w-full items-center justify-center rounded-md bg-slate-700 px-4 text-sm font-semibold text-white hover:bg-slate-800 sm:w-fit">
-                              Reverse Receipt
-                            </button>
+                            <PendingActionButton
+                              label="Reverse Receipt"
+                              pendingLabel="Reversing Receipt…"
+                              tone="danger"
+                              confirmation="Reverse this posted receipt? Linked counter-movements will be created and the original receipt will remain in history."
+                            />
                           </form>
                         </EntryModal>
                       </div>

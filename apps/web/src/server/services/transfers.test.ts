@@ -797,4 +797,17 @@ describe("inventory transfer foundation rules", () => {
     expect(detailPage).toContain("server rechecks destination scope, MFA, idempotency, and ledger effects");
     expect(detailPage).not.toContain('<EntryModal title="Receive Transfer"');
   });
+
+  test("reversal action keeps retained-history warning and pending danger control", () => {
+    const detailPage = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/transfers/[id]/page.tsx"),
+      "utf8",
+    );
+    expect(detailPage).toContain('triggerClassName="min-h-11"');
+    expect(detailPage).toContain("counter-movements");
+    expect(detailPage).toContain('pendingLabel="Reversing Receipt…"');
+    expect(detailPage).toContain('tone="danger"');
+    expect(detailPage).toContain("Linked counter-movements will be created");
+    expect(detailPage).toContain('name="reversalReason"');
+  });
 });

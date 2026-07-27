@@ -56,7 +56,7 @@ An authorized destination user with `inventory.transfer.receipt.reverse` can rev
 1. Open the transfer detail page.
 2. Find the receipt event.
 3. Enter a reversal reason.
-4. Select `Reverse Receipt`.
+4. Confirm the counter-movement warning and select `Reverse Receipt`. While it is processing, the action is disabled and labeled `Reversing Receipt…`.
 
 Reversal writes linked `REVERSAL` movements for accepted quantity, updates transfer rollups, preserves the original receipt event, and records who reversed it and why.
 
