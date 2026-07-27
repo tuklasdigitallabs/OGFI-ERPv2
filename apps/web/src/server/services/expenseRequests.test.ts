@@ -139,6 +139,13 @@ describe("expense request foundation", () => {
     expect(serviceSource).toContain("findExpenseRequestApprovalRule");
     expect(serviceSource).toContain('documentType: "ExpenseRequest"');
     expect(serviceSource).toContain("approvalInstance.create");
+    expect(serviceSource).toContain("FOR UPDATE OF er");
+    expect(serviceSource).toContain("definitionSealed: true");
+    expect(serviceSource).toContain("approvalInstanceId: null");
+    expect(serviceSource).toContain("const claimed = await tx.expenseRequest.updateMany");
+    expect(serviceSource.indexOf("const claimed = await tx.expenseRequest.updateMany")).toBeLessThan(
+      serviceSource.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
     expect(serviceSource).toContain("APPROVE_EXPENSE_REQUEST");
     expect(serviceSource).toContain("EXPENSE_REQUEST_APPROVAL_RULE_NOT_CONFIGURED");
     expect(serviceSource).toContain("EXPENSE_REQUEST_ALREADY_SUBMITTED");

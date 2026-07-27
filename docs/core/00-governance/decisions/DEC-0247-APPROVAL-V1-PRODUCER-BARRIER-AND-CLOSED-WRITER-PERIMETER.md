@@ -684,6 +684,15 @@ coverage passes 6/6 with web typecheck/lint and diff checks green; PostgreSQL
 lifecycle-race, rollback, scope, orphan-graph, and replay evidence remain
 pending, and no capability or ACL activation is authorized.
 
+Expense Request submission now locks the request through its active
+tenant/company Location, rehydrates typed lines/source links, requires a sealed
+rule, claims the admitted draft/revision state with scoped version/status/link
+predicates before graph creation, and attaches the exact approval backlink with
+a second CAS. Existing AWAITING_APPROVAL requests fail closed because durable
+replay identity is absent. Focused coverage passes 4/4 with web typecheck/lint
+and diff checks green; PostgreSQL race, lineage, evidence, rollback, sibling
+writer, and activation evidence remain pending.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

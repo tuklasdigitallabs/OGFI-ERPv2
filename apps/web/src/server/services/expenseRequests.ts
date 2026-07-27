@@ -418,7 +418,8 @@ async function findExpenseRequestApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "ExpenseRequest",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -1224,13 +1225,34 @@ export async function submitExpenseRequestForApproval(
     companyId: session.context.companyId,
     documentType: "ExpenseRequest",
   }, async (tx) => {
+    const lockedRequests = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      version: number;
+      locationId: string;
+    }>>`
+      SELECT er.id, er.status, er.version, er."locationId"
+        FROM "ExpenseRequest" er
+        JOIN "Location" l ON l.id = er."locationId"
+       WHERE er.id = ${input.expenseRequestId}::uuid
+         AND er."tenantId" = ${session.context.tenantId}::uuid
+         AND er."companyId" = ${session.context.companyId}::uuid
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+         AND l.status = 'ACTIVE'
+       FOR UPDATE OF er
+    `;
+    const lockedRequest = lockedRequests[0];
+    if (!lockedRequest) {
+      throw new Error("EXPENSE_REQUEST_NOT_FOUND");
+    }
     const request = await getScopedExpenseRequestOrThrow(
       tx,
       session,
       input.expenseRequestId
     )
     if (request.status === "AWAITING_APPROVAL") {
-      return request
+      throw new Error("EXPENSE_REQUEST_ALREADY_SUBMITTED")
     }
     assertExpenseTransition({ transition: "submit", status: request.status })
     assertEvidence(
@@ -1266,6 +1288,30 @@ export async function submitExpenseRequestForApproval(
 
     if (!request.locationId) {
       throw new Error("EXPENSE_REQUEST_APPROVAL_SCOPE_NOT_CONFIGURED")
+    }
+    const submittedAt = new Date()
+    const evidenceReference =
+      input.evidenceReference?.trim() ?? request.evidenceReference
+    const claimed = await tx.expenseRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: lockedRequest.locationId,
+        status: { in: ["DRAFT", "RETURNED_FOR_REVISION"] },
+        version: lockedRequest.version,
+        approvalInstanceId: null
+      },
+      data: {
+        status: "AWAITING_APPROVAL",
+        submittedByUserId: session.user.id,
+        submittedAt,
+        evidenceReference,
+        version: { increment: 1 }
+      }
+    })
+    if (claimed.count !== 1) {
+      throw new Error("EXPENSE_REQUEST_INVALID_STATUS_TRANSITION")
     }
     const routedSteps = approvalRule.steps.map((step, index) => ({
       ...step,
@@ -1329,18 +1375,32 @@ export async function submitExpenseRequestForApproval(
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     })
 
-    const updated = await tx.expenseRequest.update({
-      where: { id: request.id },
-      data: {
+    const linked = await tx.expenseRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
+        approvalInstanceId: null,
+        version: lockedRequest.version + 1
+      },
+      data: {
         approvalInstanceId: approvalInstance.id,
-        submittedByUserId: session.user.id,
-        submittedAt: new Date(),
-        evidenceReference:
-          input.evidenceReference?.trim() ?? request.evidenceReference,
         version: { increment: 1 }
       }
     })
+    if (linked.count !== 1) {
+      throw new Error("EXPENSE_REQUEST_INVALID_STATUS_TRANSITION")
+    }
+    const updated = {
+      ...request,
+      status: "AWAITING_APPROVAL" as const,
+      approvalInstanceId: approvalInstance.id,
+      submittedByUserId: session.user.id,
+      submittedAt,
+      evidenceReference,
+      version: lockedRequest.version + 2
+    }
     const auditEvent = await writeExpenseAudit(tx, {
       session,
       requestId: request.id,
