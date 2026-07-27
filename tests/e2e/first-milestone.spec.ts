@@ -182,6 +182,7 @@ test("non-admin users cannot open core administration", async ({ page }) => {
 test("returned purchase requests can be reopened as draft", async ({
   page
 }, testInfo) => {
+  test.skip(process.env.APPROVAL_ROUTING_V1_ENABLED !== "true", "Legacy approval Inbox flow is intentionally disabled while normalized routing is dormant.");
   test.setTimeout(90_000);
 
   await signInAs(
@@ -273,6 +274,7 @@ test("draft purchase requests can be cancelled with audit history", async ({
 test("purchase requests can be rejected with remarks and action history", async ({
   page
 }, testInfo) => {
+  test.skip(process.env.APPROVAL_ROUTING_V1_ENABLED !== "true", "Legacy approval Inbox flow is intentionally disabled while normalized routing is dormant.");
   test.setTimeout(90_000);
 
   await signInAs(
@@ -332,6 +334,7 @@ test("purchase requests can be rejected with remarks and action history", async 
 test("first milestone purchase request path works end to end", async ({
   page
 }, testInfo) => {
+  test.skip(process.env.APPROVAL_ROUTING_V1_ENABLED !== "true", "Legacy approval Inbox flow is intentionally disabled while normalized routing is dormant.");
   test.setTimeout(360_000);
   page.setDefaultTimeout(15_000);
   page.setDefaultNavigationTimeout(30_000);
