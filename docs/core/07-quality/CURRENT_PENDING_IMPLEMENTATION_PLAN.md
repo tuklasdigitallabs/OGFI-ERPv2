@@ -1925,3 +1925,8 @@ Update this register only when implementation state, release scope, a confirmed 
 
 - Fresh local revalidation discovers the registered acceptance suite with **2/2 guarded cases skipped** when no disposable integration marker is enabled, and `pnpm release:migration-review` passes for all **141** migrations with **88** explicit dispositions, **67** approved for rehearsal, and **21** pending review statuses elsewhere in the repository. No database behavior or production credit is inferred from these checks.
 - The exact next gate remains the marked disposable PostgreSQL run for migration catalog/constraint validation, live authority revocation, replay/concurrency, rollback, movement/balance/audit cardinality, then authenticated responsive browser/UAT and hosted recovery/deployment evidence. Receipt, Workspace 4, and Phase I remain **NO-GO**.
+
+### Transfer Receipt destination-context equality fence — July 28, 2026
+
+- The live authority helper now fails closed unless the locked authoritative destination location exactly matches the current session location context before checking active scope and permission. This closes the remaining stale-context ambiguity without changing receipt/reversal status, ledger, MFA, or audit semantics.
+- Focused transfer coverage remains **31/31**; web typecheck/lint and diff hygiene remain required. PostgreSQL revocation/race/rollback/cardinality, browser/UAT, hosted recovery, and deployment gates remain open; receipt, Workspace 4, and Phase I remain **NO-GO**.

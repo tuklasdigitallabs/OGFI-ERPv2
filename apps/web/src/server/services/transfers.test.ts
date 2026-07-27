@@ -770,6 +770,9 @@ describe("inventory transfer foundation rules", () => {
       reverseSource.indexOf('action: "inventory_transfer_receipt.reverse"')
     );
     expect(service).toContain('destinationLocationId}::uuid');
+    expect(service).toContain(
+      'destinationLocationId !== session.context.locationId',
+    );
   });
 
   test("receive UI supplies the required bounded idempotency key", () => {

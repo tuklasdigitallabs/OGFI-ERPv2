@@ -83,6 +83,9 @@ async function assertFreshTransferReceiptAuthority(
   permissionCode: string,
   destinationLocationId: string,
 ) {
+  if (destinationLocationId !== session.context.locationId) {
+    throw new Error("SCOPE_DENIED");
+  }
   const now = new Date();
   const principals = await tx.$queryRaw<
     Array<{ status: string; privilegeEpoch: number }>
