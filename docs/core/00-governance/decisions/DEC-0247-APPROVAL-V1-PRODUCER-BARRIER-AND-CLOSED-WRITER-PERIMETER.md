@@ -734,6 +734,15 @@ evidence, document-number allocation, and AP/bank/journal settlement decisions
 remain open. The Payment Release adapter therefore remains `ABSENT/PARTIAL`,
 no production-readiness credit is claimed, and the routing flag stays false.
 
+The dormant Employee Leave producer now locks the request, active employee, and
+active location under the shared barrier, requires a sealed rule, rejects blind
+submitted replay, and atomically binds the graph backlink after scoped source
+CAS. Routing and legacy approval prohibit requester, creator, and linked
+employee-user self-approval. Focused Workforce coverage passes 22/22 with web
+typecheck/lint green; PostgreSQL race, rollback, replay, and lifecycle-writer
+parity remain unexecuted/open. This is planned Phase III compatibility work,
+not Phase I or production activation; the routing flag remains false.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

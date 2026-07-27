@@ -829,7 +829,8 @@ async function findEmployeeLeaveApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "EmployeeLeaveRequest",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -2143,13 +2144,26 @@ export async function submitLeaveRequest(
     companyId: session.context.companyId,
     documentType: "EmployeeLeaveRequest",
   }, async (tx) => {
-    const request = await getScopedLeaveOrThrow(
-      tx,
-      session,
-      input.leaveRequestId
-    );
+    const lockedRows = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      updatedAt: Date;
+      employeeId: string;
+      locationId: string | null;
+      approvalInstanceId: string | null;
+    }>>`
+      SELECT r.id, r.status, r."updatedAt", r."employeeId", r."locationId", r."approvalInstanceId"
+        FROM "EmployeeLeaveRequest" r
+       WHERE r.id = ${input.leaveRequestId}::uuid
+         AND r."tenantId" = ${session.context.tenantId}::uuid
+         AND r."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedRequest = lockedRows[0];
+    if (!lockedRequest) throw new Error("WORKFORCE_LEAVE_REQUEST_NOT_FOUND");
+    const request = await getScopedLeaveOrThrow(tx, session, input.leaveRequestId);
     if (request.status === "SUBMITTED") {
-      return request;
+      throw new Error("WORKFORCE_LEAVE_ALREADY_SUBMITTED");
     }
     assertStatusAllowed(
       request.status,
@@ -2166,6 +2180,48 @@ export async function submitLeaveRequest(
     }
     if (!request.locationId) {
       throw new Error("WORKFORCE_LEAVE_APPROVAL_SOURCE_LOCATION_REQUIRED");
+    }
+    const employeeRows = await tx.$queryRaw<Array<{ id: string; status: string; userId: string | null }>>`
+      SELECT e.id, e.status, e."userId"
+        FROM "Employee" e
+       WHERE e.id = ${request.employeeId}::uuid
+         AND e."tenantId" = ${session.context.tenantId}::uuid
+         AND e."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const employee = employeeRows[0];
+    if (!employee || employee.status !== "ACTIVE") {
+      throw new Error("WORKFORCE_LEAVE_EMPLOYEE_NOT_ACTIVE");
+    }
+    const locationRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT l.id, l.status
+        FROM "Location" l
+       WHERE l.id = ${request.locationId}::uuid
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const location = locationRows[0];
+    if (!location || location.status !== "ACTIVE") {
+      throw new Error("WORKFORCE_LEAVE_APPROVAL_SOURCE_LOCATION_REQUIRED");
+    }
+    if (lockedRequest.updatedAt.getTime() !== request.updatedAt.getTime()) {
+      throw new Error("WORKFORCE_LEAVE_SUBMIT_CONFLICT");
+    }
+    if (request.approvalInstanceId) {
+      const linkedApproval = await tx.approvalInstance.findFirst({
+        where: {
+          id: request.approvalInstanceId,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          documentType: "EmployeeLeaveRequest",
+          documentId: request.id
+        },
+        select: { status: true }
+      });
+      if (!linkedApproval || linkedApproval.status === "PENDING") {
+        throw new Error("WORKFORCE_LEAVE_APPROVAL_LINK_INVALID");
+      }
     }
     const existingApproval = await tx.approvalInstance.findFirst({
       where: {
@@ -2230,10 +2286,15 @@ export async function submitLeaveRequest(
             locationId: request.locationId
           }]
         }],
-        prohibitedActors: [{
-          userId: request.requestedByUserId,
-          reasonCode: "REQUESTER"
-        }]
+        prohibitedActors: [
+          { userId: request.requestedByUserId, reasonCode: "REQUESTER" },
+          ...(employee.userId && employee.userId !== request.requestedByUserId
+            ? [{ userId: employee.userId, reasonCode: "EMPLOYEE" }]
+            : []),
+          ...(request.createdByUserId !== request.requestedByUserId
+            ? [{ userId: request.createdByUserId, reasonCode: "CREATOR" }]
+            : [])
+        ]
       });
     }
     await assertAnyEligibleApprovalActorForStep(tx, {
@@ -2242,15 +2303,44 @@ export async function submitLeaveRequest(
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     });
     const submittedAt = new Date();
-    const updated = await tx.employeeLeaveRequest.update({
-      where: { id: request.id },
+    const claimed = await tx.employeeLeaveRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: { in: ["DRAFT", "RETURNED_FOR_REVISION"] },
+        updatedAt: lockedRequest.updatedAt
+      },
       data: {
         status: "SUBMITTED",
-        approvalInstanceId: approvalInstance.id,
+        approvalInstanceId: null,
         submittedAt,
         updatedByUserId: session.user.id
       }
     });
+    if (claimed.count !== 1) {
+      throw new Error("WORKFORCE_LEAVE_SUBMIT_CONFLICT");
+    }
+    const linked = await tx.employeeLeaveRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "SUBMITTED",
+        approvalInstanceId: null
+      },
+      data: { approvalInstanceId: approvalInstance.id }
+    });
+    if (linked.count !== 1) {
+      throw new Error("WORKFORCE_LEAVE_SUBMIT_CONFLICT");
+    }
+    const updated = {
+      ...request,
+      status: "SUBMITTED" as const,
+      approvalInstanceId: approvalInstance.id,
+      submittedAt,
+      updatedByUserId: session.user.id
+    };
     const auditEvent = await tx.auditEvent.create({
       data: {
         tenantId: session.context.tenantId,
@@ -2337,6 +2427,20 @@ export async function approveLeaveRequest(
       "WORKFORCE_LEAVE_INVALID_APPROVAL_STATUS"
     );
     if (request.requestedByUserId === session.user.id) {
+      throw new Error("WORKFORCE_LEAVE_SELF_APPROVAL_BLOCKED");
+    }
+    const employee = await tx.employee.findFirst({
+      where: {
+        id: request.employeeId,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId
+      },
+      select: { userId: true }
+    });
+    if (
+      employee?.userId === session.user.id ||
+      request.createdByUserId === session.user.id
+    ) {
       throw new Error("WORKFORCE_LEAVE_SELF_APPROVAL_BLOCKED");
     }
     const updated = await tx.employeeLeaveRequest.update({

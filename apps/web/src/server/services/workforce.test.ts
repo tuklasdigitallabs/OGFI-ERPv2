@@ -510,7 +510,7 @@ describe("workforce foundation controls", () => {
     expect(workforceServiceSource).toContain('source: "workforce-attendance-import-review"');
 
     const transitions = new Map([
-      ["submitLeaveRequest", "const updated = await tx.employeeLeaveRequest.update"],
+      ["submitLeaveRequest", "const claimed = await tx.employeeLeaveRequest.updateMany"],
       ["submitOvertimeRecord", "const updated = await tx.employeeOvertimeRecord.update"],
       ["submitWorkforceSchedule", "const updated = await tx.workforceSchedule.update"],
       ["reviewAttendanceImportBatch", "const updated = await tx.attendanceImportBatch.update"]
@@ -520,9 +520,18 @@ describe("workforce foundation controls", () => {
       const end = workforceServiceSource.indexOf("\nexport async function ", start + 1);
       const action = workforceServiceSource.slice(start, end === -1 ? undefined : end);
       expect(action).toContain("for (const step of routedSteps)");
-      expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
-        action.indexOf(sourceTransition)
-      );
+      if (functionName === "submitLeaveRequest") {
+        expect(action.indexOf("const approvalInstance = await tx.approvalInstance.create")).toBeLessThan(
+          action.indexOf(sourceTransition)
+        );
+        expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+          action.indexOf(sourceTransition)
+        );
+      } else {
+        expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+          action.indexOf(sourceTransition)
+        );
+      }
     }
     expect(workforceServiceSource).toContain("userId: request.requestedByUserId");
     expect(workforceServiceSource).toContain("userId: record.requestedByUserId");
