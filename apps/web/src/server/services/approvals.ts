@@ -10471,6 +10471,68 @@ async function closeQuotationRecommendationWithDecision(
   });
 }
 
+async function lockPurchaseOrderApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { id: string; expectedUpdatedAt: Date }
+) {
+  const rows = await tx.$queryRaw<Array<{
+    id: string;
+    purchaseRequestId: string;
+    quotationRequestId: string;
+    quotationRecommendationId: string;
+    selectedSupplierQuotationId: string;
+    supplierId: string;
+    deliveryLocationId: string;
+    createdByUserId: string;
+    status: string;
+    updatedAt: Date;
+  }>>`
+    SELECT po.id, po."purchaseRequestId", po."quotationRequestId",
+           po."quotationRecommendationId", po."selectedSupplierQuotationId",
+           po."supplierId", po."deliveryLocationId", po."createdByUserId",
+           po.status, po."updatedAt"
+      FROM "PurchaseOrder" po
+     WHERE po.id = ${input.id}::uuid
+       AND po."tenantId" = ${session.context.tenantId}::uuid
+       AND po."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF po
+  `;
+  const source = rows[0];
+  if (!source || source.status !== "PENDING_APPROVAL" || source.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    throw new Error("PURCHASE_ORDER_NOT_PENDING_APPROVAL");
+  }
+  const lineageRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT recommendation.id
+      FROM "QuotationRecommendation" recommendation
+      JOIN "QuotationRequest" qr ON qr.id = recommendation."quotationRequestId"
+      JOIN "PurchaseRequest" pr ON pr.id = qr."purchaseRequestId"
+     WHERE recommendation.id = ${source.quotationRecommendationId}::uuid
+       AND recommendation."quotationRequestId" = ${source.quotationRequestId}::uuid
+       AND qr.id = ${source.quotationRequestId}::uuid
+       AND qr."purchaseRequestId" = ${source.purchaseRequestId}::uuid
+       AND recommendation."tenantId" = ${session.context.tenantId}::uuid
+       AND recommendation."companyId" = ${session.context.companyId}::uuid
+       AND pr."tenantId" = ${session.context.tenantId}::uuid
+       AND pr."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF recommendation, qr, pr
+  `;
+  if (lineageRows.length !== 1) throw new Error("PURCHASE_ORDER_SCOPE_OR_LINEAGE_CHANGED");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${source.deliveryLocationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("PURCHASE_ORDER_SCOPE_OR_LINEAGE_CHANGED");
+  await assertApprovalScope(session, source.deliveryLocationId);
+  if (source.createdByUserId === session.user.id) throw new Error("SELF_APPROVAL_BLOCKED");
+  return source;
+}
+
 async function closePurchaseOrderWithDecision(
   formData: FormData,
   status: "DRAFT" | "CANCELLED",
@@ -10485,6 +10547,39 @@ async function closePurchaseOrderWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PurchaseOrder",
+    });
+    const lockedSource = await lockPurchaseOrderApprovalSource(tx, session, {
+      id: order.id,
+      expectedUpdatedAt: order.updatedAt,
+    });
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status, ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "PurchaseOrder" || lockedApproval.documentId !== order.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
     await closeCurrentApprovalDecision(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
@@ -10513,7 +10608,12 @@ async function closePurchaseOrderWithDecision(
         id: order.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: "PENDING_APPROVAL"
+        status: "PENDING_APPROVAL",
+        updatedAt: lockedSource.updatedAt,
+        purchaseRequestId: lockedSource.purchaseRequestId,
+        quotationRequestId: lockedSource.quotationRequestId,
+        quotationRecommendationId: lockedSource.quotationRecommendationId,
+        deliveryLocationId: lockedSource.deliveryLocationId
       },
       data: {
         status,

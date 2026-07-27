@@ -933,6 +933,15 @@ strictly non-posting: no InventoryMovement or balance mutation is introduced.
 Approve, post, reverse, count bridges, line edits, opening-balance policy,
 replay, PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain open.
 
+The next pre-issue procurement increment hardens Purchase Order terminal
+return/reject. It locks the PO header and its
+QuotationRecommendation → QuotationRequest → PurchaseRequest → delivery
+Location lineage before terminal graph cleanup and full-lineage `updatedAt`
+CAS. Return restores `DRAFT`; reject records `CANCELLED` with the approval-
+rejected subtype. No issuance, receiving, inventory, payment, journal, budget,
+or supplier master mutation is introduced. PO approval/issuance, replay,
+PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
