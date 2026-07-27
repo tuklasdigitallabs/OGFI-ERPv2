@@ -986,17 +986,27 @@ async function lockAndRevalidateCashAdvanceApprovalSource(
   expected: CashAdvanceApprovalSource,
   approvalInstanceId: string
 ) {
-  if (!normalizedApprovalRoutingEnabled()) return expected;
-
-  await lockNormalizedApprovalLifecycleGraph(tx, {
-    tenantId: session.context.tenantId,
-    companyId: session.context.companyId,
-    approvalInstanceId,
-    documentType: "CashAdvanceRequest",
-    documentId: expected.id
-  });
-  const sourceRows = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT request.id
+  if (normalizedApprovalRoutingEnabled()) {
+    await lockNormalizedApprovalLifecycleGraph(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      approvalInstanceId,
+      documentType: "CashAdvanceRequest",
+      documentId: expected.id
+    });
+  }
+  const sourceRows = await tx.$queryRaw<Array<{
+    id: string;
+    status: string;
+    version: number;
+    approvalInstanceId: string | null;
+    locationId: string;
+    requestedByUserId: string;
+    beneficiaryUserId: string;
+  }>>`
+    SELECT request.id, request.status::text AS status, request.version,
+           request."approvalInstanceId", request."locationId",
+           request."requestedByUserId", request."beneficiaryUserId"
       FROM "CashAdvanceRequest" request
      WHERE request.id = ${expected.id}::uuid
        AND request."tenantId" = ${session.context.tenantId}::uuid
@@ -1004,6 +1014,24 @@ async function lockAndRevalidateCashAdvanceApprovalSource(
      FOR UPDATE OF request
   `;
   if (sourceRows.length !== 1) throw new Error("APPROVAL_SOURCE_CHANGED");
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT movement.id
+      FROM "CashAdvanceMovement" movement
+     WHERE movement."cashAdvanceRequestId" = ${expected.id}::uuid
+       AND movement."tenantId" = ${session.context.tenantId}::uuid
+       AND movement."companyId" = ${session.context.companyId}::uuid
+     ORDER BY movement.id ASC
+     FOR UPDATE OF movement
+  `;
+  await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT liquidation.id
+      FROM "CashAdvanceLiquidation" liquidation
+     WHERE liquidation."cashAdvanceRequestId" = ${expected.id}::uuid
+       AND liquidation."tenantId" = ${session.context.tenantId}::uuid
+       AND liquidation."companyId" = ${session.context.companyId}::uuid
+     ORDER BY liquidation.id ASC
+     FOR UPDATE OF liquidation
+  `;
 
   const locked = await tx.cashAdvanceRequest.findFirst({
     where: {
@@ -1016,7 +1044,7 @@ async function lockAndRevalidateCashAdvanceApprovalSource(
   if (
     !locked ||
     locked.status !== "AWAITING_APPROVAL" ||
-    locked.approvalInstanceId !== approvalInstanceId ||
+    (locked.approvalInstanceId !== null && locked.approvalInstanceId !== approvalInstanceId) ||
     locked.version !== expected.version
   ) {
     throw new Error("APPROVAL_SOURCE_CHANGED");
@@ -9181,9 +9209,9 @@ export async function approveCashAdvanceRequest(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
+        version: lockedRequest.version,
         ...(normalizedApprovalRoutingEnabled()
           ? {
-              version: lockedRequest.version,
               approvalInstanceId: approval.id
             }
           : {})
@@ -9298,9 +9326,9 @@ async function closeCashAdvanceRequestWithDecision(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "AWAITING_APPROVAL",
+        version: lockedRequest.version,
         ...(normalizedApprovalRoutingEnabled()
           ? {
-              version: lockedRequest.version,
               approvalInstanceId: approval.id
             }
           : {})

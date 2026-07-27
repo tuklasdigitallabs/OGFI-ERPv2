@@ -987,6 +987,10 @@ Architecture and Security accepted only the amendment child-terminal return/reje
 
 Security and Architecture accepted the source-state-only Expense terminal writer across legacy and normalized routing modes. It locks the approval graph, ExpenseRequest, ordered lines, scope and source version before terminal CAS, and preserves the no-payment/no-release/no-AP/no-journal boundary. PostgreSQL contention, rollback, ACL, evidence drift, and no-side-effect proof remain open.
 
+### Cash Advance terminal parity correction (July 27, 2026)
+
+Security accepted the source-state-only Cash Advance return/reject writer across legacy and normalized routing. It locks the graph, request, movement/liquidation children, live scope, and version before terminal CAS, and closes the legacy beneficiary self-action gap. No disbursement, payment release, bank, AP, journal, budget, or liquidation effect is introduced. PostgreSQL contention, rollback, ACL/SOD, evidence drift, and no-money-side-effect proof remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

@@ -674,6 +674,25 @@ describe("multi-step approval advancement", () => {
     expect(terminal).toContain("noJournalPosting: true");
   });
 
+  test("cash advance terminal decisions lock source children and beneficiary SOD in legacy mode", () => {
+    const helper = extractFunctionSource(
+      serviceSource,
+      "lockAndRevalidateCashAdvanceApprovalSource"
+    );
+    const terminal = extractFunctionSource(
+      serviceSource,
+      "closeCashAdvanceRequestWithDecision"
+    );
+    expect(helper).toContain("CashAdvanceMovement");
+    expect(helper).toContain("CashAdvanceLiquidation");
+    expect(helper).toContain("FOR UPDATE OF movement");
+    expect(helper).toContain("FOR UPDATE OF liquidation");
+    expect(helper).toContain("beneficiaryUserId");
+    expect(terminal).toContain("version: lockedRequest.version");
+    expect(terminal).toContain("noBankMutation: true");
+    expect(terminal).toContain("noApSettlement: true");
+  });
+
   test.each([
     [
       "approvePurchaseRequest",
