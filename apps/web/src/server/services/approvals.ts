@@ -61,6 +61,46 @@ import {
   assertAuthoritativeApprovalEvidence,
   assertPaymentRequestApprovalPolicyConfirmed
 } from "./approvalDecisionMode";
+import { acquireApprovalProducerBarrierShared } from "./approvalProducerBarrier";
+
+type LockedPurchaseRequestApprovalSource = {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  requestLocationId: string;
+  requesterUserId: string;
+  publicReference: string;
+  status: string;
+  currentApprovalStep: number | null;
+  version: number;
+};
+
+async function lockPurchaseRequestApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { id: string; stepOrder: number; expectedVersion?: number },
+) {
+  const rows = await tx.$queryRaw<LockedPurchaseRequestApprovalSource[]>`
+    SELECT request.id, request."tenantId", request."companyId",
+           request."requestLocationId", request."requesterUserId",
+           request."publicReference", request.status::text AS status,
+           request."currentApprovalStep", request.version
+      FROM "PurchaseRequest" request
+     WHERE request.id = ${input.id}::uuid
+       AND request."tenantId" = ${session.context.tenantId}::uuid
+       AND request."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF request
+  `;
+  const source = rows[0];
+  if (!source || source.status !== "PENDING_APPROVAL" ||
+      source.currentApprovalStep !== input.stepOrder ||
+      (input.expectedVersion !== undefined && source.version !== input.expectedVersion)) {
+    throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+  }
+  await assertApprovalScope(session, source.requestLocationId);
+  assertNotSelfApproval(source.requesterUserId, session.user.id);
+  return source;
+}
 
 export type ApprovalQueueItem = {
   approvalInstanceId: string;
@@ -5724,17 +5764,26 @@ export async function approvePurchaseRequest(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PurchaseRequest",
+    });
+    const source = await lockPurchaseRequestApprovalSource(tx, session, {
+      id: request.id,
+      stepOrder: step.stepOrder,
+    });
     const stepResult = await approveCurrentStepAndAdvance(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
       stepOrder: step.stepOrder,
       requiredPermissionCode: permissions.purchaseRequestApprove,
-      locationId: request.requestLocationId,
+      locationId: source.requestLocationId,
       remarks: values.remarks,
-      prohibitedApproverUserIds: [request.requesterUserId],
+      prohibitedApproverUserIds: [source.requesterUserId],
       notification: {
-        recipientUserIds: [request.requesterUserId],
-        publicReference: request.publicReference,
+        recipientUserIds: [source.requesterUserId],
+        publicReference: source.publicReference,
         locationName: request.requestLocation.name,
         entityLabel: "Purchase request"
       },
@@ -5752,7 +5801,8 @@ export async function approvePurchaseRequest(formData: FormData) {
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
           status: "PENDING_APPROVAL",
-          currentApprovalStep: step.stepOrder
+          currentApprovalStep: step.stepOrder,
+          version: source.version
         },
         data: {
           currentApprovalStep: stepResult.nextStepOrder,
@@ -5771,7 +5821,8 @@ export async function approvePurchaseRequest(formData: FormData) {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "PENDING_APPROVAL",
-        currentApprovalStep: step.stepOrder
+        currentApprovalStep: step.stepOrder,
+        version: source.version
       },
       data: {
         status: "APPROVED",
@@ -9692,16 +9743,25 @@ async function closeWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "PurchaseRequest",
+    });
+    const source = await lockPurchaseRequestApprovalSource(tx, session, {
+      id: request.id,
+      stepOrder: step.stepOrder,
+    });
     await closeCurrentApprovalDecision(tx, session, {
       approvalId: approval.id,
       stepId: step.id,
       stepOrder: step.stepOrder,
       requiredPermissionCode: permissions.purchaseRequestApprove,
-      locationId: request.requestLocationId,
+      locationId: source.requestLocationId,
       remarks: values.remarks,
       notification: {
-        recipientUserIds: [request.requesterUserId],
-        publicReference: request.publicReference,
+        recipientUserIds: [source.requesterUserId],
+        publicReference: source.publicReference,
         locationName: request.requestLocation.name,
         entityLabel: "Purchase request"
       },
@@ -9718,7 +9778,8 @@ async function closeWithDecision(
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         status: "PENDING_APPROVAL",
-        currentApprovalStep: step.stepOrder
+        currentApprovalStep: step.stepOrder,
+        version: source.version
       },
       data: {
         status,

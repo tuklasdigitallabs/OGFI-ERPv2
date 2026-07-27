@@ -704,8 +704,36 @@ describe("multi-step approval advancement", () => {
       const handlerSource = extractFunctionSource(serviceSource, handlerName);
       expect(handlerSource).toContain("prohibitedApproverUserIds:");
       for (const actor of prohibitedActors) {
-        expect(handlerSource).toContain(actor);
+        expect(handlerSource).toContain(actor === "request.requesterUserId"
+          ? "source.requesterUserId"
+          : actor);
       }
+    }
+  });
+
+  test("purchase request decisions lock the source before graph work and CAS the version", () => {
+    const lockSource = extractFunctionSource(
+      serviceSource,
+      "lockPurchaseRequestApprovalSource"
+    );
+    expect(lockSource).toContain('FROM "PurchaseRequest" request');
+    expect(lockSource).toContain("FOR UPDATE OF request");
+    expect(lockSource).toContain('source.status !== "PENDING_APPROVAL"');
+    expect(lockSource).toContain("source.currentApprovalStep !== input.stepOrder");
+
+    for (const handlerName of ["approvePurchaseRequest", "closeWithDecision"]) {
+      const handlerSource = extractFunctionSource(serviceSource, handlerName);
+      expect(handlerSource).toContain("acquireApprovalProducerBarrierShared");
+      expect(handlerSource).toContain("lockPurchaseRequestApprovalSource");
+      expect(handlerSource).toContain("version: source.version");
+      const sourceLockAt = handlerSource.indexOf("lockPurchaseRequestApprovalSource");
+      const graphAt = handlerSource.indexOf(
+        handlerName === "approvePurchaseRequest"
+          ? "approveCurrentStepAndAdvance"
+          : "closeCurrentApprovalDecision"
+      );
+      expect(sourceLockAt).toBeGreaterThanOrEqual(0);
+      expect(graphAt).toBeGreaterThan(sourceLockAt);
     }
   });
 

@@ -41,8 +41,9 @@ describe("approval producer shared-lock participation", () => {
     const transactionAt = source.indexOf("prisma.$transaction");
     const barrierAt = source.indexOf(
       "public.acquire_approval_routing_producer_barrier_shared",
+      transactionAt,
     );
-    const actionAt = source.indexOf("return action(tx)");
+    const actionAt = source.indexOf("return action(tx)", transactionAt);
 
     expect(transactionAt).toBeGreaterThanOrEqual(0);
     expect(barrierAt).toBeGreaterThan(transactionAt);
@@ -79,7 +80,10 @@ describe("approval producer shared-lock participation", () => {
     const literalCalls = combinedSource.match(
       /withApprovalProducerTransaction\(\s*\{[\s\S]*?documentType:\s*"[A-Za-z]+"[\s\S]*?\},\s*async \(tx\)/g,
     ) ?? [];
-    expect(wrapperCalls).toHaveLength(18);
-    expect(literalCalls).toHaveLength(18);
+    // Purchase Request also uses the same barrier for its non-producer
+    // reopen/cancel lifecycle transitions; the closed producer registry
+    // remains exactly 18 families above.
+    expect(wrapperCalls).toHaveLength(20);
+    expect(literalCalls).toHaveLength(20);
   });
 });

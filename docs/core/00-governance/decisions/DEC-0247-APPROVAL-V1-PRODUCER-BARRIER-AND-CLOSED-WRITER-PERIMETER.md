@@ -614,6 +614,13 @@ submit-versus-cancel/reopen overwrites but does not close the perimeter:
 approval decision writers, orphan pending-graph coherence, brand-target policy,
 durable replay identity, and executable all-family adapters remain open.
 
+Purchase Request approve, return, and reject now use the same barrier → source
+row lock → approval graph order and include the locked source version in their
+status/current-step CAS. This is a reversible source-integrity prerequisite;
+disposable PostgreSQL race evidence, line/source snapshot proof, replay
+identity, and the remaining family decision/terminal/cancellation writers are
+still required before any executable capability or ACL cutover.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
