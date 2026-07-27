@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { approvalGraphMutationInventory } from "../../src/server/services/approvalGraphMutationInventory";
 import { supportedApprovalDocumentTypes } from "../../src/server/services/approvalRoutingRegistry";
 
 export const APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_VERSION =
@@ -8,6 +9,7 @@ export type DormantTerminalCapabilityContract = Readonly<{
   contractKind: "DORMANT_TYPED_TERMINAL_SHAPE";
   documentType: (typeof supportedApprovalDocumentTypes)[number];
   capabilityName: string;
+  mutationInventoryId: "terminal.shared-future-step-skip";
   executable: false;
   runtimeCallable: false;
   databaseRoutineExists: false;
@@ -38,6 +40,7 @@ export const approvalTerminalTypedCapabilityContracts = deepFreeze(
       contractKind: "DORMANT_TYPED_TERMINAL_SHAPE" as const,
       documentType,
       capabilityName: `approval.${documentType}.terminalFutureSteps`,
+      mutationInventoryId: "terminal.shared-future-step-skip" as const,
       executable: false as const,
       runtimeCallable: false as const,
       databaseRoutineExists: false as const,
@@ -60,5 +63,8 @@ export const APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_DIGEST = createHash("sh
   .update(JSON.stringify({
     version: APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_VERSION,
     capabilities: approvalTerminalTypedCapabilityContracts,
+    mutationInventory: approvalGraphMutationInventory.find(
+      (entry) => entry.id === "terminal.shared-future-step-skip",
+    ),
   }))
   .digest("hex");

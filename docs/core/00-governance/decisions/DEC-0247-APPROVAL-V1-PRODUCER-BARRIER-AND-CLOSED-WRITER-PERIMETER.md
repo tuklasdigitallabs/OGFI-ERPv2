@@ -790,7 +790,8 @@ money, inventory, payroll, bank, or settlement authority, and must remain an
 all-18 family-bound private capability shape rather than a generic runtime
 helper. The test-only contract is version
 `dec-0247-c4-terminal-shape.1`, digest
-`6445262d0551388a2dbf3195614e758deb41e0de2066098249e929e56c9364de`; it is
+`95c8b862694b54004e9a918119aa43624b21ac2146ad19d0f507480a7736d3b2`, bound
+to the reviewed `terminal.shared-future-step-skip` mutation inventory entry; it is
 non-executable, non-runtime-callable, ungranted, and leaves base graph DML open.
 Executable routine/ACL work remains blocked on frozen signatures, source-first
 transactional proofs, disposable PostgreSQL ACL/concurrency/rollback evidence,

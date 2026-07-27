@@ -954,7 +954,7 @@ describe("DEC-0247 C4 dormant typed terminal shape", () => {
       "dec-0247-c4-terminal-shape.1",
     );
     expect(APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_DIGEST).toBe(
-      "6445262d0551388a2dbf3195614e758deb41e0de2066098249e929e56c9364de",
+      "95c8b862694b54004e9a918119aa43624b21ac2146ad19d0f507480a7736d3b2",
     );
     expect(runtimeFiles().filter((file) =>
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalTerminalTypedCapabilityContract"),
