@@ -2069,94 +2069,85 @@ export async function issuePurchaseOrderToSupplier(formData: FormData) {
   await requirePermission(session, permissions.purchaseOrderIssue);
   const values = issuePurchaseOrderSchema.parse(Object.fromEntries(formData));
   assertPurchaseOrderIssueMethodAllowed(values.communicationMethod);
-
-  const order = await prisma.purchaseOrder.findFirst({
-    where: {
-      id: values.id,
-      tenantId: session.context.tenantId,
-      companyId: session.context.companyId,
-      deliveryLocationId: session.context.locationId,
-      status: { in: ["APPROVED", "ISSUED"] },
-    },
-    include: {
-      supplier: true,
-      deliveryLocation: true,
-    },
-  });
-
-  if (!order) {
-    throw new Error("PURCHASE_ORDER_NOT_FOUND");
-  }
-  assertAuthorizedLocation(session, order.deliveryLocationId);
-
   const supplierPolicy = await getPurchasingSupplierPolicy(session);
-  assertSupplierStatusAllowedForPurchaseOrder(
-    order.supplier.accreditationStatus,
-    supplierPolicy,
-    "SUPPLIER_NOT_ACTIVE_FOR_PO_ISSUE",
-  );
-  if (order.deliveryLocation.status !== "ACTIVE") {
-    throw new Error("PURCHASE_ORDER_DELIVERY_LOCATION_INACTIVE");
-  }
 
-  const metadata = {
-    communicationMethod: values.communicationMethod,
-    recipientReference: values.recipientReference || null,
-    remarks: values.remarks || null,
-    supplierId: order.supplierId,
-    totalAmount: Number(order.totalAmount),
-  };
-
-  if (order.status === "ISSUED") {
-    assertPurchaseOrderCanBeResent(order.status);
-    await prisma.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "purchase_order.resent",
-        entityType: "PurchaseOrder",
-        entityId: order.id,
-        beforeData: { status: "ISSUED" },
-        afterData: { status: "ISSUED" },
-        metadata,
-      },
-    });
-    return;
-  }
-
-  assertPurchaseOrderCanBeIssued(order.status);
-
-  await prisma.$transaction(async (tx) => {
-    const updated = await tx.purchaseOrder.updateMany({
-      where: {
-        id: order.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "APPROVED",
-      },
-      data: {
-        status: "ISSUED",
-      },
-    });
-
-    if (updated.count !== 1) {
-      throw new Error("PURCHASE_ORDER_NOT_APPROVED_FOR_ISSUE");
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PurchaseOrder",
+  }, async (tx) => {
+    const rows = await tx.$queryRaw<Array<{
+      id: string;
+      deliveryLocationId: string;
+      supplierId: string;
+      supplierAccreditationStatus: string;
+      locationStatus: string;
+      status: string;
+      totalAmount: string | number;
+    }>>`
+      SELECT po.id, po."deliveryLocationId", po."supplierId",
+             s."accreditationStatus" AS "supplierAccreditationStatus",
+             l.status AS "locationStatus", po.status, po."totalAmount"
+        FROM "PurchaseOrder" po
+        JOIN "Supplier" s ON s.id = po."supplierId"
+        JOIN "Location" l ON l.id = po."deliveryLocationId"
+       WHERE po.id = ${values.id}::uuid
+         AND po."tenantId" = ${session.context.tenantId}::uuid
+         AND po."companyId" = ${session.context.companyId}::uuid
+         AND po."deliveryLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE OF po
+    `;
+    const order = rows[0];
+    if (!order) throw new Error("PURCHASE_ORDER_NOT_FOUND");
+    assertAuthorizedLocation(session, order.deliveryLocationId);
+    await tx.$queryRaw`SELECT id FROM "Supplier" WHERE id = ${order.supplierId}::uuid FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM "Location" WHERE id = ${order.deliveryLocationId}::uuid FOR SHARE`;
+    const pendingGraph = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "ApprovalInstance"
+       WHERE "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "documentType" = 'PurchaseOrder'
+         AND "documentId" = ${order.id}::uuid
+         AND status = 'PENDING'
+       LIMIT 1
+    `;
+    if (pendingGraph.length > 0) throw new Error("PURCHASE_ORDER_APPROVAL_GRAPH_NOT_CLOSED");
+    assertSupplierStatusAllowedForPurchaseOrder(
+      order.supplierAccreditationStatus,
+      supplierPolicy,
+      "SUPPLIER_NOT_ACTIVE_FOR_PO_ISSUE",
+    );
+    if (order.locationStatus !== "ACTIVE") throw new Error("PURCHASE_ORDER_DELIVERY_LOCATION_INACTIVE");
+    const metadata = {
+      communicationMethod: values.communicationMethod,
+      recipientReference: values.recipientReference || null,
+      remarks: values.remarks || null,
+      supplierId: order.supplierId,
+      totalAmount: Number(order.totalAmount),
+      deliveryRecordedNotSent: true,
+    };
+    if (order.status === "ISSUED") {
+      assertPurchaseOrderCanBeResent(order.status);
+      await tx.auditEvent.create({ data: {
+        tenantId: session.context.tenantId, companyId: session.context.companyId,
+        actorUserId: session.user.id, eventType: "purchase_order.resent",
+        entityType: "PurchaseOrder", entityId: order.id,
+        beforeData: { status: "ISSUED" }, afterData: { status: "ISSUED" }, metadata,
+      } });
+      return;
     }
-
-    await tx.auditEvent.create({
-      data: {
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        actorUserId: session.user.id,
-        eventType: "purchase_order.issued",
-        entityType: "PurchaseOrder",
-        entityId: order.id,
-        beforeData: { status: "APPROVED" },
-        afterData: { status: "ISSUED" },
-        metadata,
-      },
+    assertPurchaseOrderCanBeIssued(order.status);
+    const updated = await tx.purchaseOrder.updateMany({
+      where: { id: order.id, tenantId: session.context.tenantId, companyId: session.context.companyId, deliveryLocationId: order.deliveryLocationId, status: "APPROVED" },
+      data: { status: "ISSUED" },
     });
+    if (updated.count !== 1) throw new Error("PURCHASE_ORDER_NOT_APPROVED_FOR_ISSUE");
+    await tx.auditEvent.create({ data: {
+      tenantId: session.context.tenantId, companyId: session.context.companyId,
+      actorUserId: session.user.id, eventType: "purchase_order.issued",
+      entityType: "PurchaseOrder", entityId: order.id,
+      beforeData: { status: "APPROVED" }, afterData: { status: "ISSUED" }, metadata,
+    } });
   });
 }
 

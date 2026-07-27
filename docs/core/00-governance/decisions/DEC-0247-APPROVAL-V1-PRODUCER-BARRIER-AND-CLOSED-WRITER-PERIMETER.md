@@ -955,6 +955,10 @@ replay, PostgreSQL/ACL evidence, DEC-0246 authority, and activation remain open.
 
 The next bounded writer selected after PO approval was feature-disabled Inbox Wastage final approval. The implementation preserves the non-posting boundary: it locks the shared company barrier, WastageReport, active InventoryLocation/Location scope, exact approval instance, and ordered steps, then CASes the source with the locked `updatedAt` and inventory-location predicates. Intermediate approval leaves the source pending; final approval only records approval state and audit metadata. It does not post movements, change balances, create commitments, or trigger receiving/payment/journal effects. PostgreSQL contention, ACL, replay, rollback, and no-movement evidence remain open because the disposable runner is unavailable.
 
+### Purchase Order first issuance correction (July 27, 2026)
+
+Architecture, Security, and QA accepted first issuance as a bounded status-only writer. The path now uses the shared barrier, locks the scoped PO/supplier/location facts, fails closed on a pending approval graph, and CASes `APPROVED → ISSUED` with one issuance audit in the same transaction. It does not call a supplier, create an outbox, receive goods, mutate inventory, project budget, or create AP/payment/journal effects. Repeat `ISSUED` remains a separate audit-only resend branch; because durable resend identity and explicit operator intent are not yet implemented, automatic retry/replay proof remains open. PostgreSQL contention, ACL, rollback, and no-side-effect evidence remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

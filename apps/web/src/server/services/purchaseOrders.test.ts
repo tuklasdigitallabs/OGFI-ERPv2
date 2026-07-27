@@ -39,6 +39,15 @@ describe("purchase order lifecycle rules", () => {
     expect(page).toContain("workspaceOrders?.items");
     expect(page).toContain("workspaceOrders.totalPages");
   });
+
+  test("PO issuance is barrier-locked, scoped, and records delivery as not sent", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+    expect(source).toContain('documentType: "PurchaseOrder"');
+    expect(source).toContain("FOR UPDATE OF po");
+    expect(source).toContain('eventType: "purchase_order.issued"');
+    expect(source).toContain("deliveryRecordedNotSent: true");
+    expect(source).toContain("PURCHASE_ORDER_APPROVAL_GRAPH_NOT_CLOSED");
+  });
   test("My Tasks uses only explicit draft-submit and approved-issue PO actions", () => {
     const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
     const start = source.indexOf("export async function listPurchaseOrderMyTaskPage");
