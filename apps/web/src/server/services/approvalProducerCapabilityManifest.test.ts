@@ -39,6 +39,11 @@ import {
   approvalProducerClosedCapabilityContracts,
   approvalProducerClosedCapabilityInventoryDigest,
 } from "../../../tests/contracts/approvalProducerClosedCapabilityContract";
+import {
+  APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_DIGEST,
+  APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_VERSION,
+  approvalProducerTypedAdapterContracts,
+} from "../../../tests/contracts/approvalProducerTypedAdapterContract";
 
 const repositoryRoot = path.resolve(__dirname, "../../../../..");
 const sourceExtensions = new Set([
@@ -871,6 +876,43 @@ describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalProducerClosedCapabilityContract"),
     );
     expect(runtimeImports).toEqual([]);
+  });
+});
+
+describe("DEC-0247 C3 dormant typed-adapter shape", () => {
+  test("pins one unavailable, non-authoritative adapter shape for each family", () => {
+    expect(Object.keys(approvalProducerTypedAdapterContracts).sort()).toEqual(
+      [...supportedApprovalDocumentTypes].sort(),
+    );
+    for (const adapter of Object.values(approvalProducerTypedAdapterContracts)) {
+      expect(adapter).toMatchObject({
+        contractKind: "DORMANT_TYPED_ADAPTER_SHAPE",
+        executable: false,
+        runtimeCallable: false,
+        databaseRoutineExists: false,
+        positiveGrant: false,
+        grantsAuthority: false,
+        sourceLocksRequired: true,
+        sourceCasRequired: true,
+        replayContractRequired: true,
+        descriptorIsCallerAuthority: false,
+        invocationStatus: "DORMANT_UNAVAILABLE",
+      });
+      expect(Object.isFrozen(adapter)).toBe(true);
+    }
+    expect(Object.isFrozen(approvalProducerTypedAdapterContracts)).toBe(true);
+  });
+
+  test("binds the typed-adapter contract to a reviewed version and digest", () => {
+    expect(APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_VERSION).toBe(
+      "dec-0247-c3.dormant-typed-adapter-shape.1",
+    );
+    expect(APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_DIGEST).toBe(
+      "38244059fbcee62c36634bac91f7bb95d84f3c160b76b90405090c7b826fabde",
+    );
+    expect(runtimeFiles().filter((file) =>
+      readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalProducerTypedAdapterContract"),
+    )).toEqual([]);
   });
 });
 

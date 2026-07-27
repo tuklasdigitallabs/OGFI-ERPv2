@@ -537,6 +537,27 @@ PostgreSQL ACL/concurrency evidence, `DEC-0246` authority, deployment/recovery,
 certification, and activation remain pending. `APPROVAL_ROUTING_V1_ENABLED`
 remains false; C2 cannot produce `V1_PRODUCER_BARRIER_READY` or `DRAIN_CLEAN`.
 
+### Current Option C C3 dormant typed-adapter shape checkpoint
+
+C3 preparation adds only the test-only
+`apps/web/tests/contracts/approvalProducerTypedAdapterContract.ts` shape for the
+18 future family-specific writer adapters. Each entry requires source locking,
+source compare-and-set, and replay/idempotency design, but remains
+`DORMANT_UNAVAILABLE`, non-executable, non-runtime-callable, ungranted, and
+descriptor-binding-only. No adapter is imported by runtime services, no generic
+descriptor API or database routine exists, and no source, graph, audit,
+notification, inventory, or approval behavior changes.
+
+Contract version `dec-0247-c3.dormant-typed-adapter-shape.1` is bound to digest
+`38244059fbcee62c36634bac91f7bb95d84f3c160b76b90405090c7b826fabde`. Focused
+C0/C1/C2/C3 coverage passes 16/16. This is not an executable capability rollout
+or ACL migration. Existing compatibility writers and runtime graph DML remain
+open until all 18 adapters and every shared routing, decision, terminal,
+cancellation, provenance, and tooling writer are migrated and proven. Source
+lock/CAS/replay gaps, child identity design, PostgreSQL semantic/concurrency/ACL
+and restore evidence, `DEC-0246` authority, deployment/recovery, certification,
+and activation remain pending. `APPROVAL_ROUTING_V1_ENABLED` remains false.
+
 ## Follow-up actions
 
 | Action | Owner | Due / trigger | Status |
