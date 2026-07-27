@@ -1651,13 +1651,6 @@ export async function receiveInventoryTransfer(formData: FormData) {
   if (!transfer) {
     throw new Error("TRANSFER_NOT_FOUND");
   }
-  if (transfer.status === "RECEIVED") {
-    return;
-  }
-  assertTransferCanReceive(transfer.status);
-  if (transfer.dispatchedByUserId === session.user.id) {
-    throw new Error("TRANSFER_RECEIVER_MUST_DIFFER_FROM_DISPATCHER");
-  }
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
@@ -1669,40 +1662,172 @@ export async function receiveInventoryTransfer(formData: FormData) {
         line.destinationInventoryLocationId
       ])
     );
+    const [lockedTransfer] = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      updatedAt: Date;
+      sourceLocationId: string;
+      destinationLocationId: string;
+    }>>(Prisma.sql`
+      SELECT t."id", t."status", t."updatedAt", t."sourceLocationId",
+        t."destinationLocationId"
+      FROM "InventoryTransfer" t
+      WHERE t."id" = ${values.id}
+        AND t."tenantId" = ${session.context.tenantId}
+        AND t."companyId" = ${session.context.companyId}
+        AND t."destinationLocationId" = ${session.context.locationId}
+      FOR UPDATE OF t
+    `);
+    if (!lockedTransfer) {
+      throw new Error("TRANSFER_NOT_FOUND");
+    }
+    const lockedLineIds = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT l."id"
+      FROM "InventoryTransferLine" l
+      WHERE l."inventoryTransferId" = ${lockedTransfer.id}
+        AND l."tenantId" = ${session.context.tenantId}
+        AND l."companyId" = ${session.context.companyId}
+      ORDER BY l."lineNumber" ASC, l."id" ASC
+      FOR UPDATE OF l
+    `);
+    const authoritativeTransfer = await tx.inventoryTransfer.findFirst({
+      where: {
+        id: lockedTransfer.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        destinationLocationId: session.context.locationId
+      },
+      include: { lines: { orderBy: { lineNumber: "asc" } } }
+    });
+    if (
+      !authoritativeTransfer ||
+      lockedLineIds.length !== authoritativeTransfer.lines.length ||
+      lockedTransfer.sourceLocationId !== authoritativeTransfer.sourceLocationId ||
+      lockedTransfer.destinationLocationId !== authoritativeTransfer.destinationLocationId
+    ) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
+    const authoritativeInventoryLocationIds = new Set(
+      authoritativeTransfer.lines.flatMap((line) => [
+        line.sourceInventoryLocationId,
+        line.destinationInventoryLocationId
+      ])
+    );
+    const initiallyLockedInventoryLocationIds = new Set(
+      transfer.lines.flatMap((line) => [
+        line.sourceInventoryLocationId,
+        line.destinationInventoryLocationId
+      ])
+    );
+    if (
+      authoritativeInventoryLocationIds.size !== initiallyLockedInventoryLocationIds.size ||
+      [...authoritativeInventoryLocationIds].some(
+        (id) => !initiallyLockedInventoryLocationIds.has(id)
+      )
+    ) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
+    const activeInventoryLocations = await tx.inventoryLocation.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE",
+        id: { in: [...authoritativeInventoryLocationIds] }
+      },
+      select: { id: true }
+    });
+    if (activeInventoryLocations.length !== authoritativeInventoryLocationIds.size) {
+      throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
+    }
+    if (lockedTransfer.status === "RECEIVED") {
+      return;
+    }
+    assertTransferCanReceive(lockedTransfer.status);
+    if (authoritativeTransfer.dispatchedByUserId === session.user.id) {
+      throw new Error("TRANSFER_RECEIVER_MUST_DIFFER_FROM_DISPATCHER");
+    }
+
+    const receiptInputs = authoritativeTransfer.lines.map((line) => {
+      const acceptedQty = parseReceiptQuantity(formData, line.id, "acceptedQty") ??
+        Number((Number(line.dispatchedQty) - Number(line.receivedQty) - Number(line.rejectedQty) - Number(line.damagedQty) - Number(line.discrepancyQty)).toFixed(6));
+      const rejectedQty = parseReceiptQuantity(formData, line.id, "rejectedQty") ?? 0;
+      const damagedQty = parseReceiptQuantity(formData, line.id, "damagedQty") ?? 0;
+      const discrepancyQty = parseReceiptQuantity(formData, line.id, "discrepancyQty") ?? 0;
+      return {
+        line,
+        acceptedQty,
+        rejectedQty,
+        damagedQty,
+        discrepancyQty,
+        discrepancyReason: String(formData.get(`lines.${line.id}.discrepancyReason`) ?? "").trim() || null,
+        discrepancyType: String(formData.get(`lines.${line.id}.discrepancyType`) ?? "").trim() || null,
+        evidenceReference: String(formData.get(`lines.${line.id}.evidenceReference`) ?? "").trim() || null
+      };
+    });
+    const idempotencyRequestHash = hashInventoryTransferReceiptRequest({
+      actorUserId: session.user.id,
+      destinationLocationId: authoritativeTransfer.destinationLocationId,
+      transferId: authoritativeTransfer.id,
+      notes: values.notes ?? null,
+      lines: receiptInputs.map((input) => ({
+        lineId: input.line.id,
+        sourceInventoryLocationId: input.line.sourceInventoryLocationId,
+        destinationInventoryLocationId: input.line.destinationInventoryLocationId,
+        acceptedQty: input.acceptedQty,
+        rejectedQty: input.rejectedQty,
+        damagedQty: input.damagedQty,
+        discrepancyQty: input.discrepancyQty,
+        discrepancyType: input.discrepancyType,
+        discrepancyReason: input.discrepancyReason,
+        evidenceReference: input.evidenceReference
+      }))
+    });
+    await assertPrivilegedMfaForAction(session, {
+      action: "inventory_transfer_receipt.receive",
+      enforcementScope: "all_sensitive",
+      permissionCode: permissions.transferReceive,
+      entityType: "InventoryTransfer",
+      entityId: authoritativeTransfer.id,
+      reason: "Transfer receipt posting changes destination inventory and records discrepancies.",
+      metadata: { destinationLocationId: authoritativeTransfer.destinationLocationId }
+    }, { transaction: tx });
+    const existingReceipt = await tx.inventoryTransferReceipt.findFirst({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        idempotencyKey: values.idempotencyKey
+      },
+      select: { id: true, idempotencyRequestHash: true, status: true }
+    });
+    if (existingReceipt) {
+      if (existingReceipt.idempotencyRequestHash !== idempotencyRequestHash) {
+        throw new Error("TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT");
+      }
+      if (existingReceipt.status === "POSTED" || existingReceipt.status === "REVERSED") {
+        return;
+      }
+      throw new Error("TRANSFER_RECEIPT_IDEMPOTENCY_IN_PROGRESS");
+    }
     const receipt = await tx.inventoryTransferReceipt.create({
       data: {
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        inventoryTransferId: transfer.id,
+        inventoryTransferId: authoritativeTransfer.id,
         receivedByUserId: session.user.id,
         status: "POSTING",
         receivedAt: now,
-        notes: values.notes || null
+        notes: values.notes || null,
+        idempotencyKey: values.idempotencyKey,
+        idempotencyRequestHash
       }
     });
-
-    const claimed = await tx.inventoryTransfer.updateMany({
-      where: {
-        id: transfer.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        destinationLocationId: session.context.locationId,
-        status: { in: ["DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"] }
-      },
-      data: {
-        receivedAt: now,
-        receivedByUserId: session.user.id
-      }
-    });
-    if (claimed.count !== 1) {
-      throw new Error("TRANSFER_NOT_DISPATCHED_FOR_RECEIPT");
-    }
 
     let capturedReceiptQty = 0;
     let discrepancyFlag = false;
     const discrepancySummaries: string[] = [];
 
-    for (const line of transfer.lines) {
+    for (const input of receiptInputs) {
+      const line = input.line;
       const dispatchedQty = Number(line.dispatchedQty);
       assertPositiveTransferQuantity(dispatchedQty);
       const alreadyAccountedQty =
@@ -1715,23 +1840,7 @@ export async function receiveInventoryTransfer(formData: FormData) {
         continue;
       }
 
-      const acceptedInput = parseReceiptQuantity(formData, line.id, "acceptedQty");
-      const acceptedQty = acceptedInput ?? remainingQty;
-      const rejectedQty =
-        parseReceiptQuantity(formData, line.id, "rejectedQty") ?? 0;
-      const damagedQty =
-        parseReceiptQuantity(formData, line.id, "damagedQty") ?? 0;
-      const discrepancyQty =
-        parseReceiptQuantity(formData, line.id, "discrepancyQty") ?? 0;
-      const discrepancyReason =
-        String(formData.get(`lines.${line.id}.discrepancyReason`) ?? "").trim() ||
-        null;
-      const discrepancyType =
-        String(formData.get(`lines.${line.id}.discrepancyType`) ?? "").trim() ||
-        null;
-      const evidenceReference =
-        String(formData.get(`lines.${line.id}.evidenceReference`) ?? "").trim() ||
-        null;
+      const { acceptedQty, rejectedQty, damagedQty, discrepancyQty, discrepancyReason, discrepancyType, evidenceReference } = input;
 
       assertTransferReceiptQuantities({
         acceptedQty,
@@ -1753,7 +1862,7 @@ export async function receiveInventoryTransfer(formData: FormData) {
       const receiptLine = await tx.inventoryTransferReceiptLine.create({
         data: {
           transferReceiptId: receipt.id,
-          inventoryTransferId: transfer.id,
+          inventoryTransferId: authoritativeTransfer.id,
           inventoryTransferLineId: line.id,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
@@ -1783,13 +1892,13 @@ export async function receiveInventoryTransfer(formData: FormData) {
           enteredUomId: line.uomId,
           quantityDeltaBaseUom: acceptedQty,
           sourceDocumentType: "InventoryTransfer",
-          sourceDocumentId: transfer.id,
+          sourceDocumentId: authoritativeTransfer.id,
           sourceDocumentLineId: line.id,
           sourceEventKey: `receipt:${receiptLine.id}`,
           lotNumber: line.lotNumber,
           expiryDate: line.expiryDate,
           reasonCode: "TRANSFER_RECEIPT",
-          notes: transfer.publicReference
+          notes: authoritativeTransfer.publicReference
         });
 
         await tx.inventoryTransferReceiptLine.update({
@@ -1801,6 +1910,9 @@ export async function receiveInventoryTransfer(formData: FormData) {
       const updated = await tx.inventoryTransferLine.updateMany({
         where: {
           id: line.id,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          inventoryTransferId: authoritativeTransfer.id,
           receivedQty: line.receivedQty,
           rejectedQty: line.rejectedQty,
           damagedQty: line.damagedQty,
@@ -1831,7 +1943,7 @@ export async function receiveInventoryTransfer(formData: FormData) {
     }
 
     const updatedLines = await tx.inventoryTransferLine.findMany({
-      where: { inventoryTransferId: transfer.id },
+      where: { inventoryTransferId: authoritativeTransfer.id },
       orderBy: { lineNumber: "asc" }
     });
     const nextStatus = calculateTransferReceiptStatus(
@@ -1854,14 +1966,24 @@ export async function receiveInventoryTransfer(formData: FormData) {
       }
     });
 
-    await tx.inventoryTransfer.update({
-      where: { id: transfer.id },
+    const updatedTransfer = await tx.inventoryTransfer.updateMany({
+      where: {
+        id: authoritativeTransfer.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        destinationLocationId: session.context.locationId,
+        status: lockedTransfer.status,
+        updatedAt: lockedTransfer.updatedAt
+      },
       data: {
         status: nextStatus,
         receivedAt: now,
         receivedByUserId: session.user.id
       }
     });
+    if (updatedTransfer.count !== 1) {
+      throw new Error("TRANSFER_RECEIPT_STATE_CONFLICT");
+    }
 
     await tx.auditEvent.create({
       data: {
@@ -1870,14 +1992,14 @@ export async function receiveInventoryTransfer(formData: FormData) {
         actorUserId: session.user.id,
         eventType: "inventory_transfer.received",
         entityType: "InventoryTransfer",
-        entityId: transfer.id,
-        beforeData: { status: transfer.status },
+        entityId: authoritativeTransfer.id,
+        beforeData: { status: lockedTransfer.status },
         afterData: { status: nextStatus },
         metadata: {
           receiptId: receipt.id,
-          sourceLocationId: transfer.sourceLocationId,
-          destinationLocationId: transfer.destinationLocationId,
-          lineCount: transfer.lines.length,
+          sourceLocationId: authoritativeTransfer.sourceLocationId,
+          destinationLocationId: authoritativeTransfer.destinationLocationId,
+          lineCount: authoritativeTransfer.lines.length,
           discrepancyFlag
         }
       }

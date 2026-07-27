@@ -682,4 +682,16 @@ describe("inventory transfer foundation rules", () => {
       hashInventoryTransferReceiptRequest({ ...base, lines: [] })
     );
   });
+
+  test("receipt writer keeps the guarded transaction boundary", () => {
+    const service = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    expect(service).toContain('FOR UPDATE OF t');
+    expect(service).toContain('FOR UPDATE OF l');
+    expect(service).toContain('idempotencyKey: values.idempotencyKey');
+    expect(service).toContain('idempotencyRequestHash');
+    expect(service).toContain('TRANSFER_RECEIPT_IDEMPOTENCY_CONFLICT');
+    expect(service).toContain('inventory_transfer_receipt.receive');
+    expect(service).toContain('updatedAt: lockedTransfer.updatedAt');
+    expect(service).toContain('movementType: "TRANSFER_IN"');
+  });
 });
