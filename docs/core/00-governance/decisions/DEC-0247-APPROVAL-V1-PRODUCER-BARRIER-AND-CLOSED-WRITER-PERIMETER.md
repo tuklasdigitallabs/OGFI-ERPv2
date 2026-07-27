@@ -462,6 +462,42 @@ optional-present and child-lineage corruption matrix; and prove populated hosted
 restore/performance behavior. No production deployment or activation approval is
 granted.
 
+The next deployment-gate increment closes the earlier source-checkpoint gaps for
+controlled role containment, migration-ledger completeness, live observer
+attestation, and branch breadth. The only permitted membership touching the
+owner, migrator, or runtime is migrator-to-owner with `SET` true, `ADMIN` false,
+and inherited owner privileges false; bootstrap and verification fail closed on
+all other incoming, outgoing, option-drift, or nested paths. The controlled
+migration wrapper first enforces the exact role graph before any Prisma DDL,
+then performs a read-only repeatable-read comparison of every
+filesystem migration name and SHA-256 checksum against `_prisma_migrations`
+before deploy and requires an exact-current ledger after reconciliation. It
+rejects unknown, duplicate, failed, rolled-back, logged, gapped, and legacy-hash
+histories and never rewrites or resolves the ledger. An absent ledger passes only
+on a zero-application-object database; an existing empty ledger fails. The live verifier now pins
+the exact metadata and SHA-256 `prosrc` body of all 18 routines.
+
+Fresh PostgreSQL 17 evidence passes all 15 adversarial role-graph cases and the
+complete 31-case observer corruption matrix: ten optional-present branches,
+18 child branches, and three post-child branches. Every case proves an initial
+match, exactly one effective corruption and resulting no-match, transaction-local
+rollback, restored match, and no durable controlled-table fingerprint delta.
+Static observer coverage passes 5/5, role-tool coverage passes 20/20, and
+append-only coverage remains 17/17. The slowest single-call disposable fixture
+is 35.880 ms; no production-volume claim is made. Live ledger execution also
+passes clean absent-ledger admission, exact-current parsing of all 138 rows,
+checksum-drift rejection, exact restoration, and repeat verification.
+
+This increment does not approve non-disposable deployment. The ledger preflight
+and Prisma deploy use separate connections, leaving a non-atomic audit/deploy
+interval until a deployment-wide lock/fence or separately accepted equivalent is
+implemented. Populated hosted restore/performance proof is also absent, and the
+separate broader authorization database suite retains observed failures with no
+completion credit. Legacy-checksum databases require approved restore/rebuild,
+not ledger mutation. Requested Code Spark and exact GPT-5.4 models were
+unavailable, so the closest permitted GPT-5.6 specialists were used without
+relaxing any hard gate.
+
 C1 is not the complete Option C writer perimeter. Ordinary runtime base approval
 graph DML remains, and no typed writer capability or positive grant exists. The
 broader approval-routing suite remains deliberately outside this checkpoint and

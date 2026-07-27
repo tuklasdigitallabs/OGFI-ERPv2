@@ -11,6 +11,10 @@ const migrationSource = readFileSync(
   ),
   "utf8",
 );
+const disposableRunnerSource = readFileSync(
+  fileURLToPath(new URL("../../../scripts/run-disposable-postgres-tests.mjs", import.meta.url)),
+  "utf8",
+);
 
 const observers = [
   ["purchase_request", "PurchaseRequest"],
@@ -168,6 +172,130 @@ describe("DEC-0247 C1 private approval-routing shadow observers", () => {
     for (const key of ["approvalAction", "requestedByUserId", "requestedAt"]) {
       expect(finance).toContain(`pendingSensitiveApproval,${key}`);
     }
+  });
+
+  test("pins the exact optional-present, present-child, and post-child evidence inventory", () => {
+    const exactCaseNames = [
+      "purchase-request-brand-present",
+      "budget-location-present",
+      "cash-beneficiary-present",
+      "cash-expense-present",
+      "cash-payment-present",
+      "cash-bank-present",
+      "cash-budget-commitment-present",
+      "petty-location-present",
+      "leave-location-present",
+      "overtime-location-present",
+      "budget-line-scope",
+      "budget-line-location-present",
+      "expense-line-scope",
+      "expense-source-link-scope",
+      "expense-source-link-line-parent",
+      "payment-line-scope-location",
+      "payment-line-wrong-location",
+      "payment-line-invoice",
+      "release-allocation-scope",
+      "release-allocation-request-parent",
+      "release-allocation-invoice",
+      "release-allocation-invoice-scope",
+      "schedule-line-scope",
+      "schedule-line-wrong-location",
+      "schedule-line-employee",
+      "attendance-line-scope",
+      "attendance-line-wrong-location",
+      "attendance-line-employee",
+      "closure-parent",
+      "amendment-parent",
+      "release-parent",
+    ] as const;
+    expect(exactCaseNames).toHaveLength(31);
+    for (const caseName of exactCaseNames) {
+      expect(disposableRunnerSource).toContain(`"${caseName}"`);
+    }
+    expect(disposableRunnerSource).toContain(
+      "JSON.stringify(approvalShadowBranchCaseNames)",
+    );
+
+    const optionalPresent = {
+      purchase_request: [
+        'source."brandId" IS NULL',
+        'brand."id" = source."brandId"',
+      ],
+      budget_revision: [
+        'budget."locationId" IS NULL',
+        'location."id" = budget."locationId"',
+      ],
+      cash_advance_request: [
+        'source."beneficiaryUserId" IS NULL',
+        'source."expenseRequestId" IS NULL',
+        'source."paymentRequestId" IS NULL',
+        'source."budgetCommitmentId" IS NULL',
+        'source."intendedBankAccountId" IS NULL',
+      ],
+      petty_cash_request: [
+        'source."locationId" IS NULL OR source."locationId" = fund."locationId"',
+      ],
+      employee_leave_request: [
+        'source."locationId" IS NULL',
+        'location."id" = source."locationId"',
+      ],
+      employee_overtime_record: [
+        'source."locationId" IS NULL',
+        'location."id" = source."locationId"',
+      ],
+    } as const;
+    expect(Object.keys(optionalPresent)).toHaveLength(6);
+    for (const [slug, predicates] of Object.entries(optionalPresent)) {
+      const definition = observerDefinition(slug);
+      for (const predicate of predicates) expect(definition).toContain(predicate);
+    }
+
+    const presentChild = {
+      budget_revision: [
+        'FROM public."BudgetLine" line',
+        'line."locationId" IS NOT NULL',
+      ],
+      expense_request: [
+        'FROM public."ExpenseRequestLine" line',
+        'FROM public."ExpenseRequestSourceLink" link',
+      ],
+      payment_request: [
+        'FROM public."PaymentRequestLine" line',
+        'FROM public."ApInvoice" invoice',
+      ],
+      payment_release: [
+        'FROM public."PaymentReleaseAllocation" allocation',
+        'FROM public."PaymentRequestLine" request_line',
+        'JOIN public."ApInvoice" invoice',
+      ],
+      workforce_schedule: [
+        'FROM public."WorkforceScheduleLine" line',
+        'FROM public."Employee" employee',
+      ],
+      attendance_import_batch: [
+        'FROM public."AttendanceImportLine" line',
+        'FROM public."Employee" employee',
+      ],
+    } as const;
+    for (const [slug, predicates] of Object.entries(presentChild)) {
+      const definition = observerDefinition(slug);
+      for (const predicate of predicates) expect(definition).toContain(predicate);
+    }
+
+    expect(exactCaseNames.slice(-3)).toEqual([
+      "closure-parent",
+      "amendment-parent",
+      "release-parent",
+    ]);
+    for (const slug of [
+      "purchase_order_balance_closure",
+      "purchase_order_amendment",
+    ]) {
+      expect(observerDefinition(slug)).toContain('po."id" = source."purchaseOrderId"');
+    }
+    expect(observerDefinition("payment_release")).toContain(
+      'payment_request."id" = source."paymentRequestId"',
+    );
   });
 
   test("is private, read-only, deterministic in shape, and carries no workflow authority", () => {

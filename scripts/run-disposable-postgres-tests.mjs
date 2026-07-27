@@ -19,13 +19,25 @@ import {
   shouldRunSeedRepeatability,
   targetDatabaseUrl,
 } from "./disposable-postgres-lifecycle.mjs";
+import { assertPredeployRoleGraph } from "./db-migrate-controlled.mjs";
+import {
+  buildMigrationManifest,
+  inspectMigrationLedger,
+} from "./db-migration-ledger-preflight.mjs";
 
 const adversarialCases = [
   ["security_definer", "Runtime or PUBLIC can execute a non-extension public routine", "reconcile"],
   ["column_acl", "PUBLIC or runtime retains a column ACL on AuditEvent", "reconcile"],
-  ["owner_membership", "Owner or runtime role membership closure is not empty", "bootstrap"],
-  ["migrator_membership", "Migrator membership must be exactly owner", "bootstrap"],
-  ["runtime_membership", "Owner or runtime role membership closure is not empty", "bootstrap"],
+  ["owner_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["migrator_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["runtime_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["owner_outgoing_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["migrator_outgoing_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["runtime_outgoing_membership", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["migrator_admin_option", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["migrator_inherit_option", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
+  ["migrator_set_option", "Controlled migrator/owner session identity mismatch", "bootstrap-refuses"],
+  ["nested_runtime_owner_path", "Controlled role membership graph must contain only owner to migrator", "bootstrap-refuses"],
   ["wrong_ownership", "A supported public object is not owned by the reviewed owner", "bootstrap"],
   ["default_privilege", "Owner default privileges contain an unsafe", "reconcile"],
   ["unexpected_schema", "Unexpected application schema exists", "admin-cleanup"],
@@ -50,6 +62,40 @@ const approvalShadowObservers = [
   ["EmployeeOvertimeRecord", "observe_employee_overtime_record_v1"],
   ["WorkforceSchedule", "observe_workforce_schedule_v1"],
   ["AttendanceImportBatch", "observe_attendance_import_batch_v1"],
+];
+
+const approvalShadowBranchCaseNames = [
+  "purchase-request-brand-present",
+  "budget-location-present",
+  "cash-beneficiary-present",
+  "cash-expense-present",
+  "cash-payment-present",
+  "cash-bank-present",
+  "cash-budget-commitment-present",
+  "petty-location-present",
+  "leave-location-present",
+  "overtime-location-present",
+  "budget-line-scope",
+  "budget-line-location-present",
+  "expense-line-scope",
+  "expense-source-link-scope",
+  "expense-source-link-line-parent",
+  "payment-line-scope-location",
+  "payment-line-wrong-location",
+  "payment-line-invoice",
+  "release-allocation-scope",
+  "release-allocation-request-parent",
+  "release-allocation-invoice",
+  "release-allocation-invoice-scope",
+  "schedule-line-scope",
+  "schedule-line-wrong-location",
+  "schedule-line-employee",
+  "attendance-line-scope",
+  "attendance-line-wrong-location",
+  "attendance-line-employee",
+  "closure-parent",
+  "amendment-parent",
+  "release-parent",
 ];
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -95,14 +141,21 @@ let shadowFixtureExitCode = null;
 try {
   runPsql(adminUrl, `CREATE DATABASE ${quoteIdentifier(identity.databaseName)}`);
   databaseCreated = true;
+  verifyCleanAbsentMigrationLedger(setupUrl, identity, decodeURIComponent(parsedAdmin.username));
   installMarker(setupUrl, identity);
   markerCreated = true;
   installSetupRoles(setupUrl, identity, migratorPassword, runtimePassword);
+  assertPredeployRoleGraph(
+    "disposable-transport",
+    disposableRoleContract(migratorUrl, runtimeUrl, identity),
+    executeControlledPsql,
+  );
 
   runPnpm(
     ["db:migrate:deploy"],
     controlledSetupEnvironment(migratorUrl, identity),
   );
+  verifyLiveMigrationLedger(migratorUrl, runtimeUrl, identity);
   runPnpm(
     ["db:seed"],
     controlledSetupEnvironment(migratorUrl, identity),
@@ -182,7 +235,7 @@ try {
     exitCode === 0
     && (suiteName === "approval-routing-backfill" || suiteName === "approval-routing-shadow")
   ) {
-    verifyApprovalShadowObservers(migratorUrl, runtimeUrl);
+    verifyApprovalShadowObservers(migratorUrl, runtimeUrl, setupUrl);
   }
   if (exitCode === 0 && suiteName === "approval-routing-backfill") {
     verifyApprovalRoutingReplicationRoleGuards(setupUrl);
@@ -221,6 +274,7 @@ function runChildCommand(childCommand, env) {
 function verifyApprovalShadowObservers(
   migratorDatabaseUrl,
   runtimeDatabaseUrl,
+  disposableAdminDatabaseUrl,
 ) {
   const canonicalCreatedAt = "2026-07-22T04:00:00.000Z";
   const fixtureSelect = (documentType) => `
@@ -356,6 +410,12 @@ function verifyApprovalShadowObservers(
        FROM (${financeFixture}) fixture`,
   );
 
+  verifyApprovalShadowObserverBranchMatrix(
+    disposableAdminDatabaseUrl,
+    fixtureSelect,
+    observerCall,
+  );
+
   const controlledIterations = 25;
   const planEvidence = [];
   for (const [documentType, routineName] of approvalShadowObservers) {
@@ -415,11 +475,303 @@ function verifyApprovalShadowObservers(
   const slowestExplainMs = Math.max(...planEvidence).toFixed(3);
 
   console.log(
-    "APPROVAL_SHADOW_OBSERVER_PASS | 18 positive | null/random/scope/family negative | runtime denied | read-only | rollback lineage",
+    "APPROVAL_SHADOW_OBSERVER_PASS | 18 positive | null/random/scope/family negative | runtime denied | read-only | rollback lineage | 31 optional/child/post-child rollback corruptions",
   );
   console.log(
     `APPROVAL_SHADOW_PLAN_LOAD_EVIDENCE | 18 single-call EXPLAIN ANALYZE/BUFFERS | separate ${controlledIterations}-call correlated checks | slowest single-call fixture ${slowestExplainMs} ms | disposable non-production volume`,
   );
+}
+
+function verifyApprovalShadowObserverBranchMatrix(databaseUrl, fixtureSelect, observerCall) {
+  const sourceId = `(SELECT "documentId" FROM shadow_case_context)`;
+  const tenantId = `(SELECT "tenantId" FROM shadow_case_context)`;
+  const companyId = `(SELECT "companyId" FROM shadow_case_context)`;
+  const auxCompanyId = `(SELECT aux_company_id FROM shadow_case_context)`;
+  const auxLocationId = `(SELECT aux_location_id FROM shadow_case_context)`;
+  const auxTenantId = `(SELECT aux_tenant_id FROM shadow_case_context)`;
+  const requesterId = `(SELECT "id" FROM public."User" WHERE "tenantId"=${tenantId} AND "displayName"='Breadth Requester' ORDER BY "createdAt" DESC LIMIT 1)`;
+  const supplierId = `(SELECT "id" FROM public."Supplier" WHERE "tenantId"=${tenantId} AND "companyId"=${companyId} AND "legalName"='Breadth Supplier' ORDER BY "createdAt" DESC LIMIT 1)`;
+  const fixtureDocumentId = (documentType) => `(SELECT "documentId" FROM public."ApprovalInstance" WHERE "tenantId"=${tenantId} AND "companyId"=${companyId} AND "documentType"=${quoteLiteral(documentType)} ORDER BY "createdAt" DESC, "id" DESC LIMIT 1)`;
+
+  const corruptOne = (table, updateSql) => `
+    ALTER TABLE public.${quoteShadowIdentifier(table)} DISABLE TRIGGER ALL;
+    WITH changed AS (${updateSql} RETURNING 1)
+    SELECT 1 / CASE WHEN count(*) = 1 THEN 1 ELSE 0 END FROM changed;
+    ALTER TABLE public.${quoteShadowIdentifier(table)} ENABLE TRIGGER ALL;`;
+  const mutateCompany = (table, where) => corruptOne(
+    table,
+    `UPDATE public.${quoteShadowIdentifier(table)} SET "companyId"=${auxCompanyId} WHERE ${where} AND "companyId" IS DISTINCT FROM ${auxCompanyId}`,
+  );
+  const mutateLocation = (table, where) => corruptOne(
+    table,
+    `UPDATE public.${quoteShadowIdentifier(table)} row_data
+        SET "locationId" = (
+          SELECT location."id" FROM public."Location" location
+           WHERE location."tenantId" = row_data."tenantId"
+             AND location."companyId" = row_data."companyId"
+             AND location."id" <> row_data."locationId"
+           ORDER BY location."createdAt", location."id" LIMIT 1
+        )
+      WHERE ${where}
+        AND EXISTS (
+          SELECT 1 FROM public."Location" location
+           WHERE location."tenantId" = row_data."tenantId"
+             AND location."companyId" = row_data."companyId"
+             AND location."id" <> row_data."locationId"
+        )`,
+  );
+
+  const expenseLineSetup = `
+    INSERT INTO public."ExpenseRequestLine" (
+      "id", "expenseRequestId", "tenantId", "companyId", "lineNumber", "lineDate",
+      "description", "categoryCode", "requestedAmountPhp", "lineTotalPhp", "createdByUserId", "updatedAt"
+    ) VALUES (
+      gen_random_uuid(), ${sourceId}, ${tenantId}, ${companyId}, 9001, now(),
+      'Shadow branch fixture', 'TEST', 1, 1, ${requesterId}, now()
+    );`;
+  const apInvoiceSetup = `
+    INSERT INTO public."ApInvoice" (
+      "id", "tenantId", "companyId", "publicReference", "supplierId",
+      "supplierInvoiceNumber", "invoiceDate", "totalAmount", "nonPoReason",
+      "createdByUserId", "updatedAt"
+    ) VALUES (
+      gen_random_uuid(), ${tenantId}, ${companyId}, 'SHADOW-INV-' || gen_random_uuid()::text,
+      ${supplierId}, 'SHADOW-' || gen_random_uuid()::text, now(), 1,
+      'Disposable shadow observer fixture', ${requesterId}, now()
+    );`;
+  const paymentLineSetup = `${apInvoiceSetup}
+    INSERT INTO public."PaymentRequestLine" (
+      "id", "tenantId", "companyId", "locationId", "paymentRequestId", "apInvoiceId",
+      "lineNumber", "requestedAmount", "invoiceTotalSnapshot", "invoiceOutstandingSnapshot", "createdByUserId", "updatedAt"
+    ) SELECT gen_random_uuid(), ${tenantId}, ${companyId}, source."locationId", source."id", invoice."id",
+             9001, 1, 1, 1, source."requestedByUserId", now()
+      FROM public."PaymentRequest" source
+      CROSS JOIN LATERAL (
+        SELECT "id" FROM public."ApInvoice"
+         WHERE "tenantId"=${tenantId} AND "companyId"=${companyId}
+         ORDER BY "createdAt" DESC, "id" DESC LIMIT 1
+      ) invoice
+     WHERE source."id"=${sourceId};`;
+  const releaseChildSetup = `${apInvoiceSetup}
+    INSERT INTO public."PaymentRequestLine" (
+      "id", "tenantId", "companyId", "locationId", "paymentRequestId", "apInvoiceId",
+      "lineNumber", "requestedAmount", "invoiceTotalSnapshot", "invoiceOutstandingSnapshot", "createdByUserId", "updatedAt"
+    ) SELECT gen_random_uuid(), ${tenantId}, ${companyId}, request."locationId", request."id", invoice."id",
+             9001, 1, 1, 1, request."requestedByUserId", now()
+      FROM public."PaymentRelease" release
+      JOIN public."PaymentRequest" request ON request."id"=release."paymentRequestId"
+      CROSS JOIN LATERAL (
+        SELECT "id" FROM public."ApInvoice"
+         WHERE "tenantId"=${tenantId} AND "companyId"=${companyId}
+         ORDER BY "createdAt" DESC, "id" DESC LIMIT 1
+      ) invoice
+     WHERE release."id"=${sourceId};
+    INSERT INTO public."PaymentReleaseAllocation" (
+      "id", "tenantId", "companyId", "paymentReleaseId", "paymentRequestLineId", "apInvoiceId",
+      "allocatedAmount", "requestLineSnapshotAmount", "invoiceOutstandingSnapshot", "createdByUserId", "updatedAt"
+    ) SELECT gen_random_uuid(), ${tenantId}, ${companyId}, release."id", line."id", line."apInvoiceId",
+             1, 1, 1, release."createdByUserId", now()
+      FROM public."PaymentRelease" release
+      JOIN public."PaymentRequestLine" line ON line."paymentRequestId"=release."paymentRequestId"
+     WHERE release."id"=${sourceId};`;
+
+  const cases = [
+    {
+      name: "purchase-request-brand-present",
+      documentType: "PurchaseRequest", routineName: "observe_purchase_request_v1",
+      tables: ["PurchaseRequest", "Brand"],
+      setup: `INSERT INTO public."Brand" ("id","tenantId","companyId","name","code","updatedAt") VALUES (gen_random_uuid(),${tenantId},${companyId},'Shadow Brand','SHADOW-'||gen_random_uuid()::text,now()); UPDATE public."PurchaseRequest" SET "brandId"=(SELECT "id" FROM public."Brand" WHERE "name"='Shadow Brand' AND "tenantId"=${tenantId} ORDER BY "createdAt" DESC LIMIT 1) WHERE "id"=${sourceId};`,
+      mutation: mutateCompany("Brand", `"id"=(SELECT "brandId" FROM public."PurchaseRequest" WHERE "id"=${sourceId})`),
+    },
+    {
+      name: "budget-location-present", documentType: "BudgetRevision", routineName: "observe_budget_revision_v1",
+      tables: ["Budget", "Location"], setup: "",
+      mutation: mutateCompany("Location", `"id"=(SELECT budget."locationId" FROM public."BudgetRevision" source JOIN public."Budget" budget ON budget."id"=source."budgetId" WHERE source."id"=${sourceId})`),
+    },
+    {
+      name: "cash-beneficiary-present", documentType: "CashAdvanceRequest", routineName: "observe_cash_advance_request_v1",
+      tables: ["CashAdvanceRequest", "User"], setup: "",
+      mutation: corruptOne("User", `UPDATE public."User" SET "tenantId"=${auxTenantId} WHERE "id"=(SELECT "beneficiaryUserId" FROM public."CashAdvanceRequest" WHERE "id"=${sourceId}) AND "tenantId" IS DISTINCT FROM ${auxTenantId}`),
+    },
+    ...[
+      ["cash-expense-present", "expenseRequestId", "ExpenseRequest"],
+      ["cash-payment-present", "paymentRequestId", "PaymentRequest"],
+      ["cash-bank-present", "intendedBankAccountId", "BankAccount"],
+    ].map(([name, field, target]) => ({
+      name, documentType: "CashAdvanceRequest", routineName: "observe_cash_advance_request_v1",
+      tables: ["CashAdvanceRequest", target],
+      setup: `UPDATE public."CashAdvanceRequest" SET ${quoteShadowIdentifier(field)}=${target === "BankAccount" ? `(SELECT "id" FROM public."BankAccount" WHERE "tenantId"=${tenantId} AND "companyId"=${companyId} ORDER BY "createdAt" LIMIT 1)` : fixtureDocumentId(target)} WHERE "id"=${sourceId};`,
+      mutation: mutateCompany(target, `"id"=(SELECT ${quoteShadowIdentifier(field)} FROM public."CashAdvanceRequest" WHERE "id"=${sourceId})`),
+    })),
+    {
+      name: "cash-budget-commitment-present", documentType: "CashAdvanceRequest", routineName: "observe_cash_advance_request_v1",
+      tables: ["CashAdvanceRequest", "BudgetCommitment"],
+      setup: `INSERT INTO public."BudgetCommitment" ("id","budgetId","budgetLineId","tenantId","companyId","sourceType","sourceId","sourceEventKey","sourceEventAt","sourceReference","committedAmountPhp","updatedAt") SELECT gen_random_uuid(), line."budgetId", line."id", ${tenantId}, ${companyId}, 'EXPENSE_REQUEST', 'shadow', 'shadow-'||gen_random_uuid()::text, now(), 'SHADOW', 1, now() FROM public."BudgetLine" line WHERE line."tenantId"=${tenantId} AND line."companyId"=${companyId} ORDER BY line."createdAt" LIMIT 1; UPDATE public."CashAdvanceRequest" SET "budgetCommitmentId"=(SELECT "id" FROM public."BudgetCommitment" WHERE "sourceId"='shadow' AND "tenantId"=${tenantId} ORDER BY "createdAt" DESC LIMIT 1) WHERE "id"=${sourceId};`,
+      mutation: mutateCompany("BudgetCommitment", `"id"=(SELECT "budgetCommitmentId" FROM public."CashAdvanceRequest" WHERE "id"=${sourceId})`),
+    },
+    {
+      name: "petty-location-present", documentType: "PettyCashRequest", routineName: "observe_petty_cash_request_v1",
+      tables: ["PettyCashRequest"], setup: `UPDATE public."PettyCashRequest" source SET "locationId"=fund."locationId" FROM public."PettyCashFund" fund WHERE source."id"=${sourceId} AND fund."id"=source."pettyCashFundId";`,
+      mutation: mutateLocation("PettyCashRequest", `row_data."id"=${sourceId}`),
+    },
+    ...[
+      ["leave-location-present", "EmployeeLeaveRequest", "observe_employee_leave_request_v1"],
+      ["overtime-location-present", "EmployeeOvertimeRecord", "observe_employee_overtime_record_v1"],
+    ].map(([name, documentType, routineName]) => ({
+      name, documentType, routineName, tables: [documentType, "Location"], setup: "",
+      mutation: mutateCompany("Location", `"id"=(SELECT "locationId" FROM public.${quoteShadowIdentifier(documentType)} WHERE "id"=${sourceId})`),
+    })),
+    {
+      name: "budget-line-scope", documentType: "BudgetRevision", routineName: "observe_budget_revision_v1",
+      tables: ["BudgetLine"], setup: "",
+      mutation: mutateCompany("BudgetLine", `"budgetId"=(SELECT "budgetId" FROM public."BudgetRevision" WHERE "id"=${sourceId})`),
+    },
+    {
+      name: "budget-line-location-present", documentType: "BudgetRevision", routineName: "observe_budget_revision_v1",
+      tables: ["BudgetLine", "Location"], setup: "",
+      mutation: mutateCompany("Location", `"id"=(SELECT "locationId" FROM public."BudgetLine" WHERE "budgetId"=(SELECT "budgetId" FROM public."BudgetRevision" WHERE "id"=${sourceId}) AND "locationId" IS NOT NULL ORDER BY "lineNumber" LIMIT 1)`),
+    },
+    {
+      name: "expense-line-scope", documentType: "ExpenseRequest", routineName: "observe_expense_request_v1",
+      tables: ["ExpenseRequestLine"], setup: expenseLineSetup,
+      mutation: mutateCompany("ExpenseRequestLine", `"expenseRequestId"=${sourceId}`),
+    },
+    {
+      name: "expense-source-link-scope", documentType: "ExpenseRequest", routineName: "observe_expense_request_v1",
+      tables: ["ExpenseRequestLine", "ExpenseRequestSourceLink"], setup: `${expenseLineSetup} INSERT INTO public."ExpenseRequestSourceLink" ("id","tenantId","companyId","expenseRequestId","expenseRequestLineId","sourceDocumentType","sourceDocumentId","sourceEventKey","createdByUserId","updatedAt") SELECT gen_random_uuid(),${tenantId},${companyId},${sourceId},line."id",'MANUAL','shadow','shadow-'||gen_random_uuid()::text,${requesterId},now() FROM public."ExpenseRequestLine" line WHERE line."expenseRequestId"=${sourceId};`,
+      mutation: mutateCompany("ExpenseRequestSourceLink", `"expenseRequestId"=${sourceId}`),
+    },
+    {
+      name: "expense-source-link-line-parent", documentType: "ExpenseRequest", routineName: "observe_expense_request_v1",
+      tables: ["ExpenseRequest", "ExpenseRequestLine", "ExpenseRequestSourceLink"],
+      setup: `${expenseLineSetup} INSERT INTO public."ExpenseRequestSourceLink" ("id","tenantId","companyId","expenseRequestId","expenseRequestLineId","sourceDocumentType","sourceDocumentId","sourceEventKey","createdByUserId","updatedAt") SELECT gen_random_uuid(),${tenantId},${companyId},${sourceId},line."id",'MANUAL','shadow','shadow-'||gen_random_uuid()::text,${requesterId},now() FROM public."ExpenseRequestLine" line WHERE line."expenseRequestId"=${sourceId}; INSERT INTO public."ExpenseRequest" ("id","tenantId","companyId","publicReference","requestDate","title","requestReason","categoryCode","locationId","requestedByUserId","updatedAt") SELECT gen_random_uuid(),${tenantId},${companyId},'SHADOW-EXP-'||gen_random_uuid()::text,source."requestDate",'Shadow','Shadow','TEST',source."locationId",source."requestedByUserId",now() FROM public."ExpenseRequest" source WHERE source."id"=${sourceId};`,
+      mutation: corruptOne("ExpenseRequestLine", `UPDATE public."ExpenseRequestLine" SET "expenseRequestId"=(SELECT "id" FROM public."ExpenseRequest" WHERE "id"<>${sourceId} AND "publicReference" LIKE 'SHADOW-EXP-%' ORDER BY "createdAt" DESC LIMIT 1) WHERE "expenseRequestId"=${sourceId}`),
+    },
+    {
+      name: "payment-line-scope-location", documentType: "PaymentRequest", routineName: "observe_payment_request_v1",
+      tables: ["ApInvoice", "PaymentRequestLine"], setup: paymentLineSetup,
+      mutation: mutateCompany("PaymentRequestLine", `"paymentRequestId"=${sourceId}`),
+    },
+    {
+      name: "payment-line-wrong-location", documentType: "PaymentRequest", routineName: "observe_payment_request_v1",
+      tables: ["ApInvoice", "PaymentRequestLine"], setup: paymentLineSetup,
+      mutation: mutateLocation("PaymentRequestLine", `row_data."paymentRequestId"=${sourceId}`),
+    },
+    {
+      name: "payment-line-invoice", documentType: "PaymentRequest", routineName: "observe_payment_request_v1",
+      tables: ["ApInvoice", "PaymentRequestLine"], setup: paymentLineSetup,
+      mutation: mutateCompany("ApInvoice", `"id"=(SELECT "apInvoiceId" FROM public."PaymentRequestLine" WHERE "paymentRequestId"=${sourceId})`),
+    },
+    {
+      name: "release-allocation-scope", documentType: "PaymentRelease", routineName: "observe_payment_release_v1",
+      tables: ["ApInvoice", "PaymentRequestLine", "PaymentReleaseAllocation"], setup: releaseChildSetup,
+      mutation: mutateCompany("PaymentReleaseAllocation", `"paymentReleaseId"=${sourceId}`),
+    },
+    {
+      name: "release-allocation-request-parent", documentType: "PaymentRelease", routineName: "observe_payment_release_v1",
+      tables: ["ApInvoice", "PaymentRequest", "PaymentRequestLine", "PaymentReleaseAllocation"], setup: `${releaseChildSetup} INSERT INTO public."PaymentRequest" ("id","tenantId","companyId","locationId","supplierId","publicReference","totalRequestedAmount","requestedByUserId","requestReason","updatedAt") SELECT gen_random_uuid(),${tenantId},${companyId},source."locationId",source."supplierId",'SHADOW-PAY-'||gen_random_uuid()::text,1,source."requestedByUserId",'Shadow',now() FROM public."PaymentRequest" source JOIN public."PaymentRelease" release ON release."paymentRequestId"=source."id" WHERE release."id"=${sourceId};`,
+      mutation: corruptOne("PaymentRequestLine", `UPDATE public."PaymentRequestLine" SET "paymentRequestId"=(SELECT "id" FROM public."PaymentRequest" WHERE "publicReference" LIKE 'SHADOW-PAY-%' ORDER BY "createdAt" DESC LIMIT 1) WHERE "id"=(SELECT "paymentRequestLineId" FROM public."PaymentReleaseAllocation" WHERE "paymentReleaseId"=${sourceId})`),
+    },
+    {
+      name: "release-allocation-invoice", documentType: "PaymentRelease", routineName: "observe_payment_release_v1",
+      tables: ["ApInvoice", "PaymentRequestLine", "PaymentReleaseAllocation"], setup: `${releaseChildSetup} ${apInvoiceSetup}`,
+      mutation: corruptOne("PaymentReleaseAllocation", `UPDATE public."PaymentReleaseAllocation" allocation SET "apInvoiceId"=(SELECT invoice."id" FROM public."ApInvoice" invoice WHERE invoice."tenantId"=${tenantId} AND invoice."companyId"=${companyId} AND invoice."id"<>allocation."apInvoiceId" ORDER BY invoice."createdAt" DESC LIMIT 1) WHERE allocation."paymentReleaseId"=${sourceId}`),
+    },
+    {
+      name: "release-allocation-invoice-scope", documentType: "PaymentRelease", routineName: "observe_payment_release_v1",
+      tables: ["ApInvoice", "PaymentRequestLine", "PaymentReleaseAllocation"], setup: releaseChildSetup,
+      mutation: mutateCompany("ApInvoice", `"id"=(SELECT "apInvoiceId" FROM public."PaymentReleaseAllocation" WHERE "paymentReleaseId"=${sourceId})`),
+    },
+    ...[
+      ["schedule-line", "WorkforceSchedule", "observe_workforce_schedule_v1", "WorkforceScheduleLine", `INSERT INTO public."WorkforceScheduleLine" ("id","tenantId","companyId","workforceScheduleId","locationId","employeeId","lineNumber","stationCode","roleLabel","plannedStartAt","plannedEndAt","plannedMinutes","createdByUserId","updatedAt") SELECT gen_random_uuid(),${tenantId},${companyId},source."id",source."locationId",employee."id",9001,'SHADOW','Shadow',now(),now()+interval '1 hour',60,source."createdByUserId",now() FROM public."WorkforceSchedule" source CROSS JOIN LATERAL (SELECT "id" FROM public."Employee" WHERE "tenantId"=${tenantId} AND "companyId"=${companyId} ORDER BY "createdAt" LIMIT 1) employee WHERE source."id"=${sourceId};`],
+      ["attendance-line", "AttendanceImportBatch", "observe_attendance_import_batch_v1", "AttendanceImportLine", `INSERT INTO public."AttendanceImportLine" ("id","tenantId","companyId","attendanceImportBatchId","locationId","employeeId","sourceRowNumber","updatedAt") SELECT gen_random_uuid(),${tenantId},${companyId},source."id",source."locationId",employee."id",9001,now() FROM public."AttendanceImportBatch" source CROSS JOIN LATERAL (SELECT "id" FROM public."Employee" WHERE "tenantId"=${tenantId} AND "companyId"=${companyId} ORDER BY "createdAt" LIMIT 1) employee WHERE source."id"=${sourceId};`],
+    ].flatMap(([prefix, documentType, routineName, lineTable, setup]) => {
+      const parentField = lineTable === "WorkforceScheduleLine" ? "workforceScheduleId" : "attendanceImportBatchId";
+      return [
+        { name: `${prefix}-scope`, documentType, routineName, tables: [lineTable], setup, mutation: mutateCompany(lineTable, `${quoteShadowIdentifier(parentField)}=${sourceId}`) },
+        { name: `${prefix}-wrong-location`, documentType, routineName, tables: [lineTable], setup, mutation: mutateLocation(lineTable, `row_data.${quoteShadowIdentifier(parentField)}=${sourceId}`) },
+        { name: `${prefix}-employee`, documentType, routineName, tables: [lineTable, "Employee"], setup, mutation: mutateCompany("Employee", `"id"=(SELECT "employeeId" FROM public.${quoteShadowIdentifier(lineTable)} WHERE ${quoteShadowIdentifier(parentField)}=${sourceId})`) },
+      ];
+    }),
+    ...[
+      ["closure-parent", "PurchaseOrderBalanceClosure", "observe_purchase_order_balance_closure_v1", "PurchaseOrderBalanceClosure"],
+      ["amendment-parent", "PurchaseOrderAmendment", "observe_purchase_order_amendment_v1", "PurchaseOrderAmendment"],
+    ].map(([name, documentType, routineName, sourceTable]) => ({
+      name, documentType, routineName, tables: [sourceTable, "PurchaseOrder"], setup: "",
+      mutation: mutateCompany("PurchaseOrder", `"id"=(SELECT "purchaseOrderId" FROM public.${quoteShadowIdentifier(sourceTable)} WHERE "id"=${sourceId})`),
+    })),
+    {
+      name: "release-parent", documentType: "PaymentRelease", routineName: "observe_payment_release_v1",
+      tables: ["PaymentRelease", "PaymentRequest"], setup: "",
+      mutation: mutateCompany("PaymentRequest", `"id"=(SELECT "paymentRequestId" FROM public."PaymentRelease" WHERE "id"=${sourceId})`),
+    },
+  ];
+
+  if (
+    JSON.stringify(cases.map(({ name }) => name)) !==
+    JSON.stringify(approvalShadowBranchCaseNames)
+  ) {
+    throw new Error(`APPROVAL_SHADOW_BRANCH_INVENTORY_INVALID:${cases.map(({ name }) => name).join(",")}`);
+  }
+  for (const testCase of cases) {
+    console.log(`APPROVAL_SHADOW_BRANCH_CASE_START | ${testCase.name}`);
+    const before = shadowTableFingerprints(databaseUrl, testCase.tables);
+    const invocation = observerCall(
+      testCase.routineName,
+      'fixture."tenantId", fixture."companyId", fixture."id"',
+    );
+    runPsql(databaseUrl, `BEGIN;
+      CREATE TEMP TABLE shadow_case_context ON COMMIT DROP AS
+      SELECT fixture.*, gen_random_uuid() AS aux_company_id,
+             gen_random_uuid() AS aux_location_id, gen_random_uuid() AS aux_tenant_id
+        FROM (${fixtureSelect(testCase.documentType)}) fixture;
+      INSERT INTO public."Tenant" ("id","name","loginCode","updatedAt")
+      SELECT aux_tenant_id, 'Shadow Aux Tenant', 'shadow-'||aux_tenant_id::text, now() FROM shadow_case_context;
+      INSERT INTO public."Company" ("id","tenantId","code","legalName","currencyCode","updatedAt")
+      SELECT aux_company_id,"tenantId",'SHADOW-'||substr(aux_company_id::text,1,8),'Shadow Aux Company','PHP',now() FROM shadow_case_context;
+      INSERT INTO public."Location" ("id","tenantId","companyId","locationType","code","name","updatedAt")
+      SELECT aux_location_id,"tenantId",aux_company_id,'BRANCH','SHADOW-'||substr(aux_location_id::text,1,8),'Shadow Aux Location',now() FROM shadow_case_context;
+      ${testCase.setup}
+      DO $shadow_valid$ DECLARE fixture record; actual text; BEGIN
+        SELECT * INTO STRICT fixture FROM shadow_case_context;
+        SELECT ${invocation} INTO actual;
+        IF actual IS DISTINCT FROM 'SHADOW_MATCH' THEN RAISE EXCEPTION 'APPROVAL_SHADOW_BRANCH_VALID_FAILED:${testCase.name}:%', actual; END IF;
+      END $shadow_valid$;
+      ${testCase.mutation}
+      DO $shadow_corrupt$ DECLARE fixture record; actual text; BEGIN
+        SELECT * INTO STRICT fixture FROM shadow_case_context;
+        SELECT ${invocation} INTO actual;
+        IF actual IS DISTINCT FROM 'SHADOW_NO_MATCH' THEN RAISE EXCEPTION 'APPROVAL_SHADOW_BRANCH_CORRUPTION_MATCHED:${testCase.name}:%', actual; END IF;
+      END $shadow_corrupt$;
+      ROLLBACK;`);
+    const after = shadowTableFingerprints(databaseUrl, testCase.tables);
+    if (after !== before) throw new Error(`APPROVAL_SHADOW_BRANCH_DURABLE_DELTA:${testCase.name}`);
+    const restored = runPsql(databaseUrl, `SELECT ${observerCall(testCase.routineName, 'fixture."tenantId", fixture."companyId", fixture."id"')} FROM (${fixtureSelect(testCase.documentType)}) fixture`).trim();
+    if (restored !== "SHADOW_MATCH") throw new Error(`APPROVAL_SHADOW_BRANCH_ROLLBACK_FAILED:${testCase.name}:${restored}`);
+  }
+  console.log(`APPROVAL_SHADOW_BRANCH_MATRIX_PASS | ${cases.length} effective single-row corruptions | rollback restored | no durable controlled-row delta`);
+}
+
+function shadowTableFingerprints(databaseUrl, tables) {
+  const allowed = new Set([
+    "PurchaseRequest", "Brand", "Budget", "BudgetLine", "Location", "CashAdvanceRequest", "User",
+    "ExpenseRequest", "PaymentRequest", "BudgetCommitment", "BankAccount", "PettyCashRequest",
+    "EmployeeLeaveRequest", "EmployeeOvertimeRecord", "ExpenseRequestLine", "ExpenseRequestSourceLink",
+    "ApInvoice", "PaymentRequestLine", "PaymentReleaseAllocation", "WorkforceScheduleLine",
+    "AttendanceImportLine", "Employee", "PurchaseOrderBalanceClosure", "PurchaseOrderAmendment",
+    "PurchaseOrder", "PaymentRelease",
+  ]);
+  return [...new Set(tables)].sort().map((table) => {
+    if (!allowed.has(table)) throw new Error(`APPROVAL_SHADOW_FINGERPRINT_TABLE_INVALID:${table}`);
+    return runPsql(databaseUrl, `SELECT count(*)::text || ':' || coalesce(md5(string_agg(to_jsonb(row_data)::text, ',' ORDER BY row_data."id"::text)), '') FROM public.${quoteShadowIdentifier(table)} row_data`).trim();
+  }).join("|");
+}
+
+function quoteShadowIdentifier(value) {
+  if (!/^[A-Za-z][A-Za-z0-9_]{0,62}$/.test(value)) {
+    throw new Error("APPROVAL_SHADOW_IDENTIFIER_INVALID");
+  }
+  return `"${value}"`;
 }
 
 function validUuid(value) {
@@ -921,6 +1273,16 @@ function runAdversarialRoleContract(
           runtimePassword,
         );
         reconcileRoleContract(migratorDatabaseUrl, marker);
+      } else if (repairPath === "bootstrap-refuses") {
+        expectRoleBootstrapFailure(adminTargetUrl, marker, driftCase);
+        applyAdversarialFixture(adminTargetUrl, marker, "cleanup", driftCase);
+        installSetupRoles(
+          adminTargetUrl,
+          marker,
+          migratorPassword,
+          runtimePassword,
+        );
+        reconcileRoleContract(migratorDatabaseUrl, marker);
       } else if (repairPath === "reconcile") {
         reconcileRoleContract(migratorDatabaseUrl, marker);
       } else {
@@ -947,6 +1309,30 @@ function runAdversarialRoleContract(
         }
       }
     }
+  }
+}
+
+function expectRoleBootstrapFailure(databaseUrl, marker, driftCase) {
+  const result = executePsqlFile(
+    databaseUrl,
+    path.join(roleSqlDir, "bootstrap-roles.sql"),
+    {
+      contract_scope: "disposable",
+      app_environment: "test",
+      database_name: marker.databaseName,
+      owner_role: marker.ownerRole,
+      migrator_role: marker.migratorRole,
+      runtime_role: marker.runtimeRole,
+    },
+  );
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  if (
+    result.error ||
+    result.status === 0 ||
+    !output.includes("Refusing bootstrap: controlled role membership graph contains an unexpected edge or option")
+  ) {
+    if (result.error) throw result.error;
+    throw new Error(`ADVERSARIAL_ROLE_BOOTSTRAP_REFUSAL_MISSING:${driftCase}`);
   }
 }
 
@@ -1015,6 +1401,94 @@ function controlledSetupEnvironment(databaseUrl, marker) {
     OGFI_DISPOSABLE_DATABASE_RUN_ID: marker.runId,
     OGFI_DISPOSABLE_DATABASE_NONCE_SHA256: marker.nonceSha256,
   };
+}
+
+function disposableRoleContract(migrationDatabaseUrl, runtimeDatabaseUrl, marker) {
+  return {
+    expectedDatabaseName: marker.databaseName,
+    roles: {
+      owner: marker.ownerRole,
+      migrator: marker.migratorRole,
+      runtime: marker.runtimeRole,
+    },
+    migration: { url: migrationDatabaseUrl },
+    runtime: { url: runtimeDatabaseUrl },
+  };
+}
+
+function verifyLiveMigrationLedger(migrationDatabaseUrl, runtimeDatabaseUrl, marker) {
+  const manifest = buildMigrationManifest();
+  const assessment = inspectMigrationLedger(
+    "disposable-transport",
+    disposableRoleContract(migrationDatabaseUrl, runtimeDatabaseUrl, marker),
+    manifest,
+    { requireExactCurrent: true, execute: executeControlledPsqlScript },
+  );
+  if (assessment.result !== "PASS" || assessment.classification !== "EXACT_CURRENT") {
+    throw new Error("DISPOSABLE_MIGRATION_LEDGER_ATTESTATION_FAILED");
+  }
+  console.log(
+    `MIGRATION_LEDGER_LIVE_PASS | ${assessment.appliedMigrationCount} exact migrations | ${assessment.migrationLedgerSha256}`,
+  );
+  const lastMigration = manifest.at(-1);
+  runPsql(
+    migrationDatabaseUrl,
+    `UPDATE public._prisma_migrations SET checksum = repeat('0', 64) WHERE migration_name = ${quoteLiteral(lastMigration.name)}`,
+  );
+  try {
+    let rejected = false;
+    try {
+      inspectMigrationLedger(
+        "disposable-transport",
+        disposableRoleContract(migrationDatabaseUrl, runtimeDatabaseUrl, marker),
+        manifest,
+        { requireExactCurrent: true, execute: executeControlledPsqlScript },
+      );
+    } catch (error) {
+      rejected = error instanceof Error && error.message.includes("CHECKSUM_MISMATCH");
+    }
+    if (!rejected) throw new Error("DISPOSABLE_MIGRATION_LEDGER_DRIFT_WAS_NOT_REJECTED");
+  } finally {
+    runPsql(
+      migrationDatabaseUrl,
+      `UPDATE public._prisma_migrations SET checksum = ${quoteLiteral(lastMigration.checksum)} WHERE migration_name = ${quoteLiteral(lastMigration.name)}`,
+    );
+  }
+  inspectMigrationLedger(
+    "disposable-transport",
+    disposableRoleContract(migrationDatabaseUrl, runtimeDatabaseUrl, marker),
+    manifest,
+    { requireExactCurrent: true, execute: executeControlledPsqlScript },
+  );
+  console.log("MIGRATION_LEDGER_DRIFT_REJECTION_PASS | checksum mismatch rejected | exact ledger restored");
+}
+
+function verifyCleanAbsentMigrationLedger(databaseUrl, marker, administratorRole) {
+  const assessment = inspectMigrationLedger(
+    "disposable-transport",
+    {
+      expectedDatabaseName: marker.databaseName,
+      roles: { owner: administratorRole, migrator: administratorRole },
+      migration: { url: databaseUrl },
+    },
+    buildMigrationManifest(),
+    { execute: executeControlledPsqlScript },
+  );
+  if (assessment.result !== "PASS" || assessment.classification !== "CLEAN_PREFIX") {
+    throw new Error("DISPOSABLE_CLEAN_DATABASE_LEDGER_PREFLIGHT_FAILED");
+  }
+  console.log("MIGRATION_LEDGER_CLEAN_DATABASE_PASS | absent ledger | zero application objects");
+}
+
+function executeControlledPsql(_psql, connection, extraArgs) {
+  return executePsql(
+    connection.url,
+    ["--no-psqlrc", "--set=ON_ERROR_STOP=1", "--quiet", ...extraArgs],
+  );
+}
+
+function executeControlledPsqlScript(_psql, connection, args, sql) {
+  return executePsql(connection.url, args, sql);
 }
 
 function disposableAuthenticationThrottleEnvironment(marker) {

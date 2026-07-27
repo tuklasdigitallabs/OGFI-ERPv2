@@ -16,14 +16,28 @@ DECLARE
   protected_table text;
   column_name text;
   owner_oid oid;
+  migrator_oid oid;
+  runtime_oid oid;
   approval_shadow_schema_oid oid;
 BEGIN
   IF current_database() <> database_name THEN
     RAISE EXCEPTION 'Refusing ownership reconciliation for unexpected database';
   END IF;
   SELECT oid INTO STRICT owner_oid FROM pg_roles WHERE rolname = owner_role AND NOT rolcanlogin;
+  SELECT oid INTO STRICT migrator_oid FROM pg_roles WHERE rolname = migrator_role;
+  SELECT oid INTO STRICT runtime_oid FROM pg_roles WHERE rolname = runtime_role;
   IF session_user <> migrator_role OR current_user <> owner_role THEN
     RAISE EXCEPTION 'Ownership reconciliation requires the controlled migrator with owner role active';
+  END IF;
+  IF (SELECT count(*) FROM pg_auth_members
+      WHERE roleid IN (owner_oid, migrator_oid, runtime_oid)
+         OR member IN (owner_oid, migrator_oid, runtime_oid)) <> 1
+     OR NOT EXISTS (
+       SELECT 1 FROM pg_auth_members
+       WHERE roleid = owner_oid AND member = migrator_oid
+         AND NOT admin_option AND NOT inherit_option AND set_option
+     ) THEN
+    RAISE EXCEPTION 'Refusing reconciliation: controlled role membership graph is not exact';
   END IF;
 
   EXECUTE format('ALTER DATABASE %I OWNER TO %I', database_name, owner_role);
@@ -85,6 +99,59 @@ BEGIN
   FROM pg_namespace
   WHERE nspname = 'approval_shadow';
   IF approval_shadow_schema_oid IS NOT NULL THEN
+    -- pgcrypto is installed by the baseline migration. Fixed SHA-256 prosrc
+    -- digests detect body drift before any ownership or ACL mutation.
+    IF (SELECT count(*) FROM pg_proc WHERE pronamespace = approval_shadow_schema_oid) <> 18 THEN
+      RAISE EXCEPTION 'Refusing reconciliation: approval_shadow routine count differs from the reviewed contract';
+    END IF;
+    FOR obj IN
+      SELECT expected.routine_name, expected.body_sha256, p.*
+      FROM (VALUES
+        ('observe_purchase_request_v1', 'd80583a4d50cff3b32c9edbbb361398b91dcb449b227843bb1b301610bbcd40a'),
+        ('observe_quotation_recommendation_v1', '09a686729504b52ec9e9452a04292be67240de2d88bd07b9fca8ba54ae245967'),
+        ('observe_purchase_order_v1', '73f8f57afca59e7a4e2d702714ee4a08168fce0d90222cb517992603d4ba51ed'),
+        ('observe_purchase_order_balance_closure_v1', '80ad1ba0a12e374cd15faebe8daad40e47370c9caf23fc0af0a1a4598e6f7a29'),
+        ('observe_purchase_order_amendment_v1', '5a4878935656a5c34656f0bff91796fc8cfe04380a38e9ab6ef7d82f1cc625d6'),
+        ('observe_wastage_report_v1', '25664273c2128874f7c5deef115bcc55131141ebfacf5ec9a3bb2ba63e2e36d7'),
+        ('observe_stock_adjustment_v1', '57c0eaf9ec6562170416101876c88e173b67f377c731515479b53a554b013c0a'),
+        ('observe_finance_close_run_v1', '1b7aff53e067e252e9ec82b0f3068d0b4abb3acf197da28437c33b795bc783d5'),
+        ('observe_budget_revision_v1', 'c4b75ca7c41c8dfb9e3dae7bcbf32f51037955f246e0b7508da5f5102c440819'),
+        ('observe_expense_request_v1', '7d7cd704a871b9a812e37965b5195aa3b92a8e50fdd9bc2ac3562c8761f04c2b'),
+        ('observe_cash_advance_request_v1', 'd7064ee9ccab52a7e4f8e1cf606c4e4d5e736b5d975949c23545cbed57b3570f'),
+        ('observe_petty_cash_request_v1', 'f7b2a196715e035740421c87ca9a85df096d86c0f4628aa522b97194b0b8a769'),
+        ('observe_payment_request_v1', '69badce51b13735d771402a24ed77f735c5c137dcf19ba9cd7c0a6d69a7f392f'),
+        ('observe_payment_release_v1', 'dc0221e6ff7dd5375924e420c24de744f7685aef311bf171fb80d8b207f004e6'),
+        ('observe_employee_leave_request_v1', '3688bf14ab17d8379530dd47d4205937b790c59e3760ffbef93229549e0d758b'),
+        ('observe_employee_overtime_record_v1', '7e0e6476f762be2ffba899c7b2e767e6041285580c4ed28d32e2b0355b1785a6'),
+        ('observe_workforce_schedule_v1', 'be41b7ed31dcc08d4451a9e1c93c7a74408fc4b4e1ede68b32ba6de219590039'),
+        ('observe_attendance_import_batch_v1', '4a9217f645bc8479c5680a8bde77b955ab6da918593d0bc7a55a6b48b74c2500')
+      ) AS expected(routine_name, body_sha256)
+      LEFT JOIN pg_proc p
+        ON p.pronamespace = approval_shadow_schema_oid
+       AND p.proname = expected.routine_name
+    LOOP
+      IF obj.oid IS NULL
+         OR obj.prokind <> 'f'
+         OR obj.prolang <> (SELECT oid FROM pg_language WHERE lanname = 'sql')
+         OR obj.pronargs <> 3
+         OR obj.proargtypes <> '2950 2950 2950'::oidvector
+         OR obj.pronargdefaults <> 0
+         OR obj.proargnames IS DISTINCT FROM ARRAY['p_tenant_id', 'p_company_id', 'p_approval_instance_id']::text[]
+         OR obj.proallargtypes IS NOT NULL
+         OR obj.proargmodes IS NOT NULL
+         OR obj.proretset
+         OR obj.prorettype <> 'text'::regtype
+         OR obj.prosecdef
+         OR obj.provolatile <> 's'
+         OR obj.proparallel <> 'u'
+         OR obj.proleakproof
+         OR obj.proisstrict
+         OR obj.prosqlbody IS NOT NULL
+         OR obj.proconfig IS DISTINCT FROM ARRAY['search_path=pg_catalog']::text[]
+         OR encode(pg_catalog.sha256(convert_to(obj.prosrc, 'UTF8')), 'hex') <> obj.body_sha256 THEN
+        RAISE EXCEPTION 'Refusing reconciliation: approval_shadow routine % metadata/body attestation failed', obj.routine_name;
+      END IF;
+    END LOOP;
     EXECUTE format('ALTER SCHEMA approval_shadow OWNER TO %I', owner_role);
 
     FOR obj IN

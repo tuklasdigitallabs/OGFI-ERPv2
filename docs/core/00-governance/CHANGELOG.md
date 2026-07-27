@@ -1,5 +1,13 @@
 # OGFI ERP — Documentation Changelog
 
+## 2026-07-27 — Approval Observer Deployment-Gate Hardening
+
+- Hardened the controlled database path with a pre-DDL exact role-graph gate, a complete read-only Prisma migration-ledger preflight, an exact-current postflight, and fail-closed handling for unknown, duplicate, failed, rolled-back, logged, gapped, or legacy-checksum histories. An absent ledger is accepted only on a zero-application-object database, while an existing empty ledger is rejected; applied migration history is never rewritten or resolved by this tooling.
+- Closed the PostgreSQL owner/migrator membership contract to one exact edge (`migrator SET owner`, without `ADMIN` or inherited owner privileges) and added adversarial proof for incoming, outgoing, option-drift, and nested escalation paths.
+- Added exact live metadata and SHA-256 body attestation for all 18 private observer routines and completed the 31-case optional/child/post-child corruption matrix with transaction-local rollback and no durable controlled-row delta.
+- These controls pass on fresh disposable PostgreSQL 17, including live absent-ledger clean-database admission, exact-current parsing, checksum-drift rejection/restoration, and the full observer rehearsal. The migration-ledger audit and Prisma deployment still use separate connections, while populated hosted restore/performance and the separate broader authorization database suite remain unapproved; production deployment, observer consumption, Workspace 4, and Phase I therefore remain **NO-GO**.
+- Requested Code Spark and exact GPT-5.4 subagent models were unavailable; the closest permitted GPT-5.6 specialist fallbacks were used. Enablement review confirmed no user-facing knowledge-base, training, release-note, or glossary change because the observers remain private, ungranted, unconsumed, and feature-disabled.
+
 ## 2026-07-27 — Private Approval-Routing Shadow Observer Rehearsal
 
 - Added 18 private, ungranted, fixed-family structural shadow observers that return only `SHADOW_MATCH` or `SHADOW_NO_MATCH`; they grant no routing, writer, readiness, certification, or activation authority.

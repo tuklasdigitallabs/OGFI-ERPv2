@@ -9,6 +9,11 @@ import {
   sanitizedContractSummary,
 } from "./database-role-contract-lib.mjs";
 import { requirePostgresTool } from "./postgres-client-tools.mjs";
+import {
+  buildMigrationManifest,
+  inspectMigrationLedger,
+  MIGRATION_LEDGER_RACE_LIMITATION,
+} from "./db-migration-ledger-preflight.mjs";
 
 export function controlledMigrationPlan(env = process.env) {
   const contract = loadDatabaseRoleContract(env);
@@ -16,15 +21,61 @@ export function controlledMigrationPlan(env = process.env) {
     contract,
     migrationScript: "pnpm db:migrate:deploy",
     reconciliationSql: "infra/hostinger/postgres/reconcile-ownership-and-grants.sql",
+    migrationManifest: buildMigrationManifest(),
   };
 }
 
-export function runControlledMigration(plan, { psql = requirePostgresTool("psql", "db:migrate:controlled"), runMigration = defaultMigrationRunner } = {}) {
-  assertMigratorSession(psql, plan.contract);
+export function runControlledMigration(plan, {
+  psql = requirePostgresTool("psql", "db:migrate:controlled"),
+  runMigration = defaultMigrationRunner,
+  inspectLedger = inspectMigrationLedger,
+  runContract = runAppendOnlyContract,
+  assertSession = assertMigratorSession,
+  assertRoleGraph = assertPredeployRoleGraph,
+  reconcileRoles = reconcile,
+} = {}) {
+  assertSession(psql, plan.contract);
+  assertRoleGraph(psql, plan.contract);
+  const preflight = inspectLedger(psql, plan.contract, plan.migrationManifest);
   runMigration(plan.contract.migration.url);
-  reconcile(psql, plan.contract, plan.reconciliationSql);
-  const checks = runAppendOnlyContract(plan.contract, { psql });
-  return checks;
+  reconcileRoles(psql, plan.contract, plan.reconciliationSql);
+  const postflight = inspectLedger(psql, plan.contract, plan.migrationManifest, { requireExactCurrent: true });
+  const appendOnly = runContract(plan.contract, { psql });
+  return { preflight, postflight, appendOnly, raceLimitation: MIGRATION_LEDGER_RACE_LIMITATION };
+}
+
+export function assertPredeployRoleGraph(psql, contract, execute = runPsql) {
+  const { owner, migrator, runtime } = contract.roles;
+  const sql = `SET search_path = pg_catalog;
+  WITH controlled AS (
+    SELECT
+      (SELECT oid FROM pg_roles WHERE rolname = '${owner}') AS owner_oid,
+      (SELECT oid FROM pg_roles WHERE rolname = '${migrator}') AS migrator_oid,
+      (SELECT oid FROM pg_roles WHERE rolname = '${runtime}') AS runtime_oid
+  )
+  SELECT CASE WHEN
+    EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${owner}' AND NOT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication AND NOT rolbypassrls)
+    AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${migrator}' AND rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls)
+    AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${runtime}' AND rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls)
+    AND (SELECT count(*) FROM pg_auth_members m, controlled c
+         WHERE m.roleid IN (c.owner_oid, c.migrator_oid, c.runtime_oid)
+            OR m.member IN (c.owner_oid, c.migrator_oid, c.runtime_oid)) = 1
+    AND EXISTS (SELECT 1 FROM pg_auth_members m, controlled c
+                WHERE m.roleid = c.owner_oid AND m.member = c.migrator_oid
+                  AND NOT m.admin_option AND NOT m.inherit_option AND m.set_option)
+    AND pg_has_role('${migrator}', '${owner}', 'MEMBER')
+    AND pg_has_role('${migrator}', '${owner}', 'SET')
+    AND NOT pg_has_role('${migrator}', '${owner}', 'USAGE')
+    AND NOT pg_has_role('${owner}', '${migrator}', 'MEMBER')
+    AND NOT pg_has_role('${owner}', '${runtime}', 'MEMBER')
+    AND NOT pg_has_role('${runtime}', '${owner}', 'MEMBER')
+    AND NOT pg_has_role('${runtime}', '${migrator}', 'MEMBER')
+    AND NOT pg_has_role('${migrator}', '${runtime}', 'MEMBER')
+    THEN 'RESULT | PASS' ELSE 'RESULT | FAIL' END`;
+  const result = execute(psql, contract.migration, [`--command=${sql}`]);
+  if (result.status !== 0 || !result.stdout.includes("RESULT | PASS")) {
+    throw new Error("Controlled role graph preflight failed before migration deployment.");
+  }
 }
 
 function assertMigratorSession(psql, contract) {

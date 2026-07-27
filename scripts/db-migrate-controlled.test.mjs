@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { controlledMigrationPlan } from "./db-migrate-controlled.mjs";
+import { controlledMigrationPlan, runControlledMigration } from "./db-migrate-controlled.mjs";
+import {
+  classifyMigrationLedger,
+  buildMigrationManifest,
+  KNOWN_LEGACY_MIGRATION_CHECKSUMS,
+  MIGRATION_LEDGER_RACE_LIMITATION,
+} from "./db-migration-ledger-preflight.mjs";
 
 function envLine(name, value) {
   return [name, value].join("=");
@@ -52,6 +59,261 @@ test("builds a controlled migration plan with distinct sanitized identities", ()
   } finally {
     rmSync(setup.root, { recursive: true, force: true });
   }
+});
+
+const manifestFixture = [
+  { name: "20260101000000_first", checksum: "a".repeat(64) },
+  { name: "20260102000000_second", checksum: "b".repeat(64) },
+  { name: "20260103000000_third", checksum: "c".repeat(64) },
+];
+
+function ledgerRow(migration, overrides = {}) {
+  return {
+    migrationName: migration.name,
+    checksum: migration.checksum,
+    startedAtPresent: true,
+    finishedAtPresent: true,
+    rolledBack: false,
+    appliedStepsCount: 1,
+    hasLogs: false,
+    invalidTimestampOrder: false,
+    ...overrides,
+  };
+}
+
+function ledgerSnapshot(rows, identity = {}, state = {}) {
+  return {
+    identity: {
+      serverVersionNum: 170006,
+      databaseName: "ogfi_erp_production",
+      sessionUser: "ogfi_prod_migrator",
+      currentUser: "ogfi_prod_owner",
+      transactionIsolation: "repeatable read",
+      transactionReadOnly: "on",
+      ...identity,
+    },
+    state: {
+      ledgerExists: rows.length > 0,
+      bootstrapObjectCount: 0,
+      ...state,
+    },
+    rows,
+  };
+}
+
+const expectedIdentity = {
+  databaseName: "ogfi_erp_production",
+  sessionUser: "ogfi_prod_migrator",
+  currentUser: "ogfi_prod_owner",
+};
+
+test("migration manifest is ordered and hashes exact migration bytes", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogfi-migration-manifest-"));
+  try {
+    const fixtures = [
+      ["20260102000000_second", "SELECT 2;\n"],
+      ["20260101000000_first", "SELECT 1;\n"],
+    ];
+    for (const [name, sql] of fixtures) {
+      mkdirSync(join(root, name));
+      writeFileSync(join(root, name, "migration.sql"), sql);
+    }
+    const manifest = buildMigrationManifest(root);
+    assert.deepEqual(manifest.map(({ name }) => name), ["20260101000000_first", "20260102000000_second"]);
+    assert.equal(manifest[0].checksum, createHash("sha256").update("SELECT 1;\n").digest("hex"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("migration manifest fails closed when a migration.sql file is absent", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogfi-migration-manifest-missing-"));
+  try {
+    mkdirSync(join(root, "20260101000000_missing_sql"));
+    assert.throws(() => buildMigrationManifest(root), /migration\.sql|ENOENT/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("migration ledger accepts only a proven-clean absent ledger, applied prefix, and exact-current history", () => {
+  const absent = classifyMigrationLedger(
+    manifestFixture,
+    ledgerSnapshot([], {}, { ledgerExists: false, bootstrapObjectCount: 0 }),
+    expectedIdentity,
+  );
+  assert.equal(absent.result, "PASS");
+  assert.equal(absent.classification, "CLEAN_PREFIX");
+  const prefix = classifyMigrationLedger(manifestFixture, ledgerSnapshot(manifestFixture.slice(0, 2).map(ledgerRow)), expectedIdentity);
+  assert.equal(prefix.result, "PASS");
+  assert.equal(prefix.classification, "CLEAN_PREFIX");
+  const current = classifyMigrationLedger(manifestFixture, ledgerSnapshot(manifestFixture.map(ledgerRow)), expectedIdentity);
+  assert.equal(current.result, "PASS");
+  assert.equal(current.classification, "EXACT_CURRENT");
+  assert.match(current.filesystemManifestSha256, /^[a-f0-9]{64}$/);
+  assert.match(current.migrationLedgerSha256, /^[a-f0-9]{64}$/);
+  assert.notEqual(current.filesystemManifestSha256, current.migrationLedgerSha256);
+});
+
+test("migration ledger rejects absent or empty history on a non-clean database", () => {
+  const missing = classifyMigrationLedger(
+    manifestFixture,
+    ledgerSnapshot([], {}, { ledgerExists: false, bootstrapObjectCount: 1 }),
+    expectedIdentity,
+  );
+  assert.ok(missing.failures.some(({ code }) => code === "MISSING_LEDGER_ON_NONEMPTY_DATABASE"));
+  const empty = classifyMigrationLedger(
+    manifestFixture,
+    ledgerSnapshot([], {}, { ledgerExists: true, bootstrapObjectCount: 0 }),
+    expectedIdentity,
+  );
+  assert.ok(empty.failures.some(({ code }) => code === "EMPTY_EXISTING_LEDGER"));
+});
+
+test("migration ledger rejects identity, duplicate, unknown, gap, and checksum drift", () => {
+  const rows = [
+    ledgerRow(manifestFixture[0], { checksum: "d".repeat(64) }),
+    ledgerRow(manifestFixture[0]),
+    ledgerRow({ name: "20260101500000_unknown", checksum: "e".repeat(64) }),
+    ledgerRow(manifestFixture[2]),
+  ];
+  const result = classifyMigrationLedger(
+    manifestFixture,
+    ledgerSnapshot(rows, { serverVersionNum: 160009, databaseName: "wrong", currentUser: "wrong" }),
+    expectedIdentity,
+  );
+  assert.equal(result.result, "FAIL");
+  const codes = result.failures.map((failure) => failure.code);
+  for (const code of [
+    "WRONG_POSTGRES_MAJOR",
+    "WRONG_DATABASE_IDENTITY",
+    "DUPLICATE_MIGRATION",
+    "UNKNOWN_DATABASE_MIGRATION",
+    "CHECKSUM_MISMATCH",
+    "NON_PREFIX_APPLIED_HISTORY",
+  ]) assert.ok(codes.includes(code), code);
+});
+
+test("migration ledger recognizes both known legacy checksums and rejects invalid row state", () => {
+  const legacyManifest = Object.entries(KNOWN_LEGACY_MIGRATION_CHECKSUMS).map(([name], index) => ({
+    name,
+    checksum: String(index + 1).repeat(64),
+  }));
+  const rows = legacyManifest.map((migration) => ledgerRow(migration, {
+    checksum: KNOWN_LEGACY_MIGRATION_CHECKSUMS[migration.name],
+    finishedAtPresent: false,
+    rolledBack: true,
+    appliedStepsCount: 2,
+    hasLogs: true,
+    invalidTimestampOrder: true,
+  }));
+  const result = classifyMigrationLedger(legacyManifest, ledgerSnapshot(rows), expectedIdentity);
+  const codes = result.failures.map((failure) => failure.code);
+  assert.equal(codes.filter((code) => code === "KNOWN_LEGACY_CHECKSUM").length, 2);
+  for (const code of [
+    "UNFINISHED_MIGRATION",
+    "ROLLED_BACK_MIGRATION",
+    "UNEXPECTED_APPLIED_STEPS",
+    "MIGRATION_HAS_LOGS",
+    "INVALID_MIGRATION_TIMESTAMPS",
+  ]) assert.ok(codes.includes(code), code);
+});
+
+test("migration ledger rejects a snapshot that is not repeatable-read and read-only", () => {
+  const result = classifyMigrationLedger(
+    manifestFixture,
+    ledgerSnapshot([], { transactionIsolation: "read committed", transactionReadOnly: "off" }),
+    expectedIdentity,
+  );
+  assert.deepEqual(result.failures, [{ code: "UNSAFE_SNAPSHOT_MODE" }]);
+});
+
+test("controlled migration runs ledger checks before deploy and after reconciliation", () => {
+  const setup = fixture();
+  try {
+    const plan = controlledMigrationPlan(setup.env);
+    const calls = [];
+    const inspectLedger = (_psql, _contract, _manifest, options) => {
+      calls.push(options?.requireExactCurrent ? "ledger-postflight" : "ledger-preflight");
+      return { result: "PASS" };
+    };
+    const runMigration = () => calls.push("migration");
+    const assertSession = () => calls.push("session");
+    const assertRoleGraph = () => calls.push("role-graph");
+    const reconcileRoles = () => calls.push("reconcile");
+    const runContract = () => {
+      calls.push("append-only");
+      return { result: "PASS" };
+    };
+    const result = runControlledMigration(plan, {
+      psql: "unused",
+      inspectLedger,
+      runMigration,
+      runContract,
+      assertSession,
+      assertRoleGraph,
+      reconcileRoles,
+    });
+    assert.deepEqual(calls, ["session", "role-graph", "ledger-preflight", "migration", "reconcile", "ledger-postflight", "append-only"]);
+    assert.equal(result.raceLimitation, MIGRATION_LEDGER_RACE_LIMITATION);
+  } finally {
+    rmSync(setup.root, { recursive: true, force: true });
+  }
+});
+
+test("controlled migration stops before deploy on a failed ledger preflight", () => {
+  const setup = fixture();
+  try {
+    const plan = controlledMigrationPlan(setup.env);
+    let migrationCalled = false;
+    assert.throws(
+      () => runControlledMigration(plan, {
+        psql: "unused",
+        assertSession: () => {},
+        assertRoleGraph: () => {},
+        inspectLedger: () => { throw new Error("ledger rejected"); },
+        runMigration: () => { migrationCalled = true; },
+        reconcileRoles: () => {},
+        runContract: () => ({}),
+      }),
+      /ledger rejected/,
+    );
+    assert.equal(migrationCalled, false);
+  } finally {
+    rmSync(setup.root, { recursive: true, force: true });
+  }
+});
+
+test("controlled migration stops before ledger inspection and deploy on role-graph drift", () => {
+  const setup = fixture();
+  try {
+    const plan = controlledMigrationPlan(setup.env);
+    let ledgerCalled = false;
+    let migrationCalled = false;
+    assert.throws(
+      () => runControlledMigration(plan, {
+        psql: "unused",
+        assertSession: () => {},
+        assertRoleGraph: () => { throw new Error("role graph rejected"); },
+        inspectLedger: () => { ledgerCalled = true; },
+        runMigration: () => { migrationCalled = true; },
+        reconcileRoles: () => {},
+        runContract: () => ({}),
+      }),
+      /role graph rejected/,
+    );
+    assert.equal(ledgerCalled, false);
+    assert.equal(migrationCalled, false);
+  } finally {
+    rmSync(setup.root, { recursive: true, force: true });
+  }
+});
+
+test("predeploy role and ledger checks force the pg_catalog search path", () => {
+  const controlledSource = requireText(new URL("./db-migrate-controlled.mjs", import.meta.url));
+  const ledgerSource = requireText(new URL("./db-migration-ledger-preflight.mjs", import.meta.url));
+  assert.match(controlledSource, /SET search_path = pg_catalog;/);
+  assert.match(ledgerSource, /SET LOCAL search_path = pg_catalog;/);
 });
 
 test("rejects privileged database credentials in the application environment", () => {

@@ -51,7 +51,10 @@ BEGIN
   END IF;
   IF drift_case NOT IN (
     'security_definer', 'column_acl', 'owner_membership', 'migrator_membership',
-    'runtime_membership', 'wrong_ownership', 'default_privilege', 'unexpected_schema'
+    'runtime_membership', 'owner_outgoing_membership', 'migrator_outgoing_membership',
+    'runtime_outgoing_membership', 'migrator_admin_option', 'migrator_inherit_option',
+    'migrator_set_option', 'nested_runtime_owner_path', 'wrong_ownership',
+    'default_privilege', 'unexpected_schema'
   ) THEN
     RAISE EXCEPTION 'Unsupported adversarial drift case';
   END IF;
@@ -85,6 +88,24 @@ BEGIN
         EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', adversarial_role, migrator_role);
       WHEN 'runtime_membership' THEN
         EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', adversarial_role, runtime_role);
+      WHEN 'owner_outgoing_membership' THEN
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', owner_role, adversarial_role);
+      WHEN 'migrator_outgoing_membership' THEN
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', migrator_role, adversarial_role);
+      WHEN 'runtime_outgoing_membership' THEN
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', runtime_role, adversarial_role);
+      WHEN 'migrator_admin_option' THEN
+        EXECUTE format('REVOKE %I FROM %I', owner_role, migrator_role);
+        EXECUTE format('GRANT %I TO %I WITH ADMIN TRUE, INHERIT FALSE, SET TRUE', owner_role, migrator_role);
+      WHEN 'migrator_inherit_option' THEN
+        EXECUTE format('REVOKE %I FROM %I', owner_role, migrator_role);
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT TRUE, SET TRUE', owner_role, migrator_role);
+      WHEN 'migrator_set_option' THEN
+        EXECUTE format('REVOKE %I FROM %I', owner_role, migrator_role);
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET FALSE', owner_role, migrator_role);
+      WHEN 'nested_runtime_owner_path' THEN
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', owner_role, adversarial_role);
+        EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', adversarial_role, runtime_role);
       WHEN 'wrong_ownership' THEN
         EXECUTE format('ALTER TABLE public."AuditEvent" OWNER TO %I', adversarial_role);
       WHEN 'default_privilege' THEN
@@ -113,8 +134,20 @@ BEGIN
       LOOP
         EXECUTE format('REVOKE %I FROM %I', adversarial_role, member_role);
       END LOOP;
+      FOR member_role IN
+        SELECT granted.rolname
+        FROM pg_auth_members membership
+        JOIN pg_roles granted ON granted.oid = membership.roleid
+        JOIN pg_roles member ON member.oid = membership.member
+        WHERE member.rolname = adversarial_role
+          AND granted.rolname IN (owner_role, migrator_role, runtime_role)
+      LOOP
+        EXECUTE format('REVOKE %I FROM %I', member_role, adversarial_role);
+      END LOOP;
       EXECUTE format('DROP ROLE %I', adversarial_role);
     END IF;
+    EXECUTE format('REVOKE %I FROM %I', owner_role, migrator_role);
+    EXECUTE format('GRANT %I TO %I WITH ADMIN FALSE, INHERIT FALSE, SET TRUE', owner_role, migrator_role);
   END IF;
 END
 $fixture$;
