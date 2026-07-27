@@ -566,6 +566,16 @@ describe("multi-step approval advancement", () => {
     expect(serviceSource).toContain('inventoryLocationId: lockedSource.source.inventoryLocationId');
   });
 
+  test("quotation recommendation approval locks lineage and final source CAS", () => {
+    const source = extractFunctionSource(serviceSource, "approveQuotationRecommendation");
+    expect(source).toContain("lockQuotationRecommendationApprovalSource");
+    expect(source).toContain('documentType: "QuotationRecommendation"');
+    expect(source).toContain('FOR UPDATE OF ai');
+    expect(source).toContain('version: lockedSource.source.version');
+    expect(source).toContain('updatedAt: lockedSource.source.updatedAt');
+    expect(source).toContain('quotationRequestId: lockedSource.source.quotationRequestId');
+  });
+
   test.each([
     [
       "approvePurchaseRequest",
