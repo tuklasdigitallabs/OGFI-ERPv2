@@ -784,6 +784,19 @@ dormant and receives no production-readiness credit; the shortest safe UAT route
 is to close the remaining writer perimeter and then execute the disposable-
 PostgreSQL, ACL, rollback, and browser/UAT evidence gates as one controlled pass.
 
+The C4 terminal deliberation selects shared future-step cleanup as the next
+bounded design slice. It is graph-only `WAITING → SKIPPED` cleanup with no source,
+money, inventory, payroll, bank, or settlement authority, and must remain an
+all-18 family-bound private capability shape rather than a generic runtime
+helper. The test-only contract is version
+`dec-0247-c4-terminal-shape.1`, digest
+`6445262d0551388a2dbf3195614e758deb41e0de2066098249e929e56c9364de`; it is
+non-executable, non-runtime-callable, ungranted, and leaves base graph DML open.
+Executable routine/ACL work remains blocked on frozen signatures, source-first
+transactional proofs, disposable PostgreSQL ACL/concurrency/rollback evidence,
+DEC-0246 authority, and the complete producer/decision/cancellation/tooling
+perimeter.
+
 The producer-fact updates required a successor contract binding: C1 version
 `dec-0247-c1.private-binary-observer-sql.2` with digest
 `f460803ba04366045f9633f3baf208e6e3bbbca19b1b45efce84ba274b4c7cbe`, C2

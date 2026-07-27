@@ -44,6 +44,11 @@ import {
   APPROVAL_PRODUCER_TYPED_ADAPTER_CONTRACT_VERSION,
   approvalProducerTypedAdapterContracts,
 } from "../../../tests/contracts/approvalProducerTypedAdapterContract";
+import {
+  APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_DIGEST,
+  APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_VERSION,
+  approvalTerminalTypedCapabilityContracts,
+} from "../../../tests/contracts/approvalTerminalTypedCapabilityContract";
 
 const repositoryRoot = path.resolve(__dirname, "../../../../..");
 const sourceExtensions = new Set([
@@ -912,6 +917,47 @@ describe("DEC-0247 C3 dormant typed-adapter shape", () => {
     );
     expect(runtimeFiles().filter((file) =>
       readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalProducerTypedAdapterContract"),
+    )).toEqual([]);
+  });
+});
+
+describe("DEC-0247 C4 dormant typed terminal shape", () => {
+  test("pins one unavailable graph-only terminal capability for every family", () => {
+    expect(Object.keys(approvalTerminalTypedCapabilityContracts).sort()).toEqual(
+      [...supportedApprovalDocumentTypes].sort(),
+    );
+    for (const capability of Object.values(approvalTerminalTypedCapabilityContracts)) {
+      expect(capability).toMatchObject({
+        contractKind: "DORMANT_TYPED_TERMINAL_SHAPE",
+        executable: false,
+        runtimeCallable: false,
+        databaseRoutineExists: false,
+        positiveGrant: false,
+        grantsAuthority: false,
+        baseDmlRevoked: false,
+        acceptsCallerDescriptor: false,
+        acceptsCallerFutureStepIds: false,
+        transactionBound: true,
+        sourceFirstLockRequired: true,
+        actingStepCasRequired: true,
+        futureStepCasRequired: true,
+        residueCheckRequired: true,
+        invocationStatus: "DORMANT_UNAVAILABLE",
+      });
+      expect(Object.isFrozen(capability)).toBe(true);
+    }
+    expect(Object.isFrozen(approvalTerminalTypedCapabilityContracts)).toBe(true);
+  });
+
+  test("binds the terminal shape to a reviewed version and keeps it out of runtime imports", () => {
+    expect(APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_VERSION).toBe(
+      "dec-0247-c4-terminal-shape.1",
+    );
+    expect(APPROVAL_TERMINAL_TYPED_CAPABILITY_CONTRACT_DIGEST).toBe(
+      "6445262d0551388a2dbf3195614e758deb41e0de2066098249e929e56c9364de",
+    );
+    expect(runtimeFiles().filter((file) =>
+      readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalTerminalTypedCapabilityContract"),
     )).toEqual([]);
   });
 });
