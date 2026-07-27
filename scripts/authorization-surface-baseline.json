@@ -13874,6 +13874,27 @@
     ]
   },
   {
+    "id": "server/services/approvalProducerBarrier.ts#acquireApprovalProducerBarrierShared",
+    "surfaceType": "SERVICE_ENTRYPOINT",
+    "permission": "DELEGATED_INTERNAL_GUARD",
+    "scopeDimensions": [
+      "TENANT",
+      "COMPANY",
+      "BRAND",
+      "LOCATION",
+      "DEPARTMENT"
+    ],
+    "guardChain": [
+      "session-delegated-by-caller",
+      "service-policy-helper",
+      "tenant-company-scope-query"
+    ],
+    "denialContract": "SERVICE_ERROR_NO_UNAUTHORIZED_DATA_OR_MUTATION",
+    "riskTier": "STANDARD",
+    "executableTestIds": [],
+    "permissionSource": "REVIEWED_DELEGATION"
+  },
+  {
     "id": "server/services/approvalProducerBarrier.ts#withApprovalProducerTransaction",
     "surfaceType": "SERVICE_ENTRYPOINT",
     "permission": "DELEGATED_INTERNAL_GUARD",
@@ -36124,7 +36145,7 @@
   {
     "id": "server/services/stockAdjustments.ts#postStockAdjustment",
     "surfaceType": "SERVICE_ENTRYPOINT",
-    "permission": "permissions.stockAdjustmentPost | permissions.stockAdjustmentReverse",
+    "permission": "permissions.stockAdjustmentPost",
     "scopeDimensions": [
       "TENANT",
       "COMPANY",

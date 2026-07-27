@@ -75,8 +75,24 @@ function makeTransaction(input?: {
   liveScope?: boolean;
 }) {
   const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(1),
     $queryRaw: vi
       .fn()
+      .mockResolvedValueOnce([
+        {
+          id: ids.report,
+          inventoryLocationId: "00000000-0000-4000-8000-000000000009",
+          status: "PENDING_APPROVAL",
+          updatedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "00000000-0000-4000-8000-000000000009",
+          locationId: ids.location
+        }
+      ])
+      .mockResolvedValueOnce([{ id: ids.location }])
       .mockResolvedValueOnce([{ status: "ACTIVE", privilegeEpoch: 1 }])
       .mockResolvedValueOnce(
         input?.lockedApprovals ?? [{ id: ids.approval, currentStepOrder: 1 }]
@@ -141,7 +157,7 @@ describe("wastage cancellation concurrency", () => {
 
     await expect(cancelWastageReport(cancellationForm())).resolves.toBeUndefined();
 
-    const approvalLockSql = tx.$queryRaw.mock.calls[1]?.[0].join(" ");
+    const approvalLockSql = tx.$queryRaw.mock.calls[4]?.[0].join(" ");
     expect(approvalLockSql).toContain('JOIN "ApprovalInstanceStep"');
     expect(approvalLockSql).toContain("FOR UPDATE OF ai, s");
     expect(tx.approvalInstance.updateMany).toHaveBeenCalledWith(
@@ -213,7 +229,7 @@ describe("wastage cancellation concurrency", () => {
     await expect(cancelWastageReport(cancellationForm())).rejects.toThrow(
       "PERMISSION_DENIED"
     );
-    expect(permissionRevokedTx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(permissionRevokedTx.$queryRaw).toHaveBeenCalledTimes(5);
     expect(permissionRevokedTx.wastageReport.updateMany).not.toHaveBeenCalled();
 
     const scopeRevokedTx = makeTransaction({ liveScope: false });
@@ -223,7 +239,7 @@ describe("wastage cancellation concurrency", () => {
     await expect(cancelWastageReport(cancellationForm())).rejects.toThrow(
       "SCOPE_DENIED"
     );
-    expect(scopeRevokedTx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(scopeRevokedTx.$queryRaw).toHaveBeenCalledTimes(5);
     expect(scopeRevokedTx.wastageReport.updateMany).not.toHaveBeenCalled();
   });
 
@@ -231,6 +247,21 @@ describe("wastage cancellation concurrency", () => {
     const tx = makeTransaction();
     tx.$queryRaw
       .mockReset()
+      .mockResolvedValueOnce([
+        {
+          id: ids.report,
+          inventoryLocationId: "00000000-0000-4000-8000-000000000009",
+          status: "PENDING_APPROVAL",
+          updatedAt: new Date()
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "00000000-0000-4000-8000-000000000009",
+          locationId: ids.location
+        }
+      ])
+      .mockResolvedValueOnce([{ id: ids.location }])
       .mockResolvedValueOnce([{ status: "ACTIVE", privilegeEpoch: 1 }])
       .mockResolvedValueOnce([
         {
@@ -258,7 +289,7 @@ describe("wastage cancellation concurrency", () => {
       "WASTAGE_CANCELLATION_AUTHORITY_STALE"
     );
 
-    const approvalLockSql = tx.$queryRaw.mock.calls[2]?.[0].join(" ");
+    const approvalLockSql = tx.$queryRaw.mock.calls[5]?.[0].join(" ");
     expect(approvalLockSql).toContain("FOR UPDATE OF ai, s");
     expect(tx.userRoleAssignment.findFirst).not.toHaveBeenCalled();
     expect(tx.approvalInstance.updateMany).not.toHaveBeenCalled();
