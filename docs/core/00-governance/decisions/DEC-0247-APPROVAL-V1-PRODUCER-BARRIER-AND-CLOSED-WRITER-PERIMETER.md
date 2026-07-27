@@ -877,6 +877,16 @@ no next-step activation, payroll, payment, inventory, or journal mutation.
 Leave approval/return/cancel legacy parity, replay, PostgreSQL/ACL evidence,
 DEC-0246 authority, and activation remain open.
 
+The next Inbox decision increment hardens `approveEmployeeLeaveRequestApproval`
+with the same source-first barrier and lock contract. The exact leave source,
+Employee/Location scope, ApprovalInstance, and ordered steps are revalidated in
+the transaction; current-step approval, optional next-step activation, instance
+advance, and source transition to `UNDER_REVIEW` or `APPROVED` use the locked
+backlink and `updatedAt` CAS. This remains feature-disabled compatibility
+hardening with no payroll, payment, inventory, or journal mutation. Leave legacy
+approve/return/cancel parity, replay, PostgreSQL/ACL evidence, DEC-0246 authority,
+and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

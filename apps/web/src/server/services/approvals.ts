@@ -7060,6 +7060,40 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeLeaveRequest",
+    });
+    const lockedSource = await lockEmployeeLeaveApprovalSource(tx, session, {
+      id: request.id,
+      approvalInstanceId: approval.id,
+      expectedUpdatedAt: request.updatedAt,
+    });
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status, ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "EmployeeLeaveRequest" || lockedApproval.documentId !== request.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
     const normalizedPreflight = await prepareSpecializedApprovalDecisionAuthority(
       tx,
       session,
@@ -7104,7 +7138,9 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
           id: request.id,
           tenantId: session.context.tenantId,
           companyId: session.context.companyId,
-          status: { in: ["SUBMITTED", "UNDER_REVIEW"] }
+          approvalInstanceId: approval.id,
+          status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+          updatedAt: lockedSource.source.updatedAt
         },
         data: {
           status: "UNDER_REVIEW",
@@ -7155,7 +7191,9 @@ export async function approveEmployeeLeaveRequestApproval(formData: FormData) {
         id: request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: { in: ["SUBMITTED", "UNDER_REVIEW"] }
+        approvalInstanceId: approval.id,
+        status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+        updatedAt: lockedSource.source.updatedAt
       },
       data: {
         status: "APPROVED",

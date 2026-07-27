@@ -252,6 +252,7 @@ describe("approval inbox controls", () => {
     expect(serviceSource).toContain("WORKFORCE_LEAVE_NOT_AWAITING_APPROVAL");
     expect(serviceSource).toContain("lockEmployeeLeaveApprovalSource");
     expect(serviceSource).toContain('FOR UPDATE OF request');
+    expect(serviceSource).toContain('acquireApprovalProducerBarrierShared');
     expect(serviceSource).toContain('updatedAt: lockedSource.source.updatedAt');
     expect(serviceSource).toContain('approvalInstanceId: approval.id');
     expect(serviceSource).toContain("APPROVAL_DOCUMENT_SCOPE_NOT_FOUND");
