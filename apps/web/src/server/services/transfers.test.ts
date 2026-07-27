@@ -293,6 +293,23 @@ describe("inventory transfer foundation rules", () => {
     expect(cancellation).not.toContain('postInventoryMovementInTransaction');
   });
 
+  test("dispatch locks posting scope before the transfer and CASes lines and movements", () => {
+    const source = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const dispatch = source.slice(
+      source.indexOf("export async function dispatchInventoryTransfer"),
+      source.indexOf("export async function receiveInventoryTransfer")
+    );
+
+    expect(dispatch).toContain("lockInventoryLocationsForPosting");
+    expect(dispatch).toContain('FOR UPDATE OF t');
+    expect(dispatch).toContain('FOR UPDATE OF l');
+    expect(dispatch).toContain('updatedAt: lockedTransfer.updatedAt');
+    expect(dispatch).toContain('sourceEventKey: `dispatch:${line.id}`');
+    expect(dispatch).toContain('sourceDocumentType: "InventoryTransfer"');
+    expect(dispatch).toContain("TRANSFER_LINE_DISPATCH_STATE_CONFLICT");
+    expect(dispatch).toContain("TRANSFER_DISPATCH_STATE_CONFLICT");
+  });
+
   test("dispatches requested transfers only", () => {
     expect(() => assertTransferCanDispatch("REQUESTED")).not.toThrow();
     expect(() => assertTransferCanDispatch("DRAFT")).toThrow(

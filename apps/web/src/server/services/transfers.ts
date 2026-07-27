@@ -1282,10 +1282,6 @@ export async function dispatchInventoryTransfer(formData: FormData) {
   if (!transfer) {
     throw new Error("TRANSFER_NOT_FOUND");
   }
-  if (transfer.status === "DISPATCHED") {
-    return;
-  }
-  assertTransferCanDispatch(transfer.status);
 
   const now = new Date();
   await prisma.$transaction(async (tx) => {
@@ -1297,13 +1293,103 @@ export async function dispatchInventoryTransfer(formData: FormData) {
         line.destinationInventoryLocationId
       ])
     );
+
+    const [lockedTransfer] = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      updatedAt: Date;
+      sourceLocationId: string;
+      destinationLocationId: string;
+    }>>(Prisma.sql`
+      SELECT t."id", t."status", t."updatedAt", t."sourceLocationId",
+        t."destinationLocationId"
+      FROM "InventoryTransfer" t
+      WHERE t."id" = ${values.id}
+        AND t."tenantId" = ${session.context.tenantId}
+        AND t."companyId" = ${session.context.companyId}
+        AND t."sourceLocationId" = ${session.context.locationId}
+      FOR UPDATE OF t
+    `);
+    if (!lockedTransfer) {
+      throw new Error("TRANSFER_NOT_FOUND");
+    }
+
+    const lockedLineIds = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT l."id"
+      FROM "InventoryTransferLine" l
+      WHERE l."inventoryTransferId" = ${lockedTransfer.id}
+        AND l."tenantId" = ${session.context.tenantId}
+        AND l."companyId" = ${session.context.companyId}
+      ORDER BY l."lineNumber" ASC, l."id" ASC
+      FOR UPDATE OF l
+    `);
+    const authoritativeTransfer = await tx.inventoryTransfer.findFirst({
+      where: {
+        id: lockedTransfer.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        sourceLocationId: session.context.locationId
+      },
+      include: { lines: { orderBy: { lineNumber: "asc" } } }
+    });
+    if (!authoritativeTransfer || lockedLineIds.length !== authoritativeTransfer.lines.length) {
+      throw new Error("TRANSFER_DISPATCH_SCOPE_CONFLICT");
+    }
+    const activeInventoryLocations = await tx.inventoryLocation.findMany({
+      where: {
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        status: "ACTIVE",
+        id: {
+          in: authoritativeTransfer.lines.flatMap((line) => [
+            line.sourceInventoryLocationId,
+            line.destinationInventoryLocationId
+          ])
+        }
+      },
+      select: { id: true }
+    });
+    const expectedInventoryLocationIds = new Set(
+      authoritativeTransfer.lines.flatMap((line) => [
+        line.sourceInventoryLocationId,
+        line.destinationInventoryLocationId
+      ])
+    );
+    if (activeInventoryLocations.length !== expectedInventoryLocationIds.size) {
+      throw new Error("TRANSFER_DISPATCH_SCOPE_CONFLICT");
+    }
+
+    if (lockedTransfer.status === "DISPATCHED") {
+      const movementKeys = authoritativeTransfer.lines.map((line) => `dispatch:${line.id}`);
+      const existingMovements = await tx.inventoryMovement.findMany({
+        where: {
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          sourceDocumentType: "InventoryTransfer",
+          sourceDocumentId: lockedTransfer.id,
+          sourceEventKey: { in: movementKeys }
+        },
+        select: { sourceEventKey: true }
+      });
+      const exactReplay = existingMovements.length === movementKeys.length &&
+        new Set(existingMovements.map((movement) => movement.sourceEventKey)).size === movementKeys.length &&
+        authoritativeTransfer.lines.every((line) => Number(line.dispatchedQty) === Number(line.requestedQty));
+      if (exactReplay) return;
+      throw new Error("TRANSFER_DISPATCH_STATE_CONFLICT");
+    }
+    assertTransferCanDispatch(lockedTransfer.status);
+    if (authoritativeTransfer.lines.length === 0) {
+      throw new Error("TRANSFER_DISPATCH_SCOPE_CONFLICT");
+    }
+
     const dispatched = await tx.inventoryTransfer.updateMany({
       where: {
-        id: transfer.id,
+        id: lockedTransfer.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
         sourceLocationId: session.context.locationId,
-        status: "REQUESTED"
+        status: "REQUESTED",
+        updatedAt: lockedTransfer.updatedAt
       },
       data: {
         status: "DISPATCHED",
@@ -1315,10 +1401,10 @@ export async function dispatchInventoryTransfer(formData: FormData) {
       throw new Error("TRANSFER_NOT_REQUESTED_FOR_DISPATCH");
     }
 
-    for (const line of transfer.lines) {
+    for (const line of authoritativeTransfer.lines) {
       const requestedQty = Number(line.requestedQty);
       assertPositiveTransferQuantity(requestedQty);
-      if (Number(line.dispatchedQty) > 0) {
+      if (Number(line.dispatchedQty) !== 0) {
         throw new Error("TRANSFER_LINE_ALREADY_DISPATCHED");
       }
 
@@ -1338,18 +1424,27 @@ export async function dispatchInventoryTransfer(formData: FormData) {
         lotNumber: line.lotNumber,
         expiryDate: line.expiryDate,
         reasonCode: "TRANSFER_DISPATCH",
-        notes: transfer.publicReference
+        notes: authoritativeTransfer.publicReference
       });
 
       if (!duplicate) {
-        await tx.inventoryTransferLine.update({
-          where: { id: line.id },
+        const lineUpdated = await tx.inventoryTransferLine.updateMany({
+          where: {
+            id: line.id,
+            inventoryTransferId: lockedTransfer.id,
+            tenantId: session.context.tenantId,
+            companyId: session.context.companyId,
+            dispatchedQty: line.dispatchedQty
+          },
           data: {
             dispatchedQty: {
               increment: requestedQty
             }
           }
         });
+        if (lineUpdated.count !== 1) {
+          throw new Error("TRANSFER_LINE_DISPATCH_STATE_CONFLICT");
+        }
       }
     }
 
@@ -1360,13 +1455,13 @@ export async function dispatchInventoryTransfer(formData: FormData) {
         actorUserId: session.user.id,
         eventType: "inventory_transfer.dispatched",
         entityType: "InventoryTransfer",
-        entityId: transfer.id,
+        entityId: lockedTransfer.id,
         beforeData: { status: "REQUESTED" },
         afterData: { status: "DISPATCHED" },
         metadata: {
           sourceLocationId: transfer.sourceLocationId,
           destinationLocationId: transfer.destinationLocationId,
-          lineCount: transfer.lines.length
+          lineCount: authoritativeTransfer.lines.length
         }
       }
     });
