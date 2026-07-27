@@ -628,6 +628,13 @@ lineage CAS. This closes the producer's stale upstream-lineage snapshot defect
 without adding replay identity or activating the capability; recommendation
 creation concurrency and approval decision-path migration remain separate gates.
 
+Purchase Order submission now follows barrier → Purchase Order → recommendation
+→ quotation request → Purchase Request lock order, revalidates the complete
+lineage and supplier/location status, and claims DRAFT before graph creation
+with a scoped status/linkage CAS. PurchaseOrder has no version field, so this
+checkpoint adds no schema migration; replay identity, sibling PO lifecycle
+writers, and disposable race evidence remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes

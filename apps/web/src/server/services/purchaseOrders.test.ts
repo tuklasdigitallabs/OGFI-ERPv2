@@ -85,16 +85,47 @@ describe("purchase order lifecycle rules", () => {
       const end = source.indexOf("\nexport async function ", start + 1);
       const action = source.slice(start, end === -1 ? undefined : end);
       expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeGreaterThan(-1);
-      expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
-        action.indexOf(
-          functionName === "submitPurchaseOrderForApproval"
-            ? "const updated = await tx.purchaseOrder.updateMany"
-            : functionName === "requestPurchaseOrderBalanceClosure"
-              ? "const closure = await tx.purchaseOrderBalanceClosure.create"
-              : "const amendment = await tx.purchaseOrderAmendment.create"
-        )
+      const claimOrChildAt = action.indexOf(
+        functionName === "submitPurchaseOrderForApproval"
+          ? "const updated = await tx.purchaseOrder.updateMany"
+          : functionName === "requestPurchaseOrderBalanceClosure"
+            ? "const closure = await tx.purchaseOrderBalanceClosure.create"
+            : "const amendment = await tx.purchaseOrderAmendment.create"
       );
+      if (functionName === "submitPurchaseOrderForApproval") {
+        expect(claimOrChildAt).toBeLessThan(
+          action.indexOf("assertAnyEligibleApprovalActorForStep(tx")
+        );
+      } else {
+        expect(action.indexOf("assertAnyEligibleApprovalActorForStep(tx")).toBeLessThan(
+          claimOrChildAt
+        );
+      }
     }
+  });
+
+  test("PO submission locks authoritative lineage before approval graph creation", () => {
+    const source = readFileSync(path.resolve(__dirname, "purchaseOrders.ts"), "utf8");
+    const start = source.indexOf("export async function submitPurchaseOrderForApproval");
+    const end = source.indexOf("\nexport async function ", start + 1);
+    const submit = source.slice(start, end === -1 ? undefined : end);
+    expect(submit).toContain('FROM "PurchaseOrder"');
+    expect(submit).toContain('FROM "QuotationRecommendation"');
+    expect(submit).toContain('FROM "QuotationRequest"');
+    expect(submit).toContain('FROM "PurchaseRequest" pr');
+    expect(submit).toContain("FOR UPDATE");
+    expect(submit.indexOf('FROM "PurchaseOrder"')).toBeLessThan(
+      submit.indexOf('FROM "QuotationRecommendation"')
+    );
+    expect(submit.indexOf('FROM "QuotationRecommendation"')).toBeLessThan(
+      submit.indexOf('FROM "QuotationRequest"')
+    );
+    expect(submit.indexOf('FROM "QuotationRequest"')).toBeLessThan(
+      submit.indexOf('FROM "PurchaseRequest" pr')
+    );
+    expect(submit.indexOf("const updated = await tx.purchaseOrder.updateMany")).toBeLessThan(
+      submit.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
   });
 
   test("app shell navigation uses the shared PO read helper", () => {

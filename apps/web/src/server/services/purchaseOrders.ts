@@ -1784,6 +1784,105 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
     companyId: session.context.companyId,
     documentType: "PurchaseOrder",
   }, async (tx) => {
+    const lockedOrderRows = await tx.$queryRaw<Array<{
+      id: string;
+      tenantId: string;
+      companyId: string;
+      deliveryLocationId: string;
+      purchaseRequestId: string;
+      quotationRequestId: string;
+      quotationRecommendationId: string;
+      selectedSupplierQuotationId: string;
+      supplierId: string;
+      status: string;
+    }>>`
+      SELECT id, "tenantId", "companyId", "deliveryLocationId",
+             "purchaseRequestId", "quotationRequestId",
+             "quotationRecommendationId", "selectedSupplierQuotationId",
+             "supplierId", status
+        FROM "PurchaseOrder"
+       WHERE id = ${values.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "deliveryLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE
+    `;
+    const lockedOrder = lockedOrderRows[0];
+    if (!lockedOrder || lockedOrder.status !== "DRAFT") {
+      throw new Error("PURCHASE_ORDER_NOT_DRAFT_FOR_APPROVAL");
+    }
+    const lockedRecommendationRows = await tx.$queryRaw<Array<{
+      id: string;
+      quotationRequestId: string;
+      status: string;
+    }>>`
+      SELECT id, "quotationRequestId", status
+        FROM "QuotationRecommendation"
+       WHERE id = ${lockedOrder.quotationRecommendationId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedRecommendation = lockedRecommendationRows[0];
+    if (!lockedRecommendation || lockedRecommendation.quotationRequestId !== lockedOrder.quotationRequestId) {
+      throw new Error("PURCHASE_ORDER_LINEAGE_INVALID");
+    }
+    await tx.$queryRaw`
+      SELECT id
+        FROM "QuotationRequest"
+       WHERE id = ${lockedOrder.quotationRequestId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE
+    `;
+    const lockedPurchaseRequestRows = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      requestLocationId: string;
+    }>>`
+      SELECT pr.id, pr.status, pr."requestLocationId"
+        FROM "PurchaseRequest" pr
+        JOIN "QuotationRequest" qr ON qr."purchaseRequestId" = pr.id
+       WHERE qr.id = ${lockedOrder.quotationRequestId}::uuid
+         AND qr."tenantId" = ${session.context.tenantId}::uuid
+         AND qr."companyId" = ${session.context.companyId}::uuid
+         AND pr."tenantId" = ${session.context.tenantId}::uuid
+         AND pr."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF pr
+    `;
+    const lockedPurchaseRequest = lockedPurchaseRequestRows[0];
+    if (!lockedPurchaseRequest || lockedPurchaseRequest.id !== lockedOrder.purchaseRequestId) {
+      throw new Error("PURCHASE_ORDER_LINEAGE_INVALID");
+    }
+    const order = await tx.purchaseOrder.findFirst({
+      where: {
+        id: lockedOrder.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: lockedOrder.deliveryLocationId,
+      },
+      include: {
+        purchaseRequest: true,
+        quotationRecommendation: true,
+        supplier: true,
+        deliveryLocation: true,
+      },
+    });
+    if (!order || order.status !== "DRAFT") {
+      throw new Error("PURCHASE_ORDER_NOT_DRAFT_FOR_APPROVAL");
+    }
+    assertApprovedQuotationRecommendationForPo(order.quotationRecommendation.status);
+    if (order.purchaseRequest.status !== "APPROVED") {
+      throw new Error("PURCHASE_REQUEST_NOT_APPROVED_FOR_PO");
+    }
+    if (order.deliveryLocation.status !== "ACTIVE") {
+      throw new Error("PURCHASE_ORDER_DELIVERY_LOCATION_INACTIVE");
+    }
+    assertSupplierStatusAllowedForPurchaseOrder(
+      order.supplier.accreditationStatus,
+      supplierPolicy,
+    );
+
     const approvalRule = await tx.approvalRule.findFirst({
       where: {
         tenantId: session.context.tenantId,
@@ -1820,6 +1919,25 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
     const firstStep = approvalRule.steps[0];
     if (!firstStep) {
       throw new Error("APPROVAL_RULE_NOT_CONFIGURED");
+    }
+
+    const updated = await tx.purchaseOrder.updateMany({
+      where: {
+        id: order.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        deliveryLocationId: order.deliveryLocationId,
+        purchaseRequestId: order.purchaseRequestId,
+        quotationRequestId: order.quotationRequestId,
+        quotationRecommendationId: order.quotationRecommendationId,
+        selectedSupplierQuotationId: order.selectedSupplierQuotationId,
+        supplierId: order.supplierId,
+        status: "DRAFT",
+      },
+      data: { status: "PENDING_APPROVAL" },
+    });
+    if (updated.count !== 1) {
+      throw new Error("PURCHASE_ORDER_NOT_DRAFT_FOR_APPROVAL");
     }
 
     const routedSteps = approvalRule.steps.map((step, index) => ({
@@ -1896,22 +2014,6 @@ export async function submitPurchaseOrderForApproval(formData: FormData) {
         ? { actorUserId: firstRoutedStep.userId }
         : {})
     });
-
-    const updated = await tx.purchaseOrder.updateMany({
-      where: {
-        id: order.id,
-        tenantId: session.context.tenantId,
-        companyId: session.context.companyId,
-        status: "DRAFT",
-      },
-      data: {
-        status: "PENDING_APPROVAL",
-      },
-    });
-
-    if (updated.count !== 1) {
-      throw new Error("PURCHASE_ORDER_NOT_DRAFT_FOR_APPROVAL");
-    }
 
     await tx.auditEvent.create({
       data: {
