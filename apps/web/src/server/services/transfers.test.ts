@@ -703,4 +703,15 @@ describe("inventory transfer foundation rules", () => {
     expect(service).toContain('code === "P2010"');
     expect(service).toContain("InventoryTransferReceipt_tenantId_companyId_idempotencyKey");
   });
+
+  test("receive UI supplies the required bounded idempotency key", () => {
+    const service = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const detailPage = readFileSync(
+      path.resolve(__dirname, "../../app/(app)/transfers/[id]/page.tsx"),
+      "utf8"
+    );
+    expect(service).toContain('idempotencyKey: z.string().trim().min(16).max(200)');
+    expect(detailPage).toContain('name="idempotencyKey"');
+    expect(detailPage).toContain("ui:transfer-receipt:");
+  });
 });
