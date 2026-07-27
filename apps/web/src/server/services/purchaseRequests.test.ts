@@ -160,6 +160,28 @@ describe("purchase request workflow controls", () => {
     expect(serviceSource).toContain("purchase_request.cancelled");
   });
 
+  test("purchase request lifecycle mutations serialize against submission", () => {
+    const serviceSource = readFileSync(
+      path.resolve(__dirname, "purchaseRequests.ts"),
+      "utf8"
+    );
+    const reopen = serviceSource.slice(
+      serviceSource.indexOf("export async function reopenReturnedPurchaseRequest"),
+      serviceSource.indexOf("export async function cancelPurchaseRequest")
+    );
+    const cancel = serviceSource.slice(
+      serviceSource.indexOf("export async function cancelPurchaseRequest")
+    );
+    for (const mutation of [reopen, cancel]) {
+      expect(mutation).toContain("FOR UPDATE");
+      expect(mutation).toContain("version: source.version");
+      expect(mutation).toContain("updateMany");
+      expect(mutation).toContain('documentType: "PurchaseRequest"');
+    }
+    expect(cancel).toContain('status: { in: ["DRAFT", "RETURNED"] }');
+    expect(reopen).toContain('status: "RETURNED"');
+  });
+
   test("catalog and free-text UOM requirements stay explicit at validation boundary", () => {
     expect(
       getCatalogLineUomRequirementIssue({

@@ -1728,15 +1728,45 @@ export async function reopenReturnedPurchaseRequest(id: string) {
   }
   assertCanReopenReturnedPurchaseRequest(existing.status);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.purchaseRequest.update({
-      where: { id },
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PurchaseRequest",
+  }, async (tx) => {
+    const lockedRows = await tx.$queryRaw<LockedPurchaseRequestSource[]>`
+      SELECT id, "tenantId", "companyId", "brandId", "requestLocationId",
+             "requesterUserId", "requiredDate", urgency, "publicReference",
+             status::text AS status, version
+        FROM "PurchaseRequest"
+       WHERE id = ${id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "requestLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE
+    `;
+    const source = lockedRows[0];
+    if (!source) throw new Error("PURCHASE_REQUEST_NOT_FOUND");
+    if (source.requesterUserId !== session.user.id) {
+      throw new Error("REQUESTER_ONLY_ACTION");
+    }
+    assertCanReopenReturnedPurchaseRequest(source.status as PurchaseRequestStatus);
+    const updated = await tx.purchaseRequest.updateMany({
+      where: {
+        id: source.id,
+        tenantId: source.tenantId,
+        companyId: source.companyId,
+        requestLocationId: source.requestLocationId,
+        requesterUserId: source.requesterUserId,
+        status: "RETURNED",
+        version: source.version,
+      },
       data: {
         status: "DRAFT",
         currentApprovalStep: null,
         version: { increment: 1 },
       },
     });
+    if (updated.count !== 1) throw new Error("INVALID_STATUS_TRANSITION");
 
     await tx.auditEvent.create({
       data: {
@@ -1782,15 +1812,45 @@ export async function cancelPurchaseRequest(formData: FormData) {
   }
   assertCanCancelPurchaseRequest(existing.status);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.purchaseRequest.update({
-      where: { id: values.id },
+  await withApprovalProducerTransaction({
+    tenantId: session.context.tenantId,
+    companyId: session.context.companyId,
+    documentType: "PurchaseRequest",
+  }, async (tx) => {
+    const lockedRows = await tx.$queryRaw<LockedPurchaseRequestSource[]>`
+      SELECT id, "tenantId", "companyId", "brandId", "requestLocationId",
+             "requesterUserId", "requiredDate", urgency, "publicReference",
+             status::text AS status, version
+        FROM "PurchaseRequest"
+       WHERE id = ${values.id}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "companyId" = ${session.context.companyId}::uuid
+         AND "requestLocationId" = ${session.context.locationId}::uuid
+       FOR UPDATE
+    `;
+    const source = lockedRows[0];
+    if (!source) throw new Error("PURCHASE_REQUEST_NOT_FOUND");
+    if (source.requesterUserId !== session.user.id) {
+      throw new Error("REQUESTER_ONLY_ACTION");
+    }
+    assertCanCancelPurchaseRequest(source.status as PurchaseRequestStatus);
+    const updated = await tx.purchaseRequest.updateMany({
+      where: {
+        id: source.id,
+        tenantId: source.tenantId,
+        companyId: source.companyId,
+        requestLocationId: source.requestLocationId,
+        requesterUserId: source.requesterUserId,
+        status: { in: ["DRAFT", "RETURNED"] },
+        version: source.version,
+      },
       data: {
         status: "CANCELLED",
         currentApprovalStep: null,
         version: { increment: 1 },
       },
     });
+    if (updated.count !== 1) throw new Error("INVALID_STATUS_TRANSITION");
 
     await tx.auditEvent.create({
       data: {
@@ -1801,7 +1861,7 @@ export async function cancelPurchaseRequest(formData: FormData) {
         entityType: "PurchaseRequest",
         entityId: values.id,
         beforeData: {
-          status: existing.status,
+          status: source.status,
         },
         afterData: {
           status: "CANCELLED",
@@ -1812,13 +1872,18 @@ export async function cancelPurchaseRequest(formData: FormData) {
       },
     });
 
-    for (const line of existing.lines) {
+    const lines = await tx.purchaseRequestLine.findMany({
+      where: { purchaseRequestId: source.id },
+      select: { id: true, budgetLineId: true },
+      orderBy: { lineNumber: "asc" },
+    });
+    for (const line of lines) {
       if (!line.budgetLineId) {
         continue;
       }
       await reverseBudgetCommitmentFromApprovedSourceEvent(tx, session, {
         sourceType: "PURCHASE_REQUEST",
-        sourceId: existing.id,
+        sourceId: source.id,
         sourceEventKey: `purchase_request.approved:${line.id}`,
         reversalEventKey: `purchase_request.cancelled:${line.id}`,
         reason: values.reason,

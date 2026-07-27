@@ -607,6 +607,13 @@ scope compare-and-set. This corrects the stale pre-read defect without
 activating a typed capability; durable replay identity and adjacent
 cancel/reopen/decision writer races remain rollout blockers.
 
+The follow-up lifecycle prerequisite applies the same barrier and exact source
+lock/version CAS to Purchase Request reopen and cancel, and reloads budget
+linked lines inside the cancellation transaction. This prevents stale
+submit-versus-cancel/reopen overwrites but does not close the perimeter:
+approval decision writers, orphan pending-graph coherence, brand-target policy,
+durable replay identity, and executable all-family adapters remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
