@@ -1071,6 +1071,17 @@ describe("finance foundation dashboard", () => {
     expect(financeServiceSource).toContain("findPaymentRequestApprovalRule");
     expect(financeServiceSource).toContain('documentType: "PaymentRequest"');
     expect(financeServiceSource).toContain("approvalInstance.create");
+    expect(paymentRequestLifecycleSource).toContain("FOR UPDATE OF pr");
+    expect(financeServiceSource).toContain("definitionSealed: true");
+    expect(paymentRequestLifecycleSource).toContain("const claimed = await tx.paymentRequest.updateMany");
+    expect(paymentRequestLifecycleSource).toContain("const linked = await tx.paymentRequest.updateMany");
+    expect(paymentRequestLifecycleSource).toContain("updatedAt: lockedRequest.updatedAt");
+    expect(paymentRequestLifecycleSource.indexOf("const claimed = await tx.paymentRequest.updateMany")).toBeLessThan(
+      paymentRequestLifecycleSource.indexOf("const approvalInstance = await tx.approvalInstance.create")
+    );
+    expect(paymentRequestLifecycleSource.indexOf("const approvalInstance = await tx.approvalInstance.create")).toBeLessThan(
+      paymentRequestLifecycleSource.indexOf("const linked = await tx.paymentRequest.updateMany")
+    );
     expect(financeServiceSource).toContain("APPROVE_PAYMENT_REQUEST");
     expect(financeServiceSource).toContain("PAYMENT_REQUEST_APPROVAL_RULE_NOT_CONFIGURED");
     expect(financeServiceSource).toContain("PAYMENT_REQUEST_ALREADY_SUBMITTED");

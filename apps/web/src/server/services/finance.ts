@@ -938,7 +938,8 @@ async function findPaymentRequestApprovalRule(
       tenantId: session.context.tenantId,
       companyId: session.context.companyId,
       transactionType: "PaymentRequest",
-      isActive: true
+      isActive: true,
+      definitionSealed: true
     },
     include: {
       steps: {
@@ -4679,7 +4680,28 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
     companyId: session.context.companyId,
     documentType: "PaymentRequest",
   }, async (tx) => {
-    const request = await tx.paymentRequest.findFirst({
+    const lockedRequests = await tx.$queryRaw<Array<{
+      id: string;
+      status: string;
+      updatedAt: Date;
+      locationId: string;
+    }>>`
+      SELECT pr.id, pr.status, pr."updatedAt", pr."locationId"
+        FROM "PaymentRequest" pr
+        JOIN "Location" l ON l.id = pr."locationId"
+       WHERE pr.id = ${input.paymentRequestId}::uuid
+         AND pr."tenantId" = ${session.context.tenantId}::uuid
+         AND pr."companyId" = ${session.context.companyId}::uuid
+         AND l."tenantId" = ${session.context.tenantId}::uuid
+         AND l."companyId" = ${session.context.companyId}::uuid
+         AND l.status = 'ACTIVE'
+       FOR UPDATE OF pr
+    `;
+    const lockedRequest = lockedRequests[0];
+    if (!lockedRequest || lockedRequest.locationId !== session.context.locationId) {
+      throw new Error("PAYMENT_REQUEST_NOT_OPEN_FOR_SUBMIT");
+    }
+    const preliminaryRequest = await tx.paymentRequest.findFirst({
       where: {
         id: input.paymentRequestId,
         tenantId: session.context.tenantId,
@@ -4692,6 +4714,45 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
           include: { apInvoice: true }
         }
       }
+    })
+    if (!preliminaryRequest) {
+      throw new Error("PAYMENT_REQUEST_NOT_OPEN_FOR_SUBMIT")
+    }
+    const lockedLines = await tx.$queryRaw<Array<{
+      id: string;
+      locationId: string;
+      tenantId: string;
+      companyId: string;
+      apInvoiceId: string;
+    }>>`
+      SELECT line.id, line."locationId", line."tenantId", line."companyId", line."apInvoiceId"
+        FROM "PaymentRequestLine" line
+       WHERE line."paymentRequestId" = ${preliminaryRequest.id}::uuid
+       ORDER BY line.id
+       FOR UPDATE
+    `;
+    if (lockedLines.length !== preliminaryRequest.lines.length) {
+      throw new Error("PAYMENT_REQUEST_LINE_SCOPE_INVALID")
+    }
+    for (const line of lockedLines) {
+      if (
+        line.tenantId !== session.context.tenantId ||
+        line.companyId !== session.context.companyId ||
+        line.locationId !== lockedRequest.locationId
+      ) {
+        throw new Error("PAYMENT_REQUEST_LINE_SCOPE_INVALID")
+      }
+    }
+    await lockApInvoices(tx, session, lockedLines.map((line) => line.apInvoiceId))
+    const request = await tx.paymentRequest.findFirst({
+      where: {
+        id: preliminaryRequest.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: lockedRequest.locationId,
+        status: { in: ["DRAFT", "RETURNED_FOR_REVISION"] }
+      },
+      include: { lines: { include: { apInvoice: true } } }
     })
     if (!request) {
       throw new Error("PAYMENT_REQUEST_NOT_OPEN_FOR_SUBMIT")
@@ -4723,8 +4784,47 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
       throw new Error("PAYMENT_REQUEST_ALREADY_SUBMITTED")
     }
 
+    if (request.approvalInstanceId) {
+      const linkedApproval = await tx.approvalInstance.findFirst({
+        where: {
+          id: request.approvalInstanceId,
+          tenantId: session.context.tenantId,
+          companyId: session.context.companyId,
+          documentType: "PaymentRequest",
+          documentId: request.id
+        },
+        select: { status: true }
+      })
+      if (!linkedApproval) {
+        throw new Error("PAYMENT_REQUEST_APPROVAL_LINK_INVALID")
+      }
+      if (linkedApproval.status === "PENDING") {
+        throw new Error("PAYMENT_REQUEST_ALREADY_SUBMITTED")
+      }
+    }
+
     if (!request.locationId) {
       throw new Error("PAYMENT_REQUEST_APPROVAL_SCOPE_NOT_CONFIGURED")
+    }
+    const submittedAt = new Date()
+    const claimed = await tx.paymentRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: lockedRequest.locationId,
+        status: { in: ["DRAFT", "RETURNED_FOR_REVISION"] },
+        updatedAt: lockedRequest.updatedAt
+      },
+      data: {
+        status: "AWAITING_APPROVAL",
+        approvalInstanceId: null,
+        submittedAt,
+        submittedByUserId: session.user.id
+      }
+    })
+    if (claimed.count !== 1) {
+      throw new Error("PAYMENT_REQUEST_NOT_OPEN_FOR_SUBMIT")
     }
     const routedSteps = approvalRule.steps.map((step, index) => ({
       ...step,
@@ -4787,16 +4887,27 @@ export async function submitPaymentRequest(input: PaymentRequestActionInput) {
       companyId: session.context.companyId,
       approvalInstanceStepId: firstRoutedStep.approvalInstanceStepId
     })
-    const submittedAt = new Date()
-    const updated = await tx.paymentRequest.update({
-      where: { id: request.id },
-      data: {
+    const linked = await tx.paymentRequest.updateMany({
+      where: {
+        id: request.id,
+        tenantId: session.context.tenantId,
+        companyId: session.context.companyId,
+        locationId: lockedRequest.locationId,
         status: "AWAITING_APPROVAL",
-        approvalInstanceId: approvalInstance.id,
-        submittedAt,
-        submittedByUserId: session.user.id
-      }
+        approvalInstanceId: null
+      },
+      data: { approvalInstanceId: approvalInstance.id }
     })
+    if (linked.count !== 1) {
+      throw new Error("PAYMENT_REQUEST_NOT_OPEN_FOR_SUBMIT")
+    }
+    const updated = {
+      ...request,
+      status: "AWAITING_APPROVAL" as const,
+      approvalInstanceId: approvalInstance.id,
+      submittedAt,
+      submittedByUserId: session.user.id
+    }
 
     const auditEvent = await tx.auditEvent.create({
       data: {

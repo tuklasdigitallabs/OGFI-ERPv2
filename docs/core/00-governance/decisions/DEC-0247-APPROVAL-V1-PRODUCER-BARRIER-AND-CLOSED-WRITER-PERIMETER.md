@@ -711,6 +711,18 @@ coverage passes 11/11 with web typecheck green; fund/lineage, custodian-policy,
 evidence/handoff, PostgreSQL race/rollback, sibling writer, and activation gates
 remain open.
 
+Payment Request submission now locks the request through active same-scope
+Location, ordered PaymentRequestLine rows, and linked AP invoices under the
+shared company barrier. It rehydrates locked facts, requires a sealed rule,
+claims the admitted draft/returned state before graph creation, and attaches
+the exact ApprovalInstance backlink with a second compare-and-set. Pending or
+incoherent prior approval links fail closed. Focused finance coverage passes
+30/30 with web typecheck and lint green; disposable PostgreSQL race, lineage,
+rollback, and notification evidence remains unavailable. Normalized Payment
+Request policy (DEC-0244), legacy decision-writer parity, durable replay,
+Payment Release/AP settlement, and activation remain open; the routing flag
+stays false.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
