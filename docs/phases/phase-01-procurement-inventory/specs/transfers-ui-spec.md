@@ -70,6 +70,8 @@ Cancelled / Reversed only through controlled actions
 - Dispatch and receipt use item cards, scanning/search, large quantity fields, and camera evidence.
 - Persistent bottom action: `Dispatch Transfer` or `Receive Transfer`.
 - Show source/destination prominently to avoid wrong-location posting.
+- The receipt task sheet owns an independent scroll region; its persistent header keeps the transfer reference and source/destination visible, and its sticky footer keeps `Post Receipt` reachable on narrow screens.
+- Receipt quantity, discrepancy, evidence, and submission controls use at least 44px touch targets. Quantity fields use a two-column mobile grid and expand on larger screens without horizontal overflow.
 
 ## 8. Acceptance criteria
 
@@ -77,6 +79,7 @@ Cancelled / Reversed only through controlled actions
 - Dispatch/receipt are idempotent.
 - Receipt retry identity binds the actor, destination, transfer lines, quantities, notes, and discrepancy details; exact completed retries replay, while changed or in-progress reuse fails with a safe conflict state. Receipt reversal follows the same authoritative location/header/line lock order and transaction-time MFA boundary.
 - `Receive Transfer` is a workspace-sized task sheet rather than a short modal: it keeps source/destination context visible while the receiver enters multi-line quantities, discrepancy reasons, and evidence references. Submission prevents accidental duplicate clicks while the server action is pending.
+- When no dispatched quantity remains receivable, the detail page shows an intentional no-receivable-lines state instead of opening a form that cannot post.
 - Receipt failures distinguish scope changes, a retry key bound to different details, and an already-running retry. The user is told to refresh/start a new attempt or wait for the existing result; generic blind-retry guidance is not used for these states.
 - Accepted receipt quantity links to immutable `TRANSFER_IN`; rejected, damaged, and short/discrepant receipt quantities do not post destination stock.
 - Overdue transfers appear in dashboards, notifications, and transfer report.

@@ -715,6 +715,12 @@ describe("inventory transfer foundation rules", () => {
     expect(detailPage).toContain("ui:transfer-receipt:");
     expect(detailPage).toContain('import { TaskSheet } from "@/components/TaskSheet";');
     expect(detailPage).toContain('size="workspace"');
+    expect(detailPage).toContain('bodyScroll="contained"');
+    expect(detailPage).toContain('footer={({ pending }) =>');
+    expect(detailPage).toContain('form={`transfer-receipt-form-${transfer.id}`}');
+    expect(detailPage).toContain("No receivable lines remain.");
+    expect(detailPage).toContain("min-h-11");
+    expect(detailPage).toContain("sm:grid-cols-2 lg:grid-cols-[1fr_repeat(4,7rem)]");
     expect(detailPage).toContain("server rechecks destination scope, MFA, idempotency, and ledger effects");
     expect(detailPage).not.toContain('<EntryModal title="Receive Transfer"');
   });

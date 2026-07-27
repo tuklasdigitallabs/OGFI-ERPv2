@@ -178,6 +178,11 @@ export default async function TransferDetailPage({
     canReceiveTransfers &&
     ["DISPATCHED", "PARTIALLY_RECEIVED", "DISPUTED"].includes(transfer.status) &&
     transfer.destinationLocationId === session.context.locationId;
+  const receivableLines = transfer.lines.filter((line) => {
+    const accountedQty =
+      line.receivedQty + line.rejectedQty + line.damagedQty + line.discrepancyQty;
+    return Math.max(Number((line.dispatchedQty - accountedQty).toFixed(6)), 0) > 0;
+  });
   const canSettleCurrentTransfer =
     canSettleTransferDiscrepancies &&
     transfer.status === "DISPUTED" &&
@@ -364,18 +369,46 @@ export default async function TransferDetailPage({
             ) : null}
           </div>
 
-          {canReceiveCurrentTransfer ? (
+          {canReceiveCurrentTransfer && receivableLines.length === 0 ? (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              All dispatched quantities on this transfer have already been accounted
+              for. No receivable lines remain.
+            </div>
+          ) : null}
+
+          {canReceiveCurrentTransfer && receivableLines.length > 0 ? (
             <div className="mt-4">
               <TaskSheet
                 title="Receive Transfer"
                 description="Review every dispatched line, record accepted or discrepancy quantities, and post the destination receipt. The server rechecks destination scope, MFA, idempotency, and ledger effects."
                 trigger={<span>Receive Transfer</span>}
-                triggerClassName="bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+                triggerClassName="min-h-11 bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
                 size="workspace"
                 bodyScroll="contained"
                 bodyClassName="p-0"
+                header={
+                  <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-3">
+                    <span><strong className="font-semibold text-slate-800">Transfer:</strong> {transfer.publicReference}</span>
+                    <span><strong className="font-semibold text-slate-800">From:</strong> {transfer.sourceLocationName}</span>
+                    <span><strong className="font-semibold text-slate-800">To:</strong> {transfer.destinationLocationName}</span>
+                  </div>
+                }
+                footer={({ pending }) => (
+                  <button
+                    className="inline-flex min-h-11 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60"
+                    disabled={pending}
+                    form={`transfer-receipt-form-${transfer.id}`}
+                    type="submit"
+                  >
+                    {pending ? "Posting Receipt…" : "Post Receipt"}
+                  </button>
+                )}
               >
-                <form action={receiveTransferAction} className="mt-4 grid gap-4">
+                <form
+                  action={receiveTransferAction}
+                  className="grid gap-4 p-4 sm:p-6"
+                  id={`transfer-receipt-form-${transfer.id}`}
+                >
                   <input name="id" type="hidden" value={transfer.id} />
                   <input
                     name="idempotencyKey"
@@ -387,7 +420,7 @@ export default async function TransferDetailPage({
                     discrepancy quantities are recorded without increasing stock.
                   </div>
                   <div className="grid gap-3">
-                    {transfer.lines.map((line) => {
+                    {receivableLines.map((line) => {
                       const accountedQty =
                         line.receivedQty +
                         line.rejectedQty +
@@ -404,7 +437,7 @@ export default async function TransferDetailPage({
                       return (
                         <div
                           key={line.id}
-                          className="grid gap-3 rounded-md border border-slate-200 bg-white p-3 lg:grid-cols-[1fr_repeat(4,7rem)]"
+                          className="grid gap-3 rounded-md border border-slate-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-[1fr_repeat(4,7rem)]"
                         >
                           <div>
                             <p className="text-sm font-semibold text-slate-950">
@@ -417,7 +450,7 @@ export default async function TransferDetailPage({
                           <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">
                             Accepted
                             <input
-                              className="rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
+                              className="min-h-11 rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
                               name={`lines.${line.id}.acceptedQty`}
                               type="number"
                               min="0"
@@ -428,7 +461,7 @@ export default async function TransferDetailPage({
                           <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">
                             Rejected
                             <input
-                              className="rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
+                              className="min-h-11 rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
                               name={`lines.${line.id}.rejectedQty`}
                               type="number"
                               min="0"
@@ -439,7 +472,7 @@ export default async function TransferDetailPage({
                           <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">
                             Damaged
                             <input
-                              className="rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
+                              className="min-h-11 rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
                               name={`lines.${line.id}.damagedQty`}
                               type="number"
                               min="0"
@@ -450,7 +483,7 @@ export default async function TransferDetailPage({
                           <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">
                             Short
                             <input
-                              className="rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
+                              className="min-h-11 rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
                               name={`lines.${line.id}.discrepancyQty`}
                               type="number"
                               min="0"
@@ -461,7 +494,7 @@ export default async function TransferDetailPage({
                           <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500 lg:col-span-3 lg:col-start-2">
                             Discrepancy reason
                             <input
-                              className="rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
+                              className="min-h-11 rounded-md border border-slate-300 px-2 py-2 text-sm font-normal text-slate-950"
                               name={`lines.${line.id}.discrepancyReason`}
                               placeholder="Required for rejected, damaged, or short quantity"
                             />
@@ -481,14 +514,11 @@ export default async function TransferDetailPage({
                   <label className="grid gap-1 text-sm font-medium text-slate-700">
                     Notes
                     <input
-                      className="rounded-md border border-slate-300 px-3 py-2"
+                              className="min-h-11 rounded-md border border-slate-300 px-3 py-2"
                       name="notes"
                       placeholder="Optional receiving note"
                     />
-                  </label>
-                  <button className="inline-flex min-h-10 w-full items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 sm:w-fit">
-                    Post Receipt
-                  </button>
+                      </label>
                 </form>
               </TaskSheet>
             </div>
