@@ -2702,6 +2702,79 @@ async function lockEmployeeOvertimeApprovalSource(
   return { source, approvalLocationId };
 }
 
+type LockedEmployeeLeaveApprovalSource = {
+  id: string;
+  tenantId: string;
+  companyId: string;
+  employeeId: string;
+  locationId: string | null;
+  requestedByUserId: string;
+  createdByUserId: string;
+  status: string;
+  approvalInstanceId: string | null;
+  updatedAt: Date;
+};
+
+async function lockEmployeeLeaveApprovalSource(
+  tx: TransactionClient,
+  session: SessionContext,
+  input: { id: string; approvalInstanceId: string; expectedUpdatedAt: Date },
+) {
+  const rows = await tx.$queryRaw<LockedEmployeeLeaveApprovalSource[]>`
+    SELECT request.id,
+           request."tenantId",
+           request."companyId",
+           request."employeeId",
+           request."locationId",
+           request."requestedByUserId",
+           request."createdByUserId",
+           request.status::text AS status,
+           request."approvalInstanceId",
+           request."updatedAt"
+      FROM "EmployeeLeaveRequest" request
+     WHERE request.id = ${input.id}::uuid
+       AND request."tenantId" = ${session.context.tenantId}::uuid
+       AND request."companyId" = ${session.context.companyId}::uuid
+     FOR UPDATE OF request
+  `;
+  const source = rows[0];
+  if (
+    !source ||
+    !["SUBMITTED", "UNDER_REVIEW"].includes(source.status) ||
+    source.approvalInstanceId !== input.approvalInstanceId ||
+    source.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+  ) {
+    throw new Error("WORKFORCE_LEAVE_NOT_AWAITING_APPROVAL");
+  }
+  const employeeRows = await tx.$queryRaw<Array<{ id: string; status: string; homeLocationId: string | null }>>`
+    SELECT employee.id, employee.status::text AS status, employee."homeLocationId"
+      FROM "Employee" employee
+     WHERE employee.id = ${source.employeeId}::uuid
+       AND employee."tenantId" = ${session.context.tenantId}::uuid
+       AND employee."companyId" = ${session.context.companyId}::uuid
+     FOR SHARE OF employee
+  `;
+  const employee = employeeRows[0];
+  if (!employee || employee.status !== "ACTIVE") throw new Error("APPROVAL_DOCUMENT_NOT_FOUND");
+  const approvalLocationId = source.locationId ?? employee.homeLocationId;
+  if (!approvalLocationId) throw new Error("APPROVAL_DOCUMENT_SCOPE_NOT_FOUND");
+  const locationRows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT location.id
+      FROM "Location" location
+     WHERE location.id = ${approvalLocationId}::uuid
+       AND location."tenantId" = ${session.context.tenantId}::uuid
+       AND location."companyId" = ${session.context.companyId}::uuid
+       AND location.status = 'ACTIVE'::"RecordStatus"
+     FOR SHARE OF location
+  `;
+  if (locationRows.length !== 1) throw new Error("APPROVAL_DOCUMENT_SCOPE_NOT_FOUND");
+  await assertApprovalScope(session, approvalLocationId);
+  if (source.requestedByUserId === session.user.id || source.createdByUserId === session.user.id) {
+    throw new Error("SELF_APPROVAL_BLOCKED");
+  }
+  return { source, approvalLocationId };
+}
+
 async function findActionableWorkforceScheduleApproval(
   session: SessionContext,
   approvalInstanceId: string
@@ -7138,6 +7211,40 @@ async function closeEmployeeLeaveRequestWithDecision(
   );
 
   await prisma.$transaction(async (tx) => {
+    await acquireApprovalProducerBarrierShared(tx, {
+      tenantId: session.context.tenantId,
+      companyId: session.context.companyId,
+      documentType: "EmployeeLeaveRequest",
+    });
+    const lockedSource = await lockEmployeeLeaveApprovalSource(tx, session, {
+      id: request.id,
+      approvalInstanceId: approval.id,
+      expectedUpdatedAt: request.updatedAt,
+    });
+    const lockedApprovalRows = await tx.$queryRaw<Array<{
+      id: string;
+      documentType: string;
+      documentId: string;
+      status: string;
+      currentStepOrder: number | null;
+    }>>`
+      SELECT ai.id, ai."documentType", ai."documentId", ai.status::text AS status, ai."currentStepOrder"
+        FROM "ApprovalInstance" ai
+       WHERE ai.id = ${approval.id}::uuid
+         AND ai."tenantId" = ${session.context.tenantId}::uuid
+         AND ai."companyId" = ${session.context.companyId}::uuid
+       FOR UPDATE OF ai
+    `;
+    const lockedApproval = lockedApprovalRows[0];
+    if (!lockedApproval || lockedApproval.documentType !== "EmployeeLeaveRequest" || lockedApproval.documentId !== request.id || lockedApproval.status !== "PENDING" || lockedApproval.currentStepOrder !== step.stepOrder) {
+      throw new Error("APPROVAL_NOT_ACTIONABLE");
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT s.id FROM "ApprovalInstanceStep" s
+       WHERE s."approvalInstanceId" = ${approval.id}::uuid
+       ORDER BY s."stepOrder" ASC, s.id ASC
+       FOR UPDATE OF s
+    `;
     await prepareSpecializedApprovalDecisionAuthority(tx, session, {
       approvalInstanceId: approval.id,
       currentStepId: step.id,
@@ -7172,14 +7279,16 @@ async function closeEmployeeLeaveRequestWithDecision(
         id: request.id,
         tenantId: session.context.tenantId,
         companyId: session.context.companyId,
-        status: { in: ["SUBMITTED", "UNDER_REVIEW"] }
+        approvalInstanceId: approval.id,
+        status: { in: ["SUBMITTED", "UNDER_REVIEW"] },
+        updatedAt: lockedSource.source.updatedAt
       },
       data: {
         status: requestStatus,
         decisionAt: new Date(),
         decisionNote: values.remarks,
         updatedByUserId: session.user.id
-      }
+      },
     });
     if (updatedRequest.count !== 1) {
       throw new Error("WORKFORCE_LEAVE_NOT_AWAITING_APPROVAL");

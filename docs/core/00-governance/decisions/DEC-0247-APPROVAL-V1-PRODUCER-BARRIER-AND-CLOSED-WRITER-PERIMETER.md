@@ -867,6 +867,16 @@ routing destination; no flag or new authority was enabled. Subject-employee SOD
 policy, legacy cancellation/rejection parity, PostgreSQL/ACL/replay evidence,
 DEC-0246 authority, and activation remain open.
 
+The next bounded Inbox decision correction hardens terminal Leave
+return/reject handling through the shared barrier and source/Employee/Location
+lock order. The exact EmployeeLeaveRequest backlink, pending ApprovalInstance,
+current step, and ordered future steps are revalidated in-transaction; terminal
+step/instance closure and source `SUBMITTED`/`UNDER_REVIEW` to
+`RETURNED_FOR_REVISION` or `REJECTED` use exact `updatedAt` CAS. This slice adds
+no next-step activation, payroll, payment, inventory, or journal mutation.
+Leave approval/return/cancel legacy parity, replay, PostgreSQL/ACL evidence,
+DEC-0246 authority, and activation remain open.
+
 ## Supersession
 
 This record does not supersede `DEC-0244`, `DEC-0245`, or `DEC-0246`. It closes
