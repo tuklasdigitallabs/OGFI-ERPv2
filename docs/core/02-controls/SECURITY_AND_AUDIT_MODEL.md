@@ -235,6 +235,7 @@ Repeated denied operations follow `DEC-0050`: server-derived, tenant-qualified c
 7. Transfer dispatch and receipt are separate confirmation events.
 8. Reversals reference the original movement and do not overwrite it.
 9. Backdated stock transactions require explicit reason, authorization, and audit classification.
+10. Transfer receipt posting and reversal re-read the active user, session/privilege epoch, permission, exact destination-location scope, and local MFA assurance inside the authoritative transaction after inventory and transfer locks; stale or revoked authority fails closed before any receipt, movement, balance, rollup, or audit mutation.
 
 ---
 

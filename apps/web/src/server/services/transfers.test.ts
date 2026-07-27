@@ -745,6 +745,33 @@ describe("inventory transfer foundation rules", () => {
     );
   });
 
+  test("receipt and reversal revalidate live authority after locks", () => {
+    const service = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
+    const receiveStart = service.indexOf("export async function receiveInventoryTransfer");
+    const reverseStart = service.indexOf("export async function reverseInventoryTransferReceipt");
+    const receiveSource = service.slice(receiveStart, reverseStart);
+    const reverseSource = service.slice(reverseStart, service.indexOf("export async function settleInventoryTransferDiscrepancy", reverseStart));
+
+    expect(service).toContain("assertFreshTransferReceiptAuthority");
+    expect(service).toContain('FROM "AuthSession"');
+    expect(service).toContain('FROM "UserRoleAssignment"');
+    expect(service).toContain('FROM "UserScopeAssignment"');
+    expect(service).toContain('throw new Error("PRIVILEGED_MFA_STEP_UP_REQUIRED")');
+    expect(receiveSource.indexOf("lockInventoryLocationsForPosting")).toBeLessThan(
+      receiveSource.indexOf("assertFreshTransferReceiptAuthority")
+    );
+    expect(receiveSource.indexOf("assertFreshTransferReceiptAuthority")).toBeLessThan(
+      receiveSource.indexOf('action: "inventory_transfer_receipt.receive"')
+    );
+    expect(reverseSource.indexOf("lockInventoryLocationsForPosting")).toBeLessThan(
+      reverseSource.indexOf("assertFreshTransferReceiptAuthority")
+    );
+    expect(reverseSource.indexOf("assertFreshTransferReceiptAuthority")).toBeLessThan(
+      reverseSource.indexOf('action: "inventory_transfer_receipt.reverse"')
+    );
+    expect(service).toContain('destinationLocationId}::uuid');
+  });
+
   test("receive UI supplies the required bounded idempotency key", () => {
     const service = readFileSync(path.resolve(__dirname, "transfers.ts"), "utf8");
     const detailPage = readFileSync(

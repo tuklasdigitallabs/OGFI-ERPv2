@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { prisma, Prisma } from "@ogfi/database";
+import { prisma, Prisma, type TransactionClient } from "@ogfi/database";
 import { z } from "zod";
 import { TRANSFER_MAX_LINES } from "../../lib/workflowLimits";
 import { canUseTransfers, permissions, requirePermission } from "./authorization";
@@ -10,6 +10,11 @@ import {
   postInventoryMovementInTransaction
 } from "./inventory";
 import { assertPrivilegedMfaForAction } from "./privilegedMfaGuard";
+import {
+  getAuthMode,
+  getMfaStepUpMinutes,
+  isMfaAssuranceFresh,
+} from "./authentication";
 import {
   dashboardTaskAfterWhere,
   type DashboardTaskCursor,
@@ -54,6 +59,126 @@ const receiveTransferSchema = z.object({
   idempotencyKey: z.string().trim().min(16).max(200),
   notes: z.string().trim().max(1000).optional()
 });
+
+type LockedTransferAuthoritySession = {
+  status: string;
+  assuranceLevel: string;
+  mfaAuthenticatedAt: Date | null;
+  privilegeEpochAtIssue: number;
+  idleExpiresAt: Date;
+  absoluteExpiresAt: Date;
+};
+
+/**
+ * Transfer receipt/reversal actions are stock-affecting. Recheck the live
+ * principal, session, permission, and destination scope after inventory and
+ * transfer locks are held so a revoked actor cannot post from a stale
+ * request context. Local MFA is evaluated from the locked AuthSession rather
+ * than the request snapshot; the privileged-MFA guard still records the
+ * configured external-enforcement evidence.
+ */
+async function assertFreshTransferReceiptAuthority(
+  tx: TransactionClient,
+  session: SessionContext,
+  permissionCode: string,
+  destinationLocationId: string,
+) {
+  const now = new Date();
+  const principals = await tx.$queryRaw<
+    Array<{ status: string; privilegeEpoch: number }>
+  >`
+    SELECT status, "privilegeEpoch"
+      FROM "User"
+     WHERE id = ${session.user.id}::uuid
+       AND "tenantId" = ${session.context.tenantId}::uuid
+     FOR SHARE
+  `;
+  const principal = principals[0];
+  if (!principal || principal.status !== "ACTIVE") {
+    throw new Error("AUTH_REQUIRED");
+  }
+
+  let liveSession: LockedTransferAuthoritySession | null = null;
+  if (session.authentication?.sessionId) {
+    const sessions = await tx.$queryRaw<LockedTransferAuthoritySession[]>`
+      SELECT status, "assuranceLevel", "mfaAuthenticatedAt",
+             "privilegeEpochAtIssue", "idleExpiresAt", "absoluteExpiresAt"
+        FROM "AuthSession"
+       WHERE id = ${session.authentication.sessionId}::uuid
+         AND "tenantId" = ${session.context.tenantId}::uuid
+         AND "userId" = ${session.user.id}::uuid
+       FOR SHARE
+    `;
+    liveSession = sessions[0] ?? null;
+  }
+  if (
+    session.authentication?.sessionId &&
+    (!liveSession ||
+      liveSession.status !== "ACTIVE" ||
+      liveSession.privilegeEpochAtIssue !== principal.privilegeEpoch ||
+      liveSession.idleExpiresAt <= now ||
+      liveSession.absoluteExpiresAt <= now)
+  ) {
+    throw new Error("AUTH_REQUIRED");
+  }
+  if (getAuthMode() === "local" && !liveSession) {
+    throw new Error("AUTH_REQUIRED");
+  }
+
+  const roleAssignments = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT ura.id
+      FROM "UserRoleAssignment" ura
+      JOIN "Role" r ON r.id = ura."roleId"
+      JOIN "RolePermission" rp ON rp."roleId" = r.id
+      JOIN "Permission" p ON p.id = rp."permissionId"
+     WHERE ura."userId" = ${session.user.id}::uuid
+       AND ura.status = 'ACTIVE'::"RecordStatus"
+       AND ura."startsAt" <= ${now}
+       AND (ura."endsAt" IS NULL OR ura."endsAt" > ${now})
+       AND r.status = 'ACTIVE'::"RecordStatus"
+       AND (r."tenantId" IS NULL OR r."tenantId" = ${session.context.tenantId}::uuid)
+       AND p.code = ${permissionCode}
+       AND (p."tenantId" IS NULL OR p."tenantId" = ${session.context.tenantId}::uuid)
+     ORDER BY ura.id ASC
+     LIMIT 1
+  `;
+  if (!roleAssignments[0]) {
+    throw new Error("PERMISSION_DENIED");
+  }
+
+  const locationScopes = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT usa.id
+      FROM "UserScopeAssignment" usa
+      JOIN "Location" l ON l.id = usa."scopeId"
+     WHERE usa."userId" = ${session.user.id}::uuid
+       AND usa."scopeType" = 'LOCATION'::"ScopeType"
+       AND usa."scopeId" = ${destinationLocationId}::uuid
+       AND usa.status = 'ACTIVE'::"RecordStatus"
+       AND usa."startsAt" <= ${now}
+       AND (usa."endsAt" IS NULL OR usa."endsAt" > ${now})
+       AND l."tenantId" = ${session.context.tenantId}::uuid
+       AND l."companyId" = ${session.context.companyId}::uuid
+       AND l.status = 'ACTIVE'::"RecordStatus"
+     ORDER BY usa.id ASC
+     LIMIT 1
+  `;
+  if (!locationScopes[0]) {
+    throw new Error("SCOPE_DENIED");
+  }
+
+  if (
+    getAuthMode() === "local" &&
+    (!liveSession ||
+      !isMfaAssuranceFresh({
+        assuranceLevel: liveSession.assuranceLevel,
+        mfaAuthenticatedAt: liveSession.mfaAuthenticatedAt,
+        freshnessMinutes: getMfaStepUpMinutes(),
+        now,
+      }))
+  ) {
+    throw new Error("PRIVILEGED_MFA_STEP_UP_REQUIRED");
+  }
+}
 
 type TransferReceiptHashLine = {
   lineId: string;
@@ -1878,6 +2003,12 @@ export async function receiveInventoryTransfer(formData: FormData) {
         evidenceReference: input.evidenceReference
       }))
     });
+    await assertFreshTransferReceiptAuthority(
+      tx,
+      session,
+      permissions.transferReceive,
+      authoritativeTransfer.destinationLocationId,
+    );
     await assertPrivilegedMfaForAction(session, {
       action: "inventory_transfer_receipt.receive",
       enforcementScope: "all_sensitive",
@@ -2490,6 +2621,12 @@ export async function reverseInventoryTransferReceipt(formData: FormData) {
     ) {
       throw new Error("TRANSFER_RECEIPT_SCOPE_CONFLICT");
     }
+    await assertFreshTransferReceiptAuthority(
+      tx,
+      session,
+      permissions.transferReceiptReverse,
+      transfer.destinationLocationId,
+    );
     await assertPrivilegedMfaForAction(session, {
       action: "inventory_transfer_receipt.reverse",
       enforcementScope: "all_sensitive",
