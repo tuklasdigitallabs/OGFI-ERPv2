@@ -510,6 +510,33 @@ perimeter, removal of runtime base graph/provenance DML, Option B completion,
 `DEC-0246` human authority, certification, activation, Workspace 4, and Phase I
 remain **NO-GO**.
 
+### Current Option C C2 dormant closed-writer capability/drift contract checkpoint
+
+C2 is a separate test-only declarative contract and does not mutate the C1
+observer manifest or digest. `apps/web/tests/contracts/approvalProducerClosedCapabilityContract.ts`
+binds exactly 18 producer families to their current service/function identity,
+the singleton `producer.<family>` mutation inventory entry, required source and
+lineage facts, lock/CAS/replay/error facts, and a deterministic future capability
+name. Every entry remains `DISCOVERY_ONLY`, non-executable, non-runtime-callable,
+ungranted, with `signature: null`, `runtimeBaseGraphDml: OPEN`, and no
+readiness, certification, or activation result. The contract imports no runtime
+consumer and creates no database object, role, grant, migration, or source
+mutation.
+
+Contract version `dec-0247-c2.dormant-closed-writer-contract.1` is bound to
+inventory digest
+`3f952a575bb24c781ada9cfecac5b2aefa90c49967df25ec9a80a5a0dd0a800d`. The digest
+includes the C1 version, all 18 producer entries, all shared graph mutators,
+tooling DML/DDL/probe inventories, and raw-SQL owner/body inventory. Static
+coverage passes 14/14, including exact family/producer bijection, mutation shape,
+deep-freeze, test-only import boundary, and C0 AST/raw-SQL drift guards.
+
+C2 does not close the database writer perimeter. Ordinary runtime base graph DML,
+all-18 typed capabilities, active semantic/provenance validation, disposable
+PostgreSQL ACL/concurrency evidence, `DEC-0246` authority, deployment/recovery,
+certification, and activation remain pending. `APPROVAL_ROUTING_V1_ENABLED`
+remains false; C2 cannot produce `V1_PRODUCER_BARRIER_READY` or `DRAIN_CLEAN`.
+
 ## Follow-up actions
 
 | Action | Owner | Due / trigger | Status |

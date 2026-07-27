@@ -33,6 +33,12 @@ import {
   approvalRoutingPolicies,
   supportedApprovalDocumentTypes,
 } from "./approvalRoutingRegistry";
+import {
+  APPROVAL_PRODUCER_CLOSED_CAPABILITY_CONTRACT_VERSION,
+  approvalProducerClosedCapabilityContract,
+  approvalProducerClosedCapabilityContracts,
+  approvalProducerClosedCapabilityInventoryDigest,
+} from "../../../tests/contracts/approvalProducerClosedCapabilityContract";
 
 const repositoryRoot = path.resolve(__dirname, "../../../../..");
 const sourceExtensions = new Set([
@@ -782,6 +788,89 @@ describe("DEC-0247 C1-S dormant observer structural contract", () => {
     `, "approvalProducerCapabilityManifest")).toEqual([
       "import", "export-from", "require", "dynamic-import",
     ]);
+  });
+});
+
+describe("DEC-0247 C2 dormant closed-writer capability contract", () => {
+  test("pins the exact 18-family producer bijection and closed authority posture", () => {
+    expect(approvalProducerClosedCapabilityContracts).toHaveLength(18);
+    expect(Object.keys(approvalProducerClosedCapabilityContract).sort()).toEqual(
+      [...supportedApprovalDocumentTypes].sort(),
+    );
+    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.producerId)).size).toBe(18);
+    expect(new Set(approvalProducerClosedCapabilityContracts.map((entry) => entry.proposedCapability.name)).size).toBe(18);
+    for (const entry of approvalProducerClosedCapabilityContracts) {
+      expect(entry).toMatchObject({
+        contractKind: "DORMANT_WRITER_DISCOVERY",
+        executable: false,
+        runtimeCallable: false,
+        databaseRoutineExists: false,
+        positiveGrant: false,
+        grantsAuthority: false,
+        baseDmlRevoked: false,
+        runtimeBaseGraphDml: "OPEN",
+        readinessResult: "NONE",
+        certificationResult: "NONE",
+        activationResult: "NONE",
+        status: "DISCOVERY_ONLY",
+      });
+      expect(entry.proposedCapability.signature).toBeNull();
+      expect(entry.proposedCapability.parametersAreBindingsNotAuthority).toBe(true);
+      expect(entry.mutationInventoryId).toBe(`producer.${entry.documentType}`);
+      const inventoryEntry = approvalGraphMutationInventory.find((item) => item.id === entry.mutationInventoryId);
+      expect(inventoryEntry).toBeDefined();
+      expect(entry.producer).toEqual({
+        serviceFile: inventoryEntry!.file.replace(/^services\//, ""),
+        functionName: inventoryEntry!.functionName,
+      });
+      expect(entry.producer.serviceFile).toMatch(/\.ts$/);
+      expect(entry.producer.functionName).not.toBe("");
+      expect(entry.sourceAndRoutingFacts.sourceRelation).not.toBe("");
+      expect(entry.sourceAndRoutingFacts.serializationRelation).not.toBe("");
+      expect(entry.sourceAndRoutingFacts.derivation).toBeDefined();
+      expect(entry.sourceAndRoutingFacts.concurrency).toBeDefined();
+      expect(entry.mutationInventory).toEqual([
+        { model: "approvalInstance", operation: "create", access: "DIRECT_DELEGATE", count: 1 },
+        { model: "approvalInstanceStep", operation: "create", access: "NESTED_RELATION", count: 1 },
+      ]);
+      expect(Object.isFrozen(entry)).toBe(true);
+      expect(Object.isFrozen(entry.mutationInventory)).toBe(true);
+      expect(Object.isFrozen(entry.sourceAndRoutingFacts)).toBe(true);
+    }
+    expect(approvalProducerClosedCapabilityContracts.filter((entry) =>
+      entry.documentType === "FinanceCloseRun")).toHaveLength(1);
+  });
+
+  test("binds the C2 digest to the full producer, graph, tooling, and raw-SQL inventory", () => {
+    expect(APPROVAL_PRODUCER_CLOSED_CAPABILITY_CONTRACT_VERSION).toBe(
+      "dec-0247-c2.dormant-closed-writer-contract.1",
+    );
+    expect(approvalProducerClosedCapabilityInventoryDigest).toBe(
+      "3f952a575bb24c781ada9cfecac5b2aefa90c49967df25ec9a80a5a0dd0a800d",
+    );
+    expect(APPROVAL_PRODUCER_CAPABILITY_VERSION).toBe(
+      "dec-0247-c1.private-binary-observer-sql.1",
+    );
+    expect(Object.isFrozen(approvalProducerClosedCapabilityContract)).toBe(true);
+    expect(Object.isFrozen(approvalProducerClosedCapabilityContracts)).toBe(true);
+    expect(approvalProducerClosedCapabilityContracts.some((entry) => entry.executable)).toBe(false);
+  });
+
+  test("keeps the C2 contract test-only and cannot mutate the C1 contract", () => {
+    const before = APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST;
+    expect(approvalProducerCapabilityContracts).toHaveLength(18);
+    expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(before);
+    expect(() => {
+      (approvalProducerClosedCapabilityContract.PurchaseRequest as { status: string }).status = "EXECUTABLE";
+    }).toThrow();
+    expect(() => {
+      (approvalProducerClosedCapabilityContract.PurchaseRequest.mutationInventory as unknown[]).push({});
+    }).toThrow();
+    expect(APPROVAL_PRODUCER_CAPABILITY_MANIFEST_DIGEST).toBe(before);
+    const runtimeImports = runtimeFiles().filter((file) =>
+      readFileSync(path.join(repositoryRoot, file), "utf8").includes("tests/contracts/approvalProducerClosedCapabilityContract"),
+    );
+    expect(runtimeImports).toEqual([]);
   });
 });
 
